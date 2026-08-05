@@ -14,10 +14,18 @@ import re
 import shutil
 import sys
 from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Sequence
 
 from ._version import package_version
+from .provider_routes import (
+    GITHUB_MODELS_PROVIDER,
+    InferenceRoute,
+    normalize_provider,
+    resolve_embedding_artifact_route,
+    resolve_inference_route,
+)
 from .repository_filters import DEFAULT_IGNORED_DIRS
 
 _PRESET_VIEWS = {
@@ -26,10 +34,177 @@ _PRESET_VIEWS = {
     "graph": ("bm25", "symbol_graph"),
     "full": ("bm25", "vector", "symbol_graph", "zoekt"),
 }
+_REMOTE_EMBEDDING_DEFAULTS = {
+    GITHUB_MODELS_PROVIDER: ("openai/text-embedding-3-small", 1536),
+    "openai": ("text-embedding-3-small", 1536),
+}
 
 
 class CLIError(RuntimeError):
     """A user-actionable command error."""
+
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedModelBackend:
+    model: str
+    api_base: str | None
+    api_key: str | None = field(default=None, repr=False)
+    auth_source: str | None = None
+
+
+def _optional_int(value: object, *, source: str) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        raise CLIError(f"{source} must be a positive integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise CLIError(f"{source} must be a positive integer") from exc
+    if parsed <= 0:
+        raise CLIError(f"{source} must be a positive integer")
+    return parsed
+
+
+def _embedding_route_for_args(args: argparse.Namespace) -> InferenceRoute:
+    """Resolve the secret-free embedding identity selected by CLI and env."""
+
+    from .index.embedding.model_policy import (
+        DEFAULT_EMBEDDING_DIMENSION,
+        DEFAULT_EMBEDDING_MODEL,
+    )
+
+    raw_provider = (
+        getattr(args, "embedding_provider", None)
+        or os.environ.get("CODENIB_EMBEDDING_PROVIDER")
+        or "huggingface"
+    )
+    try:
+        provider = normalize_provider(raw_provider)
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
+
+    explicit_model = getattr(args, "embedding_model", None) or os.environ.get(
+        "CODENIB_EMBEDDING_MODEL"
+    )
+    dimension = _optional_int(
+        getattr(args, "embedding_dimension", None)
+        or os.environ.get("CODENIB_EMBEDDING_DIMENSION"),
+        source="embedding dimension",
+    )
+    if provider in _REMOTE_EMBEDDING_DEFAULTS:
+        default_model, default_dimension = _REMOTE_EMBEDDING_DEFAULTS[provider]
+        model = explicit_model or default_model
+        if dimension is None:
+            if explicit_model and explicit_model != default_model:
+                raise CLIError(
+                    "--embedding-dimension is required for a non-default remote model"
+                )
+            dimension = default_dimension
+    else:
+        model = explicit_model or DEFAULT_EMBEDDING_MODEL
+        dimension = dimension or DEFAULT_EMBEDDING_DIMENSION
+
+    endpoint = (
+        getattr(args, "embedding_endpoint", None)
+        or os.environ.get("CODENIB_EMBEDDING_ENDPOINT")
+        or os.environ.get("CODENIB_EMBEDDING_BASE_URL")
+    )
+    credential_env = getattr(args, "embedding_api_key_env", None) or os.environ.get(
+        "CODENIB_EMBEDDING_API_KEY_ENV"
+    )
+    try:
+        return resolve_inference_route(
+            operation="embeddings",
+            provider=provider,
+            model=model,
+            endpoint=endpoint,
+            dimension=dimension,
+            credential_env=credential_env,
+        )
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
+
+
+def _embedding_identity_is_configured(args: argparse.Namespace) -> bool:
+    return any(
+        (
+            getattr(args, "embedding_provider", None),
+            getattr(args, "embedding_model", None),
+            getattr(args, "embedding_dimension", None),
+            getattr(args, "embedding_endpoint", None),
+            os.environ.get("CODENIB_EMBEDDING_PROVIDER"),
+            os.environ.get("CODENIB_EMBEDDING_MODEL"),
+            os.environ.get("CODENIB_EMBEDDING_DIMENSION"),
+            os.environ.get("CODENIB_EMBEDDING_ENDPOINT"),
+            os.environ.get("CODENIB_EMBEDDING_BASE_URL"),
+        )
+    )
+
+
+def _model_backend_for_args(
+    args: argparse.Namespace,
+    *,
+    options: dict[str, object] | None = None,
+) -> _ResolvedModelBackend | None:
+    """Resolve a chat route while retaining legacy raw LiteLLM model strings."""
+
+    model = (
+        getattr(args, "model", None)
+        or os.environ.get("CODENIB_DEMO_WIKI_MODEL")
+        or os.environ.get("CODENIB_DEMO_MODEL")
+    )
+    if not model:
+        return None
+    provider = getattr(args, "model_provider", None) or os.environ.get(
+        "CODENIB_DEMO_MODEL_PROVIDER"
+    )
+    api_base = (
+        getattr(args, "api_base", None)
+        or os.environ.get("CODENIB_DEMO_WIKI_API_BASE")
+        or os.environ.get("CODENIB_DEMO_API_BASE")
+    )
+    key_env = getattr(args, "api_key_env", None)
+    direct_key_source = None
+    direct_key = None
+    if key_env:
+        direct_key_source = key_env
+        direct_key = os.environ.get(key_env)
+    elif os.environ.get("CODENIB_DEMO_WIKI_API_KEY"):
+        direct_key_source = "CODENIB_DEMO_WIKI_API_KEY"
+        direct_key = os.environ[direct_key_source]
+    elif os.environ.get("CODENIB_DEMO_API_KEY"):
+        direct_key_source = "CODENIB_DEMO_API_KEY"
+        direct_key = os.environ[direct_key_source]
+
+    if key_env and not direct_key:
+        raise CLIError(f"{key_env} is unset or empty")
+    if not provider:
+        return _ResolvedModelBackend(
+            model=model,
+            api_base=api_base,
+            api_key=direct_key,
+            auth_source=direct_key_source,
+        )
+
+    try:
+        route = resolve_inference_route(
+            operation="chat",
+            provider=provider,
+            model=model,
+            endpoint=api_base,
+            credential_env=key_env,
+            compatibility_options=options,
+        )
+        api_key = direct_key if direct_key is not None else route.credential()
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
+    return _ResolvedModelBackend(
+        model=route.client_model,
+        api_base=route.endpoint,
+        api_key=api_key,
+        auth_source=direct_key_source or route.credential_env,
+    )
 
 
 def _split_values(values: Iterable[str] | None) -> list[str]:
@@ -141,17 +316,35 @@ def index_repository(
     languages: Sequence[str],
     views: Sequence[str],
     rebuild: bool = False,
+    embedding_provider: str = "huggingface",
+    embedding_model: str | None = None,
+    embedding_dimension: int | None = None,
+    embedding_endpoint: str | None = None,
+    embedding_credential_env: str | None = None,
 ):
     """Build or update the requested repository views."""
     from .compiler.index_builders import IndexBuilderRegistry, register_default_builders
     from .compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from .compiler.manifest import MANIFEST_FILENAME
+    from .index.embedding.model_policy import (
+        DEFAULT_EMBEDDING_DIMENSION,
+        DEFAULT_EMBEDDING_MODEL,
+    )
     from .paths import repo_index_dir
 
     registry = IndexBuilderRegistry()
     register_default_builders(
         registry,
         languages=list(languages),
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model or DEFAULT_EMBEDDING_MODEL,
+        embedding_dimension=(
+            DEFAULT_EMBEDDING_DIMENSION
+            if embedding_dimension is None
+            else embedding_dimension
+        ),
+        embedding_endpoint=embedding_endpoint,
+        embedding_credential_env=embedding_credential_env,
         allow_partial_graph_languages=True,
     )
     compiler = IndexCompiler(
@@ -212,13 +405,30 @@ def _run_index(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     languages = _selected_languages(repo_path, args.language)
     views = _selected_views(args.preset, args.view)
-    _check_view_dependencies(views)
-    manifest, failed = index_repository(
-        repo_path,
-        languages=languages,
-        views=views,
-        rebuild=args.rebuild,
-    )
+    embedding_route = None
+    if "vector" in views:
+        embedding_route = _embedding_route_for_args(args)
+        _check_view_dependencies(views, embedding_provider=embedding_route.provider)
+        try:
+            embedding_route.credential()
+        except ValueError as exc:
+            raise CLIError(str(exc)) from exc
+    else:
+        _check_view_dependencies(views)
+    index_kwargs = {
+        "languages": languages,
+        "views": views,
+        "rebuild": args.rebuild,
+    }
+    if embedding_route is not None:
+        index_kwargs.update(
+            embedding_provider=embedding_route.provider,
+            embedding_model=embedding_route.model,
+            embedding_dimension=embedding_route.dimension,
+            embedding_endpoint=embedding_route.endpoint,
+            embedding_credential_env=embedding_route.credential_env,
+        )
+    manifest, failed = index_repository(repo_path, **index_kwargs)
     _print_index_summary(manifest, views)
     if failed:
         print(
@@ -286,6 +496,8 @@ def _audit_local_wiki(local) -> dict[str, object]:
         config.model_api_base = local.runtime_env["CODENIB_DEMO_API_BASE"]
     if local.runtime_env.get("CODENIB_DEMO_API_KEY"):
         config.model_api_key = local.runtime_env["CODENIB_DEMO_API_KEY"]
+    if local.runtime_env.get("CODENIB_EMBEDDING_API_KEY"):
+        config.embedding_api_key = local.runtime_env["CODENIB_EMBEDDING_API_KEY"]
 
     registry = RepoRegistry(config)
     registry.load_all()
@@ -343,16 +555,37 @@ def _print_wiki_audit(report: dict[str, object], *, as_json: bool = False) -> No
     print("Result: PASS" if report.get("passed") else "Result: FAIL")
 
 
+def _manifest_embedding_route(
+    manifest_path: Path,
+    *,
+    credential_env: str | None,
+) -> InferenceRoute | None:
+    from .compiler.manifest import RepoManifest
+
+    manifest = RepoManifest.load(manifest_path)
+    entry = manifest.indexes.get("vector")
+    if entry is None or not manifest.index_is_current("vector"):
+        return None
+    try:
+        return resolve_embedding_artifact_route(
+            entry.config,
+            credential_env=credential_env,
+        )
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
+
+
 def _run_wiki(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     languages = _selected_languages(repo_path, args.language)
     views = _selected_views(args.preset, args.view)
-    _check_view_dependencies(views)
     audit = bool(args.audit or args.audit_json)
+    model_options = _model_options_for_args(args)
     if (
         args.agent_wiki
         or audit
         or args.model
+        or args.model_provider
         or args.api_base
         or args.api_key_env
         or args.model_option
@@ -362,20 +595,41 @@ def _run_wiki(args: argparse.Namespace) -> int:
             extra="agent",
             feature="model-backed Wiki features",
         )
-    if args.api_key_env and not os.environ.get(args.api_key_env):
-        raise CLIError(
-            "API key environment variable is unset or empty: " f"{args.api_key_env}"
-        )
+    model_backend = _model_backend_for_args(args, options=model_options)
+    if args.model_provider and model_backend is None:
+        raise CLIError("--model is required when --model-provider is selected")
 
     if args.no_index:
         manifest_path = resolve_manifest_path(str(repo_path))
     else:
-        manifest, failed = index_repository(
-            repo_path,
-            languages=languages,
-            views=views,
-            rebuild=args.rebuild,
-        )
+        build_embedding_route = None
+        if "vector" in views:
+            build_embedding_route = _embedding_route_for_args(args)
+            _check_view_dependencies(
+                views,
+                embedding_provider=build_embedding_route.provider,
+            )
+            try:
+                build_embedding_route.credential()
+            except ValueError as exc:
+                raise CLIError(str(exc)) from exc
+        else:
+            _check_view_dependencies(views)
+
+        index_kwargs = {
+            "languages": languages,
+            "views": views,
+            "rebuild": args.rebuild,
+        }
+        if build_embedding_route is not None:
+            index_kwargs.update(
+                embedding_provider=build_embedding_route.provider,
+                embedding_model=build_embedding_route.model,
+                embedding_dimension=build_embedding_route.dimension,
+                embedding_endpoint=build_embedding_route.endpoint,
+                embedding_credential_env=build_embedding_route.credential_env,
+            )
+        manifest, failed = index_repository(repo_path, **index_kwargs)
         _print_index_summary(manifest, views)
         if failed:
             raise CLIError(
@@ -383,6 +637,45 @@ def _run_wiki(args: argparse.Namespace) -> int:
                 + ", ".join(failed)
             )
         manifest_path = resolve_manifest_path(str(repo_path))
+
+    credential_env = args.embedding_api_key_env or os.environ.get(
+        "CODENIB_EMBEDDING_API_KEY_ENV"
+    )
+    embedding_route = _manifest_embedding_route(
+        manifest_path,
+        credential_env=credential_env,
+    )
+    if embedding_route is not None:
+        if _embedding_identity_is_configured(args):
+            requested_route = _embedding_route_for_args(args)
+            if (
+                requested_route.compatibility_fingerprint
+                != embedding_route.compatibility_fingerprint
+            ):
+                raise CLIError(
+                    "selected embedding route does not match the current vector "
+                    "artifact; rebuild the vector view or remove the route override"
+                )
+        _check_view_dependencies(
+            ["vector"],
+            embedding_provider=embedding_route.provider,
+        )
+        try:
+            embedding_route.credential()
+        except ValueError as exc:
+            raise CLIError(str(exc)) from exc
+    elif "vector" in views and not args.no_index:
+        raise CLIError("the requested vector view is missing from the manifest")
+
+    if args.no_index:
+        dependency_views = [view for view in views if view != "vector"]
+        if dependency_views:
+            _check_view_dependencies(dependency_views)
+        if "vector" in views and embedding_route is None:
+            raise CLIError(
+                "--no-index requested a vector view, but the manifest has no "
+                "current vector artifact"
+            )
 
     from .web.launcher import launch_local_wiki
     from .web.local import prepare_local_wiki
@@ -393,10 +686,13 @@ def _run_wiki(args: argparse.Namespace) -> int:
             manifest_path,
             frontend_port=args.port,
             agent_wiki=args.agent_wiki or audit,
-            model=args.model,
-            api_base=args.api_base,
-            api_key_env=args.api_key_env,
-            model_options=_model_options_for_args(args),
+            model=model_backend.model if model_backend else None,
+            api_base=model_backend.api_base if model_backend else None,
+            api_key_env=model_backend.auth_source if model_backend else None,
+            model_options=model_options,
+            embedding_api_key_env=(
+                embedding_route.credential_env if embedding_route else None
+            ),
         )
     except ValueError as exc:
         raise CLIError(str(exc)) from exc
@@ -442,11 +738,20 @@ def _require_modules(
     )
 
 
-def _check_view_dependencies(views: Sequence[str]) -> None:
+def _check_view_dependencies(
+    views: Sequence[str],
+    *,
+    embedding_provider: str = "huggingface",
+) -> None:
     if "vector" in views:
+        provider = normalize_provider(embedding_provider)
+        embedding_module = (
+            "sentence_transformers" if provider == "huggingface" else "openai"
+        )
+        extra = "semantic" if provider == "huggingface" else "semantic-remote"
         _require_modules(
-            ("faiss", "sentence_transformers"),
-            extra="semantic",
+            ("faiss", embedding_module),
+            extra=extra,
             feature="the vector view",
         )
     if "symbol_graph" in views:
@@ -460,33 +765,6 @@ def _check_view_dependencies(views: Sequence[str]) -> None:
 def _doctor_model_config(
     args: argparse.Namespace,
 ) -> tuple[str, bool, str] | None:
-    model = (
-        getattr(args, "model", None)
-        or os.environ.get("CODENIB_DEMO_WIKI_MODEL")
-        or os.environ.get("CODENIB_DEMO_MODEL")
-    )
-    if not model:
-        return None
-    api_base = (
-        getattr(args, "api_base", None)
-        or os.environ.get("CODENIB_DEMO_WIKI_API_BASE")
-        or os.environ.get("CODENIB_DEMO_API_BASE")
-    )
-    key_env = getattr(args, "api_key_env", None)
-    api_key = (
-        os.environ.get(key_env)
-        if key_env
-        else os.environ.get("CODENIB_DEMO_WIKI_API_KEY")
-        or os.environ.get("CODENIB_DEMO_API_KEY")
-    )
-    if key_env and not api_key:
-        return (
-            "Model configuration",
-            False,
-            f"{model}; {key_env} is unset or empty",
-        )
-    if not _check_module("litellm"):
-        return ("Model configuration", False, f"{model}; LiteLLM is missing")
     options = _model_options_for_args(
         args,
         include_wiki_environment=(
@@ -495,28 +773,30 @@ def _doctor_model_config(
         ),
     )
     try:
+        backend = _model_backend_for_args(args, options=options)
+    except CLIError as exc:
+        model = getattr(args, "model", None) or "model"
+        return ("Model configuration", False, f"{model}; {exc}")
+    if backend is None:
+        return None
+    if not _check_module("litellm"):
+        return (
+            "Model configuration",
+            False,
+            f"{backend.model}; LiteLLM is missing",
+        )
+    try:
         from .llm.diagnostics import diagnose_model_backend
 
         report = diagnose_model_backend(
-            model=model,
-            api_base=api_base,
-            api_key=api_key,
-            auth_source=(
-                key_env
-                or (
-                    "CODENIB_DEMO_WIKI_API_KEY"
-                    if os.environ.get("CODENIB_DEMO_WIKI_API_KEY")
-                    else (
-                        "CODENIB_DEMO_API_KEY"
-                        if os.environ.get("CODENIB_DEMO_API_KEY")
-                        else None
-                    )
-                )
-            ),
+            model=backend.model,
+            api_base=backend.api_base,
+            api_key=backend.api_key,
+            auth_source=backend.auth_source,
             options=options,
         )
     except Exception as exc:  # noqa: BLE001 - diagnostic must report, not crash
-        return ("Model configuration", False, f"{model}; {exc}")
+        return ("Model configuration", False, f"{backend.model}; {exc}")
     return ("Model configuration", report.configured, report.detail())
 
 
@@ -536,6 +816,57 @@ def _doctor_rows(
     runtime_detail = (
         "not required (prebuilt frontend)" if frontend_prebuilt else node_detail
     )
+    try:
+        embedding_route = _embedding_route_for_args(args or argparse.Namespace())
+        try:
+            embedding_route.credential()
+            route_ok = True
+            route_issue = ""
+        except ValueError as exc:
+            route_ok = False
+            route_issue = str(exc)
+        embedding_module = (
+            "sentence_transformers"
+            if embedding_route.provider == "huggingface"
+            else "openai"
+        )
+        embedding_label = (
+            "sentence-transformers"
+            if embedding_route.provider == "huggingface"
+            else "OpenAI SDK"
+        )
+        route_parts = [
+            f"{embedding_route.provider}:{embedding_route.model}",
+            f"dimension={embedding_route.dimension}",
+        ]
+        if embedding_route.endpoint:
+            route_parts.append(f"endpoint={embedding_route.endpoint}")
+        if embedding_route.credential_env:
+            route_parts.append(f"auth={embedding_route.credential_env}")
+        if route_issue:
+            route_parts.append(route_issue)
+        embedding_checks = [
+            ("Embedding route", route_ok, "; ".join(route_parts)),
+            (
+                embedding_label,
+                _check_module(embedding_module),
+                "installed" if _check_module(embedding_module) else "missing",
+            ),
+            (
+                "FAISS",
+                _check_module("faiss"),
+                "installed" if _check_module("faiss") else "missing",
+            ),
+        ]
+    except CLIError as exc:
+        embedding_checks = [
+            ("Embedding route", False, str(exc)),
+            (
+                "FAISS",
+                _check_module("faiss"),
+                "installed" if _check_module("faiss") else "missing",
+            ),
+        ]
     rows = {
         "core": [
             ("Python >= 3.10", py_ok, sys.version.split()[0]),
@@ -591,18 +922,7 @@ def _doctor_rows(
                 str(frontend) if frontend is not None else "missing",
             ),
         ],
-        "semantic": [
-            (
-                "sentence-transformers",
-                _check_module("sentence_transformers"),
-                ("installed" if _check_module("sentence_transformers") else "missing"),
-            ),
-            (
-                "FAISS",
-                _check_module("faiss"),
-                "installed" if _check_module("faiss") else "missing",
-            ),
-        ],
+        "semantic": embedding_checks,
         "graph": [
             (
                 "igraph",
@@ -656,28 +976,6 @@ def _model_probe_error(exc: BaseException, *, api_key: str | None) -> str:
 def _probe_doctor_model(
     args: argparse.Namespace,
 ) -> list[tuple[str, bool, str]]:
-    model = (
-        args.model
-        or os.environ.get("CODENIB_DEMO_WIKI_MODEL")
-        or os.environ.get("CODENIB_DEMO_MODEL")
-    )
-    if not model:
-        return [
-            ("Model text probe", False, "set --model or CODENIB_DEMO_MODEL"),
-            ("Model tool probe", False, "skipped: model is not configured"),
-            ("Model structured probe", False, "skipped: model is not configured"),
-        ]
-    api_base = (
-        args.api_base
-        or os.environ.get("CODENIB_DEMO_WIKI_API_BASE")
-        or os.environ.get("CODENIB_DEMO_API_BASE")
-    )
-    api_key = (
-        os.environ.get(args.api_key_env)
-        if args.api_key_env
-        else os.environ.get("CODENIB_DEMO_WIKI_API_KEY")
-        or os.environ.get("CODENIB_DEMO_API_KEY")
-    )
     options = _model_options_for_args(
         args,
         include_wiki_environment=(
@@ -685,12 +983,20 @@ def _probe_doctor_model(
             and bool(os.environ.get("CODENIB_DEMO_WIKI_MODEL"))
         ),
     )
-    if args.api_key_env and not api_key:
-        detail = f"{args.api_key_env} is unset or empty"
+    try:
+        backend = _model_backend_for_args(args, options=options)
+    except CLIError as exc:
+        detail = str(exc)
         return [
             ("Model text probe", False, detail),
-            ("Model tool probe", False, "skipped: credentials are missing"),
-            ("Model structured probe", False, "skipped: credentials are missing"),
+            ("Model tool probe", False, "skipped: model route is invalid"),
+            ("Model structured probe", False, "skipped: model route is invalid"),
+        ]
+    if backend is None:
+        return [
+            ("Model text probe", False, "set --model or CODENIB_DEMO_MODEL"),
+            ("Model tool probe", False, "skipped: model is not configured"),
+            ("Model structured probe", False, "skipped: model is not configured"),
         ]
     try:
         from pydantic import BaseModel
@@ -700,11 +1006,11 @@ def _probe_doctor_model(
         probe_options = dict(options)
         probe_options.setdefault("timeout", 20)
         llm = LiteLLMChat(
-            model=model,
+            model=backend.model,
             temperature=0.0,
             max_tokens=32,
-            api_base=api_base,
-            api_key=api_key,
+            api_base=backend.api_base,
+            api_key=backend.api_key,
             extra_kwargs=probe_options,
             retry=RetryConfig(max_retries=0),
         )
@@ -712,7 +1018,7 @@ def _probe_doctor_model(
             [{"role": "user", "content": "Reply with OK."}],
         )
     except Exception as exc:  # noqa: BLE001 - diagnostic result
-        detail = _model_probe_error(exc, api_key=api_key)
+        detail = _model_probe_error(exc, api_key=backend.api_key)
         return [
             ("Model text probe", False, detail),
             ("Model tool probe", False, "skipped: text completion failed"),
@@ -778,7 +1084,7 @@ def _probe_doctor_model(
             (
                 "Model tool probe",
                 False,
-                _model_probe_error(exc, api_key=api_key),
+                _model_probe_error(exc, api_key=backend.api_key),
             )
         )
 
@@ -806,10 +1112,61 @@ def _probe_doctor_model(
             (
                 "Model structured probe",
                 False,
-                _model_probe_error(exc, api_key=api_key),
+                _model_probe_error(exc, api_key=backend.api_key),
             )
         )
     return checks
+
+
+def _probe_doctor_embedding(
+    args: argparse.Namespace,
+) -> tuple[str, bool, str]:
+    api_key = None
+    store = None
+    try:
+        route = _embedding_route_for_args(args)
+        _check_view_dependencies(["vector"], embedding_provider=route.provider)
+        backend_kwargs = route.embedding_backend_kwargs()
+        client_kwargs = route.client_kwargs()
+        api_key = client_kwargs.get("api_key")
+        if api_key is None and route.provider != "huggingface":
+            api_key = os.environ.get("CODENIB_EMBEDDING_API_KEY")
+            if api_key:
+                client_kwargs["api_key"] = api_key
+        backend_kwargs.update(client_kwargs)
+
+        from .index.embedding.vector_store import CodeVectorStore
+
+        store = CodeVectorStore(
+            embedding_model=route.model,
+            embedding_provider=route.provider,
+            dimension=route.dimension,
+            **backend_kwargs,
+        )
+        actual = store.dimension
+        if actual != route.dimension:
+            return (
+                "Embedding probe",
+                False,
+                f"expected dimension {route.dimension}, received {actual}",
+            )
+        return (
+            "Embedding probe",
+            True,
+            f"vector received; dimension={actual}",
+        )
+    except Exception as exc:  # noqa: BLE001 - diagnostic result
+        return (
+            "Embedding probe",
+            False,
+            _model_probe_error(exc, api_key=api_key),
+        )
+    finally:
+        if store is not None:
+            try:
+                store.close()
+            except Exception:  # noqa: BLE001 - best-effort diagnostic cleanup
+                pass
 
 
 def _run_doctor(args: argparse.Namespace) -> int:
@@ -824,6 +1181,8 @@ def _run_doctor(args: argparse.Namespace) -> int:
         graph_report = diagnose_graph_setup(repo_path, languages)
     if args.probe_model:
         rows["agent"].extend(_probe_doctor_model(args))
+    if args.probe_embedding:
+        rows["semantic"].append(_probe_doctor_embedding(args))
     failed_required = False
     print(f"CodeNib {package_version()}")
     for group, checks in rows.items():
@@ -864,6 +1223,32 @@ def _run_doctor(args: argparse.Namespace) -> int:
     return 1 if failed_required else 0
 
 
+def _add_embedding_route_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--embedding-provider",
+        help="embedding backend: huggingface, github_models, or openai",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        help="embedding model id; GitHub Models uses publisher/model",
+    )
+    parser.add_argument(
+        "--embedding-dimension",
+        type=int,
+        help="vector width produced by the embedding model",
+    )
+    parser.add_argument(
+        "--embedding-endpoint",
+        "--embedding-base-url",
+        dest="embedding_endpoint",
+        help="API base for a BYO OpenAI-compatible embedding service",
+    )
+    parser.add_argument(
+        "--embedding-api-key-env",
+        help="environment variable containing the embedding API key",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codenib",
@@ -901,6 +1286,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="rebuild instead of incrementally updating an existing manifest",
     )
+    _add_embedding_route_arguments(index_parser)
     index_parser.set_defaults(handler=_run_index)
 
     wiki_parser = subparsers.add_parser(
@@ -913,6 +1299,7 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_parser.add_argument("--language", action="append", default=[])
     wiki_parser.add_argument("--view", action="append", default=[])
     wiki_parser.add_argument("--rebuild", action="store_true")
+    _add_embedding_route_arguments(wiki_parser)
     wiki_parser.add_argument(
         "--no-index",
         action="store_true",
@@ -928,6 +1315,10 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_parser.add_argument(
         "--model",
         help="LiteLLM model string used for Wiki generation and Ask",
+    )
+    wiki_parser.add_argument(
+        "--model-provider",
+        help="resolve the model through github_models, openai, or a LiteLLM provider",
     )
     wiki_parser.add_argument(
         "--api-base",
@@ -1021,6 +1412,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="LiteLLM model string to validate",
     )
     doctor_parser.add_argument(
+        "--model-provider",
+        help="resolve the model through github_models, openai, or a LiteLLM provider",
+    )
+    doctor_parser.add_argument(
         "--api-base",
         help="optional OpenAI-compatible API base to validate",
     )
@@ -1044,6 +1439,12 @@ def build_parser() -> argparse.ArgumentParser:
             "send minimal text, tool-calling, and structured-output requests "
             "after validating configuration"
         ),
+    )
+    _add_embedding_route_arguments(doctor_parser)
+    doctor_parser.add_argument(
+        "--probe-embedding",
+        action="store_true",
+        help="send one embedding request and verify the returned vector width",
     )
     doctor_parser.set_defaults(handler=_run_doctor)
 

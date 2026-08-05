@@ -40,6 +40,8 @@ def test_doctor_parser_accepts_model_backend_options() -> None:
             "agent",
             "--model",
             "openai/local-model",
+            "--model-provider",
+            "openai",
             "--api-base",
             "http://localhost:4000/v1",
             "--api-key-env",
@@ -53,6 +55,7 @@ def test_doctor_parser_accepts_model_backend_options() -> None:
     )
 
     assert args.model == "openai/local-model"
+    assert args.model_provider == "openai"
     assert args.api_base == "http://localhost:4000/v1"
     assert args.api_key_env == "LOCAL_LLM_KEY"
     assert args.model_option == [
@@ -60,6 +63,30 @@ def test_doctor_parser_accepts_model_backend_options() -> None:
         "extra_body.reasoning.enabled=false",
     ]
     assert args.probe_model is True
+
+
+def test_index_parser_accepts_remote_embedding_route() -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "index",
+            ".",
+            "--preset",
+            "semantic",
+            "--embedding-provider",
+            "github-models",
+            "--embedding-model",
+            "openai/text-embedding-3-small",
+            "--embedding-dimension",
+            "1536",
+            "--embedding-api-key-env",
+            "MODELS_TOKEN",
+        ]
+    )
+
+    assert args.embedding_provider == "github-models"
+    assert args.embedding_model == "openai/text-embedding-3-small"
+    assert args.embedding_dimension == 1536
+    assert args.embedding_api_key_env == "MODELS_TOKEN"
 
 
 def test_doctor_parser_accepts_repository_graph_context() -> None:
@@ -284,6 +311,178 @@ def test_cli_model_options_layer_environment_and_flags(
     }
 
 
+def test_github_models_chat_route_maps_to_litellm_without_storing_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    args = cli.build_parser().parse_args(
+        [
+            "doctor",
+            "--model-provider",
+            "github_models",
+            "--model",
+            "openai/gpt-4.1",
+        ]
+    )
+
+    backend = cli._model_backend_for_args(args)
+
+    assert backend is not None
+    assert backend.model == "openai/openai/gpt-4.1"
+    assert backend.api_base == "https://models.github.ai/inference"
+    assert backend.api_key == "runtime-secret"
+    assert backend.auth_source == "GITHUB_TOKEN"
+    assert "runtime-secret" not in repr(backend)
+
+
+def test_remote_embedding_defaults_and_requires_dimension_for_custom_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    default_args = cli.build_parser().parse_args(
+        ["index", "--embedding-provider", "github_models"]
+    )
+
+    route = cli._embedding_route_for_args(default_args)
+
+    assert route.model == "openai/text-embedding-3-small"
+    assert route.dimension == 1536
+    custom_args = cli.build_parser().parse_args(
+        [
+            "index",
+            "--embedding-provider",
+            "github_models",
+            "--embedding-model",
+            "vendor/custom-model",
+        ]
+    )
+    with pytest.raises(cli.CLIError, match="embedding-dimension"):
+        cli._embedding_route_for_args(custom_args)
+
+
+def test_embedding_dimension_rejects_boolean_values() -> None:
+    with pytest.raises(cli.CLIError, match="positive integer"):
+        cli._optional_int(True, source="embedding dimension")
+
+
+def test_github_models_embedding_reports_missing_credential_without_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    args = cli.build_parser().parse_args(
+        ["index", "--embedding-provider", "github_models"]
+    )
+
+    route = cli._embedding_route_for_args(args)
+
+    with pytest.raises(ValueError) as raised:
+        route.credential()
+    assert str(raised.value) == (
+        "credential environment variable is unset or empty: GITHUB_TOKEN"
+    )
+
+
+def test_fast_index_does_not_resolve_unused_embedding_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "sample.py").write_text("VALUE = 1\n")
+    monkeypatch.setenv("CODENIB_EMBEDDING_PROVIDER", "not a provider")
+    captured = {}
+
+    def fake_index(repo_path, **kwargs):
+        captured.update(repo_path=repo_path, **kwargs)
+        return (
+            SimpleNamespace(
+                repo_path=str(repo_path),
+                languages=kwargs["languages"],
+                indexes={"bm25": SimpleNamespace(status="fresh", metadata={})},
+            ),
+            [],
+        )
+
+    monkeypatch.setattr(cli, "index_repository", fake_index)
+
+    assert cli.run(["index", str(tmp_path), "--preset", "fast"]) == 0
+    assert captured["views"] == ["bm25"]
+    assert "embedding_provider" not in captured
+
+
+def test_remote_semantic_dependency_check_does_not_require_sentence_transformers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checked = []
+
+    def check(module):
+        checked.append(module)
+        return module in {"faiss", "openai"}
+
+    monkeypatch.setattr(cli, "_check_module", check)
+
+    cli._check_view_dependencies(
+        ["vector"],
+        embedding_provider="github_models",
+    )
+
+    assert "faiss" in checked
+    assert "openai" in checked
+    assert "sentence_transformers" not in checked
+
+
+def test_doctor_reports_remote_embedding_route_without_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "doctor-secret")
+    monkeypatch.setattr(
+        cli, "_check_module", lambda module: module in {"faiss", "openai"}
+    )
+    args = cli.build_parser().parse_args(
+        ["doctor", "--embedding-provider", "github_models"]
+    )
+
+    semantic = cli._doctor_rows(args)["semantic"]
+    checks = {label: (ok, detail) for label, ok, detail in semantic}
+
+    assert checks["Embedding route"][0] is True
+    assert "github_models:openai/text-embedding-3-small" in checks["Embedding route"][1]
+    assert "auth=GITHUB_TOKEN" in checks["Embedding route"][1]
+    assert "doctor-secret" not in str(semantic)
+    assert checks["OpenAI SDK"] == (True, "installed")
+    assert "sentence-transformers" not in checks
+
+
+def test_doctor_embedding_probe_uses_resolved_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.index.embedding.vector_store as vector_module
+
+    captured = {}
+
+    class FakeStore:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.dimension = kwargs["dimension"]
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setenv("GITHUB_TOKEN", "probe-secret")
+    monkeypatch.setattr(cli, "_check_module", lambda _module: True)
+    monkeypatch.setattr(vector_module, "CodeVectorStore", FakeStore)
+    args = cli.build_parser().parse_args(
+        ["doctor", "--embedding-provider", "github_models", "--probe-embedding"]
+    )
+
+    check = cli._probe_doctor_embedding(args)
+
+    assert check == ("Embedding probe", True, "vector received; dimension=1536")
+    assert captured["embedding_provider"] == "github_models"
+    assert captured["base_url"] == "https://models.github.ai/inference"
+    assert captured["api_key"] == "probe-secret"
+    assert captured["closed"] is True
+
+
 def test_detect_languages_orders_by_file_count_and_skips_generated_dirs(
     tmp_path: Path,
 ) -> None:
@@ -411,6 +610,52 @@ def test_semantic_preset_reports_required_extra(
 
     assert cli.run(["index", str(tmp_path), "--preset", "semantic"]) == 2
     assert "codenib[semantic]" in capsys.readouterr().err
+
+
+def test_semantic_index_passes_resolved_github_models_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    monkeypatch.setattr(cli, "_check_module", lambda _module: True)
+    captured = {}
+
+    def fake_index(repo_path, **kwargs):
+        captured.update(repo_path=repo_path, **kwargs)
+        entries = {
+            view: SimpleNamespace(status="fresh", metadata={})
+            for view in kwargs["views"]
+        }
+        return (
+            SimpleNamespace(
+                repo_path=str(repo_path),
+                languages=kwargs["languages"],
+                indexes=entries,
+            ),
+            [],
+        )
+
+    monkeypatch.setattr(cli, "index_repository", fake_index)
+
+    result = cli.run(
+        [
+            "index",
+            str(tmp_path),
+            "--preset",
+            "semantic",
+            "--embedding-provider",
+            "github_models",
+        ]
+    )
+
+    assert result == 0
+    assert captured["embedding_provider"] == "github_models"
+    assert captured["embedding_model"] == "openai/text-embedding-3-small"
+    assert captured["embedding_dimension"] == 1536
+    assert captured["embedding_endpoint"] == "https://models.github.ai/inference"
+    assert captured["embedding_credential_env"] == "GITHUB_TOKEN"
+    assert "runtime-secret" not in str(captured)
 
 
 def test_graph_preset_selects_bm25_and_symbol_graph(
@@ -660,6 +905,28 @@ def test_prepare_generated_wiki_keeps_secret_out_of_config(
     }
 
 
+def test_prepare_local_wiki_keeps_embedding_secret_process_local(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler.manifest import RepoManifest
+
+    manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
+    manifest_path.parent.mkdir()
+    RepoManifest(repo_path=str(tmp_path), languages=["python"]).save(str(manifest_path))
+    monkeypatch.setenv("EMBEDDING_KEY", "embedding-secret")
+
+    local = prepare_local_wiki(
+        tmp_path,
+        manifest_path,
+        frontend_port=3000,
+        embedding_api_key_env="EMBEDDING_KEY",
+    )
+
+    assert "embedding-secret" not in local.config_path.read_text()
+    assert local.runtime_env["CODENIB_EMBEDDING_API_KEY"] == "embedding-secret"
+
+
 def test_wiki_audit_exits_without_starting_frontend(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -702,6 +969,108 @@ def test_wiki_audit_exits_without_starting_frontend(
     assert result == 0
     assert "Ready:      2/2" in output
     assert "Result: PASS" in output
+
+
+def test_wiki_generate_resolves_github_models_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler.manifest import IndexEntry, RepoManifest
+
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    manifest_path = tmp_path / "repo_manifest.json"
+    RepoManifest(
+        repo_path=str(tmp_path),
+        languages=["python"],
+        indexes={
+            "bm25": IndexEntry(
+                index_type="bm25",
+                path=str(tmp_path / "bm25"),
+                built_at="2026-08-04T00:00:00+00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+            )
+        },
+    ).save(manifest_path)
+    captured = {}
+    local = SimpleNamespace(runtime_env={})
+    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    monkeypatch.setattr(cli, "_check_module", lambda _module: True)
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+
+    def prepare(*_args, **kwargs):
+        captured.update(kwargs)
+        return local
+
+    monkeypatch.setattr("codenib.web.local.prepare_local_wiki", prepare)
+    monkeypatch.setattr(
+        "codenib.web.launcher.launch_local_wiki",
+        lambda *_args, **_kwargs: 0,
+    )
+
+    result = cli.run(
+        [
+            "wiki",
+            str(tmp_path),
+            "--no-index",
+            "--generate",
+            "--model-provider",
+            "github_models",
+            "--model",
+            "openai/gpt-4.1",
+            "--no-open",
+        ]
+    )
+
+    assert result == 0
+    assert captured["model"] == "openai/openai/gpt-4.1"
+    assert captured["api_base"] == "https://models.github.ai/inference"
+    assert captured["api_key_env"] == "GITHUB_TOKEN"
+    assert "runtime-secret" not in str(captured)
+
+
+def test_wiki_rejects_embedding_route_that_disagrees_with_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from codenib.compiler.index_builders import VectorIndexBuilder
+    from codenib.compiler.manifest import IndexEntry, RepoManifest
+
+    (tmp_path / "sample.py").write_text("VALUE = 1\n")
+    manifest_path = tmp_path / "repo_manifest.json"
+    RepoManifest(
+        repo_path=str(tmp_path),
+        languages=["python"],
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(tmp_path / "vector"),
+                built_at="2026-08-04T00:00:00+00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config=VectorIndexBuilder().artifact_identity(),
+            )
+        },
+    ).save(manifest_path)
+    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    monkeypatch.setattr(cli, "_check_module", lambda _module: True)
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+
+    result = cli.run(
+        [
+            "wiki",
+            str(tmp_path),
+            "--no-index",
+            "--embedding-provider",
+            "github_models",
+        ]
+    )
+
+    assert result == 2
+    error = capsys.readouterr().err
+    assert "does not match the current vector artifact" in error
+    assert "runtime-secret" not in error
 
 
 def test_installed_package_frontend_is_prebuilt(
