@@ -14,6 +14,7 @@ import pytest
 
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.mcp.context import RUNTIME_VIEW_NAMES, ServerContext
+from codenib.provider_routes import resolve_inference_route
 
 
 @pytest.fixture()
@@ -241,6 +242,16 @@ def test_load_vector_accepts_compiler_manifest_identity(tmp_path: Path) -> None:
         dimension=384,
         index_metric="ip",
         store_path=str(vector_dir),
+        artifact_metadata={
+            "embedding_model": "test-model",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 384,
+            "embedding_kwargs": {
+                "max_seq_length": 8192,
+                "revision": "model-commit",
+            },
+            "index_metric": "ip",
+        },
         max_seq_length=8192,
         revision="model-commit",
     )
@@ -283,6 +294,117 @@ def test_validate_views_probes_vector_without_loading_embedding_model(
 
     assert errors == {}
     assert cls.call_args.kwargs["embedding"].dimension == 384
+
+
+def test_load_vector_rebinds_github_models_credential_without_persisting_it(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vector_dir = tmp_path / "vector"
+    vector_dir.mkdir()
+    route = resolve_inference_route(
+        operation="embeddings",
+        provider="github_models",
+        model="openai/text-embedding-3-small",
+        dimension=1536,
+        environ={},
+    )
+    config = {
+        "builder_schema": 3,
+        "embedding_model": route.model,
+        "embedding_provider": route.provider,
+        "embedding_dimension": route.dimension,
+        "dimension": route.dimension,
+        "embedding_endpoint": route.endpoint,
+        "embedding_kwargs": route.compatibility_options,
+        "embedding_route": route.public_identity(),
+        "embedding_fingerprint": route.compatibility_fingerprint,
+    }
+    manifest = RepoManifest(
+        repo_path=str(tmp_path),
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(vector_dir),
+                built_at="2026-01-01T00:00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config=config,
+            ),
+        },
+    )
+    manifest.save(tmp_path / "repo_manifest.json")
+    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+
+    vector = MagicMock()
+    vector.embedding_model = route.model
+    vector.get_stats.return_value = {"total_documents": 3}
+    with patch(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        return_value=vector,
+    ) as cls:
+        ctx = ServerContext.load(tmp_path / "repo_manifest.json")
+
+    kwargs = cls.call_args.kwargs
+    assert kwargs["embedding_provider"] == "github_models"
+    assert kwargs["base_url"] == "https://models.github.ai/inference"
+    assert kwargs["api_key"] == "runtime-secret"
+    assert "runtime-secret" not in json.dumps(config)
+    assert ctx.vector is vector
+
+
+def test_validate_views_does_not_require_remote_embedding_credentials(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vector_dir = tmp_path / "vector"
+    vector_dir.mkdir()
+    route = resolve_inference_route(
+        operation="embeddings",
+        provider="github_models",
+        model="openai/text-embedding-3-small",
+        dimension=1536,
+        environ={},
+    )
+    config = {
+        "builder_schema": 3,
+        "embedding_model": route.model,
+        "embedding_provider": route.provider,
+        "embedding_dimension": route.dimension,
+        "dimension": route.dimension,
+        "embedding_endpoint": route.endpoint,
+        "embedding_kwargs": {},
+        "embedding_route": route.public_identity(),
+        "embedding_fingerprint": route.compatibility_fingerprint,
+    }
+    manifest = RepoManifest(
+        repo_path=str(tmp_path),
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(vector_dir),
+                built_at="2026-01-01T00:00:00",
+                built_at_epoch=0.0,
+                status="fresh",
+                config=config,
+            ),
+        },
+    )
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    vector = MagicMock()
+    vector.embedding_model = route.model
+    vector.get_stats.return_value = {"total_documents": 3}
+
+    with patch(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        return_value=vector,
+    ) as cls:
+        errors = ServerContext.validate_views(manifest, views={"vector"})
+
+    assert errors == {}
+    assert "api_key" not in cls.call_args.kwargs
+    assert cls.call_args.kwargs["embedding"].dimension == 1536
     vector.load.assert_called_once_with()
     vector.close.assert_called_once_with()
 

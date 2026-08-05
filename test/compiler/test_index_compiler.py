@@ -196,19 +196,105 @@ class TestVectorIndexBuilder:
             index_metric="l2",
         )
 
-        assert builder.artifact_identity() == {
-            "builder_schema": 2,
+        identity = builder.artifact_identity()
+        assert identity == {
+            "builder_schema": 3,
             "embedding_model": "test-model",
             "embedding_provider": "huggingface",
             "embedding_dimension": 384,
             "dimension": 384,
+            "embedding_endpoint": None,
             "embedding_kwargs": {"revision": "model-commit"},
+            "embedding_route": {
+                "schema": "codenib.inference-route.v1",
+                "operation": "embeddings",
+                "provider": "huggingface",
+                "model": "test-model",
+                "endpoint": None,
+                "dimension": 384,
+                "options": {"revision": "model-commit"},
+            },
+            "embedding_fingerprint": identity["embedding_fingerprint"],
             "index_metric": "l2",
             "languages": ["python"],
             "levels": ["l0", "l2"],
             "max_lines_per_chunk": 300,
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
+
+    def test_runtime_options_do_not_change_identity_or_appear_in_repr(self):
+        first = VectorIndexBuilder(
+            embedding_model="openai/text-embedding-3-small",
+            embedding_provider="github_models",
+            embedding_dimension=1536,
+            embedding_runtime_kwargs={"api_key": "first-secret", "timeout": 10},
+        )
+        second = VectorIndexBuilder(
+            embedding_model="openai/text-embedding-3-small",
+            embedding_provider="github_models",
+            embedding_dimension=1536,
+            embedding_runtime_kwargs={"api_key": "second-secret", "timeout": 60},
+        )
+
+        assert first.artifact_identity() == second.artifact_identity()
+        assert "first-secret" not in repr(first)
+
+    def test_runtime_options_cannot_override_embedding_semantics(self):
+        builder = VectorIndexBuilder(
+            embedding_runtime_kwargs={"query_prompt": "different"},
+        )
+
+        with pytest.raises(ValueError, match="vector compatibility"):
+            builder._embedding_call_kwargs()
+
+    @patch("codenib.index.embedding.builders.build_hierarchical_vector_store")
+    def test_build_rejects_provider_dimension_mismatch(self, mock_build_fn, tmp_path):
+        mock_build_fn.return_value = SimpleNamespace(
+            dimension=1024,
+            l0_documents=[],
+            l2_documents=["doc"],
+        )
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=768,
+        )
+
+        with pytest.raises(ValueError, match="returned dimension 1024, expected 768"):
+            builder.build(
+                scope="current_repo",
+                repo_path="/fake/repo",
+                output_dir=str(tmp_path / "vector"),
+            )
+
+    @patch("codenib.index.embedding.builders.build_hierarchical_vector_store")
+    def test_remote_runtime_secret_is_not_persisted(self, mock_build_fn, tmp_path):
+        mock_vs = MagicMock(l0_documents=[], l2_documents=["doc"])
+        mock_build_fn.return_value = mock_vs
+        builder = VectorIndexBuilder(
+            embedding_model="openai/text-embedding-3-small",
+            embedding_provider="github_models",
+            embedding_dimension=1536,
+            embedding_credential_env="MODELS_TOKEN",
+            embedding_runtime_kwargs={"api_key": "runtime-secret", "timeout": 10},
+        )
+
+        status = builder.build(
+            scope="current_repo",
+            repo_path="/fake/repo",
+            output_dir=str(tmp_path / "vector"),
+        )
+
+        serialized = json.dumps(status.metadata, sort_keys=True)
+        assert "runtime-secret" not in serialized
+        assert "MODELS_TOKEN" not in serialized
+        assert status.metadata["embedding_endpoint"] == (
+            "https://models.github.ai/inference"
+        )
+        call = mock_build_fn.call_args.kwargs
+        assert call["embedding_kwargs"]["api_key"] == "runtime-secret"
+        assert call["embedding_kwargs"]["base_url"] == (
+            "https://models.github.ai/inference"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -600,6 +686,7 @@ class TestRegisterDefaultBuilders:
             "model_kwargs": {"trust_remote_code": True},
             "revision": DEFAULT_EMBEDDING_REVISION,
         }
+        assert vector.embedding_runtime_kwargs == {}
 
     def test_custom_params_forwarded(self):
         registry = IndexBuilderRegistry()
@@ -623,10 +710,10 @@ class TestRegisterDefaultBuilders:
         assert vector.embedding_model == "custom-model"
         assert vector.embedding_dimension == 512
         assert vector.embedding_kwargs == {
-            "encode_kwargs": {"batch_size": 4},
             "max_seq_length": 8192,
             "revision": "model-commit",
         }
+        assert vector.embedding_runtime_kwargs == {"default_batch_size": 4}
 
         symbol_graph = registry.get("symbol_graph")
         assert isinstance(symbol_graph, SymbolGraphBuilder)
@@ -636,6 +723,19 @@ class TestRegisterDefaultBuilders:
         assert symbol_graph.allow_partial_languages is False
         assert symbol_graph.allow_partial_index is False
         assert symbol_graph.source_coverage_fallback is False
+
+    def test_provider_alias_is_normalized_before_model_policy(self):
+        registry = IndexBuilderRegistry()
+        register_default_builders(
+            registry,
+            languages=["python"],
+            embedding_provider="HUGGING-FACE",
+        )
+
+        vector = registry.get("vector")
+        assert isinstance(vector, VectorIndexBuilder)
+        assert vector.embedding_provider == "huggingface"
+        assert vector.embedding_kwargs["revision"] == DEFAULT_EMBEDDING_REVISION
 
     def test_can_register_partial_multi_language_graph_builder(self):
         registry = IndexBuilderRegistry()

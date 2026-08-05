@@ -20,6 +20,7 @@ from threading import RLock
 from typing import TYPE_CHECKING, Dict, Optional
 
 from ..compiler.manifest import RepoManifest
+from ..provider_routes import resolve_embedding_artifact_route
 
 if TYPE_CHECKING:
     from ..graph.code_graph import CodeGraph
@@ -351,31 +352,20 @@ class ServerContext:
             from ..index.embedding.vector_store import CodeVectorStore
 
             cfg = entry.config
-            embedding_model = cfg.get("embedding_model")
-            embedding_provider = cfg.get("embedding_provider")
-            dimension = cfg.get("dimension", cfg.get("embedding_dimension"))
-            embedding_kwargs = cfg.get("embedding_kwargs") or {}
-            if not isinstance(embedding_kwargs, dict):
-                raise ValueError("vector manifest has invalid embedding kwargs")
-            if (
-                not embedding_model
-                or not embedding_provider
-                or not isinstance(dimension, int)
-                or dimension <= 0
-            ):
-                raise ValueError("vector manifest has incomplete embedding identity")
-
-            kwargs = dict(embedding_kwargs)
+            route = resolve_embedding_artifact_route(cfg)
+            kwargs = route.embedding_backend_kwargs()
             if probe:
-                kwargs["embedding"] = _DimensionProbeEmbedding(dimension)
+                kwargs["embedding"] = _DimensionProbeEmbedding(route.dimension)
+            else:
+                kwargs.update(route.client_kwargs())
 
-            # Create CodeVectorStore with embedding model from manifest
             vector = CodeVectorStore(
-                embedding_model=embedding_model,
-                embedding_provider=embedding_provider,
-                dimension=dimension,
+                embedding_model=route.model,
+                embedding_provider=route.provider,
+                dimension=route.dimension,
                 index_metric=cfg.get("index_metric", "ip"),
                 store_path=entry.path,
+                artifact_metadata=cfg,
                 **kwargs,
             )
 
@@ -384,11 +374,10 @@ class ServerContext:
 
             # Validate model consistency
             loaded_model = vector.embedding_model
-            manifest_model = embedding_model
-            if loaded_model != manifest_model:
+            if loaded_model != route.model:
                 raise RuntimeError(
                     f"Embedding model mismatch: manifest specifies "
-                    f"{manifest_model!r}, but loaded store has {loaded_model!r}. "
+                    f"{route.model!r}, but loaded store has {loaded_model!r}. "
                     f"Re-run indexing with the correct model."
                 )
 
@@ -400,7 +389,7 @@ class ServerContext:
                 "Loaded vector index from %s (%d docs, model=%s)",
                 entry.path,
                 stats["total_documents"],
-                embedding_model,
+                route.model,
             )
         except Exception as exc:
             if vector is not None:

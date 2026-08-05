@@ -345,7 +345,15 @@ def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
         embedding_api_key="secret",
     )
     registry = RepoRegistry(cfg)
-    entry = SimpleNamespace(path="/tmp/vector", config={})
+    entry = SimpleNamespace(
+        path="/tmp/vector",
+        config={
+            "embedding_model": "embed-model",
+            "embedding_provider": "openai",
+            "embedding_dimension": 768,
+            "embedding_endpoint": "http://embed.local/v1",
+        },
+    )
 
     first = registry._load_vector_store(entry)
     second = registry._load_vector_store(entry)
@@ -434,7 +442,7 @@ def test_vector_store_cache_separates_model_revisions(monkeypatch):
     assert second.kwargs["embedding"] is None
 
 
-def test_remote_embedding_override_drops_huggingface_constructor_options(
+def test_remote_embedding_override_cannot_replace_artifact_route(
     monkeypatch,
 ):
     created = []
@@ -472,14 +480,10 @@ def test_remote_embedding_override_drops_huggingface_constructor_options(
         },
     )
 
-    registry._load_vector_store(entry)
+    with pytest.raises(ValueError, match="endpoint does not match"):
+        registry._load_vector_store(entry)
 
-    kwargs = created[0].kwargs
-    assert kwargs["embedding_provider"] == "openai"
-    assert kwargs["base_url"] == "http://embed.local/v1"
-    assert kwargs["api_key"] == "secret"
-    assert "model_kwargs" not in kwargs
-    assert "revision" not in kwargs
+    assert created == []
 
 
 def test_ask_model_receives_its_own_endpoint(monkeypatch):

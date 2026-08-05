@@ -29,6 +29,13 @@ from ..index.embedding.model_policy import (
     DEFAULT_EMBEDDING_MODEL,
     resolve_embedding_load_policy,
 )
+from ..provider_routes import (
+    InferenceRoute,
+    normalize_endpoint,
+    normalize_provider,
+    resolve_inference_route,
+    validate_embedding_runtime_options,
+)
 from ..repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     default_exclude_patterns,
@@ -159,25 +166,97 @@ class VectorIndexBuilder:
     embedding_provider: str = "huggingface"
     embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION
     embedding_kwargs: Dict[str, Any] = field(default_factory=dict)
+    embedding_endpoint: Optional[str] = None
+    embedding_credential_env: Optional[str] = None
+    embedding_runtime_kwargs: Dict[str, Any] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
     build_levels: List[str] = field(default_factory=lambda: ["l0", "l2"])
     max_lines_per_chunk: int = 300
     index_metric: str = "ip"
 
     def artifact_identity(self) -> Dict[str, Any]:
         """Return the embedding contract required to reopen this artifact."""
+
+        route = self._embedding_route()
         return {
-            "builder_schema": 2,
-            "embedding_model": self.embedding_model,
-            "embedding_provider": self.embedding_provider,
+            "builder_schema": 3,
+            "embedding_model": route.model,
+            "embedding_provider": route.provider,
             "embedding_dimension": self.embedding_dimension,
             "dimension": self.embedding_dimension,
-            "embedding_kwargs": dict(self.embedding_kwargs),
+            "embedding_endpoint": route.endpoint,
+            "embedding_kwargs": route.compatibility_options,
+            "embedding_route": route.public_identity(),
+            "embedding_fingerprint": route.compatibility_fingerprint,
             "index_metric": self.index_metric,
             "languages": list(self.languages),
             "levels": list(self.build_levels),
             "max_lines_per_chunk": self.max_lines_per_chunk,
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
+
+    def _embedding_route(self) -> InferenceRoute:
+        return resolve_inference_route(
+            operation="embeddings",
+            provider=self.embedding_provider,
+            model=self.embedding_model,
+            endpoint=self.embedding_endpoint,
+            dimension=self.embedding_dimension,
+            credential_env=self.embedding_credential_env,
+            compatibility_options=self.embedding_kwargs,
+        )
+
+    def _embedding_call_kwargs(self) -> Dict[str, Any]:
+        route = self._embedding_route()
+        if route.provider == "huggingface":
+            kwargs = dict(self.embedding_kwargs)
+            inherited_runtime: Dict[str, Any] = {}
+        else:
+            kwargs = route.embedding_backend_kwargs()
+            inherited_runtime = {
+                key: value
+                for key, value in self.embedding_kwargs.items()
+                if key not in route.compatibility_options
+            }
+        inherited_runtime.update(self.embedding_runtime_kwargs)
+        runtime_kwargs = validate_embedding_runtime_options(
+            inherited_runtime,
+            provider=route.provider,
+        )
+        for key, value in runtime_kwargs.items():
+            if key in {"encode_kwargs", "model_kwargs"}:
+                nested = dict(kwargs.get(key) or {})
+                nested.update(value)
+                kwargs[key] = nested
+            else:
+                kwargs[key] = value
+        runtime_endpoint = normalize_endpoint(kwargs.get("base_url"))
+        if runtime_endpoint is not None and runtime_endpoint != route.endpoint:
+            raise ValueError(
+                "embedding runtime base_url does not match the artifact endpoint"
+            )
+        if route.endpoint:
+            kwargs["base_url"] = route.endpoint
+        if not kwargs.get("api_key"):
+            credential = route.credential()
+            if credential:
+                kwargs["api_key"] = credential
+        return kwargs
+
+    def _validate_vector_dimension(self, vector_store: Any) -> None:
+        actual = getattr(vector_store, "dimension", None)
+        if (
+            isinstance(actual, int)
+            and not isinstance(actual, bool)
+            and actual != self.embedding_dimension
+        ):
+            raise ValueError(
+                "embedding provider returned dimension "
+                f"{actual}, expected {self.embedding_dimension}"
+            )
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus:
         repo_path: str = kwargs["repo_path"]
@@ -193,6 +272,7 @@ class VectorIndexBuilder:
         )
 
         os.makedirs(output_dir, exist_ok=True)
+        artifact_identity = self.artifact_identity()
         vs = build_hierarchical_vector_store(
             repo_path=repo_path,
             index_path=output_dir,
@@ -200,17 +280,19 @@ class VectorIndexBuilder:
             languages=self.languages,
             max_lines_per_chunk=self.max_lines_per_chunk,
             build_levels=self.build_levels,
-            embedding_model=self.embedding_model,
-            embedding_provider=self.embedding_provider,
+            embedding_model=artifact_identity["embedding_model"],
+            embedding_provider=artifact_identity["embedding_provider"],
             embedding_dimension=self.embedding_dimension,
-            embedding_kwargs=self.embedding_kwargs,
+            embedding_kwargs=self._embedding_call_kwargs(),
             index_metric=self.index_metric,
+            artifact_metadata=artifact_identity,
             # ``build`` is the compiler's full-materialization path. Reusing an
             # artifact merely because its model config exists would let stale
             # vectors be stamped with the current source fingerprint. Cross-
             # commit reuse belongs to ``incremental_update`` instead.
             force_rebuild=True,
         )
+        self._validate_vector_dimension(vs)
 
         doc_count = {}
         if hasattr(vs, "l0_documents") and vs.l0_documents:
@@ -301,7 +383,7 @@ class VectorIndexBuilder:
             scope=scope,
             path=output_dir,
             metadata={
-                **self.artifact_identity(),
+                **artifact_identity,
                 "document_count": doc_count,
                 "last_commit": head_commit,
             },
@@ -371,14 +453,17 @@ class VectorIndexBuilder:
             return self.build(scope, **kwargs)
 
         # Load existing artifacts
+        artifact_identity = self.artifact_identity()
         vector_store = CodeVectorStore(
-            embedding_model=self.embedding_model,
-            embedding_provider=self.embedding_provider,
+            embedding_model=artifact_identity["embedding_model"],
+            embedding_provider=artifact_identity["embedding_provider"],
             dimension=self.embedding_dimension,
             index_metric=self.index_metric,
             store_path=output_dir,
-            **self.embedding_kwargs,
+            artifact_metadata=artifact_identity,
+            **self._embedding_call_kwargs(),
         )
+        self._validate_vector_dimension(vector_store)
         vector_store.load(output_dir)
 
         chunk_store = IncrementalChunkStore.load(chunk_store_path)
@@ -899,6 +984,9 @@ def register_default_builders(
     languages: Optional[List[str]] = None,
     graph_route: str = "active",
     embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+    embedding_provider: str = "huggingface",
+    embedding_endpoint: Optional[str] = None,
+    embedding_credential_env: Optional[str] = None,
     embedding_revision: Optional[str] = None,
     embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION,
     trust_remote_code: Optional[bool] = None,
@@ -913,28 +1001,47 @@ def register_default_builders(
     langs = languages or ["python"]
     registry.register("bm25", BM25IndexBuilder(languages=langs))
 
-    load_policy = resolve_embedding_load_policy(
-        embedding_model,
-        revision=embedding_revision,
-        trust_remote_code=trust_remote_code,
-    )
+    embedding_provider = normalize_provider(embedding_provider)
     embedding_kwargs: Dict[str, Any] = {}
-    if load_policy.trust_remote_code:
-        embedding_kwargs = {"model_kwargs": {"trust_remote_code": True}}
-    if embedding_batch_size is not None:
-        embedding_kwargs["encode_kwargs"] = {"batch_size": embedding_batch_size}
-    if embedding_max_seq_length is not None:
-        embedding_kwargs["max_seq_length"] = embedding_max_seq_length
-    if load_policy.revision is not None:
-        embedding_kwargs["revision"] = load_policy.revision
+    embedding_runtime_kwargs: Dict[str, Any] = {}
+    if embedding_provider == "huggingface":
+        load_policy = resolve_embedding_load_policy(
+            embedding_model,
+            revision=embedding_revision,
+            trust_remote_code=trust_remote_code,
+        )
+        if load_policy.trust_remote_code:
+            embedding_kwargs = {"model_kwargs": {"trust_remote_code": True}}
+        if embedding_batch_size is not None:
+            embedding_runtime_kwargs["default_batch_size"] = embedding_batch_size
+        if embedding_max_seq_length is not None:
+            embedding_kwargs["max_seq_length"] = embedding_max_seq_length
+        if load_policy.revision is not None:
+            embedding_kwargs["revision"] = load_policy.revision
+    elif any(
+        value is not None
+        for value in (
+            embedding_revision,
+            trust_remote_code,
+            embedding_batch_size,
+            embedding_max_seq_length,
+        )
+    ):
+        raise ValueError(
+            "Hugging Face load options cannot be used with a remote embedding provider"
+        )
 
     registry.register(
         "vector",
         VectorIndexBuilder(
             languages=langs,
             embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
             embedding_dimension=embedding_dimension,
             embedding_kwargs=embedding_kwargs,
+            embedding_endpoint=embedding_endpoint,
+            embedding_credential_env=embedding_credential_env,
+            embedding_runtime_kwargs=embedding_runtime_kwargs,
         ),
     )
     registry.register(

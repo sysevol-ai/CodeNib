@@ -42,6 +42,7 @@ from ..index.embedding.model_policy import (
     resolve_embedding_load_policy,
 )
 from ..paths import REPO_INDEX_DIRNAME
+from ..provider_routes import resolve_embedding_artifact_route
 from .index_builders import IndexBuilderRegistry, register_default_builders
 from .index_compiler import IndexCompiler, IndexCompilerConfig
 from .manifest import RepoManifest
@@ -301,6 +302,7 @@ def _load_vector(
     embedding_revision: Optional[str] = None,
     index_metric: str = "ip",
     embedding_kwargs: Optional[Dict[str, Any]] = None,
+    artifact_metadata: Optional[Dict[str, Any]] = None,
     trust_remote_code: bool = False,
     default_batch_size: Optional[int] = None,
 ):
@@ -318,6 +320,7 @@ def _load_vector(
         embedding_provider=embedding_provider,
         dimension=embedding_dimension,
         index_metric=index_metric,
+        artifact_metadata=artifact_metadata,
         trust_remote_code=trust_remote_code,
         **kwargs,
     )
@@ -560,30 +563,17 @@ def load_contexts_from_manifest(
         loaded["bm25"] = _load_bm25(manifest.indexes["bm25"].path)
     if "vector" in needed:
         vec_entry = manifest.indexes["vector"]
-        # Prefer the embedding config that was used at build time so the
-        # load uses a compatible tokenizer/dimension.
-        emb_model = vec_entry.config.get("embedding_model")
-        emb_provider = vec_entry.config.get("embedding_provider")
-        emb_dim = vec_entry.config.get(
-            "dimension", vec_entry.config.get("embedding_dimension")
-        )
-        embedding_kwargs = vec_entry.config.get("embedding_kwargs") or {}
-        if not isinstance(embedding_kwargs, dict):
-            raise ValueError("vector manifest has invalid embedding kwargs")
-        if (
-            not emb_model
-            or not emb_provider
-            or not isinstance(emb_dim, int)
-            or emb_dim <= 0
-        ):
-            raise ValueError("vector manifest has incomplete embedding identity")
+        route = resolve_embedding_artifact_route(vec_entry.config)
+        embedding_kwargs = route.embedding_backend_kwargs()
+        embedding_kwargs.update(route.client_kwargs())
         loaded["vector"] = _load_vector(
             vec_entry.path,
-            embedding_model=emb_model,
-            embedding_provider=emb_provider,
-            embedding_dimension=emb_dim,
+            embedding_model=route.model,
+            embedding_provider=route.provider,
+            embedding_dimension=route.dimension,
             index_metric=vec_entry.config.get("index_metric", "ip"),
             embedding_kwargs=embedding_kwargs,
+            artifact_metadata=vec_entry.config,
         )
     if "symbol_graph" in needed:
         loaded["symbol_graph"] = _load_symbol_graph(

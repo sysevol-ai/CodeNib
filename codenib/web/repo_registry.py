@@ -13,7 +13,6 @@ concurrent queries are safe.
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from importlib.util import find_spec
@@ -22,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ..compiler.manifest import RepoManifest
 from ..log_utils import get_logger
+from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_route
 from ..repository_summary import read_repository_summary
 from .config import QAConfig, RepoEntry, load_registry
 from .schemas import GraphCoverage, RepoInfo
@@ -396,59 +396,40 @@ class RepoRegistry:
     def _load_vector_store(self, vec_entry: Any) -> "CodeVectorStore":
         """Load a manifest vector view with the configured embedding backend."""
         artifact_config = vec_entry.config or {}
-        emb_model = artifact_config.get("embedding_model", self._config.embedding_model)
-        emb_dim = artifact_config.get(
-            "dimension",
-            artifact_config.get(
-                "embedding_dimension",
-                self._config.embedding_dimension,
-            ),
-        )
-        if not isinstance(emb_model, str) or not emb_model.strip():
-            raise ValueError("vector manifest has invalid embedding model")
-        if not isinstance(emb_dim, int) or emb_dim <= 0:
-            raise ValueError("vector manifest has invalid embedding dimension")
-
-        provider = self._config.embedding_provider
-        artifact_provider = artifact_config.get("embedding_provider")
-        embedding_kwargs = artifact_config.get("embedding_kwargs") or {}
-        if not isinstance(embedding_kwargs, dict):
-            raise ValueError("vector manifest has invalid embedding kwargs")
-        if artifact_provider and artifact_provider != provider:
-            # A remote provider may serve vectors compatible with an artifact
-            # built in-process, but Hugging Face constructor options are not
-            # valid OpenAI client options.
-            embedding_kwargs = {}
-        else:
-            embedding_kwargs = dict(embedding_kwargs)
-
-        config_fingerprint = json.dumps(
-            embedding_kwargs,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=repr,
-        )
+        route = resolve_embedding_artifact_route(artifact_config)
+        configured_endpoint = normalize_endpoint(self._config.embedding_base_url)
+        if configured_endpoint is not None and configured_endpoint != route.endpoint:
+            raise ValueError(
+                "configured embedding endpoint does not match the vector artifact"
+            )
         cache_key = (
-            provider,
-            emb_model,
-            emb_dim,
-            self._config.embedding_base_url,
-            config_fingerprint,
+            route.provider,
+            route.model,
+            route.dimension,
+            route.compatibility_fingerprint,
         )
-        client_kwargs: Dict[str, object] = {}
-        if self._config.embedding_base_url:
-            client_kwargs["base_url"] = self._config.embedding_base_url
+        embedding_kwargs = route.embedding_backend_kwargs()
         if self._config.embedding_api_key:
+            if route.provider == "huggingface":
+                raise ValueError(
+                    "an embedding API key cannot reopen a local Hugging Face artifact"
+                )
+            client_kwargs: Dict[str, object] = {}
+            if route.endpoint:
+                client_kwargs["base_url"] = route.endpoint
             client_kwargs["api_key"] = self._config.embedding_api_key
+        else:
+            client_kwargs = route.client_kwargs()
         embedding_kwargs.update(client_kwargs)
 
         vector_store = _vector_store_type()(
-            embedding_model=emb_model,
-            embedding_provider=provider,
-            dimension=emb_dim,
+            embedding_model=route.model,
+            embedding_provider=route.provider,
+            dimension=route.dimension,
             index_metric=artifact_config.get("index_metric", "ip"),
             store_path=vec_entry.path,
             embedding=self._embeddings.get(cache_key),
+            artifact_metadata=artifact_config,
             **embedding_kwargs,
         )
         self._embeddings[cache_key] = vector_store.embedding

@@ -21,6 +21,7 @@ import numpy as np
 from ... import compat_pickle
 from ...log_utils import get_logger
 from ...profiler import Profiler
+from ...provider_routes import normalize_provider
 from ...types import NodeInfo
 
 logger = get_logger(__name__)
@@ -195,18 +196,27 @@ class _HuggingFaceEmbeddingWrapper:
 class _OpenAIEmbeddingWrapper:
     """Wraps the OpenAI SDK to expose ``embed_query`` / ``embed_documents``."""
 
-    def __init__(self, model: str, **kwargs):
+    def __init__(self, model: str, request_options: Optional[Dict] = None, **kwargs):
         from openai import OpenAI
 
         self._model = model
+        self._request_options = dict(request_options or {})
         self._client = OpenAI(**kwargs)
 
     def embed_query(self, text: str) -> List[float]:
-        resp = self._client.embeddings.create(input=[text], model=self._model)
+        resp = self._client.embeddings.create(
+            input=[text],
+            model=self._model,
+            **self._request_options,
+        )
         return resp.data[0].embedding
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        resp = self._client.embeddings.create(input=texts, model=self._model)
+        resp = self._client.embeddings.create(
+            input=texts,
+            model=self._model,
+            **self._request_options,
+        )
         return [d.embedding for d in sorted(resp.data, key=lambda x: x.index)]
 
 
@@ -250,7 +260,8 @@ class CodeVectorStore:
 
         Args:
             embedding_model: Name of the embedding model to use
-            embedding_provider: Provider for embeddings ("openai", "huggingface")
+            embedding_provider: Provider for embeddings ("openai", "github_models",
+                or "huggingface")
             dimension: Dimension of the embedding vectors
             index_type: FAISS index type — "flat" (exact brute force, default)
                 or "ivf" (IVF inverted-file; approximate, faster at scale).
@@ -324,7 +335,11 @@ class CodeVectorStore:
 
     def _initialize_embedding_model(self, **kwargs):
         """Initialize the embedding model based on provider."""
-        if self.embedding_provider.lower() == "openai":
+        if self.embedding_provider.lower() in {
+            "openai",
+            "github_models",
+            "github-models",
+        }:
             return _OpenAIEmbeddingWrapper(model=self.embedding_model, **kwargs)
         elif self.embedding_provider.lower() == "huggingface":
             return _HuggingFaceEmbeddingWrapper(
@@ -1030,10 +1045,25 @@ class CodeVectorStore:
         if not config_path.exists():
             config_path = load_path / "config.json"
 
+        expected_artifact = dict(self.artifact_metadata)
         if config_path.exists():
             with open(config_path, "r") as f:
                 config = json.load(f)
 
+            saved_model = config.get("embedding_model")
+            if saved_model is not None and saved_model != self.embedding_model:
+                raise ValueError(
+                    f"Vector config model mismatch: expected {self.embedding_model!r}, "
+                    f"found {saved_model!r}"
+                )
+            saved_provider = config.get("embedding_provider")
+            if saved_provider is not None and normalize_provider(
+                saved_provider
+            ) != normalize_provider(self.embedding_provider):
+                raise ValueError(
+                    "Vector config provider mismatch: expected "
+                    f"{self.embedding_provider!r}, found {saved_provider!r}"
+                )
             saved_dimension = config.get("dimension")
             if saved_dimension is not None and saved_dimension != self.dimension:
                 raise ValueError(
@@ -1050,7 +1080,20 @@ class CodeVectorStore:
                 self.index_metric = saved_metric
             saved_artifact = config.get("artifact")
             if isinstance(saved_artifact, dict):
+                expected_fingerprint = expected_artifact.get("embedding_fingerprint")
+                saved_fingerprint = saved_artifact.get("embedding_fingerprint")
+                if (
+                    expected_fingerprint is not None
+                    and saved_fingerprint != expected_fingerprint
+                ):
+                    raise ValueError(
+                        "Vector artifact embedding fingerprint does not match manifest"
+                    )
                 self.artifact_metadata = dict(saved_artifact)
+            elif expected_artifact.get("embedding_fingerprint") is not None:
+                raise ValueError("Vector config is missing embedding artifact identity")
+        elif expected_artifact.get("embedding_fingerprint") is not None:
+            raise ValueError("Vector store is missing its top-level configuration")
 
         # Load L0
         l0_path = load_path / "l0"

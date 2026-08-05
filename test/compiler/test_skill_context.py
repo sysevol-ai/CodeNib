@@ -385,10 +385,10 @@ def test_embedding_resource_limits_reach_builder_and_loader(
 
     vector_builder = mocked_build["registries"][0].get("vector")
     assert vector_builder.embedding_kwargs == {
-        "encode_kwargs": {"batch_size": 4},
         "max_seq_length": 8192,
         "revision": "model-revision",
     }
+    assert vector_builder.embedding_runtime_kwargs == {"default_batch_size": 4}
     assert mocked_build["vector_kwargs"] == [
         {
             "embedding_model": "nomic-ai/CodeRankEmbed",
