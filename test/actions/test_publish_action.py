@@ -361,6 +361,7 @@ def test_hosted_publish_smoke_is_narrow_and_sha_pinned() -> None:
         if step.get("name") == "Exercise local publish Action"
     )
     assert publish["with"]["cache"] == "false"
+    assert publish["with"]["preset"] == "fast"
     assert publish["with"]["upload-context"] == "false"
     assert publish["with"]["repository-path"] == "${{ steps.fixture.outputs.path }}"
     _assert_external_actions_are_sha_pinned(workflow)

@@ -72,6 +72,7 @@ jobs:
         with:
           base-path: /publish-smoke
           cache: "false"
+          preset: fast
           repository-path: ${{ steps.fixture.outputs.path }}
           upload-context: "false"
 
