@@ -16,7 +16,7 @@ on:
         type: string
         default: "3.12"
       embedding-provider:
-        description: Embedding provider; semantic defaults to github_models.
+        description: Embedding provider; semantic defaults to local Hugging Face.
         type: string
         default: ""
       embedding-model:
@@ -61,7 +61,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      models: read
       pages: write
     outputs:
       context-artifact: ${{ steps.publish.outputs.artifact-name }}

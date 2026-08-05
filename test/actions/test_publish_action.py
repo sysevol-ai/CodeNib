@@ -148,10 +148,8 @@ def test_publish_action_keeps_untrusted_inputs_out_of_shell_source() -> None:
         for step in _steps(action)
         if step.get("name") == "Publish repository context"
     )
-    token_expression = publish["env"]["GITHUB_TOKEN"]
-    assert "inputs.preset == 'semantic'" in token_expression
-    assert "embedding_provider == 'github_models'" in token_expression
-    assert "github.token" in token_expression
+    assert "GITHUB_TOKEN" not in publish["env"]
+    assert "github.token" not in str(publish)
     assert "command=(" in publish["run"]
     assert '"${command[@]}"' in publish["run"]
 
@@ -174,6 +172,40 @@ def test_publish_action_resolves_valid_inputs(tmp_path: Path) -> None:
     assert "embedding_provider=" in output
     assert "extras=" in output
     assert f"source_commit={source_commit}" in output
+
+
+def test_publish_action_defaults_semantic_to_local_huggingface(
+    tmp_path: Path,
+) -> None:
+    result, output = _run_resolve_step(tmp_path, INPUT_PRESET="semantic")
+
+    assert result.returncode == 0, result.stderr
+    assert "embedding_provider=huggingface\n" in output
+    assert "extras=semantic\n" in output
+
+
+def test_publish_action_selects_remote_extra_for_openai(tmp_path: Path) -> None:
+    result, output = _run_resolve_step(
+        tmp_path,
+        INPUT_PRESET="semantic",
+        INPUT_EMBEDDING_PROVIDER="openai",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "embedding_provider=openai\n" in output
+    assert "extras=semantic-remote\n" in output
+
+
+def test_publish_action_rejects_retired_github_models(tmp_path: Path) -> None:
+    result, output = _run_resolve_step(
+        tmp_path,
+        INPUT_PRESET="semantic",
+        INPUT_EMBEDDING_PROVIDER="github_models",
+    )
+
+    assert result.returncode == 2
+    assert "unsupported embedding provider" in result.stderr
+    assert output == ""
 
 
 def test_publish_action_rejects_output_command_injection(tmp_path: Path) -> None:
@@ -248,7 +280,6 @@ def test_reusable_workflow_is_fork_safe_and_binds_its_exact_revision() -> None:
     assert "head.repo.full_name == github.repository" in condition
     assert build["permissions"] == {
         "contents": "read",
-        "models": "read",
         "pages": "write",
     }
     exact_checkout = next(

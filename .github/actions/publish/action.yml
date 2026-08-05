@@ -19,7 +19,7 @@ inputs:
     description: Python runtime used to build the artifact.
     default: "3.12"
   embedding-provider:
-    description: Embedding provider; semantic defaults to github_models.
+    description: Embedding provider; semantic defaults to local Hugging Face.
     default: ""
   embedding-model:
     description: Embedding model id.
@@ -142,10 +142,10 @@ runs:
 
         embedding_provider="$INPUT_EMBEDDING_PROVIDER"
         if [[ "$INPUT_PRESET" == "semantic" && -z "$embedding_provider" ]]; then
-          embedding_provider="github_models"
+          embedding_provider="huggingface"
         fi
         case "$embedding_provider" in
-          ""|github_models|huggingface|openai) ;;
+          ""|huggingface|openai) ;;
           *) echo "unsupported embedding provider: $embedding_provider" >&2; exit 2 ;;
         esac
 
@@ -279,10 +279,6 @@ runs:
         EMBEDDING_MODEL: ${{ inputs.embedding-model }}
         EMBEDDING_PROVIDER: ${{ steps.inputs.outputs.embedding_provider }}
         FRONTEND_OUTPUT: ${{ steps.inputs.outputs.frontend_path }}
-        GITHUB_TOKEN: >-
-          ${{ inputs.preset == 'semantic' &&
-          steps.inputs.outputs.embedding_provider == 'github_models' &&
-          github.token || '' }}
         INPUT_BASE_PATH: ${{ inputs.base-path }}
         INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
         PRESET: ${{ inputs.preset }}

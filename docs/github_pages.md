@@ -43,18 +43,12 @@ The workflow checks out the caller's exact commit, incrementally builds the
 through the `github-pages` environment. It also uploads an artifact named from
 the repository and commit.
 
-## Semantic Search With GitHub Models
+## Semantic Search With A Local Model
 
-GitHub Models is an opt-in embedding route. Add `models: read` and select the
-semantic preset:
+Select the semantic preset to build BM25 and dense-vector views. It defaults to
+a local Hugging Face embedding model and needs no API credential:
 
 ```yaml
-permissions:
-  contents: read
-  models: read
-  pages: write
-  id-token: write
-
 jobs:
   publish:
     uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@<release-sha>
@@ -62,16 +56,14 @@ jobs:
       preset: semantic
 ```
 
-CodeNib uses the workflow's process-local `GITHUB_TOKEN`; it does not write the
-token or its environment-variable name into the vector manifest. The default
-route is `openai/text-embedding-3-small`. GitHub Models usage and billing are
-separate from GitHub Copilot; review GitHub's
-[Models billing documentation](https://docs.github.com/en/billing/concepts/product-billing/github-models)
-before enabling it broadly.
+The first build downloads the default embedding model into the ephemeral Action
+runner. The resulting vector view is stored in the commit-addressed context
+artifact and reused through CodeNib's repository cache on later builds. Keep the
+default `fast` preset when a model download is undesirable.
 
 ## Bring Your Own Embedding Endpoint
 
-An OpenAI-compatible endpoint can replace GitHub Models without changing the
+An OpenAI-compatible endpoint can replace the local model without changing the
 artifact or Pages workflow:
 
 ```yaml
@@ -128,7 +120,7 @@ commit rather than assuming that it matches the surrounding event SHA.
 
 The reusable workflow rejects `pull_request_target` and skips pull requests
 whose head repository differs from the base repository. It therefore does not
-pass GitHub Models or BYO credentials to untrusted fork code. All shipped
+pass BYO credentials to untrusted fork code. All shipped
 third-party Actions are pinned to immutable commits, checkout credentials are
 not persisted, and publication fails if an output contains a configured secret,
 a symbolic link, or a build-machine source/index path.

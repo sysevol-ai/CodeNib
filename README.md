@@ -138,8 +138,8 @@ the local or MCP serving path.
 For a repository-hosted Wiki, CodeNib also ships a reusable GitHub workflow
 that incrementally builds the same manifest, deploys the static site to Pages,
 and uploads the matching commit-addressed context artifact. Its default `fast`
-route needs no model credential; semantic search can opt into GitHub Models or
-a BYO OpenAI-compatible endpoint. See
+route needs no model credential or model download; semantic search can use a
+local Hugging Face model or an explicit BYO OpenAI-compatible endpoint. See
 [GitHub Pages](https://docs.codenib.ai/github_pages/).
 
 See the

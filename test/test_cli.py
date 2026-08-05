@@ -60,7 +60,7 @@ def test_publish_and_artifact_parsers_expose_distribution_options() -> None:
             "--base-path",
             "/project",
             "--embedding-provider",
-            "github_models",
+            "openai",
         ]
     )
     artifact = cli.build_parser().parse_args(
@@ -79,7 +79,7 @@ def test_publish_and_artifact_parsers_expose_distribution_options() -> None:
     assert publish.site_output == "/tmp/site"
     assert publish.context_output == "/tmp/context"
     assert publish.repository == "example/project"
-    assert publish.embedding_provider == "github_models"
+    assert publish.embedding_provider == "openai"
     assert artifact.artifact_command == "pack"
     assert artifact.view == ["bm25,vector"]
 
