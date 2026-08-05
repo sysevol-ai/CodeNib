@@ -41,9 +41,11 @@ the source.
 The workflow checks out the caller's exact commit, incrementally builds the
 `fast` preset, exports the Wiki at the Pages-provided mount path, and deploys it
 through the `github-pages` environment. It also uploads an artifact named from
-the repository and commit.
+the repository and commit. BM25 belongs to that context artifact; the static
+Wiki serves precomputed pages, citations, and navigation without executing a
+query engine in the browser.
 
-## Semantic Search With A Local Model
+## Build Semantic Context With A Local Model
 
 Select the semantic preset to build BM25 and dense-vector views. It defaults to
 a local Hugging Face embedding model and needs no API credential:
@@ -58,8 +60,10 @@ jobs:
 
 The first build downloads the default embedding model into the ephemeral Action
 runner. The resulting vector view is stored in the commit-addressed context
-artifact and reused through CodeNib's repository cache on later builds. Keep the
-default `fast` preset when a model download is undesirable.
+artifact and reused through CodeNib's repository cache on later builds. Serve
+that artifact through the local or MCP runtime for semantic queries; the Pages
+site remains a precomputed inspection surface. Keep the default `fast` preset
+when a model download is undesirable.
 
 ## Bring Your Own Embedding Endpoint
 

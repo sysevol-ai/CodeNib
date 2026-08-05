@@ -52,10 +52,10 @@ agent or code-Wiki framework.
 
 - **2026-08-04 — Commit-addressed Pages publishing.**
   [`codenib publish`](docs/github_pages.md) and the reusable GitHub workflow
-  build a no-model BM25 or opt-in semantic Wiki, deploy the static inspection
-  surface, and retain the matching portable context views for the indexed
-  commit. Incremental caches remain private build state rather than part of the
-  downloadable serving artifact.
+  deploy a no-model static Wiki and retain a matching BM25 or opt-in
+  vector-enhanced context artifact for the indexed commit. Incremental caches
+  remain private build state rather than part of the downloadable serving
+  artifact.
 - **2026-08-04 — Native repository explorer.**
   [`RepositoryContextExplorer`](codenib/agent/runtime/explorer.py) plans BM25,
   dense, hybrid, reranked, and graph routes over manifest-backed views and
@@ -138,9 +138,10 @@ the local or MCP serving path.
 For a repository-hosted Wiki, CodeNib also ships a reusable GitHub workflow
 that incrementally builds the same manifest, deploys the static site to Pages,
 and uploads the matching commit-addressed context artifact. Its default `fast`
-route needs no model credential or model download; semantic search can use a
-local Hugging Face model or an explicit BYO OpenAI-compatible endpoint. See
-[GitHub Pages](https://docs.codenib.ai/github_pages/).
+route needs no model credential or model download. The optional `semantic`
+route builds the matching vector artifact with a local Hugging Face model or an
+explicit BYO OpenAI-compatible endpoint; query-time search remains in the local
+or MCP runtime. See [GitHub Pages](https://docs.codenib.ai/github_pages/).
 
 See the
 [Quickstart](https://docs.codenib.ai/quickstart/)

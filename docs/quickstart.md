@@ -120,8 +120,8 @@ The context directory is commit-addressed query-serving state with an
 artifact-relative manifest and file hashes. It excludes mutable maintenance
 caches. Portable publication currently supports `fast` and `semantic`; use the
 local or MCP runtime for graph and Zoekt views. See
-[Publish With GitHub Pages](github_pages.md) for the no-model Action, GitHub
-Models, and BYO endpoint configurations.
+[Publish With GitHub Pages](github_pages.md) for the no-model Action, local
+embedding model, and BYO endpoint configurations.
 
 ## Select Repository Views
 

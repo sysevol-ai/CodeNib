@@ -252,8 +252,9 @@ The program has two user-facing surfaces that share one artifact contract:
 Generation and embeddings are build-time provider capabilities in the static
 surface. A Pages export never contains a provider credential, and it does not
 claim query-time semantic search when no authenticated runtime exists. The
-offline fallback remains useful through lexical search, source navigation,
-pre-generated pages, and dependency data when those views are available.
+Pages surface remains useful through source navigation, pre-generated pages,
+and dependency data when those views are available. The matching artifact adds
+lexical and optional semantic search when loaded by the local or MCP runtime.
 
 ### H1: Static artifact contract ([#416](https://github.com/sysevol-ai/CodeNib/issues/416))
 
