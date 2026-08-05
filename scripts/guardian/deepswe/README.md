@@ -1,16 +1,21 @@
 # DeepSWE Guardian tooling
 
-This directory owns CodeNib's DeepSWE experiment integration:
+This directory owns CodeNib's external DeepSWE experiment integration:
 
 - `harness/` is the dependency-isolated Pier adapter and Guardian bridge;
 - `ablation.py` and `solo_matrix.py` launch trials;
-- `results.py` and `outputs.py` summarize and maintain artifacts;
-- `export_dashboard.py` and `dashboard/` provide the static results viewer.
+- `results.py` and `export_dashboard.py` are thin command-line adapters over
+  `codenib.eval.benchmarks.deepswe`;
+- `outputs.py` maintains externally produced artifacts;
+- `dashboard/` provides the static results viewer.
 
-The harness deliberately lives outside `codeminer`. Pier imports the custom
-agent on the host before it starts a task container. Importing an adapter below
-`codeminer` would first execute `codeminer/__init__.py` and require CodeNib's
-tree-sitter and LLM dependencies in Pier's host environment.
+The packaged `codenib.eval.benchmarks.deepswe` modules load, cost, aggregate,
+and report DeepSWE results. They deliberately do not launch the benchmark or
+depend on its runtime. The external harness boundary remains in this directory.
+
+The harness deliberately lives outside `codenib`. The external benchmark host
+imports the custom agent before it starts a task container, so that adapter
+must remain dependency-isolated from CodeNib's packaged runtime.
 
 Run tools as modules from the repository root, for example:
 
