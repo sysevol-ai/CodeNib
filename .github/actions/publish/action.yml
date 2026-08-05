@@ -181,7 +181,8 @@ runs:
           echo "site-output and context-output must not overlap" >&2
           exit 2
         fi
-        frontend_path="$(realpath -m "$GITHUB_ACTION_PATH/../../../web/dist")"
+        source_path="$(realpath -e "$GITHUB_ACTION_PATH/../../..")"
+        frontend_path="$source_path/web/dist"
         repository="${INPUT_REPOSITORY:-$GITHUB_REPOSITORY}"
         if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
           echo "repository must use owner/name form" >&2
@@ -223,6 +224,7 @@ runs:
           echo "frontend_path=$frontend_path"
           echo "repository=$repository"
           echo "site_path=$site_path"
+          echo "source_path=$source_path"
           echo "source_commit=$source_commit"
         } >> "$GITHUB_OUTPUT"
 
@@ -236,7 +238,7 @@ runs:
       with:
         node-version: "22"
         cache: npm
-        cache-dependency-path: ${{ github.action_path }}/../../../web/package-lock.json
+        cache-dependency-path: ${{ steps.inputs.outputs.source_path }}/web/package-lock.json
 
     - name: Restore incremental repository state
       id: restore
@@ -251,22 +253,24 @@ runs:
       shell: bash
       env:
         FRONTEND_OUTPUT: ${{ steps.inputs.outputs.frontend_path }}
+        SOURCE_PATH: ${{ steps.inputs.outputs.source_path }}
       run: |
         set -euo pipefail
-        npm ci --prefix "$GITHUB_ACTION_PATH/../../../web"
-        npm run build --prefix "$GITHUB_ACTION_PATH/../../../web" -- \
+        npm ci --prefix "$SOURCE_PATH/web"
+        npm run build --prefix "$SOURCE_PATH/web" -- \
           --outDir "$FRONTEND_OUTPUT"
 
     - name: Install CodeNib
       shell: bash
       env:
         EXTRAS: ${{ steps.inputs.outputs.extras }}
+        SOURCE_PATH: ${{ steps.inputs.outputs.source_path }}
       run: |
         set -euo pipefail
         if [[ -n "$EXTRAS" ]]; then
-          python -m pip install "$GITHUB_ACTION_PATH/../../..[$EXTRAS]"
+          python -m pip install "$SOURCE_PATH[$EXTRAS]"
         else
-          python -m pip install "$GITHUB_ACTION_PATH/../../.."
+          python -m pip install "$SOURCE_PATH"
         fi
 
     - name: Publish repository context

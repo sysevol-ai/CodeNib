@@ -135,6 +135,14 @@ def test_publish_action_builds_frontend_before_source_install() -> None:
     assert names.index("Build static frontend") < names.index("Install CodeNib")
     resolve = next(step for step in _steps(action) if step.get("id") == "inputs")
     assert "web/dist" in resolve["run"]
+    setup_node = next(
+        step for step in _steps(action) if step.get("name") == "Set up Node.js"
+    )
+    dependency_path = setup_node["with"]["cache-dependency-path"]
+    assert dependency_path == (
+        "${{ steps.inputs.outputs.source_path }}/web/package-lock.json"
+    )
+    assert ".." not in dependency_path
 
 
 def test_publish_action_keeps_untrusted_inputs_out_of_shell_source() -> None:
@@ -171,6 +179,7 @@ def test_publish_action_resolves_valid_inputs(tmp_path: Path) -> None:
     assert f"context_path={tmp_path / 'codenib-context'}" in output
     assert "embedding_provider=" in output
     assert "extras=" in output
+    assert f"source_path={ROOT}" in output
     assert f"source_commit={source_commit}" in output
 
 
