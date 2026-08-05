@@ -13,8 +13,13 @@ then reuse that manifest across agent sessions.
 
 ## Install And Index
 
+This page describes the current `0.2` alpha. Set the same immutable wheel URL
+used by the [Quickstart](quickstart.md#install), then select the views required
+by the MCP server:
+
 ```bash
-pip install "codenib[mcp]"
+export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
+python -m pip install "codenib[mcp] @ ${CODENIB_ALPHA_WHEEL}"
 codenib index /path/to/repository
 ```
 
@@ -22,14 +27,14 @@ The default `fast` preset builds BM25 without a model download. Add semantic
 search when needed:
 
 ```bash
-pip install "codenib[mcp,semantic]"
+python -m pip install "codenib[mcp,semantic] @ ${CODENIB_ALPHA_WHEEL}"
 codenib index /path/to/repository --preset semantic
 ```
 
 Add static navigation and dependency tools without the embedding download:
 
 ```bash
-pip install "codenib[graph,mcp]"
+python -m pip install "codenib[graph,mcp] @ ${CODENIB_ALPHA_WHEEL}"
 codenib index /path/to/repository --preset graph
 ```
 
@@ -114,7 +119,7 @@ Parameter and return schemas live in
 The `full` preset requests BM25, vectors, a symbol graph, and Zoekt:
 
 ```bash
-pip install "codenib[full]"
+python -m pip install "codenib[full] @ ${CODENIB_ALPHA_WHEEL}"
 codenib index /path/to/repository --preset full
 ```
 

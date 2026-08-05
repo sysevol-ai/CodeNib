@@ -23,7 +23,8 @@ Install the graph dependencies, check the target repository, and then select
 the graph preset:
 
 ```bash
-pip install "codenib[graph]"
+export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
+python -m pip install "codenib[graph] @ ${CODENIB_ALPHA_WHEEL}"
 codenib doctor /path/to/repository --require graph
 codenib index /path/to/repository --preset graph
 ```

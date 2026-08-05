@@ -30,11 +30,11 @@ permissions:
 
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@<release-sha>
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@620a82d1bf55897cbf4afa0b8563ed5da0997d27
 ```
 
-Replace `<release-sha>` with a published CodeNib release commit. A commit SHA
-keeps the compiler, frontend, action, and artifact schema on one reviewed
+The pinned commit is the source revision for CodeNib 0.2.0 Alpha 1. A commit SHA
+keeps the compiler, frontend, Action, and artifact schema on one reviewed
 revision. In the repository's **Settings > Pages**, select **GitHub Actions** as
 the source.
 
@@ -53,7 +53,7 @@ a local Hugging Face embedding model and needs no API credential:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@<release-sha>
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@620a82d1bf55897cbf4afa0b8563ed5da0997d27
     with:
       preset: semantic
 ```
@@ -73,7 +73,7 @@ artifact or Pages workflow:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@<release-sha>
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@620a82d1bf55897cbf4afa0b8563ed5da0997d27
     with:
       preset: semantic
       embedding-provider: openai
@@ -83,6 +83,11 @@ jobs:
     secrets:
       embedding_api_key: ${{ secrets.CODENIB_EMBEDDING_API_KEY }}
 ```
+
+Create `CODENIB_EMBEDDING_API_KEY` under **Settings > Secrets and variables >
+Actions > New repository secret**. The caller maps that repository secret to
+the reusable workflow's `embedding_api_key`; the workflow never places its
+value in the cache key, artifact, manifest, or Pages output.
 
 Provider, model, vector dimension, endpoint, Python version, and CodeNib source
 revision participate in cache compatibility. The credential value does not.
@@ -138,7 +143,7 @@ The composite Action can be used directly when another static host or artifact
 store owns deployment:
 
 ```yaml
-- uses: sysevol-ai/CodeNib/.github/actions/publish@<release-sha>
+- uses: sysevol-ai/CodeNib/.github/actions/publish@620a82d1bf55897cbf4afa0b8563ed5da0997d27
   id: codenib
   with:
     preset: fast
@@ -156,7 +161,7 @@ artifact with a token that has **Actions: read** permission:
 
 ```bash
 git -C /path/to/repository checkout <full-commit>
-export GH_TOKEN=github_pat_...
+export GH_TOKEN="$(gh auth token)"
 
 codenib artifact fetch owner/repository \
   --repo /path/to/repository \
@@ -203,4 +208,6 @@ automatically.
 BM25 serving requires no model credential. A semantic artifact reuses its
 stored vectors but still needs the manifest-selected embedding provider for
 each query embedding. Provider credentials stay in the MCP process environment
-and are never copied into client configuration or the context artifact.
+and are never copied into client configuration or the context artifact. When
+GitHub CLI is unavailable, set `GH_TOKEN` to a fine-grained token with
+**Actions: read** access to the repository.

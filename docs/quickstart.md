@@ -10,17 +10,26 @@ This guide turns a local repository into a source-linked CodeNib Wiki. The
 default path uses deterministic page generation and BM25 search, so it needs
 neither an API key nor a model download.
 
-## Prerequisites
+## Install
 
 - Python 3.10 or newer
 - Git
 
-Install CodeNib and verify the local runtime:
+This documentation tracks the `0.2` feature line. Install the current alpha
+from its immutable, hash-pinned TestPyPI wheel; dependencies continue to
+resolve from PyPI rather than from a mixed package index:
 
 ```bash
-pip install codenib
+export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
+python -m pip install "codenib @ ${CODENIB_ALPHA_WHEEL}"
+codenib --version
 codenib doctor --require core --require wiki
 ```
+
+The version command must report `codenib 0.2.0a1`. For the stable `0.1` line,
+use `python -m pip install codenib`; features documented as new in 0.2 require
+the alpha above. Reuse `CODENIB_ALPHA_WHEEL` when adding an optional extra, for
+example `"codenib[mcp] @ ${CODENIB_ALPHA_WHEEL}"`.
 
 ## Launch A Repository Wiki
 
@@ -135,7 +144,7 @@ embedding model, and BYO endpoint configurations.
 For natural-language search:
 
 ```bash
-pip install "codenib[semantic]"
+python -m pip install "codenib[semantic] @ ${CODENIB_ALPHA_WHEEL}"
 codenib wiki /path/to/repository --preset semantic
 ```
 
@@ -146,7 +155,7 @@ To keep embeddings out of the local process, use a BYO OpenAI-compatible
 embedding service:
 
 ```bash
-pip install "codenib[semantic-remote]"
+python -m pip install "codenib[semantic-remote] @ ${CODENIB_ALPHA_WHEEL}"
 export EMBEDDING_API_KEY=...
 codenib doctor --require semantic \
   --embedding-provider openai \
@@ -167,6 +176,46 @@ Provider, model, endpoint, dimension, and vector-shaping options become part of
 the vector artifact identity. Credentials, retries, timeouts, and batching stay
 process-local, and CodeNib refuses to reopen an artifact through a different
 provider or endpoint.
+
+## Credentials And Tokens
+
+The default Wiki, BM25 index, static export, and local CodeRankEmbed route need
+no credential. GitHub Pages also uses GitHub's short-lived workflow token for
+deployment; users do not provide a personal token for the default workflow.
+
+Use environment variables for the capabilities that do need authentication:
+
+| Capability | Credential | How CodeNib receives it |
+|---|---|---|
+| BYO OpenAI-compatible embeddings | Provider API key | Name the variable with `--embedding-api-key-env` |
+| Generated Wiki pages and Ask | LiteLLM provider key | Use the provider's normal variable or `--api-key-env` |
+| Download a GitHub Actions context artifact | Fine-grained token with **Actions: read** | Export it as `GH_TOKEN` |
+
+For example:
+
+```bash
+# Remote embeddings. The key value never appears in the command line.
+export CODENIB_EMBEDDING_API_KEY=...
+codenib wiki . --preset semantic \
+  --embedding-provider openai \
+  --embedding-endpoint https://embeddings.example.com/v1 \
+  --embedding-api-key-env CODENIB_EMBEDDING_API_KEY
+
+# Agent-authored pages through an OpenAI-compatible chat endpoint.
+export OPENAI_API_KEY=...
+codenib wiki . --generate \
+  --model openai/gpt-4o-mini \
+  --api-key-env OPENAI_API_KEY
+
+# Reuse the token already managed by GitHub CLI for artifact download.
+export GH_TOKEN="$(gh auth token)"
+```
+
+For GitHub Actions, create `CODENIB_EMBEDDING_API_KEY` under **Settings >
+Secrets and variables > Actions**, then map it to the reusable workflow's
+`embedding_api_key` secret. CodeNib records provider identity and the name of
+the credential variable, never its value. Secrets are excluded from manifests,
+context artifacts, generated MCP configuration, and static Pages output.
 
 The `graph` extra supplies the Python graph and protobuf runtimes, while each
 repository language still needs its own SCIP/LSP executable. Check the exact
@@ -202,7 +251,7 @@ Static Wiki pages are the default. To generate conceptual page narratives
 through a LiteLLM-supported provider:
 
 ```bash
-pip install "codenib[agent]"
+python -m pip install "codenib[agent] @ ${CODENIB_ALPHA_WHEEL}"
 export OPENAI_API_KEY=...
 codenib doctor --require agent \
   --model openai/gpt-4o-mini --api-key-env OPENAI_API_KEY --probe-model
@@ -233,7 +282,7 @@ codenib wiki . --generate --model anthropic/claude-sonnet-4-5
 Vertex AI additionally requires CodeNib's `vertex` extra:
 
 ```bash
-pip install "codenib[agent,vertex]"
+python -m pip install "codenib[agent,vertex] @ ${CODENIB_ALPHA_WHEEL}"
 gcloud auth application-default login
 codenib wiki . --generate \
   --model vertex_ai/gemini-2.5-flash \
@@ -288,7 +337,7 @@ continues to work.
 ## Serve The Index Over MCP
 
 ```bash
-pip install "codenib[mcp]"
+python -m pip install "codenib[mcp] @ ${CODENIB_ALPHA_WHEEL}"
 codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```

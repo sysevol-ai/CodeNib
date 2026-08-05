@@ -107,10 +107,20 @@ publishing a partially updated view.
 
 Requires Python 3.10+ and Git.
 
+The documentation on `main` describes the `0.2` feature line, currently
+published as `0.2.0a1` on TestPyPI. Install its immutable wheel directly so
+normal dependencies continue to resolve only from PyPI:
+
 ```bash
-pip install codenib
+export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
+python -m pip install "codenib @ ${CODENIB_ALPHA_WHEEL}"
+codenib doctor --require core --require wiki
 codenib wiki /path/to/repository
 ```
+
+For the stable `0.1` line, use `python -m pip install codenib`. The
+[0.2 Alpha 1 notes](https://docs.codenib.ai/releases/0.2.0/) record the exact
+package, workflow revision, upgrade boundary, and verification evidence.
 
 CodeNib detects the repository languages, builds a reusable index under
 `~/.codenib/repositories`, launches the local Wiki, and opens
@@ -162,7 +172,7 @@ Install the MCP extra, build once, and serve the same repository manifest over
 stdio:
 
 ```bash
-pip install "codenib[mcp]"
+python -m pip install "codenib[mcp] @ ${CODENIB_ALPHA_WHEEL}"
 codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```
@@ -221,7 +231,7 @@ records chunking, graph, incremental, and C++ decoder support.
 Build the documentation site locally with:
 
 ```bash
-pip install "codenib[dev]"
+python -m pip install -e ".[dev]"
 mkdocs serve
 ```
 

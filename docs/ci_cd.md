@@ -358,6 +358,38 @@ use the `./.github/actions/setup-env` composite action, which provisions:
   serial / core / consumer jobs).
 - **bear** — optional C/C++ compilation-database tool, via `install-bear`.
 
+## Self-Hosted Runner Service
+
+The runner must be installed as an operating-system service. Starting
+`./run.sh` in a shell is useful only for diagnosis: the listener disappears
+when that shell, SSH session, or machine restarts, leaving jobs queued even
+though no test has failed.
+
+On Linux, wait until GitHub reports the runner as idle, stop the foreground
+`run.sh` process with `Ctrl-C`, and use the service helper shipped with that
+runner installation:
+
+```bash
+cd /path/to/actions-runner
+sudo ./svc.sh install "$(id -un)"
+sudo ./svc.sh start
+sudo ./svc.sh status
+```
+
+`svc.sh install` creates and enables an `actions.runner.*.service` systemd unit,
+so the listener starts after a reboot without an interactive login. Confirm
+both the local unit and GitHub registration before dispatching expensive jobs:
+
+```bash
+systemctl list-units 'actions.runner.*' --all
+gh api repos/sysevol-ai/CodeNib/actions/runners \
+  --jq '.runners[] | {name, status, busy}'
+```
+
+Do not start the service while a manual listener or `Runner.Worker` is still
+active. Do not stop a busy runner merely to install the service; wait for its
+current job to finish first.
+
 ## Failure triage
 
 Two CI failure modes are easy to confuse:

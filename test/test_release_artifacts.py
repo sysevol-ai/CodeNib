@@ -48,11 +48,50 @@ def test_alpha_release_notes_use_test_registry_and_pages_permissions() -> None:
     root = Path(__file__).resolve().parents[1]
     notes = (root / "docs" / "releases" / "0.2.0.md").read_text(encoding="utf-8")
 
-    assert notes.count("--index-url https://test.pypi.org/simple/") == 2
-    assert notes.count("--no-deps --only-binary=:all:") == 2
+    wheel = (
+        "https://test-files.pythonhosted.org/packages/3d/3d/"
+        "8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/"
+        "codenib-0.2.0a1-py3-none-any.whl#sha256="
+        "915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
+    )
+    assert notes.count(wheel) == 2
+    assert "codenib @ ${CODENIB_ALPHA_WHEEL}" in notes
+    assert "codenib[mcp] @ ${CODENIB_ALPHA_WHEEL}" in notes
+    assert "620a82d1bf55897cbf4afa0b8563ed5da0997d27" in notes
     assert "--extra-index-url" not in notes
+    assert "--index-url" not in notes
     for permission in ("contents: read", "pages: write", "id-token: write"):
         assert permission in notes
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "README.md",
+        "docs/agent_integrations.md",
+        "docs/index.md",
+        "docs/mcp.md",
+        "docs/quickstart.md",
+        "docs/scip_index.md",
+        "docs/web_demo.md",
+    ),
+)
+def test_public_alpha_install_commands_do_not_select_stable_0_1(
+    relative_path: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    text = (root / relative_path).read_text(encoding="utf-8")
+    install_lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.lstrip().startswith(("pip install ", "python -m pip install "))
+        and "codenib" in line
+        and " -e " not in line
+    ]
+
+    assert install_lines
+    assert "CODENIB_ALPHA_WHEEL=" in text
+    assert all("@ ${CODENIB_ALPHA_WHEEL}" in line for line in install_lines)
 
 
 def test_registry_publishers_use_separate_workflows() -> None:
