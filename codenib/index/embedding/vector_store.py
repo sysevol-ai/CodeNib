@@ -1138,8 +1138,16 @@ class CodeVectorStore:
                 f"expected {self.dimension}, found {int(index.d)}"
             )
 
-        # Try loading documents pickle (works for both new _Document and
-        # legacy LangChain Document objects via duck-typing conversion).
+        # Portable artifacts use inert JSON so a downloaded document store is
+        # never unpickled. Local indexes retain the pickle fallback for
+        # compatibility with previously built artifacts.
+        json_path = level_path / f"documents_{model_suffix}.json"
+        if json_path.exists():
+            documents = self._load_documents_json(json_path)
+            return index, documents
+
+        # Try loading the local documents pickle (works for both new _Document
+        # and legacy LangChain Document objects via duck-typing conversion).
         docs_path = level_path / f"documents_{model_suffix}.pkl"
         if docs_path.exists():
             try:
@@ -1168,6 +1176,32 @@ class CodeVectorStore:
 
         logger.warning(f"No document store found for {level_path}")
         return index, []
+
+    @staticmethod
+    def _load_documents_json(path: Path) -> List[_Document]:
+        """Load the non-executable portable vector document format."""
+
+        with path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, list):
+            raise ValueError(f"vector documents must be a JSON list: {path}")
+
+        documents: List[_Document] = []
+        for index, item in enumerate(payload):
+            if not isinstance(item, dict):
+                raise ValueError(
+                    f"vector document {index} must be a JSON object: {path}"
+                )
+            page_content = item.get("page_content")
+            metadata = item.get("metadata")
+            if not isinstance(page_content, str) or not isinstance(metadata, dict):
+                raise ValueError(
+                    f"vector document {index} has invalid content or metadata: {path}"
+                )
+            documents.append(
+                _Document(page_content=page_content, metadata=dict(metadata))
+            )
+        return documents
 
     @staticmethod
     def _load_langchain_pkl(pkl_path: Path) -> List[_Document]:

@@ -246,13 +246,18 @@ def test_context_artifact_keeps_only_portable_vector_serving_state(
     assert not (vector / "incremental_state.json").exists()
     assert not (vector / "l2" / "index_test__model.pkl").exists()
     assert (vector / "l2" / "index_test__model.faiss").is_file()
-    with (vector / "l2" / "documents_test__model.pkl").open("rb") as handle:
-        documents = pickle.load(handle)
-    assert documents[0].metadata["file"] == "sample.py"
+    assert not (vector / "l2" / "documents_test__model.pkl").exists()
+    documents = json.loads((vector / "l2" / "documents_test__model.json").read_text())
+    assert documents[0]["metadata"]["file"] == "sample.py"
     portable = json.loads((output / "repo_manifest.json").read_text())
     assert portable["indexes"]["vector"]["config"]["artifact_scope"] == (
         "query-serving"
     )
+    assert (
+        portable["indexes"]["vector"]["config"]["portable_document_format"]
+        == "codenib.vector-documents.v1"
+    )
+    assert not list(output.rglob("*.pkl"))
     assert str(repo).encode() not in b"".join(_tree(output).values())
 
 

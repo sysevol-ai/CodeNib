@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import pickle
 import re
 import shutil
 import subprocess
@@ -178,24 +177,42 @@ def _portable_source_path(value: object, repo_path: Path, *, source: str) -> str
     return normalized.as_posix()
 
 
-def _normalize_vector_documents(path: Path, repo_path: Path) -> None:
+def _convert_vector_documents(path: Path, repo_path: Path) -> Path:
+    """Convert a trusted local document pickle to portable, inert JSON."""
+
     with path.open("rb") as handle:
         documents = compat_pickle.load(handle)
     if not isinstance(documents, list):
         raise ValueError(f"portable vector documents must be a list: {path.name}")
+    payload: list[dict[str, Any]] = []
     for index, document in enumerate(documents):
+        page_content = getattr(document, "page_content", None)
+        if not isinstance(page_content, str):
+            raise ValueError(
+                f"portable vector document {index} has invalid content: {path.name}"
+            )
         metadata = getattr(document, "metadata", None)
         if not isinstance(metadata, dict):
             raise ValueError(
                 f"portable vector document {index} has invalid metadata: {path.name}"
             )
-        metadata["file"] = _portable_source_path(
+        normalized_metadata = dict(metadata)
+        normalized_metadata["file"] = _portable_source_path(
             metadata.get("file"),
             repo_path,
             source=f"vector document {index} file",
         )
-    with path.open("wb") as handle:
-        pickle.dump(documents, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        payload.append(
+            {
+                "page_content": page_content,
+                "metadata": normalized_metadata,
+            }
+        )
+
+    output = path.with_suffix(".json")
+    output.write_bytes(_json_bytes(payload))
+    path.unlink()
+    return output
 
 
 def _normalize_vector_view(target: Path, repo_path: Path) -> dict[str, Any]:
@@ -222,13 +239,16 @@ def _normalize_vector_view(target: Path, repo_path: Path) -> dict[str, Any]:
             "rebuild the vector view"
         )
     for path in document_files:
-        _normalize_vector_documents(path, repo_path)
+        _convert_vector_documents(path, repo_path)
 
     # The current document files supersede legacy LangChain docstore pickles.
     # Leaving both formats would retain duplicate absolute source paths.
     for legacy in target.glob("l[02]/index_*.pkl"):
         legacy.unlink()
-    return {"artifact_scope": "query-serving"}
+    return {
+        "artifact_scope": "query-serving",
+        "portable_document_format": "codenib.vector-documents.v1",
+    }
 
 
 def _inventory(root: Path) -> list[dict[str, Any]]:

@@ -169,6 +169,61 @@ def test_ivf_save_load_roundtrip(tmp_path):
     assert res and res[0].node_name == chunks[1]["name"]
 
 
+def test_load_prefers_portable_json_documents(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    chunks = _chunks(2)
+    store.add_code_chunks(chunks)
+    store.save(str(path))
+
+    documents_path = path / "l2" / "documents_test__model.pkl"
+    documents_path.unlink()
+    portable_path = documents_path.with_suffix(".json")
+    portable_path.write_text(
+        json.dumps(
+            [
+                {
+                    "page_content": chunk["content"],
+                    "metadata": {
+                        "name": chunk["name"],
+                        "file": chunk["file"],
+                        "start_line": chunk["start_line"],
+                        "end_line": chunk["end_line"],
+                    },
+                }
+                for chunk in chunks
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    loaded.load()
+
+    assert [document.metadata["file"] for document in loaded.l2_documents] == [
+        "m0.py",
+        "m1.py",
+    ]
+
+
+def test_load_rejects_invalid_portable_json_documents(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(1))
+    store.save(str(path))
+
+    documents_path = path / "l2" / "documents_test__model.pkl"
+    documents_path.unlink()
+    documents_path.with_suffix(".json").write_text(
+        '[{"page_content": 7, "metadata": {}}]',
+        encoding="utf-8",
+    )
+
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    with pytest.raises(ValueError, match="invalid content or metadata"):
+        loaded.load()
+
+
 def test_load_rejects_faiss_dimension_mismatch(tmp_path):
     path = tmp_path / "vs"
     model = "test/model"
