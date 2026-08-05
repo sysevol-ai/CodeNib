@@ -224,14 +224,16 @@ class TestVectorIndexBuilder:
 
     def test_runtime_options_do_not_change_identity_or_appear_in_repr(self):
         first = VectorIndexBuilder(
-            embedding_model="openai/text-embedding-3-small",
-            embedding_provider="github_models",
+            embedding_model="text-embedding-3-small",
+            embedding_provider="openai",
+            embedding_endpoint="https://inference.example.test/v1",
             embedding_dimension=1536,
             embedding_runtime_kwargs={"api_key": "first-secret", "timeout": 10},
         )
         second = VectorIndexBuilder(
-            embedding_model="openai/text-embedding-3-small",
-            embedding_provider="github_models",
+            embedding_model="text-embedding-3-small",
+            embedding_provider="openai",
+            embedding_endpoint="https://inference.example.test/v1",
             embedding_dimension=1536,
             embedding_runtime_kwargs={"api_key": "second-secret", "timeout": 60},
         )
@@ -271,8 +273,9 @@ class TestVectorIndexBuilder:
         mock_vs = MagicMock(l0_documents=[], l2_documents=["doc"])
         mock_build_fn.return_value = mock_vs
         builder = VectorIndexBuilder(
-            embedding_model="openai/text-embedding-3-small",
-            embedding_provider="github_models",
+            embedding_model="text-embedding-3-small",
+            embedding_provider="openai",
+            embedding_endpoint="https://inference.example.test/v1",
             embedding_dimension=1536,
             embedding_credential_env="MODELS_TOKEN",
             embedding_runtime_kwargs={"api_key": "runtime-secret", "timeout": 10},
@@ -288,12 +291,12 @@ class TestVectorIndexBuilder:
         assert "runtime-secret" not in serialized
         assert "MODELS_TOKEN" not in serialized
         assert status.metadata["embedding_endpoint"] == (
-            "https://models.github.ai/inference"
+            "https://inference.example.test/v1"
         )
         call = mock_build_fn.call_args.kwargs
         assert call["embedding_kwargs"]["api_key"] == "runtime-secret"
         assert call["embedding_kwargs"]["base_url"] == (
-            "https://models.github.ai/inference"
+            "https://inference.example.test/v1"
         )
 
 

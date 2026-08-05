@@ -296,7 +296,7 @@ def test_validate_views_probes_vector_without_loading_embedding_model(
     assert cls.call_args.kwargs["embedding"].dimension == 384
 
 
-def test_load_vector_rebinds_github_models_credential_without_persisting_it(
+def test_load_vector_rebinds_openai_credential_without_persisting_it(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -304,8 +304,8 @@ def test_load_vector_rebinds_github_models_credential_without_persisting_it(
     vector_dir.mkdir()
     route = resolve_inference_route(
         operation="embeddings",
-        provider="github_models",
-        model="openai/text-embedding-3-small",
+        provider="openai",
+        model="text-embedding-3-small",
         dimension=1536,
         environ={},
     )
@@ -334,7 +334,7 @@ def test_load_vector_rebinds_github_models_credential_without_persisting_it(
         },
     )
     manifest.save(tmp_path / "repo_manifest.json")
-    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "runtime-secret")
 
     vector = MagicMock()
     vector.embedding_model = route.model
@@ -346,8 +346,8 @@ def test_load_vector_rebinds_github_models_credential_without_persisting_it(
         ctx = ServerContext.load(tmp_path / "repo_manifest.json")
 
     kwargs = cls.call_args.kwargs
-    assert kwargs["embedding_provider"] == "github_models"
-    assert kwargs["base_url"] == "https://models.github.ai/inference"
+    assert kwargs["embedding_provider"] == "openai"
+    assert "base_url" not in kwargs
     assert kwargs["api_key"] == "runtime-secret"
     assert "runtime-secret" not in json.dumps(config)
     assert ctx.vector is vector
@@ -361,8 +361,8 @@ def test_validate_views_does_not_require_remote_embedding_credentials(
     vector_dir.mkdir()
     route = resolve_inference_route(
         operation="embeddings",
-        provider="github_models",
-        model="openai/text-embedding-3-small",
+        provider="openai",
+        model="text-embedding-3-small",
         dimension=1536,
         environ={},
     )
@@ -390,8 +390,7 @@ def test_validate_views_does_not_require_remote_embedding_credentials(
             ),
         },
     )
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     vector = MagicMock()
     vector.embedding_model = route.model
     vector.get_stats.return_value = {"total_documents": 3}

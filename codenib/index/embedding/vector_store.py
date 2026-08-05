@@ -260,8 +260,7 @@ class CodeVectorStore:
 
         Args:
             embedding_model: Name of the embedding model to use
-            embedding_provider: Provider for embeddings ("openai", "github_models",
-                or "huggingface")
+            embedding_provider: Provider for embeddings ("openai" or "huggingface")
             dimension: Dimension of the embedding vectors
             index_type: FAISS index type — "flat" (exact brute force, default)
                 or "ivf" (IVF inverted-file; approximate, faster at scale).
@@ -335,11 +334,7 @@ class CodeVectorStore:
 
     def _initialize_embedding_model(self, **kwargs):
         """Initialize the embedding model based on provider."""
-        if self.embedding_provider.lower() in {
-            "openai",
-            "github_models",
-            "github-models",
-        }:
+        if self.embedding_provider.lower() == "openai":
             return _OpenAIEmbeddingWrapper(model=self.embedding_model, **kwargs)
         elif self.embedding_provider.lower() == "huggingface":
             return _HuggingFaceEmbeddingWrapper(

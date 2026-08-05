@@ -16,20 +16,14 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 
 InferenceOperation = Literal["chat", "embeddings"]
 
-GITHUB_MODELS_PROVIDER = "github_models"
-GITHUB_MODELS_BASE_URL = "https://models.github.ai/inference"
 INFERENCE_ROUTE_SCHEMA = "codenib.inference-route.v1"
 
 _PROVIDER_ALIASES = {
-    "github-models": GITHUB_MODELS_PROVIDER,
-    "github_models": GITHUB_MODELS_PROVIDER,
     "hugging-face": "huggingface",
     "hugging_face": "huggingface",
 }
+_RETIRED_PROVIDERS = {"github-models", "github_models"}
 _PROVIDER_RE = re.compile(r"^[a-z][a-z0-9_.-]*$")
-_GITHUB_MODEL_RE = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.:-]*$"
-)
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _OPERATION_PATH_SUFFIXES = (
     "/chat/completions",
@@ -90,6 +84,11 @@ def normalize_provider(value: str) -> str:
     """Return the canonical provider identifier used in persisted metadata."""
 
     provider = str(value or "").strip().lower()
+    if provider in _RETIRED_PROVIDERS:
+        raise ValueError(
+            "GitHub Models was retired on 2026-07-30; select a current "
+            "provider or an OpenAI-compatible BYO endpoint"
+        )
     provider = _PROVIDER_ALIASES.get(provider, provider)
     if not _PROVIDER_RE.fullmatch(provider):
         raise ValueError(f"invalid inference provider: {value!r}")
@@ -300,18 +299,12 @@ def validate_embedding_runtime_options(
     return validated
 
 
-def _normalize_model(provider: str, model: str) -> str:
+def _normalize_model(model: str) -> str:
     normalized = str(model or "").strip()
     if not normalized or any(character.isspace() for character in normalized):
         raise ValueError("inference model must be a non-empty id without whitespace")
     if any(ord(character) < 32 for character in normalized):
         raise ValueError("inference model contains control characters")
-    if provider == GITHUB_MODELS_PROVIDER and not _GITHUB_MODEL_RE.fullmatch(
-        normalized
-    ):
-        raise ValueError(
-            "GitHub Models ids must use the documented publisher/model form"
-        )
     return normalized
 
 
@@ -424,30 +417,13 @@ def resolve_inference_route(
     if operation not in {"chat", "embeddings"}:
         raise ValueError(f"unsupported inference operation: {operation!r}")
     canonical_provider = normalize_provider(provider)
-    canonical_model = _normalize_model(canonical_provider, model)
+    canonical_model = _normalize_model(model)
     normalized_endpoint = normalize_endpoint(endpoint)
     environment = os.environ if environ is None else environ
     selected_env = _normalize_credential_env(credential_env)
     credential_was_explicit = selected_env is not None
 
-    if canonical_provider == GITHUB_MODELS_PROVIDER:
-        if normalized_endpoint and normalized_endpoint != GITHUB_MODELS_BASE_URL:
-            raise ValueError(
-                "GitHub Models uses its fixed inference endpoint; select openai "
-                "for a custom compatible endpoint"
-            )
-        normalized_endpoint = GITHUB_MODELS_BASE_URL
-        if selected_env is None:
-            selected_env = (
-                "GITHUB_TOKEN"
-                if environment.get("GITHUB_TOKEN") or not environment.get("GH_TOKEN")
-                else "GH_TOKEN"
-            )
-        client_model = (
-            f"openai/{canonical_model}" if operation == "chat" else canonical_model
-        )
-        credential_required = True
-    elif canonical_provider == "huggingface":
+    if canonical_provider == "huggingface":
         if operation != "embeddings":
             raise ValueError("huggingface is supported only for embeddings")
         if normalized_endpoint or selected_env:
@@ -471,7 +447,7 @@ def resolve_inference_route(
         if operation == "embeddings":
             raise ValueError(
                 f"unsupported embedding provider: {canonical_provider}; use "
-                "huggingface, openai, or github_models"
+                "huggingface or openai"
             )
         client_model = (
             canonical_model
@@ -488,10 +464,6 @@ def resolve_inference_route(
         ):
             raise ValueError("embedding dimension must be a positive integer")
         options = embedding_compatibility_options(compatibility_options)
-        if canonical_provider == GITHUB_MODELS_PROVIDER and options:
-            raise ValueError(
-                "GitHub Models embedding routes do not accept vector-shaping options"
-            )
         if canonical_provider == "openai":
             unsupported = sorted(set(options) - {"dimensions"})
             if unsupported:
@@ -630,8 +602,6 @@ def resolve_embedding_artifact_route(
 
 
 __all__ = [
-    "GITHUB_MODELS_BASE_URL",
-    "GITHUB_MODELS_PROVIDER",
     "INFERENCE_ROUTE_SCHEMA",
     "InferenceRoute",
     "embedding_compatibility_options",

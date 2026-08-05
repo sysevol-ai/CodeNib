@@ -9,7 +9,6 @@ import json
 import pytest
 
 from codenib.provider_routes import (
-    GITHUB_MODELS_BASE_URL,
     embedding_compatibility_options,
     normalize_endpoint,
     resolve_embedding_artifact_route,
@@ -18,72 +17,84 @@ from codenib.provider_routes import (
 )
 
 
-def test_github_models_route_discovers_action_token_without_storing_it() -> None:
+def test_openai_route_uses_explicit_token_without_storing_it() -> None:
     route = resolve_inference_route(
         operation="embeddings",
-        provider="github-models",
-        model="openai/text-embedding-3-small",
+        provider="openai",
+        model="text-embedding-3-small",
+        endpoint="https://inference.example.test/v1",
         dimension=1536,
-        environ={"GITHUB_TOKEN": "action-secret"},
+        credential_env="MODELS_TOKEN",
+        environ={"MODELS_TOKEN": "action-secret"},
     )
 
-    assert route.provider == "github_models"
-    assert route.endpoint == GITHUB_MODELS_BASE_URL
-    assert route.credential_env == "GITHUB_TOKEN"
-    assert route.client_kwargs({"GITHUB_TOKEN": "action-secret"}) == {
-        "base_url": GITHUB_MODELS_BASE_URL,
+    assert route.provider == "openai"
+    assert route.endpoint == "https://inference.example.test/v1"
+    assert route.credential_env == "MODELS_TOKEN"
+    assert route.client_kwargs({"MODELS_TOKEN": "action-secret"}) == {
+        "base_url": "https://inference.example.test/v1",
         "api_key": "action-secret",
     }
     serialized = json.dumps(route.public_identity(), sort_keys=True)
     assert "action-secret" not in serialized
-    assert "GITHUB_TOKEN" not in serialized
+    assert "MODELS_TOKEN" not in serialized
 
 
-def test_github_models_route_uses_explicit_credential_then_gh_token() -> None:
+def test_openai_route_uses_explicit_credential_then_default() -> None:
     explicit = resolve_inference_route(
         operation="chat",
-        provider="github_models",
-        model="openai/gpt-4.1",
+        provider="openai",
+        model="gpt-4.1",
         credential_env="MODELS_TOKEN",
-        environ={"GITHUB_TOKEN": "action", "MODELS_TOKEN": "explicit"},
+        environ={"OPENAI_API_KEY": "default", "MODELS_TOKEN": "explicit"},
     )
     fallback = resolve_inference_route(
         operation="chat",
-        provider="github_models",
-        model="openai/gpt-4.1",
-        environ={"GH_TOKEN": "cli-token"},
+        provider="openai",
+        model="gpt-4.1",
+        environ={"OPENAI_API_KEY": "default"},
     )
 
-    assert explicit.client_model == "openai/openai/gpt-4.1"
+    assert explicit.client_model == "openai/gpt-4.1"
     assert explicit.credential_env == "MODELS_TOKEN"
     assert explicit.credential({"MODELS_TOKEN": "explicit"}) == "explicit"
-    assert fallback.credential_env == "GH_TOKEN"
+    assert fallback.credential_env == "OPENAI_API_KEY"
 
 
-def test_github_models_route_reports_missing_credentials_without_token_data() -> None:
+def test_openai_route_reports_missing_credentials_without_token_data() -> None:
     route = resolve_inference_route(
         operation="embeddings",
-        provider="github_models",
-        model="openai/text-embedding-3-small",
+        provider="openai",
+        model="text-embedding-3-small",
         dimension=1536,
         environ={},
     )
 
-    with pytest.raises(ValueError, match="GITHUB_TOKEN") as error:
+    with pytest.raises(ValueError, match="OPENAI_API_KEY") as error:
         route.client_kwargs({})
     assert "Bearer" not in str(error.value)
+
+
+@pytest.mark.parametrize("provider", ["github-models", "github_models"])
+def test_retired_github_models_route_is_rejected(provider: str) -> None:
+    with pytest.raises(ValueError, match="retired on 2026-07-30"):
+        resolve_inference_route(
+            operation="chat",
+            provider=provider,
+            model="openai/gpt-4.1",
+        )
 
 
 @pytest.mark.parametrize(
     "value",
     [
-        "models.github.ai/inference",
-        "https://token@models.github.ai/inference",
-        "https://models.github.ai/inference?api_key=secret",
-        "https://models.github.ai/inference#fragment",
-        "https://models.github.ai/inference/../other",
-        "https://models.github.ai/inference/embeddings",
-        "https://models.github.ai/inference/%65mbeddings",
+        "inference.example.test/v1",
+        "https://token@inference.example.test/v1",
+        "https://inference.example.test/v1?api_key=secret",
+        "https://inference.example.test/v1#fragment",
+        "https://inference.example.test/v1/../other",
+        "https://inference.example.test/v1/embeddings",
+        "https://inference.example.test/v1/%65mbeddings",
     ],
 )
 def test_endpoint_normalization_rejects_unsafe_or_operation_urls(value: str) -> None:
@@ -93,8 +104,8 @@ def test_endpoint_normalization_rejects_unsafe_or_operation_urls(value: str) -> 
 
 def test_endpoint_normalization_is_stable() -> None:
     assert (
-        normalize_endpoint("HTTPS://MODELS.GITHUB.AI/inference/")
-        == GITHUB_MODELS_BASE_URL
+        normalize_endpoint("HTTPS://INFERENCE.EXAMPLE.TEST/v1/")
+        == "https://inference.example.test/v1"
     )
 
 
@@ -243,7 +254,7 @@ def test_huggingface_route_rejects_remote_configuration() -> None:
 def test_runtime_options_are_provider_specific_and_cannot_override_semantics() -> None:
     assert validate_embedding_runtime_options(
         {"api-key": "secret", "max-retries": 2},
-        provider="github_models",
+        provider="openai",
     ) == {"api_key": "secret", "max_retries": 2}
     assert validate_embedding_runtime_options(
         {"encode_kwargs": {"batch-size": 8}},
@@ -265,8 +276,9 @@ def test_runtime_options_are_provider_specific_and_cannot_override_semantics() -
 def test_schema_v3_artifact_route_round_trips_and_rejects_drift() -> None:
     route = resolve_inference_route(
         operation="embeddings",
-        provider="github_models",
-        model="openai/text-embedding-3-small",
+        provider="openai",
+        model="text-embedding-3-small",
+        endpoint="https://inference.example.test/v1",
         dimension=1536,
         environ={},
     )
