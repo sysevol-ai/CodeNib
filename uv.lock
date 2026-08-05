@@ -636,6 +636,13 @@ semantic = [
     { name = "openai" },
     { name = "sentence-transformers" },
 ]
+semantic-remote = [
+    { name = "faiss-cpu" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "openai" },
+]
 test = [
     { name = "datasets" },
     { name = "einops" },
@@ -687,6 +694,7 @@ requires-dist = [
     { name = "einops", marker = "extra == 'test'", specifier = ">=0.8.0" },
     { name = "faiss-cpu", marker = "extra == 'full'", specifier = ">=1.7.0" },
     { name = "faiss-cpu", marker = "extra == 'semantic'", specifier = ">=1.7.0" },
+    { name = "faiss-cpu", marker = "extra == 'semantic-remote'", specifier = ">=1.7.0" },
     { name = "faiss-cpu", marker = "extra == 'test'", specifier = ">=1.7.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "filelock", marker = "extra == 'test'", specifier = ">=3.0.0" },
@@ -711,10 +719,12 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=0.950" },
     { name = "numpy", marker = "extra == 'full'", specifier = ">=1.24.0" },
     { name = "numpy", marker = "extra == 'semantic'", specifier = ">=1.24.0" },
+    { name = "numpy", marker = "extra == 'semantic-remote'", specifier = ">=1.24.0" },
     { name = "numpy", marker = "extra == 'test'", specifier = ">=1.24.0" },
     { name = "openai", marker = "extra == 'agent'", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'full'", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'semantic'", specifier = ">=1.0.0" },
+    { name = "openai", marker = "extra == 'semantic-remote'", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'test'", specifier = ">=1.0.0" },
     { name = "protobuf", marker = "extra == 'full'", specifier = ">=3.20.0" },
     { name = "protobuf", marker = "extra == 'graph'", specifier = ">=3.20.0" },
@@ -738,7 +748,7 @@ requires-dist = [
     { name = "tree-sitter-language-pack", specifier = ">=1.8.1,<1.9.0" },
     { name = "uvicorn", specifier = ">=0.20.0" },
 ]
-provides-extras = ["agent", "datasets", "graph", "mcp", "semantic", "vertex", "zoekt", "full", "dev", "test"]
+provides-extras = ["agent", "datasets", "graph", "mcp", "semantic", "semantic-remote", "vertex", "zoekt", "full", "dev", "test"]
 
 [package.metadata.requires-dev]
 docs = [
