@@ -312,10 +312,8 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         cfg.embedding_api_key = os.environ["CODENIB_EMBEDDING_API_KEY"]
 
     cfg.embedding_provider = normalize_provider(cfg.embedding_provider)
-    if cfg.embedding_provider not in {"huggingface", "openai", "github_models"}:
-        raise ValueError(
-            "embedding_provider must be huggingface, openai, or github_models"
-        )
+    if cfg.embedding_provider not in {"huggingface", "openai"}:
+        raise ValueError("embedding_provider must be huggingface or openai")
 
     return cfg
 

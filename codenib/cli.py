@@ -20,7 +20,6 @@ from typing import Iterable, Sequence
 
 from ._version import package_version
 from .provider_routes import (
-    GITHUB_MODELS_PROVIDER,
     InferenceRoute,
     normalize_provider,
     resolve_embedding_artifact_route,
@@ -35,7 +34,6 @@ _PRESET_VIEWS = {
     "full": ("bm25", "vector", "symbol_graph", "zoekt"),
 }
 _REMOTE_EMBEDDING_DEFAULTS = {
-    GITHUB_MODELS_PROVIDER: ("openai/text-embedding-3-small", 1536),
     "openai": ("text-embedding-3-small", 1536),
 }
 
@@ -1255,11 +1253,11 @@ def _run_doctor(args: argparse.Namespace) -> int:
 def _add_embedding_route_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--embedding-provider",
-        help="embedding backend: huggingface, github_models, or openai",
+        help="embedding backend: huggingface or openai",
     )
     parser.add_argument(
         "--embedding-model",
-        help="embedding model id; GitHub Models uses publisher/model",
+        help="embedding model id exposed by the selected backend",
     )
     parser.add_argument(
         "--embedding-dimension",
@@ -1347,7 +1345,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     wiki_parser.add_argument(
         "--model-provider",
-        help="resolve the model through github_models, openai, or a LiteLLM provider",
+        help="canonicalize the model through openai or another LiteLLM provider",
     )
     wiki_parser.add_argument(
         "--api-base",
@@ -1463,7 +1461,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor_parser.add_argument(
         "--model-provider",
-        help="resolve the model through github_models, openai, or a LiteLLM provider",
+        help="canonicalize the model through openai or another LiteLLM provider",
     )
     doctor_parser.add_argument(
         "--api-base",

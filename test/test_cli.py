@@ -92,19 +92,22 @@ def test_index_parser_accepts_remote_embedding_route() -> None:
             "--preset",
             "semantic",
             "--embedding-provider",
-            "github-models",
+            "openai",
             "--embedding-model",
-            "openai/text-embedding-3-small",
+            "text-embedding-3-small",
             "--embedding-dimension",
             "1536",
+            "--embedding-endpoint",
+            "https://inference.example.test/v1",
             "--embedding-api-key-env",
             "MODELS_TOKEN",
         ]
     )
 
-    assert args.embedding_provider == "github-models"
-    assert args.embedding_model == "openai/text-embedding-3-small"
+    assert args.embedding_provider == "openai"
+    assert args.embedding_model == "text-embedding-3-small"
     assert args.embedding_dimension == 1536
+    assert args.embedding_endpoint == "https://inference.example.test/v1"
     assert args.embedding_api_key_env == "MODELS_TOKEN"
 
 
@@ -330,47 +333,51 @@ def test_cli_model_options_layer_environment_and_flags(
     }
 
 
-def test_github_models_chat_route_maps_to_litellm_without_storing_key(
+def test_openai_chat_route_maps_to_litellm_without_storing_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    monkeypatch.setenv("MODELS_TOKEN", "runtime-secret")
     args = cli.build_parser().parse_args(
         [
             "doctor",
             "--model-provider",
-            "github_models",
+            "openai",
             "--model",
-            "openai/gpt-4.1",
+            "gpt-4.1",
+            "--api-base",
+            "https://inference.example.test/v1",
+            "--api-key-env",
+            "MODELS_TOKEN",
         ]
     )
 
     backend = cli._model_backend_for_args(args)
 
     assert backend is not None
-    assert backend.model == "openai/openai/gpt-4.1"
-    assert backend.api_base == "https://models.github.ai/inference"
+    assert backend.model == "openai/gpt-4.1"
+    assert backend.api_base == "https://inference.example.test/v1"
     assert backend.api_key == "runtime-secret"
-    assert backend.auth_source == "GITHUB_TOKEN"
+    assert backend.auth_source == "MODELS_TOKEN"
     assert "runtime-secret" not in repr(backend)
 
 
 def test_remote_embedding_defaults_and_requires_dimension_for_custom_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "runtime-secret")
     default_args = cli.build_parser().parse_args(
-        ["index", "--embedding-provider", "github_models"]
+        ["index", "--embedding-provider", "openai"]
     )
 
     route = cli._embedding_route_for_args(default_args)
 
-    assert route.model == "openai/text-embedding-3-small"
+    assert route.model == "text-embedding-3-small"
     assert route.dimension == 1536
     custom_args = cli.build_parser().parse_args(
         [
             "index",
             "--embedding-provider",
-            "github_models",
+            "openai",
             "--embedding-model",
             "vendor/custom-model",
         ]
@@ -384,21 +391,18 @@ def test_embedding_dimension_rejects_boolean_values() -> None:
         cli._optional_int(True, source="embedding dimension")
 
 
-def test_github_models_embedding_reports_missing_credential_without_secret(
+def test_openai_embedding_reports_missing_credential_without_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    monkeypatch.delenv("GH_TOKEN", raising=False)
-    args = cli.build_parser().parse_args(
-        ["index", "--embedding-provider", "github_models"]
-    )
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    args = cli.build_parser().parse_args(["index", "--embedding-provider", "openai"])
 
     route = cli._embedding_route_for_args(args)
 
     with pytest.raises(ValueError) as raised:
         route.credential()
     assert str(raised.value) == (
-        "credential environment variable is unset or empty: GITHUB_TOKEN"
+        "credential environment variable is unset or empty: OPENAI_API_KEY"
     )
 
 
@@ -441,7 +445,7 @@ def test_remote_semantic_dependency_check_does_not_require_sentence_transformers
 
     cli._check_view_dependencies(
         ["vector"],
-        embedding_provider="github_models",
+        embedding_provider="openai",
     )
 
     assert "faiss" in checked
@@ -452,20 +456,18 @@ def test_remote_semantic_dependency_check_does_not_require_sentence_transformers
 def test_doctor_reports_remote_embedding_route_without_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GITHUB_TOKEN", "doctor-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "doctor-secret")
     monkeypatch.setattr(
         cli, "_check_module", lambda module: module in {"faiss", "openai"}
     )
-    args = cli.build_parser().parse_args(
-        ["doctor", "--embedding-provider", "github_models"]
-    )
+    args = cli.build_parser().parse_args(["doctor", "--embedding-provider", "openai"])
 
     semantic = cli._doctor_rows(args)["semantic"]
     checks = {label: (ok, detail) for label, ok, detail in semantic}
 
     assert checks["Embedding route"][0] is True
-    assert "github_models:openai/text-embedding-3-small" in checks["Embedding route"][1]
-    assert "auth=GITHUB_TOKEN" in checks["Embedding route"][1]
+    assert "openai:text-embedding-3-small" in checks["Embedding route"][1]
+    assert "auth=OPENAI_API_KEY" in checks["Embedding route"][1]
     assert "doctor-secret" not in str(semantic)
     assert checks["OpenAI SDK"] == (True, "installed")
     assert "sentence-transformers" not in checks
@@ -486,18 +488,18 @@ def test_doctor_embedding_probe_uses_resolved_route(
         def close(self):
             captured["closed"] = True
 
-    monkeypatch.setenv("GITHUB_TOKEN", "probe-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "probe-secret")
     monkeypatch.setattr(cli, "_check_module", lambda _module: True)
     monkeypatch.setattr(vector_module, "CodeVectorStore", FakeStore)
     args = cli.build_parser().parse_args(
-        ["doctor", "--embedding-provider", "github_models", "--probe-embedding"]
+        ["doctor", "--embedding-provider", "openai", "--probe-embedding"]
     )
 
     check = cli._probe_doctor_embedding(args)
 
     assert check == ("Embedding probe", True, "vector received; dimension=1536")
-    assert captured["embedding_provider"] == "github_models"
-    assert captured["base_url"] == "https://models.github.ai/inference"
+    assert captured["embedding_provider"] == "openai"
+    assert "base_url" not in captured
     assert captured["api_key"] == "probe-secret"
     assert captured["closed"] is True
 
@@ -631,12 +633,12 @@ def test_semantic_preset_reports_required_extra(
     assert "codenib[semantic]" in capsys.readouterr().err
 
 
-def test_semantic_index_passes_resolved_github_models_route(
+def test_semantic_index_passes_resolved_openai_route(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
-    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "runtime-secret")
     monkeypatch.setattr(cli, "_check_module", lambda _module: True)
     captured = {}
 
@@ -664,16 +666,16 @@ def test_semantic_index_passes_resolved_github_models_route(
             "--preset",
             "semantic",
             "--embedding-provider",
-            "github_models",
+            "openai",
         ]
     )
 
     assert result == 0
-    assert captured["embedding_provider"] == "github_models"
-    assert captured["embedding_model"] == "openai/text-embedding-3-small"
+    assert captured["embedding_provider"] == "openai"
+    assert captured["embedding_model"] == "text-embedding-3-small"
     assert captured["embedding_dimension"] == 1536
-    assert captured["embedding_endpoint"] == "https://models.github.ai/inference"
-    assert captured["embedding_credential_env"] == "GITHUB_TOKEN"
+    assert captured["embedding_endpoint"] is None
+    assert captured["embedding_credential_env"] == "OPENAI_API_KEY"
     assert "runtime-secret" not in str(captured)
 
 
@@ -990,7 +992,7 @@ def test_wiki_audit_exits_without_starting_frontend(
     assert "Result: PASS" in output
 
 
-def test_wiki_generate_resolves_github_models_route(
+def test_wiki_generate_resolves_openai_route(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1013,7 +1015,7 @@ def test_wiki_generate_resolves_github_models_route(
     ).save(manifest_path)
     captured = {}
     local = SimpleNamespace(runtime_env={})
-    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    monkeypatch.setenv("MODELS_TOKEN", "runtime-secret")
     monkeypatch.setattr(cli, "_check_module", lambda _module: True)
     monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
 
@@ -1034,17 +1036,21 @@ def test_wiki_generate_resolves_github_models_route(
             "--no-index",
             "--generate",
             "--model-provider",
-            "github_models",
+            "openai",
             "--model",
-            "openai/gpt-4.1",
+            "gpt-4.1",
+            "--api-base",
+            "https://inference.example.test/v1",
+            "--api-key-env",
+            "MODELS_TOKEN",
             "--no-open",
         ]
     )
 
     assert result == 0
-    assert captured["model"] == "openai/openai/gpt-4.1"
-    assert captured["api_base"] == "https://models.github.ai/inference"
-    assert captured["api_key_env"] == "GITHUB_TOKEN"
+    assert captured["model"] == "openai/gpt-4.1"
+    assert captured["api_base"] == "https://inference.example.test/v1"
+    assert captured["api_key_env"] == "MODELS_TOKEN"
     assert "runtime-secret" not in str(captured)
 
 
@@ -1072,7 +1078,7 @@ def test_wiki_rejects_embedding_route_that_disagrees_with_artifact(
             )
         },
     ).save(manifest_path)
-    monkeypatch.setenv("GITHUB_TOKEN", "runtime-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "runtime-secret")
     monkeypatch.setattr(cli, "_check_module", lambda _module: True)
     monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
 
@@ -1082,7 +1088,7 @@ def test_wiki_rejects_embedding_route_that_disagrees_with_artifact(
             str(tmp_path),
             "--no-index",
             "--embedding-provider",
-            "github_models",
+            "openai",
         ]
     )
 
