@@ -160,6 +160,23 @@ def _no_thinking_kwargs(model: str) -> Dict[str, Any]:
     return {}
 
 
+_JSON_OBJECT_STRUCTURED_OUTPUT_PROVIDERS = frozenset({"deepseek"})
+
+
+def _uses_json_object_for_structured_output(model: str) -> bool:
+    """Return whether *model* needs JSON mode instead of JSON Schema mode.
+
+    DeepSeek's OpenAI-compatible API currently accepts ``text`` and
+    ``json_object`` response formats, but not OpenAI's ``json_schema`` format.
+    CodeNib requires provider-prefixed LiteLLM model names, so the native
+    ``deepseek/...`` route can select the compatible format without first
+    sending a request that is guaranteed to fail.
+    """
+
+    provider, separator, _ = (model or "").lower().partition("/")
+    return bool(separator and provider in _JSON_OBJECT_STRUCTURED_OUTPUT_PROVIDERS)
+
+
 # ---------------------------------------------------------------------------
 # Anthropic prompt caching
 # ---------------------------------------------------------------------------
@@ -399,9 +416,9 @@ class LiteLLMChat:
 class _StructuredLLM:
     """Wraps a :class:`LiteLLMChat` to parse responses into a Pydantic model.
 
-    Uses LiteLLM's ``response_format`` parameter which translates to
-    provider-native structured output (OpenAI JSON mode, Anthropic tool_use,
-    Vertex function calling, etc.).
+    Most providers receive the Pydantic model directly through LiteLLM's
+    ``response_format`` translation. Providers limited to JSON Object mode
+    receive the schema in the prompt and are validated locally in the same way.
     """
 
     chat: LiteLLMChat
@@ -409,7 +426,8 @@ class _StructuredLLM:
 
     def invoke(self, messages: List[ChatMessage]) -> BaseModel:
         """Call the LLM and return a validated Pydantic instance."""
-        response = self.chat._call(messages, response_format=self.schema)
+        messages, response_format = self._prepare_request(messages)
+        response = self.chat._call(messages, response_format=response_format)
         content = response.choices[0].message.content
 
         try:
@@ -420,3 +438,42 @@ class _StructuredLLM:
             if match:
                 return self.schema.model_validate_json(match.group(1).strip())
             raise
+
+    def _prepare_request(
+        self,
+        messages: List[ChatMessage],
+    ) -> Tuple[List[ChatMessage], Any]:
+        """Select the provider's structured-output protocol."""
+
+        if not _uses_json_object_for_structured_output(self.chat.model):
+            return messages, self.schema
+        return self._with_schema_instruction(messages), {"type": "json_object"}
+
+    def _with_schema_instruction(
+        self,
+        messages: List[ChatMessage],
+    ) -> List[ChatMessage]:
+        """Add the schema instruction required by JSON Object mode."""
+
+        schema_json = json.dumps(
+            self.schema.model_json_schema(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        instruction = (
+            "Return only a JSON object that validates against the JSON Schema "
+            "below. Do not add markdown fences or explanatory text.\n"
+            f"JSON Schema:\n{schema_json}"
+        )
+        prompted = list(messages)
+        for index, message in enumerate(prompted):
+            if message.role == "system":
+                prompted[index] = ChatMessage(
+                    role="system",
+                    content=f"{message.content}\n\n{instruction}",
+                )
+                break
+        else:
+            prompted.insert(0, system_message(instruction))
+        return prompted
