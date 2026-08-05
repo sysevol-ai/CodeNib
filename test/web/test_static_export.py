@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 
 import pytest
@@ -13,6 +13,7 @@ import pytest
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.web.static_export import (
     STATIC_EXPORT_MANIFEST,
+    _assert_publishable,
     export_static_wiki,
     normalize_base_path,
 )
@@ -72,7 +73,9 @@ def _frontend(root: Path) -> Path:
     (frontend / "index.html").write_text(
         "<!doctype html><html><head><base href='/'></head><body>"
         "<script src='./runtime-config.js'></script>"
-        "<script type='module' src='./assets/app.js'></script></body></html>",
+        "<script type='module' src='./assets/app.js'></script>"
+        "<a href='?p=module'>Module</a><a href='#heading'>Heading</a>"
+        "</body></html>",
         encoding="utf-8",
     )
     (frontend / "runtime-config.js").write_text(
@@ -229,7 +232,33 @@ def test_static_export_is_deterministic_and_publishable(
     runtime = (setup.output / "runtime-config.js").read_text()
     assert '"basePath":"/demo"' in runtime
     assert '"mode":"static"' in runtime
-    assert '<base href="/demo/">' in (setup.output / "index.html").read_text()
+    index = (setup.output / "index.html").read_text()
+    assert "<base" not in index
+    assert "src='/demo/runtime-config.js'" in index
+    assert "src='/demo/assets/app.js'" in index
+    assert "href='?p=module'" in index
+    assert "href='#heading'" in index
+
+
+def test_publishability_rejects_json_escaped_windows_path(tmp_path: Path) -> None:
+    root = tmp_path / "site"
+    root.mkdir()
+    windows_path = PureWindowsPath(r"C:\build\repository")
+    (root / "page.json").write_text(
+        json.dumps({"source": str(windows_path)}),
+        encoding="utf-8",
+    )
+
+    class ResolvedWindowsPath:
+        def resolve(self):
+            return windows_path
+
+    with pytest.raises(ValueError, match="absolute build-machine path"):
+        _assert_publishable(
+            root,
+            forbidden_paths=(ResolvedWindowsPath(),),
+            environ={},
+        )
 
 
 def test_static_export_rejects_a_configured_secret(
