@@ -1,0 +1,26 @@
+{
+  "schema": "codenib.pricing-snapshot.v1",
+  "snapshot_id": "anthropic-direct-2026-08-04",
+  "currency": "USD",
+  "effective_date": "2026-08-04",
+  "retrieved_date": "2026-08-04",
+  "models": [
+    {
+      "model_id": "anthropic/claude-haiku-4-5-20251001",
+      "aliases": [
+        "anthropic/claude-haiku-4-5",
+        "claude-haiku-4-5-20251001"
+      ],
+      "channel": "anthropic-api-direct",
+      "token_semantics": "prompt_excludes_cache",
+      "cache_write_ttl": "5m",
+      "rates_per_million": {
+        "uncached_input": 1.0,
+        "output": 5.0,
+        "cache_read_input": 0.1,
+        "cache_write_input": 1.25
+      },
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing"
+    }
+  ]
+}

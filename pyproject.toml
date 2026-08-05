@@ -66,6 +66,7 @@ codenib-lsp-agent-study-artifacts = "codenib.eval.agent_runner.lsp_agent_study_a
 codenib-lsp-agent-study-run = "codenib.eval.agent_runner.lsp_agent_study_runner:main"
 codenib-artifact-bundle = "codenib.eval.artifact_bundle:main"
 codenib-swe-explore-benchmark = "codenib.eval.benchmarks.swe_explore_runner:main"
+codenib-quality-cost-report = "codenib.eval.reports.quality_cost:main"
 
 [project.optional-dependencies]
 agent = [
@@ -168,6 +169,7 @@ exclude = ["eval*"]  # exclude packages matching these glob patterns
 
 [tool.setuptools.package-data]
 "codenib.agent.skills" = ["*/config.yaml", "*/skill.md"]
+"codenib.eval" = ["pricing/*.json"]
 "codenib.scip_interface" = ["*.proto", "*.yml", "*.sh", "README.md"]
 
 [tool.pytest.ini_options]

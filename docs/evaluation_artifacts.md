@@ -127,3 +127,27 @@ whose per-cell JSON already existed and were reused under `resume`), `skipped`
 (cell- or instance-level failures, each with a reason). Bundle the sweep
 output directory — summary plus `cells/` — with the manifest flow above to
 freeze both the protocol and the per-cell results.
+
+## Quality-constrained cost reports
+
+Use `codenib-quality-cost-report` to compare agent arms without dropping misses
+or selecting a cheap arm that fails the localization-quality guard. Inputs may
+be complete sweep directories or individual cell JSON files; sharded `cells/`
+directories are discovered recursively.
+
+```bash
+codenib-quality-cost-report /path/to/baseline-and-policy-results \
+  --output-dir /path/to/report \
+  --arm grep_only \
+  --arm preinj_eager \
+  --arm preinj_eager_compact \
+  --noninferiority-margin 0.05
+```
+
+The report emits JSON and Markdown with exact paired denominators, localization
+success, token cost per attempt and per success, repository-clustered confidence
+intervals, and the least-cost arm that clears the declared quality margin.
+Recorded USD estimates remain labeled as unpinned. Offline repricing requires
+complete raw token classes and an explicit content-hashed pricing snapshot;
+unknown local-model prices are reported as unavailable. These values are not
+GitHub or Copilot credit estimates.
