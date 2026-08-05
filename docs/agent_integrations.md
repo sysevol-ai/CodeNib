@@ -226,8 +226,8 @@ reasoning loop while replacing its repository data plane with
 localization baselines:
 
 ```bash
-export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
-python -m pip install "codenib[agent,graph] @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[agent,graph]==0.2.0a2"
+codenib toolchain install /path/to/repository --scope graph
 ```
 
 ```python
@@ -634,8 +634,7 @@ Prepare a broad, reproducible CodeNib-only coverage set before running the
 policy:
 
 ```bash
-make scip-python-tool
-export PATH="${CODENIB_SCIP_TOOLS_DIR:-/tmp/codenib/scip-tools}:$PATH"
+codenib toolchain install . --language python --scope graph
 export CODENIB_SCIP_PYTHON_INDEX_TIMEOUT_SECONDS=900
 
 python scripts/analysis/prepare_swebench_policy_cases.py \

@@ -14,6 +14,7 @@ GO_URL ?= https://go.dev/dl/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz
 SCIP_GO_MODULE ?= github.com/scip-code/scip-go/cmd/scip-go
 SCIP_GO_VERSION ?= v0.2.7
 GOPLS_VERSION ?= v0.22.0
+RUST_TOOLCHAIN ?= nightly-2026-02-22
 SCIP_CLANG_VERSION ?= v0.4.0
 SCIP_PYTHON_VERSION ?= 0.6.6
 SCIP_TYPESCRIPT_VERSION ?= 0.4.0
@@ -299,10 +300,10 @@ rust-tool:
 	@if ! command -v rustup >/dev/null 2>&1; then \
 		curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; \
 	fi
-	PATH="$$HOME/.cargo/bin:$$PATH" rustup toolchain install stable
-	PATH="$$HOME/.cargo/bin:$$PATH" rustup component add rust-analyzer --toolchain stable
+	PATH="$$HOME/.cargo/bin:$$PATH" rustup toolchain install "$(RUST_TOOLCHAIN)"
+	PATH="$$HOME/.cargo/bin:$$PATH" rustup component add rust-analyzer --toolchain "$(RUST_TOOLCHAIN)"
 	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
-	@rust_analyzer="$$(PATH="$$HOME/.cargo/bin:$$PATH" rustup which --toolchain stable rust-analyzer)"; \
+	@rust_analyzer="$$(PATH="$$HOME/.cargo/bin:$$PATH" rustup which --toolchain "$(RUST_TOOLCHAIN)" rust-analyzer)"; \
 		ln -sf "$$rust_analyzer" "$(CODENIB_SCIP_TOOLS_DIR)/rust-analyzer"
 
 scip-python-tool:

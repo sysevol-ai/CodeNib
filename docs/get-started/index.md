@@ -14,8 +14,8 @@ SPDX-License-Identifier: Apache-2.0
 
 <div class="codenib-section-lede" markdown>
 
-Build the smallest useful CodeNib setup first, then add semantic, graph, or
-agent-backed capabilities only when your workflow needs them.
+Start with hybrid repository retrieval, then add graph or agent-backed
+capabilities when the workload needs them.
 
 </div>
 
@@ -25,8 +25,8 @@ agent-backed capabilities only when your workflow needs them.
 
     **Quickstart**
 
-    Turn a local repository into a deterministic, source-linked Wiki with no
-    API key or model download.
+    Turn a local repository into a source-linked Wiki with reusable hybrid
+    retrieval and no API key.
 
     [Launch your first repository →](../quickstart.md)
 
@@ -59,9 +59,9 @@ agent-backed capabilities only when your workflow needs them.
 
 </div>
 
-## Pick a repository profile
+## Add language providers
 
-Start with `fast` for a zero-model BM25 index. Move to `semantic`, `graph`, or
-`full` only when the query workload needs those views. The
-[Quickstart](../quickstart.md#select-repository-views) lists the package and
-toolchain requirements for each profile.
+CodeNib detects installed semantic capabilities automatically. Structural and
+live-navigation providers are language-specific; use `codenib toolchain` to
+inspect or install only the tools needed by one repository. The
+[Quickstart](../quickstart.md#language-toolchains) shows the complete flow.

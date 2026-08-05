@@ -10,7 +10,7 @@ on:
       preset:
         description: CodeNib view preset.
         type: string
-        default: fast
+        default: semantic
       python-version:
         description: Python runtime used for indexing.
         type: string

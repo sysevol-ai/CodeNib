@@ -24,6 +24,17 @@ def test_parser_exposes_release_commands() -> None:
         args = parser.parse_args([command])
         assert args.command == command
 
+    toolchain = parser.parse_args(
+        ["toolchain", "install", ".", "--scope", "all", "--dry-run"]
+    )
+    assert toolchain.command == "toolchain"
+    assert toolchain.toolchain_command == "install"
+    assert toolchain.scope == "all"
+    assert toolchain.dry_run is True
+
+    publish = parser.parse_args(["publish", "."])
+    assert publish.preset == "auto"
+
 
 def test_export_parser_accepts_pages_mount_options() -> None:
     args = cli.build_parser().parse_args(
@@ -595,12 +606,13 @@ def test_resolve_manifest_path_falls_back_to_legacy_repository_cache(
     assert cli.resolve_manifest_path(str(tmp_path)) == manifest
 
 
-def test_index_command_uses_fast_preset_by_default(
+def test_index_command_auto_preset_falls_back_without_dense_dependencies(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (tmp_path / "main.py").write_text("def main():\n    return 0\n")
     captured = {}
+    monkeypatch.setattr(cli, "_check_module", lambda _module: False)
 
     def fake_index(repo_path, *, languages, views, rebuild):
         captured.update(
@@ -629,6 +641,27 @@ def test_index_command_uses_fast_preset_by_default(
         "views": ["bm25"],
         "rebuild": False,
     }
+
+
+def test_auto_preset_selects_hybrid_views_when_semantic_extra_is_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = cli.build_parser().parse_args(["index", "."])
+    monkeypatch.setattr(cli, "_check_module", lambda _module: True)
+
+    assert args.preset == "auto"
+    assert cli._selected_views_for_args(args) == ["bm25", "vector"]
+
+
+def test_auto_preset_preserves_an_explicit_embedding_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = cli.build_parser().parse_args(
+        ["index", ".", "--embedding-provider", "openai"]
+    )
+    monkeypatch.setattr(cli, "_check_module", lambda _module: False)
+
+    assert cli._selected_views_for_args(args) == ["bm25", "vector"]
 
 
 def test_fast_index_builds_fresh_bm25_manifest(

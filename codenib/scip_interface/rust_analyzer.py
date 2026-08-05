@@ -9,7 +9,9 @@ from __future__ import annotations
 import os
 import shutil
 
-DEFAULT_RUST_TOOLCHAIN = "nightly"
+from ..toolchains import RUST_TOOLCHAIN
+
+DEFAULT_RUST_TOOLCHAIN = RUST_TOOLCHAIN
 
 
 def rust_toolchain() -> str:

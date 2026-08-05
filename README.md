@@ -51,6 +51,13 @@ agent or code-Wiki framework.
 
 ## News
 
+- **2026-08-05 — CodeNib 0.2.0 Alpha 2: stronger defaults and managed
+  language providers.** The local CLI and reusable Pages workflow now select
+  BM25+dense retrieval by default, while retaining an explicit no-model
+  fallback for resource-constrained environments.
+  `codenib toolchain` detects repository languages, installs pinned
+  package-managed SCIP/LSP providers under `~/.codenib/toolchains`, and leaves
+  system and project prerequisites explicit.
 - **2026-08-05 — CodeNib 0.2.0 Alpha 1: build once, serve everywhere.**
   [`codenib publish`](https://docs.codenib.ai/github_pages/) and the reusable
   GitHub workflow deploy a no-model static Wiki and retain a matching BM25 or
@@ -58,7 +65,7 @@ agent or code-Wiki framework.
   artifact can be rebound to that checkout and served through MCP without
   rebuilding; incremental caches remain private build state rather than part
   of the downloadable serving artifact. See the
-  [0.2.0 Alpha 1 notes](https://docs.codenib.ai/releases/0.2.0/).
+  [0.2 release notes](https://docs.codenib.ai/releases/0.2.0/).
 - **2026-08-04 — Native repository explorer.**
   [`RepositoryContextExplorer`](codenib/agent/runtime/explorer.py) plans BM25,
   dense, hybrid, reranked, and graph routes over manifest-backed views and
@@ -105,22 +112,20 @@ publishing a partially updated view.
 
 ## Quickstart
 
-Requires Python 3.10+ and Git.
-
-The documentation on `main` describes the `0.2` feature line, currently
-published as `0.2.0a1` on TestPyPI. Install its immutable wheel directly so
-normal dependencies continue to resolve only from PyPI:
+Requires Python 3.10+ and Git. The recommended local path includes the pinned
+CodeRankEmbed model and serves hybrid BM25+dense retrieval:
 
 ```bash
-export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
-python -m pip install "codenib @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[semantic]==0.2.0a2"
 codenib doctor --require core --require wiki
 codenib wiki /path/to/repository
 ```
 
-For the stable `0.1` line, use `python -m pip install codenib`. The
-[0.2 Alpha 1 notes](https://docs.codenib.ai/releases/0.2.0/) record the exact
-package, workflow revision, upgrade boundary, and verification evidence.
+`codenib wiki` selects the semantic route because the installed environment
+contains its dependencies. A smaller `python -m pip install codenib==0.2.0a2`
+installation selects the deterministic BM25 fallback and downloads no model.
+The [0.2 release notes](https://docs.codenib.ai/releases/0.2.0/) record the
+upgrade boundary and verification evidence.
 
 CodeNib detects the repository languages, builds a reusable index under
 `~/.codenib/repositories`, launches the local Wiki, and opens
@@ -134,6 +139,16 @@ Check the environment or index without opening the Wiki:
 ```bash
 codenib doctor --require core --require wiki
 codenib index /path/to/repository
+```
+
+For a structural view, CodeNib detects the repository languages and manages
+only their package-level providers; operating-system and project prerequisites
+remain explicit:
+
+```bash
+python -m pip install "codenib[graph]==0.2.0a2"
+codenib toolchain install /path/to/repository --scope graph
+codenib doctor /path/to/repository --require graph
 ```
 
 Export that indexed commit as a serverless Wiki when a live Ask backend is not
@@ -150,11 +165,12 @@ the local or MCP serving path.
 
 For a repository-hosted Wiki, CodeNib also ships a reusable GitHub workflow
 that incrementally builds the same manifest, deploys the static site to Pages,
-and uploads the matching commit-addressed context artifact. Its default `fast`
-route needs no model credential or model download. The optional `semantic`
-route builds the matching vector artifact with a local Hugging Face model or an
-explicit BYO OpenAI-compatible endpoint; query-time search remains in the local
-or MCP runtime. See [GitHub Pages](https://docs.codenib.ai/github_pages/).
+and uploads the matching commit-addressed context artifact. Its default
+`semantic` route builds BM25 and vector views with a cached local Hugging Face
+model and needs no API key. An explicit `fast` route avoids the model download;
+a BYO OpenAI-compatible endpoint can replace local embedding. Query-time search
+remains in the local or MCP runtime. See
+[GitHub Pages](https://docs.codenib.ai/github_pages/).
 The published BM25/vector artifact can then be verified against an exact local
 checkout and served through MCP without rebuilding the repository views.
 
@@ -172,7 +188,7 @@ Install the MCP extra, build once, and serve the same repository manifest over
 stdio:
 
 ```bash
-python -m pip install "codenib[mcp] @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[mcp,semantic]==0.2.0a2"
 codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```

@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 from collections import Counter
@@ -33,6 +34,7 @@ _PRESET_VIEWS = {
     "graph": ("bm25", "symbol_graph"),
     "full": ("bm25", "vector", "symbol_graph", "zoekt"),
 }
+_PRESET_CHOICES = ("auto", *_PRESET_VIEWS)
 _REMOTE_EMBEDDING_DEFAULTS = {
     "openai": ("text-embedding-3-small", 1536),
 }
@@ -308,6 +310,34 @@ def _selected_views(preset: str, explicit: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(views))
 
 
+def _selected_views_for_args(args: argparse.Namespace) -> list[str]:
+    explicit = _split_values(args.view)
+    if explicit or args.preset != "auto":
+        return _selected_views(args.preset, explicit)
+
+    route = _embedding_route_for_args(args)
+    embedding_module = (
+        "sentence_transformers" if route.provider == "huggingface" else "openai"
+    )
+    resolved = (
+        "semantic"
+        if _embedding_identity_is_configured(args)
+        or (_check_module("faiss") and _check_module(embedding_module))
+        else "fast"
+    )
+    reason = (
+        "explicit embedding route"
+        if _embedding_identity_is_configured(args)
+        else (
+            "dense dependencies available"
+            if resolved == "semantic"
+            else "no-model fallback"
+        )
+    )
+    print(f"Auto preset: {resolved} ({reason})")
+    return list(_PRESET_VIEWS[resolved])
+
+
 def index_repository(
     repo_path: Path,
     *,
@@ -321,6 +351,9 @@ def index_repository(
     embedding_credential_env: str | None = None,
 ):
     """Build or update the requested repository views."""
+    from .toolchains import activate_managed_toolchain
+
+    activate_managed_toolchain()
     from .compiler.index_builders import IndexBuilderRegistry, register_default_builders
     from .compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from .compiler.manifest import MANIFEST_FILENAME
@@ -399,10 +432,18 @@ def _print_index_summary(manifest, views: Sequence[str]) -> None:
         print(f"  {view:<14} {entry.status}{suffix}")
 
 
-def _run_index(args: argparse.Namespace) -> int:
+def _run_index(
+    args: argparse.Namespace,
+    *,
+    selected_views: Sequence[str] | None = None,
+) -> int:
     repo_path = resolve_repo_path(args.repo)
     languages = _selected_languages(repo_path, args.language)
-    views = _selected_views(args.preset, args.view)
+    views = (
+        list(selected_views)
+        if selected_views is not None
+        else _selected_views_for_args(args)
+    )
     embedding_route = None
     if "vector" in views:
         embedding_route = _embedding_route_for_args(args)
@@ -638,14 +679,14 @@ def _run_artifact_mcp_config(args: argparse.Namespace) -> int:
 
 
 def _run_publish(args: argparse.Namespace) -> int:
-    selected_views = _selected_views(args.preset, args.view)
+    selected_views = _selected_views_for_args(args)
     unsupported = sorted(set(selected_views) - {"bm25", "vector"})
     if unsupported:
         raise CLIError(
             "portable publication currently supports bm25 and vector views; "
             f"unsupported: {', '.join(unsupported)}"
         )
-    index_result = _run_index(args)
+    index_result = _run_index(args, selected_views=selected_views)
     if index_result:
         return index_result
 
@@ -832,7 +873,11 @@ def _manifest_embedding_route(
 def _run_wiki(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     languages = _selected_languages(repo_path, args.language)
-    views = _selected_views(args.preset, args.view)
+    if args.no_index and args.preset == "auto" and not _split_values(args.view):
+        views = list(_PRESET_VIEWS["fast"])
+        print("Auto preset: reuse manifest capabilities")
+    else:
+        views = _selected_views_for_args(args)
     audit = bool(args.audit or args.audit_json)
     model_options = _model_options_for_args(args)
     if (
@@ -1477,6 +1522,81 @@ def _run_doctor(args: argparse.Namespace) -> int:
     return 1 if failed_required else 0
 
 
+def _toolchain_scopes(value: str) -> tuple[str, ...]:
+    return ("graph", "lsp") if value == "all" else (value,)
+
+
+def _toolchain_plan_for_args(args: argparse.Namespace):
+    from .toolchains import plan_repository_toolchain
+
+    repo_path = resolve_repo_path(args.repo)
+    languages = _selected_languages(repo_path, args.language)
+    return plan_repository_toolchain(
+        repo_path,
+        languages,
+        scopes=_toolchain_scopes(args.scope),
+    )
+
+
+def _print_toolchain_plan(plan) -> None:
+    print(f"Repository: {plan.repository}")
+    print(f"Languages:  {', '.join(plan.languages)}")
+    print(f"Managed:    {plan.root}")
+    print("Providers:")
+    if not plan.requirements:
+        print("  none")
+    for requirement in plan.requirements:
+        status = "OK" if requirement.ready else "MISSING"
+        resolved = requirement.resolved or requirement.detail or "not found"
+        print(
+            f"  [{status:<7}] {requirement.display_name:<12} "
+            f"{requirement.scope:<5} {requirement.executable}: {resolved}"
+        )
+    if plan.notes:
+        print("Notes:")
+        for note in plan.notes:
+            print(f"  - {note}")
+
+
+def _run_toolchain_status(args: argparse.Namespace) -> int:
+    plan = _toolchain_plan_for_args(args)
+    _print_toolchain_plan(plan)
+    return 0 if plan.ready else 1
+
+
+def _run_toolchain_install(args: argparse.Namespace) -> int:
+    from .toolchains import install_requirements
+
+    plan = _toolchain_plan_for_args(args)
+    try:
+        commands, manual = install_requirements(
+            plan.missing,
+            root=plan.root,
+            dry_run=args.dry_run,
+        )
+    except RuntimeError as exc:
+        raise CLIError(str(exc)) from exc
+
+    heading = "Planned commands" if args.dry_run else "Executed commands"
+    print(f"{heading}:")
+    if commands:
+        for command in commands:
+            print(f"  {shlex.join(command)}")
+    else:
+        print("  none")
+    if manual:
+        print("Manual prerequisites:")
+        for item in manual:
+            print(f"  - {item}")
+    if args.dry_run:
+        return 0
+
+    refreshed = _toolchain_plan_for_args(args)
+    print()
+    _print_toolchain_plan(refreshed)
+    return 0 if refreshed.ready else 1
+
+
 def _add_embedding_route_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--embedding-provider",
@@ -1522,7 +1642,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     index_parser.add_argument("repo", nargs="?", default=".")
-    index_parser.add_argument("--preset", choices=tuple(_PRESET_VIEWS), default="fast")
+    index_parser.add_argument("--preset", choices=_PRESET_CHOICES, default="auto")
     index_parser.add_argument(
         "--language",
         action="append",
@@ -1549,7 +1669,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     wiki_parser.add_argument("repo", nargs="?", default=".")
-    wiki_parser.add_argument("--preset", choices=tuple(_PRESET_VIEWS), default="fast")
+    wiki_parser.add_argument("--preset", choices=_PRESET_CHOICES, default="auto")
     wiki_parser.add_argument("--language", action="append", default=[])
     wiki_parser.add_argument("--view", action="append", default=[])
     wiki_parser.add_argument("--rebuild", action="store_true")
@@ -1746,8 +1866,8 @@ def build_parser() -> argparse.ArgumentParser:
     publish_parser.add_argument("repo", nargs="?", default=".")
     publish_parser.add_argument(
         "--preset",
-        choices=("fast", "semantic"),
-        default="fast",
+        choices=("auto", "fast", "semantic"),
+        default="auto",
     )
     publish_parser.add_argument("--language", action="append", default=[])
     publish_parser.add_argument("--view", action="append", default=[])
@@ -1800,6 +1920,44 @@ def build_parser() -> argparse.ArgumentParser:
         default="INFO",
     )
     mcp_parser.set_defaults(handler=_run_mcp)
+
+    toolchain_parser = subparsers.add_parser(
+        "toolchain",
+        help="inspect or install repository language providers",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    toolchain_subparsers = toolchain_parser.add_subparsers(
+        dest="toolchain_command",
+        required=True,
+    )
+    for command, handler in (
+        ("status", _run_toolchain_status),
+        ("install", _run_toolchain_install),
+    ):
+        command_parser = toolchain_subparsers.add_parser(
+            command,
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        )
+        command_parser.add_argument("repo", nargs="?", default=".")
+        command_parser.add_argument(
+            "--language",
+            action="append",
+            default=[],
+            help="source language override; repeat or use a comma-separated list",
+        )
+        command_parser.add_argument(
+            "--scope",
+            choices=("graph", "lsp", "all"),
+            default="graph",
+            help="provider surface to inspect or install",
+        )
+        if command == "install":
+            command_parser.add_argument(
+                "--dry-run",
+                action="store_true",
+                help="print pinned package-manager commands without running them",
+            )
+        command_parser.set_defaults(handler=handler)
 
     doctor_parser = subparsers.add_parser(
         "doctor",
@@ -1871,6 +2029,9 @@ def run(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        from .toolchains import activate_managed_toolchain
+
+        activate_managed_toolchain()
         return int(args.handler(args) or 0)
     except CLIError as exc:
         print(f"error: {exc}", file=sys.stderr)

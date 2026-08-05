@@ -17,7 +17,6 @@ import atexit
 import json
 import os
 import select
-import shutil
 import subprocess
 import sys
 import time
@@ -27,6 +26,7 @@ from typing import Any, Optional
 from ...languages import lsp_command_for_language, normalize_graph_language
 from ...log_utils import get_logger
 from ...scip_interface.rust_analyzer import rust_toolchain
+from ...toolchains import activate_managed_toolchain, resolve_command
 
 logger = get_logger(__name__)
 
@@ -135,10 +135,10 @@ _EXTRA_BIN_DIRS = [
 def resolve_lsp_binary(binary: str) -> Optional[str]:
     """Find the full path to an LSP binary.
 
-    Searches: PATH (via shutil.which) → common install locations.
+    Searches: CodeNib-managed tools → PATH → common install locations.
     Returns resolved path or None.
     """
-    resolved = shutil.which(binary)
+    resolved = resolve_command(binary)
     if resolved:
         return resolved
     for dir_fn in _EXTRA_BIN_DIRS:
@@ -157,6 +157,7 @@ def _lsp_process_env(
     project_root: str | Path | None = None,
 ) -> dict[str, str]:
     env = os.environ.copy()
+    activate_managed_toolchain(env)
     # Bypass a repository-pinned Rust toolchain so rust-analyzer uses the
     # CodeNib-selected toolchain instead.
     if language == "rust":

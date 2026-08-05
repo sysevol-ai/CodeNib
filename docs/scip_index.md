@@ -23,15 +23,16 @@ Install the graph dependencies, check the target repository, and then select
 the graph preset:
 
 ```bash
-export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
-python -m pip install "codenib[graph] @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[graph]==0.2.0a2"
+codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
 codenib index /path/to/repository --preset graph
 ```
 
-`codenib doctor` detects the repository languages and reports missing
-executables with installation hints. Use `--language` when detection is
-ambiguous:
+`codenib toolchain` detects the repository languages, installs pinned
+package-managed providers under `~/.codenib/toolchains`, and reports system or
+project-local prerequisites it cannot safely install. `codenib doctor` then
+checks the complete build route. Use `--language` when detection is ambiguous:
 
 ```bash
 codenib doctor /path/to/repository \
@@ -47,10 +48,40 @@ target checkout. Some language indexers still need to resolve project
 dependencies and may create normal toolchain files such as `node_modules` or a
 project-local bundle.
 
+## Language Provider Map
+
+Cold-start graph construction and live LSP navigation are separate provider
+surfaces. A static graph can serve LSP-shaped definition and reference requests
+without launching the live server after construction.
+
+| Language | Graph construction | Optional live LSP |
+|---|---|---|
+| Python | `scip-python` | `basedpyright-langserver` |
+| JavaScript / TypeScript | `scip-typescript` | `typescript-language-server` |
+| Go | `scip-go` | `gopls` |
+| Rust | `rust-analyzer scip` | `rust-analyzer` |
+| C / C++ | clangd index | `clangd` |
+| Java | `scip-java` | Eclipse JDT LS |
+| Kotlin | `scip-java` | Kotlin language server |
+| Scala | `scip-java` | not registered |
+| C# | `scip-dotnet` | `csharp-ls` |
+| Ruby | `scip-ruby`, with Ruby LSP fallback | `ruby-lsp` |
+| PHP | project-local `scip-php`, with Intelephense fallback | `intelephense` |
+
+The manager handles pinned npm, Go, Rustup, .NET tool, and RubyGem providers
+when their host runtime is present. OS packages such as clangd, JDKs, and build
+tools remain explicit. Preview the exact operations without writing anything:
+
+```bash
+codenib toolchain install . --scope all --dry-run
+```
+
 ## Install Local Toolchains From Source
 
-For a CodeNib source checkout, the Makefile installs pinned SCIP and LSP tools
-below `$CODENIB_SCIP_TOOLS_DIR`:
+For a CodeNib source checkout, the Makefile retains broad maintainer and CI
+bootstrap targets. End users should prefer `codenib toolchain`; source
+developers can install every smoke-test provider below
+`$CODENIB_SCIP_TOOLS_DIR`:
 
 ```bash
 # Ubuntu system packages, Python development dependencies, and all toolchains

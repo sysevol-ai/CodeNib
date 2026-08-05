@@ -33,23 +33,22 @@ core decoder parity.
 
 ## Quick Start
 
-This site tracks the `0.2` alpha. Install its immutable wheel directly; plain
-`pip install codenib` still selects the stable `0.1` line.
+This site tracks the `0.2` alpha. The recommended local install enables hybrid
+BM25+dense retrieval with the pinned CodeRankEmbed model.
 
 ```bash
-export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
-python -m pip install "codenib @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[semantic]==0.2.0a2"
 codenib wiki /path/to/repository
 ```
 
-The default Wiki is deterministic, uses BM25, and needs no API key. CodeNib
-detects repository languages, writes a reusable manifest under
-`~/.codenib/repositories`, and opens the browser UI. This default `fast` profile
-leaves the target checkout unchanged. Read the
-[Quickstart](quickstart.md) for profiles and troubleshooting.
+The CLI detects the installed semantic capability, writes a reusable manifest
+under `~/.codenib/repositories`, and opens the browser UI. Install
+`codenib==0.2.0a2` without extras for the smaller no-model BM25 fallback. Both
+paths leave the target checkout unchanged. Read the [Quickstart](quickstart.md)
+for provider setup and troubleshooting.
 
 ```bash
-python -m pip install "codenib[mcp] @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[mcp,semantic]==0.2.0a2"
 codenib mcp /path/to/repository
 ```
 

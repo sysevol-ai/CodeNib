@@ -77,6 +77,7 @@ def _validate_wheel(wheel: Path, name: str, version: str) -> None:
         "codenib/sandbox/docker.py",
         "codenib/sandbox/protocol.py",
         "codenib/sandbox/types.py",
+        "codenib/toolchains.py",
         "codenib/web/frontend/index.html",
         "codenib/web/frontend/codenib-icon.svg",
         "codenib/web/frontend/runtime-config.js",

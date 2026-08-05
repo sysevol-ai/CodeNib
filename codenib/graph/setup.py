@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import shutil
+import shlex
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable, Literal, Sequence
@@ -20,6 +20,7 @@ from ..languages import (
     scip_cold_start_command_for_language,
 )
 from ..repository_filters import DEFAULT_IGNORED_DIRS
+from ..toolchains import resolve_command
 
 GraphSetupState = Literal["ready", "missing", "unsupported"]
 CommandResolver = Callable[[str], str | None]
@@ -31,16 +32,22 @@ _TOOL_HINTS = {
     "clangd": "Install clangd from LLVM.",
     "cmake": "Install CMake or provide compile_commands.json.",
     "composer": "Install Composer, or provide an Intelephense LSP command.",
-    "intelephense": "Install Intelephense for the PHP LSP fallback.",
-    "ruby-lsp": "Install ruby-lsp for the Ruby LSP fallback.",
-    "rust-analyzer": "Install rust-analyzer with SCIP support.",
-    "scip-dotnet": "Install scip-dotnet or set CODENIB_CSHARP_SCIP_CMD.",
+    "intelephense": (
+        "Install the managed Intelephense provider with `codenib toolchain install`."
+    ),
+    "ruby-lsp": "Install the managed Ruby LSP provider with `codenib toolchain install`.",
+    "rust-analyzer": (
+        "Install the managed rust-analyzer provider with `codenib toolchain install`."
+    ),
+    "scip-dotnet": "Install the managed scip-dotnet provider with `codenib toolchain install`.",
     "scip-go": "Install scip-go and make it available on PATH.",
     "scip-java": "Install scip-java or set the language-specific SCIP command.",
-    "scip-python": "Install @sourcegraph/scip-python and expose `scip-python` on PATH.",
+    "scip-python": (
+        "Install the managed `scip-python` provider with `codenib toolchain install`."
+    ),
     "scip-ruby": "Prepare scip-ruby in the repository bundle.",
     "scip-typescript": (
-        "Install @sourcegraph/scip-typescript and expose `scip-typescript` on PATH."
+        "Install the managed `scip-typescript` provider with `codenib toolchain install`."
     ),
 }
 
@@ -155,6 +162,11 @@ class GraphSetupReport:
         commands = []
         if not self.runtime.ready:
             commands.append('pip install "codenib[graph]"')
+        if self.unavailable_languages:
+            commands.append(
+                f"codenib toolchain install {shlex.quote(self.repository)} "
+                "--scope graph"
+            )
         commands.extend(
             [
                 "codenib doctor . --require graph",
@@ -639,7 +651,7 @@ def diagnose_graph_setup(
     """
 
     root = Path(repository).expanduser().resolve()
-    command_resolver = command_resolver or shutil.which
+    command_resolver = command_resolver or resolve_command
     module_checker = module_checker or _module_available
     missing_runtime = [
         name for name in ("igraph", "google.protobuf") if not module_checker(name)

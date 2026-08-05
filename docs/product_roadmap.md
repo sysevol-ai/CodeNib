@@ -21,12 +21,13 @@ Passing unit tests or publishing a wheel is necessary but not sufficient.
 ## North-Star Journey
 
 ```bash
-pip install codenib
+pip install "codenib[semantic]"
 codenib wiki /path/to/repository
 ```
 
-The default command must produce a useful offline Wiki. Optional generation
-must be explicit about model use and cost:
+The CLI should use hybrid retrieval when the semantic capability is installed
+and retain an explicit no-model fallback for smaller environments. Optional
+generation must be explicit about model use and cost:
 
 ```bash
 codenib wiki /path/to/repository --generate \

@@ -10,8 +10,7 @@ For one local repository, use the packaged two-command path in the
 [Quickstart](quickstart.md):
 
 ```bash
-export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
-python -m pip install "codenib @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[semantic]==0.2.0a2"
 codenib wiki /path/to/repository
 ```
 

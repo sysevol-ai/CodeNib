@@ -31,7 +31,7 @@ def _names(requirements: list[str]) -> set[str]:
     }
 
 
-def test_default_install_is_the_fast_wiki_runtime() -> None:
+def test_base_install_is_the_lightweight_wiki_runtime() -> None:
     project = _project()
     base = _names(project["dependencies"])
 

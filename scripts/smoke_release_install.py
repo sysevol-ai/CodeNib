@@ -86,6 +86,19 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
         cwd=root,
         env=env,
     )
+    _run(
+        [
+            executable,
+            "toolchain",
+            "install",
+            str(repo),
+            "--scope",
+            "lsp",
+            "--dry-run",
+        ],
+        cwd=root,
+        env=env,
+    )
     _run([executable, "index", str(repo)], cwd=root, env=env)
 
     manifest_path = _installed_manifest_path(repo, root=root, env=env)

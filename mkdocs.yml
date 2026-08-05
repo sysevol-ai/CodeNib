@@ -165,7 +165,7 @@ nav:
   - Get Started:
       - get-started/index.md
       - Quickstart: quickstart.md
-      - Release 0.2.0 Alpha 1: releases/0.2.0.md
+      - Release 0.2.0 Alpha 2: releases/0.2.0.md
       - GitHub Pages: github_pages.md
       - Web UI: web_demo.md
       - Running Locally: running-locally.md

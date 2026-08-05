@@ -16,10 +16,13 @@ CODENIB_HOME_ENV = "CODENIB_HOME"
 CODENIB_PREBUILT_DIR_ENV = "CODENIB_PREBUILT_DIR"
 CODENIB_RESULTS_DIR_ENV = "CODENIB_RESULTS_DIR"
 CODENIB_TEMP_DIR_ENV = "CODENIB_TEMP_DIR"
+CODENIB_TOOLCHAIN_DIR_ENV = "CODENIB_TOOLCHAIN_DIR"
+CODENIB_LEGACY_TOOLCHAIN_DIR_ENV = "CODENIB_SCIP_TOOLS_DIR"
 
 USER_STATE_DIRNAME = ".codenib"
 REPO_INDEX_DIRNAME = ".codenib_cache"
 REPOSITORIES_DIRNAME = "repositories"
+TOOLCHAINS_DIRNAME = "toolchains"
 QA_DATA_DIRNAME = ".codenib_qa"
 CLANGD_INDEX_DIRNAME = ".codenib-index"
 PROJECT_INSTALL_SENTINEL = ".codenib_install_cache"
@@ -61,6 +64,21 @@ def temp_state_dir() -> Path:
         CODENIB_TEMP_DIR_ENV,
         Path(tempfile.gettempdir()) / "codenib",
     )
+
+
+def toolchain_dir() -> Path:
+    """Return the durable root for CodeNib-managed language tools.
+
+    ``CODENIB_SCIP_TOOLS_DIR`` remains a source-checkout compatibility alias.
+    New installations should use ``CODENIB_TOOLCHAIN_DIR``.
+    """
+
+    configured = os.environ.get(CODENIB_TOOLCHAIN_DIR_ENV) or os.environ.get(
+        CODENIB_LEGACY_TOOLCHAIN_DIR_ENV
+    )
+    if configured:
+        return Path(configured).expanduser()
+    return user_state_dir() / TOOLCHAINS_DIRNAME
 
 
 def repository_state_key(repo_root: str | Path) -> str:

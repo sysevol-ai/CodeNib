@@ -104,7 +104,7 @@ def test_publish_action_has_secret_free_inputs_and_stable_outputs() -> None:
         "cache-key",
         "source-commit",
     } <= set(action["outputs"])
-    assert action["inputs"]["preset"]["default"] == "fast"
+    assert action["inputs"]["preset"]["default"] == "semantic"
     resolve = next(step for step in _steps(action) if step.get("id") == "inputs")
     assert "fast|semantic)" in resolve["run"]
     assert "graph|full" not in resolve["run"]
@@ -266,6 +266,16 @@ def test_publish_action_cache_identity_is_public_and_commit_addressed() -> None:
     assert "INPUT_EMBEDDING_PROVIDER" in script
     assert "INPUT_EMBEDDING_ENDPOINT" in script
     assert "API_KEY" not in script
+    model_cache = next(
+        step
+        for step in _steps(action)
+        if step.get("name") == "Cache local embedding model"
+    )
+    assert model_cache["with"]["path"] == "~/.cache/huggingface"
+    assert model_cache["with"]["key"] == (
+        "${{ steps.inputs.outputs.embedding_cache_key }}"
+    )
+    assert "embedding_provider == 'huggingface'" in model_cache["if"]
     restore = next(
         step
         for step in _steps(action)
@@ -282,6 +292,9 @@ def test_publish_action_cache_identity_is_public_and_commit_addressed() -> None:
 
 def test_reusable_workflow_is_fork_safe_and_binds_its_exact_revision() -> None:
     workflow = _load(WORKFLOW_PATH)
+    assert workflow["on"]["workflow_call"]["inputs"]["preset"]["default"] == (
+        "semantic"
+    )
     build = workflow["jobs"]["build"]
     condition = build["if"]
 

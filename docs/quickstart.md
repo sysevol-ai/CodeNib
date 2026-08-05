@@ -7,29 +7,27 @@ SPDX-License-Identifier: Apache-2.0
 # Quickstart
 
 This guide turns a local repository into a source-linked CodeNib Wiki. The
-default path uses deterministic page generation and BM25 search, so it needs
-neither an API key nor a model download.
+recommended path combines BM25 and dense retrieval through a pinned local
+embedding model, so it needs no API key.
 
 ## Install
 
 - Python 3.10 or newer
 - Git
 
-This documentation tracks the `0.2` feature line. Install the current alpha
-from its immutable, hash-pinned TestPyPI wheel; dependencies continue to
-resolve from PyPI rather than from a mixed package index:
+This documentation tracks the `0.2` feature line. Install the exact alpha and
+its local semantic dependencies from PyPI:
 
 ```bash
-export CODENIB_ALPHA_WHEEL="https://test-files.pythonhosted.org/packages/3d/3d/8e7ce04893c0d64146b96dda6bda448638a00753806f76f7d5cd1e7b1e4d/codenib-0.2.0a1-py3-none-any.whl#sha256=915356bc00e6ae58b1938baf105f79466da4b55ae612a84cc922a3bec09ecb07"
-python -m pip install "codenib @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[semantic]==0.2.0a2"
 codenib --version
 codenib doctor --require core --require wiki
 ```
 
-The version command must report `codenib 0.2.0a1`. For the stable `0.1` line,
-use `python -m pip install codenib`; features documented as new in 0.2 require
-the alpha above. Reuse `CODENIB_ALPHA_WHEEL` when adding an optional extra, for
-example `"codenib[mcp] @ ${CODENIB_ALPHA_WHEEL}"`.
+The version command must report `codenib 0.2.0a2`. Exact version pins keep an
+alpha environment reproducible. Install `codenib==0.2.0a2` without extras when
+a smaller, no-model BM25 fallback is more important than natural-language
+retrieval quality.
 
 ## Launch A Repository Wiki
 
@@ -40,7 +38,8 @@ codenib wiki /path/to/repository
 CodeNib performs four steps:
 
 1. Detects supported source languages.
-2. Builds or updates repository views under
+2. Selects BM25+dense views when semantic dependencies are installed, or
+   reports a no-model BM25 fallback, then builds or updates those views under
    `~/.codenib/repositories/<repo>-<id>/indexes`.
 3. Registers the repository with a local FastAPI service.
 4. Serves the packaged production frontend and opens
@@ -49,7 +48,7 @@ CodeNib performs four steps:
 The release wheel contains the compiled frontend, so this path does not need
 Node.js, npm, or a source checkout. CodeNib-owned indexes and manifests stay
 outside the target repository; set `CODENIB_HOME` to relocate that state. The
-`fast` and `semantic` presets leave the checkout unchanged. Some language-aware
+lexical and semantic views leave the checkout unchanged. Some language-aware
 graph backends must invoke the repository's build or package manager and may
 prepare project-local dependencies such as `node_modules`; run those profiles
 from a clean checkout when that distinction matters. Press `Ctrl-C` once to
@@ -141,10 +140,11 @@ embedding model, and BYO endpoint configurations.
 | `graph` | `codenib[graph]` | BM25 and symbol graph |
 | `full` | `codenib[full]` | BM25, dense vectors, symbol graph, and Zoekt |
 
-For natural-language search:
+The recommended installation already selects `semantic` through the default
+`auto` preset. Select it explicitly in automation when the artifact contract
+must not depend on the installed environment:
 
 ```bash
-python -m pip install "codenib[semantic] @ ${CODENIB_ALPHA_WHEEL}"
 codenib wiki /path/to/repository --preset semantic
 ```
 
@@ -155,7 +155,7 @@ To keep embeddings out of the local process, use a BYO OpenAI-compatible
 embedding service:
 
 ```bash
-python -m pip install "codenib[semantic-remote] @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[semantic-remote]==0.2.0a2"
 export EMBEDDING_API_KEY=...
 codenib doctor --require semantic \
   --embedding-provider openai \
@@ -179,9 +179,10 @@ provider or endpoint.
 
 ## Credentials And Tokens
 
-The default Wiki, BM25 index, static export, and local CodeRankEmbed route need
-no credential. GitHub Pages also uses GitHub's short-lived workflow token for
-deployment; users do not provide a personal token for the default workflow.
+The default local CodeRankEmbed route, BM25 fallback, static export, and Wiki
+shell need no credential. GitHub Pages also uses GitHub's short-lived workflow
+token for deployment; users do not provide a personal token for the default
+workflow.
 
 Use environment variables for the capabilities that do need authentication:
 
@@ -217,12 +218,32 @@ Secrets and variables > Actions**, then map it to the reusable workflow's
 the credential variable, never its value. Secrets are excluded from manifests,
 context artifacts, generated MCP configuration, and static Pages output.
 
-The `graph` extra supplies the Python graph and protobuf runtimes, while each
-repository language still needs its own SCIP/LSP executable. Check the exact
-repository instead of testing for an unrelated tool:
+## Language Toolchains
+
+The `graph` extra supplies the Python graph and protobuf runtimes. SCIP,
+clangd, and live LSP providers are language-specific executables, so CodeNib
+plans them from the detected repository rather than installing every language:
 
 ```bash
+python -m pip install "codenib[graph]==0.2.0a2"
+codenib toolchain status /path/to/repository --scope graph
+codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
+```
+
+Package-managed providers are pinned under `~/.codenib/toolchains` and are
+automatically visible to CodeNib processes; no shell `PATH` export is needed.
+The installer never invokes `sudo` and never silently edits the target
+checkout. It reports system dependencies such as clangd or a JDK, and
+project-local requirements such as `compile_commands.json` or `scip-php`, for
+the user to satisfy explicitly.
+
+Static graph construction and live incremental navigation are separate
+surfaces. Install live language servers only when that path is needed:
+
+```bash
+codenib toolchain install /path/to/repository --scope lsp
+codenib toolchain status /path/to/repository --scope all
 ```
 
 The full preset also needs `zoekt-git-index` and `zoekt-webserver` on `PATH`.
@@ -251,7 +272,7 @@ Static Wiki pages are the default. To generate conceptual page narratives
 through a LiteLLM-supported provider:
 
 ```bash
-python -m pip install "codenib[agent] @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[agent,semantic]==0.2.0a2"
 export OPENAI_API_KEY=...
 codenib doctor --require agent \
   --model openai/gpt-4o-mini --api-key-env OPENAI_API_KEY --probe-model
@@ -282,7 +303,7 @@ codenib wiki . --generate --model anthropic/claude-sonnet-4-5
 Vertex AI additionally requires CodeNib's `vertex` extra:
 
 ```bash
-python -m pip install "codenib[agent,vertex] @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[agent,semantic,vertex]==0.2.0a2"
 gcloud auth application-default login
 codenib wiki . --generate \
   --model vertex_ai/gemini-2.5-flash \
@@ -337,7 +358,7 @@ continues to work.
 ## Serve The Index Over MCP
 
 ```bash
-python -m pip install "codenib[mcp] @ ${CODENIB_ALPHA_WHEEL}"
+python -m pip install "codenib[mcp,semantic]==0.2.0a2"
 codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```

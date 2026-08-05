@@ -8,10 +8,10 @@ SPDX-License-Identifier: Apache-2.0
 
 CodeNib can build repository context in GitHub Actions, deploy a source-linked
 static Wiki to GitHub Pages, and retain the matching context views as one
-downloadable artifact. The default path uses BM25 and needs no model, API key,
-or model download.
+downloadable artifact. The default path builds BM25 and dense-vector views with
+a cached local embedding model and needs no API key.
 
-## No-Model Starter
+## Publish Hybrid Context
 
 Create a caller workflow in the repository that should receive a Wiki:
 
@@ -30,40 +30,38 @@ permissions:
 
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@620a82d1bf55897cbf4afa0b8563ed5da0997d27
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.0a2
 ```
 
-The pinned commit is the source revision for CodeNib 0.2.0 Alpha 1. A commit SHA
-keeps the compiler, frontend, Action, and artifact schema on one reviewed
-revision. In the repository's **Settings > Pages**, select **GitHub Actions** as
-the source.
+The prerelease tag keeps the compiler, frontend, Action, and artifact schema on
+one reviewed version. Production deployments may replace it with the tag's
+resolved commit SHA. In the repository's **Settings > Pages**, select
+**GitHub Actions** as the source.
 
 The workflow checks out the caller's exact commit, incrementally builds the
-`fast` preset, exports the Wiki at the Pages-provided mount path, and deploys it
-through the `github-pages` environment. It also uploads an artifact named from
-the repository and commit. BM25 belongs to that context artifact; the static
-Wiki serves precomputed pages, citations, and navigation without executing a
-query engine in the browser.
+`semantic` preset, exports the Wiki at the Pages-provided mount path, and
+deploys it through the `github-pages` environment. It also uploads an artifact
+named from the repository and commit. The workflow caches both repository
+views and the pinned Hugging Face model. The static Wiki serves precomputed
+pages, citations, and navigation without executing a query engine in the
+browser; BM25 and vector views remain reusable through local or MCP serving.
 
-## Build Semantic Context With A Local Model
+## Use The No-Model Fallback
 
-Select the semantic preset to build BM25 and dense-vector views. It defaults to
-a local Hugging Face embedding model and needs no API credential:
+Select `fast` when cold-start time or avoiding a model download matters more
+than natural-language retrieval quality:
 
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@620a82d1bf55897cbf4afa0b8563ed5da0997d27
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.0a2
     with:
-      preset: semantic
+      preset: fast
 ```
 
-The first build downloads the default embedding model into the ephemeral Action
-runner. The resulting vector view is stored in the commit-addressed context
-artifact and reused through CodeNib's repository cache on later builds. Serve
-that artifact through the local or MCP runtime for semantic queries; the Pages
-site remains a precomputed inspection surface. Keep the default `fast` preset
-when a model download is undesirable.
+This builds only the deterministic BM25 artifact and downloads no model. It is
+an explicit compatibility and resource-constrained route rather than the
+recommended retrieval default.
 
 ## Bring Your Own Embedding Endpoint
 
@@ -73,7 +71,7 @@ artifact or Pages workflow:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@620a82d1bf55897cbf4afa0b8563ed5da0997d27
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.0a2
     with:
       preset: semantic
       embedding-provider: openai
@@ -143,7 +141,7 @@ The composite Action can be used directly when another static host or artifact
 store owns deployment:
 
 ```yaml
-- uses: sysevol-ai/CodeNib/.github/actions/publish@620a82d1bf55897cbf4afa0b8563ed5da0997d27
+- uses: sysevol-ai/CodeNib/.github/actions/publish@v0.2.0a2
   id: codenib
   with:
     preset: fast
@@ -205,9 +203,9 @@ codenib artifact mcp-config \
 before running or placing it. CodeNib does not edit a client configuration
 automatically.
 
-BM25 serving requires no model credential. A semantic artifact reuses its
-stored vectors but still needs the manifest-selected embedding provider for
-each query embedding. Provider credentials stay in the MCP process environment
-and are never copied into client configuration or the context artifact. When
-GitHub CLI is unavailable, set `GH_TOKEN` to a fine-grained token with
-**Actions: read** access to the repository.
+Local semantic and BM25 serving require no model credential. A semantic
+artifact reuses its stored vectors but still needs the manifest-selected
+embedding provider for each query embedding. Provider credentials stay in the
+MCP process environment and are never copied into client configuration or the
+context artifact. When GitHub CLI is unavailable, set `GH_TOKEN` to a
+fine-grained token with **Actions: read** access to the repository.

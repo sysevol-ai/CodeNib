@@ -43,6 +43,7 @@ from .languages import (
 )
 from .log_utils import get_logger
 from .profiler import Profiler
+from .toolchains import activate_managed_toolchain
 
 logger = get_logger("ls_router")
 
@@ -157,6 +158,7 @@ class LSIndexer:
         decoder_backend: Optional[str] = None,
         graph_route: str = ACTIVE_GRAPH_ROUTE,
     ):
+        activate_managed_toolchain()
         self.project_root = Path(project_root).absolute()
         self.graph_route = graph_route
         self.language = _normalize_language(language, graph_route=graph_route)

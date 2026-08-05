@@ -13,8 +13,11 @@ tree-sitter-only.
 
 `yes` and `active` describe registered CodeNib capabilities, not the tools
 installed on the current machine. Run
+`codenib toolchain status /path/to/repository --scope all` to inspect the exact
+SCIP/LSP providers, and run
 `codenib doctor /path/to/repository --require graph` before building a graph
-view.
+view. See [SCIP And Graph Indexing](scip_index.md#language-provider-map) for the
+package map and installation boundary.
 
 Update the registry first, then refresh this table:
 

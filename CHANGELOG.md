@@ -11,6 +11,27 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.2.0a2] - 2026-08-05
+
+### Added
+
+- A repository-aware `codenib toolchain` command that detects graph and LSP
+  providers from the language registry, installs pinned package-managed tools
+  under `~/.codenib/toolchains`, and reports system or project prerequisites
+  without invoking `sudo` or mutating the target checkout.
+
+### Changed
+
+- Local `index` and `wiki` commands now select semantic hybrid retrieval when
+  the semantic extra is installed and explicitly report the no-model BM25
+  fallback otherwise. The reusable Pages workflow selects semantic retrieval
+  by default and caches its pinned local embedding model; `fast` remains an
+  explicit no-model route.
+- CodeNib processes automatically prefer the managed tool directory, removing
+  the shell `PATH` export previously required after source-checkout installs.
+- The public quickstart recommends BM25+dense serving and uses a normal,
+  version-pinned PyPI command instead of exposing a TestPyPI wheel URL.
+
 ## [0.2.0a1] - 2026-08-05
 
 ### Added
@@ -82,6 +103,7 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Prepared secretless PyPI publishing through a dedicated GitHub Actions OIDC
   workflow.
 
-[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.0a1...HEAD
-[0.2.0a1]: https://github.com/sysevol-ai/CodeNib/compare/v0.1.0...v0.2.0a1
+[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.0a2...HEAD
+[0.2.0a2]: https://github.com/sysevol-ai/CodeNib/compare/620a82d...v0.2.0a2
+[0.2.0a1]: https://github.com/sysevol-ai/CodeNib/tree/620a82d
 [0.1.0]: https://github.com/sysevol-ai/CodeNib/releases/tag/v0.1.0
