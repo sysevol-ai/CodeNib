@@ -69,7 +69,9 @@ def normalize_base_path(value: str) -> str:
     parts = PurePosixPath(decoded).parts
     if any(part in {".", ".."} for part in parts):
         raise ValueError("base path must not contain '.' or '..' segments")
-    if not _SAFE_BASE_PATH_RE.fullmatch(parsed.path):
+    if not _SAFE_BASE_PATH_RE.fullmatch(
+        parsed.path
+    ) or not _SAFE_BASE_PATH_RE.fullmatch(decoded):
         raise ValueError("base path contains unsupported URL characters")
 
     normalized = "/" + "/".join(part for part in parts if part != "/")

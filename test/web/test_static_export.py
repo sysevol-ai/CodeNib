@@ -340,6 +340,9 @@ def test_normalize_base_path(value: str, expected: str) -> None:
         "https://example.com/demo",
         "/demo?token=x",
         "/demo/../other",
+        "/demo%22onload",
+        "/demo%3Fquery",
+        "/demo%23fragment",
         '/demo" onload="alert(1)',
     ],
 )
