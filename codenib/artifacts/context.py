@@ -24,6 +24,8 @@ from ..compiler.manifest import MANIFEST_FILENAME, RepoManifest
 from ..compiler.snapshot_store import normalize_repo
 from ..index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    validate_vector_config_artifact,
+    vector_config_artifact_record,
     vector_level_artifact_records,
 )
 from ..provider_routes import resolve_embedding_artifact_route
@@ -142,12 +144,18 @@ def _normalize_copied_view(
     repo_path: Path,
     view: str,
     relative: str,
+    view_config: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Rewrite view-local machine paths and return identity adjustments."""
 
     target = stage.joinpath(*PurePosixPath(relative).parts)
     if view == "vector":
-        return _normalize_vector_view(target, repo_path)
+        route = resolve_embedding_artifact_route(view_config)
+        return _normalize_vector_view(
+            target,
+            repo_path,
+            embedding_model=route.model,
+        )
     if view != "bm25":
         raise ValueError(
             f"view {view!r} is not yet supported by portable context artifacts; "
@@ -256,7 +264,12 @@ def _refresh_vector_persistence_records(target: Path) -> None:
             config_path.write_bytes(_json_bytes(config))
 
 
-def _normalize_vector_view(target: Path, repo_path: Path) -> dict[str, Any]:
+def _normalize_vector_view(
+    target: Path,
+    repo_path: Path,
+    *,
+    embedding_model: str,
+) -> dict[str, Any]:
     if not target.is_dir():
         raise ValueError("portable vector view must be a directory")
     interrupted = sorted(target.glob(".config_*.json.save-in-progress"))
@@ -293,9 +306,14 @@ def _normalize_vector_view(target: Path, repo_path: Path) -> dict[str, Any]:
     for legacy in target.glob("l[02]/index_*.pkl"):
         legacy.unlink()
     _refresh_vector_persistence_records(target)
+    model_suffix = embedding_model.replace("/", "__")
     return {
         "artifact_scope": "query-serving",
         "portable_document_format": "codenib.vector-documents.v1",
+        "persistence_config_fingerprint": vector_config_artifact_record(
+            target,
+            model_suffix,
+        ),
     }
 
 
@@ -407,14 +425,23 @@ def stage_context_artifact(
                 source=f"view {view!r} metadata",
             )
             if view == "vector":
-                resolve_embedding_artifact_route(entry.config)
+                route = resolve_embedding_artifact_route(entry.config)
             source = _view_source(entry.path, manifest_root, view=view)
+            if view == "vector":
+                expected_config = entry.config.get("persistence_config_fingerprint")
+                if expected_config is not None:
+                    validate_vector_config_artifact(
+                        source,
+                        route.model.replace("/", "__"),
+                        expected_config,
+                    )
             relative = _copy_view(source, stage, view)
             adjustments = _normalize_copied_view(
                 stage,
                 repo_path=repo_path,
                 view=view,
                 relative=relative,
+                view_config=entry.config,
             )
             entry_data = entry.to_dict()
             entry_data["path"] = relative

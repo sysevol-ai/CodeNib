@@ -185,7 +185,8 @@ class VectorIndexBuilder:
 
         route = self._embedding_route()
         return {
-            "builder_schema": 4,
+            # v5 binds each manifest entry to one committed vector config.
+            "builder_schema": 5,
             "embedding_model": route.model,
             "embedding_provider": route.provider,
             "embedding_dimension": self.embedding_dimension,
@@ -261,6 +262,12 @@ class VectorIndexBuilder:
                 "embedding provider returned dimension "
                 f"{actual}, expected {self.embedding_dimension}"
             )
+
+    def _persistence_config_fingerprint(self, output_dir: str) -> Dict[str, Any]:
+        from ..index.embedding.artifact_integrity import vector_config_artifact_record
+
+        model_suffix = self._embedding_route().model.replace("/", "__")
+        return vector_config_artifact_record(output_dir, model_suffix)
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus:
         repo_path: str = kwargs["repo_path"]
@@ -379,6 +386,7 @@ class VectorIndexBuilder:
             build_levels=list(self.build_levels),
         )
         inc_state.save(Path(output_dir))
+        persistence_config = self._persistence_config_fingerprint(output_dir)
 
         return IndexStatus(
             index_type="vector",
@@ -389,6 +397,7 @@ class VectorIndexBuilder:
             path=output_dir,
             metadata={
                 **artifact_identity,
+                "persistence_config_fingerprint": persistence_config,
                 "document_count": doc_count,
                 "last_commit": head_commit,
             },
@@ -524,6 +533,7 @@ class VectorIndexBuilder:
             build_levels=list(self.build_levels),
         )
         new_state.save(Path(output_dir))
+        persistence_config = self._persistence_config_fingerprint(output_dir)
 
         doc_count = {}
         if vector_store.l0_documents:
@@ -540,6 +550,7 @@ class VectorIndexBuilder:
             path=output_dir,
             metadata={
                 **self.artifact_identity(),
+                "persistence_config_fingerprint": persistence_config,
                 "document_count": doc_count,
                 "chunks_reembedded": result.chunks_reembedded,
                 "chunks_from_cache": result.chunks_from_cache,

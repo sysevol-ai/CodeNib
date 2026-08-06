@@ -24,6 +24,7 @@ import pytest
 
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    vector_config_artifact_record,
     vector_level_artifact_records,
 )
 from codenib.index.embedding.vector_store import CodeVectorStore
@@ -360,6 +361,28 @@ def test_load_rejects_same_count_torn_document_write(tmp_path):
         ValueError,
         match="committed documents vector artifact does not match",
     ):
+        loaded.load()
+
+
+def test_load_rejects_vector_config_from_another_manifest_generation(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+    expected = vector_config_artifact_record(path, "test__model")
+
+    config_path = path / "config_test__model.json"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
+    loaded = _make_store(
+        embedding_model="test/model",
+        store_path=str(path),
+        artifact_metadata={"persistence_config_fingerprint": expected},
+    )
+
+    with pytest.raises(ValueError, match="manifest fingerprint"):
         loaded.load()
 
 

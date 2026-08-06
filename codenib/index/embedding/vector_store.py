@@ -27,6 +27,7 @@ from ...provider_routes import normalize_provider
 from ...types import NodeInfo
 from .artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    validate_vector_config_artifact,
     validate_vector_level_artifacts,
     vector_level_artifact_records,
 )
@@ -1145,6 +1146,13 @@ class CodeVectorStore:
             )
 
         expected_artifact = dict(self.artifact_metadata)
+        expected_config = expected_artifact.get("persistence_config_fingerprint")
+        if expected_config is not None:
+            config_path = validate_vector_config_artifact(
+                load_path,
+                model_suffix,
+                expected_config,
+            )
         loaded_artifact = expected_artifact
         expected_counts: Dict[str, Optional[int]] = {"l0": None, "l2": None}
         committed_levels: Optional[dict[str, object]] = None
