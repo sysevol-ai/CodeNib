@@ -8,6 +8,13 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from ._validation import (
+    MAX_LSP_POSITION,
+    MAX_ROUTE_SYMBOLS,
+    MAX_TOOL_RESULTS,
+    bounded_integer,
+)
+
 
 def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
     if isinstance(symbols, str):
@@ -40,6 +47,16 @@ def lsp_definition_impl(
     top_k: int = 8,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Return graph-backed definition locations."""
+    top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
+    if line is not None:
+        bounded_integer(line, name="line", maximum=MAX_LSP_POSITION)
+    if character is not None:
+        bounded_integer(
+            character,
+            name="character",
+            minimum=0,
+            maximum=MAX_LSP_POSITION,
+        )
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}
@@ -54,7 +71,7 @@ def lsp_definition_impl(
             line=graph_line,
             character=character,
             symbol=symbol or None,
-            top_k=max(1, int(top_k or 8)),
+            top_k=top_k,
         )
     except ValueError as exc:
         return {"error": str(exc)}
@@ -71,6 +88,16 @@ def lsp_references_impl(
     top_k: int = 40,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Return graph-backed reference locations."""
+    top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
+    if line is not None:
+        bounded_integer(line, name="line", maximum=MAX_LSP_POSITION)
+    if character is not None:
+        bounded_integer(
+            character,
+            name="character",
+            minimum=0,
+            maximum=MAX_LSP_POSITION,
+        )
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}
@@ -86,7 +113,7 @@ def lsp_references_impl(
             character=character,
             symbol=symbol or None,
             include_declaration=bool(include_declaration),
-            top_k=max(1, int(top_k or 40)),
+            top_k=top_k,
         )
     except ValueError as exc:
         return {"error": str(exc)}
@@ -101,19 +128,22 @@ def lsp_route_impl(
     include_neighbors: bool = True,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Return graph-backed route anchors for one or more symbol seeds."""
+    top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
+    seeds = _coerce_symbols(symbols)
+    if not seeds:
+        raise ValueError("symbols must contain at least one non-empty seed.")
+    if len(seeds) > MAX_ROUTE_SYMBOLS:
+        raise ValueError(f"symbols must contain at most {MAX_ROUTE_SYMBOLS} seeds.")
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}
 
     from ...agent.lsp_provider import StaticLSPProvider
 
-    seeds = _coerce_symbols(symbols)
-    if not seeds:
-        return []
     results = StaticLSPProvider(graph).route(
         symbols=seeds,
         query=query or None,
-        top_k=max(1, int(top_k or 12)),
+        top_k=top_k,
         include_neighbors=bool(include_neighbors),
     )
     return [_node_to_dict(node) for node in results]

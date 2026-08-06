@@ -316,6 +316,21 @@ async def _assert_mcp_async(
                                 f"{sorted(required - names)}"
                             )
 
+                        tool_by_name = {tool.name: tool for tool in tools.tools}
+                        bm25_schema = tool_by_name["search_bm25"].input_schema
+                        top_k_schema = bm25_schema.get("properties", {}).get(
+                            "top_k",
+                            {},
+                        )
+                        if (
+                            top_k_schema.get("minimum") != 1
+                            or top_k_schema.get("maximum") != 100
+                        ):
+                            raise RuntimeError(
+                                "installed MCP service did not publish bounded "
+                                f"search inputs: {bm25_schema!r}"
+                            )
+
                         if mode == "legacy":
                             continue
 

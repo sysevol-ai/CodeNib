@@ -26,7 +26,11 @@ from mcp.types import LATEST_PROTOCOL_VERSION
 import codenib.mcp.server as server_module
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
-from codenib.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
+from codenib.mcp.tools.lsp import (
+    lsp_definition_impl,
+    lsp_references_impl,
+    lsp_route_impl,
+)
 
 
 def test_server_import_keeps_optional_index_runtimes_lazy() -> None:
@@ -61,6 +65,47 @@ def test_server_negotiates_modern_and_legacy_protocols() -> None:
         "search_bm25",
         "search_semantic",
     } <= modern_tools
+
+
+def test_search_tool_schemas_publish_bounded_inputs() -> None:
+    tools = {tool.name: tool for tool in asyncio.run(server_module.mcp.list_tools())}
+
+    for name in (
+        "search_context",
+        "search_semantic",
+        "search_bm25",
+        "search_regex",
+        "search_zoekt",
+    ):
+        schema = tools[name].input_schema
+        text_field = "pattern" if name == "search_regex" else "query"
+        assert schema["properties"][text_field]["minLength"] == 1
+        assert schema["properties"]["top_k"] == {
+            "default": 10 if name in {"search_context", "search_semantic"} else 20,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Top K",
+            "type": "integer",
+        }
+
+    semantic = tools["search_semantic"].input_schema["properties"]
+    assert semantic["level"]["enum"] == ["l0", "l2"]
+
+    dependency = tools["dependency_subgraph"].input_schema["properties"]
+    assert dependency["direction"]["enum"] == ["impact", "dependencies", "both"]
+    assert dependency["depth"]["minimum"] == 1
+    assert dependency["depth"]["maximum"] == 8
+    assert dependency["max_nodes"]["maximum"] == 100
+
+    route_symbols = tools["lsp_route"].input_schema["properties"]["symbols"]
+    assert route_symbols["minItems"] == 1
+    assert route_symbols["maxItems"] == 32
+    assert (
+        tools["lsp_definition"].input_schema["properties"]["line"]["anyOf"][0][
+            "minimum"
+        ]
+        == 1
+    )
 
 
 @pytest.fixture
@@ -240,17 +285,29 @@ def test_lsp_references_tool_delegates_to_core():
     assert kwargs["include_declaration"] is False
 
 
-def test_lsp_tools_reuse_agent_line_boundary():
-    """MCP LSP tools share the agent 1-based input boundary."""
+def test_lsp_tools_reject_zero_based_input_lines():
+    """MCP rejects malformed 0-based lines instead of silently clamping them."""
     ctx = MagicMock(symbol_graph=MagicMock())
     with patch(
         "codenib.agent.lsp_provider.StaticLSPProvider.definition"
     ) as mock_definition:
         mock_definition.return_value = []
 
-        lsp_definition_impl(ctx, file_path="caller.py", line=0)
+        with pytest.raises(ValueError, match="line must be between 1"):
+            lsp_definition_impl(ctx, file_path="caller.py", line=0)
 
-    assert mock_definition.call_args.kwargs["line"] == 0
+    mock_definition.assert_not_called()
+
+
+def test_lsp_tools_validate_result_and_seed_bounds():
+    ctx = MagicMock(symbol_graph=MagicMock())
+
+    with pytest.raises(ValueError, match="top_k must be between"):
+        lsp_references_impl(ctx, symbol="load_config", top_k=101)
+    with pytest.raises(ValueError, match="at least one non-empty seed"):
+        lsp_route_impl(ctx, symbols=[])
+    with pytest.raises(ValueError, match="at most 32 seeds"):
+        lsp_route_impl(ctx, symbols=[f"symbol_{index}" for index in range(33)])
 
 
 def test_server_status_resource(mock_manifest: Path):

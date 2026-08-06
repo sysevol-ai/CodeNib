@@ -8,12 +8,14 @@ over backbone indexes."""
 from __future__ import annotations
 
 import asyncio
+import math
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
 from ...agent.boundary import to_agent_repr
 from ...types import NodeInfo
 from ..context import ServerContext
+from ._validation import MAX_TOOL_RESULTS, bounded_integer, required_text
 
 
 def _node_to_dict(node: NodeInfo) -> Dict[str, Any]:
@@ -30,11 +32,8 @@ def search_context_impl(
     filter_test: bool = False,
 ) -> Dict[str, Any]:
     """Plan and execute ranked retrieval over the available repository views."""
-    normalized_query = (query or "").strip()
-    if not normalized_query:
-        raise ValueError("query must not be empty.")
-    if isinstance(top_k, bool) or not 1 <= top_k <= 100:
-        raise ValueError("top_k must be between 1 and 100.")
+    normalized_query = required_text(query, name="query")
+    top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     normalized_level = (level or "l2").strip().lower()
     if normalized_level not in {"l0", "l2"}:
         raise ValueError("level must be 'l0' or 'l2'.")
@@ -159,7 +158,7 @@ async def search_semantic(
     level: Optional[str] = None,
     score_threshold: Optional[float] = None,
     transform: Optional[str] = None,  # reserved for Phase 3 HyDE/expand
-) -> list[dict]:
+) -> list[dict] | dict[str, str]:
     """Semantic code search using vector embeddings.
 
     Args:
@@ -174,19 +173,27 @@ async def search_semantic(
         List of NodeInfo dicts with scores and content. On missing index,
         returns ``{"error": ...}`` so callers can handle gracefully.
     """
+    normalized_query = required_text(query, name="query")
+    top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
+    normalized_level = (level or "l2").strip().lower()
+    if normalized_level not in {"l0", "l2"}:
+        raise ValueError("level must be 'l0' or 'l2'.")
+    if score_threshold is not None and (
+        isinstance(score_threshold, bool)
+        or not isinstance(score_threshold, (int, float))
+        or not math.isfinite(float(score_threshold))
+    ):
+        raise ValueError("score_threshold must be a finite number.")
     if ctx.vector is None:
         return {
             "error": "Vector index not loaded. Re-run indexing with embedding enabled."
         }
 
-    if level is None:
-        level = "l2"
-
     results = await asyncio.to_thread(
         ctx.vector.search_with_content,
-        query=query,
+        query=normalized_query,
         top_k=top_k,
-        level=level,
+        level=normalized_level,
         score_threshold=score_threshold,
     )
 
@@ -224,6 +231,8 @@ def search_bm25_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content, score.
     """
+    normalized_query = required_text(query, name="query")
+    top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     if ctx.bm25 is None:
         raise RuntimeError(
             "BM25 index is not available. "
@@ -231,7 +240,7 @@ def search_bm25_impl(
         )
 
     results: List[NodeInfo] = ctx.bm25.search(
-        query=query,
+        query=normalized_query,
         top_k=top_k,
         return_code_content=True,
         wrap_with_ln=False,
@@ -267,6 +276,8 @@ def search_regex_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content.
     """
+    required_text(pattern, name="pattern")
+    top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     if ctx.regex_index is None:
         raise RuntimeError(
             "Regex index is not available. "
@@ -326,6 +337,8 @@ def search_zoekt_impl(
         (``"file"``), ``file``, ``start_line``, ``end_line``, ``content``,
         ``score``, ``node_id`` (language hint, when reported).
     """
+    normalized_query = required_text(query, name="query")
+    top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     if ctx.zoekt is None:
         raise RuntimeError(
             "Zoekt index is not available. "
@@ -341,7 +354,7 @@ def search_zoekt_impl(
 
     try:
         results: List[NodeInfo] = ctx.zoekt.search(
-            query=query,
+            query=normalized_query,
             top_k=top_k,
             file_filter=file_filter or None,
         )

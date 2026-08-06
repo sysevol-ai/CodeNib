@@ -256,6 +256,20 @@ class TestSearchBM25:
         assert "file" not in results[0]
         assert "score" not in results[0]
 
+    @pytest.mark.parametrize(
+        ("query", "top_k", "message"),
+        [
+            ("", 10, "query must not be empty"),
+            ("tax", 0, "top_k must be between"),
+            ("tax", 101, "top_k must be between"),
+        ],
+    )
+    def test_validates_bounded_request(self, query, top_k, message) -> None:
+        mock_bm25 = MagicMock()
+        with pytest.raises(ValueError, match=message):
+            search_bm25_impl(_make_ctx(bm25=mock_bm25), query=query, top_k=top_k)
+        mock_bm25.search.assert_not_called()
+
 
 # ------------------------------------------------------------------
 # search_regex
@@ -327,6 +341,24 @@ class TestSearchRegex:
 
         with pytest.raises(RuntimeError, match="Invalid regex pattern"):
             search_regex_impl(ctx, pattern=r"[")
+
+    @pytest.mark.parametrize(
+        ("pattern", "top_k", "message"),
+        [
+            ("", 10, "pattern must not be empty"),
+            ("x", -1, "top_k must be between"),
+            ("x", 101, "top_k must be between"),
+        ],
+    )
+    def test_validates_bounded_request(self, pattern, top_k, message) -> None:
+        mock_regex = MagicMock()
+        with pytest.raises(ValueError, match=message):
+            search_regex_impl(
+                _make_ctx(regex_index=mock_regex),
+                pattern=pattern,
+                top_k=top_k,
+            )
+        mock_regex.search.assert_not_called()
 
 
 # ------------------------------------------------------------------
@@ -435,3 +467,21 @@ class TestSearchZoekt:
             RuntimeError, match="Zoekt search failed.*connection refused"
         ):
             search_zoekt_impl(ctx, query="x")
+
+    @pytest.mark.parametrize(
+        ("query", "top_k", "message"),
+        [
+            ("", 10, "query must not be empty"),
+            ("token", False, "top_k must be between"),
+            ("token", 101, "top_k must be between"),
+        ],
+    )
+    def test_validates_bounded_request(self, query, top_k, message) -> None:
+        mock_zoekt = MagicMock()
+        with pytest.raises(ValueError, match=message):
+            search_zoekt_impl(
+                _make_ctx(zoekt=mock_zoekt),
+                query=query,
+                top_k=top_k,
+            )
+        mock_zoekt.search.assert_not_called()

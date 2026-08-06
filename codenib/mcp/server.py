@@ -23,13 +23,20 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from mcp.server import MCPServer
+from pydantic import Field
 
 from ..compiler.manifest import RepoManifest
 from .context import ServerContext
 from .prompts import CODENIB_GUIDE
+from .tools._validation import (
+    MAX_GRAPH_DEPTH,
+    MAX_LSP_POSITION,
+    MAX_ROUTE_SYMBOLS,
+    MAX_TOOL_RESULTS,
+)
 from .tools.dependency import dependency_subgraph_impl
 from .tools.lsp import lsp_definition_impl, lsp_references_impl, lsp_route_impl
 from .tools.search import search_bm25_impl, search_context_impl, search_regex_impl
@@ -40,6 +47,18 @@ logger = logging.getLogger(__name__)
 
 # Global context is set once at startup before the event loop runs tools.
 _ctx: Optional[ServerContext] = None
+_SearchText = Annotated[str, Field(min_length=1)]
+_SearchTopK = Annotated[int, Field(ge=1, le=MAX_TOOL_RESULTS)]
+_SearchLevel = Literal["l0", "l2"]
+_FiniteScore = Annotated[float, Field(allow_inf_nan=False)]
+_GraphDirection = Literal["impact", "dependencies", "both"]
+_GraphDepth = Annotated[int, Field(ge=1, le=MAX_GRAPH_DEPTH)]
+_PositiveLine = Annotated[int, Field(ge=1, le=MAX_LSP_POSITION)]
+_Character = Annotated[int, Field(ge=0, le=MAX_LSP_POSITION)]
+_RouteSymbols = Annotated[
+    list[str],
+    Field(min_length=1, max_length=MAX_ROUTE_SYMBOLS),
+]
 
 
 def get_context() -> ServerContext:
@@ -80,10 +99,10 @@ mcp = MCPServer(
     ),
 )
 async def search_context(
-    query: str,
-    top_k: int = 10,
+    query: _SearchText,
+    top_k: _SearchTopK = 10,
     budget: str = "balanced",
-    level: str = "l2",
+    level: _SearchLevel = "l2",
     filter_test: bool = False,
 ) -> dict[str, Any]:
     """Execute capability-aware ranked retrieval over loaded repository views."""
@@ -109,10 +128,10 @@ async def search_context(
     ),
 )
 async def semantic_search(
-    query: str,
-    top_k: int = 10,
-    level: str = "l2",
-    score_threshold: float = 0.0,
+    query: _SearchText,
+    top_k: _SearchTopK = 10,
+    level: _SearchLevel = "l2",
+    score_threshold: _FiniteScore = 0.0,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Semantic search over indexed code using vector embeddings.
 
@@ -141,8 +160,8 @@ async def semantic_search(
     ),
 )
 async def search_bm25(
-    query: str,
-    top_k: int = 20,
+    query: _SearchText,
+    top_k: _SearchTopK = 20,
     filter_test: bool = False,
 ) -> list[dict[str, Any]]:
     """BM25 keyword search over indexed code symbols."""
@@ -163,8 +182,8 @@ async def search_bm25(
     ),
 )
 async def search_regex(
-    pattern: str,
-    top_k: int = 20,
+    pattern: _SearchText,
+    top_k: _SearchTopK = 20,
     file_glob: str = "",
     node_type: str = "",
     case_sensitive: bool = False,
@@ -195,8 +214,8 @@ async def search_regex(
     ),
 )
 async def search_zoekt(
-    query: str,
-    top_k: int = 20,
+    query: _SearchText,
+    top_k: _SearchTopK = 20,
     file_filter: str = "",
 ) -> list[dict[str, Any]]:
     """Trigram-based search over raw repository contents."""
@@ -224,10 +243,10 @@ async def search_zoekt(
     ),
 )
 async def dependency_subgraph(
-    symbol: str,
-    direction: str = "both",
-    depth: int = 2,
-    max_nodes: int = 60,
+    symbol: _SearchText,
+    direction: _GraphDirection = "both",
+    depth: _GraphDepth = 2,
+    max_nodes: _SearchTopK = 60,
 ) -> dict[str, Any]:
     """Call-graph dependency/impact subgraph for *symbol* (nodes+edges JSON)."""
     if _ctx is None:
@@ -247,10 +266,10 @@ async def dependency_subgraph(
 )
 async def lsp_definition(
     file_path: str = "",
-    line: int | None = None,
-    character: int | None = None,
+    line: _PositiveLine | None = None,
+    character: _Character | None = None,
     symbol: str = "",
-    top_k: int = 8,
+    top_k: _SearchTopK = 8,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Graph-backed definition lookup over the static symbol graph."""
     if _ctx is None:
@@ -276,11 +295,11 @@ async def lsp_definition(
 )
 async def lsp_references(
     file_path: str = "",
-    line: int | None = None,
-    character: int | None = None,
+    line: _PositiveLine | None = None,
+    character: _Character | None = None,
     symbol: str = "",
     include_declaration: bool = True,
-    top_k: int = 40,
+    top_k: _SearchTopK = 40,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Graph-backed reference lookup over the static symbol graph."""
     if _ctx is None:
@@ -307,9 +326,9 @@ async def lsp_references(
     ),
 )
 async def lsp_route(
-    symbols: list[str],
+    symbols: _RouteSymbols,
     query: str = "",
-    top_k: int = 12,
+    top_k: _SearchTopK = 12,
     include_neighbors: bool = True,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Graph-backed route map over the static symbol graph."""

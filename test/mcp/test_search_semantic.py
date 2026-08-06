@@ -126,3 +126,23 @@ def test_search_semantic_empty_results(mock_context):
 
     assert results == []
     assert isinstance(results, list)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"query": ""}, "query must not be empty"),
+        ({"query": "test", "top_k": 0}, "top_k must be between"),
+        ({"query": "test", "top_k": 101}, "top_k must be between"),
+        ({"query": "test", "level": "l1"}, "level must be"),
+        (
+            {"query": "test", "score_threshold": float("nan")},
+            "score_threshold must be a finite number",
+        ),
+    ],
+)
+def test_search_semantic_validates_bounded_request(mock_context, kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        asyncio.run(search_semantic(mock_context, **kwargs))
+
+    mock_context.vector.search_with_content.assert_not_called()

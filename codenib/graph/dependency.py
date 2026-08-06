@@ -121,9 +121,14 @@ class DependencyAnalyzer:
         """What *symbol* (transitively) depends on — transitive callees."""
         return self._bfs(symbol, "forward", "callees", max_depth, max_nodes)
 
-    def subgraph(self, symbol: str, radius: int = 1) -> DependencyResult:
+    def subgraph(
+        self,
+        symbol: str,
+        radius: int = 1,
+        max_nodes: int = 200,
+    ) -> DependencyResult:
         """Compact callers+callees neighborhood for a frontend dependency view."""
-        return self._bfs(symbol, "both", "both", radius, max_nodes=200)
+        return self._bfs(symbol, "both", "both", radius, max_nodes=max_nodes)
 
     def call_path(self, from_symbol: str, to_symbol: str) -> DependencyResult:
         """Shortest call path from *from_symbol* to *to_symbol* (empty if none)."""
@@ -193,6 +198,13 @@ class DependencyAnalyzer:
                 )
                 for src, tgt, _w, attr in edges:
                     neighbor = tgt if d == "forward" else src
+                    if neighbor not in seen:
+                        if len(seen) >= max_nodes:
+                            res.truncated = True
+                            continue
+                        seen.add(neighbor)
+                        res.nodes.append(self._node(neighbor, depth + 1))
+                        queue.append((neighbor, depth + 1))
                     res.edges.append(
                         DepEdge(
                             self.code_graph.display_name(src),
@@ -200,14 +212,6 @@ class DependencyAnalyzer:
                             attr.get("type", "reference"),
                         )
                     )
-                    if neighbor in seen:
-                        continue
-                    if len(seen) >= max_nodes:
-                        res.truncated = True
-                        continue
-                    seen.add(neighbor)
-                    res.nodes.append(self._node(neighbor, depth + 1))
-                    queue.append((neighbor, depth + 1))
         return res
 
     def _node(self, canonical_name: str, depth: int) -> DepNode:
