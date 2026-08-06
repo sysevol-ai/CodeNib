@@ -495,6 +495,37 @@ def test_page_graph_source_preview_rejects_mismatched_returned_range() -> None:
     assert "source" not in graph["nodes"][0]
 
 
+def test_invalid_anchors_do_not_exhaust_source_preview_quota() -> None:
+    class SourceBuilder:
+        def source(self, file, start, end):
+            return {
+                "file": file,
+                "start_line": start,
+                "end_line": end,
+                "content": "source\n",
+            }
+
+    graph = {
+        "nodes": [],
+        "hierarchy": {"nodes": []},
+        "edges": [
+            {
+                "anchors": [
+                    *[
+                        {"file": "../outside.py", "line": index + 1}
+                        for index in range(_GRAPH_SOURCE_MAX_ANCHORS)
+                    ],
+                    {"file": "src/runtime.py", "line": 10},
+                ]
+            }
+        ],
+    }
+
+    _embed_page_graph_sources(SourceBuilder(), graph)
+
+    assert "source" in graph["edges"][0]["anchors"][-1]
+
+
 def test_static_export_does_not_replace_an_unrelated_directory(export_setup) -> None:
     export_setup.output.mkdir()
     (export_setup.output / "keep.txt").write_text("keep", encoding="utf-8")

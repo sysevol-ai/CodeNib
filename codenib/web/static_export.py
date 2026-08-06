@@ -398,14 +398,27 @@ def _embed_page_graph_sources(
                 break
             if not isinstance(anchor, dict):
                 continue
-            processed_anchors += 1
             source_range = _graph_source_range(
                 anchor, context=_GRAPH_ANCHOR_CONTEXT_LINES
             )
             if source_range is None:
                 continue
+            file = anchor.get("file")
+            if not isinstance(file, str):
+                continue
+            try:
+                relative = _source_path(file)
+            except ValueError:
+                continue
+            if not relative:
+                continue
+            # Malformed ranges and unsafe paths are not source candidates and
+            # must not consume the bounded attachment quota. Valid candidates
+            # still count even when the file is missing, keeping graph scans
+            # bounded for stale artifacts.
+            processed_anchors += 1
             source = _bounded_graph_source(
-                builder, anchor.get("file"), *source_range, source_cache
+                builder, relative, *source_range, source_cache
             )
             if source is not None:
                 attach(anchor, source)
