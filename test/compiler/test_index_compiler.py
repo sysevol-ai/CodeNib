@@ -235,6 +235,45 @@ class TestVectorIndexBuilder:
         assert mock_build_fn.call_args.kwargs["force_rebuild"] is True
         assert mock_build_fn.call_args.kwargs["strict_chunking"] is True
 
+    def test_incremental_failure_falls_back_to_full_build(self, tmp_path):
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        rebuilt = IndexStatus(
+            index_type="vector",
+            state=IndexState.FRESH,
+            last_built=1.0,
+            age_seconds=0.0,
+            scope="current_repo",
+            path=str(tmp_path / "vector"),
+            metadata={},
+        )
+
+        with (
+            patch.object(
+                builder,
+                "_incremental_update_once",
+                side_effect=ValueError("corrupt cache"),
+            ),
+            patch.object(builder, "build", return_value=rebuilt) as mock_build,
+        ):
+            result = builder.incremental_update(
+                scope="current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(tmp_path / "vector"),
+                last_commit="a" * 40,
+            )
+
+        mock_build.assert_called_once_with(
+            "current_repo",
+            repo_path=str(tmp_path),
+            output_dir=str(tmp_path / "vector"),
+        )
+        assert result is rebuilt
+        assert result.metadata["update_mode"] == "full_rebuild"
+        assert result.metadata["incremental_fallback_reason"] == "ValueError"
+
     def test_artifact_identity_is_shared_by_full_and_incremental_statuses(self):
         builder = VectorIndexBuilder(
             embedding_model="test-model",

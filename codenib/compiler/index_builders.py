@@ -404,8 +404,23 @@ class VectorIndexBuilder:
         )
 
     def incremental_update(self, scope: str, **kwargs: Any) -> IndexStatus:
+        """Update the vector view, rebuilding on any incremental-path failure."""
+
+        try:
+            return self._incremental_update_once(scope, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - failed deltas must not publish
+            logger.warning("vector: incremental update failed (%s); rebuilding", exc)
+            build_kwargs = {
+                key: value for key, value in kwargs.items() if key != "last_commit"
+            }
+            status = self.build(scope, **build_kwargs)
+            status.metadata["update_mode"] = "full_rebuild"
+            status.metadata["incremental_fallback_reason"] = type(exc).__name__
+            return status
+
+    def _incremental_update_once(self, scope: str, **kwargs: Any) -> IndexStatus:
         """
-        Update the vector index incrementally using git diff detection.
+        Attempt one vector-index update using git diff detection.
 
         Required kwargs
         ---------------
@@ -421,8 +436,8 @@ class VectorIndexBuilder:
         and ``EmbeddingsCache`` from *output_dir*, runs the incremental update
         pipeline, then saves all state back to disk.
 
-        Falls back to a full ``build()`` call when incremental state files are
-        missing (i.e. on first run or after a manual cache wipe).
+        Missing state falls back directly to a full ``build()``. Other failures
+        propagate to :meth:`incremental_update`, which rebuilds conservatively.
         """
         from pathlib import Path
 
