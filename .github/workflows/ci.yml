@@ -42,6 +42,11 @@ on:
         options:
           - light
           - full
+      cold_parser_cache:
+        description: "Start parser prewarm from an empty run-scoped cache"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -65,13 +70,6 @@ jobs:
   # =============================================================
   preflight:
     runs-on: self-hosted
-    # paths-filter fetches the PR's changed-file list via the GitHub API
-    # (base is empty for pull_request events), which needs pull-requests:read.
-    # Job-level permissions replace the top-level block, so contents:read is
-    # repeated here for actions/checkout.
-    permissions:
-      contents: read
-      pull-requests: read
     outputs:
       should-run: ${{ steps.check.outputs.should-run }}
       run-serial: ${{ steps.serial.outputs.run-serial }}
@@ -81,6 +79,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Evaluate skip condition
         id: check
@@ -106,45 +106,29 @@ jobs:
             echo "should-run=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Detect changes that can affect the expensive serial-chain jobs:
-      # repo mutation, SCIP/LSP indexing, graph patching, dataset location, or
-      # C++ decoder parity. Agent/runtime/model/retrieval changes use the
-      # faster unit + integration tier unless a maintainer requests full CI.
-      - name: Detect serial-chain source changes
-        id: filter
-        uses: dorny/paths-filter@v3
+      - name: Set up classifier Python
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        uses: actions/setup-python@v5
         with:
-          base: ${{ github.event_name == 'push' && github.event.before || '' }}
-          filters: |
-            serial:
-              - ".github/workflows/ci.yml"
-              - ".github/actions/setup-env/**"
-              - "pyproject.toml"
-              - "third_party/**"
-              - "core/**"
-              - "codenib/code_chunking/**"
-              - "codenib/dataset/**"
-              - "codenib/graph/**"
-              - "codenib/index/**"
-              - "codenib/ls_index/**"
-              - "codenib/ls_router.py"
-              - "codenib/types.py"
-              - "scripts/check_graph_route_alignment.py"
-              - "scripts/smoke_lsp_graph.py"
-              - "scripts/smoke_scip_cold_start.py"
-              - "scripts/swebench_graph_index.py"
-              - "test/chunker/**"
-              - "test/dataset/**"
-              - "test/graph/**"
-              - "test/index/**"
-              - "test/ls_index/**"
-              - "test/scip/**"
+          python-version: "3.11"
+
+      - name: Classify serial-chain source changes
+        id: filter
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          python scripts/classify_ci_changes.py \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
+            --github-output >> "$GITHUB_OUTPUT"
 
       - name: Compute run-serial
         id: serial
         run: |
-          RUN_SERIAL=false
-          REASON="not requested and no serial-chain paths changed"
+          RUN_SERIAL=true
+          REASON="event was not classified; running conservatively"
           case "${{ github.event_name }}" in
             schedule)
               RUN_SERIAL=true
@@ -154,21 +138,20 @@ jobs:
                 RUN_SERIAL=true
                 REASON="manual full tier"
               else
+                RUN_SERIAL=false
                 REASON="manual light tier"
               fi ;;
             push)
-              if [[ "${{ steps.filter.outputs.serial }}" == "true" ]]; then
-                RUN_SERIAL=true
-                REASON="serial-chain path changed on main/master push"
-              fi ;;
+              RUN_SERIAL="${{ steps.filter.outputs.run-serial }}"
+              REASON="${{ steps.filter.outputs.serial-reason }}" ;;
             pull_request)
               if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]] || \
                  [[ "${{ contains(github.event.pull_request.labels.*.name, 'serial-ci') }}" == "true" ]]; then
                 RUN_SERIAL=true
                 REASON="PR label requested serial/full CI"
-              elif [[ "${{ steps.filter.outputs.serial }}" == "true" ]]; then
-                RUN_SERIAL=true
-                REASON="serial-chain path changed"
+              else
+                RUN_SERIAL="${{ steps.filter.outputs.run-serial }}"
+                REASON="${{ steps.filter.outputs.serial-reason }}"
               fi ;;
           esac
           echo "run-serial=$RUN_SERIAL" >> "$GITHUB_OUTPUT"
@@ -217,7 +200,6 @@ jobs:
       TMPDIR: ${{ github.workspace }}/../.tmp
       TMP: ${{ github.workspace }}/../.tmp
       TEMP: ${{ github.workspace }}/../.tmp
-      XDG_CACHE_HOME: ${{ github.workspace }}/../.cache/xdg
     steps:
       - name: Prepare temp HOME
         run: |
@@ -248,35 +230,24 @@ jobs:
           pip install -e ".[test]"
 
       - name: Prewarm tree-sitter parsers
-        shell: bash -l {0}
-        run: |
-          python - <<'PY'
-          from tree_sitter_language_pack import get_language
-
-          languages = [
-              "python",
-              "go",
-              "rust",
-              "cpp",
-              "csharp",
-              "java",
-              "ruby",
-              "php",
-              "kotlin",
-              "typescript",
-              "swift",
-              "scala",
-              "lua",
-          ]
-          for language in languages:
-              print(f"prewarming {language}", flush=True)
-              get_language(language)
-          print(f"prewarmed {len(languages)} tree-sitter parsers")
-          PY
+        id: parsers
+        uses: ./.github/actions/prewarm-parsers
+        with:
+          cold-cache: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.cold_parser_cache) }}
 
       - name: Run unit tests
+        id: unit-tests
         shell: bash -l {0}
         run: pytest -n auto -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short --timeout=180 --durations=20
+
+      - name: Remove incomplete run-scoped parser cache
+        if: always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.cold_parser_cache)) && (steps.parsers.outcome != 'success' || steps.unit-tests.outcome != 'success')
+        env:
+          COLD_RUN_DIR: ${{ github.workspace }}/../.cache/tree-sitter-language-pack/cold/${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if [[ -n "$COLD_RUN_DIR" ]]; then
+            rm -rf -- "$COLD_RUN_DIR"
+          fi
 
   # =============================================================
   # Job 2 — Integration tests  (read-only, parallel-safe, ~2 min)
@@ -313,48 +284,24 @@ jobs:
           install-bear: "true"
 
       - name: Preload tree-sitter parsers
-        shell: bash -l {0}
-        run: |
-          python - <<'PY'
-          import time
-
-          from tree_sitter_language_pack import get_language
-
-          languages = (
-              "python",
-              "go",
-              "rust",
-              "cpp",
-              "csharp",
-              "java",
-              "ruby",
-              "php",
-              "kotlin",
-              "swift",
-              "scala",
-              "lua",
-              "javascript",
-              "typescript",
-          )
-
-          for language in languages:
-              for attempt in range(1, 4):
-                  try:
-                      get_language(language)
-                      break
-                  except Exception as exc:
-                      if attempt == 3:
-                          raise
-                      print(
-                          "Retrying tree-sitter parser preload for "
-                          f"{language}: {exc}"
-                      )
-                      time.sleep(attempt)
-          PY
+        id: parsers
+        uses: ./.github/actions/prewarm-parsers
+        with:
+          cold-cache: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.cold_parser_cache) }}
 
       - name: Run integration tests (parallel)
+        id: integration-tests
         shell: bash -l {0}
         run: pytest -n 4 -m "integration and not slow" --tb=short --timeout=600 --durations=20
+
+      - name: Remove run-scoped parser cache
+        if: always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.cold_parser_cache))
+        env:
+          COLD_RUN_DIR: ${{ github.workspace }}/../.cache/tree-sitter-language-pack/cold/${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if [[ -n "$COLD_RUN_DIR" ]]; then
+            rm -rf -- "$COLD_RUN_DIR"
+          fi
 
   # =============================================================
   # Job 3 — Integration serial  (mutates repos, ~25 min)

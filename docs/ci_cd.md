@@ -36,7 +36,7 @@ GitHub Actions has seven workflow files:
 | `push` to `main` / `master` | Subject to `paths-ignore` (see [Skip mechanisms](#skip-mechanisms)). |
 | `pull_request` to any branch (`"*"`) | Subject to `paths-ignore`. Concurrency cancels older in-flight runs for the same PR head ref. |
 | `schedule` — `cron: "0 7 * * *"` | 07:00 UTC daily. Forces a **full serial-chain run** so the `graph.pkl` cache and C++ parity never silently rot on light-only weeks. |
-| `workflow_dispatch` | Manual run with a `skip_tests` boolean input and a `test_tier` choice (`light` / `full`, default `full`). |
+| `workflow_dispatch` | Manual run with `skip_tests`, a `test_tier` choice (`light` / `full`, default `full`), and an optional `cold_parser_cache` bootstrap check. |
 
 The separate docs workflow runs on pushes/PRs that touch Markdown, `docs/**`,
 `mkdocs.yml`, `pyproject.toml`, the `Makefile`, Python under `codenib/`, the
@@ -118,14 +118,14 @@ other job gates on:
 Both decisions also expose a human-readable `serial-reason` / `slow-reason`
 output explaining the choice (echoed into the job log).
 
-`run-serial` is computed **fail-open** (defaults to `false`). It is set to
-`true` only when one of these holds:
+`run-serial` is computed conservatively: an unreadable or ambiguous diff runs
+the chain. It is set to `true` when one of these holds:
 
 - the event is a `schedule` run (the daily full run);
 - the event is a `workflow_dispatch` with `test_tier=full` (the `light` tier
   leaves it `false`);
-- the push / PR touches the **serial-chain path allowlist** below (detected
-  with `dorny/paths-filter@v3`); or
+- the push / PR touches the **serial-chain path allowlist** below (classified
+  by `scripts/classify_ci_changes.py`); or
 - the PR carries the `full-ci` or `serial-ci` label.
 
 The allowlist names the sources that can affect the expensive serial-chain
@@ -135,8 +135,12 @@ C++ decoder parity:
 ```yaml
 serial:
   - ".github/workflows/ci.yml"
+  - ".github/actions/prewarm-parsers/**"
   - ".github/actions/setup-env/**"
+  - "Makefile"
   - "pyproject.toml"
+  - "uv.lock"
+  - "setup.py"
   - "third_party/**"
   - "core/**"
   - "codenib/code_chunking/**"
@@ -147,6 +151,7 @@ serial:
   - "codenib/ls_router.py"
   - "codenib/types.py"
   - "scripts/check_graph_route_alignment.py"
+  - "scripts/classify_ci_changes.py"
   - "scripts/smoke_lsp_graph.py"
   - "scripts/smoke_scip_cold_start.py"
   - "scripts/swebench_graph_index.py"
@@ -157,6 +162,12 @@ serial:
   - "test/ls_index/**"
   - "test/scip/**"
 ```
+
+The classifier parses `pyproject.toml` and `uv.lock` rather than trusting file
+names alone. A synchronized change to only the editable CodeNib package version
+skips the serial chain; dependency, build, source, schema, test, malformed, or
+unpaired metadata changes run it. Unit, integration, and release-artifact checks
+still run for a release-only version change.
 
 Changes outside this list — agent, runtime, model, retrieval, eval — use the
 faster unit + integration tier by default; a maintainer opts a PR into the
@@ -182,6 +193,16 @@ The CPU `torch` preinstall keeps the non-GPU unit tier from resolving PyPI's
 default CUDA wheels through `sentence-transformers`. Tests that require real
 HuggingFace downloads, CUDA, or LLM credentials must be marked `slow` instead of
 running in this tier.
+
+Unit prewarms all configured tree-sitter languages into a persistent
+self-hosted-runner cache keyed by the pinned `tree-sitter-language-pack`
+version and runner platform. Integration uses the same cache instead of
+downloading the payload again. Each cold preload attempt has a process-level
+timeout and two attempts with cache diagnostics. Scheduled CI uses a unique
+run-scoped empty cache before integration reuses it; manual dispatch can select
+the same path with `cold_parser_cache=true`. Integration removes that run-scoped
+payload after its final use, failed unit runs clean it immediately, and later
+cold runs prune abandoned directories older than seven days.
 
 ### integration
 

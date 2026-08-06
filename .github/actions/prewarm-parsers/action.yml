@@ -1,0 +1,133 @@
+name: Prewarm tree-sitter parsers
+description: Reuse versioned parser payloads with a bounded cold-start path
+
+inputs:
+  cold-cache:
+    description: Use a run-scoped empty cache before prewarming
+    required: false
+    default: "false"
+  timeout-seconds:
+    description: Maximum wall time for one preload attempt
+    required: false
+    default: "75"
+
+outputs:
+  cache-hit:
+    description: Whether parser payloads existed before this invocation
+    value: ${{ steps.cache.outputs.cache-hit }}
+  cache-key:
+    description: Language-pack version and runner platform cache identity
+    value: ${{ steps.cache.outputs.cache-key }}
+  cache-dir:
+    description: Effective XDG cache root
+    value: ${{ steps.cache.outputs.cache-dir }}
+  cold-run-dir:
+    description: Run-scoped directory to remove after the final cold-cache consumer
+    value: ${{ steps.cache.outputs.cold-run-dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Select parser cache
+      id: cache
+      shell: bash -l {0}
+      env:
+        COLD_CACHE: ${{ inputs.cold-cache }}
+      run: |
+        set -euo pipefail
+        PARSER_VERSION="$({
+          python - <<'PY'
+        import tomllib
+
+        with open("uv.lock", "rb") as handle:
+            lock = tomllib.load(handle)
+        matches = [
+            package["version"]
+            for package in lock.get("package", [])
+            if package.get("name") == "tree-sitter-language-pack"
+        ]
+        if len(matches) != 1:
+            raise SystemExit("uv.lock must pin one tree-sitter-language-pack version")
+        print(matches[0])
+        PY
+        })"
+        PLATFORM="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+        CACHE_KEY="${PLATFORM}-tree-sitter-language-pack-${PARSER_VERSION}"
+        CACHE_PARENT="${{ github.workspace }}/../.cache"
+        COLD_RUN_DIR=""
+        if [[ "$COLD_CACHE" == "true" ]]; then
+          COLD_PARENT="$CACHE_PARENT/tree-sitter-language-pack/cold"
+          mkdir -p "$COLD_PARENT"
+          find "$COLD_PARENT" -mindepth 1 -maxdepth 1 -type d -mtime +7 \
+            -exec rm -rf -- {} +
+          COLD_RUN_DIR="$COLD_PARENT/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          XDG_ROOT="$COLD_RUN_DIR/xdg"
+        else
+          XDG_ROOT="$CACHE_PARENT/xdg"
+        fi
+        PARSER_CACHE="$XDG_ROOT/tree-sitter-language-pack/v$PARSER_VERSION"
+        CACHE_HIT=false
+        if find "$PARSER_CACHE" -type f -print -quit 2>/dev/null | grep -q .; then
+          CACHE_HIT=true
+        fi
+        mkdir -p "$XDG_ROOT"
+        echo "XDG_CACHE_HOME=$XDG_ROOT" >> "$GITHUB_ENV"
+        echo "cache-hit=$CACHE_HIT" >> "$GITHUB_OUTPUT"
+        echo "cache-key=$CACHE_KEY" >> "$GITHUB_OUTPUT"
+        echo "cache-dir=$XDG_ROOT" >> "$GITHUB_OUTPUT"
+        echo "cold-run-dir=$COLD_RUN_DIR" >> "$GITHUB_OUTPUT"
+        echo "parser-cache key=$CACHE_KEY hit=$CACHE_HIT cold=$COLD_CACHE dir=$XDG_ROOT"
+
+    - name: Download missing parsers with bounded retries
+      shell: bash -l {0}
+      env:
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+      run: |
+        set -euo pipefail
+        if ! [[ "$TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+          echo "timeout-seconds must be a positive integer" >&2
+          exit 2
+        fi
+        if ! command -v timeout >/dev/null 2>&1; then
+          echo "GNU timeout is required to bound parser downloads" >&2
+          exit 2
+        fi
+        for attempt in 1 2; do
+          echo "parser preload attempt $attempt/2 (timeout=${TIMEOUT_SECONDS}s)"
+          if timeout --foreground --signal=TERM --kill-after=5s \
+            "${TIMEOUT_SECONDS}s" python -u - <<'PY'
+        from tree_sitter_language_pack import cache_dir, downloaded_languages, get_language
+
+        languages = (
+            "python",
+            "go",
+            "rust",
+            "cpp",
+            "csharp",
+            "java",
+            "ruby",
+            "php",
+            "kotlin",
+            "swift",
+            "scala",
+            "lua",
+            "javascript",
+            "typescript",
+        )
+        print(f"parser cache: {cache_dir()}", flush=True)
+        print(f"already cached: {downloaded_languages()}", flush=True)
+        for language in languages:
+            print(f"prewarming {language}", flush=True)
+            get_language(language)
+        print(f"prewarmed {len(languages)} tree-sitter parsers", flush=True)
+        PY
+          then
+            exit 0
+          else
+            status=$?
+          fi
+          echo "parser preload attempt $attempt failed with status $status" >&2
+          sleep "$attempt"
+        done
+        echo "parser preload failed after two bounded attempts; cache=$XDG_CACHE_HOME" >&2
+        exit 1
