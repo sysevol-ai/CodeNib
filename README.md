@@ -51,12 +51,12 @@ agent or code-Wiki framework.
 
 ## News
 
-- **2026-08-05 — CodeNib 0.2.0 Alpha 2.** Hybrid retrieval is now the default,
-  and `codenib toolchain` manages pinned per-language SCIP/LSP providers.
+- **2026-08-05 — SweRank recipe.** Run
+  [SweRank](https://github.com/SalesforceAIResearch/SweRank) retrieval and
+  reranking over a local checkout. [Example](examples/swerank_retrieve_rerank.py)
+- **2026-08-05 — CodeNib 0.2 alpha.** Hybrid retrieval, managed SCIP/LSP
+  toolchains, and reusable Pages/MCP artifacts.
   [Release notes](https://docs.codenib.ai/releases/0.2.0/)
-- **2026-08-05 — CodeNib 0.2.0 Alpha 1.** `codenib publish` builds a static
-  Wiki and reusable context artifact for Pages or MCP.
-  [Pages guide](https://docs.codenib.ai/github_pages/)
 - **2026-08-04 — Native repository explorer.** CodeNib's planner now targets
   the [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench)
   source-region protocol.
