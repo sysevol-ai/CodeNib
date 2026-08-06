@@ -823,6 +823,7 @@ def grounding_report(
     unknown_citations = sorted(cited - allowed_ids)
 
     without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    prose_blocks = []
     blocks = []
     for raw in re.split(r"\n\s*\n", without_fences):
         block = raw.strip()
@@ -833,6 +834,7 @@ def grounding_report(
         # remains part of the grounding denominator.
         if is_internal_wiki_navigation(block):
             continue
+        prose_blocks.append(block)
         plain = re.sub(r"^[-*]\s+", "", block, flags=re.MULTILINE)
         if len(re.sub(r"[`*_[\]()#>-]", "", plain).strip()) >= 40:
             blocks.append(block)
@@ -945,7 +947,7 @@ def grounding_report(
     # Marketing words the page wrote itself are a defect; the same words inside
     # a block it is quoting from cited source are not.
     authored = "\n\n".join(
-        block for block in blocks if not _quotes_cited_evidence(block, evidence)
+        block for block in prose_blocks if not _quotes_cited_evidence(block, evidence)
     )
     promotional = promotional_phrases(authored)
     valid = (

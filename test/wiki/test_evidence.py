@@ -680,6 +680,23 @@ def test_promotional_words_the_page_wrote_itself_still_flag():
     assert grounding_report(authored, [src], [])["promotional_phrases"]
 
 
+def test_short_promotional_claim_is_not_hidden_below_citation_block_threshold():
+    src = EvidenceItem(
+        id="E1",
+        file="site.go",
+        start_line=1,
+        end_line=3,
+        symbol="Build",
+        kind="function",
+        content="func Build() error { return nil }",
+    )
+
+    report = grounding_report("Fast and flexible. [E1]", [src], [])
+
+    assert report["citation_coverage"] == 0.0
+    assert report["promotional_phrases"] == ["fast", "flexible"]
+
+
 def _doc(content, file="src/models.py", symbol="PreparedRequest.prepare_url"):
     from codenib.wiki.evidence import EvidenceItem
 
