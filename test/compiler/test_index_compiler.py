@@ -12,7 +12,7 @@ import subprocess
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -129,14 +129,21 @@ class TestBM25IndexBuilder:
         assert status.metadata["file_count"] == 3
         assert status.metadata["chunk_count"] == 3
         assert status.metadata["source_file_count"] == 2
-        assert status.metadata["builder_schema"] == 7
+        assert status.metadata["builder_schema"] == 8
         assert status.metadata["chunking_failure_policy"] == "fail"
+        assert status.metadata["include_header_epilogue"] is True
         assert status.metadata["max_k"] == 64
         assert set(status.metadata["artifact_file_fingerprints"]) == {
             "documents.json",
             "bm25_metadata.json",
         }
         assert status.path == output
+        MockChunker.assert_called_once_with(
+            language="python",
+            repo_config=ANY,
+            max_lines_per_chunk=300,
+            include_header_epilogue=True,
+        )
         mock_chunker_instance.chunk_repository.assert_called_once_with(
             repo_path="/fake/repo", strict=True
         )
@@ -152,7 +159,31 @@ class TestBM25IndexBuilder:
             assert result == "result"
 
     def test_artifact_identity_tracks_source_body_indexing(self):
-        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 7
+        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 8
+
+    def test_build_indexes_source_without_symbol_definitions(self, tmp_path):
+        from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "settings.py").write_text(
+            'UNIQUE_RUNTIME_MODE = "safe_local"\n',
+            encoding="utf-8",
+        )
+        output = tmp_path / "bm25"
+
+        status = BM25IndexBuilder(languages=["python"]).build(
+            scope="current_repo",
+            repo_path=str(repo),
+            output_dir=str(output),
+        )
+
+        assert status.metadata["source_file_count"] == 1
+        index = BM25CodeIndexer()
+        index.load_index(str(output))
+        results = index.search("safe_local", top_k=1)
+        assert results
+        assert results[0].file == "settings.py"
 
 
 # ---------------------------------------------------------------------------
