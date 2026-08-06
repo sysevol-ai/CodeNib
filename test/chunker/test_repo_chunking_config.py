@@ -6,6 +6,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from codenib.code_chunker import CodeChunker, RepoChunkingConfig
 from codenib.languages import extensions_for_language
 
@@ -60,6 +62,25 @@ def test_repo_discovery_respects_custom_extension_overrides(tmp_path: Path):
 
     assert stats["total_files"] == 1
     assert stats["files_by_language"]["python"][0]["path"] == "tool.pyw"
+
+
+def test_strict_repository_chunking_rejects_partial_results(tmp_path, monkeypatch):
+    source = tmp_path / "broken.py"
+    source.write_text("def broken():\n    pass\n", encoding="utf-8")
+    cfg = RepoChunkingConfig(languages=["python"], filter_tests=False)
+    chunker = CodeChunker(language="python", repo_config=cfg)
+
+    def fail_chunking(*_args):
+        raise ValueError("parser failed")
+
+    monkeypatch.setattr(chunker, "_chunk_file_with_language", fail_chunking)
+
+    assert chunker.chunk_repository(str(tmp_path)) == []
+    with pytest.raises(
+        RuntimeError,
+        match=r"Failed to chunk repository source broken\.py: parser failed",
+    ):
+        chunker.chunk_repository(str(tmp_path), strict=True)
 
 
 def test_repo_discovery_is_sorted_independently_of_walk_order(

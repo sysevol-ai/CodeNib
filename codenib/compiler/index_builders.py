@@ -100,11 +100,12 @@ class BM25IndexBuilder:
 
     def artifact_identity(self) -> Dict[str, Any]:
         return {
-            # v6 also fixes source discovery order across filesystems.
-            "builder_schema": 6,
+            # v7 refuses to publish indexes with silently skipped source files.
+            "builder_schema": 7,
             "languages": list(self.languages),
             "max_k": self.max_k,
             "max_lines_per_chunk": self.max_lines_per_chunk,
+            "chunking_failure_policy": "fail",
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
 
@@ -121,7 +122,7 @@ class BM25IndexBuilder:
             repo_config=RepoChunkingConfig(languages=self.languages),
             max_lines_per_chunk=self.max_lines_per_chunk,
         )
-        chunks = chunker.chunk_repository(repo_path=repo_path)
+        chunks = chunker.chunk_repository(repo_path=repo_path, strict=True)
 
         indexer = BM25CodeIndexer(
             chunks=chunks,
@@ -182,7 +183,7 @@ class VectorIndexBuilder:
 
         route = self._embedding_route()
         return {
-            "builder_schema": 3,
+            "builder_schema": 4,
             "embedding_model": route.model,
             "embedding_provider": route.provider,
             "embedding_dimension": self.embedding_dimension,
@@ -195,6 +196,7 @@ class VectorIndexBuilder:
             "languages": list(self.languages),
             "levels": list(self.build_levels),
             "max_lines_per_chunk": self.max_lines_per_chunk,
+            "chunking_failure_policy": "fail",
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
 
@@ -291,6 +293,7 @@ class VectorIndexBuilder:
             # vectors be stamped with the current source fingerprint. Cross-
             # commit reuse belongs to ``incremental_update`` instead.
             force_rebuild=True,
+            strict_chunking=True,
         )
         self._validate_vector_dimension(vs)
 

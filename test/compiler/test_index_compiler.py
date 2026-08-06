@@ -129,13 +129,17 @@ class TestBM25IndexBuilder:
         assert status.metadata["file_count"] == 3
         assert status.metadata["chunk_count"] == 3
         assert status.metadata["source_file_count"] == 2
-        assert status.metadata["builder_schema"] == 6
+        assert status.metadata["builder_schema"] == 7
+        assert status.metadata["chunking_failure_policy"] == "fail"
         assert status.metadata["max_k"] == 64
         assert set(status.metadata["artifact_file_fingerprints"]) == {
             "documents.json",
             "bm25_metadata.json",
         }
         assert status.path == output
+        mock_chunker_instance.chunk_repository.assert_called_once_with(
+            repo_path="/fake/repo", strict=True
+        )
         mock_indexer_instance.save_index.assert_called_once_with(output)
 
     def test_incremental_delegates_to_build(self):
@@ -148,7 +152,7 @@ class TestBM25IndexBuilder:
             assert result == "result"
 
     def test_artifact_identity_tracks_source_body_indexing(self):
-        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 6
+        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 7
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +191,7 @@ class TestVectorIndexBuilder:
         assert status.metadata["document_count"] == {"l0": 2, "l2": 3}
         mock_build_fn.assert_called_once()
         assert mock_build_fn.call_args.kwargs["force_rebuild"] is True
+        assert mock_build_fn.call_args.kwargs["strict_chunking"] is True
 
     def test_artifact_identity_is_shared_by_full_and_incremental_statuses(self):
         builder = VectorIndexBuilder(
@@ -198,7 +203,7 @@ class TestVectorIndexBuilder:
 
         identity = builder.artifact_identity()
         assert identity == {
-            "builder_schema": 3,
+            "builder_schema": 4,
             "embedding_model": "test-model",
             "embedding_provider": "huggingface",
             "embedding_dimension": 384,
@@ -219,6 +224,7 @@ class TestVectorIndexBuilder:
             "languages": ["python"],
             "levels": ["l0", "l2"],
             "max_lines_per_chunk": 300,
+            "chunking_failure_policy": "fail",
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
 
