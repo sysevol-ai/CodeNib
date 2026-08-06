@@ -149,6 +149,11 @@ def test_publish_rejects_nested_site_and_context_outputs(
     (repo / "runtime.py").write_text("VALUE = 1\n")
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
     output = tmp_path / "published"
+    monkeypatch.setattr(
+        cli,
+        "_run_index",
+        lambda *_args, **_kwargs: pytest.fail("publish indexed before preflight"),
+    )
 
     result = cli.run(
         [
@@ -165,6 +170,37 @@ def test_publish_rejects_nested_site_and_context_outputs(
 
     assert result == 2
     assert not output.exists()
+
+
+def test_publish_rejects_output_inside_repository_before_indexing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "runtime.py").write_text("VALUE = 1\n")
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(
+        cli,
+        "_run_index",
+        lambda *_args, **_kwargs: pytest.fail("publish indexed before preflight"),
+    )
+
+    result = cli.run(
+        [
+            "publish",
+            str(repo),
+            "--site-output",
+            str(repo / "published"),
+            "--context-output",
+            str(tmp_path / "context"),
+            "--frontend-dir",
+            str(_frontend(tmp_path)),
+        ]
+    )
+
+    assert result == 2
+    assert not (repo / "published").exists()
 
 
 def test_publication_environment_marks_custom_embedding_key_as_secret(
