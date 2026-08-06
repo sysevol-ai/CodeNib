@@ -113,9 +113,10 @@ class EmbeddingRetrievePipeline:
     def load_index(self, index_path: str) -> None:
         """Hot-swap the FAISS index without reloading the embedding model.
 
-        Frees the current index and loads the pre-built index at *index_path*.
-        The embedding model stays in memory, so this is much faster than
-        creating a new :class:`EmbeddingRetrievePipeline` for each instance.
+        Validates the pre-built index at *index_path* before releasing the
+        current one. The embedding model stays in memory, so this is much
+        faster than creating a new :class:`EmbeddingRetrievePipeline` for each
+        instance, and a failed replacement leaves the current index available.
         """
         self.vector_store.swap_index(index_path)
 

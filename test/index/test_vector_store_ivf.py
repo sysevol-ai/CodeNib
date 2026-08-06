@@ -253,6 +253,107 @@ def test_load_rejects_invalid_portable_json_documents(tmp_path):
         loaded.load()
 
 
+def test_load_rejects_faiss_document_count_mismatch(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+
+    documents_path = path / "l2" / "documents_test__model.pkl"
+    documents_path.unlink()
+    documents_path.with_suffix(".json").write_text(
+        json.dumps(
+            [
+                {
+                    "page_content": "def f0(): pass",
+                    "metadata": {"name": "f0", "file": "m0.py"},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    with pytest.raises(ValueError, match="2 vectors for 1 documents"):
+        loaded.load()
+
+
+def test_load_rejects_top_level_document_count_mismatch(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+
+    config_path = path / "config_test__model.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["l2_documents"] = 3
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    with pytest.raises(ValueError, match="config expects 3 documents, loaded 2"):
+        loaded.load()
+
+
+def test_zero_top_level_count_does_not_resurrect_stale_level_files(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+
+    config_path = path / "config_test__model.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["l2_documents"] = 0
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    loaded.load()
+
+    assert loaded.l2_index.ntotal == 0
+    assert loaded.l2_documents == []
+
+
+def test_failed_swap_preserves_the_serving_index(tmp_path):
+    current = _make_store(embedding_model="test/model")
+    current_chunks = _chunks(2)
+    current.add_code_chunks(current_chunks)
+
+    replacement_path = tmp_path / "replacement"
+    replacement = _make_store(embedding_model="test/model")
+    replacement.add_code_chunks(_chunks(1))
+    replacement.save(str(replacement_path))
+    (replacement_path / "l2" / "documents_test__model.pkl").unlink()
+
+    with pytest.raises(ValueError, match="document store"):
+        current.swap_index(str(replacement_path))
+
+    assert current.l2_index.ntotal == 2
+    assert len(current.l2_documents) == 2
+    results = current.search(current_chunks[0]["content"], top_k=1)
+    assert results[0].node_name == current_chunks[0]["name"]
+
+
+def test_successful_swap_replaces_all_levels(tmp_path):
+    current = _make_store(embedding_model="test/model")
+    current.add_code_chunks(_chunks(2), level="l0")
+    current.add_code_chunks(_chunks(2), level="l2")
+
+    replacement_path = tmp_path / "replacement"
+    replacement = _make_store(embedding_model="test/model")
+    replacement_chunk = _chunks(1)[0]
+    replacement_chunk["name"] = "replacement"
+    replacement_chunk["content"] = "def replacement():\n    return 42"
+    replacement.add_code_chunks([replacement_chunk], level="l2")
+    replacement.save(str(replacement_path))
+
+    current.swap_index(str(replacement_path))
+
+    assert current.l0_index.ntotal == 0
+    assert current.l0_documents == []
+    assert current.l2_index.ntotal == 1
+    results = current.search(replacement_chunk["content"], top_k=1)
+    assert results[0].node_name == "replacement"
+
+
 def test_load_rejects_faiss_dimension_mismatch(tmp_path):
     path = tmp_path / "vs"
     model = "test/model"

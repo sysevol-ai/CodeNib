@@ -542,26 +542,10 @@ class CodeVectorStore:
     def swap_index(self, path: str) -> None:
         """Hot-swap the FAISS index without reloading the embedding model.
 
-        Frees the current L0/L2 FAISS indices and documents from memory, then
-        loads a new index from *path*.  The embedding model is left intact so
-        the caller can reuse the same model across many instances.
+        The replacement is fully loaded and validated before the current
+        L0/L2 state is released. The embedding model is left intact so the
+        caller can reuse the same model across many instances.
         """
-        # Free current FAISS index memory (GPU or CPU).
-        for index in (self.l0_index, self.l2_index):
-            if index is None:
-                continue
-            reset = getattr(index, "reset", None)
-            if callable(reset):
-                reset()
-
-        # Reinitialise to empty indices (guards against a partially-failed
-        # subsequent load leaving the store in a mixed state).
-        self.l0_index = self._build_faiss_index()
-        self.l0_documents = []
-        self.l2_index = self._build_faiss_index()
-        self.l2_documents = []
-
-        self.store_path = Path(path)
         self.load(path)
 
     def close(self) -> None:
@@ -1090,6 +1074,8 @@ class CodeVectorStore:
             config_path = load_path / "config.json"
 
         expected_artifact = dict(self.artifact_metadata)
+        loaded_artifact = expected_artifact
+        expected_counts: Dict[str, Optional[int]] = {"l0": None, "l2": None}
         if config_path.exists():
             with open(config_path, "r") as f:
                 config = json.load(f)
@@ -1114,14 +1100,18 @@ class CodeVectorStore:
                     f"Vector config dimension mismatch: expected {self.dimension}, "
                     f"found {saved_dimension}"
                 )
+            saved_index_type = config.get("index_type")
+            if saved_index_type and saved_index_type != self.index_type:
+                raise ValueError(
+                    f"Vector config index type mismatch: expected {self.index_type!r}, "
+                    f"found {saved_index_type!r}"
+                )
             saved_metric = config.get("index_metric")
             if saved_metric and saved_metric != self.index_metric:
-                logger.warning(
-                    "Index metric mismatch: expected %s, got %s",
-                    self.index_metric,
-                    saved_metric,
+                raise ValueError(
+                    f"Vector config metric mismatch: expected {self.index_metric!r}, "
+                    f"found {saved_metric!r}"
                 )
-                self.index_metric = saved_metric
             saved_artifact = config.get("artifact")
             if isinstance(saved_artifact, dict):
                 expected_fingerprint = expected_artifact.get("embedding_fingerprint")
@@ -1133,27 +1123,78 @@ class CodeVectorStore:
                     raise ValueError(
                         "Vector artifact embedding fingerprint does not match manifest"
                     )
-                self.artifact_metadata = dict(saved_artifact)
+                loaded_artifact = dict(saved_artifact)
             elif expected_artifact.get("embedding_fingerprint") is not None:
                 raise ValueError("Vector config is missing embedding artifact identity")
+
+            for level in ("l0", "l2"):
+                value = config.get(f"{level}_documents")
+                if value is None:
+                    continue
+                if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                    raise ValueError(
+                        f"Vector config has invalid {level} document count: {value!r}"
+                    )
+                expected_counts[level] = value
         elif expected_artifact.get("embedding_fingerprint") is not None:
             raise ValueError("Vector store is missing its top-level configuration")
 
-        # Load L0
-        l0_path = load_path / "l0"
-        if l0_path.exists():
-            loaded = self._load_level(l0_path, model_suffix)
-            if loaded is not None:
-                self.l0_index, self.l0_documents = loaded
-                logger.info(f"Loaded L0 store with {len(self.l0_documents)} documents")
+        loaded_levels = {}
+        for level in ("l0", "l2"):
+            expected_count = expected_counts[level]
+            level_path = load_path / level
+            faiss_path = level_path / f"index_{model_suffix}.faiss"
 
-        # Load L2
-        l2_path = load_path / "l2"
-        if l2_path.exists():
-            loaded = self._load_level(l2_path, model_suffix)
-            if loaded is not None:
-                self.l2_index, self.l2_documents = loaded
-                logger.info(f"Loaded L2 store with {len(self.l2_documents)} documents")
+            # A zero count in the top-level config is authoritative. Older
+            # writers could leave stale level files behind after deletions.
+            if expected_count == 0:
+                loaded_levels[level] = (self._build_faiss_index(), [])
+                continue
+
+            if faiss_path.exists():
+                index, documents = self._load_level(level_path, model_suffix)
+            elif expected_count is not None and expected_count > 0:
+                raise FileNotFoundError(
+                    f"Vector config expects {expected_count} {level} documents, "
+                    f"but {faiss_path} is missing"
+                )
+            else:
+                index, documents = self._build_faiss_index(), []
+
+            if expected_count is not None and len(documents) != expected_count:
+                raise ValueError(
+                    f"{level} config expects {expected_count} documents, "
+                    f"loaded {len(documents)}"
+                )
+            loaded_levels[level] = (index, documents)
+
+        old_indices = (self.l0_index, self.l2_index)
+        self.l0_index, self.l0_documents = loaded_levels["l0"]
+        self.l2_index, self.l2_documents = loaded_levels["l2"]
+        self.artifact_metadata = loaded_artifact
+        self.store_path = load_path
+
+        for old_index in old_indices:
+            if (
+                old_index is None
+                or old_index is self.l0_index
+                or old_index is self.l2_index
+            ):
+                continue
+            reset = getattr(old_index, "reset", None)
+            if callable(reset):
+                try:
+                    reset()
+                except Exception as exc:
+                    logger.debug("Could not release replaced FAISS index: %s", exc)
+
+        for level, (_index, documents) in loaded_levels.items():
+            if documents:
+                logger.info(
+                    "Loaded %s store with %d documents",
+                    level.upper(),
+                    len(documents),
+                )
 
         total_docs = len(self.l0_documents) + len(self.l2_documents)
         logger.info(
@@ -1163,7 +1204,7 @@ class CodeVectorStore:
 
     def _load_level(
         self, level_path: Path, model_suffix: str
-    ) -> Optional[tuple[faiss.Index, List[_Document]]]:
+    ) -> tuple[faiss.Index, List[_Document]]:
         """Load a single level from disk.
 
         Handles both the new format (raw FAISS + _Document list) and the
@@ -1173,14 +1214,14 @@ class CodeVectorStore:
         faiss_path = level_path / f"{index_name}.faiss"
 
         if not faiss_path.exists():
-            logger.warning(f"FAISS index not found at {faiss_path}")
-            return None
+            raise FileNotFoundError(f"FAISS index not found at {faiss_path}")
 
         try:
             index = faiss.read_index(str(faiss_path))
         except Exception as e:
-            logger.warning(f"Could not load FAISS index from {faiss_path}: {e}")
-            return None
+            raise ValueError(
+                f"Could not load FAISS index from {faiss_path}: {e}"
+            ) from e
         if int(index.d) != self.dimension:
             raise ValueError(
                 f"FAISS dimension mismatch at {faiss_path}: "
@@ -1193,38 +1234,52 @@ class CodeVectorStore:
         json_path = level_path / f"documents_{model_suffix}.json"
         if json_path.exists():
             documents = self._load_documents_json(json_path)
-            return index, documents
+        else:
+            documents = None
 
-        # Try loading the local documents pickle (works for both new _Document
-        # and legacy LangChain Document objects via duck-typing conversion).
-        docs_path = level_path / f"documents_{model_suffix}.pkl"
-        if docs_path.exists():
-            try:
-                with open(docs_path, "rb") as f:
-                    raw_docs = compat_pickle.load(f)
-                documents = [_to_document(d) for d in raw_docs]
-                return index, documents
-            except Exception as e:
-                logger.warning(f"Could not load documents from {docs_path}: {e}")
+            # Try loading the local documents pickle (works for both new
+            # _Document and legacy LangChain Document objects).
+            docs_path = level_path / f"documents_{model_suffix}.pkl"
+            if docs_path.exists():
+                try:
+                    with open(docs_path, "rb") as f:
+                        raw_docs = compat_pickle.load(f)
+                    documents = [_to_document(d) for d in raw_docs]
+                except Exception as exc:
+                    logger.warning(
+                        "Could not load documents from %s: %s", docs_path, exc
+                    )
 
-        # Fallback: try LangChain FAISS pkl (index_name.pkl contains
-        # (InMemoryDocstore, index_to_docstore_id) tuple).
-        lc_pkl_path = level_path / f"{index_name}.pkl"
-        if lc_pkl_path.exists():
-            try:
-                documents = self._load_langchain_pkl(lc_pkl_path)
-                logger.info(
-                    "Loaded %d documents from legacy LangChain format",
-                    len(documents),
-                )
-                return index, documents
-            except Exception as e:
-                logger.warning(
-                    f"Could not load legacy LangChain pkl from {lc_pkl_path}: {e}"
-                )
+            # Fallback: LangChain stores use index_name.pkl for their docstore.
+            lc_pkl_path = level_path / f"{index_name}.pkl"
+            if documents is None and lc_pkl_path.exists():
+                try:
+                    documents = self._load_langchain_pkl(lc_pkl_path)
+                    logger.info(
+                        "Loaded %d documents from legacy LangChain format",
+                        len(documents),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Could not load legacy LangChain pkl from %s: %s",
+                        lc_pkl_path,
+                        exc,
+                    )
 
-        logger.warning(f"No document store found for {level_path}")
-        return index, []
+            if documents is None:
+                if int(index.ntotal) == 0:
+                    documents = []
+                else:
+                    raise ValueError(
+                        f"No readable document store found for {level_path}"
+                    )
+
+        if int(index.ntotal) != len(documents):
+            raise ValueError(
+                f"Misaligned vector level {level_path}: {int(index.ntotal)} vectors "
+                f"for {len(documents)} documents"
+            )
+        return index, documents
 
     @staticmethod
     def _load_documents_json(path: Path) -> List[_Document]:
