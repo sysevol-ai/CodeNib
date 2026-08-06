@@ -714,6 +714,135 @@ def test_attribute_access_resolves_from_owner_and_leaf():
     assert grounding_report(md, [item], [])["unsupported_identifiers"] == []
 
 
+def test_bare_member_name_resolves_from_a_qualified_symbol():
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc(
+        "class PreparedRequest:\n    pass",
+        symbol="PreparedRequest.url",
+    )
+    md = "The bare `url` member holds the encoded request target. [E1]"
+
+    assert grounding_report(md, [item], [])["unsupported_identifiers"] == []
+
+
+def test_identifier_support_uses_exact_names_not_substrings():
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc(
+        "class AuthorizationError(Exception):\n    pass",
+        symbol="AuthorizationError",
+    )
+    md = "The `Authorization` value is attached to every request. [E1]"
+
+    assert grounding_report(md, [item], [])["unsupported_identifiers"] == [
+        "Authorization"
+    ]
+
+
+def test_qualified_call_requires_a_supported_owner():
+    from codenib.wiki.evidence import EvidenceItem, grounding_report
+
+    item = EvidenceItem(
+        id="E1",
+        file="src/models.py",
+        start_line=1,
+        end_line=9,
+        symbol="PreparedRequest",
+        kind="class",
+        content=(
+            "class PreparedRequest:\n"
+            "    def prepare_url(self, url):\n"
+            "        self.url = url"
+        ),
+    )
+
+    valid = "`PreparedRequest.prepare_url()` stores the request URL. [E1]"
+    invented = "`requests.api.prepare_url()` stores the request URL. [E1]"
+
+    assert grounding_report(valid, [item], [])["unsupported_identifiers"] == []
+    assert grounding_report(invented, [item], [])["unsupported_identifiers"] == [
+        "requests.api.prepare_url()"
+    ]
+
+
+def test_qualified_call_does_not_join_owner_and_leaf_across_evidence_items():
+    from codenib.wiki.evidence import EvidenceItem, grounding_report
+
+    owner = EvidenceItem(
+        id="E1",
+        file="src/models.py",
+        start_line=1,
+        end_line=2,
+        symbol="PreparedRequest",
+        kind="class",
+        content="class PreparedRequest:\n    pass",
+    )
+    leaf = EvidenceItem(
+        id="E2",
+        file="src/helpers.py",
+        start_line=1,
+        end_line=2,
+        symbol="prepare_url",
+        kind="function",
+        content="def prepare_url(url):\n    return url",
+    )
+    markdown = "`PreparedRequest.prepare_url()` stores the request URL. [E1][E2]"
+
+    assert grounding_report(markdown, [owner, leaf], [])["unsupported_identifiers"] == [
+        "PreparedRequest.prepare_url()"
+    ]
+
+
+def test_qualified_call_requires_one_complete_relation_endpoint():
+    from codenib.wiki.evidence import RelationItem, grounding_report
+
+    split = RelationItem(
+        id="R1",
+        source="src/models.py:PreparedRequest",
+        target="src/helpers.py:prepare_url()",
+    )
+    complete = RelationItem(
+        id="R1",
+        source="src/models.py:PreparedRequest.prepare_url()",
+        target="src/adapters.py:HTTPAdapter.send()",
+    )
+    markdown = "`PreparedRequest.prepare_url()` stores the request URL. [R1]"
+
+    assert grounding_report(markdown, [], [split])["unsupported_identifiers"] == [
+        "PreparedRequest.prepare_url()"
+    ]
+    assert grounding_report(markdown, [], [complete])["unsupported_identifiers"] == []
+
+
+def test_path_qualified_symbol_does_not_join_across_evidence_items():
+    from codenib.wiki.evidence import EvidenceItem, grounding_report
+
+    path_item = EvidenceItem(
+        id="E1",
+        file="src/models.py",
+        start_line=1,
+        end_line=2,
+        symbol="PreparedRequest",
+        kind="class",
+        content="class PreparedRequest:\n    pass",
+    )
+    symbol_item = EvidenceItem(
+        id="E2",
+        file="src/helpers.py",
+        start_line=1,
+        end_line=2,
+        symbol="prepare_url",
+        kind="function",
+        content="def prepare_url(url):\n    return url",
+    )
+    markdown = "`src/models.py:prepare_url` stores the request URL. [E1][E2]"
+
+    assert grounding_report(markdown, [path_item, symbol_item], [])[
+        "unsupported_identifiers"
+    ] == ["src/models.py:prepare_url"]
+
+
 def test_uri_scheme_is_not_an_identifier():
     from codenib.wiki.evidence import grounding_report
 
@@ -771,6 +900,29 @@ def test_grounding_floor_rejects_a_page_citing_evidence_that_does_not_exist():
     report = grounding_report(md, [item], [])
     assert report["grounded"] is False
     assert report["unknown_citations"] == ["E9"]
+
+
+def test_bare_internal_wiki_navigation_is_not_a_factual_block():
+    from codenib.wiki.evidence import grounding_report
+
+    item = _doc("def prepare_url(self):\n    return None")
+    claim = "`prepare_url` encodes the target host before transmission. [E1]"
+    navigation = (
+        "- [Request preparation details](?p=request-preparation)\n"
+        "- [Transport adapter lifecycle](?p=transport-adapters)"
+    )
+    factual_list = (
+        "- Request preparation normalizes the target host.\n"
+        "- Transport adapters receive the normalized request."
+    )
+
+    nav_report = grounding_report(f"{claim}\n\n{navigation}", [item], [])
+    factual_report = grounding_report(f"{claim}\n\n{factual_list}", [item], [])
+
+    assert nav_report["valid"] is True
+    assert nav_report["citation_coverage"] == 1.0
+    assert factual_report["valid"] is False
+    assert factual_report["citation_coverage"] == 0.5
 
 
 def test_flow_needs_at_least_two_steps():

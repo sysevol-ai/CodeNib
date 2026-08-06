@@ -16,6 +16,7 @@ from .evidence import (
     evidence_matches_claim,
     infer_claim_role,
     is_interaction_claim,
+    is_internal_wiki_navigation,
     promotional_phrases,
     relation_endpoints_named,
     relation_matches_claim,
@@ -44,10 +45,46 @@ _REFERENCE_NARRATION = re.compile(
     r"cs|kt|kts|swift|scala):\d+(?:-\d+)?`",
     re.IGNORECASE,
 )
+_FRAMING_SECTION_TITLES = frozenset({"purpose and scope", "at a glance"})
+
+
+def _without_internal_wiki_navigation(markdown: str) -> str:
+    """Remove navigation-only blocks before measuring explanatory prose."""
+
+    blocks = re.split(r"\n\s*\n", markdown)
+
+    def is_section_heading(block: str) -> bool:
+        return bool(re.fullmatch(r"\s*#{2,6}\s+.+?\s*", block))
+
+    explanatory_blocks: list[str] = []
+    for index, block in enumerate(blocks):
+        if is_internal_wiki_navigation(block.strip()):
+            continue
+        if is_section_heading(block):
+            section_body: list[str] = []
+            for candidate in blocks[index + 1 :]:
+                if is_section_heading(candidate):
+                    break
+                if candidate.strip():
+                    section_body.append(candidate)
+            # A heading whose entire body is internal navigation is chrome too.
+            # Inspect the full section so a navigation list before real prose
+            # cannot accidentally erase that prose's heading.
+            if section_body and all(
+                is_internal_wiki_navigation(candidate.strip())
+                for candidate in section_body
+            ):
+                continue
+        explanatory_blocks.append(block)
+    return "\n\n".join(explanatory_blocks)
 
 
 def _prose_sentences(markdown: str) -> list[str]:
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    without_fences = re.sub(
+        r"```[\s\S]*?```",
+        "",
+        _without_internal_wiki_navigation(markdown),
+    )
     without_headings = re.sub(
         r"^#{1,6}\s+.*$",
         "",
@@ -131,7 +168,11 @@ def leading_code_subject(text: str) -> str:
 def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
     """Find paragraph pairs where one largely restates the other."""
 
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    without_fences = re.sub(
+        r"```[\s\S]*?```",
+        "",
+        _without_internal_wiki_navigation(markdown),
+    )
     terms = []
     subjects = []
     for raw in re.split(r"\n\s*\n", without_fences):
@@ -186,7 +227,11 @@ def section_evidence_report(markdown: str) -> dict[str, Any]:
             sections_without_new_evidence.append(title)
         if intro_evidence and evidence and evidence.issubset(intro_evidence):
             intro_only_sections.append(title)
-        seen.update(evidence)
+        # These overview panels frame the page for scanning. Their citations
+        # still belong in the report, but they must not make a later detail
+        # section look source-stale merely because it expands the same facts.
+        if title.casefold() not in _FRAMING_SECTION_TITLES:
+            seen.update(evidence)
 
     return {
         "intro_evidence": sorted(intro_evidence),
@@ -200,7 +245,11 @@ def section_evidence_report(markdown: str) -> dict[str, Any]:
 def section_narrative_report(markdown: str) -> dict[str, Any]:
     """Find sections that substantially restate the intro or an earlier section."""
 
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    without_fences = re.sub(
+        r"```[\s\S]*?```",
+        "",
+        _without_internal_wiki_navigation(markdown),
+    )
     section_matches = list(
         re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
     )
@@ -267,7 +316,11 @@ def narrative_density_report(markdown: str) -> dict[str, Any]:
 def section_synthesis_report(markdown: str) -> dict[str, Any]:
     """Find pages dominated by sections that only inventory local operations."""
 
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    without_fences = re.sub(
+        r"```[\s\S]*?```",
+        "",
+        _without_internal_wiki_navigation(markdown),
+    )
     section_matches = list(
         re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
     )
@@ -567,7 +620,11 @@ def page_quality_report(
 ) -> dict[str, Any]:
     """Measure whether a page represents its supported fact plan."""
 
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    without_fences = re.sub(
+        r"```[\s\S]*?```",
+        "",
+        _without_internal_wiki_navigation(markdown),
+    )
     rendered_sections = len(
         re.findall(r"^#{2,6}\s+\S", without_fences, flags=re.MULTILINE)
     )
