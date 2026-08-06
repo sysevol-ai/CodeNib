@@ -29,9 +29,8 @@ def _format_cell(value: Any) -> str:
 def write_summary(rows: Sequence[Mapping[str, Any]], summary_csv: Path) -> None:
     """Write aggregate trial metrics grouped by task, arm, model, and effort."""
 
-    successful = [row for row in rows if row.get("returncode") == 0]
     groups: dict[tuple[str, str, str, str], list[Mapping[str, Any]]] = {}
-    for row in successful:
+    for row in rows:
         key = (
             str(row.get("task") or ""),
             str(row.get("baseline") or ""),
@@ -45,7 +44,9 @@ def write_summary(rows: Sequence[Mapping[str, Any]], summary_csv: Path) -> None:
         "baseline",
         "model",
         "reasoning_effort",
+        "n_recorded_trials",
         "n_trials",
+        "n_execution_failures",
         "avg_reward",
         "avg_f2p",
         "avg_p2p",
@@ -74,43 +75,46 @@ def write_summary(rows: Sequence[Mapping[str, Any]], summary_csv: Path) -> None:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         for (task, baseline, model, effort), group in sorted(groups.items()):
+            valid = [row for row in group if row.get("returncode") == 0]
             latest = max(group, key=lambda row: str(row.get("created_at") or ""))
             output = {
                 "task": task,
                 "baseline": baseline,
                 "model": model,
                 "reasoning_effort": effort,
-                "n_trials": len(group),
-                "avg_reward": metric_mean(group, "reward"),
-                "avg_f2p": metric_mean(group, "f2p"),
-                "avg_p2p": metric_mean(group, "p2p"),
-                "avg_partial": metric_mean(group, "partial"),
-                "avg_f2p_passed": metric_mean(group, "f2p_passed"),
-                "avg_f2p_total": metric_mean(group, "f2p_total"),
-                "avg_p2p_passed": metric_mean(group, "p2p_passed"),
-                "avg_p2p_total": metric_mean(group, "p2p_total"),
-                "pass_rate": metric_mean(group, "reward"),
-                "avg_main_input_tokens": metric_mean(group, "main_input_tokens"),
+                "n_recorded_trials": len(group),
+                "n_trials": len(valid),
+                "n_execution_failures": len(group) - len(valid),
+                "avg_reward": metric_mean(valid, "reward"),
+                "avg_f2p": metric_mean(valid, "f2p"),
+                "avg_p2p": metric_mean(valid, "p2p"),
+                "avg_partial": metric_mean(valid, "partial"),
+                "avg_f2p_passed": metric_mean(valid, "f2p_passed"),
+                "avg_f2p_total": metric_mean(valid, "f2p_total"),
+                "avg_p2p_passed": metric_mean(valid, "p2p_passed"),
+                "avg_p2p_total": metric_mean(valid, "p2p_total"),
+                "pass_rate": metric_mean(valid, "reward"),
+                "avg_main_input_tokens": metric_mean(valid, "main_input_tokens"),
                 "avg_main_cached_input_tokens": metric_mean(
-                    group, "main_cached_input_tokens"
+                    valid, "main_cached_input_tokens"
                 ),
-                "avg_main_output_tokens": metric_mean(group, "main_output_tokens"),
+                "avg_main_output_tokens": metric_mean(valid, "main_output_tokens"),
                 "avg_main_reasoning_output_tokens": metric_mean(
-                    group, "main_reasoning_output_tokens"
+                    valid, "main_reasoning_output_tokens"
                 ),
                 "avg_guardian_prompt_tokens": metric_mean(
-                    group, "guardian_prompt_tokens"
+                    valid, "guardian_prompt_tokens"
                 ),
                 "avg_guardian_cached_input_tokens": metric_mean(
-                    group, "guardian_cached_input_tokens"
+                    valid, "guardian_cached_input_tokens"
                 ),
                 "avg_guardian_completion_tokens": metric_mean(
-                    group, "guardian_completion_tokens"
+                    valid, "guardian_completion_tokens"
                 ),
-                "avg_main_cost_usd": metric_mean(group, "main_cost_usd"),
-                "avg_guardian_cost_usd": metric_mean(group, "guardian_cost_usd"),
-                "avg_total_cost_usd": metric_mean(group, "total_cost_usd"),
-                "sum_total_cost_usd": metric_sum(group, "total_cost_usd"),
+                "avg_main_cost_usd": metric_mean(valid, "main_cost_usd"),
+                "avg_guardian_cost_usd": metric_mean(valid, "guardian_cost_usd"),
+                "avg_total_cost_usd": metric_mean(valid, "total_cost_usd"),
+                "sum_total_cost_usd": metric_sum(valid, "total_cost_usd"),
                 "latest_output_dir": latest.get("output_dir") or "",
                 "latest_result_json": latest.get("result_json") or "",
             }
@@ -195,18 +199,18 @@ def _group_key(row: Mapping[str, Any]) -> tuple[str, str, str, str]:
 
 
 def summary_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Aggregate successful trials for dashboard display."""
+    """Aggregate valid trials while retaining every recorded slot in counts."""
 
     groups: dict[tuple[str, str, str, str], list[Mapping[str, Any]]] = {}
     for row in rows:
-        if row.get("returncode") == 0:
-            groups.setdefault(_group_key(row), []).append(row)
+        groups.setdefault(_group_key(row), []).append(row)
 
     result: list[dict[str, Any]] = []
     for (task, baseline, model, effort), group in sorted(groups.items()):
+        valid = [row for row in group if row.get("returncode") == 0]
         rewards = [
             float(value)
-            for row in group
+            for row in valid
             if isinstance((value := row.get("reward")), (int, float))
         ]
         result.append(
@@ -216,26 +220,32 @@ def summary_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
                 "model": model,
                 "reasoning_effort": effort,
                 "label": f"{baseline} / {model} / {effort}",
-                "n_trials": len(group),
-                "pass_rate": metric_mean(group, "reward"),
-                "avg_reward": metric_mean(group, "reward"),
-                "avg_f2p": metric_mean(group, "f2p"),
-                "avg_p2p": metric_mean(group, "p2p"),
-                "avg_partial": metric_mean(group, "partial"),
-                "avg_main_input_tokens": metric_mean(group, "main_input_tokens"),
-                "avg_main_output_tokens": metric_mean(group, "main_output_tokens"),
+                "n_recorded_trials": len(group),
+                "n_trials": len(valid),
+                "n_execution_failures": len(group) - len(valid),
+                "pass_rate": metric_mean(valid, "reward"),
+                "avg_reward": metric_mean(valid, "reward"),
+                "avg_f2p": metric_mean(valid, "f2p"),
+                "avg_p2p": metric_mean(valid, "p2p"),
+                "avg_partial": metric_mean(valid, "partial"),
+                "avg_main_input_tokens": metric_mean(valid, "main_input_tokens"),
+                "avg_main_output_tokens": metric_mean(valid, "main_output_tokens"),
                 "avg_guardian_prompt_tokens": metric_mean(
-                    group, "guardian_prompt_tokens"
+                    valid, "guardian_prompt_tokens"
                 ),
                 "avg_guardian_cached_input_tokens": metric_mean(
-                    group, "guardian_cached_input_tokens"
+                    valid, "guardian_cached_input_tokens"
                 ),
                 "avg_guardian_completion_tokens": metric_mean(
-                    group, "guardian_completion_tokens"
+                    valid, "guardian_completion_tokens"
                 ),
-                "avg_total_cost_usd": metric_mean(group, "total_cost_usd"),
-                "sum_total_cost_usd": metric_sum(group, "total_cost_usd"),
-                "std_reward": (statistics.pstdev(rewards) if len(rewards) > 1 else 0.0),
+                "avg_total_cost_usd": metric_mean(valid, "total_cost_usd"),
+                "sum_total_cost_usd": metric_sum(valid, "total_cost_usd"),
+                "std_reward": (
+                    statistics.pstdev(rewards)
+                    if len(rewards) > 1
+                    else 0.0 if rewards else None
+                ),
                 "latest_output_dir": max(
                     group, key=lambda row: str(row.get("created_at") or "")
                 ).get("output_dir"),
@@ -259,13 +269,15 @@ def task_rows(summaries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     for (task, model, effort), rows in sorted(grouped.items()):
         solo = next((row for row in rows if row["baseline"] == "solo"), None)
         guardian = next((row for row in rows if row["baseline"] == "guardian"), None)
+        solo_pass_rate = (solo or {}).get("pass_rate")
+        guardian_pass_rate = (guardian or {}).get("pass_rate")
         result.append(
             {
                 "task": task,
                 "model": model,
                 "reasoning_effort": effort,
-                "solo_pass_rate": (solo or {}).get("pass_rate"),
-                "guardian_pass_rate": (guardian or {}).get("pass_rate"),
+                "solo_pass_rate": solo_pass_rate,
+                "guardian_pass_rate": guardian_pass_rate,
                 "solo_avg_f2p": (solo or {}).get("avg_f2p"),
                 "guardian_avg_f2p": (guardian or {}).get("avg_f2p"),
                 "solo_avg_p2p": (solo or {}).get("avg_p2p"),
@@ -273,13 +285,17 @@ def task_rows(summaries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
                 "solo_avg_partial": (solo or {}).get("avg_partial"),
                 "guardian_avg_partial": (guardian or {}).get("avg_partial"),
                 "delta_pass_rate": (
-                    (guardian or {}).get("pass_rate", 0)
-                    - (solo or {}).get("pass_rate", 0)
-                    if solo and guardian
+                    guardian_pass_rate - solo_pass_rate
+                    if isinstance(solo_pass_rate, (int, float))
+                    and isinstance(guardian_pass_rate, (int, float))
                     else None
                 ),
                 "solo_trials": (solo or {}).get("n_trials", 0),
                 "guardian_trials": (guardian or {}).get("n_trials", 0),
+                "solo_recorded_trials": (solo or {}).get("n_recorded_trials", 0),
+                "guardian_recorded_trials": (guardian or {}).get(
+                    "n_recorded_trials", 0
+                ),
                 "guardian_avg_cost_usd": (guardian or {}).get("avg_total_cost_usd"),
             }
         )

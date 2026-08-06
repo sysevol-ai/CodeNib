@@ -364,6 +364,7 @@ def test_dashboard_task_rows_include_average_test_metrics():
                 "avg_p2p": 0.75,
                 "avg_partial": 0.625,
                 "n_trials": 4,
+                "n_recorded_trials": 4,
             },
             {
                 "task": "fixture-task",
@@ -376,6 +377,7 @@ def test_dashboard_task_rows_include_average_test_metrics():
                 "avg_partial": 0.75,
                 "avg_total_cost_usd": 1.25,
                 "n_trials": 4,
+                "n_recorded_trials": 4,
             },
         ]
     )
@@ -396,6 +398,8 @@ def test_dashboard_task_rows_include_average_test_metrics():
             "delta_pass_rate": 0.25,
             "solo_trials": 4,
             "guardian_trials": 4,
+            "solo_recorded_trials": 4,
+            "guardian_recorded_trials": 4,
             "guardian_avg_cost_usd": 1.25,
         }
     ]

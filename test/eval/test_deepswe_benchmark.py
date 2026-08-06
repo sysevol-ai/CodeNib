@@ -87,3 +87,46 @@ def test_dashboard_export_uses_packaged_deepswe_analysis(tmp_path):
     assert report["summary"][0]["avg_p2p"] == 1.0
     assert report["summary"][0]["avg_partial"] == 0.75
     assert report["trials"][0]["task"] == "fixture-task"
+
+
+def test_dashboard_exposes_failed_fixed_slots_without_scoring_them(tmp_path):
+    root = tmp_path / "gpt-5.6-terra_medium" / "fixture-task" / "guardian"
+    _write_metadata(root / "job_1" / "metadata.json")
+    _write_metadata(
+        root / "job_2" / "metadata.json",
+        returncode=1,
+        reward=None,
+        f2p=None,
+        p2p=None,
+        partial=None,
+    )
+
+    report = export_dashboard_data(tmp_path)
+
+    summary = report["summary"][0]
+    assert summary["n_recorded_trials"] == 2
+    assert summary["n_trials"] == 1
+    assert summary["n_execution_failures"] == 1
+    assert summary["pass_rate"] == 1.0
+
+
+def test_dashboard_keeps_an_all_failed_setting_visible(tmp_path):
+    root = tmp_path / "gpt-5.6-terra_medium" / "fixture-task"
+    _write_metadata(
+        root / "solo" / "job_1" / "metadata.json",
+        baseline="solo",
+        returncode=1,
+        reward=None,
+    )
+    _write_metadata(
+        root / "guardian" / "job_1" / "metadata.json",
+        returncode=1,
+        reward=None,
+    )
+
+    report = export_dashboard_data(tmp_path)
+
+    assert len(report["summary"]) == 2
+    assert all(row["n_trials"] == 0 for row in report["summary"])
+    assert all(row["n_execution_failures"] == 1 for row in report["summary"])
+    assert report["tasks"][0]["delta_pass_rate"] is None

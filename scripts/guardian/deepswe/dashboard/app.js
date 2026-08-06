@@ -13,7 +13,7 @@ const metricLabels = {
   sum_total_cost_usd: "Total cost",
   avg_main_input_tokens: "Avg input tokens",
   avg_main_output_tokens: "Avg output tokens",
-  n_trials: "Trials",
+  n_trials: "Valid trials",
 };
 
 function fmt(value, kind = "number") {
@@ -105,7 +105,7 @@ function renderHeatmap() {
       const el = document.createElement("div");
       el.className = "heat-cell";
       el.style.background = heatColor(value, metric);
-      el.innerHTML = `<span class="cell-main">${fmt(value, metricKind(metric))}</span><span class="cell-sub">${row ? `${row.n_trials} trial(s)` : ""}</span>`;
+      el.innerHTML = `<span class="cell-main">${fmt(value, metricKind(metric))}</span><span class="cell-sub">${row ? `${row.n_trials}/${row.n_recorded_trials} valid` : ""}</span>`;
       grid.appendChild(el);
     }
   }
@@ -136,8 +136,8 @@ function renderTasks() {
       "Guardian avg P2P",
       "Solo avg partial",
       "Guardian avg partial",
-      "Solo n",
-      "Guardian n",
+      "Solo valid/recorded",
+      "Guardian valid/recorded",
       "Guardian avg cost",
     ],
     state.data.tasks.map((r) => [
@@ -153,8 +153,8 @@ function renderTasks() {
       fmt(r.guardian_avg_p2p, "pct"),
       fmt(r.solo_avg_partial, "pct"),
       fmt(r.guardian_avg_partial, "pct"),
-      fmt(r.solo_trials),
-      fmt(r.guardian_trials),
+      `${fmt(r.solo_trials)}/${fmt(r.solo_recorded_trials)}`,
+      `${fmt(r.guardian_trials)}/${fmt(r.guardian_recorded_trials)}`,
       fmt(r.guardian_avg_cost_usd, "cost"),
     ]),
     [
