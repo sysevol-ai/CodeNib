@@ -28,6 +28,7 @@ this recipe outside research or other non-commercial settings.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -40,6 +41,7 @@ EMBED_RERANK_DIMENSION = 3584
 LLM_RERANK_MODEL = "openai/swerank-llm-small"
 RETRIEVAL_TOP_K = 100
 DEFAULT_CANDIDATE_TOP_K = 30
+CACHE_PROFILE_VERSION = 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -96,8 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=(
-            "Vector-index cache. The default is isolated by repository and "
-            "checkout content."
+            "Vector-index cache. The default is isolated by repository "
+            "content and index build profile."
         ),
     )
     parser.add_argument(
@@ -192,7 +194,25 @@ def resolve_languages(repo: Path, requested: Sequence[str]) -> list[str]:
     return languages
 
 
-def resolve_index_dir(args: argparse.Namespace, repo: Path) -> Path:
+def _cache_profile_key(languages: Sequence[str], max_lines_per_chunk: int) -> str:
+    profile = {
+        "version": CACHE_PROFILE_VERSION,
+        "embedding_model": RETRIEVAL_MODEL,
+        "embedding_dimension": RETRIEVAL_DIMENSION,
+        "languages": list(languages),
+        "max_lines_per_chunk": max_lines_per_chunk,
+        "retrieval_level": "l2",
+        "normalize_embeddings": True,
+        "index_metric": "ip",
+    }
+    encoded = json.dumps(profile, sort_keys=True, separators=(",", ":")).encode()
+    digest = hashlib.sha256(encoded).hexdigest()[:16]
+    return f"profile-v{CACHE_PROFILE_VERSION}-{digest}"
+
+
+def resolve_index_dir(
+    args: argparse.Namespace, repo: Path, languages: Sequence[str]
+) -> Path:
     if args.index_dir is not None:
         return args.index_dir.expanduser().resolve()
 
@@ -210,7 +230,14 @@ def resolve_index_dir(args: argparse.Namespace, repo: Path) -> Path:
         fingerprint = fingerprint_repository(repo).value.removeprefix("sha256:")
         source_key = f"source-{fingerprint}"
 
-    return repo_state_dir(repo) / "recipes" / "swerank-embed-small" / source_key
+    profile_key = _cache_profile_key(languages, args.max_lines_per_chunk)
+    return (
+        repo_state_dir(repo)
+        / "recipes"
+        / "swerank-embed-small"
+        / source_key
+        / profile_key
+    )
 
 
 def _embedding_runtime_kwargs(batch_size: int, device: str | None) -> dict[str, Any]:
@@ -338,7 +365,7 @@ def run(args: argparse.Namespace) -> int:
 
     query = read_query(args)
     languages = resolve_languages(repo, args.language)
-    index_dir = resolve_index_dir(args, repo)
+    index_dir = resolve_index_dir(args, repo, languages)
 
     if args.reranker == "llm-small":
         os.environ["OPENAI_API_BASE"] = args.api_base

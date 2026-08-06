@@ -112,8 +112,9 @@ python examples/swerank_retrieve_rerank.py /path/to/repo \
 
 The default dense-index cache is outside the checkout and keyed by the clean
 Git commit or, for dirty and non-Git repositories, a source-content
-fingerprint. Pass `--index-dir` only when the caller manages that identity
-boundary itself.
+fingerprint. A versioned build-profile key also separates language and chunking
+configurations. Pass `--index-dir` only when the caller manages those identity
+boundaries itself.
 
 Both model routes apply the prompt names published by the model cards through
 CodeNib's embedding prompt registry and L2-normalize vectors before inner-product

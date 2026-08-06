@@ -102,9 +102,16 @@ def test_default_index_cache_is_keyed_by_clean_commit(recipe, monkeypatch, tmp_p
         lambda repo: pytest.fail("clean commits should not require content hashing"),
     )
 
-    index_dir = recipe.resolve_index_dir(_args(recipe), tmp_path)
+    args = _args(recipe)
+    index_dir = recipe.resolve_index_dir(args, tmp_path, ["python"])
 
-    assert index_dir == (state / "recipes" / "swerank-embed-small" / f"git-{'a' * 40}")
+    assert index_dir == (
+        state
+        / "recipes"
+        / "swerank-embed-small"
+        / f"git-{'a' * 40}"
+        / recipe._cache_profile_key(["python"], args.max_lines_per_chunk)
+    )
 
 
 def test_default_index_cache_fingerprints_dirty_checkout(recipe, monkeypatch, tmp_path):
@@ -125,11 +132,36 @@ def test_default_index_cache_fingerprints_dirty_checkout(recipe, monkeypatch, tm
         ),
     )
 
-    index_dir = recipe.resolve_index_dir(_args(recipe), tmp_path)
+    args = _args(recipe)
+    index_dir = recipe.resolve_index_dir(args, tmp_path, ["python"])
 
     assert index_dir == (
-        state / "recipes" / "swerank-embed-small" / f"source-{'b' * 64}"
+        state
+        / "recipes"
+        / "swerank-embed-small"
+        / f"source-{'b' * 64}"
+        / recipe._cache_profile_key(["python"], args.max_lines_per_chunk)
     )
+
+
+def test_default_index_cache_separates_chunk_profiles(recipe, monkeypatch, tmp_path):
+    from codenib import paths, source_fingerprint
+    from codenib.compiler import checkout_identity
+
+    monkeypatch.setattr(paths, "repo_state_dir", lambda repo: tmp_path / "state")
+    monkeypatch.setattr(checkout_identity, "checkout_commit", lambda repo: "a" * 40)
+    monkeypatch.setattr(
+        source_fingerprint, "repository_source_is_dirty", lambda repo: False
+    )
+
+    default_args = _args(recipe)
+    shorter_args = _args(recipe, "--max-lines-per-chunk", "100")
+
+    python_index = recipe.resolve_index_dir(default_args, tmp_path, ["python"])
+    go_index = recipe.resolve_index_dir(default_args, tmp_path, ["go"])
+    shorter_index = recipe.resolve_index_dir(shorter_args, tmp_path, ["python"])
+
+    assert len({python_index, go_index, shorter_index}) == 3
 
 
 @pytest.mark.parametrize(
@@ -214,7 +246,9 @@ def test_run_wires_repository_query_and_closes_pipeline(
     monkeypatch.setattr(codenib.model, "RetrieveRerankPipeline", FakePipeline)
     monkeypatch.setattr(recipe, "resolve_languages", lambda repo, requested: ["python"])
     monkeypatch.setattr(
-        recipe, "resolve_index_dir", lambda args, repo: tmp_path / "index"
+        recipe,
+        "resolve_index_dir",
+        lambda args, repo, languages: tmp_path / "index",
     )
 
     args = recipe.parse_args(
