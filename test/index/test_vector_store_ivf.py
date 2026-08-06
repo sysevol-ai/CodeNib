@@ -15,12 +15,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import pickle
 from unittest.mock import patch
 
 import faiss
 import numpy as np
 import pytest
 
+from codenib.index.embedding.artifact_integrity import (
+    VECTOR_PERSISTENCE_SCHEMA,
+    vector_level_artifact_records,
+)
 from codenib.index.embedding.vector_store import CodeVectorStore
 
 _DIM = 16
@@ -70,6 +75,19 @@ def _chunks(n: int) -> list:
         }
         for i in range(n)
     ]
+
+
+def _commit_portable_documents(path, model_suffix: str) -> None:
+    config_path = path / f"config_{model_suffix}.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    level_path = path / "l2"
+    config["persistence_schema"] = VECTOR_PERSISTENCE_SCHEMA
+    config["level_artifacts"]["l2"] = vector_level_artifact_records(
+        level_path,
+        model_suffix,
+        documents_file=f"documents_{model_suffix}.json",
+    )
+    config_path.write_text(json.dumps(config), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +216,33 @@ def test_save_rejects_misaligned_vectors_and_documents(tmp_path):
         store.save(str(tmp_path / "vs"))
 
 
+def test_failed_save_blocks_load_until_successful_retry(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+
+    with (
+        patch(
+            "codenib.index.embedding.vector_store.faiss.write_index",
+            side_effect=RuntimeError("interrupted"),
+        ),
+        pytest.raises(RuntimeError, match="interrupted"),
+    ):
+        store.save(str(path))
+
+    marker = path / ".config_test__model.json.save-in-progress"
+    assert marker.is_file()
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    with pytest.raises(ValueError, match="interrupted save marker"):
+        loaded.load()
+
+    store.save(str(path))
+    assert not marker.exists()
+    loaded.load()
+    assert len(loaded.l2_documents) == 2
+
+
 def test_load_prefers_portable_json_documents(tmp_path):
     path = tmp_path / "vs"
     store = _make_store(embedding_model="test/model")
@@ -225,6 +270,7 @@ def test_load_prefers_portable_json_documents(tmp_path):
         ),
         encoding="utf-8",
     )
+    _commit_portable_documents(path, "test__model")
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
     loaded.load()
@@ -247,6 +293,7 @@ def test_load_rejects_invalid_portable_json_documents(tmp_path):
         '[{"page_content": 7, "metadata": {}}]',
         encoding="utf-8",
     )
+    _commit_portable_documents(path, "test__model")
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
     with pytest.raises(ValueError, match="invalid content or metadata"):
@@ -272,6 +319,7 @@ def test_load_rejects_faiss_document_count_mismatch(tmp_path):
         ),
         encoding="utf-8",
     )
+    _commit_portable_documents(path, "test__model")
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
     with pytest.raises(ValueError, match="2 vectors for 1 documents"):
@@ -294,6 +342,27 @@ def test_load_rejects_top_level_document_count_mismatch(tmp_path):
         loaded.load()
 
 
+def test_load_rejects_same_count_torn_document_write(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+
+    documents_path = path / "l2" / "documents_test__model.pkl"
+    with documents_path.open("rb") as handle:
+        documents = pickle.load(handle)
+    documents[0].page_content = "def unrelated():\n    return -1"
+    with documents_path.open("wb") as handle:
+        pickle.dump(documents, handle)
+
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    with pytest.raises(
+        ValueError,
+        match="committed documents vector artifact does not match",
+    ):
+        loaded.load()
+
+
 def test_zero_top_level_count_does_not_resurrect_stale_level_files(tmp_path):
     path = tmp_path / "vs"
     store = _make_store(embedding_model="test/model")
@@ -303,6 +372,8 @@ def test_zero_top_level_count_does_not_resurrect_stale_level_files(tmp_path):
     config_path = path / "config_test__model.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
     config["l2_documents"] = 0
+    config.pop("persistence_schema")
+    config.pop("level_artifacts")
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
@@ -323,7 +394,7 @@ def test_failed_swap_preserves_the_serving_index(tmp_path):
     replacement.save(str(replacement_path))
     (replacement_path / "l2" / "documents_test__model.pkl").unlink()
 
-    with pytest.raises(ValueError, match="document store"):
+    with pytest.raises(ValueError, match="vector artifact file"):
         current.swap_index(str(replacement_path))
 
     assert current.l2_index.ntotal == 2
