@@ -277,10 +277,10 @@ def _structured_result(result: Any) -> dict[str, Any]:
 
 async def _assert_mcp_async(
     root: Path,
-    repo: Path,
     *,
     executable: str,
     env: dict[str, str],
+    arguments: Sequence[str],
 ) -> None:
     from mcp import Client, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -292,7 +292,7 @@ async def _assert_mcp_async(
 
     parameters = StdioServerParameters(
         command=executable,
-        args=["mcp", str(repo)],
+        args=list(arguments),
         cwd=root,
         env=env,
     )
@@ -394,13 +394,83 @@ async def _assert_mcp_async(
 
 def _assert_mcp(
     root: Path,
+    *,
+    executable: str,
+    env: dict[str, str],
+    arguments: Sequence[str],
+) -> None:
+    print("+", executable, *arguments, flush=True)
+    asyncio.run(
+        _assert_mcp_async(
+            root,
+            executable=executable,
+            env=env,
+            arguments=arguments,
+        )
+    )
+
+
+def _assert_portable_artifact_mcp(
+    root: Path,
     repo: Path,
     *,
     executable: str,
     env: dict[str, str],
 ) -> None:
-    print("+", executable, "mcp", repo, flush=True)
-    asyncio.run(_assert_mcp_async(root, repo, executable=executable, env=env))
+    """Pack, rebind, and query the release artifact from another checkout."""
+
+    artifact = root / "context-artifact"
+    checkout = root / "artifact-checkout"
+    repository = "example/release-smoke"
+    _run(
+        [
+            executable,
+            "artifact",
+            "pack",
+            str(repo),
+            "--output",
+            str(artifact),
+            "--repository",
+            repository,
+            "--view",
+            "bm25",
+        ],
+        cwd=root,
+        env=env,
+    )
+    _run(
+        ["git", "clone", "--quiet", "--no-hardlinks", str(repo), str(checkout)],
+        cwd=root,
+        env=env,
+    )
+    _run(
+        [
+            executable,
+            "artifact",
+            "verify",
+            str(artifact),
+            "--repo",
+            str(checkout),
+            "--repository",
+            repository,
+        ],
+        cwd=root,
+        env=env,
+    )
+    _assert_mcp(
+        root,
+        executable=executable,
+        env=env,
+        arguments=[
+            "mcp",
+            "--artifact",
+            str(artifact),
+            "--repo",
+            str(checkout),
+            "--repository",
+            repository,
+        ],
+    )
 
 
 def _assert_stale_snapshot_rejected(
@@ -481,14 +551,25 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
         raise RuntimeError(
             f"one-command Wiki startup modified the target repository: {status!r}"
         )
-    _assert_mcp(root, repo, executable=executable, env=env)
+    _assert_mcp(
+        root,
+        executable=executable,
+        env=env,
+        arguments=["mcp", str(repo)],
+    )
+    _assert_portable_artifact_mcp(
+        root,
+        repo,
+        executable=executable,
+        env=env,
+    )
     _assert_stale_snapshot_rejected(
         root,
         repo,
         executable=executable,
         env=env,
     )
-    print("Installed one-command Wiki and MCP service smoke passed")
+    print("Installed Wiki, MCP, and portable artifact service smoke passed")
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
