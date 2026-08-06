@@ -13,7 +13,10 @@ import pytest
 from codenib.artifacts.security import assert_publishable_tree
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.web.static_export import (
+    _GRAPH_SOURCE_MAX_ANCHORS,
+    _GRAPH_SOURCE_PAGE_MAX_BYTES,
     STATIC_EXPORT_MANIFEST,
+    _embed_page_graph_sources,
     export_static_wiki,
     normalize_base_path,
 )
@@ -58,12 +61,16 @@ class _Builder:
         return self.pages.get(page_id)
 
     def source(self, file, start, end):
-        assert (file, start, end) == ("src/runtime.py", 1, 2)
+        assert file == "src/runtime.py"
+        lines = ["def run():\n", "    return 'ready'\n"]
+        first = max(1, start or 1)
+        last = max(first, end or len(lines))
+        content = "".join(lines[first - 1 : last])
         return {
             "file": file,
-            "start_line": start,
-            "end_line": end,
-            "content": "def run():\n    return 'ready'\n",
+            "start_line": first,
+            "end_line": first + len(content.splitlines()) - 1,
+            "content": content,
         }
 
 
@@ -295,8 +302,42 @@ def test_static_export_advertises_only_precomputed_page_graphs(
         "codenib.web.static_export._page_graph",
         lambda _bundle, _page: {
             "available": True,
-            "nodes": [{"id": "run"}],
-            "edges": [],
+            "nodes": [
+                {
+                    "id": "run",
+                    "file": "src/runtime.py",
+                    "line": 1,
+                    "end_line": 2,
+                }
+            ],
+            "hierarchy": {
+                "root": "root",
+                "nodes": [
+                    {
+                        "id": "symbol-run",
+                        "kind": "symbol",
+                        "node_id": "run",
+                        "file": "src/runtime.py",
+                        "line": 1,
+                        "end_line": 2,
+                    },
+                    {
+                        "id": "symbol-scope",
+                        "kind": "symbol",
+                        "node_id": "src/runtime.py:Runtime",
+                        "file": "src/runtime.py",
+                        "line": 1,
+                        "end_line": 2,
+                    },
+                ],
+            },
+            "edges": [
+                {
+                    "source": "run",
+                    "target": "run",
+                    "anchors": [{"file": "src/runtime.py", "line": 2}],
+                }
+            ],
             "mermaid": "",
         },
     )
@@ -322,6 +363,136 @@ def test_static_export_advertises_only_precomputed_page_graphs(
         ).read_text()
     )
     assert graph["available"] is True
+    assert graph["nodes"][0]["source"]["content"].startswith("def run")
+    assert "source" not in graph["hierarchy"]["nodes"][0]
+    assert graph["hierarchy"]["nodes"][1]["source"]["content"].startswith("def run")
+    assert graph["edges"][0]["anchors"][0]["source"]["content"].endswith(
+        "return 'ready'\n"
+    )
+
+
+def test_page_graph_source_previews_are_bounded_cached_and_path_safe() -> None:
+    class SourceBuilder:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def source(self, file, start, end):
+            self.calls.append((file, start, end))
+            return {
+                "file": file,
+                "start_line": start,
+                "end_line": end,
+                "content": "".join(
+                    f"line {line} {'x' * 2_000}\n" for line in range(start, end + 1)
+                ),
+            }
+
+    builder = SourceBuilder()
+    graph = {
+        "available": True,
+        "nodes": [
+            {
+                "id": "wide",
+                "file": "src/runtime.py",
+                "line": 10,
+                "end_line": 10_000,
+            },
+            {
+                "id": "unsafe",
+                "file": "../secret.py",
+                "line": 1,
+                "end_line": 2,
+            },
+        ],
+        "hierarchy": {
+            "nodes": [
+                {
+                    "id": "mapped",
+                    "kind": "symbol",
+                    "node_id": "wide",
+                    "file": "src/runtime.py",
+                    "line": 10,
+                    "end_line": 10_000,
+                },
+                {
+                    "id": "scope",
+                    "kind": "symbol",
+                    "node_id": "canonical-scope",
+                    "file": "src/runtime.py",
+                    "line": 30,
+                    "end_line": 35,
+                },
+            ]
+        },
+        "edges": [
+            {
+                "anchors": [
+                    {"file": "src/runtime.py", "line": 30},
+                    {"file": "src/runtime.py", "line": 30},
+                    {"file": "/tmp/secret.py", "line": 1},
+                    *[
+                        {"file": "src/runtime.py", "line": 100 + index * 20}
+                        for index in range(100)
+                    ],
+                ]
+            }
+        ],
+    }
+
+    enriched = _embed_page_graph_sources(builder, graph)
+
+    wide = enriched["nodes"][0]["source"]
+    assert len(wide["content"].encode("utf-8")) <= 64 * 1024
+    assert len(wide["content"].splitlines()) <= 160
+    assert builder.calls[0] == ("src/runtime.py", 7, 166)
+    assert "source" not in enriched["nodes"][1]
+    hierarchy = enriched["hierarchy"]["nodes"]
+    assert "source" not in hierarchy[0]
+    assert "source" in hierarchy[1]
+    anchors = enriched["edges"][0]["anchors"]
+    assert anchors[0]["source"] == anchors[1]["source"]
+    assert "source" not in anchors[2]
+    assert builder.calls.count(("src/runtime.py", 24, 36)) == 1
+    attached_anchors = [anchor for anchor in anchors if "source" in anchor]
+    assert len(attached_anchors) < 50  # the per-page byte budget stops first
+    assert len(builder.calls) <= _GRAPH_SOURCE_MAX_ANCHORS + 2
+    attached_sources = [
+        value["source"]
+        for value in [*enriched["nodes"], *hierarchy, *anchors]
+        if "source" in value
+    ]
+    assert (
+        sum(len(json.dumps(source).encode("utf-8")) for source in attached_sources)
+        <= _GRAPH_SOURCE_PAGE_MAX_BYTES
+    )
+
+
+def test_page_graph_source_preview_rejects_mismatched_returned_range() -> None:
+    class MismatchedBuilder:
+        def source(self, file, start, end):
+            return {
+                "file": file,
+                "start_line": start + 1,
+                "end_line": end + 1,
+                "content": "wrong range\n",
+            }
+
+    graph = {
+        "nodes": [
+            {
+                "id": "run",
+                "file": "src/runtime.py",
+                "line": 10,
+                "end_line": 12,
+            }
+        ],
+        "hierarchy": {"nodes": []},
+        "edges": [],
+    }
+
+    _embed_page_graph_sources(MismatchedBuilder(), graph)
+
+    assert "source" not in graph["nodes"][0]
 
 
 def test_static_export_does_not_replace_an_unrelated_directory(export_setup) -> None:
