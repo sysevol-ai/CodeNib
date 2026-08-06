@@ -5,7 +5,11 @@
 import numpy as np
 import pytest
 
-from codenib.index.embedding.vector_store import CodeVectorStore, _Document
+from codenib.index.embedding.vector_store import (
+    CodeVectorStore,
+    _Document,
+    _result_source_file,
+)
 
 
 class _FakeIndex:
@@ -35,6 +39,40 @@ class _FakeEmbedding:
         if query == "different query":
             return [0.0, 1.0]
         raise AssertionError(f"unexpected query: {query}")
+
+
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        (
+            {
+                "file": "/tmp/checkout/src/service.py",
+                "node_id": "src/service.py:run()",
+            },
+            "src/service.py",
+        ),
+        (
+            {
+                "file": "/tmp/checkout/src/service.py",
+                "node_id": "src/service.py",
+            },
+            "src/service.py",
+        ),
+        (
+            {"file": "src/service.py", "node_id": "src/service.py:run()"},
+            "src/service.py",
+        ),
+        (
+            {
+                "file": "/tmp/service.py",
+                "node_id": "/tmp/service.py:run()",
+            },
+            "/tmp/service.py",
+        ),
+    ],
+)
+def test_result_source_file_prefers_stable_repository_identity(metadata, expected):
+    assert _result_source_file(metadata) == expected
 
 
 def test_search_within_ids_deduplicates_before_top_k():
@@ -79,6 +117,32 @@ def test_search_stages_reuse_the_same_query_embedding_within_request_scope():
 
     store.search_with_content("different query", top_k=3, level="l2")
     assert store.embedding.calls == 2
+
+
+def test_vector_search_apis_return_repository_relative_files():
+    store = CodeVectorStore.__new__(CodeVectorStore)
+    store.index_metric = "ip"
+    store.embedding = _FakeEmbedding()
+    store.l2_index = _FakeIndex([[1.0, 0.0], [0.5, 0.0], [0.25, 0.0]])
+    store.l2_documents = [
+        _Document(
+            "target",
+            {
+                "node_id": "src/service.py:run()",
+                "name": "run",
+                "file": "/tmp/checkout/src/service.py",
+            },
+        ),
+        _Document("other", {"node_id": "b", "name": "b", "file": "b.py"}),
+        _Document("last", {"node_id": "c", "name": "c", "file": "c.py"}),
+    ]
+
+    assert store.search("query", top_k=1)[0].file == "src/service.py"
+    assert store.search_with_content("query", top_k=1)[0].file == "src/service.py"
+    assert (
+        store.search_within_ids("query", {"src/service.py:run()"}, top_k=1)[0].file
+        == "src/service.py"
+    )
 
 
 def test_repeated_requests_do_not_reuse_query_embeddings():

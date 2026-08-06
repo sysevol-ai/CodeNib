@@ -230,6 +230,27 @@ def _to_document(obj: Any) -> _Document:
     )
 
 
+def _result_source_file(metadata: Dict[str, Any]) -> str:
+    """Prefer the repository-relative file identity encoded in ``node_id``."""
+    raw_file = str(metadata.get("file") or "").replace("\\", "/")
+    node_id = str(metadata.get("node_id") or "").replace("\\", "/")
+    if not raw_file or not node_id:
+        return raw_file
+
+    # ``chunk_file`` can be used outside a repository and then carries the
+    # same absolute path in both fields. Preserve that direct-file contract.
+    if node_id == raw_file or node_id.startswith(f"{raw_file}:"):
+        return raw_file
+
+    node_file = node_id.split(":", 1)[0].removeprefix("./")
+    comparable_file = raw_file.removeprefix("./")
+    if node_file and (
+        comparable_file == node_file or comparable_file.endswith(f"/{node_file}")
+    ):
+        return node_file
+    return raw_file
+
+
 class CodeVectorStore:
     """
     Vector store for code embeddings using FAISS and sentence-transformers.
@@ -704,7 +725,7 @@ class CodeVectorStore:
             node_with_score = NodeInfo(
                 node_name=metadata.get("name", "unknown"),
                 type=metadata.get("chunk_type", "unknown"),
-                file=metadata.get("file", ""),
+                file=_result_source_file(metadata),
                 node_id=metadata.get("node_id", ""),
                 start_line=metadata.get("start_line", 0),
                 end_line=metadata.get("end_line", 0),
@@ -764,7 +785,7 @@ class CodeVectorStore:
             node_with_content = NodeInfo(
                 node_name=metadata.get("name", "unknown"),
                 type=metadata.get("chunk_type", "unknown"),
-                file=metadata.get("file", ""),
+                file=_result_source_file(metadata),
                 node_id=metadata.get("node_id", ""),
                 start_line=metadata.get("start_line", 0),
                 end_line=metadata.get("end_line", 0),
@@ -844,7 +865,7 @@ class CodeVectorStore:
                 NodeInfo(
                     node_name=metadata.get("name", "unknown"),
                     type=metadata.get("chunk_type", "unknown"),
-                    file=metadata.get("file", ""),
+                    file=_result_source_file(metadata),
                     node_id=metadata.get("node_id", ""),
                     start_line=metadata.get("start_line", 0),
                     end_line=metadata.get("end_line", 0),
