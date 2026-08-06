@@ -147,9 +147,9 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert registry_preflight["runs-on"] == "ubuntu-latest"
     assert registry_preflight["environment"]["name"] == "mcp-registry-publish"
     preflight_steps = {step["name"]: step for step in registry_preflight["steps"]}
-    assert (
-        "sha256sum --check" in preflight_steps["Install verified MCP publisher"]["run"]
-    )
+    preflight_download = preflight_steps["Install verified MCP publisher"]["run"]
+    assert "sha256sum --check" in preflight_download
+    assert "--connect-timeout 10 --max-time 90" in preflight_download
     assert "login dns" in preflight_steps["Verify branded namespace ownership"]["run"]
     production_publisher = production["jobs"]["publish-pypi"]
     assert production_publisher["needs"] == "registry-auth-preflight"
@@ -180,6 +180,10 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert "--check-pypi" in registry_steps["Wait for the exact PyPI package"]["run"]
     assert (
         "sha256sum --check" in registry_steps["Install verified MCP publisher"]["run"]
+    )
+    assert (
+        "--connect-timeout 10 --max-time 90"
+        in registry_steps["Install verified MCP publisher"]["run"]
     )
     assert registry_steps["Authenticate branded namespace"]["env"] == {
         "MCP_PRIVATE_KEY": "${{ secrets.MCP_PRIVATE_KEY }}"
@@ -236,6 +240,13 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "type": "boolean",
         "default": "true",
     }
+    verification_steps = {
+        step["name"]: step for step in verification["jobs"]["build"]["steps"]
+    }
+    assert (
+        "--connect-timeout 10 --max-time 90"
+        in verification_steps["Validate MCP Registry metadata"]["run"]
+    )
     for job_name in (
         "install-smoke",
         "upgrade-smoke",

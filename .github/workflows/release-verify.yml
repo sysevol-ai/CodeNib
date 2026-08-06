@@ -57,7 +57,8 @@ jobs:
       - name: Validate MCP Registry metadata
         run: |
           BUILD_VENV="$RUNNER_TEMP/codenib-release-build-${{ github.run_id }}-${{ github.run_attempt }}"
-          curl --fail --location --retry 3 \
+          curl --fail --location --retry 3 --retry-all-errors \
+            --connect-timeout 10 --max-time 90 \
             --output "$RUNNER_TEMP/mcp-server.schema.json" \
             https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json
           "$BUILD_VENV/bin/python" scripts/verify_mcp_registry.py \
