@@ -111,7 +111,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--codenib-base-dataset",
         type=str,
-        default="fishmingyu/codeminer-base-dataset",
+        default="fishmingyu/codenib-base-dataset",
         help="Dataset name used when source is codenib_base.",
     )
     parser.add_argument(

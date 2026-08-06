@@ -23,11 +23,11 @@ CODENIB_PREBUILT_DIR="${CODENIB_PREBUILT_DIR:-${CODENIB_HOME}/prebuilt}"
 #   FILTER="^(astropy__astropy-12907)$" bash scripts/embeddings/build_codenib_base_embeddings.sh
 #
 #   # Override storage / dataset
-#   STORAGE_DIR=/tmp/emb DATASET=fishmingyu/codeminer-base-dataset \
+#   STORAGE_DIR=/tmp/emb DATASET=fishmingyu/codenib-base-dataset \
 #     bash scripts/embeddings/build_codenib_base_embeddings.sh
 
 STORAGE_DIR="${STORAGE_DIR:-${CODENIB_PREBUILT_DIR}}"
-DATASET="${DATASET:-fishmingyu/codeminer-base-dataset}"
+DATASET="${DATASET:-fishmingyu/codenib-base-dataset}"
 SPLIT="${SPLIT:-test}"
 FILTER="${FILTER:-.*}"
 PROFILE_TAG="${PROFILE_TAG:-codenib_base_${SPLIT}}"

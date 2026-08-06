@@ -478,7 +478,7 @@ def run_pipeline(args):
     elif dataset == "codenib_base":
         from codenib.dataset.codenib_base import CodeNibBaseDataset
 
-        dataset_name = "fishmingyu/codeminer-base-dataset"
+        dataset_name = "fishmingyu/codenib-base-dataset"
         dataset_split = args.split
         dataset_class = CodeNibBaseDataset
     else:

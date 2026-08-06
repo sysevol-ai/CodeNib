@@ -79,15 +79,13 @@ def test_namespace_check_rejects_former_names_in_text_and_paths(
     assert any("former identifier in tracked path" in failure for failure in failures)
 
 
-def test_namespace_check_allows_only_exact_external_identity(tmp_path: Path) -> None:
+def test_namespace_check_rejects_former_external_identity(tmp_path: Path) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     former = "code" + "miner"
-    allowed = tmp_path / "external.txt"
-    allowed.write_text(f"fishmingyu/{former}-base-dataset\n")
-    disallowed = tmp_path / "nearby.txt"
-    disallowed.write_text(f"fishmingyu/{former}-base-dataset-cache\n")
+    external = tmp_path / "external.txt"
+    external.write_text(f"fishmingyu/{former}-base-dataset\n")
     subprocess.run(
-        ["git", "add", allowed.name, disallowed.name],
+        ["git", "add", external.name],
         cwd=tmp_path,
         check=True,
         capture_output=True,
@@ -95,5 +93,4 @@ def test_namespace_check_allows_only_exact_external_identity(tmp_path: Path) -> 
 
     failures = _unapproved_namespace(tmp_path)
 
-    assert not any("external.txt" in failure for failure in failures)
-    assert any("nearby.txt:1" in failure for failure in failures)
+    assert any("external.txt:1" in failure for failure in failures)

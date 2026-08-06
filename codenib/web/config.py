@@ -123,7 +123,7 @@ class QAConfig:
     )
 
     # --- instance selection (used by the build script) ---
-    dataset: str = "fishmingyu/codeminer-base-dataset"
+    dataset: str = "fishmingyu/codenib-base-dataset"
     split: str = "test"
     # Explicit instance ids to feature; if empty, sample `per_language` from
     # each of `languages` (a varied set).

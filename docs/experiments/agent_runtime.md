@@ -18,7 +18,7 @@ a flat **embedding pre-load context-engine** + the standard grep/read loop.
 
 ## Setup
 
-- **Dataset:** `sysevol-ai/codeminer-synthesis` (per-query, per-category). 4
+- **Dataset:** `sysevol-ai/codenib-synthesis` (per-query, per-category). 4
   languages — Go, Rust, TS/JS, C++/C. **Python excluded**: its sweep hung under
   5-way concurrency (rerun solo to add it). 1611 cells, reps = 1.
 - **Model / scorer:** `vertex_ai/claude-haiku-4-5`; span-overlap localization

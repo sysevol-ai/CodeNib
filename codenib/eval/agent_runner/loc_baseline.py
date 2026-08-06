@@ -51,7 +51,7 @@ def build_dataset(args):
     """Mirror of embedding_retrieve_baseline._build_dataset()."""
     if args.dataset == "codenib_base":
         return CodeNibBaseDataset(
-            dataset="fishmingyu/codeminer-base-dataset",
+            dataset="fishmingyu/codenib-base-dataset",
             split=args.split,
             filter_instance=args.filter_instance,
             repo_root=os.path.expanduser(args.repo_cache_dir),

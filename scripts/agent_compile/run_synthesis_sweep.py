@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Per-query sweep over the ``sysevol-ai/codeminer-synthesis`` dataset.
+"""Per-query sweep over the ``sysevol-ai/codenib-synthesis`` dataset.
 
 Unlike ``run_sweep.py`` (one query per SWE-bench instance), synthesis has many
 queries (50-80) per repo, varying by ``category`` (behavioral / symbol_hint /
@@ -47,7 +47,7 @@ def _load_normalized(config_name: str) -> List[Dict[str, Any]]:
 
     from codenib.dataset.codenib_synthesis import normalize_synthesis_record
 
-    ds = load_dataset("sysevol-ai/codeminer-synthesis", config_name, split="test")
+    ds = load_dataset("sysevol-ai/codenib-synthesis", config_name, split="test")
     return [normalize_synthesis_record(r, config_name) for r in ds]
 
 

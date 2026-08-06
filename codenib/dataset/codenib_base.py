@@ -49,7 +49,7 @@ class CodeNibBaseDataset(DatasetBase):
 
     def __init__(
         self,
-        dataset: str = "fishmingyu/codeminer-base-dataset",
+        dataset: str = "fishmingyu/codenib-base-dataset",
         split: str = "test",
         filter_instance: str = ".*",
         root: str | None = None,

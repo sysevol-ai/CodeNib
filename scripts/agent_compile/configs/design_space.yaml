@@ -53,7 +53,7 @@ max_tokens: 4096
 topk: 50
 num_retries: 8
 
-dataset: fishmingyu/codeminer-base-dataset
+dataset: fishmingyu/codenib-base-dataset
 split: test
 # prebuilt_dir defaults to CODENIB_PREBUILT_DIR (or CODENIB_HOME/prebuilt).
 embedding_model: Qwen/Qwen3-Embedding-0.6B

@@ -71,7 +71,7 @@ cors_origins:
   - http://127.0.0.1:3001
 
 # --- which repos to feature (from the codenib-base-dataset) ---
-dataset: fishmingyu/codeminer-base-dataset
+dataset: fishmingyu/codenib-base-dataset
 split: test
 
 # Either pin explicit instance ids here:

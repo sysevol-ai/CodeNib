@@ -119,7 +119,7 @@ separate policy problem.
 ### Synthesized benchmark smoke
 
 The current agent-level feedback path should run on
-`sysevol-ai/codeminer-synthesis`, because it gives multiple queries per repo and
+`sysevol-ai/codenib-synthesis`, because it gives multiple queries per repo and
 category labels that separate symbol-heavy tasks from traversal/behavioral
 tasks. Use `lsp_route_synthesis_smoke.yaml` for a small Haiku feedback slice:
 

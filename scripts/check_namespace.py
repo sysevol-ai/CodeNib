@@ -3,12 +3,11 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Reject former product identifiers outside immutable external identities."""
+"""Reject former product identifiers outside the frozen migration record."""
 
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import subprocess
 import sys
@@ -19,20 +18,13 @@ _FORMER_LOWER = "code" + "miner"
 _FORMER_UPPER = "CODE" + "MINER"
 _FORMER_IDENTIFIERS = (_FORMER_CAMEL, _FORMER_LOWER, _FORMER_UPPER)
 
-# These datasets have not been republished under new owners. They are immutable
-# data addresses, not supported package, command, environment, or state aliases.
-_EXTERNAL_IDENTITY_PATTERNS = (
-    re.compile(rf"fishmingyu/{_FORMER_LOWER}-base-dataset" r"(?=$|[^A-Za-z0-9_.-])"),
-    re.compile(rf"sysevol-ai/{_FORMER_LOWER}-synthesis" r"(?=$|[^A-Za-z0-9_.-])"),
-)
-
 # This document records the breaking migration itself. Fixing its occurrence
 # counts makes the exception explicit and prevents it from becoming a dumping
 # ground for new legacy references.
 _MIGRATION_RECORD = Path("docs/codenib_namespace_migration.md")
 _MIGRATION_COUNTS = {
-    _FORMER_CAMEL: 5,
-    _FORMER_LOWER: 14,
+    _FORMER_CAMEL: 4,
+    _FORMER_LOWER: 13,
     _FORMER_UPPER: 3,
 }
 
@@ -97,10 +89,7 @@ def _unapproved_namespace(root: Path) -> list[str]:
             continue
 
         for line_number, line in enumerate(text.splitlines(), start=1):
-            remainder = line
-            for pattern in _EXTERNAL_IDENTITY_PATTERNS:
-                remainder = pattern.sub("", remainder)
-            if any(identifier in remainder for identifier in _FORMER_IDENTIFIERS):
+            if any(identifier in line for identifier in _FORMER_IDENTIFIERS):
                 failures.append(f"{relative}:{line_number}: {line.strip()}")
     return failures
 
@@ -157,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     if failures:
         print(
             "CodeNib namespace check failed. Former names are allowed only in "
-            "the frozen migration record and exact external resource IDs:",
+            "the frozen migration record:",
             file=sys.stderr,
         )
         for failure in failures:

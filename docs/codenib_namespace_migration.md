@@ -28,17 +28,10 @@ The following identifiers must move together:
 | Native module and C++ namespace | `codeminer_core`, `codeminer::core` | `codenib_core`, `codenib::core` |
 | Maintained scripts, tests, examples, and docs | `codeminer*` | `codenib*` |
 
-The migration does not rewrite third-party source, Git history, or immutable
-external resource names. Until those resources are renamed at their owners,
-their exact identifiers may remain:
-
-- the repository URL `https://github.com/sysevol-ai/CodeMiner`;
-- published Hugging Face dataset IDs containing `codeminer`;
-- URLs or checksums that identify a frozen external release.
-
-These exceptions are data, not executable aliases. They must be exact-match
-allowlisted by the namespace audit; nearby prose, module names, variables, and
-paths still use CodeNib.
+The migration does not rewrite third-party source, Git history, or URLs and
+checksums that identify frozen external releases. Project-controlled repository
+and dataset identities now use CodeNib, so former product identifiers are not
+allowlisted in maintained code, configuration, examples, or documentation.
 
 ## Milestones
 

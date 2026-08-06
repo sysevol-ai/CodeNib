@@ -61,7 +61,7 @@ class SweepConfig:
     max_tokens: int = 4096
     topk: int = 50
     num_retries: int = 8
-    dataset: str = "fishmingyu/codeminer-base-dataset"
+    dataset: str = "fishmingyu/codenib-base-dataset"
     dataset_revision: Optional[str] = None
     split: str = "test"
     prebuilt_dir: str = field(default_factory=lambda: str(prebuilt_data_dir()))

@@ -18,7 +18,7 @@ Example
 -------
     python scripts/push_synthesis_to_hf.py \\
         --input-dir synthesis_output_behavior_x20/ \\
-        --repo-id sysevol-ai/codeminer-synthesis \\
+        --repo-id sysevol-ai/codenib-synthesis \\
         --config-name behavioral_x20
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("--input-dir", required=True, type=Path)
-    p.add_argument("--repo-id", default="sysevol-ai/codeminer-synthesis")
+    p.add_argument("--repo-id", default="sysevol-ai/codenib-synthesis")
     p.add_argument(
         "--config-name",
         required=True,

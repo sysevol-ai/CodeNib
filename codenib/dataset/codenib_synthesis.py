@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Dataset wrapper and quality checks for ``sysevol-ai/codeminer-synthesis``."""
+"""Dataset wrapper and quality checks for ``sysevol-ai/codenib-synthesis``."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from .base import DatasetBase
 logger = get_logger(__name__)
 
 
-DEFAULT_DATASET = "sysevol-ai/codeminer-synthesis"
+DEFAULT_DATASET = "sysevol-ai/codenib-synthesis"
 DEFAULT_SPLIT = "test"
 ALL_CONFIGS = ("C++_C", "Go", "Python", "Rust", "TypeScript_JavaScript")
 

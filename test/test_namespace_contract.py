@@ -62,9 +62,8 @@ def test_runtime_state_roots_use_codenib(tmp_path: Path) -> None:
     dataset = DatasetBase(root=str(tmp_path))
     qa_config = QAConfig()
 
-    # These are immutable remote dataset addresses, not runtime aliases.
-    assert base_dataset_default == "fishmingyu/" + "code" + "miner-base-dataset"
-    assert DEFAULT_DATASET == "sysevol-ai/" + "code" + "miner-synthesis"
+    assert base_dataset_default == "fishmingyu/codenib-base-dataset"
+    assert DEFAULT_DATASET == "sysevol-ai/codenib-synthesis"
     assert IndexCompilerConfig().cache_dir_name == ".codenib_cache"
     assert CACHE_DIR_NAME == ".codenib_cache"
     assert qa_config.data_dir == ".codenib_qa"

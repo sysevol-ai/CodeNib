@@ -13,7 +13,7 @@ an LLM judge, and projected into a HuggingFace dataset organized by language
 config. This guide covers the dataset wrapper, the three query families, and the
 scripts that produce, rebuild, push, and report on the data.
 
-The published dataset is [`sysevol-ai/codeminer-synthesis`](https://huggingface.co/datasets/sysevol-ai/codeminer-synthesis).
+The published dataset is [`sysevol-ai/codenib-synthesis`](https://huggingface.co/datasets/sysevol-ai/codenib-synthesis).
 
 ## Overview
 
@@ -89,7 +89,7 @@ data = ds.load()
 print(ds.get_summary())  # by_language / by_category / by_source_config counts
 ```
 
-Defaults: `dataset="sysevol-ai/codeminer-synthesis"` (`DEFAULT_DATASET`),
+Defaults: `dataset="sysevol-ai/codenib-synthesis"` (`DEFAULT_DATASET`),
 `split="test"` (`DEFAULT_SPLIT`). The constructor also accepts `filter_instance`
 (a regex applied to `query_id` or `instance_id`), `root`, `repo_root`, `log`, and
 `force_reload`. `load()` optionally takes `idx_list` or `idx_range` (mutually
@@ -283,7 +283,7 @@ python scripts/generate_codenib_synthesis_config.py \
 
 Flags: `--config` (required; one of `ALL_CONFIGS`), `--instance-id` (required),
 `--split` (default `test`), `--source-dataset` (default
-`fishmingyu/codeminer-base-dataset`), `--counts` (comma-separated `category=N`;
+`fishmingyu/codenib-base-dataset`), `--counts` (comma-separated `category=N`;
 defaults to the base 50-row mix; include `traversal=10` to add traversal rows),
 `--include-traversal` (shortcut for base mix + `traversal=10`),
 `--traversal-stance-counts` (default = even split, so `traversal=10` becomes
@@ -310,7 +310,7 @@ python scripts/rebuild_codenib_synthesis_dataset.py \
     --replacement Python=synthesis_output/Python/Python_combined.json \
     --include-traversal --keep-extra-categories \
     --output-dir build/codenib-synthesis/ \
-    --push-to-hub sysevol-ai/codeminer-synthesis
+    --push-to-hub sysevol-ai/codenib-synthesis
 ```
 
 Flags: `--dataset` (default `DEFAULT_DATASET`), `--source-split` (default
@@ -342,12 +342,12 @@ Authenticate first with `hf auth login` (or `huggingface-cli login`).
 ```bash
 python scripts/push_synthesis_to_hf.py \
     --input-dir synthesis_output_behavior_x20/ \
-    --repo-id sysevol-ai/codeminer-synthesis \
+    --repo-id sysevol-ai/codenib-synthesis \
     --config-name behavioral_x20
 ```
 
 Flags: `--input-dir` (required), `--repo-id` (default
-`sysevol-ai/codeminer-synthesis`), `--config-name` (required), `--split` (default
+`sysevol-ai/codenib-synthesis`), `--config-name` (required), `--split` (default
 `test`), `--private` (default public), `--license` (default `apache-2.0`),
 `--commit-message` (override the auto-generated message), `--dry-run` (build the
 `Dataset` locally but do not push).
@@ -360,7 +360,7 @@ Useful as a CI quality gate.
 
 ```bash
 python scripts/report_codenib_synthesis.py \
-    --dataset sysevol-ai/codeminer-synthesis \
+    --dataset sysevol-ai/codenib-synthesis \
     --json-output reports/synthesis_quality.json
 ```
 

@@ -4,7 +4,7 @@
 
 """Pinned policy constants for the CodeNib Base native-LSP study."""
 
-DEFAULT_BASE_DATASET = "fishmingyu/codeminer-base-dataset"
+DEFAULT_BASE_DATASET = "fishmingyu/codenib-base-dataset"
 DEFAULT_BASE_REVISION = "4eb84e2e8918474969ce68c5b06facf14d6be604"
 DEFAULT_MODEL = "vertex_ai/claude-haiku-4-5"
 

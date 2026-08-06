@@ -226,7 +226,7 @@ def _build_dataset(args):
         from codenib.dataset.codenib_base import CodeNibBaseDataset
 
         return CodeNibBaseDataset(
-            dataset="fishmingyu/codeminer-base-dataset",
+            dataset="fishmingyu/codenib-base-dataset",
             split=args.split,
             filter_instance=args.filter_instance,
             repo_root=args.repo_cache_dir,

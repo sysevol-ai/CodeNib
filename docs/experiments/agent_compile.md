@@ -51,7 +51,7 @@ The frozen per-subset report for this run is archived at
 
 | | |
 |---|---|
-| Dataset | `fishmingyu/codeminer-base-dataset` (100 instances, 5 language groups) |
+| Dataset | `fishmingyu/codenib-base-dataset` (100 instances, 5 language groups) |
 | Sample | 5 instances, 4 languages, both Python scenarios (see below) |
 | Agent model | `vertex_ai/claude-haiku-4-5` @ `us-east5`, temp 0.0, max_turns 20 |
 | Embeddings | `Qwen/Qwen3-Embedding-0.6B` (dim 1024), L2 chunks |

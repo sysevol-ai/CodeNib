@@ -95,8 +95,8 @@ The snapshot-reuse profiler produces the following exact counts:
 
 ```bash
 python scripts/profiling/analyze_snapshot_reuse.py \
-  --dataset fishmingyu/codeminer-base-dataset \
-  --dataset sysevol-ai/codeminer-synthesis
+  --dataset fishmingyu/codenib-base-dataset \
+  --dataset sysevol-ai/codenib-synthesis
 ```
 
 | workload | records | instances | repositories | snapshots | reuse | records/snapshot |
@@ -259,7 +259,7 @@ under `${CODENIB_RESULTS_DIR}/lsp_agent_ab_multilang`.
 
 ### CodeNib Base agent ablation
 
-The task-level study uses `fishmingyu/codeminer-base-dataset` test split at
+The task-level study uses `fishmingyu/codenib-base-dataset` test split at
 revision `4eb84e2e8918474969ce68c5b06facf14d6be604` (local dataset fingerprint
 `d265af65e9ba4985`). Its sampling frame is every currently supported Go, Rust,
 and TypeScript/JavaScript row: 60 tasks, 15 repositories, and 60 exact source

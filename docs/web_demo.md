@@ -65,7 +65,7 @@ python scripts/build_qa_index.py        # needs network: HuggingFace + git
 ```
 
 This selects instances from the CodeNib Base dataset
-(`fishmingyu/codeminer-base-dataset` on the Hub), checks out each repo at
+(`fishmingyu/codenib-base-dataset` on the Hub), checks out each repo at
 its `base_commit`, builds indexes under `data_dir` (default `.codenib_qa/`),
 and writes `qa_registry.json`.
 
