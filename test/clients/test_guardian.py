@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 from codenib.clients.execution import (
@@ -89,11 +91,53 @@ def _finding(
     }
 
 
+def _git(tmp_path: Path, *args: str) -> str:
+    result = subprocess.run(
+        ("git", *args),
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
 def _request(tmp_path: Path) -> GuardianRequest:
+    evidence = tmp_path / "tests" / "test_contract.py"
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    evidence.write_text("\n".join(f"line {line}" for line in range(1, 21)) + "\n")
+    _git(tmp_path, "init", "--quiet")
+    _git(tmp_path, "add", ".")
+    _git(
+        tmp_path,
+        "-c",
+        "user.name=CodeNib Test",
+        "-c",
+        "user.email=test@codenib.ai",
+        "commit",
+        "--quiet",
+        "-m",
+        "base",
+    )
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    evidence.write_text(evidence.read_text() + "candidate line\n")
+    _git(tmp_path, "add", ".")
+    _git(
+        tmp_path,
+        "-c",
+        "user.name=CodeNib Test",
+        "-c",
+        "user.email=test@codenib.ai",
+        "commit",
+        "--quiet",
+        "-m",
+        "candidate",
+    )
+    candidate = _git(tmp_path, "rev-parse", "HEAD")
     return GuardianRequest(
         workspace=tmp_path,
-        base_commit="a" * 40,
-        candidate_commit="b" * 40,
+        base_commit=base,
+        candidate_commit=candidate,
         context=(
             ContextMessage(
                 content="I think all state copies are covered.",
@@ -204,3 +248,92 @@ def test_guardian_fails_closed_without_candidates(tmp_path: Path) -> None:
     assert not result.findings
     assert len(executor.requests) == 2
     assert result.errors
+
+
+def test_guardian_fails_closed_when_workspace_is_not_candidate(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    executor = ScriptedExecutor([])
+    agent = GuardianAgent(
+        GuardianConfig(explorer_model="cheap", aggregator_model="strong"),
+        executor=executor,
+    )
+
+    result = asyncio.run(
+        agent.review(replace(request, candidate_commit=request.base_commit))
+    )
+
+    assert result.status is ReviewStatus.FAILED
+    assert result.errors == (
+        "workspace HEAD does not match the advertised candidate commit",
+    )
+    assert not executor.requests
+
+
+def test_guardian_rejects_candidates_with_unverifiable_evidence(
+    tmp_path: Path,
+) -> None:
+    candidate = _candidate("Copies preserve mode")
+    candidate["evidence"] = [
+        {
+            "path": "../outside.py",
+            "line_start": 1,
+            "line_end": 1,
+            "description": "a path outside the candidate workspace",
+            "authority": "repository",
+        },
+        {
+            "path": "tests/test_contract.py",
+            "line_start": 100,
+            "line_end": 100,
+            "description": "a line beyond the file",
+            "authority": "test",
+        },
+    ]
+    executor = ScriptedExecutor([_result(json.dumps({"candidates": [candidate]}))])
+    agent = GuardianAgent(
+        GuardianConfig(
+            explorer_model="cheap",
+            aggregator_model="strong",
+            explorer_count=1,
+        ),
+        executor=executor,
+    )
+
+    result = asyncio.run(agent.review(_request(tmp_path)))
+
+    assert result.status is ReviewStatus.FAILED
+    assert not result.candidates
+    assert len(executor.requests) == 1
+    assert any("not repository-relative" in error for error in result.errors)
+    assert any("line range exceeds" in error for error in result.errors)
+
+
+def test_guardian_rejects_aggregate_findings_with_invalid_lines(
+    tmp_path: Path,
+) -> None:
+    finding = _finding("Copies preserve mode", "violated")
+    finding["evidence"][0]["line_start"] = 999
+    finding["evidence"][0]["line_end"] = 999
+    executor = ScriptedExecutor(
+        [
+            _result(json.dumps({"candidates": [_candidate("Copies preserve mode")]})),
+            _result(json.dumps({"summary": "Unverified.", "findings": [finding]})),
+        ]
+    )
+    agent = GuardianAgent(
+        GuardianConfig(
+            explorer_model="cheap",
+            aggregator_model="strong",
+            explorer_count=1,
+        ),
+        executor=executor,
+    )
+
+    result = asyncio.run(agent.review(_request(tmp_path)))
+
+    assert result.status is ReviewStatus.DEGRADED
+    assert not result.findings
+    assert not result.backlog
+    assert any("aggregator finding" in error for error in result.errors)

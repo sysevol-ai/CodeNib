@@ -9,6 +9,8 @@ from __future__ import annotations
 from ..execution import AgentExecutor, CodexExecutor
 from .aggregation import aggregate
 from .discovery import discover
+from .evidence import validate_candidates, validate_findings
+from .provenance import validate_request_provenance
 from .types import (
     EvidenceAuthority,
     FindingStatus,
@@ -32,9 +34,22 @@ class GuardianAgent:
         self.executor = executor or CodexExecutor()
 
     async def review(self, request: GuardianRequest) -> GuardianResult:
+        provenance_error = validate_request_provenance(request)
+        if provenance_error:
+            return GuardianResult(
+                base_commit=request.base_commit,
+                candidate_commit=request.candidate_commit,
+                status=ReviewStatus.FAILED,
+                errors=(provenance_error,),
+            )
+
         candidates, explorer_rollouts, errors = await discover(
             request, self.config, self.executor
         )
+        candidates, candidate_errors = validate_candidates(
+            request.workspace, candidates
+        )
+        errors += candidate_errors
         if not candidates:
             return GuardianResult(
                 base_commit=request.base_commit,
@@ -48,7 +63,12 @@ class GuardianAgent:
         summary, assessed, aggregation_rollout, aggregation_error = await aggregate(
             request, self.config, self.executor, candidates
         )
-        all_errors = errors + ((aggregation_error,) if aggregation_error else ())
+        assessed, finding_errors = validate_findings(request.workspace, assessed)
+        all_errors = (
+            errors
+            + finding_errors
+            + ((aggregation_error,) if aggregation_error else ())
+        )
         rollouts = explorer_rollouts + (aggregation_rollout,)
         if aggregation_error:
             return GuardianResult(
@@ -84,7 +104,7 @@ class GuardianAgent:
                 for evidence in finding.evidence
             )
         )
-        status = ReviewStatus.DEGRADED if errors else ReviewStatus.COMPLETE
+        status = ReviewStatus.DEGRADED if all_errors else ReviewStatus.COMPLETE
         return GuardianResult(
             base_commit=request.base_commit,
             candidate_commit=request.candidate_commit,

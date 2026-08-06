@@ -43,6 +43,24 @@ class Evidence:
     authority: EvidenceAuthority = EvidenceAuthority.REPOSITORY
 
     def __post_init__(self) -> None:
+        if not isinstance(self.path, str) or not self.path.strip():
+            raise ValueError("evidence path must be a non-empty string")
+        if not isinstance(self.description, str) or not self.description.strip():
+            raise ValueError("evidence description must be a non-empty string")
+        if (
+            isinstance(self.line_start, bool)
+            or not isinstance(self.line_start, int)
+            or self.line_start < 1
+        ):
+            raise ValueError("evidence line_start must be a positive integer")
+        if (
+            isinstance(self.line_end, bool)
+            or not isinstance(self.line_end, int)
+            or self.line_end < self.line_start
+        ):
+            raise ValueError("evidence line_end must not precede line_start")
+        object.__setattr__(self, "path", self.path.strip())
+        object.__setattr__(self, "description", self.description.strip())
         object.__setattr__(self, "authority", EvidenceAuthority(self.authority))
 
 
