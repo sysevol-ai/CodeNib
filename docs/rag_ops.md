@@ -57,7 +57,7 @@ The current deliberate limits are:
 CodeNib's Hugging Face and OpenAI-compatible adapters accept more models than
 the list below. The matrix records the narrower surface for which this project
 has retained end-to-end evidence. **Benchmark** means a complete 100-row
-[CodeNib Base](https://huggingface.co/datasets/fishmingyu/codeminer-base-dataset)
+[CodeNib Base](https://huggingface.co/datasets/fishmingyu/codenib-base-dataset)
 result artifact exists; **runtime** means the shipped route and model-specific
 prompt contract are tested, but the model was not part of that five-model
 quality sweep.
