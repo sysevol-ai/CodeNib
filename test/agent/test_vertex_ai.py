@@ -17,96 +17,68 @@ from codenib.llm.litellm_chat import LiteLLMChat, human_message
 pytestmark = pytest.mark.slow
 
 
+@pytest.fixture(autouse=True)
+def require_vertex_credentials():
+    """Skip external provider tests unless Vertex credentials are explicit."""
+    if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        pytest.skip("GOOGLE_APPLICATION_CREDENTIALS is not configured")
+
+
 def test_vertex_ai_gemini():
     """Test that Vertex AI Gemini can successfully generate text."""
     print("Testing Vertex AI Gemini text generation...")
 
-    try:
-        llm = LiteLLMChat(
-            model="vertex_ai/gemini-2.5-flash",
-            temperature=0.7,
-            max_tokens=1024,
-        )
+    llm = LiteLLMChat(
+        model="vertex_ai/gemini-2.5-flash",
+        temperature=0.7,
+        max_tokens=1024,
+    )
 
-        response = llm.invoke(
-            [
-                human_message(
-                    "What is machine learning? Please provide a brief explanation."
-                )
-            ]
-        )
+    response = llm.invoke(
+        [human_message("What is machine learning? Please provide a brief explanation.")]
+    )
 
-        print(f"Response: {response}")
-
-        assert response, "Response content is empty"
-        assert len(response.strip()) > 0, "Response content is just whitespace"
-
-        print("Vertex AI Gemini generation test passed!\n")
-        return True
-
-    except Exception as e:
-        print(f"Vertex AI Gemini generation test failed: {e}")
-        return False
+    print(f"Response: {response}")
+    assert response, "Response content is empty"
+    assert response.strip(), "Response content is just whitespace"
 
 
 def test_vertex_ai_gemini_flash():
     """Test that Vertex AI Gemini Flash can successfully generate text."""
     print("Testing Vertex AI Gemini Flash text generation...")
 
-    try:
-        llm = LiteLLMChat(
-            model="vertex_ai/gemini-2.0-flash",
-            temperature=0.7,
-            max_tokens=150,
-        )
+    llm = LiteLLMChat(
+        model="vertex_ai/gemini-2.0-flash",
+        temperature=0.7,
+        max_tokens=150,
+    )
 
-        response = llm.invoke(
-            [
-                human_message(
-                    "How many R's are in the word 'strawberry'? Count carefully."
-                )
-            ]
-        )
+    response = llm.invoke(
+        [human_message("How many R's are in the word 'strawberry'? Count carefully.")]
+    )
 
-        print(f"Response: {response}")
-
-        assert response, "Response content is empty"
-        assert len(response.strip()) > 0, "Response content is just whitespace"
-
-        print("Vertex AI Gemini Flash generation test passed!\n")
-        return True
-
-    except Exception as e:
-        print(f"Vertex AI Gemini Flash generation test failed: {e}")
-        return False
+    print(f"Response: {response}")
+    assert response, "Response content is empty"
+    assert response.strip(), "Response content is just whitespace"
 
 
 def test_anthropic_vertex():
     """Test Vertex AI with Anthropic Claude model."""
     print("Testing Vertex AI with Anthropic Claude...")
 
-    try:
-        llm = LiteLLMChat(
-            model="vertex_ai/claude-sonnet-4@20250514",
-            temperature=0.7,
-            max_tokens=1024,
-        )
+    llm = LiteLLMChat(
+        model="vertex_ai/claude-sonnet-4@20250514",
+        temperature=0.7,
+        max_tokens=1024,
+    )
 
-        response = llm.invoke(
-            [human_message("What are the benefits of using cloud computing?")]
-        )
+    response = llm.invoke(
+        [human_message("What are the benefits of using cloud computing?")]
+    )
 
-        print(f"Response: {response}")
-
-        assert response, "Response content is empty"
-        assert len(response.strip()) > 0, "Response content is just whitespace"
-
-        print("Vertex AI Anthropic Claude test passed!\n")
-        return True
-
-    except Exception as e:
-        print(f"Vertex AI Anthropic Claude test failed: {e}")
-        return False
+    print(f"Response: {response}")
+    assert response, "Response content is empty"
+    assert response.strip(), "Response content is just whitespace"
 
 
 def print_config_info():
@@ -160,7 +132,13 @@ if __name__ == "__main__":
 
     for test_name, test_func in tests:
         print(f"Running {test_name} test...")
-        success = test_func()
+        try:
+            test_func()
+        except Exception as exc:  # pragma: no cover - standalone diagnostics
+            print(f"{test_name} failed: {exc}")
+            success = False
+        else:
+            success = True
         results.append((test_name, success))
         print("-" * 50)
 
