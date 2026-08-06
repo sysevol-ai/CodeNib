@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import os
 import shutil
@@ -58,6 +59,39 @@ def _installed_manifest_path(
     return Path(path)
 
 
+def _assert_console_script_help(
+    executable: str,
+    *,
+    root: Path,
+    env: dict[str, str],
+) -> None:
+    bin_dir = Path(executable).resolve().parent
+    distribution = importlib.metadata.distribution("codenib")
+    scripts = sorted(
+        entry.name
+        for entry in distribution.entry_points
+        if entry.group == "console_scripts" and entry.name.startswith("codenib")
+    )
+    for name in scripts:
+        command = bin_dir / name
+        if not command.is_file():
+            raise RuntimeError(f"installed console script is missing: {command}")
+        result = subprocess.run(
+            [str(command), "--help"],
+            cwd=root,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"installed console script help failed: {name}\n"
+                f"stdout:\n{result.stdout}\n"
+                f"stderr:\n{result.stderr}"
+            )
+
+
 def smoke(root: Path, *, executable: str = "codenib") -> None:
     root.mkdir(parents=True, exist_ok=True)
     repo = root / "sample-repository"
@@ -81,6 +115,7 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
     version = _run([executable, "--version"], cwd=root, env=env).stdout.strip()
     if not version.startswith("codenib "):
         raise RuntimeError(f"unexpected version output: {version!r}")
+    _assert_console_script_help(executable, root=root, env=env)
     _run(
         [executable, "doctor", "--require", "core"],
         cwd=root,

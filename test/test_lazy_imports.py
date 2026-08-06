@@ -122,3 +122,29 @@ if RepositoryContextExplorer.__name__ != "RepositoryContextExplorer":
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_agent_runner_packages_do_not_import_optional_runtimes() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = """
+import sys
+
+for name in ("faiss", "igraph", "litellm", "sentence_transformers"):
+    sys.modules[name] = None
+
+import codenib.eval.agent_runner
+import codenib.graph.incremental
+
+if "codenib.eval.agent_runner.live_lsp_provider" in sys.modules:
+    raise SystemExit("agent-runner implementation imported eagerly")
+if "codenib.graph.incremental.graph_patcher" in sys.modules:
+    raise SystemExit("incremental graph patcher imported eagerly")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

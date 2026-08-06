@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from importlib.metadata import EntryPoint
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,6 +15,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
+from codenib import _optional_entrypoints
 from codenib.agent import CodeNibAgentOptions
 from codenib.mcp.server import _parse_args as parse_mcp_args
 from codenib.web.app import _parse_args as parse_web_args
@@ -63,6 +65,139 @@ def test_console_entry_points_load() -> None:
     for name, value in _console_scripts().items():
         entry_point = EntryPoint(name=name, value=value, group="console_scripts")
         assert callable(entry_point.load())
+
+
+def test_optional_entrypoint_help_is_available_without_extra(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = ModuleNotFoundError("No module named 'igraph'", name="igraph")
+
+    def raise_missing(_module: str) -> None:
+        raise missing
+
+    monkeypatch.setattr(
+        _optional_entrypoints,
+        "_load_main",
+        raise_missing,
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["codenib-lsp-provider-validate", "--help"],
+    )
+
+    result = _optional_entrypoints.lsp_provider_validate_main()
+
+    assert result == 0
+    output = capsys.readouterr()
+    assert "usage: codenib-lsp-provider-validate" in output.out
+    assert "pip install 'codenib[graph]" in output.out
+    assert output.err == ""
+
+
+def test_optional_entrypoint_reports_missing_extra_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = ModuleNotFoundError("No module named 'mcp'", name="mcp")
+
+    def raise_missing(_module: str) -> None:
+        raise missing
+
+    monkeypatch.setattr(
+        _optional_entrypoints,
+        "_load_main",
+        raise_missing,
+    )
+    monkeypatch.setattr("sys.argv", ["codenib-mcp", "manifest.json"])
+
+    result = _optional_entrypoints.mcp_main()
+
+    assert result == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "codenib-mcp: error:" in output.err
+    assert "pip install 'codenib[mcp]" in output.err
+    assert "Traceback" not in output.err
+
+
+def test_optional_entrypoint_handles_runtime_optional_import(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = ModuleNotFoundError("No module named 'igraph'", name="igraph")
+
+    def fail_during_main() -> None:
+        raise missing
+
+    monkeypatch.setattr(
+        _optional_entrypoints,
+        "_load_main",
+        lambda _module: fail_during_main,
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["codenib-lsp-provider-validate", "requests.json"],
+    )
+
+    assert _optional_entrypoints.lsp_provider_validate_main() == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "missing: igraph" in output.err
+    assert "pip install 'codenib[graph]" in output.err
+    assert "Traceback" not in output.err
+
+
+def test_optional_entrypoint_delegates_when_extra_is_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        _optional_entrypoints,
+        "import_module",
+        lambda _module: SimpleNamespace(main=lambda: 17),
+    )
+
+    assert _optional_entrypoints.mcp_main() == 17
+
+
+def test_optional_entrypoint_does_not_hide_internal_import_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing = ModuleNotFoundError(
+        "No module named 'codenib.missing'",
+        name="codenib.missing",
+    )
+
+    def raise_missing(_module: str) -> None:
+        raise missing
+
+    monkeypatch.setattr(
+        _optional_entrypoints,
+        "_load_main",
+        raise_missing,
+    )
+
+    with pytest.raises(ModuleNotFoundError, match="codenib.missing"):
+        _optional_entrypoints.mcp_main()
+
+
+def test_optional_entrypoint_reports_the_invoked_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = ModuleNotFoundError("No module named 'igraph'", name="igraph")
+
+    def raise_missing(_module: str) -> None:
+        raise missing
+
+    monkeypatch.setattr(_optional_entrypoints, "_load_main", raise_missing)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["codenib-lsp-provider-protocol-check", "--help"],
+    )
+
+    assert _optional_entrypoints.lsp_agent_ab_main() == 0
+    assert "usage: codenib-lsp-provider-protocol-check" in capsys.readouterr().out
 
 
 def test_agent_options_has_only_product_name() -> None:
