@@ -14,7 +14,9 @@ is never sent to the embedding model twice.
 from __future__ import annotations
 
 import json
+import os
 import pickle
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -128,9 +130,50 @@ class EmbeddingsCache:
         json_path = path.with_suffix(".json")
         npz_path = path.with_suffix(".npz")
 
-        with open(json_path, "w") as f:
-            json.dump(hashes, f, separators=(",", ":"))
-        np.savez_compressed(npz_path, vectors=vectors)
+        hash_width = max((len(value) for value in hashes), default=1)
+        embedded_hashes = np.asarray(hashes, dtype=f"<U{hash_width}")
+
+        # Publish the self-describing NPZ first. If the process stops before
+        # the JSON replace, the loader sees a generation mismatch instead of
+        # binding old vectors to new hashes with the same cardinality.
+        temp_npz = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w+b",
+                dir=npz_path.parent,
+                prefix=f".{npz_path.name}.",
+                delete=False,
+            ) as handle:
+                temp_npz = Path(handle.name)
+                np.savez_compressed(
+                    handle,
+                    vectors=vectors,
+                    hashes=embedded_hashes,
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_npz, npz_path)
+        finally:
+            if temp_npz is not None:
+                temp_npz.unlink(missing_ok=True)
+
+        temp_json = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=json_path.parent,
+                prefix=f".{json_path.name}.",
+                delete=False,
+            ) as handle:
+                temp_json = Path(handle.name)
+                json.dump(hashes, handle, separators=(",", ":"))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_json, json_path)
+        finally:
+            if temp_json is not None:
+                temp_json.unlink(missing_ok=True)
 
         # Also write pickle for backward compat
         with open(path, "wb") as f:
@@ -152,17 +195,49 @@ class EmbeddingsCache:
         cache = cls()
 
         if json_path.exists() and npz_path.exists():
-            with open(json_path, "r") as f:
+            with open(json_path, "r", encoding="utf-8") as f:
                 hashes = json.load(f)
-            data = np.load(npz_path)
-            vectors = data["vectors"]
+            if (
+                not isinstance(hashes, list)
+                or not all(isinstance(value, str) for value in hashes)
+                or len(set(hashes)) != len(hashes)
+            ):
+                raise ValueError(
+                    f"EmbeddingsCache corrupted: invalid hash index in {json_path}"
+                )
+
+            with np.load(npz_path, allow_pickle=False) as data:
+                if "vectors" not in data:
+                    raise ValueError(
+                        f"EmbeddingsCache corrupted: vectors missing from {npz_path}"
+                    )
+                vectors = np.asarray(data["vectors"], dtype=np.float32).copy()
+                embedded_hashes = None
+                if "hashes" in data:
+                    raw_hashes = data["hashes"].tolist()
+                    if not isinstance(raw_hashes, list):
+                        raise ValueError(
+                            "EmbeddingsCache corrupted: embedded hash index "
+                            f"is invalid in {npz_path}"
+                        )
+                    embedded_hashes = [str(value) for value in raw_hashes]
+
+            if vectors.ndim != 2:
+                raise ValueError(
+                    f"EmbeddingsCache corrupted: expected a vector matrix in {npz_path}"
+                )
             if len(hashes) != vectors.shape[0]:
                 raise ValueError(
                     f"EmbeddingsCache corrupted: {len(hashes)} hashes "
                     f"but {vectors.shape[0]} vectors in {json_path}"
                 )
+            if embedded_hashes is not None and embedded_hashes != hashes:
+                raise ValueError(
+                    "EmbeddingsCache corrupted: JSON hash order does not match "
+                    f"the vector generation in {npz_path}"
+                )
             for i, h in enumerate(hashes):
-                cache._cache[h] = vectors[i].astype(np.float32)
+                cache._cache[h] = vectors[i]
             logger.debug(
                 "EmbeddingsCache loaded from JSON+NPZ (%d entries) ← %s",
                 cache.size(),
