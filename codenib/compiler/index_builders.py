@@ -100,12 +100,13 @@ class BM25IndexBuilder:
 
     def artifact_identity(self) -> Dict[str, Any]:
         return {
-            # v7 refuses to publish indexes with silently skipped source files.
-            "builder_schema": 7,
+            # v8 refuses skipped files and retains non-symbol source context.
+            "builder_schema": 8,
             "languages": list(self.languages),
             "max_k": self.max_k,
             "max_lines_per_chunk": self.max_lines_per_chunk,
             "chunking_failure_policy": "fail",
+            "include_header_epilogue": True,
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
 
@@ -121,6 +122,7 @@ class BM25IndexBuilder:
             language=primary,
             repo_config=RepoChunkingConfig(languages=self.languages),
             max_lines_per_chunk=self.max_lines_per_chunk,
+            include_header_epilogue=True,
         )
         chunks = chunker.chunk_repository(repo_path=repo_path, strict=True)
 
