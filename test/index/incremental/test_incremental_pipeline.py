@@ -31,6 +31,7 @@ from codenib.index.incremental import (
     GitDiffDetector,
     IncrementalChunkStore,
     IncrementalIndexUpdater,
+    RepoChanges,
 )
 from codenib.index.incremental.chunk_store import _hash_content
 from codenib.index.incremental.index_updater import UpdateResult
@@ -241,6 +242,52 @@ class TestIncrementalIndexUpdater:
             result.chunks_from_cache >= 1
         ), f"Expected at least gamma from cache, got {result.chunks_from_cache}"
         assert result.cache_hit_rate > 0
+        node_files = {
+            chunk.node_id.split(":", 1)[0] for chunk in chunk_store.get_all_chunks()
+        }
+        assert {"file_a.py", "file_b.py", "file_c.py"}.issubset(node_files)
+        assert all(not Path(file_path).is_absolute() for file_path in node_files)
+
+    def test_chunkers_receive_repository_relative_identity(self, tmp_path):
+        repo = tmp_path / "repo"
+        source = repo / "nested" / "service.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("def run():\n    return 1\n")
+
+        l2_chunker = MagicMock()
+        l2_chunker.chunk_file.return_value = []
+        l0_chunker = MagicMock()
+        l0_chunker.chunk_file.return_value = []
+        detector = MagicMock()
+        detector.detect_changes.return_value = RepoChanges(
+            modified=[str(source.resolve())],
+            old_commit="a" * 40,
+            new_commit="b" * 40,
+        )
+        embedding_model = _make_mock_embedding_model(DIM)
+        updater = IncrementalIndexUpdater(
+            chunker=l2_chunker,
+            l0_chunker=l0_chunker,
+            embedding_model=embedding_model,
+            diff_detector=detector,
+        )
+
+        updater.update(
+            repo_path=str(repo),
+            vector_store=_make_mock_vector_store(embedding_model, DIM),
+            chunk_store=IncrementalChunkStore(),
+            embeddings_cache=EmbeddingsCache(),
+            last_commit="a" * 40,
+        )
+
+        l2_chunker.chunk_file.assert_called_once_with(
+            str(source.resolve()), relative_path="nested/service.py"
+        )
+        l0_chunker.chunk_file.assert_called_once_with(
+            str(source.resolve()),
+            relative_path="nested/service.py",
+            skeleton_mode=True,
+        )
 
     def test_rebuild_from_embeddings_called(self, py_repo):
         """Verify that rebuild_from_embeddings is called with the full chunk set."""

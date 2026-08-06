@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
@@ -142,10 +143,20 @@ class IncrementalIndexUpdater:
             return result
 
         # ---- Step 2: rechunk affected files (L2 + optional L0) ----------
+        repo_root = Path(repo_path).resolve()
         for file_path in changes.affected:
+            try:
+                relative_path = Path(file_path).relative_to(repo_root).as_posix()
+            except ValueError as exc:
+                raise ValueError(
+                    f"Changed source file is outside the repository: {file_path}"
+                ) from exc
+
             # L2 rechunk
             try:
-                new_chunks = self._chunker.chunk_file(file_path)
+                new_chunks = self._chunker.chunk_file(
+                    file_path, relative_path=relative_path
+                )
             except Exception as exc:
                 logger.warning("Failed to L2-chunk %s: %s", file_path, exc)
                 new_chunks = []
@@ -160,7 +171,9 @@ class IncrementalIndexUpdater:
             if self._l0_chunker is not None:
                 try:
                     l0_chunks = self._l0_chunker.chunk_file(
-                        file_path, skeleton_mode=True
+                        file_path,
+                        relative_path=relative_path,
+                        skeleton_mode=True,
                     )
                 except Exception as exc:
                     logger.warning(
