@@ -254,11 +254,11 @@ running the credential- or toolchain-dependent tiers.
 
 ## Status
 
-CodeNib `0.1.0` is a developer preview. The CLI and manifest format are usable,
-but public interfaces may still change before a stable release. Historical
-research artifacts retain their published dataset identifiers; the maintained
-package, import namespace, commands, and repository use `CodeNib`. See
-[Naming](https://docs.codenib.ai/branding/).
+CodeNib `0.2.0` is the current public beta. The CLI and manifest format are
+usable, while public interfaces may still evolve across minor releases.
+Historical research artifacts retain their published dataset identifiers; the
+maintained package, import namespace, commands, and repository use `CodeNib`.
+See [Naming](https://docs.codenib.ai/branding/).
 
 ## Citation
 

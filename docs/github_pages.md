@@ -33,10 +33,10 @@ jobs:
     uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.0
 ```
 
-The prerelease tag keeps the compiler, frontend, Action, and artifact schema on
-one reviewed version. Production deployments may replace it with the tag's
-resolved commit SHA. In the repository's **Settings > Pages**, select
-**GitHub Actions** as the source.
+The release tag keeps the compiler, frontend, Action, and artifact schema on
+one reviewed version. Deployments that require an immutable workflow reference
+may replace it with the tag's resolved commit SHA. In the repository's
+**Settings > Pages**, select **GitHub Actions** as the source.
 
 The workflow checks out the caller's exact commit, incrementally builds the
 `semantic` preset, exports the Wiki at the Pages-provided mount path, and

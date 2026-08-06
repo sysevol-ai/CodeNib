@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 try:
@@ -100,3 +101,25 @@ def test_runtime_version_comes_from_distribution_metadata() -> None:
 
     assert codenib.__version__ == _project()["version"]
     assert package_version() == _project()["version"]
+
+
+def test_public_release_surfaces_match_project_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    version = _project()["version"]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    pages = (root / "docs" / "github_pages.md").read_text(encoding="utf-8")
+    web_package = json.loads(
+        (root / "web" / "package.json").read_text(encoding="utf-8")
+    )
+    web_lock = json.loads(
+        (root / "web" / "package-lock.json").read_text(encoding="utf-8")
+    )
+
+    assert f"CodeNib `{version}` is the current public beta" in readme
+    assert "prerelease tag" not in pages
+    assert web_package["name"] == "codenib-web"
+    assert web_package["version"] == version
+    assert web_lock["name"] == web_package["name"]
+    assert web_lock["version"] == version
+    assert web_lock["packages"][""]["name"] == web_package["name"]
+    assert web_lock["packages"][""]["version"] == version
