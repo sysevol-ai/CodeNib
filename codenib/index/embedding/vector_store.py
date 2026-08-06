@@ -125,15 +125,38 @@ class _HuggingFaceEmbeddingWrapper:
     def _apply_max_seq_length(
         self, model_name: str, max_seq_length: Optional[int]
     ) -> None:
-        """Cap tokeniser / model sequence length to prevent OOM."""
+        """Cap tokenizer input to the model's usable position capacity."""
         try:
             tok = self._model.tokenizer
-            max_pos = getattr(
-                self._model[0].auto_model.config,
-                "max_position_embeddings",
+            auto_model = self._model[0].auto_model
+            max_pos = getattr(auto_model.config, "max_position_embeddings", None)
+            model_capacity = max_pos
+
+            # RoBERTa-derived models number non-padding positions after their
+            # padding index. Their embedding table can therefore hold fewer
+            # input tokens than ``max_position_embeddings`` suggests. For
+            # example, UniXcoder advertises 1026 positions but accepts 1024
+            # tokens (including special tokens).
+            position_embeddings = getattr(
+                getattr(auto_model, "embeddings", None),
+                "position_embeddings",
                 None,
             )
-            effective_max = max_seq_length or max_pos
+            padding_idx = getattr(position_embeddings, "padding_idx", None)
+            if (
+                isinstance(model_capacity, int)
+                and isinstance(padding_idx, int)
+                and padding_idx >= 0
+            ):
+                model_capacity -= padding_idx + 1
+
+            effective_max = max_seq_length
+            if isinstance(model_capacity, int) and model_capacity > 0:
+                effective_max = (
+                    min(max_seq_length, model_capacity)
+                    if max_seq_length is not None
+                    else model_capacity
+                )
             if effective_max:
                 if tok.model_max_length > effective_max:
                     tok.model_max_length = effective_max
