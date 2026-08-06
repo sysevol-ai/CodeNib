@@ -134,6 +134,6 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 [Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/sysevol-ai/CodeNib/compare/v0.1.0...v0.2.0
-[0.2.0a2]: https://github.com/sysevol-ai/CodeNib/compare/620a82d...v0.2.0a2
+[0.2.0a2]: https://github.com/sysevol-ai/CodeNib/compare/620a82d...78e12ac
 [0.2.0a1]: https://github.com/sysevol-ai/CodeNib/tree/620a82d
 [0.1.0]: https://github.com/sysevol-ai/CodeNib/releases/tag/v0.1.0
