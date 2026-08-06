@@ -69,6 +69,17 @@ runs:
       shell: bash -l {0}
       run: |
         git submodule update --init --recursive third_party/scip-python
+        SCIP_PYTHON_SHA="$(git -C third_party/scip-python rev-parse HEAD)"
+        TOOLCHAIN_CACHE="${{ github.workspace }}/../.cache/codenib-toolchains"
+        MARKER="$TOOLCHAIN_CACHE/scip-python.sha"
+        mkdir -p "$TOOLCHAIN_CACHE"
+        if [ -f "$MARKER" ] \
+          && grep -qx "$SCIP_PYTHON_SHA" "$MARKER" \
+          && conda run -n scip-env bash -lc \
+            'command -v scip-python >/dev/null 2>&1'; then
+          echo "[scip-python] cached revision $SCIP_PYTHON_SHA"
+          exit 0
+        fi
         conda run -n scip-env bash -lc "
           set -euo pipefail
           cd third_party/scip-python
@@ -78,6 +89,8 @@ runs:
           npm run build
           npm install -g .
         "
+        printf '%s\n' "$SCIP_PYTHON_SHA" > "$MARKER.tmp.$$"
+        mv "$MARKER.tmp.$$" "$MARKER"
 
     - name: Install dependencies
       shell: bash -l {0}
@@ -99,17 +112,36 @@ runs:
       shell: bash -l {0}
       run: |
         RUST_TOOLCHAIN="${{ inputs.rust-toolchain }}"
+        TOOLCHAIN_CACHE="${{ github.workspace }}/../.cache/codenib-toolchains"
+        export CARGO_HOME="$TOOLCHAIN_CACHE/cargo"
+        export RUSTUP_HOME="$TOOLCHAIN_CACHE/rustup"
+        mkdir -p "$CARGO_HOME" "$RUSTUP_HOME"
+        echo "CARGO_HOME=$CARGO_HOME" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUSTUP_HOME" >> "$GITHUB_ENV"
         echo "CODENIB_RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> "$GITHUB_ENV"
-        if ! command -v rustup >/dev/null 2>&1; then
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+        RUSTUP="$CARGO_HOME/bin/rustup"
+        if [ ! -x "$RUSTUP" ]; then
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --no-modify-path
         fi
-        if [ -f "$HOME/.cargo/env" ]; then
-          . "$HOME/.cargo/env"
+        if ! "$RUSTUP" toolchain list \
+          | awk '{print $1}' \
+          | grep -Eq '^stable(-|$)'; then
+          "$RUSTUP" toolchain install --profile minimal stable
         fi
-        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-        rustup toolchain install --profile minimal stable "$RUST_TOOLCHAIN"
-        rustup component add rust-analyzer --toolchain "$RUST_TOOLCHAIN"
-        CODENIB_RUST_TOOLCHAIN="$RUST_TOOLCHAIN" rustup run "$RUST_TOOLCHAIN" rust-analyzer --version
+        if ! "$RUSTUP" toolchain list \
+          | awk '{print $1}' \
+          | grep -Eq "^${RUST_TOOLCHAIN}(-|$)"; then
+          "$RUSTUP" toolchain install --profile minimal "$RUST_TOOLCHAIN"
+        fi
+        if ! "$RUSTUP" component list \
+          --installed --toolchain "$RUST_TOOLCHAIN" \
+          | grep -q '^rust-analyzer-'; then
+          "$RUSTUP" component add rust-analyzer --toolchain "$RUST_TOOLCHAIN"
+        fi
+        CODENIB_RUST_TOOLCHAIN="$RUST_TOOLCHAIN" \
+          "$RUSTUP" run "$RUST_TOOLCHAIN" rust-analyzer --version
 
     - name: Install clangd
       if: inputs.install-clangd == 'true'

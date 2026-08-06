@@ -171,3 +171,19 @@ def test_ci_workflow_reuses_a_versioned_bounded_parser_cache() -> None:
     assert action.count("shell: bash -l {0}") == 2
     assert "cold-run-dir" in action
     assert "-mtime +7" in action
+
+
+def test_ci_reuses_versioned_toolchains_and_serializes_consumers() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    action = (ROOT / ".github/actions/setup-env/action.yml").read_text(encoding="utf-8")
+
+    assert (
+        'SCIP_PYTHON_SHA="$(git -C third_party/scip-python rev-parse HEAD)"' in action
+    )
+    assert 'MARKER="$TOOLCHAIN_CACHE/scip-python.sha"' in action
+    assert 'grep -qx "$SCIP_PYTHON_SHA" "$MARKER"' in action
+    assert 'export CARGO_HOME="$TOOLCHAIN_CACHE/cargo"' in action
+    assert 'export RUSTUP_HOME="$TOOLCHAIN_CACHE/rustup"' in action
+    assert 'RUSTUP="$CARGO_HOME/bin/rustup"' in action
+    assert "needs: [preflight, integration-serial, scip-core]" in workflow
+    assert "needs.scip-core.result != 'cancelled'" in workflow

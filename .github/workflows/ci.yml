@@ -503,8 +503,8 @@ jobs:
   # always fresh from the most recent decoder.
   # =============================================================
   graph-consumer:
-    needs: [preflight, integration-serial]
-    if: needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-serial == 'true'
+    needs: [preflight, integration-serial, scip-core]
+    if: always() && needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-serial == 'true' && needs.integration-serial.result == 'success' && needs.scip-core.result != 'cancelled'
     runs-on: self-hosted
     timeout-minutes: 15
     env:
