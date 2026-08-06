@@ -52,7 +52,7 @@ jobs:
 
   registry-auth-preflight:
     name: Verify MCP Registry ownership
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     needs: verify
     runs-on: ubuntu-latest
     environment:

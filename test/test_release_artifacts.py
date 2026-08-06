@@ -140,6 +140,9 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "github-release",
     }
     registry_preflight = production["jobs"]["registry-auth-preflight"]
+    assert registry_preflight["if"] == (
+        "github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'"
+    )
     assert registry_preflight["needs"] == "verify"
     assert registry_preflight["runs-on"] == "ubuntu-latest"
     assert registry_preflight["environment"]["name"] == "mcp-registry-publish"
