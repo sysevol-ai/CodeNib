@@ -56,7 +56,38 @@ def bm25_artifact_files_match(
     return observed == dict(expected_fingerprints)
 
 
+def require_bm25_manifest_artifact(entry: object) -> bool:
+    """Validate a manifest-backed BM25 artifact before loading it.
+
+    Returns ``False`` for legacy entries that predate persisted fingerprints.
+    Once an entry records fingerprints, malformed or mismatched records are a
+    hard failure rather than permission to load potentially mixed generations.
+    """
+
+    missing = object()
+    expected: object = missing
+    for field_name in ("config", "metadata"):
+        field = getattr(entry, field_name, None)
+        if isinstance(field, Mapping) and "artifact_file_fingerprints" in field:
+            expected = field["artifact_file_fingerprints"]
+            break
+    if expected is missing:
+        return False
+
+    root = getattr(entry, "path", None)
+    if not isinstance(root, (str, Path)) or not bm25_artifact_files_match(
+        root,
+        expected_fingerprints=expected,
+    ):
+        raise ValueError(
+            "BM25 artifact does not match its manifest fingerprints; "
+            "rebuild or restore the view before loading it"
+        )
+    return True
+
+
 __all__ = [
     "bm25_artifact_file_fingerprints",
     "bm25_artifact_files_match",
+    "require_bm25_manifest_artifact",
 ]

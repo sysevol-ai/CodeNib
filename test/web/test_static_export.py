@@ -11,9 +11,11 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.artifacts.security import assert_publishable_tree
+from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.web.static_export import (
     STATIC_EXPORT_MANIFEST,
+    _load_static_bundle,
     export_static_wiki,
     normalize_base_path,
 )
@@ -175,6 +177,26 @@ def _tree_bytes(root: Path) -> dict[str, bytes]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
+
+
+def test_static_bundle_rejects_bm25_that_no_longer_matches_manifest(tmp_path):
+    artifact = tmp_path / "artifact"
+    bm25_dir = artifact / "bm25"
+    bm25_dir.mkdir(parents=True)
+    documents = bm25_dir / "documents.json"
+    documents.write_text('[{"content":"alpha"}]')
+    (bm25_dir / "bm25_metadata.json").write_text('{"max_k":10}')
+    _, manifest_path = _manifest(tmp_path / "repo", artifact)
+    manifest = RepoManifest.load(manifest_path)
+    manifest.indexes["bm25"].config["artifact_file_fingerprints"] = (
+        bm25_artifact_file_fingerprints(bm25_dir)
+    )
+    manifest.save(manifest_path)
+    documents.write_text(documents.read_text().replace("alpha", "omega"))
+    local = SimpleNamespace(data_dir=artifact / "wiki", repo_id="demo")
+
+    with pytest.raises(ValueError, match="manifest fingerprints"):
+        _load_static_bundle(local, manifest_path)
 
 
 def test_static_export_is_deterministic_and_publishable(

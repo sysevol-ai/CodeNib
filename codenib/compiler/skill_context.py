@@ -43,6 +43,7 @@ from ..index.embedding.model_policy import (
 )
 from ..paths import REPO_INDEX_DIRNAME
 from ..provider_routes import resolve_embedding_artifact_route
+from .artifact_fingerprints import require_bm25_manifest_artifact
 from .index_builders import IndexBuilderRegistry, register_default_builders
 from .index_compiler import IndexCompiler, IndexCompilerConfig
 from .manifest import RepoManifest
@@ -560,7 +561,9 @@ def load_contexts_from_manifest(
 
     loaded: Dict[str, Any] = {}
     if "bm25" in needed:
-        loaded["bm25"] = _load_bm25(manifest.indexes["bm25"].path)
+        bm25_entry = manifest.indexes["bm25"]
+        require_bm25_manifest_artifact(bm25_entry)
+        loaded["bm25"] = _load_bm25(bm25_entry.path)
     if "vector" in needed:
         vec_entry = manifest.indexes["vector"]
         route = resolve_embedding_artifact_route(vec_entry.config)

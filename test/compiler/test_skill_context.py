@@ -39,6 +39,7 @@ from codenib.agent.skills.core import (
 from codenib.agent.skills.registry import SkillRegistry
 from codenib.compiler import resources as compiler_resources
 from codenib.compiler import skill_context
+from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
 
@@ -771,6 +772,31 @@ def test_manifest_missing_required_index_raises(mixed_registry, mocked_build):
             skill_ids=["mixed_search"],
             skill_registry=mixed_registry,
         )
+
+
+def test_manifest_rejects_bm25_artifact_that_no_longer_matches(
+    mixed_registry, mocked_build, tmp_path
+):
+    bm25_dir = tmp_path / "bm25"
+    bm25_dir.mkdir()
+    documents = bm25_dir / "documents.json"
+    documents.write_text('[{"content":"alpha"}]')
+    (bm25_dir / "bm25_metadata.json").write_text('{"max_k":10}')
+    entry = _fresh_entry("bm25", str(bm25_dir))
+    entry.config["artifact_file_fingerprints"] = bm25_artifact_file_fingerprints(
+        bm25_dir
+    )
+    documents.write_text(documents.read_text().replace("alpha", "omega"))
+    manifest = RepoManifest(indexes={"bm25": entry})
+
+    with pytest.raises(ValueError, match="manifest fingerprints"):
+        skill_context.load_contexts_from_manifest(
+            manifest,
+            skill_ids=["mixed_search"],
+            skill_registry=mixed_registry,
+        )
+
+    assert mocked_build["loaded"] == []
 
 
 def test_corrupt_optional_graph_degrades_not_crash(

@@ -20,6 +20,7 @@ from urllib.parse import quote, unquote, urlsplit
 from .._atomic_directory import publish_staged_directory
 from .._version import package_version
 from ..artifacts.security import assert_publishable_tree, file_sha256
+from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import RepoManifest
 from .launcher import find_frontend_dir
 from .local import prepare_local_wiki
@@ -360,6 +361,7 @@ def _load_static_bundle(local: Any, manifest_path: Path) -> Any:
     bm25_entry = manifest.indexes.get("bm25")
     if bm25_entry is None or not manifest.index_is_current("bm25"):
         raise ValueError("static Wiki export requires a current bm25 view")
+    require_bm25_manifest_artifact(bm25_entry)
 
     entries = load_registry(str(local.data_dir / REGISTRY_FILENAME))
     entry = next((item for item in entries if item.instance_id == local.repo_id), None)

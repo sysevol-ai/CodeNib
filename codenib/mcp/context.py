@@ -19,6 +19,7 @@ from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
 
+from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import RepoManifest
 from ..provider_routes import resolve_embedding_artifact_route
 
@@ -283,6 +284,7 @@ class ServerContext:
         try:
             from ..index.sparse_idx import BM25CodeIndexer
 
+            require_bm25_manifest_artifact(entry)
             indexer = BM25CodeIndexer()
             indexer.load_index(entry.path)
             if indexer.project_root == "source":

@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.mcp.context import RUNTIME_VIEW_NAMES, ServerContext
 from codenib.provider_routes import resolve_inference_route
@@ -177,6 +178,25 @@ def test_load_missing_bm25_path(tmp_path: Path) -> None:
     ctx = ServerContext.load(tmp_path / "repo_manifest.json")
     assert ctx.bm25 is None
     assert "bm25" in ctx.errors
+
+
+def test_load_rejects_bm25_that_no_longer_matches_manifest(
+    manifest_dir: Path,
+) -> None:
+    manifest_path = manifest_dir / "repo_manifest.json"
+    manifest = RepoManifest.load(manifest_path)
+    entry = manifest.indexes["bm25"]
+    entry.config["artifact_file_fingerprints"] = bm25_artifact_file_fingerprints(
+        entry.path
+    )
+    manifest.save(manifest_path)
+    documents = Path(entry.path) / "documents.json"
+    documents.write_text(documents.read_text().replace("foo", "bar"))
+
+    ctx = ServerContext.load(manifest_path)
+
+    assert ctx.bm25 is None
+    assert "manifest fingerprints" in ctx.errors["bm25"]
 
 
 def test_skip_non_fresh_index(tmp_path: Path) -> None:

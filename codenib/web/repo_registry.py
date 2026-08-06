@@ -19,6 +19,7 @@ from importlib.util import find_spec
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
+from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import RepoManifest
 from ..log_utils import get_logger
 from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_route
@@ -474,6 +475,7 @@ class RepoRegistry:
 
         bm25_entry = manifest.indexes.get("bm25")
         if bm25_entry is not None and manifest.index_is_current("bm25"):
+            require_bm25_manifest_artifact(bm25_entry)
             bm25_index = BM25CodeIndexer()
             bm25_index.load_index(bm25_entry.path)
 

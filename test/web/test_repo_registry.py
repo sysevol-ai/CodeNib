@@ -9,6 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.agent.skills.registry import SkillRegistry
+from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
+from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.web.config import (
     QAConfig,
     RepoEntry,
@@ -102,6 +104,32 @@ def test_bundle_reports_partial_graph_language_coverage():
     assert coverage.available_languages == ["python", "ts"]
     assert coverage.unavailable_languages == ["cpp", "rust"]
     assert coverage.partial is True
+
+
+def test_repo_views_reject_bm25_that_no_longer_matches_manifest(tmp_path):
+    bm25_dir = tmp_path / "bm25"
+    bm25_dir.mkdir()
+    documents = bm25_dir / "documents.json"
+    documents.write_text('[{"content":"alpha"}]')
+    (bm25_dir / "bm25_metadata.json").write_text('{"max_k":10}')
+    entry = IndexEntry(
+        index_type="bm25",
+        path=str(bm25_dir),
+        built_at="2026-08-06T00:00:00Z",
+        built_at_epoch=0.0,
+        status="fresh",
+        config={
+            "artifact_file_fingerprints": bm25_artifact_file_fingerprints(bm25_dir)
+        },
+    )
+    manifest = RepoManifest(indexes={"bm25": entry})
+    documents.write_text(documents.read_text().replace("alpha", "omega"))
+    bundle = SimpleNamespace(manifest=manifest, bm25=None, vector_store=None)
+
+    with pytest.raises(ValueError, match="manifest fingerprints"):
+        RepoRegistry._load_repo_views(object(), bundle)
+
+    assert bundle.bm25 is None
 
 
 @pytest.mark.parametrize(
