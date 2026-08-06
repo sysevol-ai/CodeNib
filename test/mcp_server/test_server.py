@@ -30,9 +30,12 @@ def _make_server_ctx(*, bm25_results=None, regex_results=None, zoekt_results=Non
         repo_path="/repo", commit="abc123", languages=["python"]
     )
     ctx.bm25 = MagicMock() if bm25_results is not None else None
+    ctx.vector = None
+    ctx.symbol_graph = None
     ctx.regex_index = MagicMock() if regex_results is not None else None
     ctx.zoekt = MagicMock() if zoekt_results is not None else None
     ctx.errors = {}
+    ctx.artifact = None
     if bm25_results is not None:
         ctx.bm25.search.return_value = bm25_results
     if regex_results is not None:
@@ -56,6 +59,20 @@ def test_search_bm25_tool() -> None:
 
     assert len(result) == 1
     assert result[0]["node_name"] == "foo"
+
+
+def test_search_context_tool() -> None:
+    nodes = [
+        NodeInfo(
+            node_name="foo", type="function", file="a.py", content="def foo(): pass"
+        )
+    ]
+    server_mod._ctx = _make_server_ctx(bm25_results=nodes)
+
+    result = asyncio.run(server_mod.search_context(query="foo", top_k=5))
+
+    assert result["plan"]["name"] == "fast_lexical"
+    assert result["results"][0]["node_name"] == "foo"
 
 
 def test_search_regex_tool() -> None:

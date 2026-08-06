@@ -12,9 +12,11 @@ from typing import (
     Dict,
     List,
     Optional,
+    Protocol,
     Sequence,
     Set,
     Tuple,
+    TypeVar,
 )
 
 from ..log_utils import get_logger
@@ -26,6 +28,17 @@ if TYPE_CHECKING:
     from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 
 logger = get_logger(__name__)
+
+
+class RetrievalStage(Protocol):
+    """Minimal branch contract consumed by retrieval-plan execution."""
+
+    engine: str
+    weight: float
+    top_k: Optional[int]
+
+
+_StageT = TypeVar("_StageT", bound=RetrievalStage)
 
 
 @dataclass
@@ -72,6 +85,38 @@ def to_queried_nodes(results: Sequence[object]) -> List[QueriedNode]:
             continue
         raise TypeError(f"Unsupported result type for normalization: {type(item)}")
     return converted
+
+
+def execute_retrieval_stages(
+    query: str,
+    stages: Sequence[_StageT],
+    execute_stage: Callable[[str, _StageT], Sequence[object]],
+    *,
+    top_k: int,
+    fusion: str = "weighted",
+    rrf_k: int = 60,
+) -> List[QueriedNode]:
+    """Execute and fuse a declarative set of retrieval branches.
+
+    The caller supplies backend-specific branch execution. Stage iteration,
+    result normalization, weighting, and fusion stay here so standalone
+    pipelines, agent runtimes, and protocol adapters share one implementation.
+    """
+    if not stages:
+        raise ValueError("At least one retrieval stage is required.")
+    if top_k <= 0:
+        raise ValueError("top_k must be positive.")
+
+    branches = [to_queried_nodes(execute_stage(query, stage)) for stage in stages]
+    if len(branches) == 1:
+        return branches[0][:top_k]
+    return merge_hybrid(
+        branches,
+        weights=[stage.weight for stage in stages],
+        top_k=top_k,
+        fusion=fusion,
+        rrf_k=rrf_k,
+    )
 
 
 def merge_hybrid(

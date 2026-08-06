@@ -31,7 +31,8 @@ then serve their manifest.
 
 ### 1. Build the repository
 
-The default `fast` preset builds BM25:
+The default `auto` preset builds BM25+dense when semantic dependencies are
+installed and otherwise selects the no-model BM25 path:
 
 ```bash
 codenib index /path/to/repo
@@ -46,10 +47,11 @@ codenib index /path/to/repo --preset full
 
 CodeNib writes the manifest below
 `$CODENIB_HOME/repositories/<repo>-<id>/indexes` (default
-`~/.codenib/repositories/...`) and prints its exact path. `search_semantic`
-needs `vector`, `search_bm25` needs `bm25`, `search_regex` and the LSP-shaped
-tools need `symbol_graph`, and `search_zoekt` needs `zoekt`. A failed optional
-view is recorded without discarding successful independent views.
+`~/.codenib/repositories/...`) and prints its exact path. `search_context`
+plans over the loaded `bm25`, `vector`, and `symbol_graph` views;
+`search_semantic` forces `vector`, while `search_regex` and the LSP-shaped tools
+need `symbol_graph`, and `search_zoekt` needs `zoekt`. A failed optional view is
+recorded without discarding successful independent views.
 
 ### 2. Start the MCP server
 
@@ -67,6 +69,7 @@ also remain available. All forms accept
 
 | Tool | Backing index | Result granularity | Use for |
 |------|---------------|--------------------|---------|
+| `search_context` | loaded `bm25`, `vector`, `symbol_graph` | file / symbol | recommended capability-aware ranked retrieval |
 | `search_semantic` | `vector` | file (l0) / symbol (l2) | natural-language / conceptual queries |
 | `search_bm25` | `bm25` | symbol | exact-name / keyword lookups |
 | `search_regex` | `symbol_graph` | file / symbol | structural pattern matching |
@@ -79,6 +82,22 @@ also remain available. All forms accept
 
 All source locations returned by MCP use 1-based line numbers. Internal indexes
 remain 0-based; the MCP adapters perform the conversion once at the boundary.
+
+### `search_context`
+Plans and executes ranked retrieval without asking the agent to choose an index.
+
+- `query` (str): repository question or code query.
+- `top_k` (int, default 10): results returned, from 1 through 100.
+- `budget` (str, default `"balanced"`): `"fast"`, `"balanced"`, or
+  `"thorough"`.
+- `level` (str, default `"l2"`): dense file (`"l0"`) or symbol (`"l2"`)
+  granularity.
+- `filter_test` (bool, default `False`): excludes test files from BM25 branches.
+
+The response contains the concrete `plan`, repository/commit/source-fingerprint
+provenance under `source`, and 1-based source-linked `results`. Reranking is not
+hidden in this tool; the current MCP route uses deterministic retrieval fusion
+and graph expansion only.
 
 ### `search_semantic`
 Vector-embedding similarity search.

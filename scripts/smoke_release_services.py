@@ -304,7 +304,12 @@ async def _assert_mcp_async(
                     async with Client(transport, mode=mode, cache=None) as client:
                         tools = await client.list_tools()
                         names = {tool.name for tool in tools.tools}
-                        required = {"get_manifest", "search_bm25", "search_semantic"}
+                        required = {
+                            "get_manifest",
+                            "search_context",
+                            "search_bm25",
+                            "search_semantic",
+                        }
                         if not required.issubset(names):
                             raise RuntimeError(
                                 f"MCP tools are missing in {mode} mode: "
@@ -327,6 +332,27 @@ async def _assert_mcp_async(
                         if "release_signature" not in hits[0].get("content", ""):
                             raise RuntimeError(
                                 f"MCP BM25 hit was unexpected: {hits[0]!r}"
+                            )
+
+                        ranked = await client.call_tool(
+                            "search_context",
+                            arguments={"query": "release_signature", "top_k": 5},
+                        )
+                        ranked_payload = _structured_result(ranked)
+                        ranked_result = ranked_payload.get("result", ranked_payload)
+                        if not isinstance(ranked_result, dict):
+                            raise RuntimeError(
+                                f"MCP ranked search returned no object: {ranked_payload!r}"
+                            )
+                        ranked_hits = ranked_result.get("results")
+                        if (
+                            ranked_result.get("plan", {}).get("name") != "fast_lexical"
+                            or not isinstance(ranked_hits, list)
+                            or not ranked_hits
+                        ):
+                            raise RuntimeError(
+                                "MCP ranked search did not execute its available "
+                                f"BM25 route: {ranked_result!r}"
                             )
 
                         unavailable = await client.call_tool(

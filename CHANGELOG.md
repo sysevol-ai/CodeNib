@@ -15,6 +15,9 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Added
 
+- A capability-aware `search_context` MCP tool and version-matched metadata for
+  publishing the local stdio server as `ai.codenib/codenib` in the official MCP
+  Registry.
 - A repository-aware `codenib toolchain` command that detects graph and LSP
   providers from the language registry, installs pinned package-managed tools
   under `~/.codenib/toolchains`, and reports system or project prerequisites

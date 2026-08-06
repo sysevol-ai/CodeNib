@@ -30,6 +30,7 @@ README_CITATION_MARKERS = (
     "https://arxiv.org/abs/2607.25431",
     "@misc{yu2026codenibmultiviewdataserving,",
 )
+MCP_OWNERSHIP_MARKER = "mcp-name: ai.codenib/codenib"
 
 
 def validate_readme_citation(readme: str) -> None:
@@ -38,6 +39,14 @@ def validate_readme_citation(readme: str) -> None:
     if missing:
         raise ReleaseValidationError(
             "README.md is missing citation markers: " + ", ".join(missing)
+        )
+
+
+def validate_readme_mcp_ownership(readme: str) -> None:
+    """Require the official MCP Registry ownership marker in package metadata."""
+    if MCP_OWNERSHIP_MARKER not in readme:
+        raise ReleaseValidationError(
+            f"README.md is missing MCP ownership marker: {MCP_OWNERSHIP_MARKER}"
         )
 
 
@@ -115,6 +124,7 @@ def _validate_wheel(wheel: Path, name: str, version: str) -> None:
                 f"{wheel.name} has unexpected license expression "
                 f"{message['License-Expression']!r}"
             )
+        validate_readme_mcp_ownership(message.get_payload())
 
         entry_members = sorted(
             member
@@ -138,6 +148,7 @@ def _validate_sdist(sdist: Path, name: str, version: str) -> None:
         f"{root}/CHANGELOG.md",
         f"{root}/LICENSE",
         f"{root}/README.md",
+        f"{root}/server.json",
         f"{root}/pyproject.toml",
         f"{root}/web/package-lock.json",
     }
@@ -151,7 +162,9 @@ def _validate_sdist(sdist: Path, name: str, version: str) -> None:
         readme_file = archive.extractfile(f"{root}/README.md")
         if readme_file is None:  # guarded by the required-members check
             raise ReleaseValidationError(f"{sdist.name} has no readable README.md")
-        validate_readme_citation(readme_file.read().decode("utf-8"))
+        readme = readme_file.read().decode("utf-8")
+        validate_readme_citation(readme)
+        validate_readme_mcp_ownership(readme)
 
 
 def validate_release(

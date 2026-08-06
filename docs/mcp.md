@@ -91,12 +91,30 @@ Transport is stdio and logs go to stderr. A typical client configuration is:
 Use an absolute repository path because the client may launch the server from a
 different working directory.
 
+### MCP Registry
+
+CodeNib publishes its local stdio server as `ai.codenib/codenib` in the
+official MCP Registry. Registry clients request one required value: the
+absolute path to a repository previously indexed with `codenib index`. The
+declared launch is equivalent to:
+
+```bash
+uvx --with "codenib[mcp]==0.2.0a2" \
+  "codenib==0.2.0a2" mcp /absolute/path/to/repository
+```
+
+The Registry path is intentionally query-only and model-free. It can always
+serve the persisted BM25 view without downloading an embedding model. Use the
+normal client configuration above from an environment with `semantic` or
+`graph` installed when those richer persisted views are required.
+
 ## Tools
 
 Only tools whose backing views are fresh and available can return results.
 
 | Tool | Backing view | Granularity | Use for |
 |---|---|---|---|
+| `search_context` | available `bm25`, `vector`, and `symbol_graph` views | file/symbol | Recommended planned ranked search; reports the selected route and source identity |
 | `search_semantic` | `vector` | file/symbol (L0/L2) | Natural-language or conceptual queries |
 | `search_bm25` | `bm25` | symbol | Exact names and keyword lookups |
 | `search_regex` | `symbol_graph` | file / symbol | Structural pattern matching |
@@ -108,6 +126,12 @@ Only tools whose backing views are fresh and available can return results.
 | `get_manifest` | manifest | repository | Repository identity, languages, view states, and capabilities |
 
 All source locations returned by MCP use 1-based line numbers.
+
+`search_context` accepts `query`, `top_k` (1-100), `budget`
+(`fast`, `balanced`, or `thorough`), dense `level` (`l0` or `l2`), and
+`filter_test`. Its response separates the selected `plan`, indexed `source`
+(repository, commit, and source fingerprint), and ranked `results`. It never
+silently labels a sparse fallback as hybrid or graph-expanded execution.
 
 The `codenib-guide` prompt explains how to choose among available tools.
 Parameter and return schemas live in

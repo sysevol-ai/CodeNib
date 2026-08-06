@@ -14,6 +14,7 @@ from scripts.verify_release_artifacts import (
     expected_tag,
     project_identity,
     validate_readme_citation,
+    validate_readme_mcp_ownership,
     validate_tag,
 )
 
@@ -42,6 +43,13 @@ https://arxiv.org/abs/2607.25431
 
     with pytest.raises(ReleaseValidationError, match="citation markers"):
         validate_readme_citation("# CodeNib\n")
+
+
+def test_packaged_readme_requires_mcp_registry_ownership() -> None:
+    validate_readme_mcp_ownership("<!-- mcp-name: ai.codenib/codenib -->")
+
+    with pytest.raises(ReleaseValidationError, match="MCP ownership marker"):
+        validate_readme_mcp_ownership("# CodeNib\n")
 
 
 def test_alpha_release_notes_use_production_pypi_and_pages_permissions() -> None:
@@ -126,6 +134,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert set(production["jobs"]) == {
         "verify",
         "publish-pypi",
+        "publish-mcp-registry",
         "github-release",
     }
     production_publisher = production["jobs"]["publish-pypi"]
@@ -134,6 +143,24 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert publisher_step(production_publisher)["with"]["password"] == (
         "${{ secrets.PYPI_API_TOKEN }}"
     )
+    registry_publisher = production["jobs"]["publish-mcp-registry"]
+    assert registry_publisher["needs"] == "publish-pypi"
+    assert registry_publisher["runs-on"] == "ubuntu-latest"
+    assert registry_publisher["environment"]["name"] == "mcp-registry-publish"
+    assert registry_publisher["permissions"] == {"contents": "read"}
+    registry_steps = {step["name"]: step for step in registry_publisher["steps"]}
+    assert "--check-pypi" in registry_steps["Wait for the exact PyPI package"]["run"]
+    assert (
+        "sha256sum --check" in registry_steps["Install verified MCP publisher"]["run"]
+    )
+    assert registry_steps["Authenticate branded namespace"]["env"] == {
+        "MCP_PRIVATE_KEY": "${{ secrets.MCP_PRIVATE_KEY }}"
+    }
+    assert "--check-registry" in registry_steps["Verify Registry discovery"]["run"]
+    assert production["jobs"]["github-release"]["needs"] == [
+        "publish-pypi",
+        "publish-mcp-registry",
+    ]
 
     assert set(test["jobs"]) == {
         "verify",

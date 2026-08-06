@@ -22,6 +22,7 @@ from codenib.mcp.server import mcp
 from codenib.web.config import CACHE_DIR_NAME, QAConfig
 
 _MCP_TOOL_NAMES = {
+    "search_context",
     "search_semantic",
     "search_bm25",
     "search_regex",

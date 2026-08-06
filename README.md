@@ -3,12 +3,13 @@ SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
 SPDX-License-Identifier: Apache-2.0
 -->
+<!-- mcp-name: ai.codenib/codenib -->
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_logo.svg" alt="CodeNib" width="560">
-  <h1>A Multi-View Data System for Serving Repository Context to Coding Agents</h1>
+  <h1>Searchable codebase wikis and context for coding agents</h1>
   <p>
-    Incremental compilation, explicit per-view manifests, and agent-native context serving.
+    Point it at any repo, get a searchable Wiki and an MCP server for your coding agent.
   </p>
   <p>
     <a href="https://arxiv.org/abs/2607.25431"><img src="https://img.shields.io/badge/arXiv-2607.25431-b31b1b.svg?logo=arxiv&amp;logoColor=white" alt="arXiv 2607.25431"></a>
@@ -38,16 +39,15 @@ SPDX-License-Identifier: Apache-2.0
   </p>
 </div>
 
-CodeNib is a multi-view data system for serving repository context to coding
-agents. Its native runtime compiles a checkout into manifest-linked lexical,
-semantic, structural, and static-navigation views, incrementally maintains
-supported transitions, and serves bounded source evidence through MCP,
-LSP-shaped providers, Python, and HTTP APIs.
+```bash
+python -m pip install "codenib[mcp,semantic]==0.2.0a2"
+codenib wiki /path/to/your/repo
+```
 
-The Wiki, Ask view, and Dependency Map are inspection clients of that same
-runtime, not the system boundary. The core implementation lives in CodeNib;
-optional model endpoints and language servers are providers rather than a host
-agent or code-Wiki framework.
+Local, open source, and no cloud required. CodeNib combines BM25 and dense code
+search, adds optional SCIP symbol graphs, and incrementally rebuilds repository
+indexes as commits change. The same index powers the Wiki, Dependency Map, Ask,
+and MCP tools instead of making every agent rediscover the codebase.
 
 ## News
 
@@ -175,8 +175,10 @@ codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```
 
-The MCP server advertises its full tool set and uses the compiled manifest to
-decide which calls have a fresh backing view. An agent can therefore reuse
+The MCP server advertises `search_context` as its default ranked entry point,
+then exposes the underlying BM25, vector, graph, and navigation operations for
+explicit control. It uses the compiled manifest to decide which calls have a
+fresh backing view. An agent can therefore reuse
 available repository work instead of rebuilding context through unbounded
 `grep` and `read` loops, while unavailable searches fail explicitly. BM25,
 semantic, regex, Zoekt, dependency, and static-navigation results retain source

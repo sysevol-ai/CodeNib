@@ -7,12 +7,21 @@
 CODENIB_GUIDE = """\
 # CodeNib Tools Guide
 
-CodeNib provides several search modes over pre-built indexes. Results retain
-precise file locations and source content: BM25 primarily returns symbols,
-regex searches file and symbol nodes in the CodeGraph, and Zoekt searches raw
-repository files.
+CodeNib serves ranked context and precise navigation over pre-built repository
+indexes. Start with `search_context`: it selects a deterministic BM25, dense,
+hybrid-RRF, or graph-expanded route from the views that are actually loaded.
+Use the lower-level tools when you need to force one operation.
 
 ## When to use each tool
+
+### search_context
+Best default for repository questions. It returns the selected route, indexed
+commit, source fingerprint, and ranked source spans. Use `budget="fast"` for a
+smaller retrieval path or `budget="thorough"` when graph expansion is available.
+
+Examples:
+- "where is retry backoff implemented"
+- "who calls `refresh_credentials` and how is failure handled"
 
 ### search_bm25
 Best for **keyword / exact-name** lookups.  Use when you know (or can guess)
@@ -55,14 +64,18 @@ Examples:
 ### Choosing between them
 | Scenario | Tool |
 |----------|------|
+| General repository question | search_context |
 | Know the exact symbol name | search_bm25 |
 | Looking for a pattern across CodeGraph file/symbol nodes | search_regex |
-| Natural-language description of what the code does | search_bm25 |
+| Force vector similarity for a natural-language query | search_semantic |
 | Need structural filters (by file glob or node type) | search_regex |
 | Need raw-text occurrence anywhere in the repo, fast | search_zoekt |
 | Hit may live in comments / docs / configs (off-graph) | search_zoekt |
 
 ## Tips
+- `search_context` is capability-aware: it does not claim dense or graph
+  execution when those views are unavailable. Inspect its `plan` and `source`
+  fields before using the returned spans.
 - `search_bm25` returns results ranked by BM25 relevance.  Start with
   `top_k=10` and increase if the target is not in the first page.
 - `search_regex` returns **all** matches up to `top_k`.  Use `file_glob`

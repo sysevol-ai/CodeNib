@@ -16,11 +16,11 @@ from ..index.rerank.cross_encoder import build_reranker
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
-from ..ops.expand import ExpandContext, expand_graph_region
+from ..ops.expand import ExpandContext, expand_retrieval_candidates
 from ..ops.rerank import RerankContext, rerank_by_embedding
 from ..ops.retrieve import (
     RetrieveContext,
-    dedup_queried_nodes,
+    execute_retrieval_stages,
     merge_hybrid,
     to_queried_nodes,
 )
@@ -424,24 +424,14 @@ class RetrieveRerankPipeline:
             else RETRIEVAL_TOP_K
         )
 
-        # Step 1: Run each retrieval branch
-        branch_results: List[List[QueriedNode]] = []
-        for stage in active_plan:
-            results = self._run_retrieval_stage(query, stage)
-            branch_results.append(results)
-
-        # Step 2: Merge branches (hybrid if multiple)
-        if len(branch_results) == 1:
-            candidates = branch_results[0]
-        else:
-            weights = [stage.weight for stage in active_plan]
-            candidates = self._merge_hybrid(
-                branch_results,
-                weights,
-                merge_top_k,
-                fusion=fusion or self.fusion_strategy,
-                rrf_k=self.rrf_k,
-            )
+        candidates = execute_retrieval_stages(
+            query,
+            active_plan,
+            self._run_retrieval_stage,
+            top_k=merge_top_k,
+            fusion=fusion or self.fusion_strategy,
+            rrf_k=self.rrf_k,
+        )
 
         if selected_plan is not None and selected_plan.graph is not None:
             candidates = self._run_graph_expansion_plan(selected_plan, candidates)
@@ -574,27 +564,17 @@ class RetrieveRerankPipeline:
         graph_plan = selected_plan.graph
         if graph_plan is None:
             return seeds
-        if self.expand_context.code_graph is None:
-            raise RuntimeError("Graph expansion requested but no code graph is loaded.")
-
-        seed_cap = graph_plan.seed_top_k or len(seeds)
-        graph_seeds = list(seeds[:seed_cap])
-        if not graph_seeds:
-            return []
-
-        expanded = expand_graph_region(
+        return expand_retrieval_candidates(
             self.expand_context,
-            graph_seeds,
-            top_k=graph_plan.expand_top_k,
+            seeds,
+            seed_top_k=graph_plan.seed_top_k,
+            expand_top_k=graph_plan.expand_top_k,
             hops=graph_plan.hops,
             direction=graph_plan.direction,
             use_ppr=graph_plan.use_ppr,
             repo_path=self.repo_path,
             include_content=True,
         )
-
-        candidates = dedup_queried_nodes([*graph_seeds, *expanded])
-        return candidates[: graph_plan.expand_top_k]
 
     @staticmethod
     def _merge_hybrid(

@@ -8,6 +8,7 @@ over backbone indexes."""
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
 from ...agent.boundary import to_agent_repr
@@ -18,6 +19,132 @@ from ..context import ServerContext
 def _node_to_dict(node: NodeInfo) -> Dict[str, Any]:
     """Serialize a NodeInfo at the 1-based agent boundary."""
     return to_agent_repr(node)
+
+
+def search_context_impl(
+    ctx: ServerContext,
+    query: str,
+    top_k: int = 10,
+    budget: str = "balanced",
+    level: str = "l2",
+    filter_test: bool = False,
+) -> Dict[str, Any]:
+    """Plan and execute ranked retrieval over the available repository views."""
+    normalized_query = (query or "").strip()
+    if not normalized_query:
+        raise ValueError("query must not be empty.")
+    if isinstance(top_k, bool) or not 1 <= top_k <= 100:
+        raise ValueError("top_k must be between 1 and 100.")
+    normalized_level = (level or "l2").strip().lower()
+    if normalized_level not in {"l0", "l2"}:
+        raise ValueError("level must be 'l0' or 'l2'.")
+
+    from ...model.retrieval_planner import RetrievalCapabilities, RetrievalPlanner
+    from ...ops.retrieve import execute_retrieval_stages
+
+    capabilities = RetrievalCapabilities(
+        has_dense=ctx.vector is not None,
+        has_sparse=ctx.bm25 is not None,
+        has_graph=ctx.symbol_graph is not None,
+        has_embedding_rerank=False,
+        has_llm_rerank=False,
+    )
+    planner = RetrievalPlanner()
+    resolved_budget = planner.normalize_budget(budget)
+    plan = planner.select(
+        normalized_query,
+        budget=resolved_budget,
+        capabilities=capabilities,
+    )
+
+    def execute_stage(active_query: str, stage: Any) -> List[NodeInfo]:
+        if stage.engine == "dense":
+            if ctx.vector is None:
+                raise RuntimeError("Dense retrieval selected without a vector index.")
+            return ctx.vector.search_with_content(
+                query=active_query,
+                top_k=stage.top_k or plan.retrieval_top_k,
+                level=normalized_level,
+                score_threshold=None,
+            )
+        if stage.engine == "sparse":
+            if ctx.bm25 is None:
+                raise RuntimeError("Sparse retrieval selected without a BM25 index.")
+            return ctx.bm25.search(
+                query=active_query,
+                top_k=stage.top_k or plan.retrieval_top_k,
+                return_code_content=True,
+                wrap_with_ln=False,
+                filter_test=filter_test,
+            )
+        raise RuntimeError(f"Unsupported retrieval engine: {stage.engine!r}.")
+
+    candidates = execute_retrieval_stages(
+        normalized_query,
+        plan.stages,
+        execute_stage,
+        top_k=plan.retrieval_top_k,
+        fusion=plan.fusion,
+    )
+    if plan.graph is not None:
+        from ...ops.expand import ExpandContext, expand_retrieval_candidates
+
+        graph = plan.graph
+        candidates = expand_retrieval_candidates(
+            ExpandContext(code_graph=ctx.symbol_graph),
+            candidates,
+            seed_top_k=graph.seed_top_k,
+            expand_top_k=graph.expand_top_k,
+            hops=graph.hops,
+            direction=graph.direction,
+            use_ppr=graph.use_ppr,
+            repo_path=ctx.manifest.repo_path,
+            include_content=True,
+        )
+
+    graph_plan = None
+    if plan.graph is not None:
+        graph_plan = {
+            "seed_top_k": plan.graph.seed_top_k,
+            "expand_top_k": plan.graph.expand_top_k,
+            "hops": plan.graph.hops,
+            "direction": plan.graph.direction,
+            "use_ppr": plan.graph.use_ppr,
+        }
+    artifact = ctx.artifact if isinstance(ctx.artifact, Mapping) else {}
+    results = [_node_to_dict(node) for node in candidates[:top_k]]
+    for result in results:
+        score = result.get("score")
+        if hasattr(score, "item"):
+            result["score"] = float(score.item())
+        elif isinstance(score, (int, float)):
+            result["score"] = float(score)
+
+    return {
+        "plan": {
+            "name": plan.name,
+            "intent": plan.intent,
+            "budget": resolved_budget.tier,
+            "fusion": plan.fusion,
+            "retrieval_top_k": plan.retrieval_top_k,
+            "stages": [
+                {
+                    "engine": stage.engine,
+                    "weight": stage.weight,
+                    "top_k": stage.top_k,
+                }
+                for stage in plan.stages
+            ],
+            "graph": graph_plan,
+            "rationale": plan.rationale,
+        },
+        "source": {
+            "repository": artifact.get("repository") or ctx.manifest.repo_path,
+            "commit": ctx.manifest.commit,
+            "source_fingerprint": ctx.manifest.source_fingerprint,
+        },
+        "results": results,
+    }
 
 
 # ------------------------------------------------------------------

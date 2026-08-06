@@ -19,6 +19,7 @@ from ..types import (
     is_symbol_node,
     node_is_reference_only,
 )
+from .retrieve import dedup_queried_nodes
 
 logger = get_logger(__name__)
 
@@ -250,6 +251,42 @@ def expand_graph_region(
         repo_path=repo_path,
         include_content=include_content,
     )
+
+
+def expand_retrieval_candidates(
+    context: ExpandContext,
+    seeds: Sequence[QueriedNode],
+    *,
+    seed_top_k: Optional[int],
+    expand_top_k: int,
+    hops: int,
+    direction: str,
+    use_ppr: bool,
+    repo_path: Optional[str],
+    include_content: bool = True,
+) -> List[QueriedNode]:
+    """Apply a bounded graph expansion plan to ranked retrieval seeds."""
+    if context.code_graph is None:
+        raise RuntimeError("Graph expansion requested but no code graph is loaded.")
+    if expand_top_k <= 0:
+        raise ValueError("expand_top_k must be positive.")
+
+    seed_cap = seed_top_k or len(seeds)
+    graph_seeds = list(seeds[:seed_cap])
+    if not graph_seeds:
+        return []
+
+    expanded = expand_graph_region(
+        context,
+        graph_seeds,
+        top_k=expand_top_k,
+        hops=hops,
+        direction=direction,
+        use_ppr=use_ppr,
+        repo_path=repo_path,
+        include_content=include_content,
+    )
+    return dedup_queried_nodes([*graph_seeds, *expanded])[:expand_top_k]
 
 
 def _expand_neighbor_fallback(

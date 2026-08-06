@@ -48,11 +48,20 @@ jobs:
           BUILD_VENV="$RUNNER_TEMP/codenib-release-build-${{ github.run_id }}-${{ github.run_attempt }}"
           python -m venv "$BUILD_VENV"
           "$BUILD_VENV/bin/python" -m pip install \
-            --upgrade pip build twine
+            --upgrade pip build "jsonschema>=4,<5" twine
           "$BUILD_VENV/bin/python" -m build
           "$BUILD_VENV/bin/python" -m twine check dist/*
           "$BUILD_VENV/bin/python" \
             scripts/verify_release_artifacts.py dist
+
+      - name: Validate MCP Registry metadata
+        run: |
+          BUILD_VENV="$RUNNER_TEMP/codenib-release-build-${{ github.run_id }}-${{ github.run_attempt }}"
+          curl --fail --location --retry 3 \
+            --output "$RUNNER_TEMP/mcp-server.schema.json" \
+            https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json
+          "$BUILD_VENV/bin/python" scripts/verify_mcp_registry.py \
+            --schema-file "$RUNNER_TEMP/mcp-server.schema.json"
 
       - name: Validate production release ref
         if: github.ref_type == 'tag'

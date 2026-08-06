@@ -5,6 +5,7 @@
 graft web
 include CHANGELOG.md
 include CONTRIBUTING.md
+include server.json
 prune web/.next
 prune web/node_modules
 prune web/playwright-report

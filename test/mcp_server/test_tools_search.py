@@ -6,14 +6,17 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock
 
 import pytest
 
+from codenib.compiler.manifest import RepoManifest
 from codenib.index.trigram import ZoektUnavailableError
 from codenib.index.trigram.zoekt_searcher import _file_match_to_node
 from codenib.mcp.tools.search import (
     search_bm25_impl,
+    search_context_impl,
     search_regex_impl,
     search_zoekt_impl,
 )
@@ -24,13 +27,31 @@ from codenib.types import NodeInfo
 # ------------------------------------------------------------------
 
 
-def _make_ctx(*, bm25=None, regex_index=None, zoekt=None, errors=None):
+def _make_ctx(
+    *,
+    bm25=None,
+    vector=None,
+    symbol_graph=None,
+    regex_index=None,
+    zoekt=None,
+    errors=None,
+    artifact=None,
+):
     """Create a minimal mock ServerContext."""
     ctx = MagicMock()
+    ctx.manifest = RepoManifest(
+        repo_path="/repo",
+        commit="abc123",
+        source_fingerprint="sha256:source",
+        languages=["python"],
+    )
     ctx.bm25 = bm25
+    ctx.vector = vector
+    ctx.symbol_graph = symbol_graph
     ctx.regex_index = regex_index
     ctx.zoekt = zoekt
     ctx.errors = errors or {}
+    ctx.artifact = artifact
     return ctx
 
 
@@ -55,6 +76,131 @@ def _sample_nodes() -> list[NodeInfo]:
             score=0.0,
         ),
     ]
+
+
+class TestSearchContext:
+    def test_sparse_plan_returns_route_and_source_provenance(self) -> None:
+        mock_bm25 = MagicMock()
+        mock_bm25.search.return_value = _sample_nodes()
+        ctx = _make_ctx(
+            bm25=mock_bm25,
+            artifact={"repository": "sysevol-ai/CodeNib"},
+        )
+
+        response = search_context_impl(ctx, query="calculate_tax", top_k=1)
+
+        assert response["plan"]["name"] == "fast_lexical"
+        assert response["plan"]["stages"] == [
+            {"engine": "sparse", "weight": 1.0, "top_k": 100}
+        ]
+        assert response["source"] == {
+            "repository": "sysevol-ai/CodeNib",
+            "commit": "abc123",
+            "source_fingerprint": "sha256:source",
+        }
+        assert response["results"][0]["node_name"] == "calculate_tax"
+        assert response["results"][0]["start_line"] == 11
+
+    def test_sparse_plan_does_not_load_optional_graph_runtime(
+        self, monkeypatch
+    ) -> None:
+        mock_bm25 = MagicMock()
+        mock_bm25.search.return_value = _sample_nodes()
+        monkeypatch.setitem(sys.modules, "codenib.ops.expand", None)
+
+        response = search_context_impl(
+            _make_ctx(bm25=mock_bm25), query="calculate_tax", top_k=1
+        )
+
+        assert response["plan"]["name"] == "fast_lexical"
+        assert response["results"][0]["node_name"] == "calculate_tax"
+
+    def test_hybrid_plan_uses_shared_rrf_execution(self) -> None:
+        mock_vector = MagicMock()
+        mock_vector.search_with_content.return_value = [
+            NodeInfo(
+                node_name="shared",
+                node_id="src/shared.py:shared",
+                file="src/shared.py",
+                score=0.9,
+            ),
+            NodeInfo(node_name="dense", node_id="dense", score=0.8),
+        ]
+        mock_bm25 = MagicMock()
+        mock_bm25.search.return_value = [
+            NodeInfo(
+                node_name="shared",
+                node_id="src/shared.py:shared",
+                file="src/shared.py",
+                score=10.0,
+            ),
+            NodeInfo(node_name="sparse", node_id="sparse", score=9.0),
+        ]
+
+        response = search_context_impl(
+            _make_ctx(vector=mock_vector, bm25=mock_bm25),
+            query="explain `retry_handler` behavior",
+            top_k=3,
+        )
+
+        assert response["plan"]["name"] == "hybrid_fusion"
+        assert response["plan"]["fusion"] == "rrf"
+        assert [item["node_id"] for item in response["results"]] == [
+            "src/shared.py:shared",
+            "dense",
+            "sparse",
+        ]
+        mock_vector.search_with_content.assert_called_once()
+        mock_bm25.search.assert_called_once()
+
+    def test_structural_plan_delegates_graph_expansion(self, monkeypatch) -> None:
+        mock_bm25 = MagicMock()
+        mock_bm25.search.return_value = _sample_nodes()[:1]
+        expanded = NodeInfo(
+            node_name="caller", node_id="src/caller.py:caller", file="src/caller.py"
+        )
+        calls = []
+
+        def fake_expand(context, seeds, **kwargs):
+            calls.append((context.code_graph, seeds, kwargs))
+            from codenib.ops.retrieve import to_queried_nodes
+
+            return [*seeds, *to_queried_nodes([expanded])]
+
+        monkeypatch.setattr(
+            "codenib.ops.expand.expand_retrieval_candidates", fake_expand
+        )
+        graph = object()
+
+        response = search_context_impl(
+            _make_ctx(bm25=mock_bm25, symbol_graph=graph),
+            query="who calls calculate_tax",
+            top_k=5,
+        )
+
+        assert response["plan"]["name"] == "structural_graph"
+        assert response["plan"]["graph"]["hops"] == 2
+        assert [item["node_name"] for item in response["results"]] == [
+            "calculate_tax",
+            "caller",
+        ]
+        assert calls[0][0] is graph
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"query": ""}, "query must not be empty"),
+            ({"query": "x", "top_k": 0}, "top_k must be between"),
+            ({"query": "x", "level": "l1"}, "level must be"),
+        ],
+    )
+    def test_validates_request(self, kwargs, message) -> None:
+        with pytest.raises(ValueError, match=message):
+            search_context_impl(_make_ctx(bm25=MagicMock()), **kwargs)
+
+    def test_requires_a_ranked_retrieval_view(self) -> None:
+        with pytest.raises(ValueError, match="No retrieval backend"):
+            search_context_impl(_make_ctx(), query="find parser")
 
 
 # ------------------------------------------------------------------

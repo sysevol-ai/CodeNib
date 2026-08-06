@@ -35,8 +35,11 @@ simple index. The workflow byte-compares the downloaded wheel with the verified
 build before installing it in a fresh environment and exercising a real BM25
 index build. Production publishing remains in the separate Release workflow
 and requires a `v<version>` tag that exactly matches `project.version`. After
-PyPI publication, the workflow creates a prerelease GitHub Release containing
-the distributions and `SHA256SUMS`.
+PyPI publication, the production workflow waits for that exact package and its
+MCP ownership marker, publishes `ai.codenib/codenib` to the official MCP
+Registry, verifies Registry discovery, and then creates the prerelease GitHub
+Release containing the distributions and `SHA256SUMS`. TestPyPI does not feed
+the MCP Registry because the Registry accepts only official PyPI packages.
 
 ## Trusted Publisher Setup
 
@@ -68,6 +71,33 @@ bootstrap; [issue #384](https://github.com/sysevol-ai/CodeNib/issues/384)
 tracks restoring its trusted publisher and revoking that token. No publishing
 workflow reads a runner-local `.pypirc`.
 
+## MCP Registry Namespace
+
+The production tag publishes the branded `ai.codenib/codenib` namespace from
+`server.json`. The package README carries the matching hidden `mcp-name` marker,
+and release verification keeps both Registry versions plus the fixed `uvx`
+extra synchronized with `project.version`.
+
+DNS authentication requires one Ed25519 proof record at the `codenib.ai` apex.
+Generate the key once on a trusted machine with OpenSSL 3, add the printed TXT
+record through the DNS provider, and store only the extracted private scalar in
+the protected GitHub environment:
+
+```bash
+openssl genpkey -algorithm Ed25519 -out key.pem
+PUBLIC_KEY="$(openssl pkey -in key.pem -pubout -outform DER | tail -c 32 | base64)"
+echo "codenib.ai. IN TXT \"v=MCPv1; k=ed25519; p=${PUBLIC_KEY}\""
+PRIVATE_KEY="$(openssl pkey -in key.pem -noout -text | grep -A3 'priv:' | tail -n +2 | tr -d ' :\n')"
+printf '%s' "$PRIVATE_KEY" | gh secret set MCP_PRIVATE_KEY \
+  --repo sysevol-ai/CodeNib --env mcp-registry-publish
+```
+
+Do not commit `key.pem`. Configure `mcp-registry-publish` to allow only release
+tags and require a maintainer approval. The publish job deliberately runs on
+`ubuntu-latest`, not a self-hosted runner, and verifies the pinned publisher
+archive before exposing the environment secret. The DNS record belongs at the
+domain apex, not `_mcp-auth.codenib.ai`.
+
 ## Public Surface Gate
 
 Before the production tag, make the repository public and manually dispatch
@@ -88,8 +118,8 @@ on PyPI.
 
 1. Move relevant entries from `Unreleased` into a dated version section in
    `CHANGELOG.md`.
-2. Confirm `pyproject.toml` uses the release version and the README `Citation`
-   section still matches the current arXiv entry.
+2. Confirm `pyproject.toml` uses the release version, `server.json` matches it,
+   and the README citation and `mcp-name` marker remain present.
 3. Run `pre-commit run --all-files` and the local package smoke.
 4. Merge the release commit to `main` and confirm its package gates pass.
 5. Confirm the TestPyPI pending publisher is visible, then dispatch the
@@ -98,8 +128,11 @@ on PyPI.
 7. Complete the public-surface gate above.
 8. Confirm the production `pypi` environment still has its scoped publisher
    credential, or complete #384 and update the workflow to OIDC first.
-9. Create and push an annotated `v<version>` tag.
-10. Confirm the PyPI deployment and generated prerelease GitHub Release.
+9. Confirm the `codenib.ai` MCP proof TXT record and protected
+   `mcp-registry-publish` environment secret are active.
+10. Create and push an annotated `v<version>` tag.
+11. Confirm PyPI, MCP Registry discovery, and the generated prerelease GitHub
+    Release all identify the same version.
 
 Do not reuse a published version. If publication partially succeeds, increment
 the version and produce new artifacts.

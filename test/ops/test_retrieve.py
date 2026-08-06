@@ -6,14 +6,64 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from codenib.ops.retrieve import (
     dedup_queried_nodes,
+    execute_retrieval_stages,
     merge_file_rankings,
     merge_hybrid,
     queried_file_key,
     queried_node_key,
 )
 from codenib.types import QueriedNode
+
+
+@dataclass(frozen=True)
+class _Stage:
+    engine: str
+    weight: float = 1.0
+    top_k: int | None = None
+
+
+def test_execute_retrieval_stages_runs_and_fuses_declared_branches():
+    stages = [_Stage("dense", 0.6, 3), _Stage("sparse", 0.4, 2)]
+    calls = []
+
+    def execute(query, stage):
+        calls.append((query, stage.engine, stage.top_k))
+        if stage.engine == "dense":
+            return [
+                QueriedNode(node_name="shared", node_id="shared", score=0.9),
+                QueriedNode(node_name="dense", node_id="dense", score=0.8),
+            ]
+        return [
+            QueriedNode(node_name="shared", node_id="shared", score=10.0),
+            QueriedNode(node_name="sparse", node_id="sparse", score=9.0),
+        ]
+
+    result = execute_retrieval_stages(
+        "retry behavior",
+        stages,
+        execute,
+        top_k=3,
+        fusion="rrf",
+    )
+
+    assert calls == [
+        ("retry behavior", "dense", 3),
+        ("retry behavior", "sparse", 2),
+    ]
+    assert [node.node_id for node in result] == ["shared", "dense", "sparse"]
+
+
+def test_execute_retrieval_stages_rejects_empty_plan():
+    try:
+        execute_retrieval_stages("query", [], lambda *_: [], top_k=10)
+    except ValueError as exc:
+        assert "At least one retrieval stage" in str(exc)
+    else:
+        raise AssertionError("empty retrieval plan should fail")
 
 
 def test_queried_node_key_prefers_node_id():

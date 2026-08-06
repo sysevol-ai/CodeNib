@@ -55,7 +55,12 @@ def test_server_negotiates_modern_and_legacy_protocols() -> None:
     assert modern_version == LATEST_PROTOCOL_VERSION
     assert legacy_version != modern_version
     assert modern_tools == legacy_tools
-    assert {"get_manifest", "search_bm25", "search_semantic"} <= modern_tools
+    assert {
+        "get_manifest",
+        "search_context",
+        "search_bm25",
+        "search_semantic",
+    } <= modern_tools
 
 
 @pytest.fixture

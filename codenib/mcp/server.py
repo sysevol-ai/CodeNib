@@ -32,7 +32,7 @@ from .context import ServerContext
 from .prompts import CODENIB_GUIDE
 from .tools.dependency import dependency_subgraph_impl
 from .tools.lsp import lsp_definition_impl, lsp_references_impl, lsp_route_impl
-from .tools.search import search_bm25_impl, search_regex_impl
+from .tools.search import search_bm25_impl, search_context_impl, search_regex_impl
 from .tools.search import search_semantic as _search_semantic_impl
 from .tools.search import search_zoekt_impl
 
@@ -53,7 +53,9 @@ mcp = MCPServer(
     "codenib",
     instructions=(
         "CodeNib provides code search over pre-built indexes. "
-        "Use search_semantic for vector/embedding similarity, "
+        "Start with search_context for planned ranked retrieval over the "
+        "available lexical, dense, and structural views. Use search_semantic "
+        "for direct vector/embedding similarity, "
         "search_bm25 for keyword lookups, search_regex for CodeGraph "
         "file/symbol pattern matching, and search_zoekt for fast trigram-based "
         "substring/regex search across raw file contents. Use "
@@ -66,6 +68,36 @@ mcp = MCPServer(
 # ------------------------------------------------------------------
 # Tools
 # ------------------------------------------------------------------
+
+
+@mcp.tool(
+    name="search_context",
+    description=(
+        "Recommended ranked repository-context search. CodeNib selects and "
+        "executes a deterministic BM25, dense, hybrid-RRF, or graph-expanded "
+        "route from the loaded views and requested budget. Returns the selected "
+        "plan, repository provenance, and source-linked results."
+    ),
+)
+async def search_context(
+    query: str,
+    top_k: int = 10,
+    budget: str = "balanced",
+    level: str = "l2",
+    filter_test: bool = False,
+) -> dict[str, Any]:
+    """Execute capability-aware ranked retrieval over loaded repository views."""
+    if _ctx is None:
+        raise RuntimeError("Server not initialized")
+    return await asyncio.to_thread(
+        search_context_impl,
+        _ctx,
+        query,
+        top_k,
+        budget,
+        level,
+        filter_test,
+    )
 
 
 @mcp.tool(
