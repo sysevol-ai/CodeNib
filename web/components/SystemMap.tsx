@@ -163,6 +163,7 @@ function nodeToInfo(node: CMNode): GraphNodeInfo {
     endLine: node.end_line ?? null,
     kind: node.kind,
     external: node.external === true,
+    source: node.source ?? null,
   };
 }
 

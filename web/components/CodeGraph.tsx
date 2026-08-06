@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import cytoscape, { type Core, type ElementDefinition, type NodeSingular } from "cytoscape";
-import { fetchEdgeLabel, type CallSite, type CodemapResponse } from "@/lib/api";
+import {
+  fetchEdgeLabel,
+  type CallSite,
+  type CodemapResponse,
+  type SourceSlice,
+} from "@/lib/api";
 
 export interface EdgeClickInfo {
   anchors: CallSite[];
@@ -26,6 +31,7 @@ export interface GraphNodeInfo {
   endLine: number | null; // 1-based end of the definition, so the peek shows just this symbol
   kind: string;
   external: boolean; // defined outside this repo — no source to open
+  source?: SourceSlice | null; // embedded by static Wiki exports
 }
 
 type CMNode = CodemapResponse["nodes"][number];
@@ -378,6 +384,7 @@ function buildElements(
             root: n.is_root ? 1 : 0,
             external: n.external ? 1 : 0,
             declaration: n.declaration ? 1 : 0,
+            source: n.source ?? null,
             treeDepth: n.depth ?? fileDepth,
           },
         });
@@ -1635,6 +1642,7 @@ export default function CodeGraph({
         endLine: d.endLine ?? null,
         kind: d.kind,
         external: d.external === 1,
+        source: d.source ?? null,
       });
     });
 
@@ -1781,6 +1789,7 @@ export default function CodeGraph({
       endLine: node.end_line ?? null,
       kind: node.kind,
       external: node.external === true,
+      source: node.source ?? null,
     });
   };
 

@@ -12,6 +12,7 @@ import {
   type CallSite,
   type CodemapResponse,
 } from "@/lib/api";
+import { isStaticRuntime } from "@/lib/runtime";
 
 // Cytoscape loads only when a graph is shown, so the wiki
 // narrative paints first and the graph fills in a beat later.
@@ -29,9 +30,17 @@ function GraphLoading() {
 // definition. Both resolve to a (file, line) the /source endpoint can open.
 type PeekSource = ({ kind: "edge" } & EdgeClickInfo) | { kind: "node"; node: GraphNodeInfo };
 
-function githubFileUrl(repoFullName: string | undefined, commit: string | undefined, file: string): string | null {
-  if (!repoFullName || !file) return null;
-  return `https://github.com/${repoFullName}/blob/${commit || "HEAD"}/${file}`;
+function githubFileUrl(
+  repoFullName: string | undefined,
+  sourceUrl: string | null | undefined,
+  commit: string | undefined,
+  file: string,
+  line?: number | null,
+): string | null {
+  if ((!repoFullName && !sourceUrl) || !file) return null;
+  const root = (sourceUrl || `https://github.com/${repoFullName}`).replace(/\/+$/, "");
+  const anchor = line ? `#L${line}` : "";
+  return `${root}/blob/${commit || "HEAD"}/${file}${anchor}`;
 }
 
 function compactSymbol(label: string): string {
@@ -50,6 +59,7 @@ function SourcePeek({
   onClose,
   onFocus,
   repoFullName,
+  sourceUrl,
   commit,
 }: {
   repoId: string;
@@ -57,6 +67,7 @@ function SourcePeek({
   onClose: () => void;
   onFocus?: (label: string) => void;
   repoFullName?: string;
+  sourceUrl?: string | null;
   commit?: string;
 }) {
   const peekRef = useRef<HTMLDivElement>(null);
@@ -75,6 +86,7 @@ function SourcePeek({
   const [edgeLabel, setEdgeLabel] = useState<"idle" | "loading" | string>("idle");
 
   const site = sites[Math.min(idx, sites.length - 1)] || sites[0];
+  const embedded = isNode ? source.node.source : site?.source;
   const rel = repoRelative(site.file);
   const line = site.line ?? 1;
   const isExternal = source.kind === "node" && !!source.node.external;
@@ -87,7 +99,9 @@ function SourcePeek({
       ? `${compactSymbol(source.srcLabel)} -> ${compactSymbol(source.tgtLabel)}`
       : compactSymbol(source.node.short);
   const sourceMeta = source.kind === "edge" ? "Exact reference" : source.node.kind;
-  const fileUrl = isExternal ? null : githubFileUrl(repoFullName, commit, rel);
+  const fileUrl = isExternal
+    ? null
+    : githubFileUrl(repoFullName, sourceUrl, commit, rel, line);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -99,6 +113,10 @@ function SourcePeek({
   useEffect(() => {
     if (source.kind !== "edge") {
       setEdgeLabel("idle");
+      return;
+    }
+    if (isStaticRuntime()) {
+      setEdgeLabel("");
       return;
     }
     let cancelled = false;
@@ -119,7 +137,9 @@ function SourcePeek({
           end_line: source.tgtEnd ?? null,
           label: source.tgtLabel,
         },
-        anchors: source.anchors,
+        // Static page graphs may carry bounded source previews on each anchor.
+        // The edge-label endpoint only needs provenance, not the embedded code.
+        anchors: source.anchors.map(({ file, line }) => ({ file, line })),
         commit,
       },
       { signal: ctrl.signal }
@@ -136,6 +156,12 @@ function SourcePeek({
     if (isExternal || hasNoSingleFile) return; // nothing single to fetch
     let cancelled = false;
     setState("loading");
+    if (embedded?.content && repoRelative(embedded.file) === rel) {
+      setCode(embedded.content);
+      setStart(embedded.start_line || 1);
+      setState("ok");
+      return;
+    }
     // Node peeks use the indexed symbol span, plus a little context around it.
     // Edge peeks remain point locations with context above and below.
     const PAD = 3;
@@ -153,7 +179,17 @@ function SourcePeek({
     return () => {
       cancelled = true;
     };
-  }, [repoId, rel, line, isNode, nodeEnd, isExternal, hasNoSingleFile, commit]);
+  }, [
+    repoId,
+    rel,
+    line,
+    isNode,
+    nodeEnd,
+    isExternal,
+    hasNoSingleFile,
+    commit,
+    embedded,
+  ]);
 
   return (
     <div className="callsite-peek" ref={peekRef}>
@@ -263,6 +299,7 @@ export default function GraphView({
   variant = "explore",
   onFocus,
   repoFullName,
+  sourceUrl,
   commit,
 }: {
   repoId: string;
@@ -272,6 +309,7 @@ export default function GraphView({
   variant?: "wiki" | "explore" | "modules";
   onFocus?: (label: string) => void;
   repoFullName?: string;
+  sourceUrl?: string | null;
   commit?: string;
 }) {
   const [peek, setPeek] = useState<PeekSource | null>(null);
@@ -301,6 +339,7 @@ export default function GraphView({
           <HierarchyMap
             data={data}
             onNodeClick={(node) => setPeek({ kind: "node", node })}
+            onSourceClick={(node) => setPeek({ kind: "node", node })}
             onEdgeClick={(info) => setPeek({ kind: "edge", ...info })}
           />
         ) : (
@@ -330,6 +369,7 @@ export default function GraphView({
           onClose={() => setPeek(null)}
           onFocus={peekFocus}
           repoFullName={repoFullName}
+          sourceUrl={sourceUrl}
           commit={commit}
         />
       )}

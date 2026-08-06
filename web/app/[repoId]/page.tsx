@@ -493,6 +493,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                           variant="wiki"
                           onFocus={hasGraph ? (label) => openGraph(label) : undefined}
                           repoFullName={repo?.repo}
+                          sourceUrl={repo?.source_url}
                           commit={repo?.base_commit}
                         />
                       </Suspense>

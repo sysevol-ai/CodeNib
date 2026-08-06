@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { EdgeClickInfo, GraphNodeInfo } from "@/components/CodeGraph";
 import type { CallSite, CodemapHierarchyNode, CodemapResponse } from "@/lib/api";
@@ -19,6 +19,20 @@ interface RolledEdge {
 
 const CONTAINER_KINDS = new Set(["root", "directory", "file"]);
 
+function isContainer(
+  node: CodemapHierarchyNode | undefined,
+  childrenOf: Map<string, CodemapHierarchyNode[]>,
+): boolean {
+  return !!node && (CONTAINER_KINDS.has(node.kind) || childrenOf.has(node.id));
+}
+
+export function toggleHierarchyOpen(previous: Set<string>, id: string): Set<string> {
+  const next = new Set(previous);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
 function nodeToInfo(node: CMNode): GraphNodeInfo {
   return {
     label: node.label,
@@ -28,6 +42,26 @@ function nodeToInfo(node: CMNode): GraphNodeInfo {
     endLine: node.end_line ?? null,
     kind: node.kind,
     external: node.external === true,
+    source: node.source ?? null,
+  };
+}
+
+/** Ancestor scopes are projected from the repo hierarchy, not the small page
+ * view, so their ``node_id`` is a canonical graph id rather than ``n0``/``n1``.
+ * They still carry an exact source span and are valid source-preview targets. */
+export function hierarchyNodeToInfo(
+  node: CodemapHierarchyNode,
+): GraphNodeInfo | null {
+  if (!node.file || node.line == null) return null;
+  return {
+    label: node.path || node.node_id || node.label,
+    short: node.label,
+    file: node.file,
+    line: node.line,
+    endLine: node.end_line ?? null,
+    kind: node.kind,
+    external: node.external === true,
+    source: node.source ?? null,
   };
 }
 
@@ -40,10 +74,15 @@ function nodeToInfo(node: CMNode): GraphNodeInfo {
 export default function HierarchyMap({
   data,
   onNodeClick,
+  onSourceClick,
   onEdgeClick,
 }: {
   data: CodemapResponse;
   onNodeClick?: (node: GraphNodeInfo) => void;
+  /** Explicit source-preview action for parent scopes. Some consumers use
+   *  onNodeClick for graph focus instead, so the two meanings cannot share a
+   *  button labelled "source". */
+  onSourceClick?: (node: GraphNodeInfo) => void;
   onEdgeClick?: (info: EdgeClickInfo) => void;
 }) {
   const hierarchy = data.hierarchy;
@@ -66,13 +105,16 @@ export default function HierarchyMap({
     }
     const rootId = hierarchy?.root ?? "";
     const defaultOpen = new Set<string>(
-      nodes.filter((n) => n.open_by_default && CONTAINER_KINDS.has(n.kind)).map((n) => n.id)
+      nodes
+        .filter((n) => n.open_by_default && isContainer(n, childrenOf))
+        .map((n) => n.id)
     );
     if (rootId) defaultOpen.add(rootId);
     return { byId, childrenOf, root: rootId, defaultOpen };
   }, [hierarchy]);
 
   const [open, setOpen] = useState<Set<string>>(defaultOpen);
+  useEffect(() => setOpen(defaultOpen), [defaultOpen]);
 
   const viewNodeById = useMemo(
     () => new Map(data.nodes.map((n) => [n.id, n])),
@@ -88,12 +130,7 @@ export default function HierarchyMap({
   }, [hierarchy]);
 
   const toggle = (id: string) =>
-    setOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setOpen((previous) => toggleHierarchyOpen(previous, id));
 
   /** Deepest ancestor-or-self the reader can currently see. */
   const nearestVisible = (hid: string | undefined): string | null => {
@@ -109,7 +146,7 @@ export default function HierarchyMap({
     for (const id of chain) {
       visible = id;
       // A closed container is the boundary: nothing beneath it is on screen.
-      if (CONTAINER_KINDS.has(byId.get(id)?.kind ?? "") && !open.has(id)) break;
+      if (isContainer(byId.get(id), childrenOf) && !open.has(id)) break;
     }
     return visible;
   };
@@ -156,14 +193,65 @@ export default function HierarchyMap({
   const renderNode = (node: CodemapHierarchyNode, depth: number) => {
     if (node.kind === "symbol") {
       const viewNode = node.node_id ? viewNodeById.get(node.node_id) : undefined;
+      const sourceInfo = viewNode ? nodeToInfo(viewNode) : hierarchyNodeToInfo(node);
+      const kids = childrenOf.get(node.id) ?? [];
+
+      if (kids.length > 0) {
+        const isOpen = open.has(node.id);
+        return (
+          <div
+            key={node.id}
+            className={`hier-scope${isOpen ? " is-open" : ""}`}
+            style={{ marginInlineStart: depth > 1 ? 10 : 0 }}
+          >
+            <div className="hier-scope-head">
+              <button
+                type="button"
+                className="hier-scope-toggle"
+                aria-expanded={isOpen}
+                onClick={() => toggle(node.id)}
+              >
+                <span className="hier-chevron" aria-hidden="true">
+                  {isOpen ? "-" : "+"}
+                </span>
+                <span className="hier-symbol-name">{node.label}</span>
+                {node.line != null && (
+                  <span className="hier-symbol-line mono">:{node.line}</span>
+                )}
+                <span className="hier-meta">
+                  {node.symbol_count} symbol{node.symbol_count === 1 ? "" : "s"}
+                </span>
+              </button>
+              {onSourceClick && (
+                <button
+                  type="button"
+                  className="hier-scope-source"
+                  disabled={!sourceInfo}
+                  onClick={() => sourceInfo && onSourceClick(sourceInfo)}
+                  title={`View source for ${sourceInfo?.label ?? node.label}`}
+                  aria-label={`View source for ${node.label}`}
+                >
+                  source
+                </button>
+              )}
+            </div>
+            {isOpen && (
+              <div className="hier-children">
+                {kids.map((child) => renderNode(child, depth + 1))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
       return (
         <button
           key={node.id}
           type="button"
           className={`hier-symbol${viewNode?.declaration ? " is-derived" : ""}`}
-          title={viewNode?.label ?? node.label}
-          disabled={!viewNode || !onNodeClick}
-          onClick={() => viewNode && onNodeClick?.(nodeToInfo(viewNode))}
+          title={sourceInfo?.label ?? node.label}
+          disabled={!sourceInfo || !onNodeClick}
+          onClick={() => sourceInfo && onNodeClick?.(sourceInfo)}
         >
           <span className="hier-symbol-name">{node.label}</span>
           {node.line != null && (
