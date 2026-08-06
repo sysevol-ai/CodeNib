@@ -194,7 +194,15 @@ class EmbeddingsCache:
         npz_path = path.with_suffix(".npz")
         cache = cls()
 
-        if json_path.exists() and npz_path.exists():
+        json_exists = json_path.exists()
+        npz_exists = npz_path.exists()
+        if json_exists != npz_exists:
+            raise ValueError(
+                "EmbeddingsCache corrupted: incomplete JSON+NPZ generation at "
+                f"{path}"
+            )
+
+        if json_exists and npz_exists:
             with open(json_path, "r", encoding="utf-8") as f:
                 hashes = json.load(f)
             if (
@@ -214,13 +222,13 @@ class EmbeddingsCache:
                 vectors = np.asarray(data["vectors"], dtype=np.float32).copy()
                 embedded_hashes = None
                 if "hashes" in data:
-                    raw_hashes = data["hashes"].tolist()
-                    if not isinstance(raw_hashes, list):
+                    raw_hashes = np.asarray(data["hashes"])
+                    if raw_hashes.ndim != 1 or raw_hashes.dtype.kind != "U":
                         raise ValueError(
                             "EmbeddingsCache corrupted: embedded hash index "
                             f"is invalid in {npz_path}"
                         )
-                    embedded_hashes = [str(value) for value in raw_hashes]
+                    embedded_hashes = raw_hashes.tolist()
 
             if vectors.ndim != 2:
                 raise ValueError(

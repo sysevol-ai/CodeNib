@@ -169,6 +169,35 @@ class TestPersistence:
 
         np.testing.assert_array_equal(loaded.get("legacy"), make_vec(3.0))
 
+    @pytest.mark.parametrize("missing_suffix", [".json", ".npz"])
+    def test_incomplete_modern_generation_does_not_fall_back_to_pickle(
+        self,
+        tmp_path: Path,
+        missing_suffix: str,
+    ):
+        path = tmp_path / "cache.pkl"
+        cache = EmbeddingsCache()
+        cache.put("hash", make_vec(1.0))
+        cache.save(path)
+        path.with_suffix(missing_suffix).unlink()
+
+        with pytest.raises(ValueError, match=r"incomplete JSON\+NPZ generation"):
+            EmbeddingsCache.load(path)
+
+    def test_embedded_hash_index_must_use_saved_string_encoding(self, tmp_path: Path):
+        path = tmp_path / "cache.pkl"
+        cache = EmbeddingsCache()
+        cache.put("1", make_vec(1.0))
+        cache.save(path)
+        np.savez_compressed(
+            path.with_suffix(".npz"),
+            vectors=np.stack([make_vec(1.0)]),
+            hashes=np.asarray([1]),
+        )
+
+        with pytest.raises(ValueError, match="embedded hash index is invalid"):
+            EmbeddingsCache.load(path)
+
     def test_interrupted_publish_fails_closed(self, tmp_path: Path, monkeypatch):
         path = tmp_path / "cache.pkl"
         old_cache = EmbeddingsCache()
