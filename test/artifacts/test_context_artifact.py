@@ -18,6 +18,10 @@ from codenib.artifacts import (
     stage_context_artifact,
 )
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.index.embedding.artifact_integrity import (
+    VECTOR_PERSISTENCE_SCHEMA,
+    vector_level_artifact_records,
+)
 from codenib.source_fingerprint import fingerprint_repository
 
 
@@ -115,6 +119,27 @@ def _fixture_vector_manifest(root: Path) -> tuple[Path, Path, Path]:
     (vector / "embeddings_cache.npz").write_bytes(b"mutable-cache")
     (vector / "incremental_state.json").write_text(
         json.dumps({"index_path": str(vector)})
+    )
+    (vector / "config_test__model.json").write_text(
+        json.dumps(
+            {
+                "embedding_model": "test/model",
+                "embedding_provider": "huggingface",
+                "dimension": 4,
+                "index_type": "flat",
+                "index_metric": "ip",
+                "l0_documents": 0,
+                "l2_documents": 1,
+                "persistence_schema": VECTOR_PERSISTENCE_SCHEMA,
+                "level_artifacts": {
+                    "l2": vector_level_artifact_records(
+                        level,
+                        "test__model",
+                        documents_file="documents_test__model.pkl",
+                    )
+                },
+            }
+        )
     )
     config = {
         "builder_schema": 2,
@@ -249,6 +274,12 @@ def test_context_artifact_keeps_only_portable_vector_serving_state(
     assert not (vector / "l2" / "documents_test__model.pkl").exists()
     documents = json.loads((vector / "l2" / "documents_test__model.json").read_text())
     assert documents[0]["metadata"]["file"] == "sample.py"
+    vector_config = json.loads((vector / "config_test__model.json").read_text())
+    committed_documents = vector_config["level_artifacts"]["l2"]["documents"]
+    assert committed_documents["file"] == "documents_test__model.json"
+    payload = (vector / "l2" / committed_documents["file"]).read_bytes()
+    assert committed_documents["size"] == len(payload)
+    assert committed_documents["sha256"] == hashlib.sha256(payload).hexdigest()
     portable = json.loads((output / "repo_manifest.json").read_text())
     assert portable["indexes"]["vector"]["config"]["artifact_scope"] == (
         "query-serving"
@@ -259,6 +290,19 @@ def test_context_artifact_keeps_only_portable_vector_serving_state(
     )
     assert not list(output.rglob("*.pkl"))
     assert str(repo).encode() not in b"".join(_tree(output).values())
+
+
+def test_context_artifact_rejects_interrupted_vector_save(tmp_path: Path) -> None:
+    repo, manifest_path, vector = _fixture_vector_manifest(tmp_path)
+    (vector / ".config_test__model.json.save-in-progress").write_text("{}")
+
+    with pytest.raises(ValueError, match="interrupted save marker"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            tmp_path / "publish" / "context",
+            repository="example/vector-project",
+        )
 
 
 def test_context_artifact_rejects_credential_shaped_config(tmp_path: Path) -> None:

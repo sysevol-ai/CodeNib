@@ -22,6 +22,10 @@ from ..compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from ..compiler.checkout_identity import validate_checkout_identity
 from ..compiler.manifest import MANIFEST_FILENAME, RepoManifest
 from ..compiler.snapshot_store import normalize_repo
+from ..index.embedding.artifact_integrity import (
+    VECTOR_PERSISTENCE_SCHEMA,
+    vector_level_artifact_records,
+)
 from ..provider_routes import resolve_embedding_artifact_route
 from .security import assert_no_credential_fields, assert_publishable_tree, file_sha256
 
@@ -215,9 +219,52 @@ def _convert_vector_documents(path: Path, repo_path: Path) -> Path:
     return output
 
 
+def _refresh_vector_persistence_records(target: Path) -> None:
+    """Commit the portable JSON/index pairs in copied vector configs."""
+
+    for config_path in sorted(target.glob("config_*.json")):
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        if not isinstance(config, dict):
+            raise ValueError(f"portable vector config must be an object: {config_path}")
+        embedding_model = config.get("embedding_model")
+        if not isinstance(embedding_model, str) or not embedding_model:
+            continue
+        model_suffix = embedding_model.replace("/", "__")
+        level_artifacts: dict[str, dict[str, dict[str, Any]]] = {}
+        has_level_counts = False
+        for level in ("l0", "l2"):
+            count = config.get(f"{level}_documents")
+            if count is None:
+                continue
+            has_level_counts = True
+            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                raise ValueError(
+                    f"portable vector config has invalid {level} count: {count!r}"
+                )
+            if count == 0:
+                continue
+            level_path = target / level
+            documents_path = level_path / f"documents_{model_suffix}.json"
+            level_artifacts[level] = vector_level_artifact_records(
+                level_path,
+                model_suffix,
+                documents_file=documents_path.name,
+            )
+        if has_level_counts:
+            config["persistence_schema"] = VECTOR_PERSISTENCE_SCHEMA
+            config["level_artifacts"] = level_artifacts
+            config_path.write_bytes(_json_bytes(config))
+
+
 def _normalize_vector_view(target: Path, repo_path: Path) -> dict[str, Any]:
     if not target.is_dir():
         raise ValueError("portable vector view must be a directory")
+    interrupted = sorted(target.glob(".config_*.json.save-in-progress"))
+    if interrupted:
+        raise ValueError(
+            "portable vector view contains an interrupted save marker: "
+            f"{interrupted[0].name}"
+        )
 
     # Query serving does not need the mutable state used to build the next
     # commit. Excluding it keeps the downloadable artifact smaller and avoids
@@ -245,6 +292,7 @@ def _normalize_vector_view(target: Path, repo_path: Path) -> dict[str, Any]:
     # Leaving both formats would retain duplicate absolute source paths.
     for legacy in target.glob("l[02]/index_*.pkl"):
         legacy.unlink()
+    _refresh_vector_persistence_records(target)
     return {
         "artifact_scope": "query-serving",
         "portable_document_format": "codenib.vector-documents.v1",
