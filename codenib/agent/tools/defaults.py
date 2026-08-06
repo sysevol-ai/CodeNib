@@ -62,6 +62,7 @@ import re
 import select
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 import threading
@@ -76,6 +77,10 @@ DEFAULT_TOOL_IDS: frozenset[str] = frozenset({"read", "grep", "glob", "bash"})
 
 # Sensible token-safety caps.
 _MAX_LINES_DEFAULT: int = 200
+_MAX_LINES_LIMIT: int = 2_000
+_READ_MAX_LINE_BYTES: int = 8_000
+_READ_MAX_OUTPUT_CHARS: int = 16_000
+_READ_CHUNK_BYTES: int = 64 * 1024
 _MAX_RESULTS_DEFAULT: int = 50
 _GLOB_MAX_RESULTS: int = 100  # mirrors the reference Glob's documented cap
 _GREP_TIMEOUT_SECONDS: int = 30
@@ -132,6 +137,25 @@ _GREP_OUTPUT_MODES = ("content", "files_with_matches", "count")
 # ---------------------------------------------------------------------------
 
 
+def _bounded_binary_lines(handle: BinaryIO):
+    """Yield bounded physical-line prefixes without materializing long lines."""
+
+    while True:
+        raw = handle.readline(_READ_MAX_LINE_BYTES + 1)
+        if not raw:
+            return
+
+        complete = raw.endswith(b"\n") or len(raw) <= _READ_MAX_LINE_BYTES
+        truncated = len(raw.rstrip(b"\r\n")) > _READ_MAX_LINE_BYTES
+        prefix = raw[:_READ_MAX_LINE_BYTES]
+        if not complete:
+            truncated = True
+            while tail := handle.readline(_READ_CHUNK_BYTES):
+                if tail.endswith(b"\n") or len(tail) < _READ_CHUNK_BYTES:
+                    break
+        yield prefix, truncated
+
+
 def _read(
     file_path: str,
     offset: int = 1,
@@ -148,43 +172,68 @@ def _read(
         file_path: Absolute or repo-relative path to the file.
         offset: First line to read (1-based, inclusive). Defaults to 1. Mirrors
             the reference ``Read.offset``.
-        limit: Hard cap on lines returned for token safety. Defaults to 200. A
-            truncation notice with the next ``offset`` is appended when the cap
-            is reached. Mirrors the reference ``Read.limit``.
+        limit: Hard cap on lines returned for token safety. Defaults to 200 and
+            cannot exceed 2,000. A truncation notice with the next ``offset`` is
+            appended when the line or output cap is reached.
 
     Returns:
         Formatted string, or an error message prefixed with ``"Error: "``.
     """
-    # Coerce inputs up front: a non-integer arg returns an Error string (the
-    # module contract) instead of raising into the caller. `limit` is floored at
-    # 1 so `limit=0` cannot emit a "0 lines; continue at the same offset" notice
-    # that loops forever.
+    if not isinstance(file_path, str) or not file_path:
+        return "Error: file_path must be a non-empty string"
     try:
         start = max(1, int(offset))
         limit = max(1, int(limit))
     except (TypeError, ValueError):
         return "Error: offset and limit must be integers"
+    if limit > _MAX_LINES_LIMIT:
+        return f"Error: limit must not exceed {_MAX_LINES_LIMIT} lines"
 
-    # Stream the file: keep at most `limit` lines in memory and merely *count*
-    # any further lines (for the truncation notice) without storing them, so a
-    # huge file is never fully materialised.
-    selected: List[str] = []
-    extra = 0  # lines present beyond the kept window
-    total = 0
+    path = Path(file_path)
     try:
-        with open(file_path, encoding="utf-8", errors="replace") as fh:
-            for idx, line in enumerate(fh, start=1):
+        mode = path.stat().st_mode
+    except FileNotFoundError:
+        return f"Error: file not found: {file_path!r}"
+    except OSError as exc:
+        return f"Error reading {file_path!r}: {exc}"
+    if stat.S_ISDIR(mode):
+        return f"Error: {file_path!r} is a directory, not a file"
+    if not stat.S_ISREG(mode):
+        return f"Error: {file_path!r} is not a regular file"
+
+    selected: List[str] = []
+    selected_chars = 0
+    total = 0
+    has_more = False
+    next_start: int | None = None
+    try:
+        with open(file_path, "rb") as fh:
+            if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+                return f"Error: {file_path!r} is not a regular file"
+            for idx, (raw, line_truncated) in enumerate(
+                _bounded_binary_lines(fh),
+                start=1,
+            ):
                 total = idx
                 if idx < start:
                     continue
-                if len(selected) < limit:
-                    selected.append(line)
-                else:
-                    extra += 1
+                if len(selected) >= limit:
+                    has_more = True
+                    next_start = idx
+                    break
+                content = raw.decode("utf-8", errors="replace").rstrip()
+                if line_truncated:
+                    content += " ... [line truncated]"
+                rendered = f"{idx:6d} | {content}"
+                separator = 1 if selected else 0
+                if selected_chars + separator + len(rendered) > _READ_MAX_OUTPUT_CHARS:
+                    has_more = True
+                    next_start = idx
+                    break
+                selected.append(rendered)
+                selected_chars += separator + len(rendered)
     except FileNotFoundError:
         return f"Error: file not found: {file_path!r}"
-    except IsADirectoryError:
-        return f"Error: {file_path!r} is a directory, not a file"
     except OSError as exc:
         return f"Error reading {file_path!r}: {exc}"
 
@@ -193,15 +242,10 @@ def _read(
     if start > total:
         return f"Error: offset {start} exceeds file length {total} in {file_path!r}"
 
-    lines_out = [
-        f"{lineno:6d} | {line.rstrip()}"
-        for lineno, line in enumerate(selected, start=start)
-    ]
-    result = "\n".join(lines_out)
+    result = "\n".join(selected)
 
-    if extra > 0:
-        next_start = start + limit  # first omitted line (1-based)
-        result += f"\n... ({extra} more lines; " f"use offset={next_start} to continue)"
+    if has_more and next_start is not None:
+        result += f"\n... (more lines; use offset={next_start} to continue)"
 
     return result
 
@@ -218,12 +262,13 @@ Shape mirrors the mainstream Claude Code `Read` tool.
 |------|------|---------|-------------|
 | `file_path` | `str` | *(required)* | Absolute or repo-relative file path. |
 | `offset` | `int` | `1` | First line to read (1-based, inclusive). |
-| `limit` | `int` | `200` | Max lines returned; prevents context blowup. |
+| `limit` | `int` | `200` | Max lines returned (hard maximum 2,000). |
 
 ## Output
 
-Lines formatted as `{lineno:6d} | {content}` (opencode-style, 1-based).
-A truncation notice with the next `offset` is appended when `limit` is reached.
+Lines formatted as `{lineno:6d} | {content}` (opencode-style, 1-based). Long
+physical lines and total output are bounded while streaming. A notice with the
+next `offset` is appended when more lines remain.
 
 ## When to Use
 
@@ -263,7 +308,10 @@ def _build_read_tool() -> ToolSpec:
                 type_hint="int",
                 required=False,
                 default=_MAX_LINES_DEFAULT,
-                description=(f"Max lines returned (default {_MAX_LINES_DEFAULT})."),
+                description=(
+                    f"Max lines returned (1–{_MAX_LINES_LIMIT}; "
+                    f"default {_MAX_LINES_DEFAULT})."
+                ),
             ),
         ],
         executor_fn=_read,

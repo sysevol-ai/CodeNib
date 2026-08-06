@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shlex
 import shutil
 import sys
@@ -44,6 +45,8 @@ from codenib.agent.skills.registry import SkillRegistry
 from codenib.agent.tool_schema import tool_to_schema
 from codenib.agent.tools.defaults import (
     _BASH_MAX_OUTPUT_CHARS,
+    _MAX_LINES_LIMIT,
+    _READ_MAX_OUTPUT_CHARS,
     DEFAULT_TOOL_IDS,
     _bash,
     _BoundedPipeOutput,
@@ -147,6 +150,47 @@ class TestRead:
 
     def test_offset_beyond_eof_returns_error(self, sample_file):
         assert _read(str(sample_file), offset=9999).startswith("Error:")
+
+    def test_stops_after_detecting_one_omitted_line(self, tmp_path, monkeypatch):
+        source = tmp_path / "source.py"
+        source.write_text("placeholder\n", encoding="utf-8")
+
+        def bounded_lines(_handle):
+            yield b"first\n", False
+            yield b"second\n", False
+            raise AssertionError("read scanned beyond the first omitted line")
+
+        monkeypatch.setattr(
+            "codenib.agent.tools.defaults._bounded_binary_lines",
+            bounded_lines,
+        )
+
+        result = _read(str(source), limit=1)
+
+        assert "first" in result
+        assert "offset=2" in result
+
+    def test_bounds_long_lines_and_total_output(self, tmp_path):
+        source = tmp_path / "long.py"
+        source.write_bytes((b"x" * 1_000_000 + b"\n") * 4)
+
+        result = _read(str(source), limit=4)
+
+        assert "[line truncated]" in result
+        assert len(result) <= _READ_MAX_OUTPUT_CHARS + 100
+        assert "use offset=" in result
+
+    def test_rejects_nonregular_files(self, tmp_path):
+        if not hasattr(os, "mkfifo"):
+            pytest.skip("FIFO creation is unavailable")
+        fifo = tmp_path / "input.fifo"
+        os.mkfifo(fifo)
+
+        assert "not a regular file" in _read(str(fifo))
+
+    def test_rejects_unbounded_line_limits(self, sample_file):
+        result = _read(str(sample_file), limit=_MAX_LINES_LIMIT + 1)
+        assert result.startswith("Error: limit must not exceed")
 
 
 # ---------------------------------------------------------------------------
