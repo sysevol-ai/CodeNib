@@ -9,6 +9,7 @@ Simple test script for Vertex AI LLM generation using LiteLLMChat.
 """
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -19,9 +20,20 @@ pytestmark = pytest.mark.slow
 
 @pytest.fixture(autouse=True)
 def require_vertex_credentials():
-    """Skip external provider tests unless Vertex credentials are explicit."""
-    if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-        pytest.skip("GOOGLE_APPLICATION_CREDENTIALS is not configured")
+    """Skip only when neither explicit nor application-default creds exist."""
+    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        return
+
+    cloud_config = Path(
+        os.environ.get("CLOUDSDK_CONFIG", Path.home() / ".config" / "gcloud")
+    )
+    adc_path = cloud_config / "application_default_credentials.json"
+    try:
+        has_adc = bool(adc_path.read_text(encoding="utf-8").strip())
+    except OSError:
+        has_adc = False
+    if not has_adc:
+        pytest.skip("Vertex application-default credentials are not configured")
 
 
 def test_vertex_ai_gemini():
