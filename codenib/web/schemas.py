@@ -328,3 +328,28 @@ def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
         total_turns=result.total_turns,
         total_duration_ms=result.total_duration_ms,
     )
+
+
+class CustomizeRequest(BaseModel):
+    """Apply a reader prior to a page or the whole wiki.
+
+    ``scope`` is ``"page"`` (``target`` = page id) or ``"wiki"`` (``target``
+    ignored). At least one of ``instruction`` / ``structure`` should be present;
+    an empty prior clears any existing one for that scope/target.
+    """
+
+    scope: str = "page"
+    target: str = ""
+    instruction: str = ""
+    # Optional section skeleton the rewrite must follow, one entry per section.
+    structure: List[str] = Field(default_factory=list)
+
+
+class CustomizeResponse(BaseModel):
+    ok: bool = True
+    # The transformed page markdown when a page was regenerated; empty for a
+    # whole-wiki prior (which applies lazily on next page view) or a clear.
+    markdown: str = ""
+    customized: bool = False
+    scope: str = "page"
+    target: str = ""

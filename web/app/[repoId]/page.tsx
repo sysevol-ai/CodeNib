@@ -4,9 +4,11 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
+import CustomizePanel from "@/components/CustomizePanel";
 import { AppLink } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 import {
+  customizationAvailable,
   fetchCommits,
   fetchRepos,
   fetchWikiGraph,
@@ -631,7 +633,23 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
           ) : (
             <div className="muted small">—</div>
           )}
-          {repo && (
+          {repo && customizationAvailable() && (
+            <CustomizePanel
+              repoId={repoId}
+              pageId={activeId}
+              pageTitle={page?.title ?? ""}
+              customized={Boolean(page?.customized)}
+              onApplied={(markdown) =>
+                setPage((prev) =>
+                  prev ? { ...prev, markdown, customized: true } : prev
+                )
+              }
+              onReset={() => {
+                fetchWikiPage(repoId, activeId).then(setPage).catch(() => {});
+              }}
+            />
+          )}
+          {repo && !customizationAvailable() && (
             <button
               className="refresh-wiki"
               title="Re-fetch this wiki page"

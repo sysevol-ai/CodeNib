@@ -84,6 +84,8 @@ export interface WikiPage {
   id: string;
   title: string;
   markdown: string;
+  // True when a reader prior rewrote this page (ephemeral, server-side).
+  customized?: boolean;
   citations: Citation[];
   diagram: string;
   evidence?: {
@@ -538,5 +540,66 @@ export async function fetchEdgeLabel(
     }
   );
   if (!res.ok) throw new Error(`Failed to load edge label (${res.status})`);
+  return res.json();
+}
+
+// --- Wiki customization (human prior injection) ----------------------------
+// Ephemeral, server-side. Requires a live backend; a no-op in static export.
+
+export type CustomizeScope = "page" | "wiki";
+
+export interface CustomizeInput {
+  scope: CustomizeScope;
+  target?: string; // page id for page scope; ignored for wiki scope
+  instruction?: string;
+  structure?: string[];
+}
+
+export interface CustomizeResult {
+  ok: boolean;
+  markdown: string;
+  customized: boolean;
+  scope: CustomizeScope;
+  target: string;
+}
+
+export function customizationAvailable(): boolean {
+  return !isStaticRuntime();
+}
+
+export async function customizeWiki(
+  repoId: string,
+  input: CustomizeInput
+): Promise<CustomizeResult> {
+  if (isStaticRuntime()) throw new Error("customization needs a live backend");
+  const res = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/customize`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scope: input.scope,
+        target: input.target ?? "",
+        instruction: input.instruction ?? "",
+        structure: input.structure ?? [],
+      }),
+    }
+  );
+  if (!res.ok) throw new Error(`Customize failed (${res.status})`);
+  return res.json();
+}
+
+export async function resetCustomization(
+  repoId: string,
+  scope: CustomizeScope,
+  target = ""
+): Promise<CustomizeResult> {
+  if (isStaticRuntime()) throw new Error("customization needs a live backend");
+  const params = new URLSearchParams({ scope, target });
+  const res = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/customize?${params}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw new Error(`Reset failed (${res.status})`);
   return res.json();
 }

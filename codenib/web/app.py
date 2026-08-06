@@ -35,6 +35,8 @@ from .repository_files import live_source_slice
 from .schemas import (
     ChatRequest,
     ChatResponse,
+    CustomizeRequest,
+    CustomizeResponse,
     EdgeLabelRequest,
     EdgeLabelResponse,
     RepoInfo,
@@ -79,6 +81,14 @@ async def lifespan(app: FastAPI):
     app.state.wiki_builders = {}
     app.state.edge_labelers = {}
     app.state.commit_windows = {}
+    # Ephemeral, in-RAM reader customizations (human prior injection). Not
+    # persisted: the durable wiki is authoritative and customizations vanish on
+    # restart. A single Customizer reuses the wiki model/creds.
+    from ..wiki.customizer import Customizer
+    from .customization_store import CustomizationStore
+
+    app.state.customizations = CustomizationStore()
+    app.state.customizer = Customizer(_wiki_llm(config))
     # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
     # to templated text when no model/creds are available.
     app.state.narrator = _wiki_narrator(config)
@@ -239,6 +249,39 @@ async def wiki_tree(repo_id: str) -> dict:
     return {"repo": _bundle(repo_id).entry.repo, "pages": pages}
 
 
+def _apply_customization(page: dict, page_id: str) -> dict:
+    """Rewrite ``page['markdown']`` to any active reader prior for *page_id*.
+
+    Runs in a worker thread (it may call the model). Fail-soft: the customizer
+    itself returns the original markdown on error, and a resolved-but-empty prior
+    leaves the page untouched. Sets ``customized`` so the client can label it.
+    """
+    store = getattr(app.state, "customizations", None)
+    customizer = getattr(app.state, "customizer", None)
+    page = {**page, "customized": False}
+    if store is None or customizer is None:
+        return page
+    prior = store.resolve(page_id)
+    if prior is None:
+        return page
+    markdown = page.get("markdown") or ""
+    if not markdown:
+        return page
+    new_markdown = store.transformed(
+        page_id,
+        markdown,
+        prior,
+        produce=lambda: customizer.apply(
+            markdown,
+            instruction=prior.instruction,
+            structure=list(prior.structure),
+        ),
+    )
+    if new_markdown and new_markdown != markdown:
+        page = {**page, "markdown": new_markdown, "customized": True}
+    return page
+
+
 @app.get("/api/repos/{repo_id}/wiki/{page_id}")
 async def wiki_page(repo_id: str, page_id: str) -> dict:
     page = await asyncio.to_thread(_wiki(repo_id).page, page_id)
@@ -260,7 +303,61 @@ async def wiki_page(repo_id: str, page_id: str) -> dict:
                 "relation_count": 0,
             },
         }
-    return page
+    return await asyncio.to_thread(_apply_customization, page, page_id)
+
+
+@app.post("/api/repos/{repo_id}/customize", response_model=CustomizeResponse)
+async def customize_wiki(repo_id: str, req: CustomizeRequest) -> CustomizeResponse:
+    """Set (or clear) a reader prior for a page or the whole wiki.
+
+    An empty instruction *and* empty structure clears any existing prior for the
+    scope/target. A page-scoped request returns the transformed markdown; a
+    wiki-scoped request stores the prior and lets pages transform lazily on view.
+    """
+    from ..wiki.customizer import clean_instruction, clean_structure
+    from .customization_store import SCOPE_PAGE, SCOPE_WIKI, Prior
+
+    _bundle(repo_id)  # 404 on unknown repo
+    scope = req.scope if req.scope in (SCOPE_WIKI, SCOPE_PAGE) else SCOPE_PAGE
+    store = app.state.customizations
+
+    prior = Prior(
+        instruction=clean_instruction(req.instruction),
+        structure=tuple(clean_structure(req.structure)),
+    )
+    target = req.target if scope == SCOPE_PAGE else ""
+    await asyncio.to_thread(store.set_prior, scope, target, prior)
+
+    if prior.is_empty():
+        return CustomizeResponse(ok=True, customized=False, scope=scope, target=target)
+
+    # Page scope: transform now so the client gets the result in one round-trip.
+    if scope == SCOPE_PAGE and target:
+        page = await asyncio.to_thread(_wiki(repo_id).page, target)
+        if page is not None:
+            applied = await asyncio.to_thread(_apply_customization, page, target)
+            return CustomizeResponse(
+                ok=True,
+                markdown=applied.get("markdown", ""),
+                customized=bool(applied.get("customized")),
+                scope=scope,
+                target=target,
+            )
+    return CustomizeResponse(ok=True, customized=True, scope=scope, target=target)
+
+
+@app.delete("/api/repos/{repo_id}/customize", response_model=CustomizeResponse)
+async def reset_customization(
+    repo_id: str, scope: str = "page", target: str = ""
+) -> CustomizeResponse:
+    """Drop a prior so the default page returns. Idempotent."""
+    from .customization_store import SCOPE_PAGE, SCOPE_WIKI
+
+    _bundle(repo_id)
+    scope = scope if scope in (SCOPE_WIKI, SCOPE_PAGE) else SCOPE_PAGE
+    target = target if scope == SCOPE_PAGE else ""
+    await asyncio.to_thread(app.state.customizations.drop_prior, scope, target)
+    return CustomizeResponse(ok=True, customized=False, scope=scope, target=target)
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}/graph")
