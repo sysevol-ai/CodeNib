@@ -7,6 +7,7 @@ from __future__ import annotations
 import http.client
 import json
 import threading
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -167,3 +168,57 @@ def test_static_server_rejects_unbounded_proxy_bodies(
 
     assert response.status == expected_status
     assert expected_detail in payload["detail"]
+
+
+@pytest.mark.parametrize("declare_length", [True, False])
+def test_static_server_rejects_unbounded_proxy_responses(
+    tmp_path,
+    monkeypatch,
+    declare_length,
+):
+    response_limit = 32
+    monkeypatch.setattr(
+        "codenib.web.static_server._MAX_PROXY_RESPONSE_BYTES",
+        response_limit,
+    )
+
+    class APIHandler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - stdlib handler contract
+            body = b"x" * (response_limit + 1)
+            self.send_response(200)
+            if declare_length:
+                self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            return
+
+    (tmp_path / "index.html").write_text("<title>CodeNib Wiki</title>")
+    backend = ThreadingHTTPServer(("127.0.0.1", 0), APIHandler)
+    backend_thread = threading.Thread(target=backend.serve_forever, daemon=True)
+    backend_thread.start()
+    server = build_server(
+        tmp_path,
+        api_base=f"http://127.0.0.1:{backend.server_port}",
+        host="127.0.0.1",
+        port=0,
+    )
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    try:
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{server.server_port}/api/oversized"
+            )
+        payload = json.loads(exc_info.value.read())
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)
+        backend.shutdown()
+        backend.server_close()
+        backend_thread.join(timeout=2)
+
+    assert exc_info.value.code == 502
+    assert "response exceeds the Wiki proxy limit" in payload["detail"]

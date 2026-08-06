@@ -27,6 +27,7 @@ _HOP_BY_HOP_HEADERS = {
     "upgrade",
 }
 _MAX_PROXY_REQUEST_BYTES = 8 * 1024 * 1024
+_MAX_PROXY_RESPONSE_BYTES = 32 * 1024 * 1024
 
 
 def runtime_config(api_base: str) -> bytes:
@@ -148,7 +149,38 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
             return
 
         try:
-            payload = b"" if self.command == "HEAD" else response.read()
+            if self.command == "HEAD":
+                payload = b""
+            else:
+                raw_response_length = response.headers.get("Content-Length")
+                try:
+                    response_length = (
+                        int(raw_response_length) if raw_response_length else None
+                    )
+                except ValueError:
+                    self._send_proxy_error(
+                        502, "Invalid upstream Content-Length header."
+                    )
+                    return
+                if response_length is not None and response_length < 0:
+                    self._send_proxy_error(
+                        502, "Upstream Content-Length must not be negative."
+                    )
+                    return
+                if (
+                    response_length is not None
+                    and response_length > _MAX_PROXY_RESPONSE_BYTES
+                ):
+                    self._send_proxy_error(
+                        502, "CodeNib API response exceeds the Wiki proxy limit."
+                    )
+                    return
+                payload = response.read(_MAX_PROXY_RESPONSE_BYTES + 1)
+                if len(payload) > _MAX_PROXY_RESPONSE_BYTES:
+                    self._send_proxy_error(
+                        502, "CodeNib API response exceeds the Wiki proxy limit."
+                    )
+                    return
             self.send_response(response.status)
             for name, value in response.headers.items():
                 if name.lower() in {
