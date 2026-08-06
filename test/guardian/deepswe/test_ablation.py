@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -112,7 +112,7 @@ def test_task_virtualenv_profile_is_mounted_in_both_arms(tmp_path):
             "medium",
             "--tasks",
             "fixture-task",
-            "--codeminer-root",
+            "--codenib-root",
             str(tmp_path),
         ]
     )
@@ -149,7 +149,7 @@ def test_guardian_mounts_controller_outputs_read_only(tmp_path):
             "medium",
             "--tasks",
             "fixture-task",
-            "--codeminer-root",
+            "--codenib-root",
             str(tmp_path),
         ]
     )

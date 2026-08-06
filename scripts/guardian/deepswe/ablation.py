@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 
 """Run DeepSWE Codex-vs-Guardian ablations.
@@ -58,17 +58,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CODEMINER_ROOT = Path("/home/xiangye/CodeMiner")
+DEFAULT_CODENIB_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DEEPSWE_ROOT = Path("/home/xiangye/deep-swe")
 DEFAULT_OUTPUT_ROOT = Path("/mnt/data/xiangye/deepswe_outputs")
 DEFAULT_JOBS_DIR = DEFAULT_DEEPSWE_ROOT / "jobs"
 DEEPSWE_HARNESS_RELATIVE_PATH = Path("scripts/guardian/deepswe/harness")
 
 
-def _harness_path(codeminer_root: Path) -> Path:
+def _harness_path(codenib_root: Path) -> Path:
     """Return the dependency-isolated Pier harness in the CodeNib checkout."""
 
-    return codeminer_root / DEEPSWE_HARNESS_RELATIVE_PATH
+    return codenib_root / DEEPSWE_HARNESS_RELATIVE_PATH
 
 
 def _slug(value: str) -> str:
@@ -207,7 +207,7 @@ def _common_mounts(args: argparse.Namespace, logs_dir: Path) -> list[dict[str, s
         {"type": "bind", "source": str(logs_dir), "target": "/logs/agent"},
         {
             "type": "bind",
-            "source": str(_harness_path(args.codeminer_root) / "task_venv_profile.sh"),
+            "source": str(_harness_path(args.codenib_root) / "task_venv_profile.sh"),
             "target": "/etc/profile.d/zz-deepswe-task-venv.sh",
         },
     ]
@@ -332,11 +332,11 @@ def _build_pier_command(
                 json.dumps(_guardian_mounts(args, logs_dir)),
             ]
         )
-        if str(args.codeminer_root) not in env_pythonpath.split(os.pathsep):
+        if str(args.codenib_root) not in env_pythonpath.split(os.pathsep):
             os.environ["PYTHONPATH"] = (
-                str(args.codeminer_root)
+                str(args.codenib_root)
                 if not env_pythonpath
-                else f"{args.codeminer_root}{os.pathsep}{env_pythonpath}"
+                else f"{args.codenib_root}{os.pathsep}{env_pythonpath}"
             )
     else:
         cmd.extend(
@@ -386,7 +386,7 @@ def _run_trial(
     _write_json(
         base_dir / "command.json",
         {
-            "cwd": str(args.codeminer_root),
+            "cwd": str(args.codenib_root),
             "argv": cmd,
         },
     )
@@ -398,7 +398,7 @@ def _run_trial(
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        cwd=args.codeminer_root,
+        cwd=args.codenib_root,
         check=False,
     )
     _repair_output_permissions(base_dir)
@@ -546,7 +546,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=600.0,
         help="Timeout in seconds for each explorer or aggregator rollout",
     )
-    parser.add_argument("--codeminer-root", type=Path, default=DEFAULT_CODEMINER_ROOT)
+    parser.add_argument("--codenib-root", type=Path, default=DEFAULT_CODENIB_ROOT)
     parser.add_argument("--deepswe-root", type=Path, default=DEFAULT_DEEPSWE_ROOT)
     parser.add_argument("--jobs-dir", type=Path, default=DEFAULT_JOBS_DIR)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)

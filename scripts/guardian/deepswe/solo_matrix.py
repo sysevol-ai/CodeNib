@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 
 """Run the initial DeepSWE solo baseline matrix.
@@ -15,8 +15,7 @@ interrupted slot without valid metadata is archived before it is retried.
 
 Example:
 
-    /home/xiangye/miniconda3/envs/codeminer/bin/python \
-      -m scripts.guardian.deepswe.solo_matrix --dry-run
+    python -m scripts.guardian.deepswe.solo_matrix --dry-run
 
 Remove ``--dry-run`` to launch the pending trials. Use ``--rerun-recorded`` only
 when all selected slots should be replaced with fresh trials; old artifacts are
@@ -57,8 +56,8 @@ DEFAULT_MODELS = (
 DEFAULT_REASONING_EFFORT = "medium"
 DEFAULT_RUNS = 4
 DEFAULT_CONCURRENCY = 3
-DEFAULT_CODEMINER_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_OUTPUT_ROOT = DEFAULT_CODEMINER_ROOT / "data" / "deepswe_outputs"
+DEFAULT_CODENIB_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_OUTPUT_ROOT = DEFAULT_CODENIB_ROOT / "data" / "deepswe_outputs"
 
 
 @dataclass(frozen=True)
@@ -90,7 +89,7 @@ def _trial_jobs_dir(args: argparse.Namespace, trial: Trial) -> Path:
     ).hexdigest()[:12]
     return (
         args.jobs_dir
-        / "_codeminer_matrix"
+        / "_codenib_matrix"
         / output_key
         / setting
         / trial.task
@@ -222,8 +221,8 @@ def _ablation_args(args: argparse.Namespace, trial: Trial) -> argparse.Namespace
             trial.task,
             "--runs",
             str(args.runs),
-            "--codeminer-root",
-            str(args.codeminer_root),
+            "--codenib-root",
+            str(args.codenib_root),
             "--deepswe-root",
             str(args.deepswe_root),
             "--jobs-dir",
@@ -351,7 +350,7 @@ def _validate(args: argparse.Namespace) -> None:
         if missing_contexts:
             paths = ", ".join(str(path) for path in missing_contexts)
             raise FileNotFoundError(f"task context files do not exist: {paths}")
-    profile = ablation._harness_path(args.codeminer_root) / "task_venv_profile.sh"
+    profile = ablation._harness_path(args.codenib_root) / "task_venv_profile.sh"
     if not profile.is_file():
         raise FileNotFoundError(f"task virtualenv profile does not exist: {profile}")
     if not args.dry_run and shutil.which("pier") is None:
@@ -394,9 +393,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="With --dry-run, print every pending Pier command.",
     )
     parser.add_argument(
-        "--codeminer-root",
+        "--codenib-root",
         type=Path,
-        default=DEFAULT_CODEMINER_ROOT,
+        default=DEFAULT_CODENIB_ROOT,
     )
     parser.add_argument(
         "--deepswe-root",

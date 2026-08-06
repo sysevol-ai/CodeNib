@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025-2026 CodeMiner Contributors
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -17,17 +17,17 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _args(tmp_path, *extra):
-    codeminer_root = tmp_path / "codeminer"
+    codenib_root = tmp_path / "codenib"
     deepswe_root = tmp_path / "deep-swe"
-    harness = codeminer_root / matrix.ablation.DEEPSWE_HARNESS_RELATIVE_PATH
+    harness = codenib_root / matrix.ablation.DEEPSWE_HARNESS_RELATIVE_PATH
     harness.mkdir(parents=True)
     (harness / "task_venv_profile.sh").touch()
     for task in matrix.DEFAULT_TASKS:
         (deepswe_root / "tasks" / task).mkdir(parents=True)
     return matrix.parse_args(
         [
-            "--codeminer-root",
-            str(codeminer_root),
+            "--codenib-root",
+            str(codenib_root),
             "--deepswe-root",
             str(deepswe_root),
             "--jobs-dir",
