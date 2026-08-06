@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from .. import compat_pickle
+from .._atomic_directory import publish_staged_directory
 from .._version import package_version
 from ..compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from ..compiler.checkout_identity import validate_checkout_identity
@@ -506,9 +507,7 @@ def stage_context_artifact(
             label="context artifact",
         )
 
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
-        os.replace(stage, output_dir)
+        publish_staged_directory(stage, output_dir)
     except BaseException:
         shutil.rmtree(stage, ignore_errors=True)
         raise

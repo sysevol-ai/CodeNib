@@ -6,13 +6,13 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import stat
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 
+from .._atomic_directory import publish_staged_directory
 from .context import CONTEXT_ARTIFACT_MANIFEST
 from .runtime import VerifiedContextArtifact, verify_context_artifact
 
@@ -188,9 +188,7 @@ def extract_context_artifact_archive(
             max_files=max_files,
             max_bytes=max_bytes,
         )
-        if output.exists():
-            shutil.rmtree(output)
-        os.replace(stage, output)
+        publish_staged_directory(stage, output)
     except zipfile.BadZipFile as exc:
         shutil.rmtree(stage, ignore_errors=True)
         raise ValueError(

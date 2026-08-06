@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import math
+import os
 import shlex
 import shutil
 import stat
@@ -463,6 +464,38 @@ def test_extract_archive_verifies_and_removes_single_root_prefix(
     assert verified.metadata_path == tmp_path / "extracted" / (
         CONTEXT_ARTIFACT_MANIFEST
     )
+
+
+def test_extract_archive_restores_previous_output_on_publish_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    archive = tmp_path / "artifact.zip"
+    _zip_tree(artifact, archive)
+    output = tmp_path / "extracted"
+    extract_context_artifact_archive(archive, output)
+    marker = output / "previous-output.marker"
+    marker.write_text("preserve", encoding="utf-8")
+    real_replace = os.replace
+
+    def fail_final_publish(source, target):
+        source_path = Path(source)
+        if (
+            source_path.name.startswith(".extracted.extract-")
+            and Path(target) == output
+        ):
+            raise OSError("injected archive publish failure")
+        return real_replace(source, target)
+
+    monkeypatch.setattr("codenib._atomic_directory.os.replace", fail_final_publish)
+
+    with pytest.raises(OSError, match="injected archive publish failure"):
+        extract_context_artifact_archive(archive, output)
+
+    assert marker.read_text(encoding="utf-8") == "preserve"
+    assert not list(output.parent.glob(".extracted.extract-*"))
+    assert not list(output.parent.glob(".extracted.previous-*"))
 
 
 def test_extract_archive_rejects_traversal_and_symlink(tmp_path: Path) -> None:
