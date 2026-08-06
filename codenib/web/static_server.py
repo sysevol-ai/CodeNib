@@ -26,6 +26,7 @@ _HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
+_MAX_PROXY_REQUEST_BYTES = 8 * 1024 * 1024
 
 
 def runtime_config(api_base: str) -> bytes:
@@ -92,7 +93,24 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
             self.send_error(404)
             return
 
-        content_length = int(self.headers.get("Content-Length") or 0)
+        if self.headers.get("Transfer-Encoding"):
+            self._send_proxy_error(
+                400,
+                "Chunked request bodies are not supported by the Wiki proxy.",
+            )
+            return
+        raw_content_length = self.headers.get("Content-Length")
+        try:
+            content_length = int(raw_content_length) if raw_content_length else 0
+        except ValueError:
+            self._send_proxy_error(400, "Invalid Content-Length header.")
+            return
+        if content_length < 0:
+            self._send_proxy_error(400, "Content-Length must not be negative.")
+            return
+        if content_length > _MAX_PROXY_REQUEST_BYTES:
+            self._send_proxy_error(413, "Request body exceeds the Wiki proxy limit.")
+            return
         body = self.rfile.read(content_length) if content_length else None
         headers = {
             name: value
@@ -147,6 +165,16 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(payload)
         finally:
             response.close()
+
+    def _send_proxy_error(self, status: int, detail: str) -> None:
+        payload = json.dumps({"detail": detail}).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(payload)
 
     def end_headers(self) -> None:
         request_path = urlsplit(self.path).path

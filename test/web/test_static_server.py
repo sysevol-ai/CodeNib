@@ -10,7 +10,9 @@ import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from codenib.web.static_server import build_server
+import pytest
+
+from codenib.web.static_server import _MAX_PROXY_REQUEST_BYTES, build_server
 
 
 def test_static_server_uses_same_origin_api_and_falls_back_to_spa(tmp_path):
@@ -119,3 +121,49 @@ def test_static_server_proxies_api_for_remote_browser(tmp_path):
         "path": "/api/chat",
         "body": '{"question":"where?"}',
     }
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected_status", "expected_detail"),
+    [
+        ({"Content-Length": "invalid"}, 400, "Invalid Content-Length"),
+        ({"Content-Length": "-1"}, 400, "must not be negative"),
+        (
+            {"Content-Length": str(_MAX_PROXY_REQUEST_BYTES + 1)},
+            413,
+            "exceeds the Wiki proxy limit",
+        ),
+        ({"Transfer-Encoding": "chunked"}, 400, "Chunked request bodies"),
+    ],
+)
+def test_static_server_rejects_unbounded_proxy_bodies(
+    tmp_path,
+    headers,
+    expected_status,
+    expected_detail,
+):
+    (tmp_path / "index.html").write_text("<title>CodeNib Wiki</title>")
+    server = build_server(
+        tmp_path,
+        api_base="http://127.0.0.1:1",
+        host="127.0.0.1",
+        port=0,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+    try:
+        connection.putrequest("POST", "/api/chat")
+        for name, value in headers.items():
+            connection.putheader(name, value)
+        connection.endheaders()
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert response.status == expected_status
+    assert expected_detail in payload["detail"]
