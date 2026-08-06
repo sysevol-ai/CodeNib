@@ -154,10 +154,9 @@ def test_registry_publishers_use_separate_workflows() -> None:
     production_publisher = production["jobs"]["publish-pypi"]
     assert production_publisher["needs"] == "registry-auth-preflight"
     assert production_publisher["environment"]["name"] == "pypi"
-    assert production_publisher["permissions"] == {"contents": "read"}
-    assert publisher_step(production_publisher)["with"]["password"] == (
-        "${{ secrets.PYPI_API_TOKEN }}"
-    )
+    assert production_publisher["permissions"] == {"id-token": "write"}
+    assert "password" not in publisher_step(production_publisher).get("with", {})
+    assert "PYPI_API_TOKEN" not in str(production_publisher)
     pypi_install = production["jobs"]["verify-pypi-install"]
     assert pypi_install["needs"] == "publish-pypi"
     assert pypi_install["runs-on"] == "ubuntu-latest"

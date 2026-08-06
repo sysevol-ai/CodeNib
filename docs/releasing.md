@@ -71,11 +71,9 @@ that each pending publisher appears on the corresponding registry account page
 before dispatching a publish workflow.
 
 The corresponding GitHub environments should restrict deployments to trusted
-maintainers. TestPyPI currently publishes through OIDC. Production PyPI uses
-the environment-scoped `PYPI_API_TOKEN` fallback added after the `v0.1.0`
-bootstrap; [issue #384](https://github.com/sysevol-ai/CodeNib/issues/384)
-tracks restoring its trusted publisher and revoking that token. No publishing
-workflow reads a runner-local `.pypirc`.
+maintainers. Both registries publish through OIDC; neither workflow accepts an
+API-token password or reads a runner-local `.pypirc`. After the first successful
+production OIDC publication, revoke any remaining bootstrap API token.
 
 ## MCP Registry Namespace
 
@@ -130,17 +128,19 @@ on PyPI.
    and the README citation and `mcp-name` marker remain present.
 3. Run `pre-commit run --all-files` and the local package smoke.
 4. Merge the release commit to `main` and confirm its package gates pass.
-5. Confirm the TestPyPI pending publisher is visible, then dispatch the
+5. Confirm the TestPyPI trusted publisher is visible, then dispatch the
    TestPyPI Release workflow from `main`.
 6. Confirm the TestPyPI registry-download and installed-CLI smoke job passes.
 7. Complete the public-surface gate above.
-8. Confirm the production `pypi` environment still has its scoped publisher
-   credential, or complete #384 and update the workflow to OIDC first.
+8. Confirm the production PyPI publisher exactly names owner `sysevol-ai`,
+   repository `CodeNib`, workflow `release.yml`, and environment `pypi`.
 9. Confirm the `codenib.ai` MCP proof TXT record and protected
    `mcp-registry-publish` environment secret are active.
 10. Create and push an annotated `v<version>` tag.
 11. Confirm PyPI, MCP Registry discovery, and the generated GitHub Release all
     identify the same version and that a stable release is marked latest.
+12. After the first successful production OIDC publication, revoke the
+    bootstrap PyPI token from the GitHub environment and local configuration.
 
 Do not reuse a published version. If publication partially succeeds, increment
 the version and produce new artifacts.
