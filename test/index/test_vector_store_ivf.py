@@ -169,6 +169,35 @@ def test_ivf_save_load_roundtrip(tmp_path):
     assert res and res[0].node_name == chunks[1]["name"]
 
 
+def test_save_removes_persisted_level_after_last_document_is_deleted(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+    assert (path / "l2" / "index_test__model.faiss").exists()
+
+    store.clear("l2")
+    store.save(str(path))
+
+    assert not (path / "l2").exists()
+    config = json.loads((path / "config_test__model.json").read_text())
+    assert config["l2_documents"] == 0
+
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    loaded.load()
+    assert loaded.l2_index.ntotal == 0
+    assert loaded.l2_documents == []
+
+
+def test_save_rejects_misaligned_vectors_and_documents(tmp_path):
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(2))
+    store.l2_documents.pop()
+
+    with pytest.raises(ValueError, match="2 vectors for 1 documents"):
+        store.save(str(tmp_path / "vs"))
+
+
 def test_load_prefers_portable_json_documents(tmp_path):
     path = tmp_path / "vs"
     store = _make_store(embedding_model="test/model")

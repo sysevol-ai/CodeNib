@@ -979,13 +979,23 @@ class CodeVectorStore:
 
         model_suffix = self.embedding_model.replace("/", "__")
 
-        # Save L0
-        if self.l0_index is not None and self.l0_documents:
-            self._save_level(save_path, "l0", model_suffix)
+        level_state = {}
+        for level in ("l0", "l2"):
+            index, documents = self._get_index_and_docs(level)
+            if documents:
+                if index is None or int(index.ntotal) != len(documents):
+                    vector_count = 0 if index is None else int(index.ntotal)
+                    raise ValueError(
+                        f"Cannot save misaligned {level} vector store: "
+                        f"{vector_count} vectors for {len(documents)} documents"
+                    )
+            level_state[level] = (index, documents)
 
-        # Save L2
-        if self.l2_index is not None and self.l2_documents:
-            self._save_level(save_path, "l2", model_suffix)
+        for level, (_index, documents) in level_state.items():
+            if documents:
+                self._save_level(save_path, level, model_suffix)
+            else:
+                self._remove_level_files(save_path, level, model_suffix)
 
         # Save top-level configuration
         config_path = save_path / f"config_{model_suffix}.json"
@@ -1004,6 +1014,24 @@ class CodeVectorStore:
             json.dump(config, f, indent=2)
 
         logger.info("Vector store saved successfully")
+
+    @staticmethod
+    def _remove_level_files(save_path: Path, level: str, model_suffix: str) -> None:
+        """Remove persisted files when a vector level becomes empty."""
+
+        level_path = save_path / level
+        for name in (
+            f"config_{model_suffix}.json",
+            f"index_{model_suffix}.faiss",
+            f"documents_{model_suffix}.pkl",
+            f"documents_{model_suffix}.json",
+            f"index_{model_suffix}.pkl",
+        ):
+            (level_path / name).unlink(missing_ok=True)
+        try:
+            level_path.rmdir()
+        except OSError:
+            pass
 
     def _save_level(self, save_path: Path, level: str, model_suffix: str) -> None:
         """Save a single level (l0 or l2) to disk."""
