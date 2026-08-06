@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -238,8 +239,56 @@ def test_symbol_content_is_hydrated_from_source(repo_dir):
 def test_source_traversal_guard(repo_dir):
     wb = WikiBuilder(_make_bundle(repo_dir))
     assert wb.source("../../../etc/passwd") is None
+    sibling = Path(repo_dir).with_name(Path(repo_dir).name + "-private")
+    sibling.mkdir()
+    (sibling / "secret.py").write_text("SECRET = True\n", encoding="utf-8")
+    assert wb.source(f"../{sibling.name}/secret.py") is None
     ok = wb.source("pkg/mod/a.py", 1, 3)
     assert ok is not None and ok["content"].count("\n") == 3
+
+
+def test_source_reads_only_the_requested_line_window(repo_dir, monkeypatch):
+    wb = WikiBuilder(_make_bundle(repo_dir))
+    source_path = Path(repo_dir) / "pkg/mod/a.py"
+    real_open = open
+
+    class GuardedReader:
+        def __init__(self, handle):
+            self.handle = handle
+            self.lines_read = 0
+
+        def __enter__(self):
+            self.handle.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.handle.__exit__(*args)
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self.lines_read += 1
+            if self.lines_read > 4:
+                raise AssertionError("source reader consumed past the requested window")
+            return next(self.handle)
+
+        def readlines(self):
+            raise AssertionError("source reader loaded the complete file")
+
+    def guarded_open(file, *args, **kwargs):
+        handle = real_open(file, *args, **kwargs)
+        if Path(file) == source_path:
+            return GuardedReader(handle)
+        return handle
+
+    monkeypatch.setattr("builtins.open", guarded_open)
+
+    result = wb.source("pkg/mod/a.py", 1, 3)
+
+    assert result is not None
+    assert result["start_line"] == 1
+    assert result["end_line"] == 3
 
 
 def test_overview_links_modules(repo_dir):
