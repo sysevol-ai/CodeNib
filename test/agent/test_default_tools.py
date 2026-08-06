@@ -26,10 +26,13 @@ Test layout:
 
 from __future__ import annotations
 
+import io
 import json
+import shlex
 import shutil
 import sys
 import textwrap
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -43,6 +46,7 @@ from codenib.agent.tools.defaults import (
     _BASH_MAX_OUTPUT_CHARS,
     DEFAULT_TOOL_IDS,
     _bash,
+    _BoundedPipeOutput,
     _glob,
     _grep,
     _read,
@@ -341,6 +345,13 @@ class TestBash:
         result = _bash("sleep 2", timeout=1000)
         assert result.startswith("Error:") and "timed out" in result
 
+    def test_timeout_kills_background_process_group(self):
+        started = time.monotonic()
+        result = _bash("sleep 5 &", timeout=1000)
+
+        assert result.startswith("Error:") and "timed out" in result
+        assert time.monotonic() - started < 3
+
     def test_description_accepted(self):
         """The reference `description` metadata field is accepted and ignored."""
         result = _bash("echo labelled", description="say hello")
@@ -355,6 +366,45 @@ class TestBash:
         result = _bash("yes hello | head -n 20000")
         assert "(output truncated)" in result
         assert len(result) <= _BASH_MAX_OUTPUT_CHARS + 200
+
+    def test_output_cap_does_not_cancel_command_side_effects(self, tmp_path):
+        marker = tmp_path / "completed"
+        script = "import sys; sys.stdout.write('x' * 1000000)"
+        command = (
+            f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}; "
+            f"printf done > {shlex.quote(str(marker))}"
+        )
+
+        result = _bash(command, timeout=5000)
+
+        assert "(output truncated)" in result
+        assert marker.read_text(encoding="utf-8") == "done"
+
+    def test_pipe_capture_drains_beyond_retained_prefix(self):
+        class TrackingStream(io.BytesIO):
+            final_position = 0
+
+            def close(self) -> None:
+                self.final_position = self.tell()
+                super().close()
+
+        payload = b"x" * (_BASH_MAX_OUTPUT_CHARS * 8)
+        source = TrackingStream(payload)
+        capture = _BoundedPipeOutput(_BASH_MAX_OUTPUT_CHARS)
+
+        capture.drain(source)
+
+        assert source.final_position == len(payload)
+        assert len(capture.text()) == _BASH_MAX_OUTPUT_CHARS
+        assert capture.truncated is True
+
+    @pytest.mark.parametrize("command", ["", "   ", None])
+    def test_rejects_empty_or_non_string_commands(self, command):
+        assert _bash(command).startswith("Error: command must be")
+
+    @pytest.mark.parametrize("timeout", [False, 0, -1, 600_001])
+    def test_rejects_invalid_timeouts(self, timeout):
+        assert _bash("true", timeout=timeout).startswith("Error: timeout must be")
 
 
 # ---------------------------------------------------------------------------

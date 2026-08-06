@@ -64,9 +64,10 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import BinaryIO, Dict, List, Optional, Tuple
 
 from .spec import ToolInputSpec, ToolRegistry, ToolSpec
 
@@ -79,7 +80,10 @@ _MAX_RESULTS_DEFAULT: int = 50
 _GLOB_MAX_RESULTS: int = 100  # mirrors the reference Glob's documented cap
 _GREP_TIMEOUT_SECONDS: int = 30
 _BASH_TIMEOUT_MS_DEFAULT: int = 30_000  # 30s, expressed in ms (reference units)
+_BASH_TIMEOUT_MS_MAX: int = 600_000
+_BASH_MAX_COMMAND_CHARS: int = 32_000
 _BASH_MAX_OUTPUT_CHARS: int = 16_000  # matches runner._MAX_RESULT_CHARS
+_BASH_READ_CHUNK_BYTES: int = 64 * 1024
 
 # Directories to skip during recursive search (avoids scanning VCS / cache noise).
 _SKIP_DIR_PREFIXES = frozenset(
@@ -421,9 +425,12 @@ def _grep_python(
 
 def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
     try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except OSError:
-        proc.kill()
+        # ``start_new_session=True`` makes the child PID its process-group ID.
+        # Use it directly because the group can outlive an already-exited shell.
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (AttributeError, OSError):
+        if proc.poll() is None:
+            proc.kill()
 
 
 def _grep_ripgrep(
@@ -864,6 +871,70 @@ def _build_glob_tool() -> ToolSpec:
 # ---------------------------------------------------------------------------
 
 
+class _BoundedPipeOutput:
+    """Drain a subprocess pipe while retaining only a fixed byte prefix."""
+
+    def __init__(self, limit: int) -> None:
+        self._limit = limit
+        self._buffer = bytearray()
+        self.truncated = False
+
+    def drain(self, stream: BinaryIO) -> None:
+        try:
+            while chunk := stream.read(_BASH_READ_CHUNK_BYTES):
+                remaining = self._limit - len(self._buffer)
+                if remaining > 0:
+                    self._buffer.extend(chunk[:remaining])
+                if len(chunk) > remaining:
+                    self.truncated = True
+        except (OSError, ValueError):
+            # Forced process-group cleanup may close a pipe under the reader.
+            pass
+        finally:
+            try:
+                stream.close()
+            except OSError:
+                pass
+
+    def text(self) -> str:
+        return bytes(self._buffer).decode("utf-8", errors="replace")
+
+
+def _wait_for_bash(
+    proc: subprocess.Popen[bytes],
+    readers: tuple[threading.Thread, threading.Thread],
+    *,
+    timeout_seconds: float,
+) -> bool:
+    """Wait for both the shell and inherited output pipes until one deadline."""
+
+    deadline = time.monotonic() + timeout_seconds
+    timed_out = False
+    try:
+        proc.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+
+    if not timed_out:
+        for reader in readers:
+            reader.join(max(0.0, deadline - time.monotonic()))
+        # A background child can inherit the pipes after its shell exits. Treat
+        # that child as part of the command under the same wall-clock deadline.
+        timed_out = any(reader.is_alive() for reader in readers)
+
+    if timed_out:
+        _terminate_process_group(proc)
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=1)
+        for reader in readers:
+            reader.join(timeout=1)
+    return timed_out
+
+
 def _bash(
     command: str,
     timeout: int = _BASH_TIMEOUT_MS_DEFAULT,
@@ -882,41 +953,56 @@ def _bash(
     accepted for parity with the reference and is otherwise unused. Loose safety
     policy — see the "Safety" section of the skill_doc.
     """
+    if not isinstance(command, str) or not command.strip():
+        return "Error: command must be a non-empty string"
+    if len(command) > _BASH_MAX_COMMAND_CHARS:
+        return f"Error: command exceeds {_BASH_MAX_COMMAND_CHARS} characters"
+    if isinstance(timeout, bool):
+        return "Error: timeout must be an integer (milliseconds)"
     try:
         timeout_ms = int(timeout)
     except (TypeError, ValueError):
         return "Error: timeout must be an integer (milliseconds)"
-    # Convert ms -> whole seconds for subprocess, flooring at 1s so a small
-    # sub-second value never becomes a 0s (i.e. immediate) timeout.
-    timeout_s = max(1, timeout_ms // 1000)
+    if not 1 <= timeout_ms <= _BASH_TIMEOUT_MS_MAX:
+        return f"Error: timeout must be between 1 and {_BASH_TIMEOUT_MS_MAX} ms"
+    timeout_s = max(1.0, timeout_ms / 1000.0)
 
     try:
         proc = subprocess.Popen(  # noqa: S602 — loose shell policy by design
             command,
             shell=True,
             cwd=cwd,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
             start_new_session=True,
         )
-    except (OSError, ValueError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         return f"Error executing command {command!r}: {exc}"
 
-    try:
-        stdout, stderr = proc.communicate(timeout=timeout_s)
-    except subprocess.TimeoutExpired:
-        # Kill the whole process group, not just the shell, then reap.
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except OSError:  # incl. ProcessLookupError / PermissionError
-            proc.kill()
-        proc.communicate()
-        return f"Error: command timed out after {timeout_s}s: {command!r}"
-    except (OSError, ValueError) as exc:
-        proc.kill()
-        proc.communicate()
-        return f"Error executing command {command!r}: {exc}"
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+    stdout_capture = _BoundedPipeOutput(_BASH_MAX_OUTPUT_CHARS)
+    stderr_capture = _BoundedPipeOutput(_BASH_MAX_OUTPUT_CHARS)
+    readers = (
+        threading.Thread(
+            target=stdout_capture.drain,
+            args=(proc.stdout,),
+            daemon=True,
+        ),
+        threading.Thread(
+            target=stderr_capture.drain,
+            args=(proc.stderr,),
+            daemon=True,
+        ),
+    )
+    for reader in readers:
+        reader.start()
+    if _wait_for_bash(proc, readers, timeout_seconds=timeout_s):
+        return f"Error: command timed out after {timeout_s:g}s: {command!r}"
+
+    stdout = stdout_capture.text()
+    stderr = stderr_capture.text()
 
     parts: List[str] = [f"$ {command}", f"(exit code: {proc.returncode})"]
     if stdout:
@@ -925,7 +1011,11 @@ def _bash(
         parts.append(f"--- stderr ---\n{stderr.rstrip()}")
     text = "\n".join(parts)
 
-    if len(text) > _BASH_MAX_OUTPUT_CHARS:
+    if (
+        stdout_capture.truncated
+        or stderr_capture.truncated
+        or len(text) > _BASH_MAX_OUTPUT_CHARS
+    ):
         text = text[:_BASH_MAX_OUTPUT_CHARS] + "\n... (output truncated)"
     return text
 
@@ -941,15 +1031,15 @@ test runners.
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `command` | str | *required* | Shell command line to run. |
-| `timeout` | int | 30000 | Wall-clock **milliseconds** before kill. |
+| `command` | str | *required* | Shell command line to run (up to 32k chars). |
+| `timeout` | int | 30000 | Wall-clock **milliseconds** before kill (1–600000). |
 | `description` | str | null | Short human label (accepted for parity; unused). |
 | `cwd` | str | null | Working directory for the command. |
 
 ## Output
 
-`$ <cmd>` / `(exit code: N)` / stdout / stderr sections, capped at 16k chars.
-On timeout or spawn failure, an `Error: ...` string.
+`$ <cmd>` / `(exit code: N)` / stdout / stderr sections, capped while streaming
+at 16k chars. On timeout or spawn failure, an `Error: ...` string.
 
 ## Safety
 
@@ -958,8 +1048,9 @@ allow/deny list, and no path jail** — loose by design. An in-process filter is
 either too restrictive (blocks legitimate `pytest`/`git`) or trivially bypassed
 (`bash -c '...'`), so the trust boundary is the *environment*: callers running
 the agent on untrusted input MUST sandbox at the container / VM / process level.
-`timeout` guards against hangs; a 16k-char output cap guards against runaway
-producers (`yes`, `seq`).
+`timeout` guards against hangs; a 16k-char retained-output cap guards against
+runaway producers (`yes`, `seq`), and stdin is closed so commands cannot consume
+the agent's protocol stream.
 
 ## Note vs the reference
 
@@ -986,7 +1077,8 @@ def _build_bash_tool() -> ToolSpec:
                 default=_BASH_TIMEOUT_MS_DEFAULT,
                 description=(
                     "Wall-clock milliseconds before kill "
-                    f"(default {_BASH_TIMEOUT_MS_DEFAULT})."
+                    f"(1–{_BASH_TIMEOUT_MS_MAX}; "
+                    f"default {_BASH_TIMEOUT_MS_DEFAULT})."
                 ),
             ),
             ToolInputSpec(
