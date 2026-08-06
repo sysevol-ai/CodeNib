@@ -130,7 +130,6 @@ class _HuggingFaceEmbeddingWrapper:
             tok = self._model.tokenizer
             auto_model = self._model[0].auto_model
             max_pos = getattr(auto_model.config, "max_position_embeddings", None)
-            model_capacity = max_pos
 
             # RoBERTa-derived models number non-padding positions after their
             # padding index. Their embedding table can therefore hold fewer
@@ -142,6 +141,13 @@ class _HuggingFaceEmbeddingWrapper:
                 "position_embeddings",
                 None,
             )
+            table_size = getattr(position_embeddings, "num_embeddings", None)
+            capacities = [
+                value
+                for value in (max_pos, table_size)
+                if isinstance(value, int) and value > 0
+            ]
+            model_capacity = min(capacities) if capacities else None
             padding_idx = getattr(position_embeddings, "padding_idx", None)
             if (
                 isinstance(model_capacity, int)

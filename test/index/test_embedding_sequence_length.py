@@ -10,10 +10,22 @@ from codenib.index.embedding.vector_store import _HuggingFaceEmbeddingWrapper
 
 
 class _FakeSentenceTransformer:
-    def __init__(self, max_positions, position_padding_idx):
+    def __init__(
+        self,
+        max_positions,
+        position_padding_idx,
+        *,
+        embedding_positions=None,
+    ):
         self.tokenizer = SimpleNamespace(model_max_length=10**30)
-        self.max_seq_length = max_positions
-        position_embeddings = SimpleNamespace(padding_idx=position_padding_idx)
+        table_size = (
+            embedding_positions if embedding_positions is not None else max_positions
+        )
+        self.max_seq_length = max_positions or table_size
+        position_embeddings = SimpleNamespace(
+            num_embeddings=table_size,
+            padding_idx=position_padding_idx,
+        )
         auto_model = SimpleNamespace(
             config=SimpleNamespace(max_position_embeddings=max_positions),
             embeddings=SimpleNamespace(position_embeddings=position_embeddings),
@@ -44,3 +56,20 @@ def test_huggingface_sequence_length_respects_position_capacity(
 
     assert wrapper._model.tokenizer.model_max_length == expected
     assert wrapper._model.max_seq_length == expected
+
+
+@pytest.mark.parametrize("configured_positions", [None, 4096])
+def test_huggingface_sequence_length_uses_the_loaded_embedding_table(
+    configured_positions,
+):
+    wrapper = _HuggingFaceEmbeddingWrapper.__new__(_HuggingFaceEmbeddingWrapper)
+    wrapper._model = _FakeSentenceTransformer(
+        configured_positions,
+        1,
+        embedding_positions=1026,
+    )
+
+    wrapper._apply_max_seq_length("test/model", None)
+
+    assert wrapper._model.tokenizer.model_max_length == 1024
+    assert wrapper._model.max_seq_length == 1024

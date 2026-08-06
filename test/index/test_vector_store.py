@@ -117,6 +117,7 @@ def test_vector_store_with_huggingface(tmp_path):
         store_path=str(tmp_path / "unixcoder"),
     )
     try:
+        assert vector_store.embedding.client.max_seq_length <= 1024
         chunks = create_sample_code_chunks()
         vector_store.add_code_chunks(chunks)
         assert vector_store.get_stats()["total_documents"] == len(chunks)
