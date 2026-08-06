@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import subprocess
 from functools import lru_cache
 from typing import Optional
 
 _COMMIT_RE = re.compile(r"[0-9a-fA-F]{7,64}\Z")
 _MAX_SOURCE_BYTES = 8 * 1024 * 1024
+_DEFAULT_SOURCE_LINES = 400
+_MAX_SOURCE_LINES = 1_000
 
 
 def valid_commit(commit: object) -> bool:
@@ -181,12 +184,13 @@ def _source_slice(
     end: Optional[int],
 ) -> dict:
     all_lines = content.decode("utf-8", errors="replace").splitlines(keepends=True)
-    if start is not None and end is not None:
-        first = max(1, int(start))
-        chunk = all_lines[first - 1 : max(first - 1, int(end))]
+    first = max(1, int(start)) if start is not None else 1
+    if end is None:
+        requested_last = first + _DEFAULT_SOURCE_LINES - 1
     else:
-        first = 1
-        chunk = all_lines[:400]
+        requested_last = max(first, int(end))
+    last = min(requested_last, first + _MAX_SOURCE_LINES - 1)
+    chunk = all_lines[first - 1 : last]
     return {
         "file": relative,
         "start_line": first,
@@ -206,11 +210,23 @@ def live_source_slice(
     if relative is None:
         return None
     candidate = os.path.realpath(os.path.join(repo_dir, relative))
+    descriptor = -1
     try:
-        with open(candidate, "rb") as handle:
+        descriptor = os.open(
+            candidate,
+            os.O_RDONLY | getattr(os, "O_NONBLOCK", 0),
+        )
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        handle = os.fdopen(descriptor, "rb")
+        descriptor = -1
+        with handle:
             content = handle.read(_MAX_SOURCE_BYTES + 1)
     except OSError:
         return None
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
     if len(content) > _MAX_SOURCE_BYTES:
         return None
     return _source_slice(relative, content, start, end)
