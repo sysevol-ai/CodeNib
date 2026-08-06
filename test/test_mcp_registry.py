@@ -18,11 +18,11 @@ def test_registry_metadata_matches_package_and_uvx_contract() -> None:
 
     version, server = registry.validate_registry_metadata(root)
 
-    assert version == "0.2.0a2"
+    assert version == "0.2.0"
     assert server["name"] == "ai.codenib/codenib"
     package = server["packages"][0]
     assert package["identifier"] == "codenib"
-    assert package["runtimeArguments"][0]["value"] == ("codenib[mcp]==0.2.0a2")
+    assert package["runtimeArguments"][0]["value"] == ("codenib[mcp]==0.2.0")
     assert package["packageArguments"][1]["format"] == "filepath"
 
 
@@ -44,13 +44,13 @@ def test_pypi_probe_requires_exact_version_and_ownership_marker(monkeypatch) -> 
         "_get_json",
         lambda _url: {
             "info": {
-                "version": "0.2.0a2",
+                "version": "0.2.0",
                 "description": "<!-- mcp-name: ai.codenib/codenib -->",
             }
         },
     )
 
-    registry.wait_for_pypi("0.2.0a2", timeout=0)
+    registry.wait_for_pypi("0.2.0", timeout=0)
 
 
 def test_registry_probe_reads_nested_official_response(monkeypatch) -> None:
@@ -62,11 +62,11 @@ def test_registry_probe_reads_nested_official_response(monkeypatch) -> None:
                 {
                     "server": {
                         "name": "ai.codenib/codenib",
-                        "version": "0.2.0a2",
+                        "version": "0.2.0",
                     }
                 }
             ]
         },
     )
 
-    registry.wait_for_registry("0.2.0a2", timeout=0)
+    registry.wait_for_registry("0.2.0", timeout=0)

@@ -23,7 +23,7 @@ Install the graph dependencies, check the target repository, and then select
 the graph preset:
 
 ```bash
-python -m pip install "codenib[graph]==0.2.0a2"
+python -m pip install "codenib[graph]==0.2.0"
 codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
 codenib index /path/to/repository --preset graph

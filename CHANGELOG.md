@@ -11,6 +11,32 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-05
+
+### Added
+
+- A build-once distribution path that publishes a static Wiki and a verified,
+  commit-addressed context artifact for local or MCP reuse.
+- Capability-aware `search_context` serving through the official
+  `ai.codenib/codenib` MCP package, plus managed package-level SCIP and LSP
+  providers selected from repository languages.
+- Native repository-exploration adapters and quality-constrained token and
+  cost reports for supported agent localization policies.
+
+### Changed
+
+- Hybrid BM25+dense retrieval is the recommended installed default when the
+  semantic extra is present; the base package retains an explicit no-model
+  BM25 path.
+- Repository filtering, graph definition provenance, and TypeScript/TSX import
+  edges use updated builder contracts. Incompatible 0.1 views rebuild once;
+  compatible 0.2 views remain reusable.
+
+### Security
+
+- Downloaded context artifacts are inventory-checked, source-bound, and reject
+  unsafe archive members before any view is loaded.
+
 ## [0.2.0a2] - 2026-08-05
 
 ### Added
@@ -106,7 +132,8 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Prepared secretless PyPI publishing through a dedicated GitHub Actions OIDC
   workflow.
 
-[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.0a2...HEAD
+[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/sysevol-ai/CodeNib/compare/v0.1.0...v0.2.0
 [0.2.0a2]: https://github.com/sysevol-ai/CodeNib/compare/620a82d...v0.2.0a2
 [0.2.0a1]: https://github.com/sysevol-ai/CodeNib/tree/620a82d
 [0.1.0]: https://github.com/sysevol-ai/CodeNib/releases/tag/v0.1.0

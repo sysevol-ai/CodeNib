@@ -35,12 +35,12 @@ SPDX-License-Identifier: Apache-2.0
     <a href="https://pypi.org/project/codenib/"><img src="https://img.shields.io/pypi/v/codenib.svg" alt="PyPI version"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python 3.10+"></a>
-    <img src="https://img.shields.io/badge/Release-Developer_Preview-EA580C.svg" alt="Developer Preview">
+    <img src="https://img.shields.io/badge/Release-0.2.0-2563EB.svg" alt="CodeNib 0.2.0">
   </p>
 </div>
 
 ```bash
-python -m pip install "codenib[mcp,semantic]==0.2.0a2"
+python -m pip install "codenib[mcp,semantic]==0.2.0"
 codenib wiki /path/to/your/repo
 ```
 
@@ -51,12 +51,13 @@ and MCP tools instead of making every agent rediscover the codebase.
 
 ## News
 
+- **2026-08-05 — CodeNib 0.2.0.** Build a static Wiki and reusable context
+  artifact once, then serve it through Pages or the official MCP package.
+  Hybrid retrieval and managed SCIP/LSP providers ship in the same CLI.
+  [Release notes](https://docs.codenib.ai/releases/0.2.0/)
 - **2026-08-05 — SweRank recipe.** Run
   [SweRank](https://github.com/SalesforceAIResearch/SweRank) retrieval and
   reranking over a local checkout. [Example](examples/swerank_retrieve_rerank.py)
-- **2026-08-05 — CodeNib 0.2 alpha.** Hybrid retrieval, managed SCIP/LSP
-  toolchains, and reusable Pages/MCP artifacts.
-  [Release notes](https://docs.codenib.ai/releases/0.2.0/)
 - **2026-08-04 — Native repository explorer.** CodeNib's planner now targets
   the [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench)
   source-region protocol.
@@ -98,13 +99,13 @@ Requires Python 3.10+ and Git. The recommended local path includes the pinned
 CodeRankEmbed model and serves hybrid BM25+dense retrieval:
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.0a2"
+python -m pip install "codenib[semantic]==0.2.0"
 codenib doctor --require core --require wiki
 codenib wiki /path/to/repository
 ```
 
 `codenib wiki` selects the semantic route because the installed environment
-contains its dependencies. A smaller `python -m pip install codenib==0.2.0a2`
+contains its dependencies. A smaller `python -m pip install codenib==0.2.0`
 installation selects the deterministic BM25 fallback and downloads no model.
 The [0.2 release notes](https://docs.codenib.ai/releases/0.2.0/) record the
 upgrade boundary and verification evidence.
@@ -128,7 +129,7 @@ only their package-level providers; operating-system and project prerequisites
 remain explicit:
 
 ```bash
-python -m pip install "codenib[graph]==0.2.0a2"
+python -m pip install "codenib[graph]==0.2.0"
 codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
 ```
@@ -170,7 +171,7 @@ Install the MCP extra, build once, and serve the same repository manifest over
 stdio:
 
 ```bash
-python -m pip install "codenib[mcp,semantic]==0.2.0a2"
+python -m pip install "codenib[mcp,semantic]==0.2.0"
 codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```

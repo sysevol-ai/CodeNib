@@ -15,17 +15,17 @@ embedding model, so it needs no API key.
 - Python 3.10 or newer
 - Git
 
-This documentation tracks the `0.2` feature line. Install the exact alpha and
+This documentation tracks the `0.2` feature line. Install the exact release and
 its local semantic dependencies from PyPI:
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.0a2"
+python -m pip install "codenib[semantic]==0.2.0"
 codenib --version
 codenib doctor --require core --require wiki
 ```
 
-The version command must report `codenib 0.2.0a2`. Exact version pins keep an
-alpha environment reproducible. Install `codenib==0.2.0a2` without extras when
+The version command must report `codenib 0.2.0`. Exact version pins keep the
+environment reproducible. Install `codenib==0.2.0` without extras when
 a smaller, no-model BM25 fallback is more important than natural-language
 retrieval quality.
 
@@ -155,7 +155,7 @@ To keep embeddings out of the local process, use a BYO OpenAI-compatible
 embedding service:
 
 ```bash
-python -m pip install "codenib[semantic-remote]==0.2.0a2"
+python -m pip install "codenib[semantic-remote]==0.2.0"
 export EMBEDDING_API_KEY=...
 codenib doctor --require semantic \
   --embedding-provider openai \
@@ -225,7 +225,7 @@ clangd, and live LSP providers are language-specific executables, so CodeNib
 plans them from the detected repository rather than installing every language:
 
 ```bash
-python -m pip install "codenib[graph]==0.2.0a2"
+python -m pip install "codenib[graph]==0.2.0"
 codenib toolchain status /path/to/repository --scope graph
 codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
@@ -272,7 +272,7 @@ Static Wiki pages are the default. To generate conceptual page narratives
 through a LiteLLM-supported provider:
 
 ```bash
-python -m pip install "codenib[agent,semantic]==0.2.0a2"
+python -m pip install "codenib[agent,semantic]==0.2.0"
 export OPENAI_API_KEY=...
 codenib doctor --require agent \
   --model openai/gpt-4o-mini --api-key-env OPENAI_API_KEY --probe-model
@@ -303,7 +303,7 @@ codenib wiki . --generate --model anthropic/claude-sonnet-4-5
 Vertex AI additionally requires CodeNib's `vertex` extra:
 
 ```bash
-python -m pip install "codenib[agent,semantic,vertex]==0.2.0a2"
+python -m pip install "codenib[agent,semantic,vertex]==0.2.0"
 gcloud auth application-default login
 codenib wiki . --generate \
   --model vertex_ai/gemini-2.5-flash \
@@ -358,7 +358,7 @@ continues to work.
 ## Serve The Index Over MCP
 
 ```bash
-python -m pip install "codenib[mcp,semantic]==0.2.0a2"
+python -m pip install "codenib[mcp,semantic]==0.2.0"
 codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```

@@ -168,9 +168,8 @@ remains part of M6 acceptance.
 
 ### M4: Product interaction
 
-Status: substantially complete for the Developer Preview. Index build progress
-is currently explicit in the CLI before the Wiki opens; in-page progress is a
-post-preview enhancement.
+Status: complete for 0.2.0. Index build progress is explicit in the CLI before
+the Wiki opens; in-page progress remains a post-0.2 enhancement.
 
 - Present build and generation progress in the Wiki.
 - Integrate Dependency Map, page-local graph snapshots, search, and source
@@ -180,8 +179,8 @@ post-preview enhancement.
 
 ### M5: Distribution
 
-Status: wheel path complete for the Developer Preview. Docker remains a
-post-preview distribution path.
+Status: wheel, Pages, and artifact-backed MCP paths complete for 0.2.0. Docker
+remains a post-0.2 distribution path.
 
 - Ship prebuilt frontend assets instead of installing a frontend development
   tree on first use.
@@ -191,7 +190,9 @@ post-preview distribution path.
 
 ### M6: Release acceptance
 
-Status: local acceptance complete; PR reconciliation and publication remain.
+Status: complete. Packaged acceptance covers the wheel, Wiki, MCP, Ask, graph,
+Pages, and commit-addressed artifact reuse paths; production publication is
+tracked by the release workflow.
 
 - Run the packaged product against representative Python, TypeScript, and
   mixed-language repositories.
@@ -234,11 +235,11 @@ Acceptance evidence on 2026-07-26:
 
 ## Hosted Distribution Program
 
-Status: active. Tracked by
-[RFC #415](https://github.com/sysevol-ai/CodeNib/issues/415).
+Status: complete for 0.2.0. The implementation and acceptance evidence are
+recorded in [RFC #415](https://github.com/sysevol-ai/CodeNib/issues/415).
 
-The local Developer Preview above established the compiler and runtime. The
-next product stage makes their output reusable across deployment surfaces:
+The local product baseline above established the compiler and runtime. The
+distribution stage makes their output reusable across deployment surfaces:
 
 > Build repository context once, then serve the same provenance-checked
 > artifact to people and coding agents.
@@ -329,7 +330,8 @@ tests and a focused end-to-end smoke run precede slow remote CI.
 
 ## Completion Rule
 
-The Developer Preview baseline is complete. The hosted product goal remains
-active until H1-H6 are implemented, locally verified, documented, and
-reproduced from pinned release artifacts. A single successful demo repository
-or green remote CI run does not complete the goal.
+The 0.2 product baseline is complete only when H1-H6 are implemented, locally
+verified, documented, and reproduced from pinned release artifacts. That bar
+was met by the pinned TestPyPI candidate and the matching release matrix; the
+stable tag remains a publication operation. Future hosted inference and
+enterprise storage work remains independent of the open-source 0.2 release.

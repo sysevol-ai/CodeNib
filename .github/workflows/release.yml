@@ -13,6 +13,7 @@ on:
       - "codenib/**"
       - "scripts/smoke_release_install.py"
       - "scripts/smoke_release_services.py"
+      - "scripts/smoke_release_upgrade.py"
       - "scripts/verify_mcp_registry.py"
       - "scripts/verify_release_artifacts.py"
       - "server.json"
@@ -49,10 +50,42 @@ jobs:
     permissions:
       contents: read
 
+  registry-auth-preflight:
+    name: Verify MCP Registry ownership
+    if: github.ref_type == 'tag'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: mcp-registry-publish
+      url: https://registry.modelcontextprotocol.io/v0.1/servers?search=ai.codenib%2Fcodenib
+    permissions:
+      contents: read
+    steps:
+      - name: Install verified MCP publisher
+        env:
+          MCP_PUBLISHER_VERSION: v1.8.0
+          MCP_PUBLISHER_SHA256: 1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf
+        run: |
+          curl --fail --location --retry 3 \
+            --output mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum --check -
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+
+      - name: Verify branded namespace ownership
+        env:
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: |
+          test -n "$MCP_PRIVATE_KEY"
+          ./mcp-publisher login dns \
+            --domain codenib.ai \
+            --private-key "$MCP_PRIVATE_KEY"
+
   publish-pypi:
     name: Publish to PyPI
     if: github.ref_type == 'tag'
-    needs: verify
+    needs: registry-auth-preflight
     runs-on: self-hosted
     environment:
       name: pypi
@@ -74,7 +107,7 @@ jobs:
   publish-mcp-registry:
     name: Publish to MCP Registry
     if: github.ref_type == 'tag'
-    needs: publish-pypi
+    needs: verify-pypi-install
     runs-on: ubuntu-latest
     environment:
       name: mcp-registry-publish
@@ -115,6 +148,83 @@ jobs:
       - name: Verify Registry discovery
         run: python scripts/verify_mcp_registry.py --check-registry --timeout 300
 
+  verify-pypi-install:
+    name: Verify installed PyPI package
+    if: github.ref_type == 'tag'
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release smoke harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download verified distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Download and match the published wheel
+        run: |
+          VERSION="$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          with Path("pyproject.toml").open("rb") as handle:
+              print(tomllib.load(handle)["project"]["version"])
+          PY
+          )"
+          FETCH_DIR="$RUNNER_TEMP/pypi-download"
+          mkdir -p "$FETCH_DIR"
+          FOUND=0
+          for attempt in $(seq 1 30); do
+            find "$FETCH_DIR" -maxdepth 1 -name '*.whl' -delete
+            if python -m pip download \
+              --disable-pip-version-check \
+              --no-cache-dir \
+              --no-deps \
+              --only-binary=:all: \
+              --dest "$FETCH_DIR" \
+              "codenib==$VERSION"; then
+              FOUND=1
+              break
+            fi
+            if [ "$attempt" -lt 30 ]; then
+              sleep 10
+            fi
+          done
+          test "$FOUND" = 1
+
+          BUILT_WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          PYPI_WHEEL="$(find "$FETCH_DIR" -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$BUILT_WHEEL"
+          test -n "$PYPI_WHEEL"
+          test "$(sha256sum "$BUILT_WHEEL" | cut -d' ' -f1)" = \
+            "$(sha256sum "$PYPI_WHEEL" | cut -d' ' -f1)"
+          echo "CODENIB_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "PYPI_WHEEL=$PYPI_WHEEL" >> "$GITHUB_ENV"
+
+      - name: Install the public package with MCP support
+        run: |
+          PUBLIC_VENV="$RUNNER_TEMP/codenib-pypi-smoke"
+          python -m venv "$PUBLIC_VENV"
+          echo "$PUBLIC_VENV/bin" >> "$GITHUB_PATH"
+          "$PUBLIC_VENV/bin/python" -m pip install --upgrade pip
+          "$PUBLIC_VENV/bin/python" -m pip install "${PYPI_WHEEL}[mcp]"
+
+      - name: Exercise public Wiki and MCP services
+        working-directory: ${{ runner.temp }}
+        run: |
+          test "$(codenib --version)" = "codenib $CODENIB_VERSION"
+          python "$GITHUB_WORKSPACE/scripts/smoke_release_services.py"
+
   github-release:
     name: Create GitHub Release
     if: github.ref_type == 'tag'
@@ -125,6 +235,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v4
+
       - name: Download distributions
         uses: actions/download-artifact@v4
         with:
@@ -135,10 +248,30 @@ jobs:
         working-directory: dist
         run: sha256sum *.whl *.tar.gz > SHA256SUMS
 
+      - name: Resolve release channel
+        id: channel
+        run: |
+          PRERELEASE="$(python - <<'PY'
+          import re
+          import tomllib
+          from pathlib import Path
+
+          with Path("pyproject.toml").open("rb") as handle:
+              version = str(tomllib.load(handle)["project"]["version"])
+          print("true" if re.search(r"(?:a|b|rc)\d+|\.dev\d+", version) else "false")
+          PY
+          )"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.channel.outputs.prerelease }}
         run: |
+          RELEASE_FLAGS=(--latest)
+          if [ "$PRERELEASE" = "true" ]; then
+            RELEASE_FLAGS=(--prerelease)
+          fi
           gh release create "$GITHUB_REF_NAME" \
             dist/*.whl \
             dist/*.tar.gz \
@@ -146,5 +279,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "CodeNib $GITHUB_REF_NAME" \
             --generate-notes \
-            --prerelease \
+            "${RELEASE_FLAGS[@]}" \
             --verify-tag

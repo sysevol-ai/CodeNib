@@ -18,21 +18,21 @@ installs MCP with semantic retrieval; the default `auto` preset resolves to
 BM25+dense in that environment:
 
 ```bash
-python -m pip install "codenib[mcp,semantic]==0.2.0a2"
+python -m pip install "codenib[mcp,semantic]==0.2.0"
 codenib index /path/to/repository
 ```
 
 Use the smaller no-model fallback when semantic retrieval is not required:
 
 ```bash
-python -m pip install "codenib[mcp]==0.2.0a2"
+python -m pip install "codenib[mcp]==0.2.0"
 codenib index /path/to/repository --preset fast
 ```
 
 Add static navigation and dependency tools without the embedding download:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.0a2"
+python -m pip install "codenib[graph,mcp]==0.2.0"
 codenib toolchain install /path/to/repository --scope graph
 codenib index /path/to/repository --preset graph
 ```
@@ -99,8 +99,8 @@ absolute path to a repository previously indexed with `codenib index`. The
 declared launch is equivalent to:
 
 ```bash
-uvx --with "codenib[mcp]==0.2.0a2" \
-  "codenib==0.2.0a2" mcp /absolute/path/to/repository
+uvx --with "codenib[mcp]==0.2.0" \
+  "codenib==0.2.0" mcp /absolute/path/to/repository
 ```
 
 The Registry path is intentionally query-only and model-free. It can always
@@ -142,7 +142,7 @@ Parameter and return schemas live in
 The `full` preset requests BM25, vectors, a symbol graph, and Zoekt:
 
 ```bash
-python -m pip install "codenib[full]==0.2.0a2"
+python -m pip install "codenib[full]==0.2.0"
 codenib toolchain install /path/to/repository --scope graph
 codenib index /path/to/repository --preset full
 ```

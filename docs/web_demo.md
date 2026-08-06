@@ -10,7 +10,7 @@ For one local repository, use the packaged two-command path in the
 [Quickstart](quickstart.md):
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.0a2"
+python -m pip install "codenib[semantic]==0.2.0"
 codenib wiki /path/to/repository
 ```
 

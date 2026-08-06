@@ -37,18 +37,18 @@ This site tracks the `0.2` alpha. The recommended local install enables hybrid
 BM25+dense retrieval with the pinned CodeRankEmbed model.
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.0a2"
+python -m pip install "codenib[semantic]==0.2.0"
 codenib wiki /path/to/repository
 ```
 
 The CLI detects the installed semantic capability, writes a reusable manifest
 under `~/.codenib/repositories`, and opens the browser UI. Install
-`codenib==0.2.0a2` without extras for the smaller no-model BM25 fallback. Both
+`codenib==0.2.0` without extras for the smaller no-model BM25 fallback. Both
 paths leave the target checkout unchanged. Read the [Quickstart](quickstart.md)
 for provider setup and troubleshooting.
 
 ```bash
-python -m pip install "codenib[mcp,semantic]==0.2.0a2"
+python -m pip install "codenib[mcp,semantic]==0.2.0"
 codenib mcp /path/to/repository
 ```
 

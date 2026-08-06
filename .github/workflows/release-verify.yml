@@ -136,6 +136,43 @@ jobs:
           codenib doctor --require core
           python "$GITHUB_WORKSPACE/scripts/smoke_release_install.py"
 
+  upgrade-smoke:
+    name: Upgrade from CodeNib 0.1
+    if: inputs.full
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout upgrade harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Exercise the supported upgrade boundary
+        run: |
+          VERSION="$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          with Path("pyproject.toml").open("rb") as handle:
+              print(tomllib.load(handle)["project"]["version"])
+          PY
+          )"
+          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$WHEEL"
+          python scripts/smoke_release_upgrade.py \
+            --wheel "$WHEEL" \
+            --expected-version "$VERSION"
+
   service-smoke:
     name: Installed Wiki and MCP services
     if: inputs.full
