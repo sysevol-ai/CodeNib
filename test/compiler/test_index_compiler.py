@@ -204,7 +204,13 @@ class TestVectorIndexBuilder:
             embedding_model="test-model",
             embedding_dimension=384,
         )
-        output = str(tmp_path / "vector")
+        output_path = tmp_path / "vector"
+        output_path.mkdir()
+        (output_path / "config_test-model.json").write_text(
+            '{"level_artifacts": {}}',
+            encoding="utf-8",
+        )
+        output = str(output_path)
         status = builder.build(
             scope="current_repo",
             repo_path="/fake/repo",
@@ -219,6 +225,9 @@ class TestVectorIndexBuilder:
         assert status.metadata["dimension"] == 384
         assert status.metadata["embedding_kwargs"] == {}
         assert status.metadata["index_metric"] == "ip"
+        assert status.metadata["persistence_config_fingerprint"]["file"] == (
+            "config_test-model.json"
+        )
         assert status.metadata["document_count"] == {"l0": 2, "l2": 3}
         mock_build_fn.assert_called_once()
         assert mock_build_fn.call_args.kwargs["force_rebuild"] is True
@@ -234,7 +243,7 @@ class TestVectorIndexBuilder:
 
         identity = builder.artifact_identity()
         assert identity == {
-            "builder_schema": 4,
+            "builder_schema": 5,
             "embedding_model": "test-model",
             "embedding_provider": "huggingface",
             "embedding_dimension": 384,
@@ -309,6 +318,12 @@ class TestVectorIndexBuilder:
     def test_remote_runtime_secret_is_not_persisted(self, mock_build_fn, tmp_path):
         mock_vs = MagicMock(l0_documents=[], l2_documents=["doc"])
         mock_build_fn.return_value = mock_vs
+        output_path = tmp_path / "vector"
+        output_path.mkdir()
+        (output_path / "config_text-embedding-3-small.json").write_text(
+            '{"level_artifacts": {}}',
+            encoding="utf-8",
+        )
         builder = VectorIndexBuilder(
             embedding_model="text-embedding-3-small",
             embedding_provider="openai",
@@ -321,7 +336,7 @@ class TestVectorIndexBuilder:
         status = builder.build(
             scope="current_repo",
             repo_path="/fake/repo",
-            output_dir=str(tmp_path / "vector"),
+            output_dir=str(output_path),
         )
 
         serialized = json.dumps(status.metadata, sort_keys=True)

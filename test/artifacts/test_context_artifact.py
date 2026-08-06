@@ -20,6 +20,7 @@ from codenib.artifacts import (
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    vector_config_artifact_record,
     vector_level_artifact_records,
 )
 from codenib.source_fingerprint import fingerprint_repository
@@ -149,6 +150,10 @@ def _fixture_vector_manifest(root: Path) -> tuple[Path, Path, Path]:
         "dimension": 4,
         "embedding_kwargs": {},
         "index_metric": "ip",
+        "persistence_config_fingerprint": vector_config_artifact_record(
+            vector,
+            "test__model",
+        ),
     }
     manifest_path = index_root / "repo_manifest.json"
     source_fingerprint = fingerprint_repository(repo).value
@@ -288,6 +293,10 @@ def test_context_artifact_keeps_only_portable_vector_serving_state(
         portable["indexes"]["vector"]["config"]["portable_document_format"]
         == "codenib.vector-documents.v1"
     )
+    vector_config = portable["indexes"]["vector"]["config"]
+    assert vector_config["persistence_config_fingerprint"] == (
+        vector_config_artifact_record(output / "views" / "vector", "test__model")
+    )
     assert not list(output.rglob("*.pkl"))
     assert str(repo).encode() not in b"".join(_tree(output).values())
 
@@ -297,6 +306,23 @@ def test_context_artifact_rejects_interrupted_vector_save(tmp_path: Path) -> Non
     (vector / ".config_test__model.json.save-in-progress").write_text("{}")
 
     with pytest.raises(ValueError, match="interrupted save marker"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            tmp_path / "publish" / "context",
+            repository="example/vector-project",
+        )
+
+
+def test_context_artifact_rejects_unpublished_vector_generation(tmp_path: Path) -> None:
+    repo, manifest_path, vector = _fixture_vector_manifest(tmp_path)
+    config_path = vector / "config_test__model.json"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="manifest fingerprint"):
         stage_context_artifact(
             repo,
             manifest_path,
