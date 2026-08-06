@@ -233,7 +233,9 @@ class CodeChunker:
         return self._chunker.print_chunk_summary(chunks)
 
     # Repository-level methods
-    def chunk_repository(self, repo_path: str) -> List[CodeChunk]:
+    def chunk_repository(
+        self, repo_path: str, *, strict: bool = False
+    ) -> List[CodeChunk]:
         """
         Chunk all relevant files in a repository.
 
@@ -241,6 +243,8 @@ class CodeChunker:
             repo_path: Path to the repository root.
                 Languages come from RepoChunkingConfig; when empty they are inferred
                 from file extensions present in the repo.
+            strict: Raise when any discovered source file cannot be chunked instead
+                of returning a partial repository result.
 
         Returns:
             List of CodeChunk objects from all processed files
@@ -275,6 +279,11 @@ class CodeChunker:
                 processed_count += 1
 
             except Exception as e:
+                if strict:
+                    relative = file_path.relative_to(repo_path).as_posix()
+                    raise RuntimeError(
+                        f"Failed to chunk repository source {relative}: {e}"
+                    ) from e
                 logger.warning(f"Failed to process {file_path}: {e}")
                 continue
 

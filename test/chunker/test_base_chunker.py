@@ -98,6 +98,27 @@ def test_l0_empty_skeleton_falls_back_to_full_file(monkeypatch, tmp_path):
     assert chunks[0].node_id == "include/declarations.h"
 
 
+def test_chunk_file_replaces_invalid_utf8_bytes(monkeypatch, tmp_path):
+    source = tmp_path / "legacy.py"
+    source.write_bytes(b"value = b\x80\n")
+
+    parser = SimpleNamespace(parse=lambda _code: SimpleNamespace(root_node=object()))
+    monkeypatch.setattr(
+        "codenib.code_chunking.base.get_language", lambda _lang: object()
+    )
+    monkeypatch.setattr(
+        BaseCodeChunker,
+        "_create_parser",
+        staticmethod(lambda _language: parser),
+    )
+
+    chunker = StubCodeChunker("python", chunk_depth=0)
+    chunks = chunker.chunk_file(str(source), relative_path="legacy.py")
+
+    assert len(chunks) == 1
+    assert "\ufffd" in chunks[0].content
+
+
 @pytest.mark.parametrize(
     ("configured_limit", "expected_limit"),
     [(None, DEFAULT_L0_RAW_FALLBACK_MAX_LINES), (100, 100)],

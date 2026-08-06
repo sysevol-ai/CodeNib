@@ -145,7 +145,7 @@ class BaseCodeChunker(ABC):
         # logger.debug(f"Chunking file: {file_path}")
 
         # Read the file
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             code_content = f.read()
 
         # Parse the code

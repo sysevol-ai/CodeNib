@@ -22,7 +22,8 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
         def __init__(self, **kwargs):
             pass
 
-        def chunk_repository(self, repo_path):
+        def chunk_repository(self, repo_path, *, strict=False):
+            captured["strict_chunking"] = strict
             return [chunk]
 
     captured = {}
@@ -67,10 +68,12 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
         embedding=embedding,
         artifact_metadata={"commit": "a" * 40},
         force_rebuild=True,
+        strict_chunking=True,
     )
 
     assert captured["embedding"] is embedding
     assert captured["artifact_metadata"] == {"commit": "a" * 40}
+    assert captured["strict_chunking"] is True
     assert result.l2_documents
     assert all(not path.exists() for path in stale_files)
     assert unrelated.read_bytes() == b"other"

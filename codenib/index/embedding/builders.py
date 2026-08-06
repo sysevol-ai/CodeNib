@@ -68,6 +68,7 @@ def build_hierarchical_vector_store(
     ivf_nprobe: int = 8,
     profiler: Optional[Profiler] = None,
     force_rebuild: bool = False,
+    strict_chunking: bool = False,
     artifact_metadata: Optional[Dict[str, Any]] = None,
 ) -> CodeVectorStore:
     """Build (or load) a hierarchical vector store (L0/L2) for a repository.
@@ -152,7 +153,10 @@ def build_hierarchical_vector_store(
             f"chunking_{level}",
             {"level": level, "language": languages[0]},
         ):
-            chunks_by_level[level] = chunker.chunk_repository(repo_path=repo_path)
+            chunks_by_level[level] = chunker.chunk_repository(
+                repo_path=repo_path,
+                strict=strict_chunking,
+            )
         logger.info(
             f"Chunked {len(chunks_by_level[level])} {level} chunks "
             f"(lang={languages[0]})"
