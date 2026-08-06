@@ -16,6 +16,8 @@ Phase 2 (``AgentRunner`` + ``ResourceGuard``) reads the manifest via
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -139,16 +141,33 @@ class RepoManifest:
         )
 
     def save(self, path: str | Path) -> None:
-        """Write the manifest to a JSON file."""
+        """Atomically replace the manifest with a durable JSON generation."""
+
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
+        fd, temporary = tempfile.mkstemp(
+            dir=str(p.parent),
+            prefix=f".{p.name}.",
+            suffix=".tmp",
+        )
+        temporary_path = Path(temporary)
+        try:
+            mode = p.stat().st_mode & 0o777 if p.exists() else 0o644
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                fchmod = getattr(os, "fchmod", None)
+                if fchmod is not None:
+                    fchmod(handle.fileno(), mode)
+                json.dump(self.to_dict(), handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, p)
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     @classmethod
     def load(cls, path: str | Path) -> RepoManifest:
         """Load a manifest from a JSON file."""
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)
 

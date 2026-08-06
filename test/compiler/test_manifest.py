@@ -11,6 +11,7 @@ import time
 
 import pytest
 
+from codenib.compiler import manifest as manifest_module
 from codenib.compiler.manifest import (
     MANIFEST_VERSION,
     IndexEntry,
@@ -175,6 +176,30 @@ class TestRepoManifest:
         nested = tmp_path / "a" / "b" / "manifest.json"
         m.save(nested)
         assert nested.exists()
+
+    def test_failed_manifest_replace_preserves_previous_generation(
+        self, tmp_path, monkeypatch
+    ):
+        manifest_path = tmp_path / "repo_manifest.json"
+        previous = _sample_manifest()
+        previous.commit = "previous"
+        previous.save(manifest_path)
+        previous_bytes = manifest_path.read_bytes()
+
+        replacement = _sample_manifest()
+        replacement.commit = "replacement"
+
+        def fail_replace(_source, _destination):
+            raise OSError("simulated publication failure")
+
+        monkeypatch.setattr(manifest_module.os, "replace", fail_replace)
+
+        with pytest.raises(OSError, match="publication failure"):
+            replacement.save(manifest_path)
+
+        assert manifest_path.read_bytes() == previous_bytes
+        assert RepoManifest.load(manifest_path).commit == "previous"
+        assert list(tmp_path.glob(".repo_manifest.json.*.tmp")) == []
 
     def test_derive_capabilities_full(self):
         m = _sample_manifest()
