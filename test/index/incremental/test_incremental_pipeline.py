@@ -407,3 +407,4 @@ class TestIncrementalIndexUpdater:
 
         assert chunk_store.chunk_count() == 0
         assert str(repo / "dead.py") not in chunk_store._store
+        mock_store.delta_update.assert_called_once_with([], [], set(), level="l2")

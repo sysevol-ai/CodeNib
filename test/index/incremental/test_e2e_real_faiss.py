@@ -323,7 +323,7 @@ class TestEdgeCases:
         assert result.files_changed >= 1
 
     def test_renamed_file_treated_as_modify(self, tmp_path):
-        """Git renames should be detected and handled."""
+        """A rename should replace the old vector address without a ghost entry."""
         repo = tmp_path / "repo"
         repo.mkdir()
         _run(["git", "init"], str(repo))
@@ -339,12 +339,61 @@ class TestEdgeCases:
 
         _run(["git", "mv", "old_name.py", "new_name.py"], str(repo))
         _run(["git", "commit", "-m", "rename"], str(repo))
+        commit_b = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
 
-        detector = GitDiffDetector(supported_extensions={".py"})
-        changes = detector.detect_changes(str(repo), commit_a)
+        embedding_model = _make_mock_embedding_model()
+        vector_store = _build_real_vector_store(embedding_model)
+        chunker = CodeChunker(
+            language="python",
+            repo_config=RepoChunkingConfig(languages=["python"], filter_tests=False),
+        )
 
-        # Rename treated as modification of new path
-        assert len(changes.modified) >= 1 or len(changes.added) >= 1
+        _run(["git", "checkout", commit_a], str(repo))
+        initial_chunks = chunker.chunk_repository(repo_path=str(repo))
+        chunk_store = IncrementalChunkStore.from_chunks(initial_chunks, commit_a)
+        initial_vectors = [
+            np.asarray(embedding_model.embed_documents([chunk.content])[0])
+            for chunk in initial_chunks
+        ]
+        initial_docs = IncrementalIndexUpdater._build_doc_embedding_pairs(
+            [
+                (versioned, vector)
+                for versioned, vector in zip(
+                    chunk_store.get_all_versioned(), initial_vectors, strict=True
+                )
+            ]
+        )
+        vector_store.rebuild_from_embeddings(*initial_docs, level="l2")
+        emb_cache = EmbeddingsCache()
+        for chunk, vector in zip(initial_chunks, initial_vectors, strict=True):
+            emb_cache.put(_hash_content(chunk.content), vector)
+
+        _run(["git", "checkout", commit_b], str(repo))
+        updater = IncrementalIndexUpdater(
+            chunker=chunker,
+            embedding_model=embedding_model,
+            diff_detector=GitDiffDetector(supported_extensions={".py"}),
+        )
+        result = updater.update(
+            repo_path=str(repo),
+            vector_store=vector_store,
+            chunk_store=chunk_store,
+            embeddings_cache=emb_cache,
+            last_commit=commit_a,
+        )
+
+        assert result.total_chunks == len(initial_chunks)
+        assert vector_store.l2_index.ntotal == len(vector_store.l2_documents)
+        node_ids = [doc.metadata["node_id"] for doc in vector_store.l2_documents]
+        assert node_ids
+        assert all(node_id.startswith("new_name.py") for node_id in node_ids)
+        assert all("old_name.py" not in node_id for node_id in node_ids)
 
     def test_binary_file_in_diff_ignored(self, tmp_path):
         """Binary files in git diff should be silently skipped."""

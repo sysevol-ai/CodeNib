@@ -225,13 +225,14 @@ class IncrementalIndexUpdater:
                     embeddings_cache.put(vc.content_hash, vec)
                     hits.append((vc, vec))
 
-            # Rebuild FAISS for this level (delta when possible)
-            if hits:
-                documents, embeddings = self._build_doc_embedding_pairs(hits)
-                changed_hashes = {vc.content_hash for vc in misses}
-                vector_store.delta_update(
-                    documents, embeddings, changed_hashes, level=level
-                )
+            # Rebuild FAISS for this level (delta when possible).  Empty target
+            # levels must still reach the vector store so pure deletions clear
+            # the previous index rather than leaving ghost documents behind.
+            documents, embeddings = self._build_doc_embedding_pairs(hits)
+            changed_hashes = {vc.content_hash for vc in misses}
+            vector_store.delta_update(
+                documents, embeddings, changed_hashes, level=level
+            )
 
         result.total_chunks = chunk_store.chunk_count()
         result.chunks_from_cache = total_from_cache
