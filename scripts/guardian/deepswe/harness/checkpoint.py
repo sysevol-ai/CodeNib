@@ -340,4 +340,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-""" % (start_command, baseline_file, exchange_dir)
+""" % (
+        start_command,
+        baseline_file,
+        exchange_dir,
+    )

@@ -39,7 +39,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from scripts.guardian.deepswe import ablation
+from scripts.guardian.deepswe import DEFAULT_CODENIB_ROOT, DEFAULT_OUTPUT_ROOT, ablation
 
 DEFAULT_TASKS = (
     "igel-persist-feature-schema",
@@ -56,8 +56,6 @@ DEFAULT_MODELS = (
 DEFAULT_REASONING_EFFORT = "medium"
 DEFAULT_RUNS = 4
 DEFAULT_CONCURRENCY = 3
-DEFAULT_CODENIB_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_OUTPUT_ROOT = DEFAULT_CODENIB_ROOT / "data" / "deepswe_outputs"
 
 
 @dataclass(frozen=True)

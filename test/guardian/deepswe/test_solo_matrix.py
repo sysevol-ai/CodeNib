@@ -144,7 +144,7 @@ def test_archive_preserves_metadata_without_double_count_filename(tmp_path):
 def test_context_file_builds_reproducible_pier_prompt_template(tmp_path):
     context_file = tmp_path / "review.md"
     context_file.write_text("Challenge unsupported beliefs.", encoding="utf-8")
-    args = _args(tmp_path, "--context-file", str(context_file))
+    args = _args(tmp_path, "--dry-run", "--context-file", str(context_file))
     matrix._validate(args)
     matrix._prepare_context_template(args)
     trial = matrix.Trial(
@@ -178,6 +178,7 @@ def test_task_context_directory_builds_distinct_templates(tmp_path):
         )
     args = _args(
         tmp_path,
+        "--dry-run",
         "--tasks",
         *tasks,
         "--task-context-dir",

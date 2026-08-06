@@ -73,7 +73,10 @@ def main():
 
 if __name__ == "__main__":
     main()
-""" % (inbox, repo)
+""" % (
+        inbox,
+        repo,
+    )
 
 
 __all__ = ["guardian_message_script"]

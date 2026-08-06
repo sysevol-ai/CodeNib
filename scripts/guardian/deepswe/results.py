@@ -29,8 +29,8 @@ from codenib.eval.benchmarks.deepswe import (
     pricing_for_model,
     write_summary,
 )
+from scripts.guardian.deepswe import DEFAULT_OUTPUT_ROOT
 
-DEFAULT_OUTPUT_ROOT = Path("/mnt/data/xiangye/deepswe_outputs")
 DEFAULT_SUMMARY_CSV = DEFAULT_OUTPUT_ROOT / "guardian_ablation_summary.csv"
 
 # Compatibility aliases for existing experiment imports.

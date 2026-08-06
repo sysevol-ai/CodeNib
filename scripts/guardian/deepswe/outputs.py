@@ -12,7 +12,7 @@ import shutil
 import sys
 from pathlib import Path
 
-DEFAULT_OUTPUT_ROOT = Path("/mnt/data/xiangye/deepswe_outputs")
+from scripts.guardian.deepswe import DEFAULT_OUTPUT_ROOT
 
 
 def _is_writable_dir(path: Path) -> bool:

@@ -58,10 +58,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CODENIB_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DEEPSWE_ROOT = Path("/home/xiangye/deep-swe")
-DEFAULT_OUTPUT_ROOT = Path("/mnt/data/xiangye/deepswe_outputs")
-DEFAULT_JOBS_DIR = DEFAULT_DEEPSWE_ROOT / "jobs"
+from scripts.guardian.deepswe import (
+    DEFAULT_CODENIB_ROOT,
+    DEFAULT_DEEPSWE_ROOT,
+    DEFAULT_JOBS_DIR,
+    DEFAULT_OUTPUT_ROOT,
+)
+
 DEEPSWE_HARNESS_RELATIVE_PATH = Path("scripts/guardian/deepswe/harness")
 
 

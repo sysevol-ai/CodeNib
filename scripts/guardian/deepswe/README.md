@@ -46,3 +46,5 @@ checkpoint command but cannot launch another Guardian review.
 
 Generated trial data belongs under `data/deepswe_outputs/`; generated
 `dashboard/data.json` is ignored and can be recreated by the exporter.
+Set `CODENIB_DEEPSWE_ROOT` to use a DeepSWE checkout outside the default
+sibling directory, and `CODENIB_DEEPSWE_OUTPUT_ROOT` to relocate trial data.

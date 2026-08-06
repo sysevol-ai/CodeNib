@@ -14,11 +14,7 @@ from typing import Any
 from codenib.eval.benchmarks.deepswe import (
     export_dashboard_data as _export_dashboard_data,
 )
-from codenib.eval.benchmarks.deepswe import (
-    summary_rows,
-    task_rows,
-    trial_row,
-)
+from codenib.eval.benchmarks.deepswe import summary_rows, task_rows, trial_row
 
 from .results import DEFAULT_OUTPUT_ROOT
 
