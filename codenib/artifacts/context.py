@@ -344,7 +344,7 @@ def _selected_views(
 ) -> tuple[str, ...]:
     available = {name for name in manifest.indexes if manifest.index_is_current(name)}
     if requested is None:
-        selected = sorted(available)
+        selected = sorted(available & PORTABLE_CONTEXT_VIEWS)
     else:
         selected = list(dict.fromkeys(str(name).strip() for name in requested))
         missing = sorted(name for name in selected if name not in available)
@@ -353,7 +353,10 @@ def _selected_views(
                 "context artifact requires current views: " + ", ".join(missing)
             )
     if not selected:
-        raise ValueError("context artifact requires at least one current view")
+        raise ValueError(
+            "context artifact requires at least one current view that is portable "
+            "(bm25 or vector)"
+        )
     return tuple(selected)
 
 

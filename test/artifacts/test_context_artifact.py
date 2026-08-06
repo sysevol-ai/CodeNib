@@ -257,6 +257,37 @@ def test_context_artifact_is_deterministic_for_one_manifest(tmp_path: Path) -> N
     )
 
 
+def test_context_artifact_default_ignores_nonportable_current_views(
+    tmp_path: Path,
+) -> None:
+    repo, manifest_path, _view_path = _fixture_manifest(tmp_path)
+    graph = manifest_path.parent / "symbol_graph"
+    graph.mkdir()
+    (graph / "graph.bin").write_bytes(b"nonportable graph")
+    manifest = RepoManifest.load(manifest_path)
+    manifest.indexes["symbol_graph"] = IndexEntry(
+        index_type="symbol_graph",
+        path=str(graph),
+        built_at="2026-08-04T00:00:00+00:00",
+        built_at_epoch=1.0,
+        status="fresh",
+        commit=manifest.commit,
+        source_fingerprint=manifest.source_fingerprint,
+    )
+    manifest.save(manifest_path)
+
+    result = stage_context_artifact(
+        repo,
+        manifest_path,
+        tmp_path / "publish" / "context",
+        repository="example/project",
+    )
+
+    assert result.views == ("bm25",)
+    portable = RepoManifest.load(result.manifest_path)
+    assert set(portable.indexes) == {"bm25"}
+
+
 def test_context_artifact_keeps_only_portable_vector_serving_state(
     tmp_path: Path,
 ) -> None:
