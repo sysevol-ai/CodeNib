@@ -45,6 +45,7 @@ from .git_diff import GitDiffDetector, RepoChanges
 
 if TYPE_CHECKING:
     from ...code_chunker import CodeChunker
+    from ...code_chunking.base import CodeChunk
     from ..embedding.vector_store import CodeVectorStore
 
 logger = get_logger(__name__)
@@ -142,8 +143,11 @@ class IncrementalIndexUpdater:
             result.duration_seconds = time.monotonic() - t_start
             return result
 
-        # ---- Step 2: rechunk affected files (L2 + optional L0) ----------
+        # ---- Step 2: stage affected files (L2 + optional L0) ------------
         repo_root = Path(repo_path).resolve()
+        staged_chunks: List[
+            Tuple[str, List["CodeChunk"], Optional[List["CodeChunk"]]]
+        ] = []
         for file_path in changes.affected:
             try:
                 relative_path = Path(file_path).relative_to(repo_root).as_posix()
@@ -158,16 +162,10 @@ class IncrementalIndexUpdater:
                     file_path, relative_path=relative_path
                 )
             except Exception as exc:
-                logger.warning("Failed to L2-chunk %s: %s", file_path, exc)
-                new_chunks = []
-
-            added, removed = chunk_store.update_file(
-                file_path, new_chunks, changes.new_commit, level="l2"
-            )
-            result.chunks_added += len(added)
-            result.chunks_removed += len(removed)
+                raise RuntimeError(f"Failed to L2-chunk {file_path}: {exc}") from exc
 
             # L0 rechunk (file skeleton)
+            l0_chunks = None
             if self._l0_chunker is not None:
                 try:
                     l0_chunks = self._l0_chunker.chunk_file(
@@ -176,12 +174,22 @@ class IncrementalIndexUpdater:
                         skeleton_mode=True,
                     )
                 except Exception as exc:
-                    logger.warning(
-                        "Failed to L0-chunk %s: %s — keeping previous L0 data",
-                        file_path,
-                        exc,
-                    )
-                    continue
+                    raise RuntimeError(
+                        f"Failed to L0-chunk {file_path}: {exc}"
+                    ) from exc
+
+            staged_chunks.append((file_path, new_chunks, l0_chunks))
+
+        # Apply only after every affected file has chunked successfully.  This
+        # prevents one parser failure from publishing a mixed-commit store.
+        for file_path, new_chunks, l0_chunks in staged_chunks:
+            added, removed = chunk_store.update_file(
+                file_path, new_chunks, changes.new_commit, level="l2"
+            )
+            result.chunks_added += len(added)
+            result.chunks_removed += len(removed)
+
+            if l0_chunks is not None:
                 chunk_store.update_file(
                     file_path, l0_chunks, changes.new_commit, level="l0"
                 )

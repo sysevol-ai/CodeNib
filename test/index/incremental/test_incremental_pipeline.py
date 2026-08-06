@@ -289,6 +289,76 @@ class TestIncrementalIndexUpdater:
             skeleton_mode=True,
         )
 
+    @pytest.mark.parametrize("failed_level", ["l2", "l0"])
+    def test_chunk_failure_leaves_existing_state_unchanged(
+        self, tmp_path, failed_level
+    ):
+        repo = tmp_path / "repo"
+        source = repo / "service.py"
+        repo.mkdir()
+        source.write_text("def current():\n    return 2\n")
+        source_path = str(source.resolve())
+
+        old_l2 = CodeChunk(
+            content="service.py:current()\ndef current():\n    return 1\n",
+            start_line=0,
+            end_line=1,
+            chunk_type="function",
+            name="current",
+            file=source_path,
+            node_id="service.py:current()",
+        )
+        old_l0 = CodeChunk(
+            content="def current():",
+            start_line=0,
+            end_line=1,
+            chunk_type="file",
+            name="service.py",
+            file=source_path,
+            node_id="service.py",
+        )
+        chunk_store = IncrementalChunkStore.from_chunks([old_l2], "a" * 40)
+        chunk_store.add_chunks([old_l0], "a" * 40, level="l0")
+
+        new_l2 = old_l2._replace(content=old_l2.content.replace("1", "2"))
+        l2_chunker = MagicMock()
+        l0_chunker = MagicMock()
+        if failed_level == "l2":
+            l2_chunker.chunk_file.side_effect = ValueError("broken L2 parser")
+        else:
+            l2_chunker.chunk_file.return_value = [new_l2]
+            l0_chunker.chunk_file.side_effect = ValueError("broken L0 parser")
+
+        detector = MagicMock()
+        detector.detect_changes.return_value = RepoChanges(
+            modified=[source_path],
+            old_commit="a" * 40,
+            new_commit="b" * 40,
+        )
+        embedding_model = _make_mock_embedding_model(DIM)
+        vector_store = _make_mock_vector_store(embedding_model, DIM)
+        updater = IncrementalIndexUpdater(
+            chunker=l2_chunker,
+            l0_chunker=l0_chunker,
+            embedding_model=embedding_model,
+            diff_detector=detector,
+        )
+
+        with pytest.raises(
+            RuntimeError, match=f"Failed to {failed_level.upper()}-chunk"
+        ):
+            updater.update(
+                repo_path=str(repo),
+                vector_store=vector_store,
+                chunk_store=chunk_store,
+                embeddings_cache=EmbeddingsCache(),
+                last_commit="a" * 40,
+            )
+
+        assert chunk_store.get_chunks_for_file(source_path, level="l2") == [old_l2]
+        assert chunk_store.get_chunks_for_file(source_path, level="l0") == [old_l0]
+        vector_store.delta_update.assert_not_called()
+
     def test_rebuild_from_embeddings_called(self, py_repo):
         """Verify that rebuild_from_embeddings is called with the full chunk set."""
         repo_path = py_repo["repo_path"]
