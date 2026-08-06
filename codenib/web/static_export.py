@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 
+from .._atomic_directory import publish_staged_directory
 from .._version import package_version
 from ..artifacts.security import assert_publishable_tree, file_sha256
 from ..compiler.manifest import RepoManifest
@@ -603,9 +604,7 @@ def export_static_wiki(
             label="static export",
         )
 
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
-        stage.rename(output_dir)
+        publish_staged_directory(stage, output_dir)
         manifest_file = output_dir / manifest_file.relative_to(stage)
     except Exception:
         shutil.rmtree(stage, ignore_errors=True)
