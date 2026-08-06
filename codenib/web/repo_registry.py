@@ -396,21 +396,30 @@ class RepoRegistry:
     def _load_vector_store(self, vec_entry: Any) -> "CodeVectorStore":
         """Load a manifest vector view with the configured embedding backend."""
         artifact_config = dict(vec_entry.config or {})
-        if not artifact_config.get("embedding_route") and not artifact_config.get(
-            "embedding_provider"
-        ):
+        legacy_route = not artifact_config.get("embedding_route")
+        legacy_fallbacks = []
+        if legacy_route and not artifact_config.get("embedding_provider"):
             # Pre-provider manifests from build_qa_index.py intentionally relied
             # on the QA runtime route. Keep that narrow compatibility path while
             # requiring all newly built artifacts to persist their provider.
             artifact_config["embedding_provider"] = self._config.embedding_provider
+            legacy_fallbacks.append(f"provider={self._config.embedding_provider}")
             if self._config.embedding_base_url:
                 artifact_config["embedding_endpoint"] = self._config.embedding_base_url
+        if (
+            legacy_route
+            and "dimension" not in artifact_config
+            and "embedding_dimension" not in artifact_config
+        ):
+            artifact_config["embedding_dimension"] = self._config.embedding_dimension
+            legacy_fallbacks.append(f"dimension={self._config.embedding_dimension}")
+        if legacy_fallbacks:
             logger.warning(
-                "Vector artifact at %s has no embedding provider; using the "
-                "configured legacy route %s. Rebuild the manifest to persist "
-                "its compatibility identity.",
+                "Vector artifact at %s is missing legacy route identity; "
+                "using configured compatibility fallback(s): %s. Rebuild "
+                "the manifest to persist its compatibility identity.",
                 vec_entry.path,
-                self._config.embedding_provider,
+                ", ".join(legacy_fallbacks),
             )
         route = resolve_embedding_artifact_route(artifact_config)
         configured_endpoint = normalize_endpoint(self._config.embedding_base_url)
@@ -471,14 +480,23 @@ class RepoRegistry:
 
         bm25_index: Optional["BM25CodeIndexer"] = None
         vector_store: Optional["CodeVectorStore"] = None
+        index_types = set(self._config.index_types())
 
         bm25_entry = manifest.indexes.get("bm25")
-        if bm25_entry is not None and manifest.index_is_current("bm25"):
+        if (
+            "bm25" in index_types
+            and bm25_entry is not None
+            and manifest.index_is_current("bm25")
+        ):
             bm25_index = BM25CodeIndexer()
             bm25_index.load_index(bm25_entry.path)
 
         vec_entry = manifest.indexes.get("vector")
-        if vec_entry is not None and manifest.index_is_current("vector"):
+        if (
+            "vector" in index_types
+            and vec_entry is not None
+            and manifest.index_is_current("vector")
+        ):
             vector_store = self._load_vector_store(vec_entry)
 
         bundle.vector_store = vector_store

@@ -186,6 +186,35 @@ def test_config_index_types_for_mode():
     assert QAConfig(mode="hybrid").index_types() == ["bm25", "vector"]
 
 
+@pytest.mark.parametrize(
+    ("mode", "expected_vector_loads"),
+    [("sparse", 0), ("hybrid", 1)],
+)
+def test_repo_views_respect_configured_index_mode(
+    monkeypatch,
+    mode,
+    expected_vector_loads,
+):
+    vector_entry = SimpleNamespace(path="/tmp/vector")
+    manifest = SimpleNamespace(
+        indexes={"vector": vector_entry},
+        index_is_current=lambda index_type: index_type == "vector",
+    )
+    bundle = SimpleNamespace(manifest=manifest)
+    registry = RepoRegistry(QAConfig(mode=mode))
+    loaded = []
+    monkeypatch.setattr(
+        registry,
+        "_load_vector_store",
+        lambda entry: loaded.append(entry) or "vector-store",
+    )
+
+    registry._load_repo_views(bundle)
+
+    assert loaded == [vector_entry] * expected_vector_loads
+    assert bundle.vector_store == ("vector-store" if expected_vector_loads else None)
+
+
 def test_config_paths(tmp_path):
     cfg = QAConfig(data_dir=str(tmp_path / "data"))
     assert cfg.registry_path.endswith("/data/qa_registry.json")
@@ -406,7 +435,7 @@ def test_vector_store_restores_manifest_embedding_identity(monkeypatch):
     assert created[0].kwargs["revision"] == "immutable-model-revision"
 
 
-def test_vector_store_supports_legacy_prebuilt_provider_fallback(monkeypatch):
+def test_vector_store_supports_legacy_prebuilt_route_fallback(monkeypatch):
     created = []
 
     class FakeVectorStore:
@@ -422,12 +451,16 @@ def test_vector_store_supports_legacy_prebuilt_provider_fallback(monkeypatch):
         "codenib.web.repo_registry._vector_store_type",
         lambda: FakeVectorStore,
     )
-    registry = RepoRegistry(QAConfig(embedding_provider="huggingface"))
+    registry = RepoRegistry(
+        QAConfig(
+            embedding_provider="huggingface",
+            embedding_dimension=768,
+        )
+    )
     entry = SimpleNamespace(
         path="/tmp/legacy-prebuilt",
         config={
             "embedding_model": "nomic-ai/CodeRankEmbed",
-            "embedding_dimension": 768,
         },
     )
 
@@ -436,6 +469,64 @@ def test_vector_store_supports_legacy_prebuilt_provider_fallback(monkeypatch):
     assert created[0].kwargs["embedding_provider"] == "huggingface"
     assert created[0].kwargs["embedding_model"] == "nomic-ai/CodeRankEmbed"
     assert created[0].kwargs["dimension"] == 768
+
+
+def test_vector_store_fills_legacy_dimension_with_persisted_provider(monkeypatch):
+    created = []
+
+    class FakeVectorStore:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.embedding = object()
+            created.append(self)
+
+        def load(self, _path):
+            pass
+
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: FakeVectorStore,
+    )
+    registry = RepoRegistry(
+        QAConfig(
+            embedding_provider="huggingface",
+            embedding_dimension=768,
+        )
+    )
+    entry = SimpleNamespace(
+        path="/tmp/legacy-prebuilt",
+        config={
+            "embedding_model": "nomic-ai/CodeRankEmbed",
+            "embedding_provider": "huggingface",
+        },
+    )
+
+    registry._load_vector_store(entry)
+
+    assert created[0].kwargs["dimension"] == 768
+
+
+def test_vector_store_rejects_invalid_persisted_legacy_dimension(monkeypatch):
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: pytest.fail("invalid route must fail before loading the store"),
+    )
+    registry = RepoRegistry(
+        QAConfig(
+            embedding_provider="huggingface",
+            embedding_dimension=768,
+        )
+    )
+    entry = SimpleNamespace(
+        path="/tmp/legacy-prebuilt",
+        config={
+            "embedding_model": "nomic-ai/CodeRankEmbed",
+            "embedding_dimension": 0,
+        },
+    )
+
+    with pytest.raises(ValueError, match="dimension must be a positive integer"):
+        registry._load_vector_store(entry)
 
 
 def test_vector_store_cache_separates_model_revisions(monkeypatch):
