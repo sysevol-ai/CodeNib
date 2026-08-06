@@ -46,6 +46,7 @@ from codenib.agent.tool_schema import tool_to_schema
 from codenib.agent.tools.defaults import (
     _BASH_MAX_OUTPUT_CHARS,
     _MAX_LINES_LIMIT,
+    _MAX_RESULTS_LIMIT,
     _READ_MAX_OUTPUT_CHARS,
     DEFAULT_TOOL_IDS,
     _bash,
@@ -279,6 +280,27 @@ class TestGrep:
         hits = [line for line in result.splitlines() if "many.py" in line]
         assert len(hits) <= 5
 
+    def test_rejects_unbounded_head_limit(self, sample_dir):
+        result = _grep(
+            "foo",
+            path=str(sample_dir),
+            head_limit=_MAX_RESULTS_LIMIT + 1,
+        )
+
+        assert result == f"Error: head_limit must not exceed {_MAX_RESULTS_LIMIT} rows"
+
+    @pytest.mark.skipif(shutil.which("rg") is None, reason="ripgrep is unavailable")
+    def test_ripgrep_bounds_a_long_matching_line(self, tmp_path):
+        (tmp_path / "long.py").write_text(
+            "needle " + ("x" * 100_000) + "\n",
+            encoding="utf-8",
+        )
+
+        result = _grep("needle", path=str(tmp_path), head_limit=1)
+
+        assert len(result) < 1_000
+        assert "Omitted long matching line" in result
+
     def test_invalid_regex_returns_error(self, sample_dir):
         result = _grep("[invalid", path=str(sample_dir))
         assert result.startswith("Error:") and "invalid regex" in result
@@ -323,6 +345,22 @@ class TestGrep:
         )
         result = _grep("def foo", path=str(sample_dir))
         assert "a.py:1:" in result and "def foo" in result
+
+    def test_python_fallback_timeout_isolated_from_agent(self, tmp_path, monkeypatch):
+        (tmp_path / "catastrophic.txt").write_text(
+            ("a" * 5_000) + "!\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            "codenib.agent.tools.defaults.shutil.which", lambda _command: None
+        )
+        monkeypatch.setattr("codenib.agent.tools.defaults._GREP_TIMEOUT_SECONDS", 0.25)
+
+        started = time.monotonic()
+        result = _grep(r"(a+)+$", path=str(tmp_path))
+
+        assert result == "Error: grep timed out after 0.25s"
+        assert time.monotonic() - started < 2
 
 
 # ---------------------------------------------------------------------------

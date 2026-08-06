@@ -57,6 +57,7 @@ convention), #153 (1-based boundary).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import select
@@ -64,6 +65,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -82,8 +84,13 @@ _READ_MAX_LINE_BYTES: int = 8_000
 _READ_MAX_OUTPUT_CHARS: int = 16_000
 _READ_CHUNK_BYTES: int = 64 * 1024
 _MAX_RESULTS_DEFAULT: int = 50
+_MAX_RESULTS_LIMIT: int = 1_000
 _GLOB_MAX_RESULTS: int = 100  # mirrors the reference Glob's documented cap
 _GREP_TIMEOUT_SECONDS: int = 30
+_GREP_MAX_PATTERN_CHARS: int = 32_000
+_GREP_MAX_LINE_BYTES: int = 8_000
+_GREP_MAX_OUTPUT_CHARS: int = 16_000
+_GREP_MAX_MULTILINE_FILE_BYTES: int = 8 * 1024 * 1024
 _BASH_TIMEOUT_MS_DEFAULT: int = 30_000  # 30s, expressed in ms (reference units)
 _BASH_TIMEOUT_MS_MAX: int = 600_000
 _BASH_MAX_COMMAND_CHARS: int = 32_000
@@ -373,6 +380,10 @@ def _grep_python(
     ``head_limit`` caps the number of emitted rows (matches in content mode,
     files in the other two). A no-match message is returned when nothing hits.
     """
+    if not isinstance(pattern, str) or not pattern:
+        return "Error: pattern must be a non-empty string"
+    if len(pattern) > _GREP_MAX_PATTERN_CHARS:
+        return f"Error: pattern must not exceed {_GREP_MAX_PATTERN_CHARS} characters"
     if output_mode not in _GREP_OUTPUT_MODES:
         return (
             f"Error: invalid output_mode {output_mode!r}; "
@@ -382,6 +393,8 @@ def _grep_python(
         head_limit = max(1, int(head_limit))
     except (TypeError, ValueError):
         return "Error: head_limit must be an integer"
+    if head_limit > _MAX_RESULTS_LIMIT:
+        return f"Error: head_limit must not exceed {_MAX_RESULTS_LIMIT} rows"
 
     flags = 0 if case_insensitive is False else re.IGNORECASE
     if multiline:
@@ -394,10 +407,13 @@ def _grep_python(
     root = Path(path)
     if not root.exists():
         return f"Error: path {path!r} does not exist"
+    if not root.is_dir() and not root.is_file():
+        return f"Error: path {path!r} is not a regular file or directory"
 
     content_rows: List[str] = []  # "{rel}:{lineno}: {line}"
     file_match_count: "Dict[str, int]" = {}  # rel -> match count, insertion order
     capped = False
+    skipped_multiline_files = 0
 
     def _rel(file_path: Path) -> str:
         if root.is_dir():
@@ -409,25 +425,44 @@ def _grep_python(
 
     def _scan(file_path: Path) -> bool:
         """Record matches for *file_path*; return True if the head cap was hit."""
+        nonlocal skipped_multiline_files
         rel = _rel(file_path)
         try:
             if multiline:
+                file_stat = file_path.stat()
+                if not stat.S_ISREG(file_stat.st_mode):
+                    return False
+                if file_stat.st_size > _GREP_MAX_MULTILINE_FILE_BYTES:
+                    skipped_multiline_files += 1
+                    return False
                 text = file_path.read_text(encoding="utf-8", errors="replace")
                 for m in compiled.finditer(text):
                     lineno = text.count("\n", 0, m.start()) + 1
                     snippet = text[m.start() : m.end()].splitlines()[0]
+                    if len(snippet) > _GREP_MAX_LINE_BYTES:
+                        snippet = (
+                            snippet[:_GREP_MAX_LINE_BYTES] + " ... [line truncated]"
+                        )
                     file_match_count[rel] = file_match_count.get(rel, 0) + 1
                     if output_mode == "content":
                         content_rows.append(f"{rel}:{lineno}: {snippet}")
                         if len(content_rows) >= head_limit:
                             return True
             else:
-                with open(file_path, encoding="utf-8", errors="replace") as fh:
-                    for lineno, line in enumerate(fh, start=1):
+                with open(file_path, "rb") as fh:
+                    if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+                        return False
+                    for lineno, (raw, line_truncated) in enumerate(
+                        _bounded_binary_lines(fh), start=1
+                    ):
+                        line = raw.decode("utf-8", errors="replace")
                         if compiled.search(line):
                             file_match_count[rel] = file_match_count.get(rel, 0) + 1
                             if output_mode == "content":
-                                content_rows.append(f"{rel}:{lineno}: {line.rstrip()}")
+                                content = line.rstrip()
+                                if line_truncated:
+                                    content += " ... [line truncated]"
+                                content_rows.append(f"{rel}:{lineno}: {content}")
                                 if len(content_rows) >= head_limit:
                                     return True
         except OSError:
@@ -439,7 +474,7 @@ def _grep_python(
         return False
 
     if root.is_file():
-        _scan(root)
+        capped = _scan(root)
     else:
         try:
             for file_path in _grep_candidate_files(root, glob, type):
@@ -450,7 +485,13 @@ def _grep_python(
             return f"Error: invalid glob {glob!r}: {exc}"
 
     if not file_match_count:
-        return "No matches found."
+        text = "No matches found."
+        if skipped_multiline_files:
+            text += (
+                f" ({skipped_multiline_files} file(s) exceeded the "
+                f"{_GREP_MAX_MULTILINE_FILE_BYTES}-byte multiline fallback limit.)"
+            )
+        return text
 
     if output_mode == "content":
         rows = content_rows
@@ -463,7 +504,16 @@ def _grep_python(
         cap_unit = "files"
 
     text = "\n".join(rows)
-    if capped:
+    output_truncated = False
+    if len(text) > _GREP_MAX_OUTPUT_CHARS:
+        text = text[:_GREP_MAX_OUTPUT_CHARS]
+        output_truncated = True
+    if output_truncated:
+        text += (
+            f"\n... ({_GREP_MAX_OUTPUT_CHARS}-character output limit reached; "
+            "narrow with `glob`/`type` or a more specific `pattern`)"
+        )
+    elif capped:
         text += (
             f"\n... (head_limit={head_limit} {cap_unit} reached; "
             "narrow with `glob`/`type` or a more specific `pattern`)"
@@ -479,6 +529,69 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
     except (AttributeError, OSError):
         if proc.poll() is None:
             proc.kill()
+
+
+def _grep_python_isolated(
+    pattern: str,
+    path: str,
+    glob: Optional[str],
+    type_: Optional[str],
+    output_mode: str,
+    case_insensitive: bool,
+    multiline: bool,
+    head_limit: int,
+) -> str:
+    """Run the backtracking Python regex fallback outside the agent process."""
+
+    payload = json.dumps(
+        {
+            "pattern": pattern,
+            "path": path,
+            "glob": glob,
+            "type": type_,
+            "output_mode": output_mode,
+            "case_insensitive": case_insensitive,
+            "multiline": multiline,
+            "head_limit": head_limit,
+        }
+    ).encode("utf-8")
+    command = [sys.executable, "-m", "codenib.agent.tools.grep_worker"]
+    with (
+        tempfile.TemporaryFile() as stdout_file,
+        tempfile.TemporaryFile() as stderr_file,
+    ):
+        try:
+            proc = subprocess.Popen(  # noqa: S603 - fixed interpreter and module
+                command,
+                stdin=subprocess.PIPE,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                start_new_session=True,
+            )
+        except (OSError, ValueError) as exc:
+            return f"Error executing Python grep fallback: {exc}"
+        try:
+            proc.communicate(input=payload, timeout=_GREP_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            _terminate_process_group(proc)
+            proc.communicate()
+            return f"Error: grep timed out after {_GREP_TIMEOUT_SECONDS}s"
+
+        stdout_file.seek(0)
+        output = stdout_file.read(_GREP_MAX_OUTPUT_CHARS + 1)
+        stderr_file.seek(0)
+        stderr = stderr_file.read(_GREP_MAX_OUTPUT_CHARS).decode(
+            "utf-8", errors="replace"
+        )
+
+    if proc.returncode != 0:
+        detail = stderr.strip() or f"worker exited with status {proc.returncode}"
+        return f"Error executing Python grep fallback: {detail}"
+    truncated = len(output) > _GREP_MAX_OUTPUT_CHARS
+    text = output[:_GREP_MAX_OUTPUT_CHARS].decode("utf-8", errors="replace")
+    if truncated:
+        text += "\n... (grep output truncated)"
+    return text
 
 
 def _grep_ripgrep(
@@ -500,6 +613,8 @@ def _grep_ripgrep(
         "--hidden",
         "--no-ignore",
         "--text",
+        "--max-columns",
+        str(_GREP_MAX_LINE_BYTES),
     ]
     if case_insensitive is not False:
         command.append("--ignore-case")
@@ -620,7 +735,16 @@ def _grep_ripgrep(
     if not rows:
         return "No matches found."
     text = "\n".join(rows)
-    if capped:
+    output_truncated = False
+    if len(text) > _GREP_MAX_OUTPUT_CHARS:
+        text = text[:_GREP_MAX_OUTPUT_CHARS]
+        output_truncated = True
+    if output_truncated:
+        text += (
+            f"\n... ({_GREP_MAX_OUTPUT_CHARS}-character output limit reached; "
+            "narrow with `glob`/`type` or a more specific `pattern`)"
+        )
+    elif capped:
         cap_unit = "matches" if output_mode == "content" else "files"
         text += (
             f"\n... (head_limit={head_limit} {cap_unit} reached; "
@@ -640,6 +764,10 @@ def _grep(
     head_limit: int = _MAX_RESULTS_DEFAULT,
 ) -> str:
     """Regex content search with a bounded ripgrep backend when available."""
+    if not isinstance(pattern, str) or not pattern:
+        return "Error: pattern must be a non-empty string"
+    if len(pattern) > _GREP_MAX_PATTERN_CHARS:
+        return f"Error: pattern must not exceed {_GREP_MAX_PATTERN_CHARS} characters"
     if output_mode not in _GREP_OUTPUT_MODES:
         return (
             f"Error: invalid output_mode {output_mode!r}; "
@@ -649,6 +777,8 @@ def _grep(
         head_limit = max(1, int(head_limit))
     except (TypeError, ValueError):
         return "Error: head_limit must be an integer"
+    if head_limit > _MAX_RESULTS_LIMIT:
+        return f"Error: head_limit must not exceed {_MAX_RESULTS_LIMIT} rows"
 
     root = Path(path)
     if not root.exists():
@@ -669,15 +799,15 @@ def _grep(
             multiline,
             head_limit,
         )
-    return _grep_python(
+    return _grep_python_isolated(
         pattern,
-        path=path,
-        glob=glob,
-        type=type,
-        output_mode=output_mode,
-        case_insensitive=case_insensitive,
-        multiline=multiline,
-        head_limit=head_limit,
+        path,
+        glob,
+        type,
+        output_mode,
+        case_insensitive,
+        multiline,
+        head_limit,
     )
 
 
@@ -699,7 +829,7 @@ mainstream Claude Code `Grep` tool. Searches use ripgrep when installed, with a
 | `output_mode` | str | `content` | `content` / `files_with_matches` / `count`. |
 | `case_insensitive` | bool | true | Case-insensitive matching (reference `-i`). |
 | `multiline` | bool | false | Let `.`/`^`/`$` span lines (reference `multiline`). |
-| `head_limit` | int | 50 | Cap on rows (matches, or files in the other modes). |
+| `head_limit` | int | 50 | Cap on rows (hard maximum 1,000). |
 
 ## Output
 
@@ -788,7 +918,8 @@ def _build_grep_tool() -> ToolSpec:
                 default=_MAX_RESULTS_DEFAULT,
                 description=(
                     "Cap on rows returned (matches in content mode, files "
-                    f"otherwise; default {_MAX_RESULTS_DEFAULT})."
+                    f"otherwise; 1–{_MAX_RESULTS_LIMIT}, default "
+                    f"{_MAX_RESULTS_DEFAULT})."
                 ),
             ),
         ],
