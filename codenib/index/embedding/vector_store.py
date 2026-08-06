@@ -27,6 +27,7 @@ from ...provider_routes import normalize_provider
 from ...types import NodeInfo
 from .artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    require_complete_vector_view,
     validate_vector_config_artifact,
     validate_vector_level_artifacts,
     vector_level_artifact_records,
@@ -1132,6 +1133,7 @@ class CodeVectorStore:
             raise FileNotFoundError(f"Vector store not found at {load_path}")
 
         logger.info(f"Loading vector store from {load_path}")
+        require_complete_vector_view(load_path)
 
         model_suffix = self.embedding_model.replace("/", "__")
 

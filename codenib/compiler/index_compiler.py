@@ -27,7 +27,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from filelock import FileLock
 
@@ -358,6 +358,11 @@ class IndexCompiler:
                 repo_path,
                 output_dir,
                 last_commit=incremental_from,
+                previous_artifact_config=(
+                    copy.deepcopy(previous_entry.config)
+                    if incremental_from and previous_entry is not None
+                    else None
+                ),
             )
             if (
                 idx_type == "symbol_graph"
@@ -497,6 +502,7 @@ class IndexCompiler:
         output_dir: str,
         *,
         last_commit: Optional[str] = None,
+        previous_artifact_config: Optional[Dict[str, Any]] = None,
     ) -> BuildResult:
         """Build a single index, catching errors.
 
@@ -507,11 +513,16 @@ class IndexCompiler:
         start = time.monotonic()
         try:
             if last_commit:
+                update_kwargs: Dict[str, Any] = {
+                    "repo_path": repo_path,
+                    "output_dir": output_dir,
+                    "last_commit": last_commit,
+                }
+                if previous_artifact_config is not None:
+                    update_kwargs["previous_artifact_config"] = previous_artifact_config
                 status = builder.incremental_update(
                     scope="current_repo",
-                    repo_path=repo_path,
-                    output_dir=output_dir,
-                    last_commit=last_commit,
+                    **update_kwargs,
                 )
             else:
                 status = builder.build(

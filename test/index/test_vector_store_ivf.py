@@ -24,6 +24,7 @@ import pytest
 
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    VECTOR_VIEW_UPDATE_MARKER,
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
@@ -242,6 +243,18 @@ def test_failed_save_blocks_load_until_successful_retry(tmp_path):
     assert not marker.exists()
     loaded.load()
     assert len(loaded.l2_documents) == 2
+
+
+def test_load_rejects_incomplete_multi_artifact_update(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+    (path / VECTOR_VIEW_UPDATE_MARKER).write_text("{}", encoding="utf-8")
+
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    with pytest.raises(ValueError, match="incomplete update marker"):
+        loaded.load()
 
 
 def test_load_prefers_portable_json_documents(tmp_path):

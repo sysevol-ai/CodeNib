@@ -28,6 +28,7 @@ from ..compiler.manifest import MANIFEST_FILENAME, RepoManifest
 from ..compiler.snapshot_store import normalize_repo
 from ..index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    require_complete_vector_view,
     validate_vector_config_artifact,
     validate_vector_generation_artifacts,
     vector_config_artifact_record,
@@ -277,6 +278,7 @@ def _normalize_vector_view(
 ) -> dict[str, Any]:
     if not target.is_dir():
         raise ValueError("portable vector view must be a directory")
+    require_complete_vector_view(target)
     interrupted = sorted(target.glob(".config_*.json.save-in-progress"))
     if interrupted:
         raise ValueError(
@@ -440,6 +442,7 @@ def stage_context_artifact(
                 route = resolve_embedding_artifact_route(entry.config)
             source = _view_source(entry.path, manifest_root, view=view)
             if view == "vector":
+                require_complete_vector_view(source)
                 expected_config = entry.config.get("persistence_config_fingerprint")
                 if expected_config is not None:
                     validate_vector_config_artifact(

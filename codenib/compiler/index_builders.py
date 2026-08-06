@@ -185,8 +185,8 @@ class VectorIndexBuilder:
 
         route = self._embedding_route()
         return {
-            # v5 binds each manifest entry to one committed vector config.
-            "builder_schema": 5,
+            # v6 commits vector, chunk, cache, and incremental state together.
+            "builder_schema": 6,
             "embedding_model": route.model,
             "embedding_provider": route.provider,
             "embedding_dimension": self.embedding_dimension,
@@ -270,6 +270,18 @@ class VectorIndexBuilder:
         return vector_config_artifact_record(output_dir, model_suffix)
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus:
+        from ..index.embedding.artifact_integrity import (
+            begin_vector_view_update,
+            finish_vector_view_update,
+        )
+
+        output_dir: str = kwargs["output_dir"]
+        begin_vector_view_update(output_dir)
+        status = self._build_once(scope, **kwargs)
+        finish_vector_view_update(output_dir)
+        return status
+
+    def _build_once(self, scope: str, **kwargs: Any) -> IndexStatus:
         repo_path: str = kwargs["repo_path"]
         output_dir: str = kwargs["output_dir"]
 
@@ -382,7 +394,7 @@ class VectorIndexBuilder:
             last_commit=head_commit,
             chunk_store_path="chunk_store.pkl",
             embeddings_cache_path="embeddings_cache.pkl",
-            index_path=output_dir,
+            index_path=str(Path(output_dir).expanduser().resolve()),
             build_levels=list(self.build_levels),
         )
         inc_state.save(Path(output_dir))
@@ -411,7 +423,9 @@ class VectorIndexBuilder:
         except Exception as exc:  # noqa: BLE001 - failed deltas must not publish
             logger.warning("vector: incremental update failed (%s); rebuilding", exc)
             build_kwargs = {
-                key: value for key, value in kwargs.items() if key != "last_commit"
+                key: value
+                for key, value in kwargs.items()
+                if key not in {"last_commit", "previous_artifact_config"}
             }
             status = self.build(scope, **build_kwargs)
             status.metadata["update_mode"] = "full_rebuild"
@@ -436,8 +450,8 @@ class VectorIndexBuilder:
         and ``EmbeddingsCache`` from *output_dir*, runs the incremental update
         pipeline, then saves all state back to disk.
 
-        Missing state falls back directly to a full ``build()``. Other failures
-        propagate to :meth:`incremental_update`, which rebuilds conservatively.
+        Missing or incompatible state propagates to :meth:`incremental_update`,
+        which rebuilds conservatively exactly once.
         """
         from pathlib import Path
 
@@ -455,41 +469,69 @@ class VectorIndexBuilder:
         output_dir: str = kwargs["output_dir"]
         last_commit: str = kwargs.get("last_commit", "")
 
-        # Load persisted state — auto-resolve last_commit if not provided
+        from ..index.embedding.artifact_integrity import (
+            begin_vector_view_update,
+            finish_vector_view_update,
+            require_complete_vector_view,
+        )
+
+        require_complete_vector_view(output_dir)
         inc_state = IncrementalState.load(Path(output_dir))
-        if not last_commit and inc_state is not None:
+        if inc_state is None:
+            raise ValueError("incremental state is missing")
+        if not last_commit:
             last_commit = inc_state.last_commit
+        if not last_commit or inc_state.last_commit != last_commit:
+            raise ValueError(
+                "incremental state commit does not match the manifest start commit"
+            )
+        if inc_state.build_levels != list(self.build_levels):
+            raise ValueError("incremental state levels do not match the vector view")
+        if inc_state.chunk_store_path != "chunk_store.pkl":
+            raise ValueError("incremental state has a non-canonical chunk store path")
+        if inc_state.embeddings_cache_path != "embeddings_cache.pkl":
+            raise ValueError(
+                "incremental state has a non-canonical embeddings cache path"
+            )
+        expected_index_path = Path(output_dir).expanduser().resolve()
+        if (
+            not inc_state.index_path
+            or Path(inc_state.index_path).expanduser().resolve() != expected_index_path
+        ):
+            raise ValueError("incremental state points to a different vector view")
 
         chunk_store_path = Path(output_dir) / "chunk_store.pkl"
         embeddings_cache_path = Path(output_dir) / "embeddings_cache.pkl"
 
-        # Check both JSON and pickle formats (JSON+NPZ is the new default)
+        # Schema-v6 compiler state always uses the canonical JSON/NPZ forms.
+        # Legacy pickle-only state is rebuilt through the builder-schema gate.
         chunk_store_json = chunk_store_path.with_suffix(".json")
         emb_cache_json = embeddings_cache_path.with_suffix(".json")
         emb_cache_npz = embeddings_cache_path.with_suffix(".npz")
 
-        has_chunk_store = chunk_store_json.exists() or chunk_store_path.exists()
-        has_emb_cache = (
-            emb_cache_json.exists() and emb_cache_npz.exists()
-        ) or embeddings_cache_path.exists()
+        has_chunk_store = chunk_store_json.is_file()
+        has_emb_cache = emb_cache_json.is_file() and emb_cache_npz.is_file()
 
-        # Fall back to full build when incremental state is missing
         if not has_chunk_store or not has_emb_cache:
-            logger.info(
-                "Incremental state not found in %s; falling back to full build.",
-                output_dir,
-            )
-            return self.build(scope, **kwargs)
+            raise ValueError("incremental chunk or embedding state is missing")
 
         # Load existing artifacts
         artifact_identity = self.artifact_identity()
+        previous_artifact = kwargs.get("previous_artifact_config")
+        if previous_artifact is not None and not isinstance(previous_artifact, dict):
+            raise ValueError("previous vector artifact config must be a mapping")
+        load_identity = (
+            dict(previous_artifact)
+            if previous_artifact is not None
+            else artifact_identity
+        )
         vector_store = CodeVectorStore(
             embedding_model=artifact_identity["embedding_model"],
             embedding_provider=artifact_identity["embedding_provider"],
             dimension=self.embedding_dimension,
             index_metric=self.index_metric,
             store_path=output_dir,
-            artifact_metadata=artifact_identity,
+            artifact_metadata=load_identity,
             **self._embedding_call_kwargs(),
         )
         self._validate_vector_dimension(vector_store)
@@ -533,22 +575,26 @@ class VectorIndexBuilder:
             embeddings_cache=embeddings_cache,
             last_commit=last_commit,
         )
+        if not result.new_commit:
+            raise ValueError("incremental update did not resolve a target commit")
 
         # Persist updated state
+        begin_vector_view_update(output_dir)
         vector_store.save(output_dir)
         chunk_store.save(chunk_store_path)
         embeddings_cache.save(embeddings_cache_path)
 
-        # Update incremental state with the new commit
+        # Update incremental state with the new commit.
         new_state = IncrementalState(
             last_commit=result.new_commit,
             chunk_store_path="chunk_store.pkl",
             embeddings_cache_path="embeddings_cache.pkl",
-            index_path=output_dir,
+            index_path=str(expected_index_path),
             build_levels=list(self.build_levels),
         )
         new_state.save(Path(output_dir))
         persistence_config = self._persistence_config_fingerprint(output_dir)
+        finish_vector_view_update(output_dir)
 
         doc_count = {}
         if vector_store.l0_documents:

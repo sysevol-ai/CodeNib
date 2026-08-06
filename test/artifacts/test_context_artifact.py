@@ -22,6 +22,7 @@ from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprin
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    VECTOR_VIEW_UPDATE_MARKER,
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
@@ -385,6 +386,21 @@ def test_context_artifact_rejects_interrupted_vector_save(tmp_path: Path) -> Non
     (vector / ".config_test__model.json.save-in-progress").write_text("{}")
 
     with pytest.raises(ValueError, match="interrupted save marker"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            tmp_path / "publish" / "context",
+            repository="example/vector-project",
+        )
+
+
+def test_context_artifact_rejects_incomplete_vector_view_update(
+    tmp_path: Path,
+) -> None:
+    repo, manifest_path, vector = _fixture_vector_manifest(tmp_path)
+    (vector / VECTOR_VIEW_UPDATE_MARKER).write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="incomplete update marker"):
         stage_context_artifact(
             repo,
             manifest_path,

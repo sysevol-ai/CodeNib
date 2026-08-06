@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
 VECTOR_PERSISTENCE_SCHEMA = 1
+VECTOR_VIEW_UPDATE_MARKER = ".vector-view.update-in-progress"
 _DIGEST_BYTES = 1024 * 1024
+_UPDATE_MARKER_PAYLOAD = b'{"schema":"codenib.vector-view-update.v1"}\n'
 
 
 def _file_record(path: Path) -> dict[str, Any]:
@@ -56,6 +59,48 @@ def vector_config_artifact_record(
     """Fingerprint the top-level record that commits all vector levels."""
 
     return _file_record(Path(root) / f"config_{model_suffix}.json")
+
+
+def require_complete_vector_view(root: str | Path) -> None:
+    """Reject a vector view whose multi-artifact update did not finish."""
+
+    marker = Path(root) / VECTOR_VIEW_UPDATE_MARKER
+    if marker.exists() or marker.is_symlink():
+        raise ValueError(f"vector view has an incomplete update marker: {marker}")
+
+
+def begin_vector_view_update(root: str | Path) -> Path:
+    """Publish a crash marker before replacing any vector-view component."""
+
+    directory = Path(root)
+    directory.mkdir(parents=True, exist_ok=True)
+    marker = directory / VECTOR_VIEW_UPDATE_MARKER
+    if marker.is_symlink():
+        raise ValueError(f"refusing symlinked vector update marker: {marker}")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(marker, flags, 0o600)
+    try:
+        remaining = memoryview(_UPDATE_MARKER_PAYLOAD)
+        while remaining:
+            written = os.write(descriptor, remaining)
+            if written <= 0:
+                raise OSError("could not persist vector view update marker")
+            remaining = remaining[written:]
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    return marker
+
+
+def finish_vector_view_update(root: str | Path) -> None:
+    """Remove the marker only after every vector-view component is written."""
+
+    marker = Path(root) / VECTOR_VIEW_UPDATE_MARKER
+    if not marker.exists() and not marker.is_symlink():
+        raise ValueError(f"vector view update marker disappeared: {marker}")
+    marker.unlink()
 
 
 def validate_vector_config_artifact(
@@ -184,6 +229,10 @@ def validate_vector_generation_artifacts(
 
 __all__ = [
     "VECTOR_PERSISTENCE_SCHEMA",
+    "VECTOR_VIEW_UPDATE_MARKER",
+    "begin_vector_view_update",
+    "finish_vector_view_update",
+    "require_complete_vector_view",
     "validate_vector_config_artifact",
     "validate_vector_generation_artifacts",
     "validate_vector_level_artifacts",

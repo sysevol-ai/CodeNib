@@ -39,7 +39,9 @@ from codenib.compiler.resources import (
     IndexStatus,
     ResourceResolver,
 )
+from codenib.index.embedding.artifact_integrity import VECTOR_VIEW_UPDATE_MARKER
 from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
+from codenib.index.incremental import IncrementalState
 from codenib.ls_router import GraphBuildResult
 from codenib.repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
@@ -234,6 +236,7 @@ class TestVectorIndexBuilder:
         mock_build_fn.assert_called_once()
         assert mock_build_fn.call_args.kwargs["force_rebuild"] is True
         assert mock_build_fn.call_args.kwargs["strict_chunking"] is True
+        assert not (output_path / VECTOR_VIEW_UPDATE_MARKER).exists()
 
     def test_incremental_failure_falls_back_to_full_build(self, tmp_path):
         builder = VectorIndexBuilder(
@@ -274,6 +277,159 @@ class TestVectorIndexBuilder:
         assert result.metadata["update_mode"] == "full_rebuild"
         assert result.metadata["incremental_fallback_reason"] == "ValueError"
 
+    def test_missing_incremental_state_attempts_one_rebuild(self, tmp_path):
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+
+        with patch.object(
+            builder,
+            "build",
+            side_effect=RuntimeError("rebuild failed"),
+        ) as mock_build:
+            with pytest.raises(RuntimeError, match="rebuild failed"):
+                builder.incremental_update(
+                    scope="current_repo",
+                    repo_path=str(tmp_path),
+                    output_dir=str(tmp_path / "vector"),
+                    last_commit="a" * 40,
+                )
+
+        mock_build.assert_called_once()
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("last_commit", "b" * 40),
+            ("build_levels", ["l2"]),
+            ("chunk_store_path", "../chunk_store.pkl"),
+            ("embeddings_cache_path", "../embeddings_cache.pkl"),
+            ("index_path", "/different/vector/view"),
+        ],
+    )
+    def test_incompatible_incremental_state_forces_rebuild(
+        self,
+        tmp_path,
+        field,
+        value,
+    ):
+        output_path = tmp_path / "vector"
+        state = IncrementalState(
+            last_commit="a" * 40,
+            chunk_store_path="chunk_store.pkl",
+            embeddings_cache_path="embeddings_cache.pkl",
+            index_path=str(output_path.resolve()),
+            build_levels=["l0", "l2"],
+        )
+        setattr(state, field, value)
+        state.save(output_path)
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        rebuilt = IndexStatus(
+            index_type="vector",
+            state=IndexState.FRESH,
+            path=str(output_path),
+            metadata={},
+        )
+
+        with patch.object(builder, "build", return_value=rebuilt) as mock_build:
+            result = builder.incremental_update(
+                scope="current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(output_path),
+                last_commit="a" * 40,
+            )
+
+        mock_build.assert_called_once()
+        assert result.metadata["update_mode"] == "full_rebuild"
+
+    def test_incremental_load_uses_previous_manifest_generation(self, tmp_path):
+        output_path = tmp_path / "vector"
+        IncrementalState(
+            last_commit="a" * 40,
+            chunk_store_path="chunk_store.pkl",
+            embeddings_cache_path="embeddings_cache.pkl",
+            index_path=str(output_path.resolve()),
+            build_levels=["l0", "l2"],
+        ).save(output_path)
+        (output_path / "chunk_store.json").write_text("{}", encoding="utf-8")
+        (output_path / "embeddings_cache.json").write_text("[]", encoding="utf-8")
+        (output_path / "embeddings_cache.npz").write_bytes(b"placeholder")
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        previous = {
+            **builder.artifact_identity(),
+            "persistence_config_fingerprint": {
+                "file": "config_test-model.json",
+                "size": 1,
+                "sha256": "0" * 64,
+            },
+        }
+        vector_store = MagicMock(dimension=384)
+        vector_store.load.side_effect = RuntimeError("stop after generation check")
+
+        with patch(
+            "codenib.index.embedding.vector_store.CodeVectorStore",
+            return_value=vector_store,
+        ) as store_type:
+            with pytest.raises(RuntimeError, match="generation check"):
+                builder._incremental_update_once(
+                    scope="current_repo",
+                    repo_path=str(tmp_path),
+                    output_dir=str(output_path),
+                    last_commit="a" * 40,
+                    previous_artifact_config=previous,
+                )
+
+        assert store_type.call_args.kwargs["artifact_metadata"] == previous
+
+    @pytest.mark.parametrize("missing", ["chunk_json", "embedding_pair"])
+    def test_pickle_only_incremental_state_forces_rebuild(self, tmp_path, missing):
+        output_path = tmp_path / "vector"
+        IncrementalState(
+            last_commit="a" * 40,
+            chunk_store_path="chunk_store.pkl",
+            embeddings_cache_path="embeddings_cache.pkl",
+            index_path=str(output_path.resolve()),
+            build_levels=["l0", "l2"],
+        ).save(output_path)
+        (output_path / "chunk_store.pkl").write_bytes(b"legacy")
+        (output_path / "embeddings_cache.pkl").write_bytes(b"legacy")
+        if missing != "chunk_json":
+            (output_path / "chunk_store.json").write_text("{}", encoding="utf-8")
+        if missing != "embedding_pair":
+            (output_path / "embeddings_cache.json").write_text(
+                "[]",
+                encoding="utf-8",
+            )
+            (output_path / "embeddings_cache.npz").write_bytes(b"placeholder")
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        rebuilt = IndexStatus(
+            index_type="vector",
+            state=IndexState.FRESH,
+            path=str(output_path),
+            metadata={},
+        )
+
+        with patch.object(builder, "build", return_value=rebuilt) as mock_build:
+            result = builder.incremental_update(
+                scope="current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(output_path),
+                last_commit="a" * 40,
+            )
+
+        mock_build.assert_called_once()
+        assert result.metadata["update_mode"] == "full_rebuild"
+
     def test_artifact_identity_is_shared_by_full_and_incremental_statuses(self):
         builder = VectorIndexBuilder(
             embedding_model="test-model",
@@ -284,7 +440,7 @@ class TestVectorIndexBuilder:
 
         identity = builder.artifact_identity()
         assert identity == {
-            "builder_schema": 5,
+            "builder_schema": 6,
             "embedding_model": "test-model",
             "embedding_provider": "huggingface",
             "embedding_dimension": 384,
@@ -348,12 +504,14 @@ class TestVectorIndexBuilder:
             embedding_dimension=768,
         )
 
+        output_path = tmp_path / "vector"
         with pytest.raises(ValueError, match="returned dimension 1024, expected 768"):
             builder.build(
                 scope="current_repo",
                 repo_path="/fake/repo",
-                output_dir=str(tmp_path / "vector"),
+                output_dir=str(output_path),
             )
+        assert (output_path / VECTOR_VIEW_UPDATE_MARKER).is_file()
 
     @patch("codenib.index.embedding.builders.build_hierarchical_vector_store")
     def test_remote_runtime_secret_is_not_persisted(self, mock_build_fn, tmp_path):
@@ -1417,6 +1575,46 @@ class TestUpdateRepo:
 
         compiler.update_repo(str(tmp_path))
         assert calls[-2] == ("incremental_update", first)
+
+    def test_incremental_builder_receives_previous_manifest_config(self, tmp_path):
+        _git_repo(tmp_path)
+        observed = []
+
+        class ManifestAwareBuilder:
+            def artifact_identity(self):
+                return {"builder_schema": 7}
+
+            def _status(self, scope, output_dir):
+                return IndexStatus(
+                    index_type="rec",
+                    state=IndexState.FRESH,
+                    scope=scope,
+                    path=output_dir,
+                    metadata={
+                        **self.artifact_identity(),
+                        "generation": "recorded",
+                    },
+                )
+
+            def build(self, scope: str, **kwargs) -> IndexStatus:
+                return self._status(scope, kwargs["output_dir"])
+
+            def incremental_update(self, scope: str, **kwargs) -> IndexStatus:
+                observed.append(kwargs["previous_artifact_config"])
+                return self._status(scope, kwargs["output_dir"])
+
+        registry = IndexBuilderRegistry()
+        registry.register("rec", ManifestAwareBuilder())
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(index_types=["rec"], languages=["python"]),
+        )
+        first_manifest = compiler.compile_repo(str(tmp_path))
+        _commit(tmp_path, "b.py")
+
+        compiler.update_repo(str(tmp_path))
+
+        assert observed == [first_manifest.indexes["rec"].config]
 
     def test_incremental_graph_preserves_partial_language_coverage(self, tmp_path):
         first = _git_repo(tmp_path)
