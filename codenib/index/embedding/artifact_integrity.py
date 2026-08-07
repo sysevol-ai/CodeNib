@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -127,9 +128,64 @@ def validate_vector_level_artifacts(
     return paths["index"], paths["documents"]
 
 
+def validate_vector_generation_artifacts(
+    root: str | Path,
+    model_suffix: str,
+) -> dict[str, Any]:
+    """Validate every file committed by one modern top-level vector config."""
+
+    config_path = Path(root) / f"config_{model_suffix}.json"
+    if config_path.is_symlink() or not config_path.is_file():
+        raise ValueError(f"invalid vector generation config: {config_path}")
+    with config_path.open(encoding="utf-8") as handle:
+        config = json.load(handle)
+    if not isinstance(config, dict):
+        raise ValueError(f"vector generation config must be an object: {config_path}")
+
+    persistence_schema = config.get("persistence_schema")
+    committed_levels = config.get("level_artifacts")
+    if persistence_schema is None and committed_levels is None:
+        return config
+    if persistence_schema != VECTOR_PERSISTENCE_SCHEMA:
+        raise ValueError(
+            "vector generation has unsupported persistence schema: "
+            f"{persistence_schema!r}"
+        )
+    if not isinstance(committed_levels, Mapping) or not set(committed_levels) <= {
+        "l0",
+        "l2",
+    }:
+        raise ValueError("vector generation has invalid committed levels")
+
+    for level in ("l0", "l2"):
+        count = config.get(f"{level}_documents")
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            raise ValueError(
+                f"vector generation has invalid {level} document count: {count!r}"
+            )
+        artifacts = committed_levels.get(level)
+        if count == 0:
+            if artifacts is not None:
+                raise ValueError(
+                    f"vector generation commits artifacts for empty {level} level"
+                )
+            continue
+        if artifacts is None:
+            raise ValueError(
+                f"vector generation is missing committed artifacts for {level}"
+            )
+        validate_vector_level_artifacts(
+            Path(root) / level,
+            model_suffix,
+            artifacts,
+        )
+    return config
+
+
 __all__ = [
     "VECTOR_PERSISTENCE_SCHEMA",
     "validate_vector_config_artifact",
+    "validate_vector_generation_artifacts",
     "validate_vector_level_artifacts",
     "vector_config_artifact_record",
     "vector_level_artifact_records",

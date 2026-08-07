@@ -25,6 +25,7 @@ from ..compiler.snapshot_store import normalize_repo
 from ..index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
     validate_vector_config_artifact,
+    validate_vector_generation_artifacts,
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
@@ -279,6 +280,11 @@ def _normalize_vector_view(
             f"{interrupted[0].name}"
         )
 
+    model_suffix = embedding_model.replace("/", "__")
+    # Validate the source generation before replacing its trusted local pickle
+    # with portable JSON. Recomputing records first would bless torn level files.
+    validate_vector_generation_artifacts(target, model_suffix)
+
     # Query serving does not need the mutable state used to build the next
     # commit. Excluding it keeps the downloadable artifact smaller and avoids
     # publishing build-machine paths from incremental caches.
@@ -306,7 +312,6 @@ def _normalize_vector_view(
     for legacy in target.glob("l[02]/index_*.pkl"):
         legacy.unlink()
     _refresh_vector_persistence_records(target)
-    model_suffix = embedding_model.replace("/", "__")
     return {
         "artifact_scope": "query-serving",
         "portable_document_format": "codenib.vector-documents.v1",
