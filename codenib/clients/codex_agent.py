@@ -66,6 +66,8 @@ _DEFAULT_SYSTEM_PROMPT = (
     "output_schema (a `locations` array of symbol objects).\n"
 )
 
+_REASONING_EFFORTS = frozenset({"minimal", "low", "medium", "high"})
+
 
 class CodexLocAgent:
     """
@@ -85,6 +87,16 @@ class CodexLocAgent:
         sandbox: SandboxMode = SandboxMode.read_only,
         reasoning_effort: str = "medium",
     ):
+        if sandbox is not SandboxMode.read_only:
+            raise ValueError("CodexLocAgent sandbox must be SandboxMode.read_only")
+        if approval_mode is not ApprovalMode.deny_all:
+            raise ValueError(
+                "CodexLocAgent approval_mode must be ApprovalMode.deny_all"
+            )
+        if reasoning_effort not in _REASONING_EFFORTS:
+            supported = ", ".join(sorted(_REASONING_EFFORTS))
+            raise ValueError(f"reasoning_effort must be one of: {supported}")
+
         self.logger = get_logger(__name__)
         self.model = model
         self.system_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
