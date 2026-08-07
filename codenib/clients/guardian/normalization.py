@@ -98,6 +98,7 @@ def parse_candidates(text: str, *, explorer: str) -> tuple[LocalSpecification, .
                 confidence=_confidence(row.get("confidence")),
                 uncertainty=str(row.get("uncertainty", "")).strip(),
                 explorer=explorer,
+                memory_id=str(row.get("memory_id", "")).strip(),
             )
         )
     return tuple(values)
@@ -130,6 +131,8 @@ def parse_findings(
                 patch_assessment=str(row.get("patch_assessment", "")).strip(),
                 recommendation=str(row.get("recommendation", "")).strip(),
                 confidence=_confidence(row.get("confidence")),
+                condition=str(row.get("condition", "")).strip(),
+                memory_id=str(row.get("memory_id", "")).strip(),
             )
         )
     return str(value.get("summary", "")).strip(), tuple(findings)
