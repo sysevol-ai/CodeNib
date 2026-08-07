@@ -19,7 +19,7 @@ wires the real ones.
 
 Run::
 
-    python -m examples.agent_demo \\
+    python -m examples.serving_agent_demo \\
         --manifest /path/to/repo/.codenib_cache/repo_manifest.json \\
         --base-url http://localhost:4000/v1 \\
         --model codenib-qwen-coder \\
@@ -78,7 +78,7 @@ def retrieve_context(
     if ctx is None:
         from codenib.mcp.context import ServerContext
 
-        ctx = ServerContext.load(manifest_path)
+        ctx = ServerContext.load(manifest_path, views={"bm25"})
 
     bm25 = getattr(ctx, "bm25", None)
     if bm25 is None:

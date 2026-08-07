@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import types
 from pathlib import Path
 from types import SimpleNamespace
 from typing import List
@@ -96,6 +97,25 @@ def test_retrieve_context_passes_query_to_index() -> None:
 
 def test_retrieve_context_without_index_returns_empty() -> None:
     assert retrieve_context("q", ctx=_ctx([], has_bm25=False)) == ""
+
+
+def test_retrieve_context_loads_only_bm25_view(monkeypatch) -> None:
+    ctx = _ctx([_Hit("def f(): ...")])
+    seen = {}
+
+    class _ServerContext:
+        @staticmethod
+        def load(path, *, views=None):
+            seen["path"] = path
+            seen["views"] = views
+            return ctx
+
+    module = types.ModuleType("codenib.mcp.context")
+    module.ServerContext = _ServerContext
+    monkeypatch.setitem(sys.modules, "codenib.mcp.context", module)
+
+    assert "def f" in retrieve_context("q", manifest_path="/manifest.json")
+    assert seen == {"path": "/manifest.json", "views": {"bm25"}}
 
 
 # --- build_messages ----------------------------------------------------------

@@ -208,17 +208,37 @@ class CodeNibBackend(RetrievalBackend):
     ) -> "CodeNibBackend":
         """Load a prebuilt CodeNib index (``.codenib_cache/repo_manifest.json``).
 
-        A thin wrapper over ``ServerContext.load``: CodeNib's persisted index
-        already round-trips everything ``search(return_code_content=True)``
-        needs (``project_root`` via ``bm25_metadata.json``, and each document's
-        ``file``/``start_line``/``end_line``), so there is nothing to repair
-        here. The keyword arguments are spelled out rather than forwarded as
-        ``**kwargs`` so they keep their types into the constructor.
+        Only the selected runtime view is loaded; loading every manifest view
+        would needlessly initialize vector models and Zoekt for a BM25 serving
+        process. An explicit manifest is an opt-in to retrieval, so an absent,
+        stale, or failed selected view aborts startup instead of silently
+        degrading the process to copy-only drafting.
         """
         from codenib.mcp.context import ServerContext
 
+        if index not in {"bm25", "vector"}:
+            raise ValueError(f"unknown CodeNib index: {index!r}")
+
+        ctx = ServerContext.load(manifest_path, views={index})
+        if getattr(ctx, index, None) is None:
+            errors = getattr(ctx, "errors", {})
+            manifest = getattr(ctx, "manifest", None)
+            entry = getattr(manifest, "indexes", {}).get(index)
+            if index in errors:
+                detail = f"failed to load: {errors[index]}"
+            elif entry is None:
+                detail = "the manifest has no entry for that index"
+            elif not manifest.index_is_current(index):
+                detail = "the manifest entry is stale for the current source"
+            else:
+                detail = "the manifest entry did not produce a runtime view"
+            raise RuntimeError(
+                f"requested CodeNib retrieval index {index!r} is unavailable "
+                f"({detail}); rebuild the index before starting codenib-serve"
+            )
+
         return cls(
-            ServerContext.load(manifest_path),
+            ctx,
             tokenizer,
             index=index,
             top_k=top_k,

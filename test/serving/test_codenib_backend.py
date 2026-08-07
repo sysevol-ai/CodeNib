@@ -10,7 +10,10 @@ char-level tokenizer makes the suffix-alignment easy to assert exactly.
 
 from __future__ import annotations
 
+import sys
+import types
 import warnings
+from types import SimpleNamespace
 from typing import List
 
 import pytest
@@ -125,6 +128,82 @@ def test_unknown_index_raises() -> None:
     context = _CharTok().encode("def add(a, b): return ")
     with pytest.raises(ValueError, match="unknown CodeNib index"):
         backend.retrieve(context, k=3, max_tokens=8)
+
+
+@pytest.mark.parametrize("index", ["bm25", "vector"])
+def test_from_manifest_loads_only_selected_view(monkeypatch, index: str) -> None:
+    selected = _FakeBM25([]) if index == "bm25" else _FakeVector([])
+    ctx = SimpleNamespace(
+        manifest=SimpleNamespace(indexes={index: object()}),
+        errors={},
+        bm25=selected if index == "bm25" else None,
+        vector=selected if index == "vector" else None,
+    )
+    seen = {}
+
+    class _ServerContext:
+        @staticmethod
+        def load(path, *, views=None):
+            seen["path"] = path
+            seen["views"] = views
+            return ctx
+
+    module = types.ModuleType("codenib.mcp.context")
+    module.ServerContext = _ServerContext
+    monkeypatch.setitem(sys.modules, "codenib.mcp.context", module)
+
+    backend = CodeNibBackend.from_manifest("/manifest.json", _CharTok(), index=index)
+
+    assert backend.ctx is ctx
+    assert seen == {"path": "/manifest.json", "views": {index}}
+
+
+def test_from_manifest_rejects_unknown_view_before_loading(monkeypatch) -> None:
+    class _ServerContext:
+        @staticmethod
+        def load(*args, **kwargs):  # pragma: no cover - must not be reached
+            raise AssertionError("unexpected manifest load")
+
+    module = types.ModuleType("codenib.mcp.context")
+    module.ServerContext = _ServerContext
+    monkeypatch.setitem(sys.modules, "codenib.mcp.context", module)
+
+    with pytest.raises(ValueError, match="unknown CodeNib index"):
+        CodeNibBackend.from_manifest("/manifest.json", _CharTok(), index="zoekt")
+
+
+@pytest.mark.parametrize(
+    ("entry", "current", "errors", "expected"),
+    [
+        (None, True, {}, "no entry"),
+        (object(), False, {}, "stale"),
+        (object(), True, {"bm25": "broken artifact"}, "broken artifact"),
+    ],
+)
+def test_from_manifest_fails_when_selected_view_is_unavailable(
+    monkeypatch,
+    entry,
+    current: bool,
+    errors: dict,
+    expected: str,
+) -> None:
+    manifest = SimpleNamespace(
+        indexes={} if entry is None else {"bm25": entry},
+        index_is_current=lambda _index: current,
+    )
+    ctx = SimpleNamespace(manifest=manifest, errors=errors, bm25=None, vector=None)
+
+    class _ServerContext:
+        @staticmethod
+        def load(path, *, views=None):
+            return ctx
+
+    module = types.ModuleType("codenib.mcp.context")
+    module.ServerContext = _ServerContext
+    monkeypatch.setitem(sys.modules, "codenib.mcp.context", module)
+
+    with pytest.raises(RuntimeError, match=expected):
+        CodeNibBackend.from_manifest("/manifest.json", _CharTok(), index="bm25")
 
 
 def test_bm25_search_requests_clean_snippets() -> None:
