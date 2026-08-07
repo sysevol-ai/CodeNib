@@ -43,6 +43,10 @@ def test_rootless_docker_session_end_to_end(tmp_path):
     _git(repo, "config", "user.name", "CodeNib Test")
     _git(repo, "config", "user.email", "test@codenib.invalid")
     (repo / ".gitignore").write_text(".env/\n", encoding="utf-8")
+    (repo / ".gitattributes").write_text(
+        "IPython/.git_commit_info.ini export-subst\n",
+        encoding="utf-8",
+    )
     (repo / "hello.txt").write_text("before\n", encoding="utf-8")
     (repo / ".env").mkdir()
     (repo / ".env" / "ignored-secret.txt").write_text(
@@ -52,7 +56,14 @@ def test_rootless_docker_session_end_to_end(tmp_path):
     executable = repo / "scripts" / "run.sh"
     executable.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
     executable.chmod(0o755)
-    _git(repo, "add", ".gitignore", "hello.txt", "scripts/run.sh")
+    _git(
+        repo,
+        "add",
+        ".gitattributes",
+        ".gitignore",
+        "hello.txt",
+        "scripts/run.sh",
+    )
     _git(repo, "commit", "-qm", "fixture")
     revision = _git(repo, "rev-parse", "HEAD")
 
@@ -72,6 +83,7 @@ def test_rootless_docker_session_end_to_end(tmp_path):
 
     with provider.create(spec) as session:
         assert session.metadata.source_fingerprint == fingerprint_repository(repo).value
+        assert session.read_file("hello.txt") == b"before\n"
         result = session.execute(
             ExecRequest(argv=("/bin/sh", "-lc", "printf 'after\\n' > hello.txt"))
         )
