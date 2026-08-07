@@ -141,7 +141,7 @@ class RepoManifest:
         )
 
     def save(self, path: str | Path) -> None:
-        """Atomically replace the manifest with a durable JSON generation."""
+        """Atomically replace the manifest after flushing the JSON payload."""
 
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -152,10 +152,13 @@ class RepoManifest:
         )
         temporary_path = Path(temporary)
         try:
-            mode = p.stat().st_mode & 0o777 if p.exists() else 0o644
+            try:
+                mode = p.stat().st_mode & 0o777
+            except FileNotFoundError:
+                mode = None
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 fchmod = getattr(os, "fchmod", None)
-                if fchmod is not None:
+                if fchmod is not None and mode is not None:
                     fchmod(handle.fileno(), mode)
                 json.dump(self.to_dict(), handle, indent=2)
                 handle.flush()

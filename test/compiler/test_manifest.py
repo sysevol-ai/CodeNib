@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import stat
 import time
 
 import pytest
@@ -176,6 +177,22 @@ class TestRepoManifest:
         nested = tmp_path / "a" / "b" / "manifest.json"
         m.save(nested)
         assert nested.exists()
+
+    def test_new_manifest_is_not_world_readable(self, tmp_path):
+        manifest_path = tmp_path / "repo_manifest.json"
+
+        _sample_manifest().save(manifest_path)
+
+        assert stat.S_IMODE(manifest_path.stat().st_mode) & 0o077 == 0
+
+    def test_replaced_manifest_preserves_existing_permissions(self, tmp_path):
+        manifest_path = tmp_path / "repo_manifest.json"
+        manifest_path.write_text("{}", encoding="utf-8")
+        manifest_path.chmod(0o640)
+
+        _sample_manifest().save(manifest_path)
+
+        assert stat.S_IMODE(manifest_path.stat().st_mode) == 0o640
 
     def test_failed_manifest_replace_preserves_previous_generation(
         self, tmp_path, monkeypatch
