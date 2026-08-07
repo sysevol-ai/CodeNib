@@ -17,6 +17,9 @@ _COMMIT_RE = re.compile(r"[0-9a-fA-F]{7,64}\Z")
 _MAX_SOURCE_BYTES = 8 * 1024 * 1024
 _DEFAULT_SOURCE_LINES = 400
 _MAX_SOURCE_LINES = 1_000
+# These values can contain every tracked path in a large repository. Retain the
+# current and previous immutable trees instead of scaling with window length.
+_MAX_GIT_SNAPSHOT_CACHE_ENTRIES = 2
 
 
 def valid_commit(commit: object) -> bool:
@@ -100,7 +103,7 @@ def git_blob_head(
     return _git_blob(repo_dir, commit, relative, max_bytes, allow_truncated=True)
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=_MAX_GIT_SNAPSHOT_CACHE_ENTRIES)
 def git_grep_paths(repo_dir: str, commit: str, pattern: str) -> frozenset[str]:
     """Return paths matching *pattern* at *commit* using one Git process."""
     if not valid_commit(commit):
@@ -137,7 +140,7 @@ def git_grep_paths(repo_dir: str, commit: str, pattern: str) -> frozenset[str]:
     )
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=_MAX_GIT_SNAPSHOT_CACHE_ENTRIES)
 def git_tree_paths(repo_dir: str, commit: str) -> Optional[frozenset[str]]:
     """Repository paths at *commit*, or ``None`` when it is unavailable."""
     if not valid_commit(commit):
