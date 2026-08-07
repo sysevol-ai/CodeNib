@@ -145,3 +145,26 @@ def test_wrapper_rejects_conflicting_option_locations(monkeypatch):
             trust_remote_code=False,
             model_kwargs={"trust_remote_code": True},
         )
+
+
+@pytest.mark.parametrize(
+    ("container", "option"),
+    [
+        ("config_kwargs", "revision"),
+        ("model_kwargs", "code_revision"),
+        ("tokenizer_kwargs", "trust_remote_code"),
+    ],
+)
+def test_wrapper_rejects_nested_model_identity_overrides(
+    monkeypatch,
+    container,
+    option,
+):
+    _install_fake_sentence_transformers(monkeypatch, [])
+
+    with pytest.raises(ValueError, match="identity options must be declared"):
+        _HuggingFaceEmbeddingWrapper(
+            "vendor/model",
+            revision="a" * 40,
+            **{container: {option: "b" * 40}},
+        )

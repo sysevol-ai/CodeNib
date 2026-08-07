@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Sequence, Set
 from ..code_chunker import CodeChunker, RepoChunkingConfig
 from ..graph.code_graph import CodeGraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
+from ..index.embedding.model_policy import resolve_embedding_load_policy_from_options
 from ..index.rerank.cross_encoder import build_reranker
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 from ..llm.litellm_chat import LiteLLMChat
@@ -24,6 +25,7 @@ from ..ops.retrieve import (
     merge_hybrid,
     to_queried_nodes,
 )
+from ..provider_routes import normalize_provider
 from ..types import NodeInfo, QueriedNode
 from .retrieval_planner import (
     BudgetInput,
@@ -241,7 +243,10 @@ class RetrieveRerankPipeline:
         self.bm25_index: Optional[BM25CodeIndexer] = None
         self.rerank_vector_store: Optional[CodeVectorStore] = None
 
-        embedding_kwargs = self._prepare_embedding_kwargs(embedding_model_kwargs)
+        embedding_kwargs = self._prepare_embedding_kwargs(
+            embedding_provider,
+            embedding_model_kwargs,
+        )
         if self._needs_engine("dense"):
             self.vector_store = self._initialize_vector_store(
                 embedding_model=embedding_model,
@@ -288,12 +293,13 @@ class RetrieveRerankPipeline:
                 extra={"model": crossencoder_model},
             )
         else:
+            selected_rerank_provider = rerank_embedding_provider or embedding_provider
             rerank_model_kwargs = self._prepare_embedding_kwargs(
-                rerank_embedding_model_kwargs
+                selected_rerank_provider, rerank_embedding_model_kwargs
             )
             self.rerank_vector_store = self._initialize_rerank_vector_store(
                 embedding_model=rerank_embedding_model or embedding_model,
-                embedding_provider=rerank_embedding_provider or embedding_provider,
+                embedding_provider=selected_rerank_provider,
                 embedding_dimension=rerank_embedding_dimension or embedding_dimension,
                 embedding_kwargs=rerank_model_kwargs,
                 index_metric=rerank_index_metric,
@@ -749,10 +755,31 @@ class RetrieveRerankPipeline:
         return resolved
 
     def _prepare_embedding_kwargs(
-        self, embedding_model_kwargs: Optional[dict]
+        self,
+        embedding_provider: str,
+        embedding_model_kwargs: Optional[dict],
     ) -> Dict[str, object]:
         if not embedding_model_kwargs:
             return {}
+        if normalize_provider(embedding_provider) != "huggingface":
+            unsupported = sorted(
+                set(embedding_model_kwargs)
+                & {
+                    "config_kwargs",
+                    "default_batch_size",
+                    "encode_kwargs",
+                    "max_seq_length",
+                    "model_kwargs",
+                    "revision",
+                    "tokenizer_kwargs",
+                    "trust_remote_code",
+                }
+            )
+            if unsupported:
+                raise ValueError(
+                    "Hugging Face embedding options require the huggingface "
+                    f"provider: {', '.join(unsupported)}"
+                )
         embedding_kwargs: Dict[str, object] = {}
         if "model_kwargs" in embedding_model_kwargs:
             embedding_kwargs["model_kwargs"] = embedding_model_kwargs["model_kwargs"]
@@ -839,10 +866,25 @@ class RetrieveRerankPipeline:
         embedding_kwargs: Dict[str, object],
         index_metric: str,
     ) -> CodeVectorStore:
+        canonical_provider = normalize_provider(embedding_provider)
+        requested_policy = (
+            resolve_embedding_load_policy_from_options(
+                embedding_model,
+                embedding_kwargs,
+            )
+            if canonical_provider == "huggingface"
+            else None
+        )
         if (
             self.vector_store
             and self.vector_store.embedding_model == embedding_model
-            and self.vector_store.embedding_provider == embedding_provider
+            and normalize_provider(self.vector_store.embedding_provider)
+            == canonical_provider
+            and self.vector_store.dimension == embedding_dimension
+            and getattr(self.vector_store, "embedding_revision", None)
+            == (requested_policy.revision if requested_policy else None)
+            and getattr(self.vector_store, "embedding_trust_remote_code", False)
+            == bool(requested_policy and requested_policy.trust_remote_code)
         ):
             return self.vector_store
 

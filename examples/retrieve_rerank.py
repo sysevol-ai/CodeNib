@@ -113,10 +113,10 @@ def parse_args():
         help="Embedding dimension",
     )
     parser.add_argument(
-        "--trust-remote-code",
+        "--embedding-trust-remote-code",
         action="store_true",
         help=(
-            "Execute Hugging Face model repository code. Remote models also "
+            "Execute retrieval embedding repository code. Remote models also "
             "require a full commit SHA via --embedding-revision."
         ),
     )
@@ -129,6 +129,14 @@ def parse_args():
         "--rerank-embedding-revision",
         default=None,
         help="Immutable Hugging Face revision for the rerank embedding model.",
+    )
+    parser.add_argument(
+        "--rerank-embedding-trust-remote-code",
+        action="store_true",
+        help=(
+            "Execute rerank embedding repository code. Remote models also "
+            "require a full commit SHA via --rerank-embedding-revision."
+        ),
     )
     parser.add_argument(
         "--batch-size",
@@ -588,7 +596,7 @@ def run_pipeline(args):
                 }
                 if args.embedding_revision:
                     embedding_model_kwargs["revision"] = args.embedding_revision
-                if args.trust_remote_code:
+                if args.embedding_trust_remote_code:
                     embedding_model_kwargs["trust_remote_code"] = True
 
                 rerank_embedding_kwargs = {
@@ -598,7 +606,7 @@ def run_pipeline(args):
                 }
                 if args.rerank_embedding_revision:
                     rerank_embedding_kwargs["revision"] = args.rerank_embedding_revision
-                if args.trust_remote_code:
+                if args.rerank_embedding_trust_remote_code:
                     rerank_embedding_kwargs["trust_remote_code"] = True
 
                 instance_languages = _resolve_instance_languages(

@@ -14,6 +14,7 @@ import json
 import os
 import pickle
 import tempfile
+from collections.abc import Mapping
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple
@@ -33,13 +34,29 @@ from .artifact_integrity import (
     validate_vector_level_artifacts,
     vector_level_artifact_records,
 )
-from .model_policy import EmbeddingLoadPolicy, resolve_embedding_load_policy
+from .model_policy import (
+    EmbeddingLoadPolicy,
+    resolve_embedding_load_policy_from_options,
+)
 
 logger = get_logger(__name__)
 
 Level = Literal["l0", "l2"]
 
 _UNSET = object()
+_MODEL_IDENTITY_KEYS = frozenset({"code_revision", "revision", "trust_remote_code"})
+_HUGGINGFACE_ONLY_OPTIONS = frozenset(
+    {
+        "config_kwargs",
+        "default_batch_size",
+        "encode_kwargs",
+        "max_seq_length",
+        "model_kwargs",
+        "revision",
+        "tokenizer_kwargs",
+        "trust_remote_code",
+    }
+)
 
 
 def _pop_compatible_model_option(
@@ -58,6 +75,38 @@ def _pop_compatible_model_option(
     if nested is not _UNSET:
         return nested
     return None
+
+
+def _reject_nested_identity_options(value: Any, *, path: str) -> None:
+    """Prevent nested kwargs from overriding the validated model identity."""
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            location = f"{path}.{key}" if path else str(key)
+            if key in _MODEL_IDENTITY_KEYS:
+                raise ValueError(
+                    "embedding model identity options must be declared at the "
+                    f"top level, not {location}"
+                )
+            _reject_nested_identity_options(item, path=location)
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _reject_nested_identity_options(item, path=f"{path}[{index}]")
+
+
+def _validate_provider_options(provider: str, options: Mapping[str, Any]) -> str:
+    """Reject local-model controls before they reach a remote SDK client."""
+
+    canonical = normalize_provider(provider)
+    if canonical == "huggingface":
+        return canonical
+    unsupported = sorted(_HUGGINGFACE_ONLY_OPTIONS.intersection(options))
+    if unsupported:
+        raise ValueError(
+            "Hugging Face embedding options require provider='huggingface': "
+            + ", ".join(unsupported)
+        )
+    return canonical
 
 
 def _atomic_replace(target: Path, writer: Callable[[Path], None]) -> None:
@@ -173,11 +222,15 @@ class _HuggingFaceEmbeddingWrapper:
         trust_remote_code = _pop_compatible_model_option(
             kwargs, model_kwargs, "trust_remote_code"
         )
-        load_policy = resolve_embedding_load_policy(
+        load_policy = resolve_embedding_load_policy_from_options(
             model_name,
-            revision=revision,
-            trust_remote_code=trust_remote_code,
+            {
+                "revision": revision,
+                "trust_remote_code": trust_remote_code,
+            },
         )
+        _reject_nested_identity_options(model_kwargs, path="model_kwargs")
+        _reject_nested_identity_options(kwargs, path="")
 
         # Pop prompt-related kwargs so they aren't forwarded to
         # SentenceTransformer's __init__. Anything left as None falls back to
@@ -417,7 +470,24 @@ class CodeVectorStore:
             **embedding_kwargs: Additional arguments for embedding model
         """
         self.embedding_model = embedding_model
-        self.embedding_provider = embedding_provider
+        self.embedding_provider = _validate_provider_options(
+            embedding_provider,
+            embedding_kwargs,
+        )
+        self.embedding_load_policy = (
+            resolve_embedding_load_policy_from_options(
+                embedding_model,
+                embedding_kwargs,
+            )
+            if self.embedding_provider == "huggingface"
+            else None
+        )
+        self.embedding_revision = (
+            self.embedding_load_policy.revision if self.embedding_load_policy else None
+        )
+        self.embedding_trust_remote_code = bool(
+            self.embedding_load_policy and self.embedding_load_policy.trust_remote_code
+        )
         self.dimension = dimension
         self.index_type = index_type.lower()
         if self.index_type not in ("flat", "ivf"):
@@ -1109,6 +1179,7 @@ class CodeVectorStore:
             config = {
                 "embedding_model": self.embedding_model,
                 "embedding_provider": self.embedding_provider,
+                "embedding_revision": self.embedding_revision,
                 "dimension": self.dimension,
                 "index_type": self.index_type,
                 "index_metric": self.index_metric,
@@ -1177,6 +1248,7 @@ class CodeVectorStore:
         config = {
             "embedding_model": self.embedding_model,
             "embedding_provider": self.embedding_provider,
+            "embedding_revision": self.embedding_revision,
             "dimension": self.dimension,
             "index_type": self.index_type,
             "index_metric": self.index_metric,
@@ -1246,6 +1318,12 @@ class CodeVectorStore:
                 raise ValueError(
                     "Vector config provider mismatch: expected "
                     f"{self.embedding_provider!r}, found {saved_provider!r}"
+                )
+            saved_revision = config.get("embedding_revision")
+            if saved_revision != self.embedding_revision:
+                raise ValueError(
+                    "Vector config embedding revision mismatch: expected "
+                    f"{self.embedding_revision!r}, found {saved_revision!r}"
                 )
             saved_dimension = config.get("dimension")
             if saved_dimension is not None and saved_dimension != self.dimension:
@@ -1554,6 +1632,7 @@ class CodeVectorStore:
         stats = {
             "embedding_model": self.embedding_model,
             "embedding_provider": self.embedding_provider,
+            "embedding_revision": self.embedding_revision,
             "dimension": self.dimension,
             "index_type": self.index_type,
             "index_metric": self.index_metric,

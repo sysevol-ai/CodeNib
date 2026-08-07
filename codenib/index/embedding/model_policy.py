@@ -7,15 +7,17 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 DEFAULT_EMBEDDING_MODEL = "nomic-ai/CodeRankEmbed"
 DEFAULT_EMBEDDING_DIMENSION = 768
 DEFAULT_EMBEDDING_REVISION = "3c4b60807d71f79b43f3c4363786d9493691f8b1"
 
 _IMMUTABLE_REVISION_RE = re.compile(r"[0-9a-f]{40}\Z")
+_UNSET = object()
 
 
 @dataclass(frozen=True)
@@ -72,10 +74,44 @@ def resolve_embedding_load_policy(
     )
 
 
+def resolve_embedding_load_policy_from_options(
+    model: str,
+    options: Mapping[str, Any] | None,
+) -> EmbeddingLoadPolicy:
+    """Resolve identity controls accepted at either wrapper option level."""
+
+    values = dict(options or {})
+    nested = values.get("model_kwargs") or {}
+    if not isinstance(nested, Mapping):
+        raise TypeError("embedding model_kwargs must be a mapping")
+
+    def select(name: str) -> Any:
+        direct_value = values.get(name, _UNSET)
+        nested_value = nested.get(name, _UNSET)
+        if (
+            direct_value is not _UNSET
+            and nested_value is not _UNSET
+            and direct_value != nested_value
+        ):
+            raise ValueError(f"conflicting {name} values in embedding model options")
+        if direct_value is not _UNSET:
+            return direct_value
+        if nested_value is not _UNSET:
+            return nested_value
+        return None
+
+    return resolve_embedding_load_policy(
+        model,
+        revision=select("revision"),
+        trust_remote_code=select("trust_remote_code"),
+    )
+
+
 __all__ = [
     "DEFAULT_EMBEDDING_DIMENSION",
     "DEFAULT_EMBEDDING_MODEL",
     "DEFAULT_EMBEDDING_REVISION",
     "EmbeddingLoadPolicy",
     "resolve_embedding_load_policy",
+    "resolve_embedding_load_policy_from_options",
 ]

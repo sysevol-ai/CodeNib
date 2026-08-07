@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 
 def test_embedding_pipeline_does_not_trust_custom_model_by_default(
     monkeypatch,
@@ -83,7 +85,7 @@ def test_retrieve_rerank_pipeline_preserves_embedding_model_policy():
     }
     pipeline = object.__new__(RetrieveRerankPipeline)
 
-    prepared = pipeline._prepare_embedding_kwargs(requested)
+    prepared = pipeline._prepare_embedding_kwargs("huggingface", requested)
 
     assert prepared == requested
     assert requested["model_kwargs"] == {"device": "cpu"}
@@ -95,10 +97,21 @@ def test_retrieve_rerank_pipeline_preserves_explicit_remote_code_rejection():
     pipeline = object.__new__(RetrieveRerankPipeline)
 
     prepared = pipeline._prepare_embedding_kwargs(
-        {"revision": "a" * 40, "trust_remote_code": False}
+        "huggingface", {"revision": "a" * 40, "trust_remote_code": False}
     )
 
     assert prepared == {"revision": "a" * 40, "trust_remote_code": False}
+
+
+@pytest.mark.parametrize("option", ["revision", "trust_remote_code"])
+def test_retrieve_rerank_pipeline_rejects_huggingface_options_for_openai(option):
+    from codenib.model.retrieve_rerank_pipeline import RetrieveRerankPipeline
+
+    pipeline = object.__new__(RetrieveRerankPipeline)
+    value = "a" * 40 if option == "revision" else False
+
+    with pytest.raises(ValueError, match="require the huggingface provider"):
+        pipeline._prepare_embedding_kwargs("openai", {option: value})
 
 
 def test_hybrid_pipeline_forwards_model_policy(monkeypatch, tmp_path):

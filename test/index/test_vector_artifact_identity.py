@@ -26,7 +26,14 @@ class _Embedding:
         return [[0.0] * self.dimension for _ in texts]
 
 
-def _store(path, *, fingerprint: str, provider: str = "huggingface"):
+def _store(
+    path,
+    *,
+    fingerprint: str,
+    provider: str = "huggingface",
+    revision: str | None = None,
+):
+    embedding_kwargs = {"revision": revision} if revision is not None else {}
     return CodeVectorStore(
         embedding_model="vendor/model",
         embedding_provider=provider,
@@ -34,6 +41,7 @@ def _store(path, *, fingerprint: str, provider: str = "huggingface"):
         store_path=str(path),
         embedding=_Embedding(4),
         artifact_metadata={"embedding_fingerprint": fingerprint},
+        **embedding_kwargs,
     )
 
 
@@ -57,6 +65,33 @@ def test_load_rejects_provider_substitution(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="provider mismatch"):
         reopened.load()
+
+
+def test_load_rejects_embedding_revision_substitution(tmp_path) -> None:
+    _store(tmp_path, fingerprint="sha256:same", revision="a" * 40).save()
+    reopened = _store(
+        tmp_path,
+        fingerprint="sha256:same",
+        revision="b" * 40,
+    )
+
+    with pytest.raises(ValueError, match="embedding revision mismatch"):
+        reopened.load()
+
+
+@pytest.mark.parametrize("option", ["revision", "trust_remote_code"])
+def test_remote_provider_rejects_huggingface_model_options(tmp_path, option) -> None:
+    value = "a" * 40 if option == "revision" else False
+
+    with pytest.raises(ValueError, match="require provider='huggingface'"):
+        CodeVectorStore(
+            embedding_model="text-embedding-3-small",
+            embedding_provider="openai",
+            dimension=4,
+            store_path=str(tmp_path),
+            embedding=_Embedding(4),
+            **{option: value},
+        )
 
 
 def test_load_requires_saved_identity_when_manifest_has_a_fingerprint(tmp_path) -> None:
