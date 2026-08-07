@@ -54,6 +54,13 @@ prepare project-local dependencies such as `node_modules`; run those profiles
 from a clean checkout when that distinction matters. Press `Ctrl-C` once to
 stop both services.
 
+On the first parse with a new `tree-sitter-language-pack` version, the language
+pack downloads and caches the parser bundle for the detected languages. CodeNib
+prints that preparation step instead of appearing idle, and `codenib doctor
+/path/to/repository` reports uncached parsers as `PENDING`. Once cached, the
+`fast` BM25 path can run offline. This parser cache is independent of the larger
+CodeRankEmbed download used by the semantic preset.
+
 Use different ports or keep the browser closed when needed:
 
 ```bash

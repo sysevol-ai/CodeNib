@@ -1101,7 +1101,7 @@ def _doctor_model_config(
 
 def _doctor_rows(
     args: argparse.Namespace | None = None,
-) -> dict[str, list[tuple[str, bool, str]]]:
+) -> dict[str, list[tuple[str, bool | None, str]]]:
     from .web.launcher import (
         find_frontend_dir,
         is_prebuilt_frontend,
@@ -1179,7 +1179,7 @@ def _doctor_rows(
                 "language pack",
                 _check_module("tree_sitter_language_pack"),
                 (
-                    "installed"
+                    "installed; parser binaries are cached on first use"
                     if _check_module("tree_sitter_language_pack")
                     else "missing"
                 ),
@@ -1262,6 +1262,30 @@ def _doctor_rows(
         if model_check is not None:
             rows["agent"].append(model_check)
     return rows
+
+
+def _language_parser_cache_check(
+    languages: Sequence[str],
+) -> tuple[str, bool | None, str]:
+    """Describe parser cache readiness without causing a network download."""
+
+    if not _check_module("tree_sitter_language_pack"):
+        return ("Language parsers", False, "language pack is missing")
+    try:
+        from tree_sitter_language_pack import downloaded_languages
+
+        cached = set(downloaded_languages())
+    except Exception as exc:  # noqa: BLE001 - doctor reports diagnostic failures
+        return ("Language parsers", False, f"cache inspection failed: {exc}")
+
+    missing = [language for language in languages if language not in cached]
+    if missing:
+        return (
+            "Language parsers",
+            None,
+            "first-use download required: " + ", ".join(missing),
+        )
+    return ("Language parsers", True, "cached: " + ", ".join(languages))
 
 
 def _model_probe_error(exc: BaseException, *, api_key: str | None) -> str:
@@ -1477,6 +1501,7 @@ def _run_doctor(args: argparse.Namespace) -> int:
 
         repo_path = resolve_repo_path(args.repo)
         languages = _selected_languages(repo_path, args.language)
+        rows["core"].append(_language_parser_cache_check(languages))
         graph_report = diagnose_graph_setup(repo_path, languages)
     if args.probe_model:
         rows["agent"].extend(_probe_doctor_model(args))
@@ -1488,9 +1513,9 @@ def _run_doctor(args: argparse.Namespace) -> int:
         marker = "required" if group in required else "optional"
         print(f"\n{group} ({marker})")
         for label, ok, detail in checks:
-            status = "OK" if ok else "MISSING"
+            status = "OK" if ok is True else "PENDING" if ok is None else "MISSING"
             print(f"  [{status:<7}] {label}: {detail}")
-            if group in required and not ok:
+            if group in required and ok is False:
                 failed_required = True
         if group == "graph" and graph_report is not None:
             for setup in graph_report.languages:

@@ -1206,6 +1206,47 @@ def test_doctor_does_not_require_node_for_prebuilt_frontend(
     assert wiki["npm"] == (True, "not required (prebuilt frontend)")
 
 
+def test_doctor_reports_uncached_repository_parsers_as_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "main.py").write_text("VALUE = 1\n")
+    monkeypatch.setattr("tree_sitter_language_pack.downloaded_languages", lambda: [])
+    monkeypatch.setattr(
+        "codenib.graph.setup.diagnose_graph_setup",
+        lambda _repo, _languages: SimpleNamespace(
+            languages=[], install_hints=[], ready=True
+        ),
+    )
+
+    assert cli.run(["doctor", str(tmp_path)]) == 0
+
+    output = capsys.readouterr().out
+    assert "[PENDING] Language parsers" in output
+    assert "first-use download required: python" in output
+
+
+def test_doctor_reports_cached_repository_parsers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "main.py").write_text("VALUE = 1\n")
+    monkeypatch.setattr(
+        "tree_sitter_language_pack.downloaded_languages", lambda: ["python"]
+    )
+    monkeypatch.setattr(
+        "codenib.graph.setup.diagnose_graph_setup",
+        lambda _repo, _languages: SimpleNamespace(
+            languages=[], install_hints=[], ready=True
+        ),
+    )
+
+    assert cli.run(["doctor", str(tmp_path)]) == 0
+    assert "[OK     ] Language parsers: cached: python" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     ("version", "expected_ok"),
     [

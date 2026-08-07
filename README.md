@@ -44,10 +44,11 @@ python -m pip install "codenib[mcp,semantic]==0.2.0"
 codenib wiki /path/to/your/repo
 ```
 
-Local, open source, and no cloud required. CodeNib combines BM25 and dense code
-search, adds optional SCIP symbol graphs, and incrementally rebuilds repository
-indexes as commits change. The same index powers the Wiki, Dependency Map, Ask,
-and MCP tools instead of making every agent rediscover the codebase.
+Local, open source, and no hosted service or API key required. CodeNib combines
+BM25 and dense code search, adds optional SCIP symbol graphs, and incrementally
+rebuilds repository indexes as commits change. The same index powers the Wiki,
+Dependency Map, Ask, and MCP tools instead of making every agent rediscover the
+codebase.
 
 ## News
 

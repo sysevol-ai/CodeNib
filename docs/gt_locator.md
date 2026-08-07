@@ -25,7 +25,8 @@ Supports Python, Go, Rust, C/C++, C#, Java, Ruby, PHP, Kotlin, Swift, Scala, Lua
 
 ## Prerequisites
 
-- `tree-sitter-language-pack` (bundled with CodeNib, provides parsers for all supported languages)
+- `tree-sitter-language-pack` (installed with CodeNib; parser binaries are
+  downloaded and cached on first use for the selected languages)
 - `git` (for cloning and checking out repos)
 
 ## Usage

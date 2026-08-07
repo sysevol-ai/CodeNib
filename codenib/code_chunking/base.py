@@ -10,7 +10,6 @@ Base code chunker class with common functionality.
 
 import json
 import os
-import sys
 import threading
 from abc import ABC, abstractmethod
 from collections import namedtuple
@@ -18,7 +17,7 @@ from pathlib import Path
 from typing import ClassVar, List, Optional, Tuple
 
 from tree_sitter import Parser
-from tree_sitter_language_pack import get_language
+from tree_sitter_language_pack import downloaded_languages, get_language
 
 from ..log_utils import get_logger
 
@@ -95,15 +94,28 @@ class BaseCodeChunker(ABC):
                 "Successfully loaded %s language parser from tree-sitter-language-pack",
                 language,
             )
-        except Exception as e:
-            logger.error("Error loading %s parser: %s", language, e)
-            sys.exit(1)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Unable to load the {language} tree-sitter parser. "
+                "Parser binaries are downloaded and cached on first use; "
+                f"check network access and retry. Cause: {exc}"
+            ) from exc
 
     @classmethod
     def _get_tree_sitter_language(cls, language: str):
         """Load each tree-sitter language once per process."""
         with cls._language_cache_lock:
             if language not in cls._language_cache:
+                try:
+                    cached = language in downloaded_languages()
+                except Exception:  # noqa: BLE001 - status is diagnostic only
+                    cached = True
+                if not cached:
+                    logger.info(
+                        "Preparing the %s tree-sitter parser for first use; "
+                        "this one-time step downloads and caches a parser bundle",
+                        language,
+                    )
                 cls._language_cache[language] = get_language(language)
             return cls._language_cache[language]
 

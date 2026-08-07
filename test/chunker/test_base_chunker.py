@@ -74,6 +74,42 @@ def test_tree_sitter_language_load_is_cached_per_language(monkeypatch):
     assert third.tree_sitter_language is languages["go"]
 
 
+def test_tree_sitter_language_reports_first_use_download(monkeypatch):
+    messages = []
+    monkeypatch.setattr(
+        "codenib.code_chunking.base.logger.info",
+        lambda message, *args: messages.append(message % args),
+    )
+    monkeypatch.setattr("codenib.code_chunking.base.downloaded_languages", lambda: [])
+    monkeypatch.setattr(
+        "codenib.code_chunking.base.get_language", lambda _language: object()
+    )
+    monkeypatch.setattr(
+        BaseCodeChunker,
+        "_create_parser",
+        staticmethod(lambda _language: object()),
+    )
+
+    StubCodeChunker("python")
+
+    assert any(
+        "Preparing the python tree-sitter parser for first use" in message
+        for message in messages
+    )
+
+
+def test_tree_sitter_language_failure_raises_instead_of_exiting(monkeypatch):
+    monkeypatch.setattr("codenib.code_chunking.base.downloaded_languages", lambda: [])
+
+    def fail_load(_language: str):
+        raise OSError("offline")
+
+    monkeypatch.setattr("codenib.code_chunking.base.get_language", fail_load)
+
+    with pytest.raises(RuntimeError, match="downloaded and cached on first use"):
+        StubCodeChunker("python")
+
+
 def test_l0_empty_skeleton_falls_back_to_full_file(monkeypatch, tmp_path):
     source = tmp_path / "declarations.h"
     content = "#define VALUE 1\n"
