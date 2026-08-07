@@ -10,6 +10,8 @@ import re
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Callable, List
 
+from ....context_delivery import focus_source_content
+
 if TYPE_CHECKING:
     from ....types import QueriedNode
     from ..context import ComposerContexts
@@ -84,28 +86,6 @@ _ACTION_QUERY_ALIASES = {
 _TOTAL_CONTENT_BUDGET = 10_000
 _MIN_CONTENT_BUDGET = 800
 _MAX_CONTENT_BUDGET = 2_400
-_QUERY_STOP_TERMS = frozenset(
-    {
-        "about",
-        "built",
-        "code",
-        "does",
-        "explain",
-        "from",
-        "have",
-        "into",
-        "repository",
-        "source",
-        "that",
-        "their",
-        "this",
-        "what",
-        "when",
-        "where",
-        "which",
-        "with",
-    }
-)
 
 
 def _is_supporting_evidence(node: "QueriedNode") -> bool:
@@ -252,65 +232,6 @@ def _inferred_predicate_identifiers(
     return [identifier for identifier, _ in ordered[:_MAX_INFERRED_PREDICATES]]
 
 
-def _render_line_selection(lines: List[str], selected: set[int]) -> str:
-    rendered: List[str] = []
-    previous = -1
-    for index in sorted(selected):
-        if previous >= 0 and index > previous + 1:
-            rendered.append(f"... {index - previous - 1} source lines omitted ...")
-        rendered.append(lines[index])
-        previous = index
-    if selected and previous < len(lines) - 1:
-        rendered.append(f"... {len(lines) - previous - 1} source lines omitted ...")
-    return "\n".join(rendered)
-
-
-def _focus_content(content: str, query: str, budget: int) -> str:
-    """Project a large source chunk into query-relevant, line-stable windows."""
-    if len(content) <= budget:
-        return content
-
-    lines = content.splitlines()
-    if not lines:
-        return content[:budget]
-    query_terms = {
-        term
-        for term in re.findall(r"[a-z0-9_]+", query.lower())
-        if len(term) >= 3 and term not in _QUERY_STOP_TERMS
-    }
-    selected = set(range(min(5, len(lines))))
-    ranked_lines = sorted(
-        (
-            (
-                sum(term in line.lower() for term in query_terms),
-                index,
-            )
-            for index, line in enumerate(lines)
-        ),
-        key=lambda item: (-item[0], item[1]),
-    )
-
-    for score, index in ranked_lines:
-        if score <= 0:
-            break
-        candidate = selected.union(range(max(0, index - 2), min(len(lines), index + 3)))
-        if len(_render_line_selection(lines, candidate)) <= budget:
-            selected = candidate
-
-    if len(selected) == min(5, len(lines)):
-        for index in range(len(selected), len(lines)):
-            candidate = selected.union({index})
-            if len(_render_line_selection(lines, candidate)) > budget:
-                break
-            selected = candidate
-
-    focused = _render_line_selection(lines, selected)
-    if len(focused) <= budget:
-        return focused
-    suffix = "\n... source excerpt truncated ..."
-    return focused[: max(0, budget - len(suffix))].rstrip() + suffix
-
-
 def _project_content(
     nodes: List["QueriedNode"],
     *,
@@ -326,7 +247,7 @@ def _project_content(
         if not node.content:
             projected.append(node)
             continue
-        content = _focus_content(node.content, query, per_node_budget)
+        content = focus_source_content(node.content, query, per_node_budget)
         if content == node.content:
             projected.append(node)
         elif hasattr(node, "model_copy"):

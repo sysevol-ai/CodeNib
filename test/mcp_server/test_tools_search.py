@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import sys
 from unittest.mock import MagicMock
 
@@ -18,6 +20,7 @@ from codenib.mcp.tools.search import (
     search_bm25_impl,
     search_context_impl,
     search_regex_impl,
+    search_semantic,
     search_zoekt_impl,
 )
 from codenib.types import NodeInfo
@@ -76,6 +79,64 @@ def _sample_nodes() -> list[NodeInfo]:
             score=0.0,
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    "surface",
+    ["context", "semantic", "bm25", "regex", "zoekt"],
+)
+def test_search_surfaces_bound_oversized_evidence(surface: str) -> None:
+    oversized = NodeInfo(
+        node_name="large_symbol",
+        type="function",
+        file="src/large.py",
+        start_line=0,
+        end_line=10,
+        content="header\nneedle = True\n" + "x" * 1_000_000,
+        score=1.0,
+    )
+    backend = MagicMock()
+    backend.search.return_value = [oversized]
+    backend.search_with_content.return_value = [oversized]
+
+    if surface == "context":
+        result = search_context_impl(
+            _make_ctx(bm25=backend),
+            query="needle",
+            top_k=1,
+        )["results"]
+    elif surface == "semantic":
+        result = asyncio.run(
+            search_semantic(
+                _make_ctx(vector=backend),
+                query="needle",
+                top_k=1,
+            )
+        )
+    elif surface == "bm25":
+        result = search_bm25_impl(
+            _make_ctx(bm25=backend),
+            query="needle",
+            top_k=1,
+        )
+    elif surface == "regex":
+        result = search_regex_impl(
+            _make_ctx(regex_index=backend),
+            pattern="needle",
+            top_k=1,
+        )
+    else:
+        result = search_zoekt_impl(
+            _make_ctx(zoekt=backend),
+            query="needle",
+            top_k=1,
+        )
+
+    assert isinstance(result, list)
+    assert "needle = True" in result[0]["content"]
+    assert result[0]["content_projection"]["original_chars"] > 1_000_000
+    assert result[0]["content_projection"]["truncated"] is True
+    assert len(json.dumps(result).encode("utf-8")) < 16_000
 
 
 class TestSearchContext:

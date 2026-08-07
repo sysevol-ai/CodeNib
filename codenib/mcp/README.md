@@ -78,6 +78,7 @@ also remain available. All forms accept
 | `lsp_definition` | `symbol_graph` | location | static graph analogue of go-to-definition |
 | `lsp_references` | `symbol_graph` | locations | static graph analogue of find-references |
 | `lsp_route` | `symbol_graph` | locations | compact route anchors for related symbols |
+| `read_source` | verified checkout | source window | bounded source inspection after retrieval/navigation |
 | `get_manifest` | — | — | repo metadata: path, commit, languages, capabilities |
 
 All source locations returned by MCP use 1-based line numbers. Internal indexes
@@ -98,6 +99,13 @@ The response contains the concrete `plan`, repository/commit/source-fingerprint
 provenance under `source`, and 1-based source-linked `results`. Reranking is not
 hidden in this tool; the current MCP route uses deterministic retrieval fusion
 and graph expansion only.
+
+All five search tools retain every admitted ranked metadata row while sharing a
+10,000-character source-content budget. Each result receives at most 2,400
+characters; lower-ranked results beyond the content budget remain as locations.
+A projected result includes `content_projection` with `truncated`,
+`original_chars`, `returned_chars`, and the projection strategy. Ranking and
+the full source span do not change.
 
 ### `search_semantic`
 Vector-embedding similarity search.
@@ -160,6 +168,22 @@ compact locations only; clients should read source before finalizing.
 - `lsp_route`: provide `symbols`, with optional `query`, `top_k` (default 12),
   and `include_neighbors` (default `true`) to rank endpoint, bridge/factory,
   provider/value, and type anchors.
+
+### `read_source`
+Reads source only when server startup verified the checkout against the direct
+manifest or a rebound portable artifact.
+
+- `file_path` (str): canonical repository-relative POSIX path; absolute paths,
+  traversal, symlinks, and special files are rejected.
+- `start_line` (int, default 1): 1-based inclusive first line.
+- `end_line` (optional int): 1-based inclusive last line; a request may span at
+  most 200 lines.
+
+The response includes at most 16,000 content characters plus the indexed
+commit/source fingerprint. `content_projection` reports whether the requested
+window was shortened and, when truncation ended on a complete line, the next
+`start_line`. Source identity is checked at startup under the server's
+quiescent-checkout assumption; restart or rebind after modifying the checkout.
 
 ### `get_manifest`
 Returns the manifest version; a nested `repo` object containing path, commit,

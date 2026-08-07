@@ -306,6 +306,7 @@ async def _assert_mcp_async(
                         names = {tool.name for tool in tools.tools}
                         required = {
                             "get_manifest",
+                            "read_source",
                             "search_context",
                             "search_bm25",
                             "search_semantic",
@@ -330,6 +331,16 @@ async def _assert_mcp_async(
                                 "installed MCP service did not publish bounded "
                                 f"search inputs: {bm25_schema!r}"
                             )
+                        source_schema = tool_by_name["read_source"].input_schema
+                        source_path_schema = source_schema.get("properties", {}).get(
+                            "file_path",
+                            {},
+                        )
+                        if source_path_schema.get("maxLength") != 4096:
+                            raise RuntimeError(
+                                "installed MCP service did not publish a bounded "
+                                f"source path: {source_schema!r}"
+                            )
 
                         if mode == "legacy":
                             continue
@@ -347,6 +358,28 @@ async def _assert_mcp_async(
                         if "release_signature" not in hits[0].get("content", ""):
                             raise RuntimeError(
                                 f"MCP BM25 hit was unexpected: {hits[0]!r}"
+                            )
+
+                        source_result = await client.call_tool(
+                            "read_source",
+                            arguments={
+                                "file_path": "calculator.py",
+                                "start_line": 1,
+                                "end_line": 3,
+                            },
+                        )
+                        source_payload = _structured_result(source_result)
+                        source_window = source_payload.get("result", source_payload)
+                        if (
+                            not isinstance(source_window, dict)
+                            or "release_signature"
+                            not in source_window.get("content", "")
+                            or source_window.get("source", {}).get("verified")
+                            is not True
+                        ):
+                            raise RuntimeError(
+                                "MCP source read did not preserve verified source "
+                                f"identity: {source_payload!r}"
                             )
 
                         ranked = await client.call_tool(

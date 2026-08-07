@@ -11,6 +11,10 @@ CodeNib serves ranked context and precise navigation over pre-built repository
 indexes. Start with `search_context`: it selects a deterministic BM25, dense,
 hybrid-RRF, or graph-expanded route from the views that are actually loaded.
 Use the lower-level tools when you need to force one operation.
+Search responses keep every ranked location but may project large source bodies
+under a shared content budget. A truncated hit includes ``content_projection``
+metadata; use ``read_source`` with its file and 1-based line range to inspect
+the exact checkout before finalizing an answer.
 
 ## When to use each tool
 
@@ -61,6 +65,13 @@ Examples:
   scoped to Python files
 - ``"TODO case:no"``: case-insensitive substring across the repo
 
+### read_source
+Use after search or static navigation identifies a source location. It accepts
+only a repository-relative POSIX path and at most 200 lines per call. The
+server enables reads only when the checkout matched the manifest or a verified
+portable-artifact binding at startup, and each response carries that commit and
+source fingerprint.
+
 ### Choosing between them
 | Scenario | Tool |
 |----------|------|
@@ -71,6 +82,7 @@ Examples:
 | Need structural filters (by file glob or node type) | search_regex |
 | Need raw-text occurrence anywhere in the repo, fast | search_zoekt |
 | Hit may live in comments / docs / configs (off-graph) | search_zoekt |
+| Inspect an admitted source span | read_source |
 
 ## Tips
 - `search_context` is capability-aware: it does not claim dense or graph

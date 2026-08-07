@@ -35,6 +35,7 @@ from .tools._validation import (
     MAX_GRAPH_DEPTH,
     MAX_LSP_POSITION,
     MAX_ROUTE_SYMBOLS,
+    MAX_SOURCE_PATH_CHARS,
     MAX_TOOL_RESULTS,
 )
 from .tools.dependency import dependency_subgraph_impl
@@ -42,6 +43,7 @@ from .tools.lsp import lsp_definition_impl, lsp_references_impl, lsp_route_impl
 from .tools.search import search_bm25_impl, search_context_impl, search_regex_impl
 from .tools.search import search_semantic as _search_semantic_impl
 from .tools.search import search_zoekt_impl
+from .tools.source import read_source_impl
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,7 @@ _RouteSymbols = Annotated[
     list[str],
     Field(min_length=1, max_length=MAX_ROUTE_SYMBOLS),
 ]
+_SourcePath = Annotated[str, Field(min_length=1, max_length=MAX_SOURCE_PATH_CHARS)]
 
 
 def get_context() -> ServerContext:
@@ -80,6 +83,8 @@ mcp = MCPServer(
         "substring/regex search across raw file contents. Use "
         "lsp_definition, lsp_references, and lsp_route for graph-backed "
         "LSP-shaped symbol navigation."
+        " Use read_source to inspect a bounded source window after search or "
+        "navigation returns a location."
     ),
 )
 
@@ -261,7 +266,7 @@ async def dependency_subgraph(
     description=(
         "Return compact definition locations from CodeNib's static symbol "
         "graph. Provide either symbol or file_path + 1-based line. Results are "
-        "locations only; read source before finalizing."
+        "locations only; call read_source before finalizing."
     ),
 )
 async def lsp_definition(
@@ -290,7 +295,7 @@ async def lsp_definition(
     description=(
         "Return compact definition/reference locations from CodeNib's static "
         "symbol graph. Provide either symbol or file_path + 1-based line. "
-        "Results are locations only; read source before finalizing."
+        "Results are locations only; call read_source before finalizing."
     ),
 )
 async def lsp_references(
@@ -322,7 +327,7 @@ async def lsp_references(
         "Return compact route anchors from CodeNib's static symbol graph for "
         "one or more symbol seeds. Use this when multiple symbols need a route "
         "map across endpoint, bridge/factory, provider/value, or type anchors. "
-        "Results are locations only; read source before finalizing."
+        "Results are locations only; call read_source before finalizing."
     ),
 )
 async def lsp_route(
@@ -345,6 +350,31 @@ async def lsp_route(
 
 
 @mcp.tool(
+    name="read_source",
+    description=(
+        "Read up to 200 lines from the verified repository checkout using a "
+        "repository-relative POSIX path and 1-based inclusive line range. "
+        "Responses are bounded and retain commit/source provenance."
+    ),
+)
+async def read_source(
+    file_path: _SourcePath,
+    start_line: _PositiveLine = 1,
+    end_line: _PositiveLine | None = None,
+) -> dict[str, Any]:
+    """Return one bounded source window from the verified checkout."""
+    if _ctx is None:
+        raise RuntimeError("Server not initialized")
+    return await asyncio.to_thread(
+        read_source_impl,
+        _ctx,
+        file_path,
+        start_line,
+        end_line,
+    )
+
+
+@mcp.tool(
     name="get_manifest",
     description=(
         "Return metadata about the indexed repository: path, commit, "
@@ -359,6 +389,10 @@ async def get_manifest() -> dict[str, Any]:
     result["runtime"] = {
         "loaded_views": sorted(_ctx.loaded_views),
         "view_errors": dict(sorted(_ctx.errors.items())),
+        "source_read": {
+            "verified": _ctx.source_verified,
+            "error": _ctx.source_error,
+        },
     }
     if _ctx.artifact is not None:
         result["artifact"] = dict(_ctx.artifact)
@@ -418,6 +452,11 @@ def server_status() -> str:
             lines.append(f"  ✓ zoekt: port={ctx.zoekt.port}")
         else:
             lines.append("  ✗ zoekt: not_loaded")
+
+        source_status = (
+            "verified" if ctx.source_verified else (ctx.source_error or "unverified")
+        )
+        lines.append(f"  source_read: {source_status}")
 
         return "\n".join(lines)
     except Exception as e:
@@ -489,6 +528,7 @@ def init_server(
     manifest_path: RepoManifest | str | Path,
     *,
     artifact: dict[str, Any] | None = None,
+    source_verified: bool = False,
 ) -> None:
     """Initialize the global ServerContext from a manifest file.
 
@@ -500,6 +540,7 @@ def init_server(
         FileNotFoundError: if ``manifest_path`` does not exist.
     """
     global _ctx
+    resolved_manifest_path: Path | None = None
     if isinstance(manifest_path, RepoManifest):
         manifest = manifest_path
         logger.info(
@@ -513,9 +554,35 @@ def init_server(
             raise FileNotFoundError(f"Manifest not found: {resolved}")
         logger.info("Loading manifest from %s", resolved)
         manifest = RepoManifest.load(resolved)
+        resolved_manifest_path = resolved
     if _ctx is not None:
         _ctx.close()
     _ctx = ServerContext.load(manifest, artifact=artifact)
+    if source_verified:
+        _ctx.source_verified = True
+        _ctx.source_error = None
+    elif resolved_manifest_path is not None:
+        from ..compiler.checkout_identity import validate_checkout_identity
+
+        repo_path = Path(manifest.repo_path).expanduser().resolve()
+        if not manifest.source_fingerprint:
+            _ctx.source_error = "manifest has no source fingerprint"
+        elif not repo_path.is_dir():
+            _ctx.source_error = "manifest repository checkout does not exist"
+        else:
+            try:
+                validate_checkout_identity(
+                    repo_path,
+                    manifest,
+                    artifact_root=resolved_manifest_path.parent,
+                )
+            except (OSError, ValueError) as exc:
+                _ctx.source_error = str(exc)
+            else:
+                _ctx.source_verified = True
+                _ctx.source_error = None
+        if not _ctx.source_verified:
+            logger.warning("Source reads disabled: %s", _ctx.source_error)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -561,6 +628,7 @@ def main(argv: list[str] | None = None) -> None:
                     "commit": artifact.commit,
                     "views": list(artifact.views),
                 },
+                source_verified=True,
             )
         else:
             init_server(manifest_path)

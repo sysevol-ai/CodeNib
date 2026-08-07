@@ -183,7 +183,9 @@ fresh backing view. An agent can therefore reuse
 available repository work instead of rebuilding context through unbounded
 `grep` and `read` loops, while unavailable searches fail explicitly. BM25,
 semantic, regex, Zoekt, dependency, and static-navigation results retain source
-locations for follow-up reads and citations. See
+locations for follow-up reads and citations. Large search bodies are projected
+under one aggregate budget without changing rank; the bounded `read_source`
+tool recovers exact source windows from the verified checkout. See
 [MCP Server](https://docs.codenib.ai/mcp/)
 for client configuration and tool contracts.
 

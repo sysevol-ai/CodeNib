@@ -61,6 +61,7 @@ def test_server_negotiates_modern_and_legacy_protocols() -> None:
     assert modern_tools == legacy_tools
     assert {
         "get_manifest",
+        "read_source",
         "search_context",
         "search_bm25",
         "search_semantic",
@@ -106,6 +107,11 @@ def test_search_tool_schemas_publish_bounded_inputs() -> None:
         ]
         == 1
     )
+
+    source = tools["read_source"].input_schema["properties"]
+    assert source["file_path"]["minLength"] == 1
+    assert source["file_path"]["maxLength"] == 4096
+    assert source["start_line"]["minimum"] == 1
 
 
 @pytest.fixture

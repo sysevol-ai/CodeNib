@@ -123,6 +123,7 @@ Only tools whose backing views are fresh and available can return results.
 | `lsp_definition` | `symbol_graph` | location | Static go-to-definition-shaped lookup |
 | `lsp_references` | `symbol_graph` | locations | Static find-references-shaped lookup |
 | `lsp_route` | `symbol_graph` | locations | Compact route anchors among related symbols |
+| `read_source` | verified checkout | source window | Read an exact 1-based span after retrieval or navigation |
 | `get_manifest` | manifest | repository | Repository identity, languages, view states, and capabilities |
 
 All source locations returned by MCP use 1-based line numbers.
@@ -132,6 +133,13 @@ All source locations returned by MCP use 1-based line numbers.
 `filter_test`. Its response separates the selected `plan`, indexed `source`
 (repository, commit, and source fingerprint), and ranked `results`. It never
 silently labels a sparse fallback as hybrid or graph-expanded execution.
+Across all search tools, ranked metadata is retained while source bodies share
+a 10,000-character response budget. Projected hits report original and returned
+character counts under `content_projection`. `read_source` accepts a
+repository-relative POSIX path and a 1-based inclusive range of at most 200
+lines; it returns at most 16,000 characters with commit and source-fingerprint
+provenance. Source reads remain disabled when startup cannot verify the checkout
+against its manifest or portable-artifact binding.
 
 The `codenib-guide` prompt explains how to choose among available tools.
 Parameter and return schemas live in

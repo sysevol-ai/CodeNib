@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
 from ...agent.boundary import to_agent_repr
+from ...context_delivery import project_evidence_payloads
 from ...types import NodeInfo
 from ..context import ServerContext
 from ._validation import MAX_TOOL_RESULTS, bounded_integer, required_text
@@ -21,6 +22,13 @@ from ._validation import MAX_TOOL_RESULTS, bounded_integer, required_text
 def _node_to_dict(node: NodeInfo) -> Dict[str, Any]:
     """Serialize a NodeInfo at the 1-based agent boundary."""
     return to_agent_repr(node)
+
+
+def _project_nodes(nodes: List[NodeInfo], *, query: str) -> List[Dict[str, Any]]:
+    return project_evidence_payloads(
+        [_node_to_dict(node) for node in nodes],
+        query=query,
+    )
 
 
 def search_context_impl(
@@ -111,7 +119,7 @@ def search_context_impl(
             "use_ppr": plan.graph.use_ppr,
         }
     artifact = ctx.artifact if isinstance(ctx.artifact, Mapping) else {}
-    results = [_node_to_dict(node) for node in candidates[:top_k]]
+    results = _project_nodes(candidates[:top_k], query=normalized_query)
     for result in results:
         score = result.get("score")
         if hasattr(score, "item"):
@@ -197,14 +205,12 @@ async def search_semantic(
         score_threshold=score_threshold,
     )
 
-    result_dicts = []
-    for node in results:
-        node_dict = _node_to_dict(node)
+    result_dicts = _project_nodes(results, query=normalized_query)
+    for node_dict in result_dicts:
         if hasattr(node_dict.get("score"), "item"):
             node_dict["score"] = float(node_dict["score"].item())
         elif isinstance(node_dict.get("score"), (int, float)):
             node_dict["score"] = float(node_dict["score"])
-        result_dicts.append(node_dict)
     return result_dicts
 
 
@@ -246,7 +252,7 @@ def search_bm25_impl(
         wrap_with_ln=False,
         filter_test=filter_test,
     )
-    return [_node_to_dict(n) for n in results]
+    return _project_nodes(results, query=normalized_query)
 
 
 # ------------------------------------------------------------------
@@ -302,7 +308,7 @@ def search_regex_impl(
             "See https://docs.python.org/3/library/re.html for syntax."
         ) from exc
 
-    return [_node_to_dict(n) for n in results[:top_k]]
+    return _project_nodes(results[:top_k], query=pattern)
 
 
 # ------------------------------------------------------------------
@@ -361,4 +367,4 @@ def search_zoekt_impl(
     except ZoektUnavailableError as exc:
         raise RuntimeError(f"Zoekt search failed: {exc}") from exc
 
-    return [_node_to_dict(n) for n in results]
+    return _project_nodes(results, query=normalized_query)

@@ -124,6 +124,8 @@ class ServerContext:
     vector: Optional[CodeVectorStore] = None
     errors: Dict[str, str] = field(default_factory=dict)
     artifact: Optional[Mapping[str, Any]] = None
+    source_verified: bool = False
+    source_error: Optional[str] = "source binding has not been verified"
     _view_lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
     @classmethod
