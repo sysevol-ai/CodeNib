@@ -696,7 +696,7 @@ def test_build_dataset_codenib_base(runner, monkeypatch):
         lambda **kw: captured.update(kw) or SimpleNamespace(),
     )
     runner._build_dataset(_ds_args("codenib_base"))
-    assert captured["dataset"] == "fishmingyu/codeminer-base-dataset"
+    assert captured["dataset"] == "fishmingyu/codenib-base-dataset"
     assert captured["filter_instance"] == "^(x)$"
 
 

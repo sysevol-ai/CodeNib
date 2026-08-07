@@ -18,6 +18,7 @@ from codenib.compiler.index_compiler import IndexCompilerConfig
 from codenib.dataset.base import DatasetBase
 from codenib.dataset.codenib_base import CodeNibBaseDataset
 from codenib.dataset.codenib_synthesis import DEFAULT_DATASET
+from codenib.dataset_ids import CODENIB_BASE_DATASET
 from codenib.mcp.server import mcp
 from codenib.web.config import CACHE_DIR_NAME, QAConfig
 
@@ -62,8 +63,10 @@ def test_runtime_state_roots_use_codenib(tmp_path: Path) -> None:
     dataset = DatasetBase(root=str(tmp_path))
     qa_config = QAConfig()
 
-    # These are immutable remote dataset addresses, not runtime aliases.
-    assert base_dataset_default == "fishmingyu/" + "code" + "miner-base-dataset"
+    assert CODENIB_BASE_DATASET == "fishmingyu/codenib-base-dataset"
+    assert base_dataset_default == CODENIB_BASE_DATASET
+    assert qa_config.dataset == CODENIB_BASE_DATASET
+    # Synthesis has not yet been republished under a new Hub identifier.
     assert DEFAULT_DATASET == "sysevol-ai/" + "code" + "miner-synthesis"
     assert IndexCompilerConfig().cache_dir_name == ".codenib_cache"
     assert CACHE_DIR_NAME == ".codenib_cache"

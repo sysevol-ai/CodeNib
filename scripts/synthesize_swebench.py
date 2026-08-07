@@ -261,7 +261,7 @@ def main() -> None:
             "swebench_lite": "princeton-nlp/SWE-bench_Lite",
             "swebench_verified": "princeton-nlp/SWE-bench_Verified",
             "swebench_multilingual": "SWE-bench/SWE-bench_Multilingual",
-            "codenib_base": "fishmingyu/codeminer-base-dataset",
+            "codenib_base": "fishmingyu/codenib-base-dataset",
         }
         dataset_name = dataset_name_map[args.dataset]
         filter_pattern = (

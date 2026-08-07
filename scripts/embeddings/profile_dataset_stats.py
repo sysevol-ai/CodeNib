@@ -143,7 +143,7 @@ def main():
 
     _DATASET_DEFAULTS = {
         "swebench": "princeton-nlp/SWE-bench_Lite",
-        "codenib_base": "fishmingyu/codeminer-base-dataset",
+        "codenib_base": "fishmingyu/codenib-base-dataset",
     }
     load_args = SimpleNamespace(
         dataset_class=args.dataset_class,

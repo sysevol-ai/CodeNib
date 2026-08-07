@@ -17,7 +17,7 @@ Usage:
     # CodeNib-base (multi-language, auto-detects language per instance)
     python scripts/embeddings/build_embeddings.py \\
         --dataset-class codenib_base \\
-        --dataset fishmingyu/codeminer-base-dataset \\
+        --dataset fishmingyu/codenib-base-dataset \\
         --enable-profiler
 """
 
@@ -89,7 +89,7 @@ def parse_args():
         help=(
             "HuggingFace dataset name. Defaults to "
             "'princeton-nlp/SWE-bench_Lite' for swebench, "
-            "'fishmingyu/codeminer-base-dataset' for codenib_base."
+            "'fishmingyu/codenib-base-dataset' for codenib_base."
         ),
     )
     parser.add_argument(
@@ -284,7 +284,7 @@ def parse_args():
 _DATASET_DEFAULTS = {
     "swebench": "princeton-nlp/SWE-bench_Lite",
     "swebench_multilingual": "SWE-bench/SWE-bench_Multilingual",
-    "codenib_base": "fishmingyu/codeminer-base-dataset",
+    "codenib_base": "fishmingyu/codenib-base-dataset",
 }
 
 

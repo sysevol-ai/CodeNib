@@ -5,7 +5,7 @@
 """
 MCP server benchmark on the CodeNib base dataset.
 
-Loads `fishmingyu/codeminer-base-dataset` (test split) and runs semantic
+Loads `fishmingyu/codenib-base-dataset` (test split) and runs semantic
 search via the MCP server's `search_semantic` tool against pre-built
 indexes under CODENIB_DATA/<instance_id>. Reports file-level and
 symbol-level accuracy@k, broken down by language_group and
@@ -34,7 +34,7 @@ CODENIB_DATA = prebuilt_data_dir()
 # benchmark default. Override with --model.
 DEFAULT_EMBEDDING_MODEL = "Salesforce/SweRankEmbed-Small"
 DEFAULT_DIMENSION = 768
-DATASET_NAME = "fishmingyu/codeminer-base-dataset"
+DATASET_NAME = "fishmingyu/codenib-base-dataset"
 DATASET_SPLIT = "test"
 
 # language_group (from codenib-base schema) -> manifest `languages` list.

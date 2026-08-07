@@ -143,7 +143,7 @@ def parse_args():
     p.add_argument(
         "--dataset",
         type=str,
-        default="fishmingyu/codeminer-base-dataset",
+        default="fishmingyu/codenib-base-dataset",
         help="HuggingFace dataset name.",
     )
     p.add_argument("--split", type=str, default="test")

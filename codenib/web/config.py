@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ..dataset_ids import CODENIB_BASE_DATASET
 from ..llm.options import (
     merge_model_options,
     parse_model_options_json,
@@ -123,7 +124,7 @@ class QAConfig:
     )
 
     # --- instance selection (used by the build script) ---
-    dataset: str = "fishmingyu/codeminer-base-dataset"
+    dataset: str = CODENIB_BASE_DATASET
     split: str = "test"
     # Explicit instance ids to feature; if empty, sample `per_language` from
     # each of `languages` (a varied set).

@@ -283,7 +283,7 @@ python scripts/generate_codenib_synthesis_config.py \
 
 Flags: `--config` (required; one of `ALL_CONFIGS`), `--instance-id` (required),
 `--split` (default `test`), `--source-dataset` (default
-`fishmingyu/codeminer-base-dataset`), `--counts` (comma-separated `category=N`;
+`fishmingyu/codenib-base-dataset`), `--counts` (comma-separated `category=N`;
 defaults to the base 50-row mix; include `traversal=10` to add traversal rows),
 `--include-traversal` (shortcut for base mix + `traversal=10`),
 `--traversal-stance-counts` (default = even split, so `traversal=10` becomes

@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from codenib.dataset_ids import CODENIB_BASE_DATASET
 from codenib.paths import prebuilt_data_dir
 
 
@@ -61,7 +62,7 @@ class SweepConfig:
     max_tokens: int = 4096
     topk: int = 50
     num_retries: int = 8
-    dataset: str = "fishmingyu/codeminer-base-dataset"
+    dataset: str = CODENIB_BASE_DATASET
     dataset_revision: Optional[str] = None
     split: str = "test"
     prebuilt_dir: str = field(default_factory=lambda: str(prebuilt_data_dir()))

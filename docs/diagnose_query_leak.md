@@ -15,7 +15,7 @@ Running `examples/eval_synthesized_queries.py` with `Salesforce/SweRankEmbed-Sma
 against the current 96 synthesized behavioral queries scores file-recall@10 = 0.92
 and symbol-recall@10 = 0.73. The score is saturated relative to the same embedder
 on calibration data (0.39–0.77 on CodeNib Base,
-`fishmingyu/codeminer-base-dataset`), suggesting the
+`fishmingyu/codenib-base-dataset`), suggesting the
 synthesizer prompt is leaking domain vocabulary into the query. The scripts below
 let us measure how much.
 

@@ -16,6 +16,7 @@ from datasets import Features
 from datasets import Sequence as Seq
 from datasets import Value
 
+from ..dataset_ids import CODENIB_BASE_DATASET
 from ..git_snapshot import restore_git_worktree
 from ..log_utils import get_logger
 from .base import DatasetBase
@@ -49,7 +50,7 @@ class CodeNibBaseDataset(DatasetBase):
 
     def __init__(
         self,
-        dataset: str = "fishmingyu/codeminer-base-dataset",
+        dataset: str = CODENIB_BASE_DATASET,
         split: str = "test",
         filter_instance: str = ".*",
         root: str | None = None,

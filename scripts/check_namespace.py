@@ -19,10 +19,9 @@ _FORMER_LOWER = "code" + "miner"
 _FORMER_UPPER = "CODE" + "MINER"
 _FORMER_IDENTIFIERS = (_FORMER_CAMEL, _FORMER_LOWER, _FORMER_UPPER)
 
-# These datasets have not been republished under new owners. They are immutable
-# data addresses, not supported package, command, environment, or state aliases.
+# This dataset has not been republished under a new identifier. It is an
+# immutable data address, not a supported package, command, or state alias.
 _EXTERNAL_IDENTITY_PATTERNS = (
-    re.compile(rf"fishmingyu/{_FORMER_LOWER}-base-dataset" r"(?=$|[^A-Za-z0-9_.-])"),
     re.compile(rf"sysevol-ai/{_FORMER_LOWER}-synthesis" r"(?=$|[^A-Za-z0-9_.-])"),
 )
 

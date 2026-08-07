@@ -231,7 +231,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", required=True, choices=ALL_CONFIGS)
     p.add_argument("--instance-id", required=True)
     p.add_argument("--split", default="test")
-    p.add_argument("--source-dataset", default="fishmingyu/codeminer-base-dataset")
+    p.add_argument("--source-dataset", default="fishmingyu/codenib-base-dataset")
     p.add_argument(
         "--counts",
         default="",

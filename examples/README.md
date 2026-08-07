@@ -24,7 +24,7 @@ double as the evaluation harnesses used in the experiments under
 | `make dev` (editable install) | always |
 | An embedding model (e.g. `nomic-ai/CodeRankEmbed`, GPU recommended) | embedding / rerank / agent retrieval |
 | LLM credentials (`litellm` provider env, e.g. `GOOGLE_APPLICATION_CREDENTIALS` for Vertex) | anything with an LLM (agent loop, rerank, query synthesis) |
-| A dataset — `fishmingyu/codeminer-base-dataset`, SWE-bench, or LocBench (cached under `~/.codenib/`) | every eval script |
+| A dataset — `fishmingyu/codenib-base-dataset`, SWE-bench, or LocBench (cached under `~/.codenib/`) | every eval script |
 
 Most scripts accept `--filter-instance <regex>` to run a single instance and
 `--result-path <file.json>` to write metrics. Generated output is **gitignored**

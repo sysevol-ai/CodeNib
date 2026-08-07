@@ -83,9 +83,9 @@ def test_namespace_check_allows_only_exact_external_identity(tmp_path: Path) -> 
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     former = "code" + "miner"
     allowed = tmp_path / "external.txt"
-    allowed.write_text(f"fishmingyu/{former}-base-dataset\n")
+    allowed.write_text(f"sysevol-ai/{former}-synthesis\n")
     disallowed = tmp_path / "nearby.txt"
-    disallowed.write_text(f"fishmingyu/{former}-base-dataset-cache\n")
+    disallowed.write_text(f"sysevol-ai/{former}-synthesis-cache\n")
     subprocess.run(
         ["git", "add", allowed.name, disallowed.name],
         cwd=tmp_path,
