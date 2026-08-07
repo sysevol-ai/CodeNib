@@ -826,21 +826,38 @@ class WikiBuilder:
         self, file: str, start: Optional[int] = None, end: Optional[int] = None
     ) -> Optional[dict]:
         repo_dir = self._entry.repo_dir
-        # Prevent path traversal; only serve files under repo_dir.
-        safe = os.path.normpath(file).lstrip("/")
-        abs_path = os.path.normpath(os.path.join(repo_dir, safe))
-        if not abs_path.startswith(os.path.abspath(repo_dir)) or not os.path.isfile(
-            abs_path
-        ):
+        root = os.path.realpath(repo_dir)
+        if os.path.isabs(file):
             return None
-        with open(abs_path, "r", encoding="utf-8", errors="replace") as fh:
-            all_lines = fh.readlines()
+        relative = os.path.normpath(file.replace("\\", os.sep))
+        if relative in ("", ".", "..") or relative.startswith(".." + os.sep):
+            return None
+        abs_path = os.path.realpath(os.path.join(root, relative))
+        try:
+            if os.path.commonpath((root, abs_path)) != root:
+                return None
+        except ValueError:
+            return None
+        if not os.path.isfile(abs_path):
+            return None
+        # Resolve the target only for the containment check. Graph identities
+        # are keyed by the normalized repository path that was indexed, which
+        # may intentionally be a symlink to another contained source file.
+        safe = relative.replace(os.sep, "/")
         if start is not None and end is not None:
-            chunk = all_lines[max(0, start - 1) : end]  # 1-based inclusive
             first = max(1, start)
+            last = max(first - 1, end)
         else:
-            chunk = all_lines[:400]
             first = 1
+            last = 400
+        chunk = []
+        with open(abs_path, "r", encoding="utf-8", errors="replace") as fh:
+            for line_number, line in enumerate(fh, start=1):
+                if line_number < first:
+                    continue
+                if line_number > last:
+                    break
+                chunk.append(line)
         return {
             "file": safe,
             "start_line": first,
