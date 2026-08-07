@@ -48,6 +48,9 @@ class EmbeddingRetrievePipeline:
         embedding_provider: Embedding provider (``"huggingface"`` or
             ``"openai"``).
         embedding_dimension: Embedding vector dimension.
+        embedding_revision: Optional Hugging Face model revision.
+        trust_remote_code: Whether to execute Hugging Face model repository
+            code. Remote models require an immutable commit revision.
         languages: Languages to chunk for indexing (default: ``["python"]``).
         max_lines_per_chunk: Maximum lines per chunk.
         top_k: Default number of results to retrieve.
@@ -63,6 +66,8 @@ class EmbeddingRetrievePipeline:
         embedding_model: str = "nomic-ai/CodeRankEmbed",
         embedding_provider: str = "huggingface",
         embedding_dimension: int = 768,
+        embedding_revision: Optional[str] = None,
+        trust_remote_code: Optional[bool] = None,
         languages: Optional[List[str]] = None,
         max_lines_per_chunk: int = 300,
         top_k: int = 50,
@@ -73,9 +78,17 @@ class EmbeddingRetrievePipeline:
         ivf_nprobe: int = 8,
     ) -> None:
         self.top_k = top_k
-        _embedding_kwargs = {"model_kwargs": {"trust_remote_code": True}}
-        if embedding_kwargs:
-            _embedding_kwargs.update(embedding_kwargs)
+        _embedding_kwargs = dict(embedding_kwargs or {})
+        if embedding_provider.lower() == "huggingface":
+            if embedding_revision is not None:
+                _embedding_kwargs["revision"] = embedding_revision
+            if trust_remote_code is not None:
+                _embedding_kwargs["trust_remote_code"] = trust_remote_code
+        elif embedding_revision is not None or trust_remote_code is not None:
+            raise ValueError(
+                "embedding_revision and trust_remote_code require the "
+                "huggingface embedding provider"
+            )
 
         if index_path is None:
             # Model-only initialisation — no index loaded yet.

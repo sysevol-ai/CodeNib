@@ -115,8 +115,20 @@ def parse_args():
     parser.add_argument(
         "--trust-remote-code",
         action="store_true",
-        default=True,
-        help="Trust remote code for embedding model",
+        help=(
+            "Execute Hugging Face model repository code. Remote models also "
+            "require a full commit SHA via --embedding-revision."
+        ),
+    )
+    parser.add_argument(
+        "--embedding-revision",
+        default=None,
+        help="Immutable Hugging Face revision for the retrieval embedding model.",
+    )
+    parser.add_argument(
+        "--rerank-embedding-revision",
+        default=None,
+        help="Immutable Hugging Face revision for the rerank embedding model.",
     )
     parser.add_argument(
         "--batch-size",
@@ -572,17 +584,22 @@ def run_pipeline(args):
 
                 # Initialize pipeline
                 embedding_model_kwargs = {
-                    "trust_remote_code": args.trust_remote_code,
-                    "encode_kwargs": {
-                        "batch_size": args.batch_size,
-                    },
+                    "encode_kwargs": {"batch_size": args.batch_size},
                 }
+                if args.embedding_revision:
+                    embedding_model_kwargs["revision"] = args.embedding_revision
+                if args.trust_remote_code:
+                    embedding_model_kwargs["trust_remote_code"] = True
+
                 rerank_embedding_kwargs = {
-                    "trust_remote_code": args.trust_remote_code,
                     "encode_kwargs": {
                         "batch_size": args.rerank_embedding_batch_size,
                     },
                 }
+                if args.rerank_embedding_revision:
+                    rerank_embedding_kwargs["revision"] = args.rerank_embedding_revision
+                if args.trust_remote_code:
+                    rerank_embedding_kwargs["trust_remote_code"] = True
 
                 instance_languages = _resolve_instance_languages(
                     instance, args.languages

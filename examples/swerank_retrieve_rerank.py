@@ -35,8 +35,10 @@ from pathlib import Path
 from typing import Any, Sequence
 
 RETRIEVAL_MODEL = "Salesforce/SweRankEmbed-Small"
+RETRIEVAL_REVISION = "745d2a06103a66d3cfa600aa52fc0d3523010daa"
 RETRIEVAL_DIMENSION = 768
 EMBED_RERANK_MODEL = "Salesforce/SweRankEmbed-Large"
+EMBED_RERANK_REVISION = "b2cbc7dd3a2aed8c268fa65673464cd5ad96f9ff"
 EMBED_RERANK_DIMENSION = 3584
 LLM_RERANK_MODEL = "openai/swerank-llm-small"
 RETRIEVAL_TOP_K = 100
@@ -240,10 +242,15 @@ def resolve_index_dir(
     )
 
 
-def _embedding_runtime_kwargs(batch_size: int, device: str | None) -> dict[str, Any]:
+def _embedding_runtime_kwargs(
+    batch_size: int,
+    device: str | None,
+    revision: str,
+) -> dict[str, Any]:
     model_kwargs = {"device": device} if device else {}
     return {
         "trust_remote_code": True,
+        "revision": revision,
         "model_kwargs": model_kwargs,
         "encode_kwargs": {
             "batch_size": batch_size,
@@ -272,7 +279,9 @@ def build_pipeline_kwargs(
         "embedding_provider": "huggingface",
         "embedding_dimension": RETRIEVAL_DIMENSION,
         "embedding_model_kwargs": _embedding_runtime_kwargs(
-            args.retrieval_batch_size, args.device
+            args.retrieval_batch_size,
+            args.device,
+            RETRIEVAL_REVISION,
         ),
         "languages": list(languages),
         "max_lines_per_chunk": args.max_lines_per_chunk,
@@ -286,7 +295,9 @@ def build_pipeline_kwargs(
             rerank_embedding_provider="huggingface",
             rerank_embedding_dimension=EMBED_RERANK_DIMENSION,
             rerank_embedding_model_kwargs=_embedding_runtime_kwargs(
-                args.rerank_batch_size, args.device
+                args.rerank_batch_size,
+                args.device,
+                EMBED_RERANK_REVISION,
             ),
         )
     else:

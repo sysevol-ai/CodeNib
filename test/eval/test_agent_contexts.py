@@ -29,6 +29,7 @@ def test_context_spec_normalizes_ordered_unique_fields():
 
     assert spec.skill_ids == ("embedding_search", "bm25_search")
     assert spec.languages == ("python", "go")
+    assert spec.trust_remote_code is None
 
 
 def test_context_spec_rejects_invalid_values():

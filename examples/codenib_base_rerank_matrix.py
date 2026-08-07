@@ -59,6 +59,13 @@ from codenib.types import QueriedNode
 
 logger = get_logger(__name__)
 
+_PINNED_REMOTE_CODE_REVISIONS = {
+    "nomic-ai/CodeRankEmbed": "3c4b60807d71f79b43f3c4363786d9493691f8b1",
+    "Salesforce/SweRankEmbed-Small": ("745d2a06103a66d3cfa600aa52fc0d3523010daa"),
+    "Salesforce/SweRankEmbed-Large": ("b2cbc7dd3a2aed8c268fa65673464cd5ad96f9ff"),
+    "fishmingyu/SweRankEmbed-Large": ("7f2b5878ab8bd69effbf9712576a5ce155933fb0"),
+}
+
 
 # ---------------------------------------------------------------------------
 # CLI helpers
@@ -290,10 +297,7 @@ def _build_large_store(
     max_seq_length: Optional[int],
 ) -> CodeVectorStore:
     """Construct a model-only CodeVectorStore (no index) for online rerank."""
-    embedding_kwargs = {
-        "model_kwargs": {"trust_remote_code": True},
-        "encode_kwargs": {"batch_size": batch_size},
-    }
+    embedding_kwargs = _embedding_runtime_kwargs(model, batch_size)
     if max_seq_length:
         embedding_kwargs["max_seq_length"] = max_seq_length
     return CodeVectorStore(
@@ -304,6 +308,15 @@ def _build_large_store(
         store_path=None,
         **embedding_kwargs,
     )
+
+
+def _embedding_runtime_kwargs(model: str, batch_size: int) -> dict:
+    kwargs = {"encode_kwargs": {"batch_size": batch_size}}
+    revision = _PINNED_REMOTE_CODE_REVISIONS.get(model)
+    if revision is not None:
+        kwargs["revision"] = revision
+        kwargs["trust_remote_code"] = True
+    return kwargs
 
 
 def _rerank_with_large(
@@ -452,10 +465,9 @@ def run_sweep(args):
                 embedding_provider="huggingface",
                 embedding_dimension=s_dim,
                 top_k=args.rerank_top_k,
-                embedding_kwargs={
-                    "model_kwargs": {"trust_remote_code": True},
-                    "encode_kwargs": {"batch_size": args.small_batch_size},
-                },
+                embedding_kwargs=_embedding_runtime_kwargs(
+                    s_model, args.small_batch_size
+                ),
             )
             logger.info("Small model loaded: %s", s_model)
 

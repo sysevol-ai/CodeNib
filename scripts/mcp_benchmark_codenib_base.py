@@ -33,6 +33,7 @@ CODENIB_DATA = prebuilt_data_dir()
 # index coverage on ${CODENIB_PREBUILT_DIR} for this dataset, so it's the
 # benchmark default. Override with --model.
 DEFAULT_EMBEDDING_MODEL = "Salesforce/SweRankEmbed-Small"
+DEFAULT_EMBEDDING_REVISION = "745d2a06103a66d3cfa600aa52fc0d3523010daa"
 DEFAULT_DIMENSION = 768
 DATASET_NAME = "fishmingyu/codenib-base-dataset"
 DATASET_SPLIT = "test"
@@ -150,7 +151,12 @@ async def benchmark_instance(
             dimension=dimension,
             index_metric="ip",
             store_path=str(repo_dir),
-            model_kwargs={"trust_remote_code": True},
+            revision=(
+                DEFAULT_EMBEDDING_REVISION
+                if embedding_model == DEFAULT_EMBEDDING_MODEL
+                else None
+            ),
+            trust_remote_code=(embedding_model == DEFAULT_EMBEDDING_MODEL),
         )
         ctx.vector.load()
     except Exception as e:

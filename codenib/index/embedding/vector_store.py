@@ -32,10 +32,31 @@ from .artifact_integrity import (
     validate_vector_level_artifacts,
     vector_level_artifact_records,
 )
+from .model_policy import resolve_embedding_load_policy
 
 logger = get_logger(__name__)
 
 Level = Literal["l0", "l2"]
+
+_UNSET = object()
+
+
+def _pop_compatible_model_option(
+    kwargs: Dict[str, Any],
+    model_kwargs: Dict[str, Any],
+    name: str,
+) -> Any:
+    """Resolve an option accepted in either legacy wrapper location."""
+
+    direct = kwargs.pop(name, _UNSET)
+    nested = model_kwargs.pop(name, _UNSET)
+    if direct is not _UNSET and nested is not _UNSET and direct != nested:
+        raise ValueError(f"conflicting {name} values in embedding model options")
+    if direct is not _UNSET:
+        return direct
+    if nested is not _UNSET:
+        return nested
+    return None
 
 
 def _atomic_replace(target: Path, writer: Callable[[Path], None]) -> None:
@@ -105,9 +126,19 @@ class _HuggingFaceEmbeddingWrapper:
 
         from .prompt_registry import resolve_prompts
 
-        model_kwargs = kwargs.pop("model_kwargs", {})
+        model_kwargs = dict(kwargs.pop("model_kwargs", {}) or {})
         self._encode_kwargs = kwargs.pop("encode_kwargs", {})
         self._default_batch_size: Optional[int] = kwargs.pop("default_batch_size", None)
+
+        revision = _pop_compatible_model_option(kwargs, model_kwargs, "revision")
+        trust_remote_code = _pop_compatible_model_option(
+            kwargs, model_kwargs, "trust_remote_code"
+        )
+        load_policy = resolve_embedding_load_policy(
+            model_name,
+            revision=revision,
+            trust_remote_code=trust_remote_code,
+        )
 
         # Pop prompt-related kwargs so they aren't forwarded to
         # SentenceTransformer's __init__. Anything left as None falls back to
@@ -129,9 +160,11 @@ class _HuggingFaceEmbeddingWrapper:
         self._document_prompt = merged["document_prompt"]
 
         # Build SentenceTransformer init kwargs
-        st_kwargs: Dict[str, Any] = {}
-        if kwargs.pop("trust_remote_code", False):
-            st_kwargs["trust_remote_code"] = True
+        st_kwargs: Dict[str, Any] = {
+            "trust_remote_code": load_policy.trust_remote_code,
+        }
+        if load_policy.revision is not None:
+            st_kwargs["revision"] = load_policy.revision
         # Forward remaining kwargs (e.g. device, cache_folder)
         st_kwargs.update(kwargs)
         st_kwargs.update(model_kwargs)

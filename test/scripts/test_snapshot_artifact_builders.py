@@ -74,6 +74,10 @@ def test_embedding_artifact_records_effective_l0_fallback_limit(configured, effe
     )
 
     assert configuration["chunking"]["l0_raw_fallback_max_lines"] == effective
+    assert configuration["embedding"]["model"] == "nomic-ai/CodeRankEmbed"
+    assert configuration["embedding"]["revision"] == (
+        "3c4b60807d71f79b43f3c4363786d9493691f8b1"
+    )
 
 
 def test_graph_artifact_identity_tracks_repository_filter_policy():

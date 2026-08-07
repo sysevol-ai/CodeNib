@@ -45,6 +45,10 @@ from codenib.compiler.snapshot_store import ArtifactProfile  # noqa: E402
 from codenib.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
 from codenib.git_snapshot import GitSourceSurface  # noqa: E402
 from codenib.index.embedding import build_hierarchical_vector_store  # noqa: E402
+from codenib.index.embedding.model_policy import (  # noqa: E402
+    DEFAULT_EMBEDDING_MODEL,
+    resolve_embedding_load_policy,
+)
 from codenib.languages import extensions_for_language  # noqa: E402
 from codenib.log_utils import get_logger  # noqa: E402
 from codenib.paths import prebuilt_data_dir  # noqa: E402
@@ -128,8 +132,16 @@ def parse_args():
     parser.add_argument(
         "--trust-remote-code",
         action="store_true",
-        default=True,
-        help="Trust remote code for embedding model",
+        default=None,
+        help=(
+            "Execute Hugging Face model repository code. Remote models also "
+            "require --embedding-revision with a full commit SHA."
+        ),
+    )
+    parser.add_argument(
+        "--embedding-revision",
+        default=None,
+        help="Immutable Hugging Face model revision.",
     )
     parser.add_argument(
         "--batch-size",
@@ -424,6 +436,12 @@ def _artifact_configuration(
     build_levels: List[str],
     args: argparse.Namespace,
 ) -> dict[str, Any]:
+    model = getattr(args, "embedding_model", DEFAULT_EMBEDDING_MODEL)
+    load_policy = resolve_embedding_load_policy(
+        model,
+        revision=getattr(args, "embedding_revision", None),
+        trust_remote_code=getattr(args, "trust_remote_code", None),
+    )
     return {
         "languages": sorted(languages),
         "build_levels": sorted(build_levels),
@@ -438,6 +456,8 @@ def _artifact_configuration(
             ),
         },
         "embedding": {
+            "model": model,
+            "revision": load_policy.revision,
             "provider": args.embedding_provider,
             "dimension": args.embedding_dimension,
             "index_type": args.index_type,
@@ -662,9 +682,16 @@ def build_embeddings(args):
                     ", ".join(existing_quality["failure_names"]),
                 )
 
+            load_policy = resolve_embedding_load_policy(
+                args.embedding_model,
+                revision=args.embedding_revision,
+                trust_remote_code=args.trust_remote_code,
+            )
             embedding_kwargs = {}
-            if args.trust_remote_code:
+            if load_policy.trust_remote_code:
                 embedding_kwargs["model_kwargs"] = {"trust_remote_code": True}
+            if load_policy.revision is not None:
+                embedding_kwargs["revision"] = load_policy.revision
             if args.batch_size:
                 embedding_kwargs["encode_kwargs"] = {"batch_size": args.batch_size}
             if args.max_seq_length:

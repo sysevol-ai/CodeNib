@@ -54,7 +54,7 @@ class AgentSkillContextSpec:
     default_level: str = "l2"
     rebuild: bool = False
     skills_dir: Optional[Path] = None
-    trust_remote_code: bool = False
+    trust_remote_code: Optional[bool] = None
     embedding_batch_size: Optional[int] = None
 
     def __post_init__(self) -> None:

@@ -123,6 +123,8 @@ def test_graph_pipeline_routes_languages_to_graph_builder_and_rerank(
         index_path=index_path,
         stage1_topk=11,
         use_embedding_rerank=True,
+        embedding_revision="f" * 40,
+        trust_remote_code=True,
         languages=["rust", "python"],
         graph_route="scip-candidate",
         project_name="repo__case",
@@ -147,6 +149,11 @@ def test_graph_pipeline_routes_languages_to_graph_builder_and_rerank(
 
     [vector_call] = vector_calls
     assert vector_call["languages"] == ["rust", "python"]
+    assert vector_call["embedding_kwargs"] == {
+        "encode_kwargs": {"batch_size": 4},
+        "revision": "f" * 40,
+        "trust_remote_code": True,
+    }
 
 
 def test_graph_retrieve_pipeline_name_is_sparse_seeded_alias():

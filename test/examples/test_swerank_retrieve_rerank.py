@@ -76,6 +76,7 @@ def test_embedding_recipe_uses_independent_large_encoder(recipe, tmp_path):
     assert kwargs["rerank_embedding_dimension"] == 3584
     assert kwargs["rerank_embedding_model_kwargs"] == {
         "trust_remote_code": True,
+        "revision": recipe.EMBED_RERANK_REVISION,
         "model_kwargs": {"device": "cuda:1"},
         "encode_kwargs": {"batch_size": 4, "normalize_embeddings": True},
     }
@@ -83,6 +84,7 @@ def test_embedding_recipe_uses_independent_large_encoder(recipe, tmp_path):
         "batch_size": 32,
         "normalize_embeddings": True,
     }
+    assert kwargs["embedding_model_kwargs"]["revision"] == (recipe.RETRIEVAL_REVISION)
     assert kwargs["languages"] == ["python", "go"]
 
 

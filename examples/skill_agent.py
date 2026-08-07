@@ -158,7 +158,6 @@ def build_vector_store(
         embedding_model=embedding_model,
         embedding_provider="huggingface",
         embedding_dimension=embedding_dimension,
-        embedding_kwargs={"model_kwargs": {"trust_remote_code": True}},
         index_metric="ip",
     )
     return vs

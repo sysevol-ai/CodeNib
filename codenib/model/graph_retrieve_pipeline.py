@@ -51,6 +51,9 @@ class SparseSeededGraphRetrievePipeline:
         embedding_model: Embedding model for Stage 3.
         embedding_provider: Embedding provider for Stage 3.
         embedding_dimension: Embedding vector dimension for Stage 3.
+        embedding_revision: Optional Hugging Face model revision.
+        trust_remote_code: Whether to execute Hugging Face model repository
+            code. Remote models require an immutable commit revision.
         languages: Languages to index. Multiple entries build per-language
             graphs and merge them before BM25/graph expansion. The full list is
             also used for Stage 3 chunking.
@@ -75,6 +78,8 @@ class SparseSeededGraphRetrievePipeline:
         embedding_model: str = "nomic-ai/CodeRankEmbed",
         embedding_provider: str = "huggingface",
         embedding_dimension: int = 768,
+        embedding_revision: Optional[str] = None,
+        trust_remote_code: Optional[bool] = None,
         languages: Optional[List[str]] = None,
         graph_route: str = "active",
         max_lines_per_chunk: int = 300,
@@ -117,6 +122,18 @@ class SparseSeededGraphRetrievePipeline:
         # Build vector store for Stage 3 if requested
         self.vector_store: Optional[CodeVectorStore] = None
         if use_embedding_rerank:
+            embedding_kwargs: Dict[str, object] = {}
+            if embedding_provider.lower() == "huggingface":
+                embedding_kwargs["encode_kwargs"] = {"batch_size": 4}
+                if embedding_revision is not None:
+                    embedding_kwargs["revision"] = embedding_revision
+                if trust_remote_code is not None:
+                    embedding_kwargs["trust_remote_code"] = trust_remote_code
+            elif embedding_revision is not None or trust_remote_code is not None:
+                raise ValueError(
+                    "embedding_revision and trust_remote_code require the "
+                    "huggingface embedding provider"
+                )
             with _section(
                 profiler,
                 "index.vector_store_build",
@@ -132,10 +149,7 @@ class SparseSeededGraphRetrievePipeline:
                     embedding_model=embedding_model,
                     embedding_provider=embedding_provider,
                     embedding_dimension=embedding_dimension,
-                    embedding_kwargs={
-                        "model_kwargs": {"trust_remote_code": True},
-                        "encode_kwargs": {"batch_size": 4},
-                    },
+                    embedding_kwargs=embedding_kwargs,
                     index_metric="ip",
                     profiler=profiler,
                 )

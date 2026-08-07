@@ -97,6 +97,9 @@ class HybridRetrievePipeline:
         stage2_topk: Final number of results after embedding rerank (default: 50).
         embedding_model: Embedding model name (default: nomic-ai/CodeRankEmbed).
         embedding_dimension: Embedding vector dimension (default: 768).
+        embedding_revision: Optional Hugging Face model revision.
+        trust_remote_code: Whether to execute model repository code. Remote
+            models require an immutable commit revision.
         languages: Languages to index (default: ["python"]).
         embedding_batch_size: Batch size for embedding inference (default: 8 to avoid CUDA OOM).
 
@@ -119,6 +122,8 @@ class HybridRetrievePipeline:
         stage2_topk: int = 50,
         embedding_model: str = "nomic-ai/CodeRankEmbed",
         embedding_dimension: int = 768,
+        embedding_revision: Optional[str] = None,
+        trust_remote_code: Optional[bool] = None,
         languages: Sequence[str] = ("python",),
         embedding_batch_size: int = 8,
     ):
@@ -152,10 +157,11 @@ class HybridRetrievePipeline:
             cache_dir=index_cache_dir,
             skill_registry=registry,  # Pass loaded registry
             embedding_model=embedding_model,
+            embedding_revision=embedding_revision,
             embedding_dimension=embedding_dimension,
             default_top_k=stage1_topk,  # BM25 max_k
             default_level="l2",  # embedding level
-            trust_remote_code=True,  # Required for nomic-ai/CodeRankEmbed
+            trust_remote_code=trust_remote_code,
             embedding_batch_size=embedding_batch_size,  # Avoid CUDA OOM
         )
 

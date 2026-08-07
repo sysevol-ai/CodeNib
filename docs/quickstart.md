@@ -151,6 +151,9 @@ codenib wiki /path/to/repository --preset semantic
 The semantic preset downloads CodeRankEmbed on first use. CodeNib pins the
 built-in model to an immutable revision and enables remote model code only for
 that revision; caller-supplied models or revisions are not trusted implicitly.
+Custom Hub code requires both an explicit `trust_remote_code=True` and a full
+40-character commit SHA. Local model directories may opt in without a Hub
+revision.
 To keep embeddings out of the local process, use a BYO OpenAI-compatible
 embedding service:
 
