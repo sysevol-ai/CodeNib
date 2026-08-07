@@ -163,9 +163,10 @@ before graph resolution.
   `include_declaration` defaults to `true` and `top_k` to 40.
 - `lsp_route`: provide `symbols`, with optional `query`, `top_k` (default 12),
   and `include_neighbors` (default `true`) to rank endpoint, bridge/factory,
-  provider/value, and type anchors. At most 100 non-empty symbol seeds are
-  accepted per request; comma-separated seed text is limited to 16,000
-  characters before splitting.
+  provider/value, and type anchors. If no reliable symbol is known, pass
+  `symbols=[]` with a non-blank query to select route seeds from the graph.
+  At most 100 non-empty symbol seeds are accepted per request; comma-separated
+  seed text is limited to 16,000 characters before splitting.
 
 ### `get_manifest`
 Returns the manifest version; a nested `repo` object containing path, commit,

@@ -301,8 +301,9 @@ async def lsp_references(
     name="lsp_route",
     description=(
         "Return compact route anchors from CodeNib's static symbol graph for "
-        "one or more symbol seeds. Use this when multiple symbols need a route "
-        "map across endpoint, bridge/factory, provider/value, or type anchors. "
+        "symbol seeds, or use a query alone when no reliable symbol is known. "
+        "Use this for a route map across endpoint, bridge/factory, "
+        "provider/value, or type anchors. "
         "Results are locations only; read source before finalizing."
     ),
 )

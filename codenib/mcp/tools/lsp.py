@@ -190,14 +190,15 @@ def lsp_route_impl(
         )
     except ValueError as exc:
         return {"error": str(exc)}
-    if not seeds:
+    normalized_query = requested_query.strip()
+    if not seeds and not normalized_query:
         return []
 
     from ...agent.lsp_provider import StaticLSPProvider
 
     results = StaticLSPProvider(graph).route(
         symbols=seeds,
-        query=requested_query or None,
+        query=normalized_query or None,
         top_k=limit,
         include_neighbors=bool(include_neighbors),
     )

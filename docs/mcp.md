@@ -122,7 +122,7 @@ Only tools whose backing views are fresh and available can return results.
 | `dependency_subgraph` | `symbol_graph` | call graph | Caller impact, callee dependencies, or a one-hop neighborhood |
 | `lsp_definition` | `symbol_graph` | location | Static go-to-definition-shaped lookup |
 | `lsp_references` | `symbol_graph` | locations | Static find-references-shaped lookup |
-| `lsp_route` | `symbol_graph` | locations | Compact route anchors among related symbols |
+| `lsp_route` | `symbol_graph` | locations | Compact route anchors from symbol seeds or query-seeded graph matches |
 | `get_manifest` | manifest | repository | Repository identity, languages, view states, and capabilities |
 
 All source locations returned by MCP use 1-based line numbers.

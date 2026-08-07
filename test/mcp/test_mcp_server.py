@@ -285,6 +285,43 @@ def test_lsp_route_rejects_oversized_symbol_list_before_provider():
     provider.assert_not_called()
 
 
+def test_lsp_route_uses_query_fallback_without_symbol_seeds():
+    from codenib.graph.code_graph import CodeGraph
+
+    graph = CodeGraph()
+    graph._add_vertex(
+        "src/cache.py:CachePathResolver.resolve()",
+        {
+            "type": "method",
+            "file": "src/cache.py",
+            "start_line": 4,
+            "end_line": 12,
+            "unified_name": "CachePathResolver.resolve()",
+        },
+    )
+
+    result = lsp_route_impl(
+        MagicMock(symbol_graph=graph),
+        symbols=[],
+        query="resolve cached path",
+        top_k=5,
+    )
+
+    assert isinstance(result, list)
+    assert [node["node_name"] for node in result] == ["CachePathResolver.resolve()"]
+    assert result[0]["file"] == "src/cache.py"
+    assert result[0]["start_line"] == 5
+
+
+def test_lsp_route_skips_provider_without_symbols_or_query():
+    ctx = MagicMock(symbol_graph=MagicMock())
+    with patch("codenib.agent.lsp_provider.StaticLSPProvider") as provider:
+        result = lsp_route_impl(ctx, symbols=[], query="   ")
+
+    assert result == []
+    provider.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("impl", "kwargs", "error"),
     [
