@@ -9,8 +9,9 @@ the harness grows (Phase 2 added percentile / memory rollups) regressions
 would land silently. The helpers covered here are pure functions:
 
 - ``_resolve_rerank_strategy``: legacy ``--embedding`` ↔ new
-  ``--rerank-strategy`` precedence and the cross-encoder NotImplementedError
-  fence (until PR #128 lands).
+  ``--rerank-strategy`` precedence, including the cross-encoder path.
+- cross-encoder wiring: shared-factory construction, candidate scoring, and
+  best-effort lifetime ownership for a full dataset run.
 - ``_aggregate_section_stats``: sums per-instance section payloads, with
   optional sample / memory roll-ups added in Phase 2.
 - ``_filter_index_sections`` / ``_filter_query_sections``: replace the
@@ -106,16 +107,14 @@ def test_resolve_strategy_explicit_embedding(runner):
     )
 
 
-def test_resolve_strategy_cross_encoder_raises(runner):
-    """Cross-encoder is wired but not implemented until PR #128 lands."""
-    with pytest.raises(NotImplementedError, match="PR #128"):
+def test_resolve_strategy_cross_encoder(runner):
+    assert (
         runner._resolve_rerank_strategy(_args(rerank_strategy="cross-encoder"))
+        == "cross-encoder"
+    )
 
 
-def test_parse_args_rejects_cross_encoder_at_parse_time(runner, monkeypatch, capsys):
-    """The cross-encoder NotImplementedError should be surfaced by parse_args
-    via parser.error (exit code 2) before any dataset-load side effects, not
-    deep inside run_graph_pipeline."""
+def test_parse_args_accepts_cross_encoder(runner, monkeypatch):
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -126,13 +125,54 @@ def test_parse_args_rejects_cross_encoder_at_parse_time(runner, monkeypatch, cap
             "cross-encoder",
         ],
     )
-    with pytest.raises(SystemExit) as exc_info:
-        runner.parse_args()
-    assert exc_info.value.code == 2, (
-        "expected argparse exit code 2, got " f"{exc_info.value.code}"
+
+    args = runner.parse_args()
+
+    assert args.rerank_strategy == "cross-encoder"
+    assert args.rerank_model == "Qwen/Qwen3-Reranker-0.6B"
+
+
+def test_cross_encoder_rerank_orders_candidates_and_replaces_scores(runner):
+    from codenib.types import QueriedNode
+
+    candidates = [
+        QueriedNode(node_name="a", content="alpha", score=0.9),
+        QueriedNode(node_name="b", content="beta", score=0.8),
+    ]
+    reranker = SimpleNamespace(score=lambda query, docs: [0.1, 0.7])
+
+    results = runner._rerank_with_cross_encoder("query", candidates, reranker, top_k=2)
+
+    assert [node.node_name for node in results] == ["b", "a"]
+    assert [node.score for node in results] == [0.7, 0.1]
+
+
+def test_run_graph_pipeline_builds_once_and_closes_reranker(runner, monkeypatch):
+    calls = []
+    reranker = SimpleNamespace(close=lambda: calls.append("close"))
+    args = _args(rerank_strategy="cross-encoder")
+    args.rerank_model = "vendor/reranker"
+
+    monkeypatch.setattr(
+        runner,
+        "build_reranker",
+        lambda model: calls.append(("build", model)) or reranker,
     )
-    err = capsys.readouterr().err
-    assert "PR #128" in err, f"expected error mentioning PR #128, got: {err!r}"
+    monkeypatch.setattr(
+        runner,
+        "_run_graph_pipeline",
+        lambda passed_args, strategy, passed_reranker: calls.append(
+            ("run", passed_args, strategy, passed_reranker)
+        )
+        or "result",
+    )
+
+    assert runner.run_graph_pipeline(args) == "result"
+    assert calls == [
+        ("build", "vendor/reranker"),
+        ("run", args, "cross-encoder", reranker),
+        "close",
+    ]
 
 
 def test_parse_args_accepts_graph_route(runner, monkeypatch):

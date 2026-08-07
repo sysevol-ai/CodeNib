@@ -11,8 +11,8 @@ This script demonstrates a three-stage retrieval pipeline:
 1. Stage 1: Select a small number of initial nodes (e.g., 5) using BM25.
 2. Stage 2: Expand these nodes using the code graph (k-hop BFS) to gather
    a larger set of related nodes (e.g., up to 50).
-3. Stage 3 (optional): Use embeddings within the expanded set to rank/select
-   the final results.
+3. Stage 3 (optional): Use embeddings or a cross-encoder within the expanded
+   set to rank/select the final results.
 
 This is a graph-first baseline for comparison with embedding-only retrieval.
 It is not the dense-first graph-augmentation pipeline.
@@ -23,6 +23,11 @@ Usage:
 
     # With embedding rerank on the expanded set
     python examples/graph_retrieve_baseline.py --dataset swebench_lite --embedding
+
+    # With cross-encoder rerank on the expanded set
+    python examples/graph_retrieve_baseline.py --dataset swebench_lite \
+        --rerank-strategy cross-encoder \
+        --rerank-model Qwen/Qwen3-Reranker-0.6B
 
     # Single instance
     python examples/graph_retrieve_baseline.py --dataset swebench_lite \\
@@ -41,6 +46,7 @@ Usage:
         --filter-csv examples/selected_instance.csv \\
         --enable-profiler --record-samples --record-memory
 """
+
 import argparse
 import csv
 import json
@@ -59,6 +65,7 @@ from codenib.eval.retrieval_eval import (
     evaluate_predictions,
     extract_predictions,
 )
+from codenib.index.rerank import build_reranker
 from codenib.log_utils import get_logger
 from codenib.model import SparseSeededGraphRetrievePipeline
 from codenib.paths import prebuilt_data_dir, user_state_dir
@@ -497,7 +504,7 @@ def parse_args():
         default=0.85,
         help="PPR damping factor (0-1). Higher = more global spread.",
     )
-    # Stage 3: Optional embedding rerank
+    # Stage 3: Optional rerank
     parser.add_argument(
         "--embedding",
         action="store_true",
@@ -546,8 +553,8 @@ def parse_args():
     )
     parser.add_argument("--result-path", type=str, default=None)
 
-    # Rerank strategy (forward-compatible flag; cross-encoder backends
-    # are introduced in PR #128 and not yet available on main).
+    # Rerank strategy. Keep ``cross-encoder`` as the CLI spelling used by the
+    # evaluation matrix; the model pipeline's internal spelling is unrelated.
     parser.add_argument(
         "--rerank-strategy",
         type=str,
@@ -556,18 +563,14 @@ def parse_args():
         help=(
             "Rerank strategy for Stage 3. 'none' disables rerank, "
             "'embedding' uses FAISS within the expanded set (legacy), "
-            "'cross-encoder' requires PR #128 (Qwen3-Reranker / "
-            "STCrossEncoderWrapper) and currently raises NotImplementedError."
+            "and 'cross-encoder' uses a pairwise Qwen or sentence-transformers "
+            "reranker within the expanded set."
         ),
     )
-    # Forward-compat: wired in PR #128. Currently echoed only into the
-    # profiler `config` payload (no rerank backend reads it), so it is
-    # safe to pass but has no runtime effect until the cross-encoder
-    # wrapper lands.
     parser.add_argument(
         "--rerank-model",
         type=str,
-        default=None,
+        default="Qwen/Qwen3-Reranker-0.6B",
         help="Cross-encoder rerank model id (used when rerank-strategy=cross-encoder).",
     )
 
@@ -611,15 +614,7 @@ def parse_args():
         ),
     )
 
-    args = parser.parse_args()
-    # Surface unsupported rerank strategies at parse time, before any
-    # dataset load / profiler-dir creation, with argparse's exit code 2
-    # rather than a stack trace mid-pipeline.
-    try:
-        _resolve_rerank_strategy(args)
-    except NotImplementedError as exc:
-        parser.error(str(exc))
-    return args
+    return parser.parse_args()
 
 
 def _resolve_rerank_strategy(args):
@@ -628,12 +623,6 @@ def _resolve_rerank_strategy(args):
     Returns one of: ``"none"``, ``"embedding"``, ``"cross-encoder"``.
     """
     if args.rerank_strategy is not None:
-        if args.rerank_strategy == "cross-encoder":
-            raise NotImplementedError(
-                "rerank-strategy='cross-encoder' requires the rerank "
-                "wrappers from PR #128 (codenib/index/rerank/cross_encoder.py). "
-                "That PR has not landed on main yet."
-            )
         return args.rerank_strategy
     return "embedding" if args.embedding else "none"
 
@@ -649,9 +638,65 @@ def _method_label(args, rerank_strategy: str) -> str:
 
 
 def run_graph_pipeline(args):
-    """Run the graph-based retrieval baseline."""
-
+    """Run the graph baseline and own the optional reranker's lifetime."""
     rerank_strategy = _resolve_rerank_strategy(args)
+    reranker = None
+    if rerank_strategy == "cross-encoder":
+        reranker = build_reranker(args.rerank_model)
+        logger.info("Cross-encoder reranker loaded: %s", args.rerank_model)
+
+    try:
+        return _run_graph_pipeline(args, rerank_strategy, reranker)
+    finally:
+        if reranker is not None:
+            reranker.close()
+
+
+def _rerank_with_cross_encoder(query, candidates, reranker, top_k):
+    """Score graph-expanded candidates through the shared reranker contract."""
+    candidates_with_content = [
+        candidate for candidate in candidates if candidate.content
+    ]
+    if not candidates_with_content:
+        return candidates[:top_k]
+
+    scores = reranker.score(
+        query, [candidate.content for candidate in candidates_with_content]
+    )
+    ranked = sorted(
+        zip(scores, candidates_with_content, strict=True),
+        key=lambda pair: pair[0],
+        reverse=True,
+    )
+    return [
+        candidate.model_copy(update={"score": float(score)})
+        for score, candidate in ranked[:top_k]
+    ]
+
+
+def _query_pipeline(pipeline, query, reranker, top_k, profiler=None):
+    """Query the graph pipeline, then optionally apply cross-encoder rerank."""
+    if profiler is not None:
+        results = pipeline.query(query, profiler=profiler)
+    else:
+        results = pipeline.query(query)
+
+    if reranker is None:
+        return results
+
+    if profiler is not None:
+        with profiler.section(
+            "query.cross_encoder_rerank", {"candidates": len(results)}
+        ):
+            results = _rerank_with_cross_encoder(query, results, reranker, top_k)
+    else:
+        results = _rerank_with_cross_encoder(query, results, reranker, top_k)
+    logger.info("Stage 3: %d nodes after cross-encoder rerank", len(results))
+    return results
+
+
+def _run_graph_pipeline(args, rerank_strategy, reranker):
+    """Run the graph-based retrieval baseline with resolved rerank resources."""
     use_embedding_rerank = rerank_strategy == "embedding"
 
     # --filter-csv restricts the run to an explicit instance allowlist; build
@@ -778,11 +823,20 @@ def run_graph_pipeline(args):
             )
             if query_profiler is not None:
                 with query_profiler.section("query.total"):
-                    results = pipeline.query(
-                        instance["problem_statement"], profiler=query_profiler
+                    results = _query_pipeline(
+                        pipeline,
+                        instance["problem_statement"],
+                        reranker,
+                        args.stage2_topk,
+                        profiler=query_profiler,
                     )
             else:
-                results = pipeline.query(instance["problem_statement"])
+                results = _query_pipeline(
+                    pipeline,
+                    instance["problem_statement"],
+                    reranker,
+                    args.stage2_topk,
+                )
             elapsed = time.time() - t0
 
             # bm25_seed_recall@k — saturation-guard signal. Compares the
@@ -865,6 +919,11 @@ def run_graph_pipeline(args):
                         "ppr_damping": args.ppr_damping,
                         "embedding_rerank": use_embedding_rerank,
                         "rerank_strategy": rerank_strategy,
+                        "rerank_model": (
+                            args.rerank_model
+                            if rerank_strategy == "cross-encoder"
+                            else None
+                        ),
                         "num_results": len(results),
                         "elapsed_s": elapsed,
                         "metric_k_files": unique_files[:metric_max_k],
@@ -924,7 +983,9 @@ def run_graph_pipeline(args):
             "embedding_model": (
                 args.embedding_model if rerank_strategy == "embedding" else None
             ),
-            "rerank_model": args.rerank_model,
+            "rerank_model": (
+                args.rerank_model if rerank_strategy == "cross-encoder" else None
+            ),
             "record_samples": args.record_samples,
             "record_memory": args.record_memory,
         }
@@ -994,7 +1055,7 @@ def main():
     rerank_desc = {
         "none": "",
         "embedding": "-> Embedding rerank",
-        "cross-encoder": "-> Cross-encoder rerank (PR #128)",
+        "cross-encoder": "-> Cross-encoder rerank",
     }[rerank_strategy]
     logger.info(
         "Pipeline: BM25(top%d) -> %s %s",
