@@ -148,6 +148,15 @@ def _guardian_run_status(logs_dir: Path) -> dict[str, Any] | None:
     summary["exit_reasons"] = [
         str(status.get("exit_reason") or "") for status in statuses
     ]
+    summary["analysis_warnings"] = [
+        str(error)
+        for status in statuses
+        for error in (
+            status.get("analysis_warnings")
+            if isinstance(status.get("analysis_warnings"), list)
+            else []
+        )
+    ]
     summary["degraded"] = any(bool(status.get("degraded")) for status in statuses)
 
     health = {str(status.get("analysis_status") or "") for status in statuses}
@@ -320,7 +329,9 @@ def _build_pier_command(
                 "--ak",
                 "solver=codex",
                 "--ak",
-                f"guardian_model={args.guardian_model}",
+                f"guardian_explorer_model={args.guardian_explorer_model}",
+                "--ak",
+                f"guardian_aggregator_model={args.guardian_aggregator_model}",
                 "--ak",
                 f"guardian_explorer_count={args.guardian_explorer_count}",
                 "--ak",
@@ -432,6 +443,12 @@ def _run_trial(
             getattr(args, "context_injection_sha256", "") or ""
         ),
         "guardian_model": args.guardian_model if baseline == "guardian" else "",
+        "guardian_explorer_model": (
+            args.guardian_explorer_model if baseline == "guardian" else ""
+        ),
+        "guardian_aggregator_model": (
+            args.guardian_aggregator_model if baseline == "guardian" else ""
+        ),
         "guardian_explorer_count": (
             args.guardian_explorer_count if baseline == "guardian" else None
         ),
@@ -524,7 +541,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=("solo", "guardian"),
         help="Select which experiment arms to run",
     )
-    parser.add_argument("--guardian-model", default=None)
+    parser.add_argument(
+        "--guardian-model",
+        default=None,
+        help=(
+            "Backward-compatible shared fallback for both Guardian roles; "
+            "role-specific options take precedence"
+        ),
+    )
+    parser.add_argument(
+        "--guardian-explorer-model",
+        default=None,
+        help="Model used by independent local-specification explorers",
+    )
+    parser.add_argument(
+        "--guardian-aggregator-model",
+        default=None,
+        help="Model used to aggregate and admit explorer candidates",
+    )
     parser.add_argument(
         "--guardian-explorer-count",
         type=int,
@@ -570,8 +604,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         )
     if args.guardian_max_cycles < 1:
         raise ValueError("--guardian-max-cycles must be positive")
-    if args.guardian_model is None:
-        args.guardian_model = f"codex:{args.model}"
+    shared_guardian_model = args.guardian_model or f"codex:{args.model}"
+    args.guardian_explorer_model = args.guardian_explorer_model or shared_guardian_model
+    args.guardian_aggregator_model = (
+        args.guardian_aggregator_model or shared_guardian_model
+    )
+    args.guardian_model = (
+        shared_guardian_model
+        if args.guardian_explorer_model == args.guardian_aggregator_model
+        else ""
+    )
     return args
 
 

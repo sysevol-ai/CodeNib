@@ -22,10 +22,16 @@ from codenib.clients.execution import (
 )
 from codenib.clients.guardian import (
     ContextMessage,
+    Evidence,
+    FindingStatus,
     GuardianAgent,
     GuardianConfig,
+    GuardianMemory,
     GuardianRequest,
+    RememberedEvidence,
+    RememberedSpecification,
     ReviewStatus,
+    SpecificationAssessment,
     render_markdown,
 )
 
@@ -196,6 +202,12 @@ def test_guardian_discovers_aggregates_and_filters_delivery(tmp_path: Path) -> N
         "strong",
     ]
     assert all(
+        "reopen every cited path" in " ".join(request.instruction.lower().split())
+        for request in executor.requests
+    )
+    assert "invented filename" in executor.requests[0].instruction
+    assert "synthetic paths" in executor.requests[-1].instruction
+    assert all(
         request.policy.filesystem.value == "read-only" for request in executor.requests
     )
     markdown = render_markdown(result)
@@ -337,3 +349,75 @@ def test_guardian_rejects_aggregate_findings_with_invalid_lines(
     assert not result.findings
     assert not result.backlog
     assert any("aggregator finding" in error for error in result.errors)
+
+
+def test_guardian_prompts_treat_memory_as_fallible_and_preserve_ids(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    remembered = RememberedSpecification(
+        memory_id="spec:0123456789abcdef",
+        statement="Copies preserve mode",
+        condition="when state is copied",
+        evidence=(
+            RememberedEvidence(
+                evidence=Evidence(
+                    path="tests/test_contract.py",
+                    line_start=10,
+                    line_end=14,
+                    description="the public-path contract",
+                ),
+                snapshot=request.base_commit,
+                blob_sha256="0" * 64,
+                fresh=False,
+            ),
+        ),
+        assessments=(
+            SpecificationAssessment(
+                snapshot=request.base_commit,
+                status=FindingStatus.VIOLATED,
+                patch_assessment="an earlier snapshot omitted the field",
+                recommendation="preserve the field",
+                confidence=0.9,
+            ),
+        ),
+    )
+    executor = ScriptedExecutor(
+        [
+            _result(json.dumps({"candidates": [_candidate("Copies preserve mode")]})),
+            _result(
+                json.dumps(
+                    {
+                        "summary": "The remembered property is now satisfied.",
+                        "findings": [
+                            {
+                                **_finding("Copies preserve mode", "satisfied"),
+                                "memory_id": remembered.memory_id,
+                                "condition": remembered.condition,
+                            }
+                        ],
+                    }
+                )
+            ),
+        ]
+    )
+    agent = GuardianAgent(
+        GuardianConfig(
+            explorer_model="cheap",
+            aggregator_model="strong",
+            explorer_count=1,
+        ),
+        executor=executor,
+    )
+
+    result = asyncio.run(
+        agent.review(replace(request, memory=GuardianMemory((remembered,), ())))
+    )
+
+    assert result.assessments[0].memory_id == remembered.memory_id
+    assert all(remembered.memory_id in call.instruction for call in executor.requests)
+    assert "not authoritative truth" in executor.requests[0].instruction
+    assert "hypotheses with provenance" in " ".join(
+        executor.requests[1].instruction.split()
+    )
+    assert '"fresh_in_candidate": false' in executor.requests[0].instruction.lower()

@@ -39,6 +39,46 @@ def _context(request: GuardianRequest) -> str:
     return json.dumps(rows, indent=2)
 
 
+def _memory(request: GuardianRequest) -> str:
+    if not request.memory.specifications:
+        return (
+            "Guardian has no prior local-specification memory for this review stream."
+        )
+    rows = []
+    for specification in request.memory.specifications:
+        latest = specification.assessments[-1] if specification.assessments else None
+        rows.append(
+            {
+                "memory_id": specification.memory_id,
+                "statement": specification.statement,
+                "condition": specification.condition,
+                "last_assessment": (
+                    {
+                        "snapshot": latest.snapshot,
+                        "status": latest.status.value,
+                        "patch_assessment": latest.patch_assessment,
+                        "confidence": latest.confidence,
+                    }
+                    if latest
+                    else None
+                ),
+                "evidence": [
+                    {
+                        "path": remembered.evidence.path,
+                        "line_start": remembered.evidence.line_start,
+                        "line_end": remembered.evidence.line_end,
+                        "description": remembered.evidence.description,
+                        "authority": remembered.evidence.authority.value,
+                        "observed_snapshot": remembered.snapshot,
+                        "fresh_in_candidate": remembered.fresh,
+                    }
+                    for remembered in specification.evidence[-5:]
+                ],
+            }
+        )
+    return json.dumps(rows, indent=2)
+
+
 def _patch_context(request: GuardianRequest) -> str:
     if request.change_patch:
         return (
@@ -80,10 +120,17 @@ Participant context follows. It can identify intended areas or uncertainty, but 
 not authoritative evidence and may be wrong:
 {_context(request)}
 
+Guardian memory follows. It is a fallible record of earlier evidence and assessments,
+not authoritative truth. Revalidate relevant entries in the current repository,
+especially evidence marked stale. Preserve a specification's `memory_id` when you
+reassess the same property, and challenge gaps that earlier reviews left unresolved:
+{_memory(request)}
+
 Return only one JSON object with this shape:
 {{
-  "candidates": [
+    "candidates": [
     {{
+      "memory_id": "existing spec id when reassessing one, otherwise empty",
       "statement": "falsifiable property that must hold",
       "condition": "specific triggering condition or path",
       "evidence": [
@@ -104,7 +151,11 @@ Return only one JSON object with this shape:
 
 Every candidate needs concrete evidence. Prefer a small set of important, distinct
 specifications over generic review advice. A solver message must use authority `solver`
-and cannot by itself justify a requirement.
+and cannot by itself justify a requirement. Before returning, reopen every cited path
+and confirm that it is an existing repository-relative file and that the inclusive line
+range contains the fact described. Never put a command, observation label, URL, or
+invented filename in `path`. Runtime evidence must still cite the repository source or
+test file exercised and describe the observed command result in `description`.
 """
 
 
@@ -118,6 +169,7 @@ def aggregation_prompt(
         rows.append(
             {
                 "explorer": candidate.explorer,
+                "memory_id": candidate.memory_id,
                 "statement": candidate.statement,
                 "condition": candidate.condition,
                 "evidence": [
@@ -150,13 +202,24 @@ Use repository tools. {_patch_context(request)}
 Explorer candidates:
 {json.dumps(rows, indent=2)}
 
+Guardian memory from earlier snapshots follows. Treat it as a set of hypotheses with
+provenance, not as normative authority. Revalidate relevant entries against the current
+snapshot. For every remembered specification you materially reassess, return its exact
+`memory_id`; use `satisfied` when current evidence establishes that the candidate now
+meets it, and `retracted` only when the earlier property itself is unsupported or no
+longer applicable. Evidence marked stale must not justify an assessment without being
+reopened:
+{_memory(request)}
+
 Return only one JSON object:
 {{
   "summary": "brief review conclusion",
   "findings": [
     {{
+      "memory_id": "existing spec id when reassessing one, otherwise empty",
       "statement": "admitted local specification",
-      "status": "violated|uncertain|satisfied",
+      "condition": "specific triggering condition or execution path",
+      "status": "violated|uncertain|satisfied|retracted",
       "evidence": [{{"path": "...", "line_start": 1, "line_end": 1,
         "description": "...", "authority": "repository|test|runtime|task|solver"}}],
       "patch_assessment": "specific candidate behavior",
@@ -169,7 +232,10 @@ Return only one JSON object:
 Admit at most {max_findings} violated findings. A violated finding requires non-solver
 evidence, confidence >= 0.70, and a concrete mismatch in the candidate. Put plausible
 but unverified or incompletely assessed items under status `uncertain`. Include satisfied
-items only when they materially explain why a candidate was rejected.
+items only when they materially explain why a candidate was rejected. Reopen every
+cited path before returning and verify that the repository-relative file and inclusive
+line range exist. Do not emit synthetic paths for commands or runtime observations;
+anchor those claims to the repository source or test that was exercised.
 """
 
 

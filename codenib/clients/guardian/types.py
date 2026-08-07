@@ -73,12 +73,57 @@ class LocalSpecification:
     confidence: float
     uncertainty: str = ""
     explorer: str = ""
+    memory_id: str = ""
 
 
 class FindingStatus(str, Enum):
     VIOLATED = "violated"
     UNCERTAIN = "uncertain"
     SATISFIED = "satisfied"
+    RETRACTED = "retracted"
+
+
+@dataclass(frozen=True, slots=True)
+class RememberedEvidence:
+    """Repository evidence as it was observed in an immutable snapshot."""
+
+    evidence: Evidence
+    snapshot: str
+    blob_sha256: str
+    fresh: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SpecificationAssessment:
+    """A local specification's assessment for one repository snapshot."""
+
+    snapshot: str
+    status: FindingStatus
+    patch_assessment: str
+    recommendation: str
+    confidence: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "status", FindingStatus(self.status))
+
+
+@dataclass(frozen=True, slots=True)
+class RememberedSpecification:
+    """A specification whose evidence and assessments persist across reviews."""
+
+    memory_id: str
+    statement: str
+    condition: str
+    evidence: tuple[RememberedEvidence, ...] = ()
+    assessments: tuple[SpecificationAssessment, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class GuardianMemory:
+    """Controller-owned, read-only memory supplied to one Guardian review."""
+
+    specifications: tuple[RememberedSpecification, ...] = ()
+    observed_snapshots: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +134,8 @@ class GuardianFinding:
     patch_assessment: str
     recommendation: str
     confidence: float
+    condition: str = ""
+    memory_id: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", FindingStatus(self.status))
@@ -101,6 +148,7 @@ class GuardianRequest:
     candidate_commit: str
     context: tuple[ContextMessage, ...] = ()
     change_patch: str = ""
+    memory: GuardianMemory = field(default_factory=GuardianMemory)
 
     def __post_init__(self) -> None:
         workspace = Path(self.workspace).expanduser().resolve()
@@ -113,6 +161,8 @@ class GuardianRequest:
             object.__setattr__(self, name, revision)
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "context", tuple(self.context))
+        if not isinstance(self.memory, GuardianMemory):
+            raise TypeError("memory must be GuardianMemory")
         if not isinstance(self.change_patch, str):
             raise TypeError("change_patch must be a string")
         if len(self.change_patch.encode("utf-8")) > 2 * 1024**2:
@@ -171,6 +221,7 @@ class GuardianResult:
     candidates: tuple[LocalSpecification, ...] = ()
     findings: tuple[GuardianFinding, ...] = ()
     backlog: tuple[GuardianFinding, ...] = ()
+    assessments: tuple[GuardianFinding, ...] = field(default=(), repr=False)
     summary: str = ""
     rollouts: tuple[AgentRunResult, ...] = field(default=(), repr=False)
     errors: tuple[str, ...] = ()
@@ -204,6 +255,7 @@ class GuardianResult:
             "candidates": [specification(value) for value in self.candidates],
             "findings": [finding(value) for value in self.findings],
             "backlog": [finding(value) for value in self.backlog],
+            "assessments": [finding(value) for value in self.assessments],
             "candidate_count": len(self.candidates),
             "errors": list(self.errors),
             "usage": {
@@ -224,8 +276,12 @@ __all__ = [
     "FindingStatus",
     "GuardianConfig",
     "GuardianFinding",
+    "GuardianMemory",
     "GuardianRequest",
     "GuardianResult",
     "LocalSpecification",
+    "RememberedEvidence",
+    "RememberedSpecification",
     "ReviewStatus",
+    "SpecificationAssessment",
 ]
