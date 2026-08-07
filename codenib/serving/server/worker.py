@@ -207,6 +207,11 @@ class SpeculativeServer:
         if max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be a positive integer")
 
+        for drafter in self.drafters:
+            begin_run = getattr(drafter, "begin_run", None)
+            if callable(begin_run):
+                begin_run()
+
         context: List[TokenId] = list(prompt)
         produced = 0
 

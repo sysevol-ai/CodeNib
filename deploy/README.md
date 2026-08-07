@@ -73,5 +73,9 @@ curl -N http://localhost:4000/v1/chat/completions \
   budget because the eager tree-attention prefill is quadratic;
   `--max-context-tokens` can explicitly select up to the smaller of 32,768 and
   the model/tokenizer capacity.
+- **Bounded retrieval.** An explicit `--manifest` must contain a fresh BM25
+  view. Serving loads only that view, reads repository-contained regular files
+  through bounded source spans, and caps each generation at 32 retrieval
+  queries, 8 MiB of source reads, and 262,144 characters sent to the tokenizer.
 - **Fallback demo.** Kill `codenib-serve` and repeat the smoke test: LiteLLM
   routes the same request to the fallback backend instead.

@@ -161,6 +161,28 @@ def test_run_iter_skips_draft_below_minimum_threshold() -> None:
     assert verifier.seen_sizes == [0]
 
 
+def test_run_iter_resets_request_scoped_drafter_state() -> None:
+    class StatefulDrafter:
+        begins = 0
+
+        def begin_run(self):
+            self.begins += 1
+
+        def draft(self, context, max_tokens):
+            return DraftTree()
+
+    drafter = StatefulDrafter()
+    server = SpeculativeServer(drafters=[drafter])
+
+    first = server.run([1], OracleVerifier([1, 2, 3]), max_new_tokens=2)
+    assert first.forward_passes == 2
+    assert drafter.begins == 1
+
+    server.run([1], OracleVerifier([1, 2]), max_new_tokens=1)
+
+    assert drafter.begins == 2
+
+
 @pytest.mark.parametrize("value", [0, -1, True, 1.5])
 def test_run_rejects_invalid_generation_budget(value):
     server = _copy_server()

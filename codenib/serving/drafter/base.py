@@ -22,6 +22,10 @@ class Drafter(ABC):
     #: Provenance label attached to nodes this drafter produces.
     source: str = "drafter"
 
+    def begin_run(self) -> None:
+        """Reset request-scoped state before a new generation begins."""
+        return None
+
     @abstractmethod
     def draft(self, context: Sequence[TokenId], max_tokens: int) -> DraftTree:
         """Return a draft tree of at most ``max_tokens`` candidate positions.
