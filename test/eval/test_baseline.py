@@ -150,6 +150,45 @@ def test_build_baseline_result_entry_matches_existing_json_shape():
     assert entry["error"] is None
 
 
+def test_build_baseline_result_does_not_reward_duplicate_symbols():
+    duplicate = SimpleNamespace(
+        name="Parser.parse()",
+        type="method",
+        file_path="pkg/parser.py",
+        line_start=10,
+        line_end=20,
+        action="modify",
+        description="duplicate prediction",
+    )
+    result = SimpleNamespace(
+        success=True,
+        repo_path="/repos/demo",
+        locations=[duplicate, duplicate],
+        usage=None,
+    )
+    task = BaselineTask(
+        instance_id="demo__repo-1",
+        query="Fix parser edge case",
+        repo_path="/repos/demo",
+        target_symbols=("pkg/parser.py:Parser.parse()",),
+    )
+
+    entry = build_baseline_result_entry(
+        task=task,
+        agent_name="external",
+        model="model-a",
+        result=result,
+        metrics_k=[2],
+    )
+
+    assert entry["metrics"]["symbols"][2] == {
+        "accuracy": 1.0,
+        "precision": 0.5,
+        "recall": 1.0,
+        "hits": 1,
+    }
+
+
 def test_loc_agent_runner_build_result_entry_delegates_to_envelope():
     entry = build_result_entry(
         instance_id="demo__repo-1",

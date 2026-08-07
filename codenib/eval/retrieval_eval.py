@@ -127,11 +127,15 @@ def compute_metrics(
     targets: Sequence[str],
 ) -> Dict[str, float]:
     """Compute accuracy (hit@K), precision, recall, and hit counts for a single scope."""
-    hits = sum(1 for value in predictions if value in targets)
+    predicted_values = set(predictions)
+    target_values = set(targets)
+    hits = len(predicted_values.intersection(target_values))
     # Use issubset logic: accuracy=1.0 only if ALL targets are in predictions
-    accuracy = 1.0 if targets and set(targets).issubset(set(predictions)) else 0.0
+    accuracy = (
+        1.0 if target_values and target_values.issubset(predicted_values) else 0.0
+    )
     precision = hits / max(len(predictions), 1)
-    recall = hits / max(len(targets), 1) if targets else 0.0
+    recall = hits / len(target_values) if target_values else 0.0
     return {
         "accuracy": accuracy,
         "precision": precision,
