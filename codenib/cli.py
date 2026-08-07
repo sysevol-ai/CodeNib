@@ -27,6 +27,7 @@ from .provider_routes import (
     resolve_inference_route,
 )
 from .repository_filters import DEFAULT_IGNORED_DIRS
+from .web.ports import argparse_tcp_port, validate_local_wiki_ports
 
 _PRESET_VIEWS = {
     "fast": ("bm25",),
@@ -919,6 +920,14 @@ def _manifest_embedding_route(
 
 
 def _run_wiki(args: argparse.Namespace) -> int:
+    try:
+        args.port, args.api_port = validate_local_wiki_ports(
+            frontend_port=args.port,
+            api_port=args.api_port,
+        )
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
+
     repo_path = resolve_repo_path(args.repo)
     languages = _selected_languages(repo_path, args.language)
     if args.no_index and args.preset == "auto" and not _split_values(args.view):
@@ -1761,9 +1770,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     wiki_parser.add_argument("--host", default="127.0.0.1")
-    wiki_parser.add_argument("--port", type=int, default=3000)
+    wiki_parser.add_argument("--port", type=argparse_tcp_port, default=3000)
     wiki_parser.add_argument("--api-host", default="127.0.0.1")
-    wiki_parser.add_argument("--api-port", type=int, default=8000)
+    wiki_parser.add_argument("--api-port", type=argparse_tcp_port, default=8000)
     wiki_parser.add_argument(
         "--frontend-dir",
         help="path to a prebuilt CodeNib frontend or web source checkout",

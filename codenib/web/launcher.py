@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from .local import LocalWiki
+from .ports import validate_local_wiki_ports
 
 _NODE_VERSION_REQUIREMENT = "^20.19.0 or >=22.12.0"
 
@@ -146,6 +147,10 @@ def launch_local_wiki(
     open_browser: bool,
 ) -> int:
     """Run backend and frontend until either exits or the user interrupts."""
+    frontend_port, api_port = validate_local_wiki_ports(
+        frontend_port=frontend_port,
+        api_port=api_port,
+    )
     frontend = find_frontend_dir(frontend_dir)
     if frontend is None:
         raise RuntimeError(

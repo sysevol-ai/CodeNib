@@ -61,6 +61,25 @@ def test_web_help_uses_codenib_command(
     assert "usage: codenib-web" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("port", ["0", "-1", "65536"])
+def test_web_entrypoint_rejects_invalid_tcp_port(port: str) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        parse_web_args(["--port", port])
+
+    assert exc_info.value.code == 2
+
+
+def test_web_entrypoint_validates_environment_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CODENIB_DEMO_PORT", "70000")
+
+    with pytest.raises(SystemExit) as exc_info:
+        parse_web_args([])
+
+    assert exc_info.value.code == 2
+
+
 def test_console_entry_points_load() -> None:
     for name, value in _console_scripts().items():
         entry_point = EntryPoint(name=name, value=value, group="console_scripts")

@@ -33,6 +33,7 @@ from ..log_utils import get_logger
 from ..wiki import WikiBuilder
 from ..wiki.narrator import Narrator
 from .config import load_config
+from .ports import argparse_tcp_port
 from .repo_registry import RepoRegistry
 from .repository_files import live_source_slice
 from .request_limits import RequestBodyLimitMiddleware
@@ -594,8 +595,8 @@ def _parse_args(
     )
     parser.add_argument(
         "--port",
-        type=int,
-        default=int(os.environ.get("CODENIB_DEMO_PORT", "8000")),
+        type=argparse_tcp_port,
+        default=os.environ.get("CODENIB_DEMO_PORT", "8000"),
         help="TCP port to bind",
     )
     parser.add_argument(

@@ -17,6 +17,7 @@ from urllib import request as urllib_request
 from urllib.parse import urlsplit
 
 from .limits import MAX_PROXY_RESPONSE_BYTES, MAX_REQUEST_BODY_BYTES
+from .ports import argparse_tcp_port
 
 _HOP_BY_HOP_HEADERS = {
     "connection",
@@ -246,14 +247,18 @@ def build_server(
     return ThreadingHTTPServer((host, port), handler)
 
 
-def main(argv: list[str] | None = None) -> int:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", required=True, type=Path)
     parser.add_argument("--api-base", required=True)
     parser.add_argument("--browser-api-base", default="")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=3000)
-    args = parser.parse_args(argv)
+    parser.add_argument("--port", type=argparse_tcp_port, default=3000)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
 
     server = build_server(
         args.directory,

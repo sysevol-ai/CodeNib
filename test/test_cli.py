@@ -36,6 +36,39 @@ def test_parser_exposes_release_commands() -> None:
     assert publish.preset == "auto"
 
 
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--port", "0"),
+        ("--port", "-1"),
+        ("--port", "65536"),
+        ("--api-port", "0"),
+        ("--api-port", "70000"),
+    ],
+)
+def test_wiki_parser_rejects_invalid_tcp_ports(flag: str, value: str) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.build_parser().parse_args(["wiki", ".", flag, value])
+
+    assert exc_info.value.code == 2
+
+
+def test_wiki_rejects_colliding_ports_before_repository_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = cli.build_parser().parse_args(
+        ["wiki", ".", "--port", "8123", "--api-port", "8123"]
+    )
+    monkeypatch.setattr(
+        cli,
+        "resolve_repo_path",
+        lambda _value: pytest.fail("port preflight must run before repository work"),
+    )
+
+    with pytest.raises(cli.CLIError, match="must be different"):
+        cli._run_wiki(args)
+
+
 def test_export_parser_accepts_pages_mount_options() -> None:
     args = cli.build_parser().parse_args(
         [

@@ -13,7 +13,28 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from codenib.web.static_server import _MAX_PROXY_REQUEST_BYTES, build_server
+from codenib.web.static_server import (
+    _MAX_PROXY_REQUEST_BYTES,
+    _parse_args,
+    build_server,
+)
+
+
+@pytest.mark.parametrize("port", ["0", "-1", "65536"])
+def test_static_server_cli_rejects_invalid_tcp_port(port: str) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        _parse_args(
+            [
+                "--directory",
+                "/tmp/wiki",
+                "--api-base",
+                "http://127.0.0.1:8000",
+                "--port",
+                port,
+            ]
+        )
+
+    assert exc_info.value.code == 2
 
 
 def test_static_server_uses_same_origin_api_and_falls_back_to_spa(tmp_path):
