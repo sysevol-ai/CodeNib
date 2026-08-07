@@ -331,6 +331,20 @@ def test_context_artifact_rejects_unpublished_vector_generation(tmp_path: Path) 
         )
 
 
+def test_context_artifact_rejects_tampered_vector_level(tmp_path: Path) -> None:
+    repo, manifest_path, vector = _fixture_vector_manifest(tmp_path)
+    documents = vector / "l2" / "documents_test__model.pkl"
+    documents.write_bytes(documents.read_bytes() + b"\n")
+
+    with pytest.raises(ValueError, match="committed documents vector artifact"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            tmp_path / "publish" / "context",
+            repository="example/vector-project",
+        )
+
+
 def test_context_artifact_rejects_credential_shaped_config(tmp_path: Path) -> None:
     repo, manifest_path, _view_path = _fixture_manifest(
         tmp_path,
