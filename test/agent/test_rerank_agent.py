@@ -134,6 +134,19 @@ def test_rankgpt_invocation_failure_preserves_first_stage_top_k():
     assert [node.node_name for node in ranked] == ["node_0", "node_1"]
 
 
+def test_malformed_rankgpt_output_preserves_first_stage_scores():
+    nodes = _nodes()
+    nodes[0].score = 0.8
+    nodes[1].score = 0.6
+    nodes[2].score = 0.4
+    llm = _RankGPTLLM(response="Unable to rank these candidates")
+
+    ranked = RerankAgent(llm, listwise_format="rankgpt").rerank_nodes("find bug", nodes)
+
+    assert [node.node_name for node in ranked] == ["node_0", "node_1", "node_2"]
+    assert [node.score for node in ranked] == [0.8, 0.6, 0.4]
+
+
 def test_constructor_rejects_unknown_listwise_format():
     with pytest.raises(ValueError, match="listwise_format"):
         RerankAgent(_StructuredLLM(), listwise_format="unknown")

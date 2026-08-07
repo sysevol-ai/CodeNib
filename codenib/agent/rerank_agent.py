@@ -419,6 +419,13 @@ class RerankAgent:
             return []
 
         permutation = self._parse_rankgpt_permutation(response_text, num)
+        if not permutation:
+            logger.warning(
+                "RankGPT reranker did not return any usable indices; "
+                "preserving the first-stage candidate order."
+            )
+            return []
+
         # Items not mentioned in the permutation keep their original order
         # behind the ranked items (matches SweRank's receive_permutation).
         ranked_set = set(permutation)
