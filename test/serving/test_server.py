@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+"""Tests for engine-agnostic draft assembly in the serving worker."""
+
+from typing import List, Sequence
+
+from codenib.serving.drafter.copy import CopyDrafter
+from codenib.serving.drafter.retrieval import RetrievalBackend, RetrievalDrafter
+from codenib.serving.server.worker import (
+    OracleVerifier,
+    SpeculativeConfig,
+    SpeculativeServer,
+    build_draft,
+)
+from codenib.serving.types import TokenId
+
+
+class _FakeBackend(RetrievalBackend):
+    def __init__(self, candidates: List[List[TokenId]]):
+        self._candidates = candidates
+
+    def retrieve(
+        self, context: Sequence[TokenId], k: int, max_tokens: int
+    ) -> List[List[TokenId]]:
+        return [c[:max_tokens] for c in self._candidates[:k]]
+
+
+def test_build_draft_fuses_copy_and_retrieval():
+    context = [1, 2, 3, 1, 2]  # copy predicts -> 3
+    copy = CopyDrafter(min_match=2, max_match=8, max_draft=4)
+    retr = RetrievalDrafter(_FakeBackend([[3, 7, 8]]), k=1, max_draft=4)
+    config = SpeculativeConfig(max_draft_tokens=8)
+
+    tree = build_draft([copy, retr], context, config)
+    # Both sources start with token 3; the shared prefix must collapse.
+    roots = [c.token for c in tree.root.children]
+    assert roots.count(3) == 1
+    assert not tree.is_empty()
+
+
+def test_build_draft_respects_budget():
+    context = [5, 6, 7, 5, 6]
+    copy = CopyDrafter(min_match=2, max_match=8, max_draft=16)
+    config = SpeculativeConfig(max_draft_tokens=2)
+    assert build_draft([copy], context, config).size <= 2
+
+
+def test_server_step_delegates_to_build_draft():
+    server = SpeculativeServer(
+        drafters=[CopyDrafter(min_match=2, max_match=8, max_draft=4)],
+        config=SpeculativeConfig(max_draft_tokens=4),
+    )
+    assert server.step([1, 2, 3, 1, 2]).size >= 1
+
+
+def _copy_server(budget: int = 8) -> SpeculativeServer:
+    return SpeculativeServer(
+        drafters=[CopyDrafter(min_match=2, max_match=16, max_draft=budget)],
+        config=SpeculativeConfig(max_draft_tokens=budget),
+    )
+
+
+def test_run_reconstructs_truth_against_oracle():
+    # A repetitive sequence the copy drafter can speculate through.
+    truth = [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 5]
+    server = _copy_server()
+    result = server.run(truth[:4], OracleVerifier(truth), max_new_tokens=64)
+    # The loop must regenerate the true continuation exactly.
+    assert truth[:4] + result.tokens == truth
+
+
+def test_run_makes_forward_progress_and_reports_speedup():
+    truth = [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 5]
+    server = _copy_server()
+    result = server.run(truth[:4], OracleVerifier(truth), max_new_tokens=64)
+    generated = len(result.tokens)
+    # Each pass emits its accepted drafts plus one bonus token; the only pass
+    # that can emit no bonus is a trailing one (no EOS in `truth`).
+    bonuses = generated - result.accepted_tokens
+    assert bonuses in (result.forward_passes, result.forward_passes - 1)
+    # Speculation actually helped on this repetitive stream.
+    assert result.speedup > 1.0
+
+
+def test_run_respects_max_new_tokens():
+    truth = list(range(100)) + list(range(100))
+    server = _copy_server()
+    result = server.run(truth[:100], OracleVerifier(truth), max_new_tokens=5)
+    assert len(result.tokens) == 5
+
+
+def test_run_stops_at_end_of_truth():
+    truth = [7, 8, 9]
+    server = _copy_server()
+    result = server.run(truth[:1], OracleVerifier(truth), max_new_tokens=64)
+    assert truth[:1] + result.tokens == truth

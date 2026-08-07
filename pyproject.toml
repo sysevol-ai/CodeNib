@@ -67,6 +67,7 @@ codenib-lsp-agent-study-run = "codenib.eval.agent_runner.lsp_agent_study_runner:
 codenib-artifact-bundle = "codenib.eval.artifact_bundle:main"
 codenib-swe-explore-benchmark = "codenib.eval.benchmarks.swe_explore_runner:main"
 codenib-quality-cost-report = "codenib.eval.reports.quality_cost:main"
+codenib-serve = "codenib.serving.server.api:main"
 
 [project.optional-dependencies]
 agent = [
@@ -94,6 +95,16 @@ semantic-remote = [
     "faiss-cpu>=1.7.0",
     "numpy>=1.24.0",
     "openai>=1.0.0",
+]
+# Speculative serving (``codenib-serve``). fastapi/uvicorn/pydantic are already
+# core dependencies, so this only adds the streaming transport and the model
+# runtime. Deliberately kept out of `full`: torch would make the aggregate
+# extra multi-gigabyte for users who only want retrieval.
+serving = [
+    "numpy>=1.24.0",
+    "sse-starlette>=2.0.0",
+    "torch>=2.2.0",
+    "transformers>=4.44.0",
 ]
 # Vertex AI backends (``vertex_ai/...`` model strings, via gcloud ADC).
 # Keep the provider SDK coupled to LiteLLM's own compatibility constraint
@@ -150,6 +161,10 @@ test = [
     "pytest-xdist>=3.0.0",
     "requests>=2.25.0",
     "sentence-transformers>=2.2.0",
+    # Lets the serving endpoint tests run in the default tier. torch and
+    # transformers are deliberately *not* here: the only test that needs the
+    # model runtime is marked `slow`.
+    "sse-starlette>=2.0.0",
     "tomli>=1.1.0; python_version < '3.11'",
 ]
 
