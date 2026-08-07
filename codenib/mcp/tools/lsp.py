@@ -10,16 +10,51 @@ from typing import Any, Sequence
 
 from ._validation import (
     MAX_LSP_POSITION,
+    MAX_LSP_QUERY_CHARS,
+    MAX_LSP_ROUTE_TEXT_CHARS,
+    MAX_LSP_SYMBOL_CHARS,
     MAX_ROUTE_SYMBOLS,
+    MAX_SOURCE_PATH_CHARS,
     MAX_TOOL_RESULTS,
     bounded_integer,
+    bounded_text,
 )
 
 
 def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
     if isinstance(symbols, str):
-        return [s.strip() for s in symbols.split(",") if s.strip()]
-    return [str(s).strip() for s in symbols or [] if str(s).strip()]
+        route_text = bounded_text(
+            symbols,
+            name="symbols",
+            maximum=MAX_LSP_ROUTE_TEXT_CHARS,
+        )
+        values: Sequence[str] = route_text.split(",")
+    elif isinstance(symbols, Sequence):
+        values = symbols
+    else:
+        raise ValueError("symbols must be a string or sequence of strings.")
+
+    if len(values) > MAX_ROUTE_SYMBOLS:
+        raise ValueError(f"symbols must contain at most {MAX_ROUTE_SYMBOLS} entries.")
+
+    normalized: list[str] = []
+    total_chars = 0
+    for value in values:
+        symbol = bounded_text(
+            value,
+            name="each symbol",
+            maximum=MAX_LSP_SYMBOL_CHARS,
+        )
+        total_chars += len(symbol)
+        if total_chars > MAX_LSP_ROUTE_TEXT_CHARS:
+            raise ValueError(
+                "symbols must not exceed "
+                f"{MAX_LSP_ROUTE_TEXT_CHARS} total characters."
+            )
+        normalized_symbol = symbol.strip()
+        if normalized_symbol:
+            normalized.append(normalized_symbol)
+    return normalized
 
 
 def _node_to_dict(node: Any) -> dict[str, Any]:
@@ -48,6 +83,16 @@ def lsp_definition_impl(
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Return graph-backed definition locations."""
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
+    file_path = bounded_text(
+        file_path,
+        name="file_path",
+        maximum=MAX_SOURCE_PATH_CHARS,
+    )
+    symbol = bounded_text(
+        symbol,
+        name="symbol",
+        maximum=MAX_LSP_SYMBOL_CHARS,
+    )
     if line is not None:
         bounded_integer(line, name="line", maximum=MAX_LSP_POSITION)
     if character is not None:
@@ -89,6 +134,16 @@ def lsp_references_impl(
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Return graph-backed reference locations."""
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
+    file_path = bounded_text(
+        file_path,
+        name="file_path",
+        maximum=MAX_SOURCE_PATH_CHARS,
+    )
+    symbol = bounded_text(
+        symbol,
+        name="symbol",
+        maximum=MAX_LSP_SYMBOL_CHARS,
+    )
     if line is not None:
         bounded_integer(line, name="line", maximum=MAX_LSP_POSITION)
     if character is not None:
@@ -130,10 +185,9 @@ def lsp_route_impl(
     """Return graph-backed route anchors for one or more symbol seeds."""
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     seeds = _coerce_symbols(symbols)
+    query = bounded_text(query, name="query", maximum=MAX_LSP_QUERY_CHARS)
     if not seeds:
         raise ValueError("symbols must contain at least one non-empty seed.")
-    if len(seeds) > MAX_ROUTE_SYMBOLS:
-        raise ValueError(f"symbols must contain at most {MAX_ROUTE_SYMBOLS} seeds.")
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}

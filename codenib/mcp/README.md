@@ -162,6 +162,11 @@ Each node's optional `line` is 1-based.
 ### `lsp_definition` / `lsp_references` / `lsp_route`
 Static LSP-shaped navigation over the loaded `symbol_graph`. These tools return
 compact locations only; clients should read source before finalizing.
+All three tools require `top_k` from 1 through 100. File paths are limited to
+4,096 characters, each symbol field or route entry to 1,024 characters, and a
+route query to 16,000 characters. `lsp_route` accepts at most 32 supplied symbol
+entries and 16,000 aggregate symbol characters; blank entries still consume the
+entry budget before normalization.
 
 - `lsp_definition`: provide either `symbol`, or `file_path` + 1-based `line`
   with optional 0-based `character`; `top_k` defaults to 8.

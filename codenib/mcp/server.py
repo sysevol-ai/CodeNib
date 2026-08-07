@@ -34,6 +34,8 @@ from .prompts import CODENIB_GUIDE
 from .tools._validation import (
     MAX_GRAPH_DEPTH,
     MAX_LSP_POSITION,
+    MAX_LSP_QUERY_CHARS,
+    MAX_LSP_SYMBOL_CHARS,
     MAX_ROUTE_SYMBOLS,
     MAX_SOURCE_PATH_CHARS,
     MAX_TOOL_RESULTS,
@@ -57,8 +59,11 @@ _GraphDirection = Literal["impact", "dependencies", "both"]
 _GraphDepth = Annotated[int, Field(ge=1, le=MAX_GRAPH_DEPTH)]
 _PositiveLine = Annotated[int, Field(ge=1, le=MAX_LSP_POSITION)]
 _Character = Annotated[int, Field(ge=0, le=MAX_LSP_POSITION)]
+_LspFilePath = Annotated[str, Field(max_length=MAX_SOURCE_PATH_CHARS)]
+_LspSymbol = Annotated[str, Field(max_length=MAX_LSP_SYMBOL_CHARS)]
+_LspQuery = Annotated[str, Field(max_length=MAX_LSP_QUERY_CHARS)]
 _RouteSymbols = Annotated[
-    list[str],
+    list[_LspSymbol],
     Field(min_length=1, max_length=MAX_ROUTE_SYMBOLS),
 ]
 _SourcePath = Annotated[str, Field(min_length=1, max_length=MAX_SOURCE_PATH_CHARS)]
@@ -270,10 +275,10 @@ async def dependency_subgraph(
     ),
 )
 async def lsp_definition(
-    file_path: str = "",
+    file_path: _LspFilePath = "",
     line: _PositiveLine | None = None,
     character: _Character | None = None,
-    symbol: str = "",
+    symbol: _LspSymbol = "",
     top_k: _SearchTopK = 8,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Graph-backed definition lookup over the static symbol graph."""
@@ -299,10 +304,10 @@ async def lsp_definition(
     ),
 )
 async def lsp_references(
-    file_path: str = "",
+    file_path: _LspFilePath = "",
     line: _PositiveLine | None = None,
     character: _Character | None = None,
-    symbol: str = "",
+    symbol: _LspSymbol = "",
     include_declaration: bool = True,
     top_k: _SearchTopK = 40,
 ) -> list[dict[str, Any]] | dict[str, str]:
@@ -332,7 +337,7 @@ async def lsp_references(
 )
 async def lsp_route(
     symbols: _RouteSymbols,
-    query: str = "",
+    query: _LspQuery = "",
     top_k: _SearchTopK = 12,
     include_neighbors: bool = True,
 ) -> list[dict[str, Any]] | dict[str, str]:

@@ -101,6 +101,12 @@ def test_search_tool_schemas_publish_bounded_inputs() -> None:
     route_symbols = tools["lsp_route"].input_schema["properties"]["symbols"]
     assert route_symbols["minItems"] == 1
     assert route_symbols["maxItems"] == 32
+    assert route_symbols["items"]["maxLength"] == 1024
+    assert tools["lsp_route"].input_schema["properties"]["query"]["maxLength"] == 16000
+    for name in ("lsp_definition", "lsp_references"):
+        properties = tools[name].input_schema["properties"]
+        assert properties["file_path"]["maxLength"] == 4096
+        assert properties["symbol"]["maxLength"] == 1024
     assert (
         tools["lsp_definition"].input_schema["properties"]["line"]["anyOf"][0][
             "minimum"
@@ -312,8 +318,76 @@ def test_lsp_tools_validate_result_and_seed_bounds():
         lsp_references_impl(ctx, symbol="load_config", top_k=101)
     with pytest.raises(ValueError, match="at least one non-empty seed"):
         lsp_route_impl(ctx, symbols=[])
-    with pytest.raises(ValueError, match="at most 32 seeds"):
+    with pytest.raises(ValueError, match="at most 32 entries"):
         lsp_route_impl(ctx, symbols=[f"symbol_{index}" for index in range(33)])
+
+
+@pytest.mark.parametrize(
+    "symbols",
+    [
+        [""] * 33,
+        ",".join([""] * 33),
+    ],
+)
+def test_lsp_route_counts_blank_entries_against_request_budget(symbols):
+    ctx = MagicMock(symbol_graph=MagicMock())
+    with patch("codenib.agent.lsp_provider.StaticLSPProvider") as provider:
+        with pytest.raises(ValueError, match="at most 32 entries"):
+            lsp_route_impl(ctx, symbols=symbols)
+
+    provider.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("impl", "kwargs", "error"),
+    [
+        (
+            lsp_definition_impl,
+            {"symbol": "s" * 1_025},
+            "symbol must not exceed 1024 characters",
+        ),
+        (
+            lsp_references_impl,
+            {"file_path": "p" * 4_097, "line": 1},
+            "file_path must not exceed 4096 characters",
+        ),
+        (
+            lsp_route_impl,
+            {"symbols": ["s" * 1_025]},
+            "each symbol must not exceed 1024 characters",
+        ),
+        (
+            lsp_route_impl,
+            {"symbols": ["symbol"], "query": "q" * 16_001},
+            "query must not exceed 16000 characters",
+        ),
+        (
+            lsp_route_impl,
+            {"symbols": ["s" * 1_000] * 17},
+            "symbols must not exceed 16000 total characters",
+        ),
+    ],
+)
+def test_lsp_tools_reject_oversized_text_before_provider(impl, kwargs, error):
+    ctx = MagicMock(symbol_graph=MagicMock())
+    with patch("codenib.agent.lsp_provider.StaticLSPProvider") as provider:
+        with pytest.raises(ValueError, match=error):
+            impl(ctx, **kwargs)
+
+    provider.assert_not_called()
+
+
+def test_lsp_route_accepts_exact_text_and_entry_budgets():
+    ctx = MagicMock(symbol_graph=MagicMock())
+    symbols = ["s" * 500] * 32
+    with patch(
+        "codenib.agent.lsp_provider.StaticLSPProvider.route",
+        return_value=[],
+    ) as route:
+        assert lsp_route_impl(ctx, symbols=symbols, query="q" * 16_000) == []
+
+    assert route.call_args.kwargs["symbols"] == symbols
+    assert route.call_args.kwargs["query"] == "q" * 16_000
 
 
 def test_server_status_resource(mock_manifest: Path):

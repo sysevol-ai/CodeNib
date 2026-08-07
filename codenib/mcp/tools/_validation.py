@@ -12,6 +12,9 @@ MAX_TOOL_RESULTS = 100
 MAX_GRAPH_DEPTH = 8
 MAX_ROUTE_SYMBOLS = 32
 MAX_LSP_POSITION = 2**31 - 1
+MAX_LSP_SYMBOL_CHARS = 1_024
+MAX_LSP_QUERY_CHARS = 16_000
+MAX_LSP_ROUTE_TEXT_CHARS = 16_000
 MAX_SOURCE_PATH_CHARS = 4_096
 MAX_SOURCE_WINDOW_LINES = 200
 MAX_SOURCE_CONTENT_CHARS = 16_000
@@ -21,6 +24,14 @@ def required_text(value: Any, *, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must not be empty.")
     return value.strip()
+
+
+def bounded_text(value: Any, *, name: str, maximum: int) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string.")
+    if len(value) > maximum:
+        raise ValueError(f"{name} must not exceed {maximum} characters.")
+    return value
 
 
 def bounded_integer(
