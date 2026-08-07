@@ -207,6 +207,10 @@ The backend exposes (all under `/api`):
 | `POST /api/repos/{id}/edge-label` | Short LLM phrase for how a graph edge's source uses its target (opt-in via `edge_labels`; returns `disabled` when off) |
 | `POST /api/chat` | Ask: answer + citations |
 
+Ask requests accept at most 32 text messages, 16,000 characters per message,
+and 64,000 characters across the request. FastAPI rejects larger histories
+before loading a repository runtime or calling the configured model.
+
 The `/commits` endpoint and the `commit` parameter are served from per-commit
 graph snapshots — see [Per-commit graph snapshots](#per-commit-graph-snapshots)
 below.

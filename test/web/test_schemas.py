@@ -4,9 +4,60 @@
 
 """Unit tests for the demo API response mapping (pure logic, no indexes)."""
 
+import pytest
+from pydantic import ValidationError
+
 from codenib.agent.agent_types import AgentResult, ToolCallRecord
 from codenib.types import QueriedNode
-from codenib.web.schemas import agent_result_to_response
+from codenib.web.schemas import (
+    MAX_CHAT_MESSAGE_CHARS,
+    MAX_CHAT_MESSAGES,
+    MAX_CHAT_REQUEST_CHARS,
+    ChatRequest,
+    agent_result_to_response,
+)
+
+
+def test_chat_request_accepts_bounded_follow_up_history():
+    request = ChatRequest(
+        repo_id="demo",
+        messages=[
+            {"role": "user", "content": "Where is indexing configured?"},
+            {"role": "assistant", "content": "See `codenib/compiler`."},
+            {"role": "user", "content": "What calls it?"},
+        ],
+    )
+
+    assert len(request.messages) == 3
+    assert request.messages[-1].role == "user"
+
+
+def test_chat_request_rejects_too_many_messages():
+    with pytest.raises(ValidationError, match="at most 32 items"):
+        ChatRequest(
+            repo_id="demo",
+            messages=[
+                {"role": "user", "content": "bounded"}
+                for _ in range(MAX_CHAT_MESSAGES + 1)
+            ],
+        )
+
+
+def test_chat_request_rejects_oversized_message():
+    with pytest.raises(ValidationError, match="at most 16000 characters"):
+        ChatRequest(
+            repo_id="demo",
+            messages=[{"role": "user", "content": "x" * (MAX_CHAT_MESSAGE_CHARS + 1)}],
+        )
+
+
+def test_chat_request_rejects_oversized_aggregate_content():
+    per_message = MAX_CHAT_REQUEST_CHARS // 5 + 1
+    with pytest.raises(ValidationError, match="character request limit"):
+        ChatRequest(
+            repo_id="demo",
+            messages=[{"role": "user", "content": "x" * per_message} for _ in range(5)],
+        )
 
 
 def _node(file, start, end, name="fn", score=1.0):

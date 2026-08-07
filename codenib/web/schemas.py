@@ -14,9 +14,13 @@ import os
 import re
 from typing import Any, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from codenib.agent.boundary import to_agent_repr
+
+MAX_CHAT_MESSAGES = 32
+MAX_CHAT_MESSAGE_CHARS = 16_000
+MAX_CHAT_REQUEST_CHARS = 64_000
 
 
 class WindowStats(BaseModel):
@@ -109,7 +113,7 @@ class ChatMessage(BaseModel):
     """One conversation message (text only — citations stay client-side)."""
 
     role: Literal["user", "assistant"]
-    content: str
+    content: str = Field(max_length=MAX_CHAT_MESSAGE_CHARS)
 
 
 class ChatRequest(BaseModel):
@@ -117,7 +121,18 @@ class ChatRequest(BaseModel):
     # Full conversation, oldest first; the last message is the current question
     # and must be from the user (OpenAI/DeepWiki-style). Earlier messages give
     # the agent context for follow-ups.
-    messages: List[ChatMessage]
+    messages: List[ChatMessage] = Field(max_length=MAX_CHAT_MESSAGES)
+
+    @field_validator("messages")
+    @classmethod
+    def _bound_total_content(cls, messages: List[ChatMessage]) -> List[ChatMessage]:
+        total_chars = sum(len(message.content) for message in messages)
+        if total_chars > MAX_CHAT_REQUEST_CHARS:
+            raise ValueError(
+                "chat message content exceeds the "
+                f"{MAX_CHAT_REQUEST_CHARS}-character request limit"
+            )
+        return messages
 
 
 class Citation(BaseModel):
