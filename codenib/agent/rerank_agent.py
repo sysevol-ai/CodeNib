@@ -7,6 +7,7 @@ Rerank agent for ranking code nodes based on relevance to a query.
 This module uses LLM APIs to rank NodeInfo objects and return QueriedNode objects.
 """
 
+import math
 import re
 from collections import Counter, defaultdict
 from typing import Dict, List, Literal, Optional, Sequence, Tuple
@@ -35,6 +36,7 @@ class RerankResult(BaseModel):
 # Max chars from each candidate's content embedded in a rankgpt-style prompt.
 # Approximate proxy for SweRank's 1024-token cap (≈3-4k chars for code).
 _RANKGPT_MAX_CONTENT_CHARS = 3000
+_LISTWISE_FORMATS = frozenset({"structured", "rankgpt"})
 
 
 class RerankAgent:
@@ -59,6 +61,10 @@ class RerankAgent:
                 (Salesforce/SweRankLLM-*, RankZephyr, etc.) — forcing JSON on
                 them collapses the output to the first index only.
         """
+        if listwise_format not in _LISTWISE_FORMATS:
+            supported = ", ".join(sorted(_LISTWISE_FORMATS))
+            raise ValueError(f"listwise_format must be one of: {supported}")
+
         self.llm = llm
         self.listwise_format = listwise_format
         self.structured_llm = (
@@ -100,6 +106,12 @@ class RerankAgent:
             When a sliding window is configured, each window is reranked independently and
             the averaged scores across all windows determine the final ordering.
         """
+        if top_k is not None and (
+            isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 0
+        ):
+            raise ValueError("top_k must be a non-negative integer or None")
+        if top_k == 0:
+            return []
         if not nodes:
             logger.warning("No nodes provided for reranking")
             return []
@@ -165,8 +177,10 @@ class RerankAgent:
                     appearance_count[original_idx] += 1
 
             if not aggregated_scores:
-                logger.warning("Reranker did not return any scores.")
-                return []
+                logger.warning(
+                    "Reranker did not return any usable scores; preserving "
+                    "the first-stage candidate order."
+                )
 
             averaged_scores = {
                 idx: aggregated_scores[idx] / appearance_count[idx]
@@ -176,6 +190,12 @@ class RerankAgent:
 
             sorted_indices = sorted(
                 averaged_scores.items(), key=lambda item: item[1], reverse=True
+            )
+            ranked_ids = {idx for idx, _score in sorted_indices}
+            sorted_indices.extend(
+                (original_idx, 0.0)
+                for original_idx, _node in valid_nodes
+                if original_idx not in ranked_ids
             )
 
             ranked_nodes: List[QueriedNode] = []
@@ -266,15 +286,32 @@ class RerankAgent:
             logger.error("LLM rerank invocation failed: %s", exc)
             return []
 
+        ranked_indices = getattr(rerank_result, "ranked_indices", [])
+        scores = getattr(rerank_result, "scores", [])
+        if not isinstance(ranked_indices, Sequence) or isinstance(
+            ranked_indices, (str, bytes)
+        ):
+            return []
+        if not isinstance(scores, Sequence) or isinstance(scores, (str, bytes)):
+            return []
         window_scores: List[Tuple[int, float]] = []
-        for local_position, ranked_idx in enumerate(rerank_result.ranked_indices):
-            if local_position >= len(rerank_result.scores):
-                break
+        seen_indices = set()
+        for ranked_idx, raw_score in zip(ranked_indices, scores, strict=False):
+            if isinstance(ranked_idx, bool) or not isinstance(ranked_idx, int):
+                continue
             if not 0 <= ranked_idx < len(window_nodes):
                 continue
-            score = rerank_result.scores[local_position]
+            if ranked_idx in seen_indices:
+                continue
+            try:
+                score = float(raw_score)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(score):
+                continue
+            seen_indices.add(ranked_idx)
             original_idx = window_nodes[ranked_idx][0]
-            window_scores.append((original_idx, float(score)))
+            window_scores.append((original_idx, min(1.0, max(0.0, score))))
 
         logger.debug(
             "Window rerank produced %s scored nodes (window size %s)",
