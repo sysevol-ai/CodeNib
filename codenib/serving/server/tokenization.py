@@ -36,7 +36,13 @@ class TokenizerLike(Protocol):
 
     # ``ids`` is List, not Sequence: the wrapper always materializes a list
     # before delegating, and HF tokenizers/fakes annotate the narrower type.
-    def decode(self, ids: List[int], *, skip_special_tokens: bool = ...) -> str: ...
+    def decode(
+        self,
+        ids: List[int],
+        *,
+        skip_special_tokens: bool = ...,
+        clean_up_tokenization_spaces: bool = ...,
+    ) -> str: ...
 
     @property
     def eos_token_id(self) -> Optional[int]: ...
@@ -82,8 +88,12 @@ class Tokenizer:
     def decode(
         self, ids: Sequence[TokenId], *, skip_special_tokens: bool = True
     ) -> str:
-        """Decode token ids back to text."""
-        return self._tok.decode(list(ids), skip_special_tokens=skip_special_tokens)
+        """Decode token ids without rewriting already-streamed whitespace."""
+        return self._tok.decode(
+            list(ids),
+            skip_special_tokens=skip_special_tokens,
+            clean_up_tokenization_spaces=False,
+        )
 
     @property
     def eos_token_id(self) -> Optional[TokenId]:

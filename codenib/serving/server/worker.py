@@ -102,7 +102,8 @@ class StepResult:
     ``emitted`` are the tokens appended to the context this step (accepted draft
     tokens plus the bonus, possibly empty on a terminal no-emit step). ``accepted``
     counts how many of those were drafted tokens the target confirmed. ``stop`` is
-    True on the last step (EOS reached or nothing left to emit).
+    True on the last step (EOS reached, the token budget is exhausted, or
+    nothing is left to emit).
     """
 
     emitted: List[TokenId]
@@ -216,7 +217,11 @@ class SpeculativeServer:
 
             emitted = result.emitted[: max_new_tokens - produced]
             accepted = min(len(result.accepted), len(emitted))
-            stop = not emitted or result.bonus is None
+            stop = (
+                not emitted
+                or result.bonus is None
+                or produced + len(emitted) >= max_new_tokens
+            )
             if emitted:
                 context.extend(emitted)
                 produced += len(emitted)

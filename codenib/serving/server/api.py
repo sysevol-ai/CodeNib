@@ -28,7 +28,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, List, Optional, Sequence
+from typing import Any, Awaitable, Callable, Iterable, List, Optional, Sequence
 
 from fastapi import FastAPI, HTTPException
 from sse_starlette.sse import EventSourceResponse
@@ -55,7 +55,11 @@ from codenib.serving.server.schemas import (
     ModelList,
     Usage,
 )
-from codenib.serving.server.sglang import SGLangVerifier, TargetEngine
+from codenib.serving.server.sglang import (
+    SGLangVerifier,
+    TargetEngine,
+    _normalize_eos_token_ids,
+)
 from codenib.serving.server.tokenization import Tokenizer
 from codenib.serving.server.worker import SpeculativeConfig, SpeculativeServer
 from codenib.serving.types import TokenId
@@ -172,12 +176,19 @@ class AppState:
     default_max_new_tokens: int = 256
     max_context_tokens: int = DEFAULT_MAX_CONTEXT_TOKENS
     stream_queue_items: int = DEFAULT_STREAM_QUEUE_ITEMS
+    eos_token_ids: Optional[TokenId | Iterable[TokenId]] = None
     # asyncio primitives bind to the running loop lazily (3.10+), so building
     # this outside a loop is safe.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     prompt_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def __post_init__(self) -> None:
+        eos = (
+            self.tokenizer.eos_token_id
+            if self.eos_token_ids is None
+            else self.eos_token_ids
+        )
+        self.eos_token_ids = _normalize_eos_token_ids(eos)
         if not 1 <= self.config.max_draft_tokens <= MAX_DRAFT_TOKENS:
             raise ValueError(
                 f"config.max_draft_tokens must be between 1 and {MAX_DRAFT_TOKENS}"
@@ -282,11 +293,45 @@ async def _prepare_prompt(
 def _run_full(state: AppState, prompt_ids: List[TokenId], max_new: int):
     """Blocking full generation; returns (completion_ids, finish_reason)."""
     engine = state.engine_factory()
-    verifier = SGLangVerifier(engine, eos_token_id=state.tokenizer.eos_token_id)
+    verifier = SGLangVerifier(engine, eos_token_ids=state.eos_token_ids)
     server = SpeculativeServer(drafters=list(state.drafters), config=state.config)
     result = server.run(prompt_ids, verifier, max_new_tokens=max_new)
     finish = "length" if len(result.tokens) >= max_new else "stop"
     return result.tokens, finish
+
+
+async def _run_full_single_flight(
+    state: AppState,
+    prompt_ids: List[TokenId],
+    max_new: int,
+) -> tuple[List[TokenId], str]:
+    """Run one full generation without releasing its lock on cancellation.
+
+    Cancelling an ``asyncio.to_thread`` waiter does not stop the underlying
+    thread.  Releasing ``state.lock`` when the request task unwinds would then
+    let the next request enter the same shared model while the old generation
+    is still running.  Shield the executor future from cancellation and defer
+    the release callback until that worker has actually stopped.
+    """
+    loop = asyncio.get_running_loop()
+    await state.lock.acquire()
+    fut: Optional[asyncio.Future] = None
+    try:
+        fut = loop.run_in_executor(None, _run_full, state, prompt_ids, max_new)
+        return await asyncio.shield(fut)
+    finally:
+        if fut is None or fut.done():
+            state.lock.release()
+        else:
+
+            def release_after_worker(worker: asyncio.Future) -> None:
+                # The request task is gone, so explicitly retrieve a worker
+                # exception before releasing to avoid an unhandled-future log.
+                if not worker.cancelled():
+                    worker.exception()
+                state.lock.release()
+
+            fut.add_done_callback(release_after_worker)
 
 
 #: U+FFFD REPLACEMENT CHARACTER — what a UTF-8 decoder emits for bytes it cannot
@@ -397,10 +442,11 @@ def create_app(state: AppState) -> FastAPI:
                 _stream(state, prompt_ids, max_new, state.served_model_name)
             )
 
-        async with state.lock:
-            completion_ids, finish = await asyncio.to_thread(
-                _run_full, state, prompt_ids, max_new
-            )
+        completion_ids, finish = await _run_full_single_flight(
+            state,
+            prompt_ids,
+            max_new,
+        )
         text = state.tokenizer.decode(completion_ids)
         return ChatCompletionResponse(
             id=_completion_id(),
@@ -456,7 +502,7 @@ async def _stream(
     def produce() -> None:
         try:
             engine = state.engine_factory()
-            verifier = SGLangVerifier(engine, eos_token_id=state.tokenizer.eos_token_id)
+            verifier = SGLangVerifier(engine, eos_token_ids=state.eos_token_ids)
             server = SpeculativeServer(
                 drafters=list(state.drafters), config=state.config
             )
@@ -566,6 +612,22 @@ def _model_context_capacity(model: object, tokenizer: object) -> int:
             ):
                 candidates.append(value)
     return min(candidates) if candidates else DEFAULT_MAX_CONTEXT_TOKENS
+
+
+def _model_eos_token_ids(model: object, tokenizer: object) -> frozenset[TokenId]:
+    """Prefer the model's full termination set, then fall back to its tokenizer."""
+    for owner in (
+        getattr(model, "generation_config", None),
+        getattr(model, "config", None),
+        tokenizer,
+    ):
+        value = getattr(owner, "eos_token_id", None)
+        if value is None:
+            continue
+        normalized = _normalize_eos_token_ids(value)
+        if normalized:
+            return normalized
+    return frozenset()
 
 
 def _resolve_context_limit(
@@ -695,6 +757,7 @@ def main() -> None:
         config=SpeculativeConfig(max_draft_tokens=args.max_draft_tokens),
         default_max_new_tokens=args.max_new_tokens,
         max_context_tokens=max_context_tokens,
+        eos_token_ids=_model_eos_token_ids(model, tokenizer.hf),
     )
     app = create_app(state)
     uvicorn.run(app, host=args.host, port=args.port)

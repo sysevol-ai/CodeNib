@@ -114,6 +114,26 @@ def test_final_draft_is_bounded_by_remaining_generation_budget():
     assert drafter.seen == [1]
 
 
+def test_run_iter_marks_exact_budget_step_as_stopped() -> None:
+    class MultiTokenDrafter:
+        def draft(self, context, max_tokens):
+            tree = DraftTree()
+            tree.add_sequence([2, 3, 4], source="test")
+            return tree
+
+    server = SpeculativeServer(
+        drafters=[MultiTokenDrafter()],
+        config=SpeculativeConfig(max_draft_tokens=8),
+    )
+
+    steps = list(server.run_iter([1], OracleVerifier([1, 2, 3, 4]), max_new_tokens=2))
+
+    assert len(steps) == 1
+    assert steps[0].emitted == [2, 3]
+    assert steps[0].accepted == 2
+    assert steps[0].stop is True
+
+
 @pytest.mark.parametrize("value", [0, -1, True, 1.5])
 def test_run_rejects_invalid_generation_budget(value):
     server = _copy_server()

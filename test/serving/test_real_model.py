@@ -12,10 +12,15 @@ checkpoint.
 import os
 import sys
 import types
+from contextlib import nullcontext
 
 import pytest
 
-from codenib.serving.server.real_model import _load_lm, best_linear_path
+from codenib.serving.server.real_model import (
+    RealModelVerifier,
+    _load_lm,
+    best_linear_path,
+)
 from codenib.serving.types import DraftNode, DraftTree
 
 
@@ -51,10 +56,10 @@ def _fake_transformers(*, causal_raises: bool):
 
     class _CausalLM:
         @staticmethod
-        def from_pretrained(name, dtype=None):
+        def from_pretrained(name, torch_dtype=None):
             if causal_raises:
                 raise ValueError("architecture not mapped for causal LM")
-            return f"causal:{name}"
+            return f"causal:{name}:{torch_dtype}"
 
     mod.AutoModelForCausalLM = _CausalLM
     return mod
@@ -66,7 +71,9 @@ def test_load_lm_uses_causal_lm_by_default(monkeypatch):
     monkeypatch.setitem(
         sys.modules, "transformers", _fake_transformers(causal_raises=False)
     )
-    assert _load_lm("some/causal-model", dtype=None) == "causal:some/causal-model"
+    assert (
+        _load_lm("some/causal-model", dtype="bf16") == "causal:some/causal-model:bf16"
+    )
 
 
 def test_load_lm_does_not_silently_fall_back(monkeypatch):
@@ -89,10 +96,43 @@ def test_load_lm_honours_explicit_model_class(monkeypatch):
 
     class _Forced:
         @staticmethod
-        def from_pretrained(name, dtype=None):
-            return f"forced:{name}"
+        def from_pretrained(name, torch_dtype=None):
+            return f"forced:{name}:{torch_dtype}"
 
-    assert _load_lm("x/y", dtype=None, model_class=_Forced) == "forced:x/y"
+    assert _load_lm("x/y", dtype="fp32", model_class=_Forced) == "forced:x/y:fp32"
+
+
+def test_real_model_verifier_stops_before_drafted_eos(monkeypatch) -> None:
+    class _Row:
+        def __init__(self, prediction: int) -> None:
+            self.prediction = prediction
+
+        def argmax(self, _axis: int) -> int:
+            return self.prediction
+
+    class _Model:
+        def __call__(self, _input_ids):
+            # With one context token these rows predict draft tokens 4, EOS,
+            # then a post-EOS token that must never be consumed as a bonus.
+            return types.SimpleNamespace(logits=[[_Row(4), _Row(0), _Row(42)]])
+
+    fake_torch = types.ModuleType("torch")
+    fake_torch.long = object()
+    fake_torch.tensor = lambda *args, **kwargs: object()
+    fake_torch.no_grad = nullcontext
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    verifier = RealModelVerifier.__new__(RealModelVerifier)
+    verifier.device = "cpu"
+    verifier.model = _Model()
+    verifier._eos = {0}
+    tree = DraftTree()
+    tree.add_sequence([4, 0, 42], source="test")
+
+    result = verifier.verify([1], tree)
+
+    assert result.accepted == [4]
+    assert result.bonus is None
 
 
 @pytest.mark.slow

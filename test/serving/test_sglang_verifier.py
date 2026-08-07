@@ -172,11 +172,60 @@ def test_verify_empty_tree_still_emits_bonus():
     assert result.bonus == 2
 
 
+def test_verify_rejects_empty_context() -> None:
+    with pytest.raises(ValueError, match="non-empty context"):
+        SGLangVerifier(_GreedyTruthEngine([1])).verify([], DraftTree())
+
+
 def test_eos_prediction_ends_generation():
     truth = [1, 2, 3]
-    v = SGLangVerifier(_GreedyTruthEngine(truth, eos=-999), eos_token_id=-999)
+    v = SGLangVerifier(_GreedyTruthEngine(truth, eos=-999), eos_token_ids=-999)
     # Context is the whole truth; next prediction runs off the end -> eos.
     result = v.verify(truth, DraftTree())
+    assert result.bonus is None
+
+
+def test_eos_draft_is_not_accepted_or_followed() -> None:
+    eos = 0
+    truth = [1, eos, 42]
+    tree = _linear_tree([eos, 42])
+    verifier = SGLangVerifier(
+        _GreedyTruthEngine(truth, eos=eos),
+        eos_token_ids=eos,
+    )
+
+    result = verifier.verify(truth[:1], tree)
+
+    assert result.accepted == []
+    assert result.bonus is None
+
+
+def test_eos_child_stops_after_non_eos_accepted_prefix() -> None:
+    eos = 0
+    truth = [1, 4, eos, 42]
+    tree = _linear_tree([4, eos, 42])
+    verifier = SGLangVerifier(
+        _GreedyTruthEngine(truth, eos=eos),
+        eos_token_ids=eos,
+    )
+
+    result = verifier.verify(truth[:1], tree)
+
+    assert result.accepted == [4]
+    assert result.bonus is None
+
+
+def test_any_configured_eos_token_ends_generation() -> None:
+    secondary_eos = 99
+    truth = [1, secondary_eos, 42]
+    verifier = SGLangVerifier(
+        _GreedyTruthEngine(truth),
+        eos_token_ids={0, secondary_eos},
+    )
+
+    result = verifier.verify(truth[:1], _linear_tree([secondary_eos, 42]))
+
+    assert result.accepted == []
     assert result.bonus is None
 
 
@@ -200,10 +249,33 @@ def test_run_reconstructs_truth_with_sglang_verifier():
         drafters=[CopyDrafter(min_match=2, max_match=16, max_draft=8)],
         config=SpeculativeConfig(max_draft_tokens=8),
     )
-    verifier = SGLangVerifier(_GreedyTruthEngine(truth), eos_token_id=-999)
+    verifier = SGLangVerifier(_GreedyTruthEngine(truth), eos_token_ids=-999)
     result = server.run(truth[:4], verifier, max_new_tokens=64)
     assert truth[:4] + result.tokens == truth
     assert result.speedup > 1.0  # copy speculation actually helped
+
+
+def test_run_never_emits_drafted_eos_or_post_eos_tokens() -> None:
+    eos = 0
+    truth = [1, eos, 42]
+
+    class _EosDrafter:
+        def draft(self, context, max_tokens):
+            return _linear_tree([eos, 42])
+
+    server = SpeculativeServer(
+        drafters=[_EosDrafter()],
+        config=SpeculativeConfig(max_draft_tokens=2),
+    )
+    verifier = SGLangVerifier(
+        _GreedyTruthEngine(truth, eos=eos),
+        eos_token_ids=eos,
+    )
+
+    result = server.run(truth[:1], verifier, max_new_tokens=2)
+
+    assert result.tokens == []
+    assert result.forward_passes == 1
 
 
 # --- production engine stub ---------------------------------------------------

@@ -52,6 +52,7 @@ from __future__ import annotations
 
 from typing import List, Sequence
 
+from codenib.serving.server.sglang import _normalize_eos_token_ids
 from codenib.serving.server.worker import Verifier, VerifyResult
 from codenib.serving.types import DraftTree, TokenId
 
@@ -96,7 +97,14 @@ def _load_lm(
     from transformers import AutoModelForCausalLM
 
     cls = model_class if model_class is not None else AutoModelForCausalLM
-    return cls.from_pretrained(model_name, dtype=dtype, **from_pretrained_kwargs)
+    # ``torch_dtype`` is supported by the oldest transformers version in the
+    # serving extra (4.44).  The shorter ``dtype`` spelling was added later and
+    # is forwarded to model constructors by older releases, where it fails.
+    return cls.from_pretrained(
+        model_name,
+        torch_dtype=dtype,
+        **from_pretrained_kwargs,
+    )
 
 
 class RealModelVerifier(Verifier):
@@ -135,15 +143,13 @@ class RealModelVerifier(Verifier):
         )
 
         # eos can be a single id or a list; normalise to a set for membership.
-        eos = self.model.config.eos_token_id
+        generation_config = getattr(self.model, "generation_config", None)
+        eos = getattr(generation_config, "eos_token_id", None)
+        if eos is None:
+            eos = self.model.config.eos_token_id
         if eos is None:
             eos = self.tokenizer.eos_token_id
-        if eos is None:
-            self._eos = set()
-        elif isinstance(eos, int):
-            self._eos = {eos}
-        else:
-            self._eos = set(eos)
+        self._eos = _normalize_eos_token_ids(eos)
 
     def verify(self, context: Sequence[TokenId], tree: DraftTree) -> VerifyResult:
         import torch
@@ -162,6 +168,11 @@ class RealModelVerifier(Verifier):
         accepted: List[TokenId] = []
         for j, drafted in enumerate(draft):
             pred = int(logits[offset + j].argmax(-1))
+            # Do not accept an EOS draft and then read a post-EOS prediction as
+            # the bonus token.  EOS controls termination and is not emitted as
+            # completion content by this serving loop.
+            if pred in self._eos:
+                return VerifyResult(accepted=accepted, bonus=None)
             if pred != drafted:
                 break
             accepted.append(drafted)

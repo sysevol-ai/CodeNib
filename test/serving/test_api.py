@@ -29,6 +29,7 @@ from codenib.serving.server.api import (
     MAX_REQUEST_BODY_BYTES,
     _IncrementalDecoder,
     _RequestBodyLimitMiddleware,
+    _run_full_single_flight,
     _stream,
     create_app,
 )
@@ -39,7 +40,7 @@ from codenib.serving.server.schemas import (  # noqa: E402
 from codenib.serving.server.sglang import TargetEngine  # noqa: E402
 from codenib.serving.server.tokenization import Tokenizer  # noqa: E402
 from codenib.serving.server.worker import SpeculativeConfig  # noqa: E402
-from codenib.serving.types import TokenId  # noqa: E402
+from codenib.serving.types import DraftTree, TokenId  # noqa: E402
 
 _EOS = 0
 _COMPLETION = " world"
@@ -56,7 +57,12 @@ class _FakeTok:
     def encode(self, text: str, add_special_tokens: bool = False) -> List[int]:
         return [ord(c) for c in text]
 
-    def decode(self, ids: List[int], skip_special_tokens: bool = True) -> str:
+    def decode(
+        self,
+        ids: List[int],
+        skip_special_tokens: bool = True,
+        clean_up_tokenization_spaces: bool = True,
+    ) -> str:
         return "".join(chr(i) for i in ids if not (skip_special_tokens and i == _EOS))
 
 
@@ -116,6 +122,41 @@ def test_chat_completion_returns_greedy_continuation() -> None:
     assert data["choices"][0]["finish_reason"] == "stop"
     assert data["usage"]["completion_tokens"] == len(_COMPLETION)
     assert data["usage"]["prompt_tokens"] == 2
+
+
+def test_chat_completion_never_returns_drafted_eos_or_later_tokens() -> None:
+    """A copied chat separator must terminate before its draft branch continues."""
+    tok = Tokenizer(_FakeTok())
+    prompt_ids = tok.encode("hi")
+    secondary_eos = 99
+    truth = prompt_ids + [secondary_eos, ord("x")]
+
+    class _EosDrafter:
+        def draft(self, context, max_tokens):
+            tree = DraftTree()
+            tree.add_sequence([secondary_eos, ord("x")], source="test")
+            return tree
+
+    state = AppState(
+        served_model_name="codenib-test",
+        tokenizer=tok,
+        engine_factory=lambda: _GreedyTruthEngine(truth),
+        drafters=[_EosDrafter()],
+        config=SpeculativeConfig(max_draft_tokens=2),
+        default_max_new_tokens=2,
+        eos_token_ids={_EOS, secondary_eos},
+    )
+
+    resp = TestClient(create_app(state)).post(
+        "/v1/chat/completions",
+        json={"model": "codenib-test", "messages": _MESSAGES},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["choices"][0]["message"]["content"] == ""
+    assert data["choices"][0]["finish_reason"] == "stop"
+    assert data["usage"]["completion_tokens"] == 0
 
 
 def test_temperature_above_zero_is_rejected() -> None:
@@ -344,7 +385,12 @@ class _ByteTok:
     def encode(self, text: str, add_special_tokens: bool = False) -> List[int]:
         return list(text.encode("utf-8"))
 
-    def decode(self, ids: List[int], skip_special_tokens: bool = True) -> str:
+    def decode(
+        self,
+        ids: List[int],
+        skip_special_tokens: bool = True,
+        clean_up_tokenization_spaces: bool = True,
+    ) -> str:
         keep = bytes(i for i in ids if not (skip_special_tokens and i == _EOS))
         return keep.decode("utf-8", errors="replace")
 
@@ -368,6 +414,33 @@ def test_incremental_decoder_emits_nothing_until_a_character_completes() -> None
     emoji = list("😀".encode("utf-8"))
     assert [decoder.push([b]) for b in emoji[:-1]] == ["", "", ""]
     assert decoder.push([emoji[-1]]) == "😀"
+
+
+def test_incremental_decoder_disables_prefix_rewriting_cleanup() -> None:
+    class _CleanupSensitiveTok:
+        eos_token_id = _EOS
+
+        def encode(self, text, add_special_tokens=False):
+            return []
+
+        def decode(
+            self,
+            ids,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
+        ):
+            if ids == [1]:
+                return "hello " if clean_up_tokenization_spaces else "hello"
+            if ids == [1, 2]:
+                return "hello."
+            return ""
+
+    tokenizer = Tokenizer(_CleanupSensitiveTok())
+    decoder = _IncrementalDecoder(tokenizer)
+
+    streamed = decoder.push([1]) + decoder.push([2]) + decoder.flush()
+
+    assert streamed == tokenizer.decode([1, 2]) == "hello."
 
 
 def _make_byte_client() -> TestClient:
@@ -408,6 +481,53 @@ def test_streaming_does_not_corrupt_multibyte_characters() -> None:
 
 
 # --- regression: a disconnect must not release the single-flight lock -----
+
+
+def test_non_stream_cancellation_holds_lock_until_worker_stops() -> None:
+    """A cancelled JSON request must not overlap its still-running worker."""
+    started = threading.Event()
+    release = threading.Event()
+
+    tok = Tokenizer(_FakeTok())
+    prompt_ids = tok.encode("hi")
+    truth = prompt_ids + tok.encode(_COMPLETION)
+
+    class _BlockingEngine(_GreedyTruthEngine):
+        def predict(self, context, flat):
+            started.set()
+            release.wait(10)
+            return super().predict(context, flat)
+
+    state = AppState(
+        served_model_name="codenib-test",
+        tokenizer=tok,
+        engine_factory=lambda: _BlockingEngine(truth),
+        drafters=[],
+        config=SpeculativeConfig(max_draft_tokens=8),
+        default_max_new_tokens=64,
+    )
+
+    async def scenario() -> None:
+        request = asyncio.create_task(
+            _run_full_single_flight(state, prompt_ids, max_new=64)
+        )
+        await asyncio.to_thread(started.wait, 10)
+        assert started.is_set()
+        assert state.lock.locked()
+
+        request.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+
+        assert state.lock.locked()
+        release.set()
+        for _ in range(1000):
+            if not state.lock.locked():
+                break
+            await asyncio.sleep(0.01)
+        assert not state.lock.locked()
+
+    asyncio.run(scenario())
 
 
 def test_stream_releases_lock_after_normal_completion() -> None:
@@ -622,6 +742,18 @@ def test_context_limit_uses_smallest_credible_capacity() -> None:
     tokenizer = SimpleNamespace(model_max_length=16_384)
 
     assert _model_context_capacity(model, tokenizer) == 16_384
+
+
+def test_model_eos_tokens_prefer_full_generation_config_set() -> None:
+    from codenib.serving.server.api import _model_eos_token_ids
+
+    model = SimpleNamespace(
+        generation_config=SimpleNamespace(eos_token_id=[1, 2]),
+        config=SimpleNamespace(eos_token_id=3),
+    )
+    tokenizer = SimpleNamespace(eos_token_id=4)
+
+    assert _model_eos_token_ids(model, tokenizer) == {1, 2}
 
 
 def test_context_limit_ignores_tokenizer_unknown_sentinel() -> None:

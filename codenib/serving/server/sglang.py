@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence
 
 from codenib.serving.server.worker import Verifier, VerifyResult
 from codenib.serving.types import DraftNode, DraftTree, TokenId
@@ -158,6 +158,28 @@ class TargetEngine(ABC):
         raise NotImplementedError
 
 
+def _normalize_eos_token_ids(
+    value: Optional[TokenId | Iterable[TokenId]],
+) -> FrozenSet[TokenId]:
+    """Normalize one or many model termination ids into an immutable set."""
+    if value is None:
+        return frozenset()
+    values = (
+        (value,) if isinstance(value, int) and not isinstance(value, bool) else value
+    )
+    if isinstance(values, (str, bytes)):
+        raise ValueError("eos token ids must be integers")
+    try:
+        normalized = frozenset(values)
+    except TypeError as exc:
+        raise ValueError("eos token ids must be an integer or iterable") from exc
+    if any(
+        isinstance(token, bool) or not isinstance(token, int) for token in normalized
+    ):
+        raise ValueError("eos token ids must be integers")
+    return normalized
+
+
 @dataclass
 class SGLangVerifier(Verifier):
     """Greedy tree verifier driven by a :class:`TargetEngine`.
@@ -168,14 +190,20 @@ class SGLangVerifier(Verifier):
     free token standard speculative decoding yields per step). Output is
     therefore token-identical to non-speculative greedy decoding.
 
-    ``eos_token_id`` maps the engine's end-of-sequence prediction to a ``None``
+    ``eos_token_ids`` maps every model termination prediction to a ``None``
     bonus so :meth:`SpeculativeServer.run` halts.
     """
 
     engine: TargetEngine
-    eos_token_id: Optional[TokenId] = None
+    eos_token_ids: Optional[TokenId | Iterable[TokenId]] = None
+    _eos: FrozenSet[TokenId] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._eos = _normalize_eos_token_ids(self.eos_token_ids)
 
     def verify(self, context: Sequence[TokenId], tree: DraftTree) -> VerifyResult:
+        if not context:
+            raise ValueError("SGLangVerifier requires a non-empty context")
         c = len(context)
         flat = flatten(c, tree)
         preds = self.engine.predict(context, flat)
@@ -190,6 +218,12 @@ class SGLangVerifier(Verifier):
         pred_idx = c - 1  # prediction after the last context token = next slot
         while node.children:
             want = preds[pred_idx]
+            # EOS terminates generation; it is control flow, not completion
+            # content.  Check before matching a drafted child so an EOS copied
+            # from prior chat-template separators is never accepted/emitted and
+            # no prediction conditioned on the post-EOS branch becomes a bonus.
+            if want in self._eos:
+                return VerifyResult(accepted=accepted, bonus=None)
             child = next((ch for ch in node.children if ch.token == want), None)
             if child is None:
                 break  # model diverges from every drafted branch here
@@ -198,7 +232,7 @@ class SGLangVerifier(Verifier):
             pred_idx = flat.node_index[id(child)]
 
         bonus: Optional[TokenId] = preds[pred_idx]
-        if self.eos_token_id is not None and bonus == self.eos_token_id:
+        if bonus in self._eos:
             bonus = None
         return VerifyResult(accepted=accepted, bonus=bonus)
 

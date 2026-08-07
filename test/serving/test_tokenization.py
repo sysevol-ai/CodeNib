@@ -27,7 +27,12 @@ class _FakeHF:
         ids = [ord(c) for c in text]
         return [_BOS, *ids] if add_special_tokens else ids
 
-    def decode(self, ids: List[int], skip_special_tokens: bool = True) -> str:
+    def decode(
+        self,
+        ids: List[int],
+        skip_special_tokens: bool = True,
+        clean_up_tokenization_spaces: bool = True,
+    ) -> str:
         keep = [i for i in ids if not (skip_special_tokens and i in (_BOS, _EOS))]
         return "".join(chr(i) for i in keep)
 
