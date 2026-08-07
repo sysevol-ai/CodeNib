@@ -92,30 +92,32 @@ Rules for any AI/code agent (Claude Code, etc.) committing or opening PRs here.
 
 ## CI
 
-Seven jobs on a self-hosted runner, chained from a `preflight` decision job
-(see `.github/workflows/ci.yml`; full reference:
+Pull-request and trusted full CI are deliberately separate (full reference:
 [`docs/ci_cd.md`](../docs/ci_cd.md)):
 
-1. **preflight** — no tests; computes `should-run` / `run-serial` / `run-slow`
-2. **unit** — fast, no external deps (all unmarked tests)
-3. **integration** — read-only, parallel-safe; needs SCIP, clangd, rust-analyzer, bear
-4. **integration-serial** — repo-mutating `integration_serial` tests, run sequentially
-5. **scip-core** — builds `core/`, parity-checks the C++ decoder against the serial graphs
-6. **graph-consumer** — `integration_serial_consumer` tests reading the serial `graph.pkl`
-7. **slow** — LLM API keys, GPU; opt-in (schedule, `full`-tier dispatch, or `full-ci`/`slow-ci` PR label)
+- **Pull requests:** `.github/workflows/ci.yml` runs one unit gate on an
+  ephemeral GitHub-hosted runner. Draft PRs defer this job until they become
+  ready for review, unless they carry `full-ci`. A skipped draft run is not the
+  required ready-for-review result, and a cancelled run is incomplete.
+- **Trusted runs:** `.github/workflows/ci-full.yml` runs after default-branch
+  pushes, on the daily schedule, or by manual dispatch. A hosted `preflight`
+  job selects a six-job chain on the persistent self-hosted runner: `unit`,
+  `integration`, `integration-serial`, `scip-core`, `graph-consumer`, and
+  `slow`.
 
-The serial chain (4–6) runs only when the change touches the serial-chain
-path allowlist (chunking, dataset, graph, index, ls_index, core, and a few
-graph-related scripts/tests — see [`docs/ci_cd.md`](../docs/ci_cd.md)), on
-scheduled or `full`-tier dispatch runs, or when the PR carries the
-`full-ci`/`serial-ci` label. All other changes — including agent, eval,
-model, and web code — run only unit + integration.
+On default-branch pushes, the serial chain runs only when the diff touches its
+allowlist (chunking, dataset, graph, index, ls_index, core, and related
+scripts/tests; see [`docs/ci_cd.md`](../docs/ci_cd.md)). Scheduled and manual
+`full` runs force the serial chain. The credential/model-dependent `slow` tier
+runs only for scheduled or manual `full` runs; PR labels do not dispatch the
+trusted workflow.
 
 Skip mechanisms:
-- `paths-ignore`: `**.md`, `docs/**`, `LICENSE`, `.gitignore`
-- `[skip tests]` in commit message or PR title
-- `skip-tests` label on PR
-- `workflow_dispatch` with `skip_tests: true`
+- both workflows use `paths-ignore` for `**.md`, `docs/**`, `LICENSE`, and
+  `.gitignore`;
+- PR unit: `[skip tests]` in the PR title or the `skip-tests` label;
+- trusted default-branch push: `[skip tests]` in the head commit message;
+- trusted manual dispatch: `skip_tests: true`.
 
 Full pytest marker reference: [`test/CLAUDE.md`](../test/CLAUDE.md).
 
