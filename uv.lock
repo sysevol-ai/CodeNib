@@ -643,6 +643,14 @@ semantic-remote = [
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "openai" },
 ]
+serving = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "sse-starlette" },
+    { name = "torch" },
+    { name = "transformers" },
+]
 test = [
     { name = "datasets" },
     { name = "einops" },
@@ -664,6 +672,7 @@ test = [
     { name = "pytest-xdist" },
     { name = "requests" },
     { name = "sentence-transformers" },
+    { name = "sse-starlette" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 vertex = [
@@ -720,6 +729,7 @@ requires-dist = [
     { name = "numpy", marker = "extra == 'full'", specifier = ">=1.24.0" },
     { name = "numpy", marker = "extra == 'semantic'", specifier = ">=1.24.0" },
     { name = "numpy", marker = "extra == 'semantic-remote'", specifier = ">=1.24.0" },
+    { name = "numpy", marker = "extra == 'serving'", specifier = ">=1.24.0" },
     { name = "numpy", marker = "extra == 'test'", specifier = ">=1.24.0" },
     { name = "openai", marker = "extra == 'agent'", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'full'", specifier = ">=1.0.0" },
@@ -743,12 +753,16 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'full'", specifier = ">=2.2.0" },
     { name = "sentence-transformers", marker = "extra == 'semantic'", specifier = ">=2.2.0" },
     { name = "sentence-transformers", marker = "extra == 'test'", specifier = ">=2.2.0" },
+    { name = "sse-starlette", marker = "extra == 'serving'", specifier = ">=2.0.0" },
+    { name = "sse-starlette", marker = "extra == 'test'", specifier = ">=2.0.0" },
     { name = "tomli", marker = "python_full_version < '3.11' and extra == 'test'", specifier = ">=1.1.0" },
+    { name = "torch", marker = "extra == 'serving'", specifier = ">=2.2.0" },
+    { name = "transformers", marker = "extra == 'serving'", specifier = ">=4.44.0" },
     { name = "tree-sitter", specifier = ">=0.25.2" },
     { name = "tree-sitter-language-pack", specifier = ">=1.8.1,<1.9.0" },
     { name = "uvicorn", specifier = ">=0.20.0" },
 ]
-provides-extras = ["agent", "datasets", "graph", "mcp", "semantic", "semantic-remote", "vertex", "zoekt", "full", "dev", "test"]
+provides-extras = ["agent", "datasets", "graph", "mcp", "semantic", "semantic-remote", "serving", "vertex", "zoekt", "full", "dev", "test"]
 
 [package.metadata.requires-dev]
 docs = [
