@@ -45,18 +45,16 @@ def resolve_embedding_load_policy(
     if trust_remote_code is not None and not isinstance(trust_remote_code, bool):
         raise TypeError("trust_remote_code must be a bool or None")
 
-    bundled_revision = (
-        DEFAULT_EMBEDDING_REVISION if model == DEFAULT_EMBEDDING_MODEL else None
-    )
+    is_local_model = Path(model).expanduser().is_dir()
+    is_bundled_remote_model = model == DEFAULT_EMBEDDING_MODEL and not is_local_model
+    bundled_revision = DEFAULT_EMBEDDING_REVISION if is_bundled_remote_model else None
     resolved_revision = revision if revision is not None else bundled_revision
     uses_bundled_revision = (
-        model == DEFAULT_EMBEDDING_MODEL
-        and resolved_revision == DEFAULT_EMBEDDING_REVISION
+        is_bundled_remote_model and resolved_revision == DEFAULT_EMBEDDING_REVISION
     )
     resolved_trust = (
         uses_bundled_revision if trust_remote_code is None else trust_remote_code
     )
-    is_local_model = Path(model).expanduser().is_dir()
     if (
         resolved_trust
         and not is_local_model

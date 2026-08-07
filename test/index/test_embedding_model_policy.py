@@ -77,6 +77,19 @@ def test_local_model_can_trust_local_code_without_revision(tmp_path):
     assert policy.trust_remote_code is True
 
 
+def test_local_path_named_like_bundled_model_is_not_implicitly_trusted(
+    tmp_path, monkeypatch
+):
+    model_path = tmp_path / DEFAULT_EMBEDDING_MODEL
+    model_path.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    policy = resolve_embedding_load_policy(DEFAULT_EMBEDDING_MODEL)
+
+    assert policy.revision is None
+    assert policy.trust_remote_code is False
+
+
 @pytest.mark.parametrize("value", [1, "false"])
 def test_remote_code_option_requires_boolean(value):
     with pytest.raises(TypeError, match="must be a bool or None"):

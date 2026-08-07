@@ -27,6 +27,32 @@ def _install_fake_sentence_transformers(monkeypatch, calls):
     monkeypatch.setitem(sys.modules, "sentence_transformers", module)
 
 
+def _install_legacy_sentence_transformers(monkeypatch, calls):
+    module = ModuleType("sentence_transformers")
+
+    class LegacySentenceTransformer:
+        def __init__(
+            self,
+            model_name,
+            modules=None,
+            device=None,
+            cache_folder=None,
+            use_auth_token=None,
+        ):
+            calls.append(
+                (
+                    model_name,
+                    {
+                        "device": device,
+                        "cache_folder": cache_folder,
+                    },
+                )
+            )
+
+    module.SentenceTransformer = LegacySentenceTransformer
+    monkeypatch.setitem(sys.modules, "sentence_transformers", module)
+
+
 def test_wrapper_pins_bundled_model_by_default(monkeypatch):
     calls = []
     _install_fake_sentence_transformers(monkeypatch, calls)
@@ -51,6 +77,27 @@ def test_wrapper_denies_remote_code_for_arbitrary_model(monkeypatch):
     _HuggingFaceEmbeddingWrapper("vendor/standard-model")
 
     assert calls == [("vendor/standard-model", {"trust_remote_code": False})]
+
+
+def test_wrapper_supports_untrusted_model_on_legacy_api(monkeypatch):
+    calls = []
+    _install_legacy_sentence_transformers(monkeypatch, calls)
+
+    _HuggingFaceEmbeddingWrapper("vendor/standard-model", device="cpu")
+
+    assert calls == [
+        (
+            "vendor/standard-model",
+            {"device": "cpu", "cache_folder": None},
+        )
+    ]
+
+
+def test_wrapper_rejects_pinned_model_on_legacy_api(monkeypatch):
+    _install_legacy_sentence_transformers(monkeypatch, [])
+
+    with pytest.raises(RuntimeError, match="upgrade sentence-transformers"):
+        _HuggingFaceEmbeddingWrapper(DEFAULT_EMBEDDING_MODEL)
 
 
 def test_wrapper_accepts_pinned_legacy_model_kwargs(monkeypatch):

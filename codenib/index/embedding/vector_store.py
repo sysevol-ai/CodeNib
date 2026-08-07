@@ -9,6 +9,7 @@ of code chunks for semantic similarity search.
 """
 
 import hashlib
+import inspect
 import json
 import os
 import pickle
@@ -32,7 +33,7 @@ from .artifact_integrity import (
     validate_vector_level_artifacts,
     vector_level_artifact_records,
 )
-from .model_policy import resolve_embedding_load_policy
+from .model_policy import EmbeddingLoadPolicy, resolve_embedding_load_policy
 
 logger = get_logger(__name__)
 
@@ -92,6 +93,44 @@ def _atomic_pickle_dump(target: Path, value: object) -> None:
             pickle.dump(value, handle)
 
     _atomic_replace(target, _write)
+
+
+def _sentence_transformer_load_kwargs(
+    sentence_transformer: object,
+    load_policy: EmbeddingLoadPolicy,
+) -> Dict[str, Any]:
+    """Return only model-identity options supported by the installed API."""
+
+    try:
+        parameters = inspect.signature(sentence_transformer).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    accepts_extra_kwargs = not parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+
+    def accepts(name: str) -> bool:
+        return accepts_extra_kwargs or name in parameters
+
+    kwargs: Dict[str, Any] = {}
+    trust_remote_code = load_policy.trust_remote_code
+    revision = load_policy.revision
+    if accepts("trust_remote_code"):
+        kwargs["trust_remote_code"] = trust_remote_code
+    elif trust_remote_code:
+        raise RuntimeError(
+            "The installed sentence-transformers cannot enforce trusted remote "
+            "model loading; upgrade sentence-transformers"
+        )
+    if revision is not None:
+        if not accepts("revision"):
+            raise RuntimeError(
+                "The installed sentence-transformers cannot honor the requested "
+                "embedding revision; upgrade sentence-transformers"
+            )
+        kwargs["revision"] = revision
+    return kwargs
 
 
 class _Document:
@@ -160,11 +199,10 @@ class _HuggingFaceEmbeddingWrapper:
         self._document_prompt = merged["document_prompt"]
 
         # Build SentenceTransformer init kwargs
-        st_kwargs: Dict[str, Any] = {
-            "trust_remote_code": load_policy.trust_remote_code,
-        }
-        if load_policy.revision is not None:
-            st_kwargs["revision"] = load_policy.revision
+        st_kwargs = _sentence_transformer_load_kwargs(
+            SentenceTransformer,
+            load_policy,
+        )
         # Forward remaining kwargs (e.g. device, cache_folder)
         st_kwargs.update(kwargs)
         st_kwargs.update(model_kwargs)
