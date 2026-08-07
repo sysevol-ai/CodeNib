@@ -26,6 +26,7 @@ _HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
+MAX_PROXY_REQUEST_BODY_BYTES = 1024 * 1024
 
 
 def runtime_config(api_base: str) -> bytes:
@@ -92,7 +93,21 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
             self.send_error(404)
             return
 
-        content_length = int(self.headers.get("Content-Length") or 0)
+        try:
+            content_length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._send_api_error(400, "invalid Content-Length header")
+            return
+        if content_length < 0:
+            self._send_api_error(400, "Content-Length must not be negative")
+            return
+        if content_length > MAX_PROXY_REQUEST_BODY_BYTES:
+            self._send_api_error(
+                413,
+                "API request body exceeds the "
+                f"{MAX_PROXY_REQUEST_BODY_BYTES}-byte limit",
+            )
+            return
         body = self.rfile.read(content_length) if content_length else None
         headers = {
             name: value
@@ -118,15 +133,7 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
             response = exc
         except (OSError, urllib_error.URLError) as exc:
             reason = getattr(exc, "reason", exc)
-            payload = json.dumps(
-                {"detail": f"CodeNib API is unavailable: {reason}"}
-            ).encode("utf-8")
-            self.send_response(502)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            if self.command != "HEAD":
-                self.wfile.write(payload)
+            self._send_api_error(502, f"CodeNib API is unavailable: {reason}")
             return
 
         try:
@@ -147,6 +154,17 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(payload)
         finally:
             response.close()
+
+    def _send_api_error(self, status: int, detail: str) -> None:
+        payload = json.dumps({"detail": detail}).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        if self.command != "HEAD":
+            self.wfile.write(payload)
 
     def end_headers(self) -> None:
         request_path = urlsplit(self.path).path

@@ -10,7 +10,42 @@ import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from codenib.web.static_server import build_server
+from codenib.web.static_server import MAX_PROXY_REQUEST_BODY_BYTES, build_server
+
+
+def test_static_server_rejects_invalid_api_content_lengths(tmp_path):
+    (tmp_path / "index.html").write_text("<title>CodeNib Wiki</title>")
+    server = build_server(
+        tmp_path,
+        api_base="http://127.0.0.1:9",
+        host="127.0.0.1",
+        port=0,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    cases = (
+        ("invalid", 400, "invalid Content-Length"),
+        ("-1", 400, "must not be negative"),
+        (str(MAX_PROXY_REQUEST_BODY_BYTES + 1), 413, "byte limit"),
+    )
+    try:
+        for content_length, expected_status, expected_detail in cases:
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=2
+            )
+            connection.putrequest("POST", "/api/chat")
+            connection.putheader("Content-Length", content_length)
+            connection.endheaders()
+            response = connection.getresponse()
+            payload = json.loads(response.read())
+            connection.close()
+
+            assert response.status == expected_status
+            assert expected_detail in payload["detail"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_static_server_uses_same_origin_api_and_falls_back_to_spa(tmp_path):
