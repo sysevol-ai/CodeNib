@@ -10,6 +10,10 @@ from typing import Any, Sequence
 
 MAX_LSP_RESULTS = 100
 MAX_LSP_ROUTE_SYMBOLS = 100
+MAX_LSP_PATH_CHARS = 4_096
+MAX_LSP_SYMBOL_CHARS = 1_024
+MAX_LSP_QUERY_CHARS = 16_000
+MAX_LSP_ROUTE_TEXT_CHARS = 16_000
 
 
 def _validate_top_k(top_k: int) -> int:
@@ -22,10 +26,42 @@ def _validate_top_k(top_k: int) -> int:
     return top_k
 
 
+def _validate_text(value: str, *, name: str, max_chars: int) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string")
+    if len(value) > max_chars:
+        raise ValueError(f"{name} must contain at most {max_chars} characters")
+    return value
+
+
 def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
     if isinstance(symbols, str):
-        return [s.strip() for s in symbols.split(",") if s.strip()]
-    return [str(s).strip() for s in symbols or [] if str(s).strip()]
+        _validate_text(
+            symbols,
+            name="symbols",
+            max_chars=MAX_LSP_ROUTE_TEXT_CHARS,
+        )
+        values = symbols.split(",")
+    else:
+        values = symbols or []
+
+    normalized: list[str] = []
+    for value in values:
+        seed = str(value).strip()
+        if not seed:
+            continue
+        _validate_text(
+            seed,
+            name="each symbol",
+            max_chars=MAX_LSP_SYMBOL_CHARS,
+        )
+        normalized.append(seed)
+        if len(normalized) > MAX_LSP_ROUTE_SYMBOLS:
+            raise ValueError(
+                "symbols must contain at most "
+                f"{MAX_LSP_ROUTE_SYMBOLS} non-empty entries"
+            )
+    return normalized
 
 
 def _node_to_dict(node: Any) -> dict[str, Any]:
@@ -58,16 +94,28 @@ def lsp_definition_impl(
         return {"error": "symbol_graph index not available"}
 
     from ...agent.boundary import from_agent_repr
-    from ...agent.lsp_provider import StaticLSPProvider
 
     graph_line = from_agent_repr(line)
     try:
         limit = _validate_top_k(top_k)
+        requested_path = _validate_text(
+            file_path,
+            name="file_path",
+            max_chars=MAX_LSP_PATH_CHARS,
+        )
+        requested_symbol = _validate_text(
+            symbol,
+            name="symbol",
+            max_chars=MAX_LSP_SYMBOL_CHARS,
+        )
+
+        from ...agent.lsp_provider import StaticLSPProvider
+
         results = StaticLSPProvider(graph).definition(
-            file_path=file_path or None,
+            file_path=requested_path or None,
             line=graph_line,
             character=character,
-            symbol=symbol or None,
+            symbol=requested_symbol or None,
             top_k=limit,
         )
     except ValueError as exc:
@@ -90,16 +138,28 @@ def lsp_references_impl(
         return {"error": "symbol_graph index not available"}
 
     from ...agent.boundary import from_agent_repr
-    from ...agent.lsp_provider import StaticLSPProvider
 
     graph_line = from_agent_repr(line)
     try:
         limit = _validate_top_k(top_k)
+        requested_path = _validate_text(
+            file_path,
+            name="file_path",
+            max_chars=MAX_LSP_PATH_CHARS,
+        )
+        requested_symbol = _validate_text(
+            symbol,
+            name="symbol",
+            max_chars=MAX_LSP_SYMBOL_CHARS,
+        )
+
+        from ...agent.lsp_provider import StaticLSPProvider
+
         results = StaticLSPProvider(graph).references(
-            file_path=file_path or None,
+            file_path=requested_path or None,
             line=graph_line,
             character=character,
-            symbol=symbol or None,
+            symbol=requested_symbol or None,
             include_declaration=bool(include_declaration),
             top_k=limit,
         )
@@ -122,24 +182,22 @@ def lsp_route_impl(
 
     try:
         limit = _validate_top_k(top_k)
+        seeds = _coerce_symbols(symbols)
+        requested_query = _validate_text(
+            query,
+            name="query",
+            max_chars=MAX_LSP_QUERY_CHARS,
+        )
     except ValueError as exc:
         return {"error": str(exc)}
-    seeds = _coerce_symbols(symbols)
     if not seeds:
         return []
-    if len(seeds) > MAX_LSP_ROUTE_SYMBOLS:
-        return {
-            "error": (
-                "symbols must contain at most "
-                f"{MAX_LSP_ROUTE_SYMBOLS} non-empty entries"
-            )
-        }
 
     from ...agent.lsp_provider import StaticLSPProvider
 
     results = StaticLSPProvider(graph).route(
         symbols=seeds,
-        query=query or None,
+        query=requested_query or None,
         top_k=limit,
         include_neighbors=bool(include_neighbors),
     )

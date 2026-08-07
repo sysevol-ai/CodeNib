@@ -153,6 +153,9 @@ Each node's optional `line` is 1-based.
 Static LSP-shaped navigation over the loaded `symbol_graph`. These tools return
 compact locations only; clients should read source before finalizing.
 All three tools require integer `top_k` values from 1 through 100.
+Paths are limited to 4,096 characters, individual symbol names to 1,024
+characters, and route queries to 16,000 characters so malformed requests fail
+before graph resolution.
 
 - `lsp_definition`: provide either `symbol`, or `file_path` + 1-based `line`
   with optional 0-based `character`; `top_k` defaults to 8.
@@ -161,7 +164,8 @@ All three tools require integer `top_k` values from 1 through 100.
 - `lsp_route`: provide `symbols`, with optional `query`, `top_k` (default 12),
   and `include_neighbors` (default `true`) to rank endpoint, bridge/factory,
   provider/value, and type anchors. At most 100 non-empty symbol seeds are
-  accepted per request.
+  accepted per request; comma-separated seed text is limited to 16,000
+  characters before splitting.
 
 ### `get_manifest`
 Returns the manifest version; a nested `repo` object containing path, commit,

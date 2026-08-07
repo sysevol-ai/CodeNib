@@ -285,6 +285,55 @@ def test_lsp_route_rejects_oversized_symbol_list_before_provider():
     provider.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("impl", "kwargs", "error"),
+    [
+        (
+            lsp_definition_impl,
+            {"symbol": "s" * 1_025},
+            "symbol must contain at most 1024 characters",
+        ),
+        (
+            lsp_references_impl,
+            {"symbol": "s" * 1_025},
+            "symbol must contain at most 1024 characters",
+        ),
+        (
+            lsp_definition_impl,
+            {"file_path": "p" * 4_097, "line": 1},
+            "file_path must contain at most 4096 characters",
+        ),
+        (
+            lsp_references_impl,
+            {"file_path": "p" * 4_097, "line": 1},
+            "file_path must contain at most 4096 characters",
+        ),
+        (
+            lsp_route_impl,
+            {"symbols": ["s" * 1_025]},
+            "each symbol must contain at most 1024 characters",
+        ),
+        (
+            lsp_route_impl,
+            {"symbols": ["load_config"], "query": "q" * 16_001},
+            "query must contain at most 16000 characters",
+        ),
+        (
+            lsp_route_impl,
+            {"symbols": "s," * 8_001},
+            "symbols must contain at most 16000 characters",
+        ),
+    ],
+)
+def test_lsp_tools_reject_oversized_text_before_provider(impl, kwargs, error):
+    ctx = MagicMock(symbol_graph=MagicMock())
+    with patch("codenib.agent.lsp_provider.StaticLSPProvider") as provider:
+        result = impl(ctx, **kwargs)
+
+    assert result == {"error": error}
+    provider.assert_not_called()
+
+
 def test_server_status_resource(mock_manifest: Path):
     """Test server_status resource returns correct info."""
     mock_vector = MagicMock(spec=CodeVectorStore)
