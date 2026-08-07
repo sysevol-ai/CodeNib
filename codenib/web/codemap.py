@@ -51,6 +51,7 @@ from .repository_files import (
 
 # Node types eligible as a focus / default seed (skip file/dir/import nodes).
 _SYMBOL_TYPES = frozenset({"function", "method", "class"})
+_GIT_PATHS_UNSET = object()
 # Recognized source-file extensions (fallback when the repo root isn't known).
 _SOURCE_EXTS = frozenset(
     {
@@ -237,6 +238,14 @@ class _DerivedFiles:
         self._repo_dir = os.path.realpath(repo_dir) if repo_dir else None
         self._repo_commit = repo_commit if valid_commit(repo_commit) else None
         self._cache: Dict[str, bool] = {}
+        # Keep this potentially large set request-local. Concurrent requests
+        # may evict the process-level entry, but this map never repeats the
+        # repository-wide grep while classifying its files.
+        self._git_generated_paths = (
+            _git_generated_candidates(self._repo_dir, self._repo_commit)
+            if self._repo_dir and self._repo_commit
+            else None
+        )
 
     def __call__(self, file_path: Any) -> bool:
         if not isinstance(file_path, str) or not file_path:
@@ -256,9 +265,13 @@ class _DerivedFiles:
         if relative is None:
             return False
         if self._repo_commit:
-            return _git_file_has_generated_marker(
-                self._repo_dir, self._repo_commit, relative
-            )
+            if (
+                self._git_generated_paths is None
+                or relative not in self._git_generated_paths
+            ):
+                return False
+            head = git_blob_head(self._repo_dir, self._repo_commit, relative, 2048)
+            return bool(head and source_has_generated_marker(head))
         candidate = os.path.realpath(os.path.join(self._repo_dir, relative))
         try:
             stat = os.stat(candidate)
@@ -279,15 +292,6 @@ def _live_file_has_generated_marker(path: str, mtime_ns: int, size: int) -> bool
 def _git_generated_candidates(repo_dir: str, commit: str) -> frozenset[str]:
     """Files mentioning a generation marker anywhere, found in one Git scan."""
     return git_grep_paths(repo_dir, commit, _GENERATED_GREP_PATTERN)
-
-
-@lru_cache(maxsize=16384)
-def _git_file_has_generated_marker(repo_dir: str, commit: str, relative: str) -> bool:
-    """Classify the selected Git blob, never the current checkout's file."""
-    if relative not in _git_generated_candidates(repo_dir, commit):
-        return False
-    head = git_blob_head(repo_dir, commit, relative, 2048)
-    return bool(head and source_has_generated_marker(head))
 
 
 _NO_ENTRY = 1 << 20
@@ -450,6 +454,7 @@ def _is_external(
     a: Dict[str, Any],
     repo_dir: Optional[str] = None,
     repo_commit: Optional[str] = None,
+    repo_paths: object = _GIT_PATHS_UNSET,
 ) -> bool:
     """True if a node has no openable in-repo source.
 
@@ -470,7 +475,11 @@ def _is_external(
         if relative is None:
             return True
         if repo_commit:
-            paths = git_tree_paths(root, repo_commit)
+            paths = (
+                git_tree_paths(root, repo_commit)
+                if repo_paths is _GIT_PATHS_UNSET
+                else repo_paths
+            )
             if paths is not None:
                 return relative not in paths
             # Do not silently consult a different checkout when the requested
@@ -654,6 +663,12 @@ def build_codemap(
     note = ""
 
     derived = _DerivedFiles(repo_dir, repo_commit)
+    # Resolve a historical tree once for this request. The tiny process cache
+    # is only a cross-request optimization and may be evicted by concurrent
+    # maps; per-node classification must not depend on it staying hot.
+    repo_paths: object = _GIT_PATHS_UNSET
+    if repo_dir and valid_commit(repo_commit):
+        repo_paths = git_tree_paths(os.path.realpath(repo_dir), str(repo_commit))
     # Entry-point discovery currently reads manifests from a checkout. Historical
     # graph requests must not borrow declarations from a different commit.
     entry_paths = (
@@ -748,7 +763,12 @@ def build_codemap(
                 "kind": a.get("type") or "symbol",
                 "depth": depth_of.get(name, 0),
                 "is_root": name == root,
-                "external": _is_external(a, repo_dir, repo_commit),
+                "external": _is_external(
+                    a,
+                    repo_dir,
+                    repo_commit,
+                    repo_paths=repo_paths,
+                ),
             }
         )
 
