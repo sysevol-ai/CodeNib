@@ -9,10 +9,9 @@ from typing import Any
 
 import pytest
 
-from codenib.code_chunker import CodeChunker, RepoChunkingConfig
+from codenib.compiler.index_builders import BM25IndexBuilder
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.graph.code_graph import CodeGraph
-from codenib.index.sparse_idx import BM25CodeIndexer
 from codenib.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_IMPORT,
@@ -173,20 +172,11 @@ def _build_source_bm25(
     output_dir: Path,
 ) -> None:
     """Build the fixture BM25 view through the production chunk contract."""
-    primary = languages[0] if languages else "python"
-    chunker = CodeChunker(
-        language=primary,
-        repo_config=RepoChunkingConfig(languages=languages),
-        max_lines_per_chunk=300,
-        include_header_epilogue=True,
+    BM25IndexBuilder(languages=languages).build(
+        scope="current_repo",
+        repo_path=str(repo_root),
+        output_dir=str(output_dir),
     )
-    chunks = chunker.chunk_repository(repo_path=str(repo_root), strict=True)
-    indexer = BM25CodeIndexer(
-        chunks=chunks,
-        max_k=128,
-        project_root=str(repo_root),
-    )
-    indexer.save_index(str(output_dir))
 
 
 @pytest.fixture()
@@ -201,7 +191,6 @@ def integration_manifest(tmp_path: Path) -> Path:
     graph.save_graph(str(graph_path))
 
     bm25_dir = tmp_path / "bm25"
-    bm25_dir.mkdir()
     _build_source_bm25(repo_root, ["python"], bm25_dir)
 
     manifest = RepoManifest(
