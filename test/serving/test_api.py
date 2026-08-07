@@ -410,6 +410,61 @@ def test_streaming_does_not_corrupt_multibyte_characters() -> None:
 # --- regression: a disconnect must not release the single-flight lock -----
 
 
+def test_stream_releases_lock_after_normal_completion() -> None:
+    tok = Tokenizer(_FakeTok())
+    prompt_ids = tok.encode("hi")
+    truth = prompt_ids + tok.encode(_COMPLETION)
+    state = AppState(
+        served_model_name="codenib-test",
+        tokenizer=tok,
+        engine_factory=lambda: _GreedyTruthEngine(truth),
+        drafters=[],
+        config=SpeculativeConfig(max_draft_tokens=8),
+        default_max_new_tokens=64,
+    )
+
+    async def scenario() -> None:
+        chunks = [
+            chunk
+            async for chunk in _stream(
+                state,
+                prompt_ids,
+                64,
+                "codenib-test",
+            )
+        ]
+
+        assert chunks[-1] == {"data": "[DONE]"}
+        assert not state.lock.locked()
+
+    asyncio.run(scenario())
+
+
+def test_disconnect_before_worker_submit_releases_lock_once() -> None:
+    tok = Tokenizer(_FakeTok())
+    prompt_ids = tok.encode("hi")
+    truth = prompt_ids + tok.encode(_COMPLETION)
+    state = AppState(
+        served_model_name="codenib-test",
+        tokenizer=tok,
+        engine_factory=lambda: _GreedyTruthEngine(truth),
+        drafters=[],
+        config=SpeculativeConfig(max_draft_tokens=8),
+        default_max_new_tokens=64,
+    )
+
+    async def scenario() -> None:
+        agen = _stream(state, prompt_ids, 64, "codenib-test")
+        await agen.asend(None)  # role chunk; worker has not been submitted yet
+        assert state.lock.locked()
+
+        # A duplicate release would raise RuntimeError from aclose().
+        await agen.aclose()
+        assert not state.lock.locked()
+
+    asyncio.run(scenario())
+
+
 def test_disconnect_holds_lock_until_worker_stops() -> None:
     """Cancelling the stream must not hand the lock on mid-generation.
 
