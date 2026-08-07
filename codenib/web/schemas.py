@@ -18,9 +18,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from codenib.agent.boundary import to_agent_repr
 
+from .edge_label import MAX_EDGE_LABEL_ANCHORS
+
 MAX_CHAT_MESSAGES = 32
 MAX_CHAT_MESSAGE_CHARS = 16_000
 MAX_CHAT_REQUEST_CHARS = 64_000
+MAX_EDGE_LABEL_FILE_CHARS = 4_096
+MAX_EDGE_LABEL_NAME_CHARS = 1_024
+MAX_EDGE_LABEL_COMMIT_CHARS = 128
 
 
 class WindowStats(BaseModel):
@@ -75,8 +80,8 @@ class RepoInfo(BaseModel):
 class CallSite(BaseModel):
     """An exact call site (1-based line), mirroring the frontend ``CallSite``."""
 
-    file: str = ""
-    line: Optional[int] = None
+    file: str = Field(default="", max_length=MAX_EDGE_LABEL_FILE_CHARS)
+    line: Optional[int] = Field(default=None, ge=1)
 
 
 class EdgeEndpoint(BaseModel):
@@ -87,10 +92,13 @@ class EdgeEndpoint(BaseModel):
     is addressed by (file, line span) rather than a symbol name.
     """
 
-    file: str
-    line: Optional[int] = None  # 1-based start
-    end_line: Optional[int] = None  # 1-based end
-    label: str = ""  # display name, for the prompt only (not identity)
+    file: str = Field(max_length=MAX_EDGE_LABEL_FILE_CHARS)
+    line: Optional[int] = Field(default=None, ge=1)  # 1-based start
+    end_line: Optional[int] = Field(default=None, ge=1)  # 1-based end
+    label: str = Field(
+        default="",
+        max_length=MAX_EDGE_LABEL_NAME_CHARS,
+    )  # display name, for the prompt only (not identity)
 
 
 class EdgeLabelRequest(BaseModel):
@@ -98,9 +106,12 @@ class EdgeLabelRequest(BaseModel):
 
     source: EdgeEndpoint
     target: EdgeEndpoint
-    commit: Optional[str] = None
+    commit: Optional[str] = Field(default=None, max_length=MAX_EDGE_LABEL_COMMIT_CHARS)
     # Exact call sites where source references target (1-based), if known.
-    anchors: List[CallSite] = Field(default_factory=list)
+    anchors: List[CallSite] = Field(
+        default_factory=list,
+        max_length=MAX_EDGE_LABEL_ANCHORS,
+    )
 
 
 class EdgeLabelResponse(BaseModel):

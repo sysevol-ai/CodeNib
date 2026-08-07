@@ -47,7 +47,7 @@ _MAX_WORDS = 6
 _MAX_TOKENS = 1024
 _LLM_TIMEOUT_S = 30
 _MAX_CODE_CHARS = 1500  # per symbol body fed to the LLM
-_MAX_ANCHORS = 3
+MAX_EDGE_LABEL_ANCHORS = 3
 _UNIT_SEP = "\x1f"
 _PROMPT_VERSION = "2"
 
@@ -172,7 +172,7 @@ class EdgeLabeler:
 
     def _anchor_block(self, anchors: List[dict]) -> str:
         snippets: List[str] = []
-        for a in anchors[:_MAX_ANCHORS]:
+        for a in anchors[:MAX_EDGE_LABEL_ANCHORS]:
             file = a.get("file") or ""
             line = a.get("line")
             if not file or not isinstance(line, int):

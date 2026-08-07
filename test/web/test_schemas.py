@@ -13,7 +13,11 @@ from codenib.web.schemas import (
     MAX_CHAT_MESSAGE_CHARS,
     MAX_CHAT_MESSAGES,
     MAX_CHAT_REQUEST_CHARS,
+    MAX_EDGE_LABEL_COMMIT_CHARS,
+    MAX_EDGE_LABEL_FILE_CHARS,
+    MAX_EDGE_LABEL_NAME_CHARS,
     ChatRequest,
+    EdgeLabelRequest,
     agent_result_to_response,
 )
 
@@ -58,6 +62,61 @@ def test_chat_request_rejects_oversized_aggregate_content():
             repo_id="demo",
             messages=[{"role": "user", "content": "x" * per_message} for _ in range(5)],
         )
+
+
+def _edge_label_request(**overrides):
+    data = {
+        "source": {"file": "src/source.py", "line": 1, "label": "source"},
+        "target": {"file": "src/target.py", "line": 2, "label": "target"},
+        "commit": "a" * 40,
+        "anchors": [{"file": "src/source.py", "line": line} for line in range(1, 4)],
+    }
+    data.update(overrides)
+    return EdgeLabelRequest(**data)
+
+
+def test_edge_label_request_accepts_three_bounded_anchors():
+    request = _edge_label_request()
+
+    assert len(request.anchors) == 3
+
+
+def test_edge_label_request_rejects_unused_anchor_tail():
+    with pytest.raises(ValidationError, match="at most 3 items"):
+        _edge_label_request(
+            anchors=[{"file": "src/source.py", "line": line} for line in range(1, 5)]
+        )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        (
+            {"source": {"file": "f" * (MAX_EDGE_LABEL_FILE_CHARS + 1)}},
+            "at most 4096 characters",
+        ),
+        (
+            {
+                "target": {
+                    "file": "target.py",
+                    "label": "n" * (MAX_EDGE_LABEL_NAME_CHARS + 1),
+                }
+            },
+            "at most 1024 characters",
+        ),
+        (
+            {"commit": "c" * (MAX_EDGE_LABEL_COMMIT_CHARS + 1)},
+            "at most 128 characters",
+        ),
+        (
+            {"anchors": [{"file": "anchor.py", "line": 0}]},
+            "greater than or equal to 1",
+        ),
+    ],
+)
+def test_edge_label_request_rejects_oversized_or_invalid_fields(overrides, error):
+    with pytest.raises(ValidationError, match=error):
+        _edge_label_request(**overrides)
 
 
 def _node(file, start, end, name="fn", score=1.0):

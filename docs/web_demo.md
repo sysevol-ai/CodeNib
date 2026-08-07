@@ -204,7 +204,7 @@ The backend exposes (all under `/api`):
 | `GET /api/repos/{id}/commits` | Commit window for the graph view, newest first (`available: false` without a prebuilt window) |
 | `GET /api/repos/{id}/codemap` | Dependency subgraph around a symbol (`symbol`, `direction`, `depth`, `max_nodes`, `commit`) |
 | `GET /api/repos/{id}/source` | Source lines for the code/peek panels |
-| `POST /api/repos/{id}/edge-label` | Short LLM phrase for how a graph edge's source uses its target (opt-in via `edge_labels`; returns `disabled` when off) |
+| `POST /api/repos/{id}/edge-label` | Short LLM phrase for how a graph edge's source uses its target (opt-in via `edge_labels`; returns `disabled` when off; accepts at most three call-site anchors) |
 | `POST /api/chat` | Ask: answer + citations |
 
 Ask requests accept at most 32 text messages, 16,000 characters per message,

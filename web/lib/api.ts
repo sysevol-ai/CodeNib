@@ -512,6 +512,8 @@ export interface EdgeLabelResult {
   disabled: boolean; // feature is off in server config
 }
 
+const EDGE_LABEL_ANCHOR_LIMIT = 3;
+
 // Short LLM phrase describing how the source symbol uses the target. On-demand +
 // cached server-side; returns an empty label when the feature is disabled or
 // nothing could be generated (the UI then shows nothing extra).
@@ -533,7 +535,12 @@ export async function fetchEdgeLabel(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        ...body,
+        // The server reads only this bounded sample when constructing the
+        // label prompt; keep large graph edges from replaying every call site.
+        anchors: body.anchors.slice(0, EDGE_LABEL_ANCHOR_LIMIT),
+      }),
       signal: opts.signal,
     }
   );
