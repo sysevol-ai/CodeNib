@@ -167,7 +167,9 @@ class SpeculativeServer:
 
     ``drafters`` are the ordered draft sources (e.g. ``[CopyDrafter(),
     RetrievalDrafter(backend)]``). ``step`` builds one fused draft tree; ``run``
-    closes the loop against any :class:`Verifier`.
+    closes the loop against any :class:`Verifier`. Because drafters may hold
+    state from :meth:`Drafter.begin_run`, callers must serialize concurrent or
+    interleaved runs on the same server instance.
     """
 
     drafters: List[Drafter] = field(default_factory=list)

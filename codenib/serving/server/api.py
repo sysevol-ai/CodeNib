@@ -165,10 +165,11 @@ class AppState:
     """Everything the endpoint needs to serve requests.
 
     ``engine_factory`` returns a fresh :class:`TargetEngine` per request (the
-    cached HF engine is per-request stateful); ``drafters`` are stateless and
-    shared. ``lock`` serializes generations; :func:`create_app` rebinds it so
-    each app gets its own, but it is never ``None`` — the request handlers rely
-    on that, and an ``Optional`` here would only push the check to every use.
+    cached HF engine is per-request stateful). Drafters may also retain per-run
+    counters, so they are shared only while ``lock`` serializes generations;
+    do not drive them concurrently. :func:`create_app` rebinds the lock so each
+    app gets its own, but it is never ``None`` — the request handlers rely on
+    that, and an ``Optional`` here would only push the check to every use.
     """
 
     served_model_name: str

@@ -23,7 +23,11 @@ class Drafter(ABC):
     source: str = "drafter"
 
     def begin_run(self) -> None:
-        """Reset request-scoped state before a new generation begins."""
+        """Reset request-scoped state before a new generation begins.
+
+        Callers must not interleave generations on one drafter instance unless
+        that implementation explicitly documents stronger concurrency support.
+        """
         return None
 
     @abstractmethod
