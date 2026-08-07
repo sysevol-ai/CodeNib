@@ -87,7 +87,7 @@ jobs:
     name: Publish to PyPI
     if: github.ref_type == 'tag'
     needs: registry-auth-preflight
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/codenib
@@ -231,7 +231,7 @@ jobs:
     needs:
       - publish-pypi
       - publish-mcp-registry
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:

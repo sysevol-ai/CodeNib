@@ -18,7 +18,9 @@ permissions:
 jobs:
   build:
     name: Build and inspect distributions
-    runs-on: self-hosted
+    # This job executes package and frontend build code from pull requests.
+    # Keep it off the persistent self-hosted runner.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout repository
@@ -96,7 +98,7 @@ jobs:
     name: Install smoke (Python ${{ matrix.python-version }})
     if: inputs.full
     needs: build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -178,7 +180,7 @@ jobs:
     name: Installed Wiki and MCP services
     if: inputs.full
     needs: build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout service harness
@@ -239,7 +241,7 @@ jobs:
     name: Installed sparse Ask service
     if: inputs.full
     needs: build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout agent harness
@@ -291,7 +293,7 @@ jobs:
     name: Installed graph and Dependency Map
     if: inputs.full
     needs: build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout graph harness

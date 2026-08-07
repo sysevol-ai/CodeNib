@@ -5,7 +5,9 @@
 name: Label PRs
 
 on:
-  pull_request:
+  # This metadata-only workflow needs write access for fork pull requests. It
+  # deliberately does not check out or execute pull-request content.
+  pull_request_target:
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -14,7 +16,7 @@ permissions:
 
 jobs:
   label:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/labeler@v5
         with:

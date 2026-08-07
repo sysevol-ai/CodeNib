@@ -6,16 +6,20 @@ SPDX-License-Identifier: Apache-2.0
 
 # CI/CD
 
-GitHub Actions has seven workflow files:
+GitHub Actions has ten workflow files:
 
-- `.github/workflows/ci.yml` runs the Python, graph, SCIP, slow, and C++ parity
-  test tiers.
+- `.github/workflows/ci.yml` runs the pull-request unit gate on an ephemeral
+  GitHub-hosted runner.
+- `.github/workflows/ci-full.yml` runs the trusted Python, graph, SCIP, slow,
+  and C++ parity tiers after pushes to the default branch, on the daily
+  schedule, or by manual dispatch.
 - `.github/workflows/docs.yml` checks display branding and the generated
   language matrix, runs a strict documentation build, and verifies the
   public-document boundary for changes that the main CI intentionally ignores.
 - `.github/workflows/auto-label.yml` ("Label PRs") applies the path-based
   `scope/*` / `type/*` label taxonomy to pull requests with `actions/labeler@v5`,
-  driven by `.github/labeler.yml`.
+  driven by `.github/labeler.yml`. It uses `pull_request_target` solely for
+  metadata writes and never checks out or executes pull-request content.
 - `.github/workflows/label-sync.yml` ("Sync labels") syncs the repository label
   set from `.github/labels.yml` with `EndBug/label-sync@v2` — on pushes to
   `main` that touch that file or the workflow file itself, or on manual
@@ -28,20 +32,24 @@ GitHub Actions has seven workflow files:
 - `.github/workflows/release.yml` invokes the same verification pipeline and
   publishes version tags through the trusted production PyPI environment
   before creating a GitHub Release. See [Releasing](releasing.md).
+- `.github/workflows/codenib-pages.yml` is the reusable Pages and context
+  artifact workflow for downstream repositories.
+- `.github/workflows/codenib-publish-smoke.yml` exercises the local publish
+  action on relevant pull requests and default-branch pushes.
 
 ## Triggers
 
 | Event | Notes |
 |-------|-------|
-| `push` to `main` / `master` | Subject to `paths-ignore` (see [Skip mechanisms](#skip-mechanisms)). |
-| `pull_request` to any branch (`"*"`) | Subject to `paths-ignore`. Concurrency cancels older in-flight runs for the same PR head ref. |
+| `pull_request` to any branch (`"*"`) | `ci.yml` runs the hosted unit gate. Drafts defer it until ready for review unless labeled `full-ci`; concurrency cancels an older run for the same PR head ref. |
+| `push` to `main` / `master` | `ci-full.yml` runs the trusted full workflow, subject to `paths-ignore` and serial-path classification. |
 | `schedule` — `cron: "0 7 * * *"` | 07:00 UTC daily. Forces a **full serial-chain run** so the `graph.pkl` cache and C++ parity never silently rot on light-only weeks. |
-| `workflow_dispatch` | Manual run with `skip_tests`, a `test_tier` choice (`light` / `full`, default `full`), and an optional `cold_parser_cache` bootstrap check. |
+| `workflow_dispatch` | Runs `ci-full.yml` with `skip_tests`, a `test_tier` choice (`light` / `full`, default `full`), and an optional `cold_parser_cache` bootstrap check. |
 
 The separate docs workflow runs on pushes/PRs that touch Markdown, `docs/**`,
 `mkdocs.yml`, `pyproject.toml`, the `Makefile`, Python under `codenib/`, the
 C++ core, the web package manifests, the public-docs and language-capability
-checks, or the docs workflow itself. On the self-hosted runner it first runs
+checks, or the docs workflow itself. On a GitHub-hosted runner it first runs
 the display-branding guard:
 
 ```bash
@@ -73,16 +81,17 @@ integration, slow, or serial graph jobs for prose-only edits.
 
 !!! note "Concurrency"
     The concurrency group is keyed by the workflow name and full Git ref.
-    `cancel-in-progress` is always enabled, so a newer docs run for the same
-    branch or tag supersedes the older one.
+    Pull requests cancel an older docs run for the same ref; main and manual
+    publication runs always complete.
 
 ## Jobs
 
-The main CI workflow is **7 jobs** wired into a dependency chain rooted at a
-`preflight` decision job. Every job in `ci.yml`, including `preflight`, runs on
-the **self-hosted runner**. The docs build and label workflows are also
-self-hosted; only the public GitHub Pages deployment job uses
-`ubuntu-latest`.
+Pull requests run one hosted `unit` job from `ci.yml`. The trusted
+`ci-full.yml` workflow has **7 jobs** wired into a dependency chain rooted at a
+hosted `preflight` decision job; its six test jobs use the persistent
+self-hosted runner for toolchain and graph-cache reuse. Documentation,
+labeling, packaging, release, and publication workflows use ephemeral
+GitHub-hosted runners.
 
 ```
 preflight ─ unit ─ integration ─ integration-serial ─┬─ scip-core ──────┐
@@ -94,7 +103,7 @@ preflight ─ unit ─ integration ─ integration-serial ─┬─ scip-core �
 
 | Job | `needs` | Runner | Marker / command | Timeout |
 |-----|---------|--------|------------------|---------|
-| **preflight** | — | self-hosted | Decision job; no tests | — |
+| **preflight** | — | ubuntu-latest | Decision job; no tests | — |
 | **unit** | `preflight` | self-hosted | `not slow and not integration and not integration_serial and not integration_serial_consumer` | 20 min |
 | **integration** | `preflight`, `unit` | self-hosted | `integration and not slow` | 30 min |
 | **integration-serial** | `preflight`, `integration` | self-hosted | `integration_serial` | 45 min |
@@ -104,7 +113,7 @@ preflight ─ unit ─ integration ─ integration-serial ─┬─ scip-core �
 
 ### preflight — the decision job
 
-`preflight` runs once on the self-hosted runner and exposes the outputs every
+`preflight` runs once on a GitHub-hosted runner and exposes the outputs every
 other job gates on:
 
 - **`should-run`** — `true` unless the run was explicitly skipped (see
@@ -124,9 +133,8 @@ the chain. It is set to `true` when one of these holds:
 - the event is a `schedule` run (the daily full run);
 - the event is a `workflow_dispatch` with `test_tier=full` (the `light` tier
   leaves it `false`);
-- the push / PR touches the **serial-chain path allowlist** below (classified
-  by `scripts/classify_ci_changes.py`); or
-- the PR carries the `full-ci` or `serial-ci` label.
+- the default-branch push touches the **serial-chain path allowlist** below
+  (classified by `scripts/classify_ci_changes.py`).
 
 The allowlist names the sources that can affect the expensive serial-chain
 jobs — repo mutation, SCIP/LSP indexing, graph patching, dataset location, and
@@ -135,6 +143,7 @@ C++ decoder parity:
 ```yaml
 serial:
   - ".github/workflows/ci.yml"
+  - ".github/workflows/ci-full.yml"
   - ".github/actions/prewarm-parsers/**"
   - ".github/actions/setup-env/**"
   - "Makefile"
@@ -170,10 +179,12 @@ unpaired metadata changes run it. Unit, integration, and release-artifact checks
 still run for a release-only version change.
 
 Changes outside this list — agent, runtime, model, retrieval, eval — use the
-faster unit + integration tier by default; a maintainer opts a PR into the
-serial chain with the `full-ci` or `serial-ci` label. When `run-serial` stays
+faster unit + integration tier on the post-merge push. When `run-serial` stays
 `false`, the serial chain (`integration-serial`, `scip-core`, `graph-consumer`)
-is skipped while `unit` and `integration` still run.
+is skipped while `unit` and `integration` still run. Maintainers can run the
+entire chain before merge locally or through a reviewed manual dispatch; the
+checked-in PR workflow does not route pull-request code to the persistent
+runner.
 
 ### unit
 
@@ -194,15 +205,16 @@ default CUDA wheels through `sentence-transformers`. Tests that require real
 HuggingFace downloads, CUDA, or LLM credentials must be marked `slow` instead of
 running in this tier.
 
-Unit prewarms all configured tree-sitter languages into a persistent
-self-hosted-runner cache keyed by the pinned `tree-sitter-language-pack`
-version and runner platform. Integration uses the same cache instead of
-downloading the payload again. Each cold preload attempt has a process-level
-timeout and two attempts with cache diagnostics. Scheduled CI uses a unique
-run-scoped empty cache before integration reuses it; manual dispatch can select
-the same path with `cold_parser_cache=true`. Integration removes that run-scoped
-payload after its final use, failed unit runs clean it immediately, and later
-cold runs prune abandoned directories older than seven days.
+Unit prewarms all configured tree-sitter languages. PR runs use an ephemeral
+hosted workspace; trusted full runs reuse a persistent self-hosted-runner cache
+keyed by the pinned `tree-sitter-language-pack` version and runner platform.
+Integration reuses that full-run cache instead of downloading the payload
+again. Each cold preload attempt has a process-level timeout and two attempts
+with cache diagnostics. Scheduled CI uses a unique run-scoped empty cache
+before integration reuses it; manual dispatch can select the same path with
+`cold_parser_cache=true`. Integration removes that run-scoped payload after its
+final use, failed unit runs clean it immediately, and later cold runs prune
+abandoned directories older than seven days.
 
 ### integration
 
@@ -299,6 +311,15 @@ use `make test-slow` explicitly for this tier. CI requires a non-empty, valid
 running provider tests. Missing credentials fail the selected slow job, while
 an unconfigured local run skips provider-only cases before expensive fixtures.
 
+The checked-in pull-request workflows route executable PR content only to
+ephemeral hosted runners. Drafts run hosted documentation, packaging, and
+publish-smoke checks but defer the hosted unit gate until they become ready for
+review; maintainers can apply `full-ci` only to override that draft deferral.
+Integration, serial, graph, and credentialed tiers run from trusted
+default-branch, scheduled, or manually dispatched workflow revisions.
+Auto-labeling, CI preflight classification, distribution builds, and release
+publication also run on ephemeral hosted runners.
+
 ## Pytest markers
 
 Defined in `pyproject.toml` under `[tool.pytest.ini_options].markers`:
@@ -346,24 +367,24 @@ fires, or the serial chain is gated off) and **explicit** (`should-run=false`).
 - **`paths-ignore`** — `push`/`pull_request` events are not triggered at all when
   *every* changed file matches one of: `**.md`, `docs/**`, `LICENSE`,
   `.gitignore`.
-- **Serial-chain path gating** — even when CI does run, the serial chain
+- **Serial-chain path gating** — on a default-branch push, the serial chain
   (`integration-serial`, `scip-core`, `graph-consumer`) is skipped unless the
-  change touches the serial-chain path allowlist, the PR carries the `full-ci`
-  or `serial-ci` label, the run is scheduled, or it is a `workflow_dispatch`
-  with `test_tier=full`. See [preflight](#preflight-the-decision-job).
-- **Slow tier gating** — `slow` is skipped by default on PR and push events.
-  It runs for scheduled full CI, `workflow_dispatch` with `test_tier=full`, or
-  PRs labeled `full-ci` or `slow-ci`.
+  change touches the serial-chain path allowlist. Scheduled runs and
+  `workflow_dispatch` with `test_tier=full` always run it. See
+  [preflight](#preflight-the-decision-job).
+- **Slow tier gating** — `slow` is skipped on default-branch pushes. It runs
+  for scheduled full CI or `workflow_dispatch` with `test_tier=full`.
 
 ### Explicit (sets `should-run=false`)
 
-`preflight` evaluates these and, when matched, sets `should-run=false`, skipping
-**all** test jobs:
+Full-CI `preflight` evaluates these and, when matched, sets
+`should-run=false`, skipping **all** trusted test jobs:
 
 - **Commit message** (push): contains `[skip tests]`.
-- **PR title** (pull_request): contains `[skip tests]`.
-- **PR label** (pull_request): the `skip-tests` label is present.
 - **Manual dispatch**: `workflow_dispatch` run with `skip_tests: true`.
+
+The PR `unit` job is skipped when the title contains `[skip tests]`, the
+`skip-tests` label is present, or the PR is still a draft without `full-ci`.
 
 ## Shared environment setup
 
@@ -416,6 +437,16 @@ gh api repos/sysevol-ai/CodeNib/actions/runners \
 Do not start the service while a manual listener or `Runner.Worker` is still
 active. Do not stop a busy runner merely to install the service; wait for its
 current job to finish first.
+
+!!! warning "Public-repository runner boundary"
+    Hosted-only PR workflow definitions reduce accidental routing but are not a
+    security boundary: a fork can propose a workflow diff that requests any
+    repository-level runner label. A persistent runner for this public
+    repository must therefore be registered at organization scope in a runner
+    group restricted to
+    `sysevol-ai/CodeNib/.github/workflows/ci-full.yml@refs/heads/main`, or be an
+    isolated ephemeral runner that is destroyed after one job. Do not expose a
+    reusable repository-level runner to pull-request workflows.
 
 ## Failure triage
 

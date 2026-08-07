@@ -23,6 +23,7 @@ _VERSION_FILES = frozenset({"pyproject.toml", "uv.lock"})
 _SERIAL_EXACT = frozenset(
     {
         ".github/workflows/ci.yml",
+        ".github/workflows/ci-full.yml",
         "Makefile",
         "pyproject.toml",
         "scripts/classify_ci_changes.py",

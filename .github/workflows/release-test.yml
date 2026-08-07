@@ -24,7 +24,7 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     needs: verify
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     environment:
       name: testpypi
       url: https://test.pypi.org/p/codenib

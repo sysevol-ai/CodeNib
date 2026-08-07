@@ -31,7 +31,7 @@ SPDX-License-Identifier: Apache-2.0
     <a href="https://docs.codenib.ai/language_capabilities/">Languages</a>
   </p>
   <p>
-    <a href="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml"><img src="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci-full.yml"><img src="https://github.com/sysevol-ai/CodeNib/actions/workflows/ci-full.yml/badge.svg" alt="CI"></a>
     <a href="https://pypi.org/project/codenib/"><img src="https://img.shields.io/pypi/v/codenib.svg" alt="PyPI version"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python 3.10+"></a>

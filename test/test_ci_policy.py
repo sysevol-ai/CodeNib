@@ -9,9 +9,20 @@ import ast
 import subprocess
 from pathlib import Path
 
+import yaml
+
 from scripts.classify_ci_changes import classify_refs, classify_serial_changes
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _workflow(path: str) -> dict:
+    return yaml.safe_load((ROOT / path).read_text(encoding="utf-8"))
+
+
+def _workflow_triggers(document: dict):
+    # PyYAML follows YAML 1.1 and parses the unquoted key `on` as True.
+    return document.get("on", document.get(True))
 
 
 def _pyproject(
@@ -97,6 +108,7 @@ def test_unpaired_release_metadata_change_runs_serial_chain() -> None:
 
 def test_graph_or_ci_inputs_run_serial_chain() -> None:
     for path in (
+        ".github/workflows/ci-full.yml",
         "codenib/graph/code_graph.py",
         "core/CMakeLists.txt",
         ".github/actions/prewarm-parsers/action.yml",
@@ -150,7 +162,7 @@ def test_renaming_serial_file_outside_allowlist_runs_serial_chain(
 
 
 def test_ci_workflow_reuses_a_versioned_bounded_parser_cache() -> None:
-    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/ci-full.yml").read_text(encoding="utf-8")
     action = (ROOT / ".github/actions/prewarm-parsers/action.yml").read_text(
         encoding="utf-8"
     )
@@ -175,7 +187,7 @@ def test_ci_workflow_reuses_a_versioned_bounded_parser_cache() -> None:
 
 
 def test_ci_reuses_versioned_toolchains_and_serializes_consumers() -> None:
-    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/ci-full.yml").read_text(encoding="utf-8")
     action = (ROOT / ".github/actions/setup-env/action.yml").read_text(encoding="utf-8")
 
     assert (
@@ -188,6 +200,63 @@ def test_ci_reuses_versioned_toolchains_and_serializes_consumers() -> None:
     assert 'RUSTUP="$CARGO_HOME/bin/rustup"' in action
     assert "needs: [preflight, integration-serial, scip-core]" in workflow
     assert "needs.scip-core.result != 'cancelled'" in workflow
+
+
+def test_pull_request_workflows_use_only_ephemeral_runners() -> None:
+    workflow_dir = ROOT / ".github/workflows"
+    offenders: list[str] = []
+
+    for path in workflow_dir.glob("*.yml"):
+        document = _workflow(str(path.relative_to(ROOT)))
+        triggers = _workflow_triggers(document)
+        if not isinstance(triggers, dict) or "pull_request" not in triggers:
+            continue
+        for name, job in document.get("jobs", {}).items():
+            if "self-hosted" in str(job.get("runs-on", "")):
+                offenders.append(f"{path.name}:{name}")
+
+    assert offenders == []
+
+    # release-verify is reusable and is called by release.yml on pull requests.
+    release_verify = (ROOT / ".github/workflows/release-verify.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "runs-on: self-hosted" not in release_verify
+
+    auto_label = _workflow(".github/workflows/auto-label.yml")
+    assert "pull_request_target" in _workflow_triggers(auto_label)
+    assert all(
+        "actions/checkout" not in str(step.get("uses", ""))
+        for step in auto_label["jobs"]["label"]["steps"]
+    )
+
+
+def test_trusted_full_ci_is_separate_from_pull_request_ci() -> None:
+    pull_request_ci = _workflow(".github/workflows/ci.yml")
+    full_ci = _workflow(".github/workflows/ci-full.yml")
+
+    assert "pull_request" in _workflow_triggers(pull_request_ci)
+    assert "pull_request" not in _workflow_triggers(full_ci)
+    assert set(pull_request_ci["jobs"]) == {"unit"}
+    assert pull_request_ci["jobs"]["unit"]["runs-on"] == "ubuntu-latest"
+    assert full_ci["jobs"]["preflight"]["runs-on"] == "ubuntu-latest"
+    for name in (
+        "unit",
+        "integration",
+        "integration-serial",
+        "scip-core",
+        "graph-consumer",
+        "slow",
+    ):
+        assert full_ci["jobs"][name]["runs-on"] == "self-hosted"
+
+
+def test_draft_ci_defers_hosted_unit_tests_until_review() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "ready_for_review" in workflow
+    assert "github.event.pull_request.draft" in workflow
+    assert "contains(github.event.pull_request.labels.*.name, 'full-ci')" in workflow
 
 
 def test_default_make_target_excludes_external_and_billed_tiers() -> None:
@@ -203,7 +272,7 @@ def test_default_make_target_excludes_external_and_billed_tiers() -> None:
 
 
 def test_slow_ci_requires_and_exports_explicit_vertex_credentials() -> None:
-    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/ci-full.yml").read_text(encoding="utf-8")
 
     assert "GOOGLE_APPLICATION_CREDENTIALS_JSON is required" in workflow
     assert 'python -m json.tool "$CREDENTIALS_PATH" >/dev/null' in workflow
