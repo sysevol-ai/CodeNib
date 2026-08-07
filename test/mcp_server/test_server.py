@@ -151,3 +151,51 @@ def test_parse_args_with_manifest_flag() -> None:
 def test_parse_args_with_log_level() -> None:
     args = server_mod._parse_args(["/tmp/m.json", "--log-level", "DEBUG"])
     assert args.log_level == "DEBUG"
+
+
+def test_main_applies_log_level_before_initialization(monkeypatch) -> None:
+    events = []
+    monkeypatch.setattr(
+        server_mod,
+        "set_console_log_level",
+        lambda level: events.append(("log_level", level)),
+    )
+    monkeypatch.setattr(
+        server_mod,
+        "init_server",
+        lambda manifest_path: events.append(("init", manifest_path)),
+    )
+    monkeypatch.setattr(
+        server_mod.mcp,
+        "run",
+        lambda *, transport: events.append(("run", transport)),
+    )
+
+    server_mod.main(["/tmp/m.json", "--log-level", "ERROR"])
+
+    assert events == [
+        ("log_level", "ERROR"),
+        ("init", "/tmp/m.json"),
+        ("run", "stdio"),
+    ]
+
+
+def test_main_keeps_startup_traceback_at_debug_level(monkeypatch) -> None:
+    failure = ValueError("artifact identity mismatch")
+
+    def fail_init(manifest_path) -> None:
+        raise failure
+
+    monkeypatch.setattr(server_mod, "set_console_log_level", lambda level: None)
+    monkeypatch.setattr(server_mod, "init_server", fail_init)
+    error = MagicMock()
+    debug = MagicMock()
+    monkeypatch.setattr(server_mod.logger, "error", error)
+    monkeypatch.setattr(server_mod.logger, "debug", debug)
+
+    with pytest.raises(SystemExit) as exit_info:
+        server_mod.main(["/tmp/m.json"])
+
+    assert exit_info.value.code == 1
+    error.assert_called_once_with("Failed to start server: %s", failure)
+    debug.assert_called_once_with("MCP server startup failure", exc_info=True)

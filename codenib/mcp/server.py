@@ -29,6 +29,7 @@ from mcp.server import MCPServer
 from pydantic import Field
 
 from ..compiler.manifest import RepoManifest
+from ..log_utils import set_console_log_level
 from .context import ServerContext
 from .prompts import CODENIB_GUIDE
 from .tools._validation import (
@@ -589,6 +590,7 @@ def main(argv: list[str] | None = None) -> None:
     """Run the ``codenib-mcp`` console entry point."""
     program_name = _cli_program_name()
     args = _parse_args(argv)
+    set_console_log_level(args.log_level)
     manifest_path = args.manifest_flag or args.manifest
     if args.artifact and manifest_path:
         logger.error("Choose either a manifest or --artifact, not both")
@@ -602,12 +604,6 @@ def main(argv: list[str] | None = None) -> None:
             program_name,
         )
         sys.exit(1)
-
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-        stream=sys.stderr,
-    )
 
     try:
         if args.artifact:
@@ -638,7 +634,8 @@ def main(argv: list[str] | None = None) -> None:
         logger.error(str(exc))
         sys.exit(1)
     except Exception as exc:
-        logger.error("Failed to start server: %s", exc, exc_info=True)
+        logger.error("Failed to start server: %s", exc)
+        logger.debug("MCP server startup failure", exc_info=True)
         sys.exit(1)
 
 

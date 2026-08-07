@@ -52,7 +52,43 @@ class LoggingManager:
             show_time=bool(os.environ.get("LOG_TIME", False)),
             show_path=bool(os.environ.get("LOG_PATH", False)),
         )
-        self.rich_handler.setLevel(logging.DEBUG)
+        self.console_log_level = logging.INFO
+        self.rich_handler.setLevel(self.console_log_level)
+
+    def set_console_log_level(self, level: str | int) -> int:
+        """Set the minimum severity emitted by console handlers.
+
+        Managed CodeNib loggers do not propagate and therefore cannot be
+        configured through ``logging.basicConfig``. Keep their Rich handler
+        aligned with the root console logger while leaving file handlers at
+        their existing diagnostic level.
+        """
+        if isinstance(level, str):
+            normalized = level.upper()
+            numeric_level = (
+                SCIP_DEBUG
+                if normalized == "SCIP_DEBUG"
+                else getattr(logging, normalized, None)
+            )
+            if not isinstance(numeric_level, int):
+                raise ValueError(f"Invalid logging level: {level!r}")
+        elif isinstance(level, int):
+            numeric_level = level
+        else:
+            raise TypeError("Logging level must be a name or integer")
+
+        if numeric_level != SCIP_DEBUG:
+            self.console_log_level = numeric_level
+        self.rich_handler.setLevel(numeric_level)
+
+        root_logger = logging.getLogger()
+        root_logger.setLevel(numeric_level)
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(
+                handler, logging.FileHandler
+            ):
+                handler.setLevel(numeric_level)
+        return numeric_level
 
     def get_logger(self, name: str) -> logging.Logger:
         if name in self.loggers:
@@ -167,6 +203,10 @@ def get_logger(name: str) -> logging.Logger:
     return logging_manager.get_logger(name)
 
 
+def set_console_log_level(level: str | int) -> int:
+    return logging_manager.set_console_log_level(level)
+
+
 def set_log_dir(new_dir: str) -> None:
     logging_manager.set_log_dir(new_dir)
 
@@ -216,6 +256,8 @@ def setup_detailed_logging(
         numeric_level = SCIP_DEBUG
     else:
         numeric_level = getattr(logging, level.upper(), logging.DEBUG)
+    if numeric_level != SCIP_DEBUG:
+        logging_manager.console_log_level = numeric_level
     logging_manager.rich_handler.setLevel(numeric_level)
 
     # Enable SCIP debug logging if requested
@@ -286,13 +328,13 @@ def disable_scip_debug() -> None:
     logging_manager.scip_debug_enabled = False
 
     # Restore normal handler levels
-    logging_manager.rich_handler.setLevel(logging.DEBUG)
+    logging_manager.rich_handler.setLevel(logging_manager.console_log_level)
 
     # Disable SCIP debug for all registered loggers
     for logger_name in logging_manager.scip_loggers:
         if logger_name in logging_manager.loggers:
             logger = logging_manager.loggers[logger_name]
-            logger.setLevel(logging.INFO)
+            logger.setLevel(logging.DEBUG)
 
     # Restore file handlers to normal DEBUG level
     for logger in logging_manager.loggers.values():
