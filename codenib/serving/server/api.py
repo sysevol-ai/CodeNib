@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import threading
 import time
@@ -70,6 +71,8 @@ _MAX_ADVERTISED_CONTEXT_TOKENS = 16_777_216
 MAX_DRAFT_TOKENS = 256
 MAX_REQUEST_BODY_BYTES = 1_048_576
 DEFAULT_STREAM_QUEUE_ITEMS = 32
+
+logger = logging.getLogger(__name__)
 
 
 class _RequestBodyTooLarge(Exception):
@@ -267,14 +270,60 @@ def _max_new_tokens(state: AppState, req: ChatCompletionRequest) -> int:
     return state.default_max_new_tokens
 
 
+def _release_after_worker(
+    worker: asyncio.Future,
+    lock: asyncio.Lock,
+    *,
+    operation: str,
+) -> None:
+    """Consume a detached worker result, report failures, then release its lock."""
+    try:
+        if not worker.cancelled():
+            error = worker.exception()
+            if error is not None:
+                logger.error(
+                    "%s failed after its request was cancelled",
+                    operation,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+    finally:
+        lock.release()
+
+
+def _release_completed_worker(worker: asyncio.Future, lock: asyncio.Lock) -> None:
+    """Retrieve any already-completed exception before releasing its lock."""
+    try:
+        if not worker.cancelled():
+            worker.exception()
+    finally:
+        lock.release()
+
+
 async def _prepare_prompt(
     state: AppState,
     req: ChatCompletionRequest,
     max_new: int,
 ) -> List[TokenId]:
     """Serialize bounded tokenizer work and enforce the model context window."""
-    async with state.prompt_lock:
-        prompt_ids = await asyncio.to_thread(_build_prompt_ids, state, req.messages)
+    loop = asyncio.get_running_loop()
+    await state.prompt_lock.acquire()
+    fut: Optional[asyncio.Future] = None
+    try:
+        fut = loop.run_in_executor(None, _build_prompt_ids, state, req.messages)
+        prompt_ids = await asyncio.shield(fut)
+    finally:
+        if fut is None:
+            state.prompt_lock.release()
+        elif fut.done():
+            _release_completed_worker(fut, state.prompt_lock)
+        else:
+            fut.add_done_callback(
+                lambda worker: _release_after_worker(
+                    worker,
+                    state.prompt_lock,
+                    operation="prompt tokenization",
+                )
+            )
     if not prompt_ids:
         raise HTTPException(
             status_code=400, detail="prompt tokenized to an empty sequence"
@@ -290,14 +339,25 @@ async def _prepare_prompt(
     return prompt_ids
 
 
-def _run_full(state: AppState, prompt_ids: List[TokenId], max_new: int):
+def _run_full(
+    state: AppState,
+    prompt_ids: List[TokenId],
+    max_new: int,
+    stop: Optional[threading.Event] = None,
+):
     """Blocking full generation; returns (completion_ids, finish_reason)."""
+    completion_ids: List[TokenId] = []
+    if stop is not None and stop.is_set():
+        return completion_ids, "stop"
     engine = state.engine_factory()
     verifier = SGLangVerifier(engine, eos_token_ids=state.eos_token_ids)
     server = SpeculativeServer(drafters=list(state.drafters), config=state.config)
-    result = server.run(prompt_ids, verifier, max_new_tokens=max_new)
-    finish = "length" if len(result.tokens) >= max_new else "stop"
-    return result.tokens, finish
+    for step in server.run_iter(prompt_ids, verifier, max_new_tokens=max_new):
+        if stop is not None and stop.is_set():
+            break
+        completion_ids.extend(step.emitted)
+    finish = "length" if len(completion_ids) >= max_new else "stop"
+    return completion_ids, finish
 
 
 async def _run_full_single_flight(
@@ -314,24 +374,26 @@ async def _run_full_single_flight(
     the release callback until that worker has actually stopped.
     """
     loop = asyncio.get_running_loop()
+    stop = threading.Event()
     await state.lock.acquire()
     fut: Optional[asyncio.Future] = None
     try:
-        fut = loop.run_in_executor(None, _run_full, state, prompt_ids, max_new)
+        fut = loop.run_in_executor(None, _run_full, state, prompt_ids, max_new, stop)
         return await asyncio.shield(fut)
     finally:
-        if fut is None or fut.done():
+        stop.set()
+        if fut is None:
             state.lock.release()
+        elif fut.done():
+            _release_completed_worker(fut, state.lock)
         else:
-
-            def release_after_worker(worker: asyncio.Future) -> None:
-                # The request task is gone, so explicitly retrieve a worker
-                # exception before releasing to avoid an unhandled-future log.
-                if not worker.cancelled():
-                    worker.exception()
-                state.lock.release()
-
-            fut.add_done_callback(release_after_worker)
+            fut.add_done_callback(
+                lambda worker: _release_after_worker(
+                    worker,
+                    state.lock,
+                    operation="generation",
+                )
+            )
 
 
 #: U+FFFD REPLACEMENT CHARACTER — what a UTF-8 decoder emits for bytes it cannot

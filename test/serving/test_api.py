@@ -28,6 +28,7 @@ from codenib.serving.server.api import (
     _REPLACEMENT,
     MAX_REQUEST_BODY_BYTES,
     _IncrementalDecoder,
+    _prepare_prompt,
     _RequestBodyLimitMiddleware,
     _run_full_single_flight,
     _stream,
@@ -483,6 +484,66 @@ def test_streaming_does_not_corrupt_multibyte_characters() -> None:
 # --- regression: a disconnect must not release the single-flight lock -----
 
 
+def test_prompt_cancellation_holds_lock_until_tokenizer_stops() -> None:
+    """Cancelled prompt work stays serialized until its tokenizer thread exits."""
+    started = threading.Event()
+    release = threading.Event()
+    guard = threading.Lock()
+
+    class _BlockingTok(_FakeTok):
+        calls = 0
+        active = 0
+        max_active = 0
+
+        def encode(self, text, add_special_tokens=False):
+            with guard:
+                self.calls += 1
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+            started.set()
+            release.wait(10)
+            try:
+                return super().encode(text, add_special_tokens=add_special_tokens)
+            finally:
+                with guard:
+                    self.active -= 1
+
+    fake = _BlockingTok()
+    state = AppState(
+        served_model_name="codenib-test",
+        tokenizer=Tokenizer(fake),
+        engine_factory=lambda: _GreedyTruthEngine([]),
+        drafters=[],
+        default_max_new_tokens=1,
+    )
+    request = SimpleNamespace(
+        messages=[SimpleNamespace(role="user", content="hi")],
+    )
+
+    async def scenario() -> None:
+        first = asyncio.create_task(_prepare_prompt(state, request, max_new=1))
+        await asyncio.to_thread(started.wait, 10)
+        assert started.is_set()
+
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        assert state.prompt_lock.locked()
+
+        second = asyncio.create_task(_prepare_prompt(state, request, max_new=1))
+        await asyncio.sleep(0.05)
+        assert fake.calls == 1
+        assert state.prompt_lock.locked()
+
+        release.set()
+        assert await second == [ord("h"), ord("i")]
+        assert not state.prompt_lock.locked()
+        assert fake.calls == 2
+        assert fake.max_active == 1
+
+    asyncio.run(scenario())
+
+
 def test_non_stream_cancellation_holds_lock_until_worker_stops() -> None:
     """A cancelled JSON request must not overlap its still-running worker."""
     started = threading.Event()
@@ -493,7 +554,10 @@ def test_non_stream_cancellation_holds_lock_until_worker_stops() -> None:
     truth = prompt_ids + tok.encode(_COMPLETION)
 
     class _BlockingEngine(_GreedyTruthEngine):
+        calls = 0
+
         def predict(self, context, flat):
+            type(self).calls += 1
             started.set()
             release.wait(10)
             return super().predict(context, flat)
@@ -526,6 +590,7 @@ def test_non_stream_cancellation_holds_lock_until_worker_stops() -> None:
                 break
             await asyncio.sleep(0.01)
         assert not state.lock.locked()
+        assert _BlockingEngine.calls == 1
 
     asyncio.run(scenario())
 
