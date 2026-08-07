@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# LiteLLM gateway config for CodeNib serving.
+#
+# LiteLLM is a router that speaks the OpenAI chat-completions API on both sides:
+# an agent calls LiteLLM, LiteLLM forwards to a backend. Here the primary backend
+# is the CodeNib serving accelerated endpoint (`codenib-serve`), with a plain model as
+# a fallback so a CodeNib serving outage never breaks the agent — "never net-negative".
+#
+# Run:
+#   codenib-serve --model Qwen/Qwen2.5-Coder-0.5B --port 8000   # primary (fast)
+#   litellm --config deploy/litellm.config.yaml --port 4000
+# Then point the agent's OpenAI base_url at http://<host>:4000/v1 and call the
+# model "codenib-qwen-coder".
+
+model_list:
+  # Primary: CodeNib serving's speculative-decoding endpoint. It is OpenAI-compatible,
+  # so LiteLLM treats it as an "openai/" provider pointed at the CodeNib serving host.
+  - model_name: codenib-qwen-coder
+    litellm_params:
+      model: openai/Qwen/Qwen2.5-Coder-0.5B
+      api_base: http://localhost:8000/v1
+      api_key: "none"                       # CodeNib serving does not check keys in v1
+
+  # Fallback: a plain (non-speculative) OpenAI-compatible backend serving the same
+  # model — e.g. a second `codenib-serve` without drafters, a vLLM server, or a
+  # hosted API. Swap api_base/model for your baseline.
+  - model_name: codenib-qwen-coder-fallback
+    litellm_params:
+      model: openai/Qwen/Qwen2.5-Coder-0.5B
+      api_base: http://localhost:8001/v1
+      api_key: "none"
+
+router_settings:
+  # If the primary errors or times out, retry the same request against the
+  # fallback. The agent sees one model name; the failover is invisible.
+  fallbacks:
+    - codenib-qwen-coder: ["codenib-qwen-coder-fallback"]
+  num_retries: 1
+  timeout: 120
