@@ -35,9 +35,12 @@ def test_console_log_level_updates_console_handlers_only(tmp_path) -> None:
         assert manager.set_console_log_level("ERROR") == logging.ERROR
         assert manager.rich_handler.level == logging.ERROR
         assert manager.console_log_level == logging.ERROR
-        assert root_logger.level == logging.ERROR
+        assert root_logger.level <= logging.DEBUG
         assert console_handler.level == logging.ERROR
         assert file_handler.level == logging.DEBUG
+        root_logger.debug("diagnostic detail")
+        file_handler.flush()
+        assert "diagnostic detail" in (tmp_path / "diagnostic.log").read_text()
     finally:
         root_logger.removeHandler(console_handler)
         root_logger.removeHandler(file_handler)
@@ -52,6 +55,32 @@ def test_console_log_level_rejects_unknown_name() -> None:
 
     with pytest.raises(ValueError, match="Invalid logging level"):
         manager.set_console_log_level("verbose")
+
+
+def test_console_log_level_enables_registered_scip_loggers() -> None:
+    manager = LoggingManager()
+    logger_name = "test.log_utils.scip_selection"
+    logger = logging.getLogger(logger_name)
+    original_level = logger.level
+    original_handlers = list(logger.handlers)
+    original_propagate = logger.propagate
+
+    try:
+        manager.scip_loggers.add(logger_name)
+        managed_logger = manager.get_logger(logger_name)
+
+        assert manager.set_console_log_level("SCIP_DEBUG") == log_utils.SCIP_DEBUG
+        assert manager.scip_debug_enabled is True
+        assert managed_logger.level == log_utils.SCIP_DEBUG
+
+        manager.set_console_log_level("INFO")
+        assert manager.scip_debug_enabled is False
+        assert managed_logger.level == logging.DEBUG
+        assert manager.rich_handler.level == logging.INFO
+    finally:
+        logger.handlers[:] = original_handlers
+        logger.setLevel(original_level)
+        logger.propagate = original_propagate
 
 
 def test_disabling_scip_debug_restores_selected_console_level(monkeypatch) -> None:

@@ -4,13 +4,12 @@
 
 import logging
 import os
+import sys
 from typing import Dict, Optional
 
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.style import Style
-
-logging.basicConfig(level=logging.INFO)
 
 # Add custom logging level for SCIP debugging
 SCIP_DEBUG = 5  # Lower than DEBUG (10)
@@ -77,18 +76,48 @@ class LoggingManager:
         else:
             raise TypeError("Logging level must be a name or integer")
 
-        if numeric_level != SCIP_DEBUG:
+        if numeric_level == SCIP_DEBUG:
+            self._set_scip_debug_enabled(True)
+        else:
             self.console_log_level = numeric_level
+            self._set_scip_debug_enabled(False)
         self.rich_handler.setLevel(numeric_level)
 
         root_logger = logging.getLogger()
-        root_logger.setLevel(numeric_level)
+        if not root_logger.handlers:
+            logging.basicConfig(
+                level=numeric_level,
+                format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+                stream=sys.stderr,
+            )
         for handler in root_logger.handlers:
             if isinstance(handler, logging.StreamHandler) and not isinstance(
                 handler, logging.FileHandler
             ):
                 handler.setLevel(numeric_level)
+        root_logger.setLevel(
+            min(
+                (handler.level for handler in root_logger.handlers),
+                default=numeric_level,
+            )
+        )
         return numeric_level
+
+    def _set_scip_debug_enabled(self, enabled: bool) -> None:
+        """Align registered SCIP loggers and diagnostic file handlers."""
+        self.scip_debug_enabled = enabled
+        logger_level = SCIP_DEBUG if enabled else logging.DEBUG
+        file_level = SCIP_DEBUG if enabled else logging.DEBUG
+
+        for logger_name in self.scip_loggers:
+            logger = self.loggers.get(logger_name)
+            if logger is not None:
+                logger.setLevel(logger_level)
+
+        for logger in self.loggers.values():
+            for handler in logger.handlers:
+                if isinstance(handler, logging.FileHandler):
+                    handler.setLevel(file_level)
 
     def get_logger(self, name: str) -> logging.Logger:
         if name in self.loggers:
@@ -303,41 +332,11 @@ def register_scip_logger(logger_name: str) -> None:
 
 def enable_scip_debug() -> None:
     """Enable SCIP debug logging for all registered SCIP loggers."""
-    # Set the global flag
-    logging_manager.scip_debug_enabled = True
-
-    # Set handler level to ensure SCIP_DEBUG messages are shown
+    logging_manager._set_scip_debug_enabled(True)
     logging_manager.rich_handler.setLevel(SCIP_DEBUG)
-
-    # Enable SCIP debug for all registered loggers
-    for logger_name in logging_manager.scip_loggers:
-        if logger_name in logging_manager.loggers:
-            logger = logging_manager.loggers[logger_name]
-            logger.setLevel(SCIP_DEBUG)
-
-    # Update ALL file handlers to SCIP_DEBUG level (not just per-logger)
-    for logger in logging_manager.loggers.values():
-        for handler in logger.handlers:
-            if isinstance(handler, logging.FileHandler):
-                handler.setLevel(SCIP_DEBUG)
 
 
 def disable_scip_debug() -> None:
     """Disable SCIP debug logging for all registered SCIP loggers."""
-    # Clear the global flag
-    logging_manager.scip_debug_enabled = False
-
-    # Restore normal handler levels
+    logging_manager._set_scip_debug_enabled(False)
     logging_manager.rich_handler.setLevel(logging_manager.console_log_level)
-
-    # Disable SCIP debug for all registered loggers
-    for logger_name in logging_manager.scip_loggers:
-        if logger_name in logging_manager.loggers:
-            logger = logging_manager.loggers[logger_name]
-            logger.setLevel(logging.DEBUG)
-
-    # Restore file handlers to normal DEBUG level
-    for logger in logging_manager.loggers.values():
-        for handler in logger.handlers:
-            if isinstance(handler, logging.FileHandler):
-                handler.setLevel(logging.DEBUG)

@@ -72,22 +72,34 @@ def get_context() -> ServerContext:
     return _ctx
 
 
-mcp = MCPServer(
-    "codenib",
-    instructions=(
-        "CodeNib provides code search over pre-built indexes. "
-        "Start with search_context for planned ranked retrieval over the "
-        "available lexical, dense, and structural views. Use search_semantic "
-        "for direct vector/embedding similarity, "
-        "search_bm25 for keyword lookups, search_regex for CodeGraph "
-        "file/symbol pattern matching, and search_zoekt for fast trigram-based "
-        "substring/regex search across raw file contents. Use "
-        "lsp_definition, lsp_references, and lsp_route for graph-backed "
-        "LSP-shaped symbol navigation."
-        " Use read_source to inspect a bounded source window after search or "
-        "navigation returns a location."
-    ),
-)
+# MCPServer configures the process-wide root logger while it is constructed.
+# Keep imports safe for embedding applications; `main()` configures logging
+# explicitly after parsing the requested CLI level.
+_root_logger = logging.getLogger()
+_import_logging_guard: logging.NullHandler | None = None
+if not _root_logger.handlers:
+    _import_logging_guard = logging.NullHandler()
+    _root_logger.addHandler(_import_logging_guard)
+try:
+    mcp = MCPServer(
+        "codenib",
+        instructions=(
+            "CodeNib provides code search over pre-built indexes. "
+            "Start with search_context for planned ranked retrieval over the "
+            "available lexical, dense, and structural views. Use search_semantic "
+            "for direct vector/embedding similarity, "
+            "search_bm25 for keyword lookups, search_regex for CodeGraph "
+            "file/symbol pattern matching, and search_zoekt for fast trigram-based "
+            "substring/regex search across raw file contents. Use "
+            "lsp_definition, lsp_references, and lsp_route for graph-backed "
+            "LSP-shaped symbol navigation."
+            " Use read_source to inspect a bounded source window after search or "
+            "navigation returns a location."
+        ),
+    )
+finally:
+    if _import_logging_guard is not None:
+        _root_logger.removeHandler(_import_logging_guard)
 
 
 # ------------------------------------------------------------------

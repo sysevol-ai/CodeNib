@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -178,6 +180,26 @@ def test_main_applies_log_level_before_initialization(monkeypatch) -> None:
         ("init", "/tmp/m.json"),
         ("run", "stdio"),
     ]
+
+
+def test_import_does_not_configure_root_logging() -> None:
+    script = """\
+import logging
+
+root_logger = logging.getLogger()
+root_logger.handlers.clear()
+import codenib.mcp.server  # noqa: F401,E402
+assert not root_logger.handlers
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_main_keeps_startup_traceback_at_debug_level(monkeypatch) -> None:
