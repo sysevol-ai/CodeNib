@@ -16,7 +16,6 @@ from scripts.classify_ci_changes import classify_refs, classify_serial_changes
 
 ROOT = Path(__file__).resolve().parents[1]
 _ACTION_SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
-_USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 
 
 def _workflow(path: str) -> dict:
@@ -29,13 +28,23 @@ def _workflow_triggers(document: dict):
 
 
 def test_external_github_actions_are_pinned_to_full_commit_shas() -> None:
-    action_files = sorted((ROOT / ".github" / "workflows").glob("*.y*ml"))
-    action_files.extend(sorted((ROOT / ".github" / "actions").rglob("action.y*ml")))
     offenders: list[str] = []
+    step_groups: list[tuple[Path, list[dict]]] = []
 
-    for path in action_files:
-        text = path.read_text(encoding="utf-8")
-        for reference in _USES_RE.findall(text):
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.y*ml")):
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for job in document.get("jobs", {}).values():
+            step_groups.append((path, job.get("steps", [])))
+
+    for path in sorted((ROOT / ".github" / "actions").rglob("action.y*ml")):
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        step_groups.append((path, document.get("runs", {}).get("steps", [])))
+
+    for path, steps in step_groups:
+        for step in steps:
+            reference = str(step.get("uses", ""))
+            if not reference:
+                continue
             if reference.startswith(("./", "docker://")):
                 continue
             if "@" not in reference:
