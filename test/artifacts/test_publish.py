@@ -39,6 +39,14 @@ def test_publish_builds_static_site_and_portable_context_without_model(
     (repo / "runtime.py").write_text(
         "def run(value: int) -> int:\n    return value + 1\n"
     )
+    _git(repo, "init", "--quiet")
+    _git(repo, "config", "user.name", "CodeNib Test")
+    _git(repo, "config", "user.email", "codenib@example.invalid")
+    _git(repo, "add", "runtime.py")
+    _git(repo, "commit", "--quiet", "-m", "initial")
+    generated = repo / "dist"
+    generated.mkdir()
+    (generated / "bundle.js").write_text("generated output\n")
     site = tmp_path / "published" / "site"
     context = tmp_path / "published" / "context"
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
@@ -82,6 +90,74 @@ def _git(repo: Path, *args: str) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def _clean_repo(root: Path) -> Path:
+    repo = root / "repo"
+    repo.mkdir()
+    _git(repo, "init", "--quiet")
+    _git(repo, "config", "user.name", "CodeNib Test")
+    _git(repo, "config", "user.email", "codenib@example.invalid")
+    (repo / "runtime.py").write_text("VALUE = 1\n")
+    _git(repo, "add", "runtime.py")
+    _git(repo, "commit", "--quiet", "-m", "initial")
+    return repo
+
+
+@pytest.mark.parametrize("change", ["tracked", "untracked"])
+def test_publish_rejects_source_visible_dirty_checkout_before_indexing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    change: str,
+) -> None:
+    repo = _clean_repo(tmp_path)
+    if change == "tracked":
+        (repo / "runtime.py").write_text("VALUE = 2\n")
+    else:
+        (repo / "new_module.py").write_text("VALUE = 2\n")
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(
+        cli,
+        "_run_index",
+        lambda *_args, **_kwargs: pytest.fail("publish indexed a dirty checkout"),
+    )
+
+    result = cli.run(
+        [
+            "publish",
+            str(repo),
+            "--site-output",
+            str(tmp_path / "site"),
+            "--context-output",
+            str(tmp_path / "context"),
+        ]
+    )
+
+    assert result == 2
+    assert "require a clean Git checkout" in capsys.readouterr().err
+
+
+def test_artifact_pack_rejects_non_git_checkout(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "runtime.py").write_text("VALUE = 1\n")
+
+    result = cli.run(
+        [
+            "artifact",
+            "pack",
+            str(repo),
+            "--output",
+            str(tmp_path / "context"),
+        ]
+    )
+
+    assert result == 2
+    assert "require a clean Git checkout" in capsys.readouterr().err
 
 
 def test_publish_second_commit_uses_incremental_compiler_state(

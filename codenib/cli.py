@@ -544,6 +544,19 @@ def _publication_environment(credential_env: str | None = None) -> dict[str, str
     return environment
 
 
+def _require_clean_artifact_checkout(repo_path: Path) -> None:
+    """Require portable artifacts to describe the checked-out Git commit."""
+
+    from .source_fingerprint import repository_source_is_dirty
+
+    if repository_source_is_dirty(repo_path):
+        raise CLIError(
+            "portable context artifacts require a clean Git checkout at HEAD. "
+            "Commit or stash source-visible changes, or use `codenib wiki` or "
+            "`codenib export` to inspect the current working tree."
+        )
+
+
 def _paths_overlap(first: Path, second: Path) -> bool:
     return first == second or first in second.parents or second in first.parents
 
@@ -585,6 +598,7 @@ def _validate_publish_outputs(
 
 def _run_artifact_pack(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
+    _require_clean_artifact_checkout(repo_path)
     manifest_path = resolve_manifest_path(str(repo_path))
     from .artifacts import stage_context_artifact
     from .compiler.manifest import RepoManifest
@@ -733,6 +747,7 @@ def _run_publish(args: argparse.Namespace) -> int:
         site_output=site_output,
         context_output=context_output,
     )
+    _require_clean_artifact_checkout(repo_path)
 
     selected_views = _selected_views_for_args(args)
     unsupported = sorted(set(selected_views) - {"bm25", "vector"})
