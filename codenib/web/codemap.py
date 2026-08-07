@@ -21,7 +21,6 @@ import os
 import re
 from collections import deque
 from functools import lru_cache
-from heapq import nsmallest
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..graph.code_graph import CodeGraph
@@ -95,11 +94,24 @@ _GENERATED_GREP_PATTERN = (
 
 
 class _EdgeAnchorCollector:
-    """Keep exact call-site counts while bounding serialized anchor samples."""
+    """Count distinct graph edges while retaining a bounded anchor sample.
+
+    ``CodeGraph`` deduplicates reference edges by source, target, type, anchor
+    file, and anchor line.  Callers must therefore feed each relation's graph
+    edges from exactly one neighbour scan; this collector need not copy every
+    anchor identity into a second unbounded set merely to deduplicate repeated
+    bidirectional scans.
+    """
 
     def __init__(self, sample_limit: int = EDGE_ANCHOR_SAMPLE) -> None:
-        self._sample_limit = sample_limit
-        self._seen: Dict[Tuple[str, str], Set[Tuple[str, Optional[int]]]] = {}
+        self._sample_limit = max(0, sample_limit)
+        self._counts: Dict[Tuple[str, str], int] = {}
+        self._samples: Dict[Tuple[str, str], List[Tuple[str, Optional[int]]]] = {}
+
+    @staticmethod
+    def _sort_key(identity: Tuple[str, Optional[int]]) -> Tuple[str, bool, int]:
+        file_path, line = identity
+        return (file_path, line is None, line if line is not None else 0)
 
     def add(self, key: Tuple[str, str], meta: Any) -> None:
         anchor_file = meta.get("anchor_file") if isinstance(meta, dict) else None
@@ -108,26 +120,31 @@ class _EdgeAnchorCollector:
         anchor_line = meta.get("anchor_line") if isinstance(meta, dict) else None
         line = anchor_line + 1 if isinstance(anchor_line, int) else None
         identity = (str(anchor_file), line)
-        seen = self._seen.setdefault(key, set())
-        if identity in seen:
+        self._counts[key] = self._counts.get(key, 0) + 1
+        if not self._sample_limit:
             return
-        seen.add(identity)
+
+        samples = self._samples.setdefault(key, [])
+        if len(samples) < self._sample_limit:
+            samples.append(identity)
+            return
+
+        largest_index = max(
+            range(len(samples)), key=lambda index: self._sort_key(samples[index])
+        )
+        if self._sort_key(identity) < self._sort_key(samples[largest_index]):
+            samples[largest_index] = identity
 
     def count(self, key: Tuple[str, str]) -> int:
-        return len(self._seen.get(key, ()))
+        return self._counts.get(key, 0)
 
     def fields(self, key: Tuple[str, str]) -> Dict[str, Any]:
         count = self.count(key)
         if not count:
             return {}
-        identities = nsmallest(
-            self._sample_limit,
-            self._seen[key],
-            key=lambda item: (
-                item[0],
-                item[1] is None,
-                item[1] if item[1] is not None else 0,
-            ),
+        identities = sorted(
+            self._samples.get(key, ()),
+            key=self._sort_key,
         )
         samples = [{"file": file_path, "line": line} for file_path, line in identities]
         fields: Dict[str, Any] = {
@@ -682,6 +699,11 @@ def build_codemap(
         neighbors, n_edges = searcher.get_neighbors(
             cur, direction=mode, etype_filter={"reference"}, ignore_test_file=True
         )
+        # In ``both`` mode the same graph edges are returned again when the BFS
+        # reaches their other endpoint.  Consume the complete parallel-edge
+        # batch from the first scan only; CodeGraph already makes those anchors
+        # distinct at insertion time.
+        new_edge_keys: Set[Tuple[str, str]] = set()
         for src, tgt, _w, meta in n_edges:
             if src == tgt:
                 continue  # drop self-loops (recursion) — visual noise
@@ -689,7 +711,9 @@ def build_codemap(
             if key not in edge_seen:
                 edge_seen.add(key)
                 raw_edges.append(key)
-            edge_anchors.add(key, meta)
+                new_edge_keys.add(key)
+            if key in new_edge_keys:
+                edge_anchors.add(key, meta)
         for nb in neighbors:
             if nb in seen:
                 continue
@@ -916,6 +940,7 @@ def build_page_subgraph(
     bridge_touches: Dict[str, Set[str]] = {}
     candidate_order: Dict[str, int] = {}
     edge_anchors = _EdgeAnchorCollector()
+    anchor_edges_seen: Set[Tuple[str, str]] = set()
 
     def add_anchor(key: Tuple[str, str], meta: Any) -> None:
         edge_anchors.add(key, meta)
@@ -924,11 +949,16 @@ def build_page_subgraph(
         _, n_edges = searcher.get_neighbors(
             seed, direction="all", etype_filter={"reference"}, ignore_test_file=True
         )
+        new_anchor_keys: Set[Tuple[str, str]] = set()
         for src, tgt, _w, meta in n_edges:
             if src == tgt:
                 continue
             key = (src, tgt)
-            add_anchor(key, meta)
+            if key not in anchor_edges_seen:
+                anchor_edges_seen.add(key)
+                new_anchor_keys.add(key)
+            if key in new_anchor_keys:
+                add_anchor(key, meta)
             if src in seeds and tgt in seeds:
                 if key not in direct_seen:
                     direct_seen.add(key)
@@ -989,6 +1019,7 @@ def build_page_subgraph(
         _, n_edges = searcher.get_neighbors(
             nm, direction="all", etype_filter={"reference"}, ignore_test_file=True
         )
+        new_anchor_keys = set()
         for src, tgt, _w, meta in n_edges:
             if src == tgt or src not in nameset or tgt not in nameset:
                 continue
@@ -999,7 +1030,10 @@ def build_page_subgraph(
             if key not in edge_seen and src in seeds and tgt in seeds:
                 edge_seen.add(key)
                 edge_order.append(key)
-            if key in edge_seen:
+            if key not in anchor_edges_seen:
+                anchor_edges_seen.add(key)
+                new_anchor_keys.add(key)
+            if key in edge_seen and key in new_anchor_keys:
                 add_anchor(key, meta)
 
     # Order seeds first (they're the page's subject); neighbours follow.

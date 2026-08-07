@@ -8,8 +8,10 @@ import subprocess
 
 from codenib.graph.code_graph import CodeGraph
 from codenib.web.codemap import (
+    EDGE_ANCHOR_SAMPLE,
     _default_seed,
     _DerivedFiles,
+    _EdgeAnchorCollector,
     _enrich,
     build_codemap,
     build_page_subgraph,
@@ -81,6 +83,34 @@ def test_codemap_bounds_anchor_samples_without_losing_exact_weight():
     assert len(edge["anchors"]) == 12
     assert edge["hidden_anchors"] == 88
     assert [anchor["line"] for anchor in edge["anchors"]] == list(range(1, 13))
+
+
+def test_anchor_collector_bounds_high_fanout_working_set():
+    collector = _EdgeAnchorCollector()
+    key = ("src/main.py:caller()", "src/helper.py:callee()")
+
+    for line in reversed(range(20_000)):
+        collector.add(key, {"anchor_file": "src/main.py", "anchor_line": line})
+
+    edge = collector.fields(key)
+    assert edge["weight"] == 20_000
+    assert edge["hidden_anchors"] == 20_000 - EDGE_ANCHOR_SAMPLE
+    assert [anchor["line"] for anchor in edge["anchors"]] == list(
+        range(1, EDGE_ANCHOR_SAMPLE + 1)
+    )
+    assert len(collector._samples[key]) == EDGE_ANCHOR_SAMPLE
+
+
+def test_codemap_counts_bidirectional_anchor_batch_once():
+    graph = _symbol_graph_with_many_call_sites(100)
+
+    result = build_codemap(
+        graph, symbol="caller", direction="both", depth=2, max_nodes=5
+    )
+
+    edge = result["edges"][0]
+    assert edge["weight"] == 100
+    assert edge["hidden_anchors"] == 88
 
 
 def test_page_subgraph_bounds_repeated_anchor_collection():
