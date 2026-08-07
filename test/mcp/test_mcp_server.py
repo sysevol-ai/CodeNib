@@ -97,6 +97,7 @@ def test_search_tool_schemas_publish_bounded_inputs() -> None:
     assert dependency["depth"]["minimum"] == 1
     assert dependency["depth"]["maximum"] == 8
     assert dependency["max_nodes"]["maximum"] == 100
+    assert dependency["max_edges"]["maximum"] == 2000
 
     route_symbols = tools["lsp_route"].input_schema["properties"]["symbols"]
     assert route_symbols["minItems"] == 1

@@ -130,6 +130,17 @@ def test_subgraph_deduplicates_logical_edges():
     assert len(res.edges) == len(edge_keys) == 2
 
 
+def test_subgraph_respects_edge_budget_without_orphan_nodes():
+    g = _make_graph()
+    res = DependencyAnalyzer(g).subgraph("mid", radius=2, max_edges=1)
+
+    assert [node.name for node in res.nodes] == ["b.c:leaf()"]
+    assert [edge.to_dict() for edge in res.edges] == [
+        {"source": "a.c:mid()", "target": "b.c:leaf()", "type": "reference"}
+    ]
+    assert res.truncated is True
+
+
 def test_files_nearest_first():
     g = _make_graph()
     res = DependencyAnalyzer(g).impact("leaf", max_depth=3)

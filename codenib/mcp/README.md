@@ -155,6 +155,7 @@ Call-graph neighborhood or transitive impact analysis.
   `"dependencies"` for transitive callees, or `"both"` for a neighborhood.
 - `depth` (int, default 2): traversal depth, clamped to at least 1.
 - `max_nodes` (int, default 60): root-inclusive node budget (maximum 100).
+- `max_edges` (int, default 400): relationship budget (maximum 2,000).
 
 Returns `root`, `direction`, `nodes`, `edges`, `truncated`, and `note`.
 Each node's optional `line` is 1-based.

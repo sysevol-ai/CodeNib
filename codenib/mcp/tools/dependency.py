@@ -16,11 +16,13 @@ from typing import Any, Dict
 
 from ...agent.boundary import AGENT_LINE_OFFSET
 from ._validation import (
+    MAX_DEPENDENCY_EDGES,
     MAX_GRAPH_DEPTH,
     MAX_TOOL_RESULTS,
     bounded_integer,
     required_text,
 )
+
 
 def dependency_subgraph_impl(
     ctx: Any,
@@ -28,6 +30,7 @@ def dependency_subgraph_impl(
     direction: str = "both",
     depth: int = 2,
     max_nodes: int = 60,
+    max_edges: int = 400,
 ) -> Dict[str, Any]:
     """Return ``DependencyAnalyzer`` output as a JSON dict.
 
@@ -43,6 +46,11 @@ def dependency_subgraph_impl(
         name="max_nodes",
         maximum=MAX_TOOL_RESULTS,
     )
+    max_edges = bounded_integer(
+        max_edges,
+        name="max_edges",
+        maximum=MAX_DEPENDENCY_EDGES,
+    )
     direction = (direction or "").strip().lower()
     if direction in {"impact", "callers"}:
         operation = "impact"
@@ -56,25 +64,32 @@ def dependency_subgraph_impl(
     graph = getattr(ctx, "symbol_graph", None)
     if graph is None:
         return {"error": "symbol_graph index not available"}
-    if not isinstance(max_nodes, int) or isinstance(max_nodes, bool):
-        raise ValueError("max_nodes must be an integer between 1 and 200")
-    if not 1 <= max_nodes <= MAX_DEPENDENCY_NODES:
-        raise ValueError("max_nodes must be between 1 and 200")
 
     from ...graph.dependency import DependencyAnalyzer
 
     analyzer = DependencyAnalyzer(graph)
     if operation == "impact":
-        result = analyzer.impact(symbol, max_depth=depth, max_nodes=max_nodes)
+        result = analyzer.impact(
+            symbol,
+            max_depth=depth,
+            max_nodes=max_nodes,
+            max_edges=max_edges,
+        )
     elif operation == "dependencies":
-        result = analyzer.dependencies(symbol, max_depth=depth, max_nodes=max_nodes)
+        result = analyzer.dependencies(
+            symbol,
+            max_depth=depth,
+            max_nodes=max_nodes,
+            max_edges=max_edges,
+        )
     else:
-        result = analyzer.subgraph(symbol, radius=depth, max_nodes=max_nodes)
+        result = analyzer.subgraph(
+            symbol,
+            radius=depth,
+            max_nodes=max_nodes,
+            max_edges=max_edges,
+        )
     payload = result.to_dict()
-    max_edges = max_nodes * 4
-    if len(payload["edges"]) > max_edges:
-        payload["edges"] = payload["edges"][:max_edges]
-        payload["truncated"] = True
     for node in payload["nodes"]:
         line = node.get("line")
         if isinstance(line, int) and not isinstance(line, bool):

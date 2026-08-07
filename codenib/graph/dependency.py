@@ -35,6 +35,7 @@ from .traverse_graph import RepoDependencySearcher
 # Call/use edges (X references Y). The other edge type, ``contain`` (file→symbol
 # nesting), is structural, not a dependency — excluded from impact by default.
 _REFERENCE_EDGES = {EDGE_TYPE_REFERENCE}
+_DEFAULT_MAX_EDGES = 1000
 
 
 @dataclass
@@ -107,28 +108,44 @@ class DependencyAnalyzer:
     # -- public API ----------------------------------------------------
 
     def impact(
-        self, symbol: str, max_depth: int = 3, max_nodes: int = 100
+        self,
+        symbol: str,
+        max_depth: int = 3,
+        max_nodes: int = 100,
+        max_edges: int = _DEFAULT_MAX_EDGES,
     ) -> DependencyResult:
         """Blast radius: everything that (transitively) CALLS *symbol*.
 
         "If I change this function, what might break?" — transitive callers.
         """
-        return self._bfs(symbol, "backward", "callers", max_depth, max_nodes)
+        return self._bfs(symbol, "backward", "callers", max_depth, max_nodes, max_edges)
 
     def dependencies(
-        self, symbol: str, max_depth: int = 3, max_nodes: int = 100
+        self,
+        symbol: str,
+        max_depth: int = 3,
+        max_nodes: int = 100,
+        max_edges: int = _DEFAULT_MAX_EDGES,
     ) -> DependencyResult:
         """What *symbol* (transitively) depends on — transitive callees."""
-        return self._bfs(symbol, "forward", "callees", max_depth, max_nodes)
+        return self._bfs(symbol, "forward", "callees", max_depth, max_nodes, max_edges)
 
     def subgraph(
         self,
         symbol: str,
         radius: int = 1,
         max_nodes: int = 200,
+        max_edges: int = _DEFAULT_MAX_EDGES,
     ) -> DependencyResult:
         """Compact callers+callees neighborhood for a frontend dependency view."""
-        return self._bfs(symbol, "both", "both", radius, max_nodes=max_nodes)
+        return self._bfs(
+            symbol,
+            "both",
+            "both",
+            radius,
+            max_nodes=max_nodes,
+            max_edges=max_edges,
+        )
 
     def call_path(self, from_symbol: str, to_symbol: str) -> DependencyResult:
         """Shortest call path from *from_symbol* to *to_symbol* (empty if none)."""
@@ -175,6 +192,7 @@ class DependencyAnalyzer:
         label: str,
         max_depth: int,
         max_nodes: int,
+        max_edges: int,
     ) -> DependencyResult:
         canonical, cands = self.code_graph.resolve_symbol(symbol)
         root = self.code_graph.display_name(canonical) if canonical else symbol
@@ -186,6 +204,7 @@ class DependencyAnalyzer:
             return res
 
         max_nodes = max(1, int(max_nodes))
+        max_edges = max(1, int(max_edges))
         seen: Set[str] = {canonical}
         emitted_edges: Set[Tuple[str, str, str]] = set()
         queue: deque[Tuple[str, int]] = deque([(canonical, 0)])
@@ -200,6 +219,16 @@ class DependencyAnalyzer:
                 )
                 for src, tgt, _w, attr in edges:
                     neighbor = tgt if d == "forward" else src
+                    edge = (
+                        self.code_graph.display_name(src),
+                        self.code_graph.display_name(tgt),
+                        attr.get("type", EDGE_TYPE_REFERENCE),
+                    )
+                    if edge in emitted_edges:
+                        continue
+                    if len(emitted_edges) >= max_edges:
+                        res.truncated = True
+                        continue
                     if neighbor not in seen:
                         if len(seen) >= max_nodes:
                             res.truncated = True
@@ -207,14 +236,8 @@ class DependencyAnalyzer:
                         seen.add(neighbor)
                         res.nodes.append(self._node(neighbor, depth + 1))
                         queue.append((neighbor, depth + 1))
-                    edge = (
-                        self.code_graph.display_name(src),
-                        self.code_graph.display_name(tgt),
-                        attr.get("type", EDGE_TYPE_REFERENCE),
-                    )
-                    if edge not in emitted_edges:
-                        emitted_edges.add(edge)
-                        res.edges.append(DepEdge(*edge))
+                    emitted_edges.add(edge)
+                    res.edges.append(DepEdge(*edge))
         return res
 
     def _node(self, canonical_name: str, depth: int) -> DepNode:

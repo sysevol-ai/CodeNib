@@ -32,6 +32,7 @@ from ..compiler.manifest import RepoManifest
 from .context import ServerContext
 from .prompts import CODENIB_GUIDE
 from .tools._validation import (
+    MAX_DEPENDENCY_EDGES,
     MAX_GRAPH_DEPTH,
     MAX_LSP_POSITION,
     MAX_ROUTE_SYMBOLS,
@@ -55,6 +56,7 @@ _SearchLevel = Literal["l0", "l2"]
 _FiniteScore = Annotated[float, Field(allow_inf_nan=False)]
 _GraphDirection = Literal["impact", "dependencies", "both"]
 _GraphDepth = Annotated[int, Field(ge=1, le=MAX_GRAPH_DEPTH)]
+_DependencyEdges = Annotated[int, Field(ge=1, le=MAX_DEPENDENCY_EDGES)]
 _PositiveLine = Annotated[int, Field(ge=1, le=MAX_LSP_POSITION)]
 _Character = Annotated[int, Field(ge=0, le=MAX_LSP_POSITION)]
 _RouteSymbols = Annotated[
@@ -244,8 +246,9 @@ async def search_zoekt(
         "relies on); 'both' = 1-hop caller+callee neighborhood (for a dependency "
         "view). The structural 'who calls X / what does X reach' question that "
         "grep/keyword search cannot answer; backs impact analysis and dependency "
-        "visualization. max_nodes includes the queried root. Symbols are "
-        "fuzzy-matched; unresolved names return a note."
+        "visualization. max_nodes includes the queried root; max_edges bounds "
+        "relationships independently. Symbols are fuzzy-matched; unresolved "
+        "names return a note."
     ),
 )
 async def dependency_subgraph(
@@ -253,12 +256,19 @@ async def dependency_subgraph(
     direction: _GraphDirection = "both",
     depth: _GraphDepth = 2,
     max_nodes: _SearchTopK = 60,
+    max_edges: _DependencyEdges = 400,
 ) -> dict[str, Any]:
-    """Call-graph subgraph for *symbol*, bounded root-inclusively by max_nodes."""
+    """Call-graph subgraph for *symbol*, bounded by node and edge budgets."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
-        dependency_subgraph_impl, _ctx, symbol, direction, depth, max_nodes
+        dependency_subgraph_impl,
+        _ctx,
+        symbol,
+        direction,
+        depth,
+        max_nodes,
+        max_edges,
     )
 
 

@@ -101,6 +101,7 @@ def test_dependency_tool_caps_dense_edge_output():
         direction="both",
         depth=2,
         max_nodes=10,
+        max_edges=40,
     )
 
     assert len(out["nodes"]) <= 9
@@ -115,11 +116,23 @@ def test_dependency_tool_caps_dense_edge_output():
         ({"symbol": "mid", "direction": "sideways"}, "direction must be"),
         ({"symbol": "mid", "depth": 9}, "depth must be between"),
         ({"symbol": "mid", "max_nodes": 101}, "max_nodes must be between"),
+        ({"symbol": "mid", "max_edges": True}, "max_edges must be between"),
+        ({"symbol": "mid", "max_edges": 0}, "max_edges must be between"),
+        ({"symbol": "mid", "max_edges": 2001}, "max_edges must be between"),
     ],
 )
 def test_dependency_tool_validates_bounded_request(kwargs, message):
     with pytest.raises(ValueError, match=message):
         dependency_subgraph_impl(SimpleNamespace(symbol_graph=_graph()), **kwargs)
+
+
+def test_both_direction_respects_edge_budget():
+    ctx = SimpleNamespace(symbol_graph=_graph())
+    out = dependency_subgraph_impl(ctx, "mid", depth=2, max_edges=1)
+
+    assert [node["name"] for node in out["nodes"]] == ["b.c:leaf()"]
+    assert len(out["edges"]) == 1
+    assert out["truncated"] is True
 
 
 def test_missing_graph_returns_error():
