@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import ANY, MagicMock, patch
@@ -1004,6 +1006,80 @@ class TestIndexCompiler:
 
         assert "bm25" in manifest.indexes
         assert "vector" not in manifest.indexes
+
+    def test_partial_rebuild_preserves_unrequested_views(self, tmp_path):
+        registry = IndexBuilderRegistry()
+        registry.register("bm25", _mock_builder("bm25"))
+        registry.register("vector", _mock_builder("vector"))
+
+        compiler = IndexCompiler(registry)
+        cache_dir = str(tmp_path / "cache")
+        compiler.compile_repo(str(tmp_path), cache_dir=cache_dir, index_types=["bm25"])
+        manifest = compiler.compile_repo(
+            str(tmp_path), cache_dir=cache_dir, index_types=["vector"]
+        )
+
+        assert set(manifest.indexes) == {"bm25", "vector"}
+
+    def test_rebuild_does_not_keep_requested_view_fresh_without_builder(self, tmp_path):
+        initial_registry = IndexBuilderRegistry()
+        initial_registry.register("bm25", _mock_builder("bm25"))
+        cache_dir = str(tmp_path / "cache")
+        IndexCompiler(initial_registry).compile_repo(
+            str(tmp_path), cache_dir=cache_dir, index_types=["bm25"]
+        )
+
+        manifest = IndexCompiler(IndexBuilderRegistry()).compile_repo(
+            str(tmp_path), cache_dir=cache_dir, index_types=["bm25"]
+        )
+
+        assert manifest.indexes["bm25"].status == "failed"
+        assert "No builder registered" in manifest.indexes["bm25"].metadata["error"]
+
+    def test_compiles_for_same_cache_are_serialized(self, tmp_path):
+        state_lock = threading.Lock()
+        second_entered = threading.Event()
+        active = 0
+        max_active = 0
+        entries = 0
+
+        class TrackingBuilder:
+            def build(self, scope: str, **kwargs) -> IndexStatus:
+                nonlocal active, entries, max_active
+                with state_lock:
+                    active += 1
+                    entries += 1
+                    max_active = max(max_active, active)
+                    if entries == 2:
+                        second_entered.set()
+                second_entered.wait(timeout=0.25)
+                with state_lock:
+                    active -= 1
+                output_dir = kwargs["output_dir"]
+                os.makedirs(output_dir, exist_ok=True)
+                return IndexStatus(
+                    index_type="bm25",
+                    state=IndexState.FRESH,
+                    last_built=time.time(),
+                    age_seconds=0.0,
+                    scope=scope,
+                    path=output_dir,
+                )
+
+        registry = IndexBuilderRegistry()
+        registry.register("bm25", TrackingBuilder())
+        compiler = IndexCompiler(registry, IndexCompilerConfig(index_types=["bm25"]))
+        cache_dir = str(tmp_path / "cache")
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(compiler.compile_repo, str(tmp_path), cache_dir=cache_dir)
+                for _ in range(2)
+            ]
+            for future in futures:
+                future.result()
+
+        assert max_active == 1
 
     def test_build_duration_recorded(self, tmp_path):
         registry = IndexBuilderRegistry()

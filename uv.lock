@@ -576,6 +576,7 @@ version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "filelock" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "rank-bm25" },
@@ -647,7 +648,6 @@ test = [
     { name = "datasets" },
     { name = "einops" },
     { name = "faiss-cpu" },
-    { name = "filelock" },
     { name = "igraph" },
     { name = "litellm" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -697,7 +697,7 @@ requires-dist = [
     { name = "faiss-cpu", marker = "extra == 'semantic-remote'", specifier = ">=1.7.0" },
     { name = "faiss-cpu", marker = "extra == 'test'", specifier = ">=1.7.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
-    { name = "filelock", marker = "extra == 'test'", specifier = ">=3.0.0" },
+    { name = "filelock", specifier = ">=3.0.0" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=4.0.1" },
     { name = "flake8-bugbear", marker = "extra == 'dev'", specifier = ">=24.4.0" },
     { name = "igraph", marker = "extra == 'full'", specifier = ">=0.11.6" },

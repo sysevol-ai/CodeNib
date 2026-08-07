@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
+from filelock import FileLock
+
 from ..paths import REPO_INDEX_DIRNAME
 from ..source_fingerprint import (
     SourceFingerprint,
@@ -40,6 +42,8 @@ from .manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
 from .resources import IndexStatus
 
 logger = logging.getLogger(__name__)
+
+_COMPILER_LOCK_FILENAME = ".index-compiler.lock"
 
 
 @dataclass(slots=True)
@@ -101,12 +105,18 @@ class IndexCompiler:
         Returns:
             The completed ``RepoManifest``.
         """
-        return self._compile(
-            repo_path,
-            index_types=index_types,
-            cache_dir=cache_dir,
-            existing_manifest=None,
-        )
+        repo_path = os.path.abspath(repo_path)
+        cache = self._resolve_cache_dir(repo_path, cache_dir)
+        os.makedirs(cache, exist_ok=True)
+        with FileLock(os.path.join(cache, _COMPILER_LOCK_FILENAME)):
+            existing = self._load_existing_manifest(cache)
+            return self._compile(
+                repo_path,
+                index_types=index_types,
+                cache_dir=cache,
+                existing_manifest=existing,
+                force_rebuild=True,
+            )
 
     def update_repo(
         self,
@@ -127,15 +137,35 @@ class IndexCompiler:
         Returns the existing manifest untouched when HEAD has not moved.
         """
         repo_path = os.path.abspath(repo_path)
-        cache = cache_dir or os.path.join(repo_path, self._config.cache_dir_name)
+        cache = self._resolve_cache_dir(repo_path, cache_dir)
+        os.makedirs(cache, exist_ok=True)
+        with FileLock(os.path.join(cache, _COMPILER_LOCK_FILENAME)):
+            return self._update_repo_locked(
+                repo_path,
+                index_types=index_types,
+                cache=cache,
+            )
+
+    def _update_repo_locked(
+        self,
+        repo_path: str,
+        *,
+        index_types: Optional[List[str]],
+        cache: str,
+    ) -> RepoManifest:
+        """Update a repository while holding its cache-level compiler lock."""
         manifest_path = os.path.join(cache, MANIFEST_FILENAME)
 
         if not os.path.isfile(manifest_path):
             logger.info(
                 "No manifest at %s; falling back to a full build", manifest_path
             )
-            return self.compile_repo(
-                repo_path, index_types=index_types, cache_dir=cache_dir
+            return self._compile(
+                repo_path,
+                index_types=index_types,
+                cache_dir=cache,
+                existing_manifest=None,
+                force_rebuild=True,
             )
 
         try:
@@ -144,8 +174,12 @@ class IndexCompiler:
             logger.warning(
                 "Manifest at %s unusable (%s); rebuilding", manifest_path, exc
             )
-            return self.compile_repo(
-                repo_path, index_types=index_types, cache_dir=cache_dir
+            return self._compile(
+                repo_path,
+                index_types=index_types,
+                cache_dir=cache,
+                existing_manifest=None,
+                force_rebuild=True,
             )
 
         types_to_update = index_types or self._config.index_types
@@ -184,10 +218,30 @@ class IndexCompiler:
         return self._compile(
             repo_path,
             index_types=index_types,
-            cache_dir=cache_dir,
+            cache_dir=cache,
             existing_manifest=existing,
             source=source,
+            force_rebuild=False,
         )
+
+    def _resolve_cache_dir(self, repo_path: str, cache_dir: Optional[str]) -> str:
+        cache = cache_dir or os.path.join(repo_path, self._config.cache_dir_name)
+        return os.path.abspath(cache)
+
+    @staticmethod
+    def _load_existing_manifest(cache: str) -> Optional[RepoManifest]:
+        manifest_path = os.path.join(cache, MANIFEST_FILENAME)
+        if not os.path.isfile(manifest_path):
+            return None
+        try:
+            return RepoManifest.load(manifest_path)
+        except Exception as exc:  # noqa: BLE001 - explicit rebuild repairs it
+            logger.warning(
+                "Manifest at %s unusable (%s); rebuilding requested views",
+                manifest_path,
+                exc,
+            )
+            return None
 
     def _compile(
         self,
@@ -197,6 +251,7 @@ class IndexCompiler:
         cache_dir: Optional[str],
         existing_manifest: Optional[RepoManifest],
         source: Optional[SourceFingerprint] = None,
+        force_rebuild: bool,
     ) -> RepoManifest:
         """Build requested views while preserving independent manifest entries."""
         repo_path = os.path.abspath(repo_path)
@@ -245,6 +300,12 @@ class IndexCompiler:
             builder = self._builders.get(idx_type)
             if builder is None:
                 logger.warning("No builder registered for '%s', skipping", idx_type)
+                existing_entry = manifest.indexes.get(idx_type)
+                if force_rebuild and existing_entry is not None:
+                    existing_entry.status = "failed"
+                    existing_entry.metadata["error"] = (
+                        f"No builder registered for {idx_type!r}"
+                    )
                 requested_succeeded = False
                 continue
 
@@ -253,7 +314,8 @@ class IndexCompiler:
             )
             current_entry = manifest.indexes.get(idx_type)
             if (
-                current_entry is not None
+                not force_rebuild
+                and current_entry is not None
                 and current_entry.status == "fresh"
                 and self._entry_matches_builder(
                     current_entry,
@@ -280,7 +342,8 @@ class IndexCompiler:
             incremental_from = (
                 previous_commit
                 if (
-                    previous_commit
+                    not force_rebuild
+                    and previous_commit
                     and head_commit
                     and previous_commit != head_commit
                     and not source_is_dirty
