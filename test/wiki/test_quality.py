@@ -109,6 +109,83 @@ def test_section_evidence_report_detects_section_source_reuse():
     assert report["sections_without_new_evidence"] == ["Serve"]
 
 
+def test_framing_sections_do_not_consume_detail_evidence_novelty():
+    markdown = (
+        "# Overview\n\n"
+        "The repository accepts source checkouts. [E1]\n\n"
+        "## Purpose and scope\n\n"
+        "The compiler creates the repository index. [E2]\n\n"
+        "## At a glance\n\n"
+        "The runtime loads the index for queries. [E3]\n\n"
+        "## Compilation details\n\n"
+        "Compilation writes the index consumed by the runtime. [E2] [E3]"
+    )
+
+    report = section_evidence_report(markdown)
+
+    assert report["evidence_by_section"]["Purpose and scope"] == ["E2"]
+    assert report["evidence_by_section"]["At a glance"] == ["E3"]
+    assert report["new_evidence_by_section"]["Compilation details"] == ["E2", "E3"]
+    assert report["sections_without_new_evidence"] == []
+
+
+def test_internal_related_pages_do_not_count_as_repeated_prose():
+    markdown = (
+        "# Request Preparation\n\n"
+        "The request pipeline prepares URLs, bodies, headers, and connection "
+        "pool attributes. [E1]\n\n"
+        "## Boundaries with Other Preparation Stages\n\n"
+        "URL preparation, body encoding, header preparation, and connection "
+        "pool selection are separate lifecycle stages. [E1]\n\n"
+        "## Related pages\n\n"
+        "- [URL and Parameter Encoding](?p=url-and-parameter-encoding)\n"
+        "- [Body and File Encoding](?p=body-and-file-encoding)\n"
+        "- [Connection Pool Management](?p=connection-pool-management)"
+    )
+
+    narrative = section_narrative_report(markdown)
+
+    assert duplicate_prose_blocks(markdown) == []
+    assert narrative["redundant_sections"] == []
+    assert "Related pages" not in narrative["section_similarity"]
+
+
+def test_internal_related_pages_do_not_dilute_section_synthesis_gate():
+    technical = (
+        "## Parse catalog\n\n"
+        "`Alpha.parse()` returns parsed values. "
+        "`Alpha.load()` loads input values.\n\n"
+        "## Render catalog\n\n"
+        "`Beta.render()` generates rendered output. "
+        "`Beta.save()` saves rendered output.\n\n"
+        "## Lifecycle\n\n"
+        "The runtime coordinates parsing before delivery. "
+        "It records state for later consumers."
+    )
+    with_navigation = (
+        technical + "\n\n## Related pages\n\n"
+        "- [Parser internals](?p=parser-internals)\n"
+        "- [Rendering internals](?p=rendering-internals)"
+    )
+
+    assert section_synthesis_report(technical)["section_synthesis_valid"] is False
+    assert section_synthesis_report(with_navigation)["section_synthesis_valid"] is False
+
+
+def test_navigation_before_real_prose_preserves_the_section_heading():
+    markdown = (
+        "# Overview\n\n"
+        "The repository prepares source context for requests. [E1]\n\n"
+        "## Navigation and behavior\n\n"
+        "- [Request pipeline](?p=request-pipeline)\n\n"
+        "The runtime then dispatches the prepared request to an adapter. [E2]"
+    )
+
+    report = section_narrative_report(markdown)
+
+    assert "Navigation and behavior" in report["section_similarity"]
+
+
 def test_page_audit_adds_narrative_validity_to_legacy_quality():
     old_gate = audit_page(_page(repeated_prose=True))
     improved = audit_page(_page(repeated_prose=False))

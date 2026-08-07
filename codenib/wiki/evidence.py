@@ -29,6 +29,88 @@ _CODE_RE = re.compile(r"`([^`\n]+)`")
 # Publication floor: at least half a page's blocks must carry their source.
 _MIN_CITATION_COVERAGE = 0.5
 _TABLE_DIVIDER_RE = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
+_INTERNAL_WIKI_NAV_ITEM_RE = re.compile(
+    r"^\s*[-*]\s+\[[^\]\n]+\]\(\?p=[^)\s]+\)\s*$",
+)
+
+
+def is_internal_wiki_navigation(block: str) -> bool:
+    """Whether a block is only a list of internal Wiki page links."""
+
+    lines = [line for line in block.splitlines() if line.strip()]
+    return bool(lines) and all(
+        _INTERNAL_WIKI_NAV_ITEM_RE.fullmatch(line) for line in lines
+    )
+
+
+def _corpus_contains_exact(corpus: str, value: str) -> bool:
+    """Match one complete code-like value instead of an arbitrary substring."""
+
+    value = (value or "").strip()
+    if not value:
+        return False
+    return bool(
+        re.search(
+            rf"(?<![\w.]){re.escape(value)}(?![\w.])",
+            corpus,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _corpus_contains_leaf(corpus: str, value: str) -> bool:
+    """Match a complete leaf name, including after attribute punctuation."""
+
+    value = (value or "").strip()
+    if not value:
+        return False
+    return bool(
+        re.search(
+            rf"(?<!\w){re.escape(value)}(?!\w)",
+            corpus,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _owner_and_leaf(value: str) -> tuple[str, str]:
+    """Split the last attribute separator from a qualified identifier."""
+
+    separators = list(re.finditer(r"\.|::", value or ""))
+    if not separators:
+        return "", (value or "").strip()
+    separator = separators[-1]
+    return value[: separator.start()].strip(), value[separator.end() :].strip()
+
+
+def _qualified_identifier_supported(
+    value: str,
+    *,
+    evidence_corpora: Sequence[str],
+    relation_endpoints: Sequence[str],
+) -> bool:
+    """Require a qualified name's owner and leaf to share one source.
+
+    Evidence often stores ``Owner.member`` as separate symbol and source-code
+    fields, so an item may support the two halves without containing the joined
+    display name.  Do not, however, combine an owner from one item with a leaf
+    from another.  Relations are already canonical symbol identities and only
+    support the qualified name when one complete endpoint names it.
+    """
+
+    owner, leaf = _owner_and_leaf(value)
+    if not owner or not leaf:
+        return False
+    if any(_corpus_contains_exact(endpoint, value) for endpoint in relation_endpoints):
+        return True
+    return any(
+        _corpus_contains_exact(corpus, value)
+        or (
+            _corpus_contains_exact(corpus, owner)
+            and _corpus_contains_leaf(corpus, leaf)
+        )
+        for corpus in evidence_corpora
+    )
 
 
 def _block_is_cited(block: str) -> bool:
@@ -741,69 +823,123 @@ def grounding_report(
     unknown_citations = sorted(cited - allowed_ids)
 
     without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    prose_blocks = []
     blocks = []
     for raw in re.split(r"\n\s*\n", without_fences):
         block = raw.strip()
         if not block or block.startswith("#"):
             continue
+        # Related-page links are navigation metadata, not factual prose. Keep
+        # this narrow: any description beside a link, or any ordinary list,
+        # remains part of the grounding denominator.
+        if is_internal_wiki_navigation(block):
+            continue
+        prose_blocks.append(block)
         plain = re.sub(r"^[-*]\s+", "", block, flags=re.MULTILINE)
         if len(re.sub(r"[`*_[\]()#>-]", "", plain).strip()) >= 40:
             blocks.append(block)
     cited_blocks = sum(1 for block in blocks if _block_is_cited(block))
     coverage = cited_blocks / len(blocks) if blocks else 0.0
 
-    corpus = "\n".join(
-        [part for item in evidence for part in (item.file, item.symbol, item.content)]
-        + [
-            part
-            for item in relations
-            for part in (item.source, item.target, *item.anchors)
-        ]
-    ).lower()
+    evidence_corpora = [
+        "\n".join((item.file, item.symbol, item.content)) for item in evidence
+    ]
+    relation_endpoints = [
+        endpoint for item in relations for endpoint in (item.source, item.target)
+    ]
+    support_corpora = [
+        *evidence_corpora,
+        *relation_endpoints,
+        *(anchor for item in relations for anchor in item.anchors),
+    ]
+
+    def any_exact(value: str) -> bool:
+        return any(_corpus_contains_exact(corpus, value) for corpus in support_corpora)
+
+    def any_leaf(value: str) -> bool:
+        return any(_corpus_contains_leaf(corpus, value) for corpus in support_corpora)
+
+    known_files = {item.file.lower().lstrip("./") for item in evidence}
     unsupported_identifiers = []
     for identifier in _CODE_RE.findall(without_fences):
         normalized = identifier.strip()
         source_name = re.sub(r":\d+(?:-\d+)?$", "", normalized)
-        call_name_match = re.match(r"([A-Za-z_][\w.]*)\s*\(", source_name)
+        call_name_match = re.fullmatch(
+            r"([A-Za-z_]\w*(?:(?:\.|::)[A-Za-z_]\w*)*)\s*\([^`\n]*\)",
+            source_name,
+        )
         call_name = call_name_match.group(1) if call_name_match else ""
-        call_leaf = call_name.rsplit(".", 1)[-1]
+        call_owner, call_leaf = _owner_and_leaf(call_name)
+        call_supported = bool(
+            call_name
+            and (
+                (not call_owner and any_leaf(call_leaf))
+                or _qualified_identifier_supported(
+                    call_name,
+                    evidence_corpora=evidence_corpora,
+                    relation_endpoints=relation_endpoints,
+                )
+            )
+        )
         # `path/to/file.rs:Symbol` is a display form; the corpus holds the path
         # and the symbol separately, never joined. Accept it only when both
         # halves are known.
         qualified = ""
         if ":" in source_name and not source_name.endswith(":"):
             head, _, tail = source_name.rpartition(":")
-            if head and tail and head.lower() in corpus and tail.lower() in corpus:
+            tail = re.sub(r"\([^`\n]*\)$", "", tail).strip()
+            matching_evidence = [
+                corpus
+                for item, corpus in zip(evidence, evidence_corpora, strict=True)
+                if item.file.lower().lstrip("./") == head.lower().lstrip("./")
+            ]
+            if tail and any(
+                _corpus_contains_exact(corpus, tail)
+                or (
+                    not _owner_and_leaf(tail)[0] and _corpus_contains_leaf(corpus, tail)
+                )
+                or _qualified_identifier_supported(
+                    tail,
+                    evidence_corpora=[corpus],
+                    relation_endpoints=(),
+                )
+                for corpus in matching_evidence
+            ):
                 qualified = source_name
         # Attribute access, e.g. `PreparedRequest.url`. Calls already resolve by
-        # leaf name; do the same for attributes, but require the owner too.
+        # their complete owner; do the same for attributes.
         attribute = ""
-        if not call_name and "." in source_name:
-            owner, _, leaf = source_name.rpartition(".")
-            if owner and leaf and owner.lower() in corpus and leaf.lower() in corpus:
+        if not call_name and re.search(r"\.|::", source_name):
+            if _qualified_identifier_supported(
+                source_name,
+                evidence_corpora=evidence_corpora,
+                relation_endpoints=relation_endpoints,
+            ):
                 attribute = source_name
+        bare_member = bool(
+            re.fullmatch(r"[A-Za-z_]\w*", source_name) and any_leaf(source_name)
+        )
         if (
             not normalized
             or normalized.lower() in _COMMON_CODE_TERMS
             # A URI scheme (`mailto:`, `https:`) is not a code identifier.
             or re.fullmatch(r"[A-Za-z][A-Za-z0-9+.\-]*:", normalized)
-            or normalized.lower() in corpus
-            or source_name.lower() in corpus
+            or any_exact(normalized)
+            or any_exact(source_name)
+            or bare_member
             or qualified
             or attribute
-            or (call_name and call_name.lower() in corpus)
-            or (call_leaf and call_leaf.lower() in corpus)
+            or call_supported
         ):
             continue
         unsupported_identifiers.append(normalized)
 
-    known_files = {item.file.lower() for item in evidence}
     unknown_files = sorted(
         {
             path
             for path in _PATH_RE.findall(without_fences)
             if path.lower().lstrip("./") not in known_files
-            and path.lower() not in corpus
+            and not any_exact(path)
             and not any(file.endswith("/" + path.lower()) for file in known_files)
         }
     )
@@ -811,7 +947,7 @@ def grounding_report(
     # Marketing words the page wrote itself are a defect; the same words inside
     # a block it is quoting from cited source are not.
     authored = "\n\n".join(
-        block for block in blocks if not _quotes_cited_evidence(block, evidence)
+        block for block in prose_blocks if not _quotes_cited_evidence(block, evidence)
     )
     promotional = promotional_phrases(authored)
     valid = (

@@ -84,7 +84,7 @@ _MAX_CONTEXT_CHARS = 14000
 # A quoted body should carry an idea, not reproduce a file.
 _MAX_EXCERPT_LINES = 14
 _OUTLINE_PROMPT_VERSION = "13"
-_PAGE_PROMPT_VERSION = "102"
+_PAGE_PROMPT_VERSION = "106"
 _MAX_PLAN_REPAIRS = 3
 _MAX_STYLE_REPAIRS = 2
 # The overview is asked for a section per outline area, and a repository
@@ -606,6 +606,77 @@ def _supported_thesis(
     return statement, ids
 
 
+def _supported_framing_statements(
+    statements: Sequence[Any],
+    raw_ids: Sequence[Any],
+    evidence: Sequence[EvidenceItem],
+    relations: Sequence[RelationItem],
+) -> tuple[list[str], list[str]]:
+    """Admit reader-facing framing with the same source checks as claims.
+
+    Purpose text, scan-table rows, and section leads are model-authored facts,
+    even though they are not part of ``sections[].claims``.  Treating an
+    existing evidence id as sufficient let invented identifiers and marketing
+    language bypass the claim admission path.
+    """
+
+    evidence_by_id = {item.id: item for item in evidence}
+    relations_by_id = {item.id: item for item in relations}
+    ids = [
+        str(item)
+        for item in raw_ids
+        if str(item) in evidence_by_id or str(item) in relations_by_id
+    ]
+    cited_evidence = [evidence_by_id[item] for item in ids if item in evidence_by_id]
+    cited_relations = [relations_by_id[item] for item in ids if item in relations_by_id]
+    if not cited_evidence:
+        return [], []
+
+    admitted: list[str] = []
+    for raw in statements:
+        statement = re.sub(r"\s+", " ", str(raw or "")).strip()
+        if not statement:
+            continue
+        statement = _normalize_callable_command_labels(statement, cited_evidence)
+        if not _claim_has_local_support(
+            statement, cited_evidence
+        ) or _method_owner_generalizations(statement, cited_evidence):
+            continue
+        candidate = (
+            _format_supported_literals(statement).rstrip(".")
+            + "."
+            + "".join(f" [{item}]" for item in ids)
+        )
+        report = grounding_report(candidate, cited_evidence, cited_relations)
+        if any(
+            report[key]
+            for key in (
+                "unknown_citations",
+                "unknown_files",
+                "unsupported_identifiers",
+                "promotional_phrases",
+            )
+        ):
+            continue
+        admitted.append(statement)
+    return admitted, ids
+
+
+def _substantially_repeats(candidate: str, existing: str) -> bool:
+    """Mirror the published-page redundancy rule before rendering prose."""
+
+    candidate_terms = _redundancy_terms(candidate)
+    existing_terms = _redundancy_terms(existing)
+    smaller = min(len(candidate_terms), len(existing_terms))
+    if smaller < 5:
+        return False
+    candidate_subject = _leading_code_subject(candidate)
+    existing_subject = _leading_code_subject(existing)
+    if candidate_subject and existing_subject and candidate_subject != existing_subject:
+        return False
+    return len(candidate_terms & existing_terms) / smaller >= 0.7
+
+
 def _hard_plan_warnings(warnings: Sequence[str]) -> List[str]:
     """Return diagnostics that represent unsupported or incomplete facts."""
 
@@ -1074,17 +1145,18 @@ def _renderable_plan(
     # Framing and the scan table are grounded like any claim: a statement or row
     # that cites nothing admissible is dropped rather than rendered unsupported.
     purpose = rendered.get("purpose") or {}
-    purpose_ids = [
-        str(item) for item in (purpose.get("evidence") or []) if str(item) in allowed
-    ]
-    purpose_statements = [
-        sentence
-        for sentence in (
-            re.sub(r"\s+", " ", str(raw or "")).strip()
-            for raw in (purpose.get("statements") or [])
-        )
-        if sentence
-    ]
+    purpose_statements, purpose_ids = _supported_framing_statements(
+        purpose.get("statements") or [],
+        purpose.get("evidence") or [],
+        evidence,
+        relations,
+    )
+    if intro:
+        purpose_statements = [
+            statement
+            for statement in purpose_statements
+            if not _substantially_repeats(statement, intro)
+        ]
     if purpose_statements and purpose_ids:
         rendered["purpose"] = {
             "statements": purpose_statements[:3],
@@ -1097,8 +1169,13 @@ def _renderable_plan(
     for row in rendered.get("map") or []:
         concern = re.sub(r"\s+", " ", str(row.get("concern") or "")).strip()
         entity = re.sub(r"\s+", " ", str(row.get("entity") or "")).strip()
-        ids = [str(item) for item in row.get("evidence") or [] if str(item) in allowed]
-        if not concern or not entity or not ids:
+        admitted, ids = _supported_framing_statements(
+            [f"{concern}: {entity}"],
+            row.get("evidence") or [],
+            evidence,
+            relations,
+        )
+        if not concern or not entity or not admitted or not ids:
             continue
         rendered_map.append({"concern": concern, "entity": entity, "evidence": ids})
     # A two-row table is not worth the chrome; below that, prose carries it.
@@ -1289,6 +1366,31 @@ def _renderable_plan(
         if deduplicated_claims:
             rendered_section = copy.deepcopy(section)
             rendered_section["claims"] = deduplicated_claims
+            lead = rendered_section.get("lead") or {}
+            lead_statements, lead_ids = _supported_framing_statements(
+                lead.get("statements") or [],
+                lead.get("evidence") or [],
+                evidence,
+                relations,
+            )
+            claim_statements = [
+                str(claim.get("statement") or "") for claim in deduplicated_claims
+            ]
+            distinct_leads: list[str] = []
+            for statement in lead_statements:
+                if any(
+                    _substantially_repeats(statement, other)
+                    for other in (*claim_statements, *distinct_leads)
+                ):
+                    continue
+                distinct_leads.append(statement)
+            if distinct_leads and lead_ids:
+                rendered_section["lead"] = {
+                    "statements": distinct_leads,
+                    "evidence": lead_ids,
+                }
+            else:
+                rendered_section.pop("lead", None)
             rendered_sections.append(rendered_section)
     rendered["sections"] = rendered_sections
     return rendered
@@ -1345,6 +1447,7 @@ def _fact_plan_markdown(
 
     # Mermaid node ids must be opaque; the labels carry the real names.
     flow_block = ""
+    flow_title = "How it fits together"
     flow = plan.get("flow") or {}
     if flow.get("steps"):
         node_ids: dict[str, str] = {}
@@ -1378,17 +1481,18 @@ def _fact_plan_markdown(
             for item in step.get("evidence") or []:
                 if item not in caption_ids:
                     caption_ids.append(str(item))
-        caption = str(flow.get("title") or "").strip()
-        if caption and caption_ids:
+        flow_title = str(flow.get("title") or "").strip() or flow_title
+        if caption_ids:
             # The fence is stripped before the prose checks run, so the caption
             # is where this block states its sources.
             lines.append("")
             lines.append(
-                caption.rstrip(".")
-                + ". "
+                flow_title.rstrip(".")
+                + ". The diagram traces the admitted source-to-target handoffs "
+                "between the named components. "
                 + " ".join(f"[{item}]" for item in caption_ids)
             )
-        flow_block = "\n".join(lines)
+            flow_block = "\n".join(lines)
 
     see_also_block = ""
     refs = plan.get("see_also") or []
@@ -1397,9 +1501,11 @@ def _fact_plan_markdown(
         for ref in refs:
             page = str(ref.get("page") or "").strip()
             title = str(ref.get("title") or page).strip()
-            why = str(ref.get("why") or "").strip()
             link = f"[{title}](?p={page})"
-            parts.append(f"- {link}" + (f" — {why}" if why else ""))
+            # This is navigation chrome, not a source-backed fact.  Rendering
+            # the model-authored explanation made the list both factual and
+            # uncited, so keep only outline-resolved page links here.
+            parts.append(f"- {link}")
         see_also_block = "\n".join(parts)
 
     evidence_by_id = {item.id: item for item in evidence}
@@ -1419,15 +1525,13 @@ def _fact_plan_markdown(
         if len(lines) < 2:
             return ""
         language = _lang(item.file)
-        span = ""
-        if item.start_line is not None:
-            span = f":{item.start_line}"
-            if item.end_line is not None and item.end_line != item.start_line:
-                span += f"-{item.end_line}"
-        why = re.sub(r"\s+", " ", str(spec.get("why") or "")).strip()
-        caption = f"`{item.file}{span}`" + (f" — {why.rstrip('.')}." if why else "")
+        # The evidence ledger already owns the file and line span.  Repeating
+        # it as prose made every deterministic excerpt violate the page's own
+        # reference-narration rule; the model-authored ``why`` was also an
+        # unadmitted factual path.  A neutral linked caption preserves source
+        # access without making another claim.
         return "\n".join(
-            [f"```{language}", *lines, "```", "", f"{caption} [{item.id}]"]
+            [f"```{language}", *lines, "```", "", f"Source excerpt. [{item.id}]"]
         )
 
     rendered_sections: List[tuple[str, List[str]]] = []
@@ -1479,7 +1583,7 @@ def _fact_plan_markdown(
     if map_block:
         blocks.extend(("## At a glance", map_block))
     if flow_block:
-        blocks.extend((f"## {flow.get('title') or 'How it fits together'}", flow_block))
+        blocks.extend((f"## {flow_title}", flow_block))
     for title, parts in rendered_sections:
         blocks.append(f"## {title}")
         blocks.extend(parts)
@@ -3181,6 +3285,25 @@ class AgentWiki:
                     ),
                     reverse=True,
                 )
+                # Dense, sparse, and symbol-table routes can spell the same
+                # definition differently.  Apply the per-file quota to unique
+                # source spans; otherwise two aliases of one method consume
+                # both slots and hide the next relevant method in that file.
+                unique_matches: List[tuple[Any, tuple[str, ...]]] = []
+                match_index: Dict[tuple[str, Any, Any, str], int] = {}
+                for node, route_names in matches:
+                    source_key = self._source_span_key(node)
+                    prior_index = match_index.get(source_key)
+                    if prior_index is None:
+                        match_index[source_key] = len(unique_matches)
+                        unique_matches.append((node, tuple(route_names)))
+                        continue
+                    prior_node, prior_routes = unique_matches[prior_index]
+                    unique_matches[prior_index] = (
+                        prior_node,
+                        tuple(dict.fromkeys((*prior_routes, *route_names))),
+                    )
+                matches = unique_matches
                 if overview:
                     per_file_limit = 2 if file in overview_topic_files else 1
                 elif parent_page and not parent_has_core_files:
@@ -3410,11 +3533,30 @@ class AgentWiki:
         kind = str(self._node_attr(node, "type") or "").lower()
         return 2 if kind in {"class", "interface", "module"} else 1
 
-    def _source_span_key(self, node: Any) -> tuple[str, Any, Any]:
+    def _source_span_key(self, node: Any) -> tuple[str, Any, Any, str]:
+        start = self._node_attr(node, "start_line")
+        end = self._node_attr(node, "end_line")
+        # Missing, reversed, and 0/0 spans cannot identify a definition.  The
+        # latter is the no-line-data signature used by older indexes.  Keep
+        # route aliases collapsed in that case, but include the canonical
+        # symbol so distinct definitions in one file do not share a quota key.
+        reliable = (
+            isinstance(start, int)
+            and not isinstance(start, bool)
+            and isinstance(end, int)
+            and not isinstance(end, bool)
+            and start >= 0
+            and end >= start
+            and (start, end) != (0, 0)
+        )
+        raw_symbol = (
+            self._node_attr(node, "node_name") or self._node_attr(node, "name") or ""
+        )
         return (
             self._norm_hint_path(self._rel(self._node_attr(node, "file")) or ""),
-            self._node_attr(node, "start_line"),
-            self._node_attr(node, "end_line"),
+            start,
+            end,
+            "" if reliable else _canonical_symbol(str(raw_symbol)),
         )
 
     def _outline_anchor_rank(
@@ -3568,6 +3710,15 @@ class AgentWiki:
                 continue
             start = self._node_attr(node, "start_line")
             end = self._node_attr(node, "end_line")
+            has_complete_span = (
+                isinstance(start, int)
+                and not isinstance(start, bool)
+                and isinstance(end, int)
+                and not isinstance(end, bool)
+                and start >= 0
+                and end >= start
+                and (start != 0 or end != 0)
+            )
             # A 0/0 span is the "no line data" signature of an index whose
             # document metadata carries no spans (``_compute_symbols`` coerces
             # a missing span to 0). Emitting it would cite line 1 of the file
@@ -3577,11 +3728,13 @@ class AgentWiki:
             if start == 0 and end == 0:
                 start = end = None
             start_line = (start + 1) if isinstance(start, int) else None
-            end_line = (end + 1) if isinstance(end, int) else start_line
-            content = self._node_attr(node, "content") or ""
-            if not content:
+            end_line = (end + 1) if has_complete_span else start_line
+            content = ""
+            if has_complete_span and start_line is not None and end_line is not None:
                 source = self._wb.source(file, start_line, end_line)
                 content = (source or {}).get("content", "") if source else ""
+            if not content:
+                content = self._node_attr(node, "content") or ""
             content = _prepare_evidence_content(file, content)
             if not content:
                 continue
@@ -3919,16 +4072,12 @@ class AgentWiki:
                 title = str(page.get("title") or "").strip()
                 if not title:
                     continue
-                summary = re.sub(r"\s+", " ", str(page.get("summary") or "")).strip()[
-                    :160
-                ]
                 marker = " (this page)" if page_id == current_id else ""
                 indent = "  " * depth
-                # The id is what a cross-reference has to name, so hand it over.
-                lines.append(
-                    f"{indent}- [{page_id}] {title}{marker}"
-                    + (f": {summary}" if summary else "")
-                )
+                # Outline summaries are generated hints, not source evidence.
+                # Give the planner only the stable identity it needs for a
+                # cross-reference so those hints cannot leak into page facts.
+                lines.append(f"{indent}- [{page_id}] {title}{marker}")
                 walk(page.get("children") or [], depth + 1)
 
         # Read the resolved outline only. Generating one here would make page
@@ -4609,13 +4758,14 @@ class AgentWiki:
                     repaired = True
         markdown = _link_evidence_markers(markdown)
         blocking_plan_warnings = _blocking_plan_warnings(plan_warnings)
-        # Publish on the grounding floor, not on a spotless report. Coverage,
-        # unresolved identifiers, marketing words and composition notes are all
-        # still computed and returned -- they describe the page, and surfacing
-        # them is the point. Gating on every one of them made "degraded" fire on
-        # pages whose only fault was a shape the checker could not spell.
+        # Keep the generation label aligned with the public audit.  A readable
+        # grounding floor remains useful as a diagnostic, but it must not call
+        # a page generated when strict citations or structural integrity fail.
         publishable = bool(
-            report.get("grounded", report["valid"]) and not blocking_plan_warnings
+            report["valid"]
+            and report.get("grounded", True)
+            and quality["valid"]
+            and not blocking_plan_warnings
         )
         generated = publishable and not model_failed and not model_planning_failed
         if generated:

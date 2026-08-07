@@ -32,6 +32,7 @@ from codenib.wiki.agent_wiki import (
 )
 from codenib.wiki.builder import Symbol
 from codenib.wiki.evidence import EvidenceItem, RelationItem, candidate_key
+from codenib.wiki.quality import prose_integrity_report
 
 
 class _FakeVectorStore:
@@ -774,6 +775,223 @@ def test_fact_plan_renderer_drops_unsupported_claims():
     assert "## Indexing" in markdown
     assert "## Invented" not in markdown
     assert "`MagicIndex`" not in markdown
+
+
+def test_fact_plan_renderer_admits_only_source_backed_framing():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/models.py",
+            start_line=1,
+            end_line=8,
+            symbol="PreparedRequest.prepare_url",
+            kind="method",
+            content=(
+                "class PreparedRequest:\n"
+                "    def prepare_url(self, url):\n"
+                "        # Normalize HTTP request URLs before parsing.\n"
+                "        self.url = url\n"
+                "        return self.url"
+            ),
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/sessions.py",
+            start_line=1,
+            end_line=6,
+            symbol="Session.merge_environment_settings",
+            kind="method",
+            content=(
+                "def merge_environment_settings(self, proxies):\n"
+                "    # Merge environment settings with proxy defaults.\n"
+                "    return merge_setting(proxies, self.proxies)"
+            ),
+        ),
+        EvidenceItem(
+            id="E3",
+            file="src/adapters.py",
+            start_line=1,
+            end_line=6,
+            symbol="HTTPAdapter.send",
+            kind="method",
+            content=(
+                "class HTTPAdapter:\n"
+                "    def send(self, prepared_request):\n"
+                "        # Send the prepared request through the adapter.\n"
+                "        return prepared_request"
+            ),
+        ),
+    ]
+    plan = {
+        "purpose": {
+            "statements": [
+                "`PreparedRequest.prepare_url()` normalizes HTTP request URLs",
+                "The user-friendly `RequestEncodingMixin` handles every body",
+            ],
+            "evidence": ["E1"],
+        },
+        "map": [
+            {
+                "concern": "HTTP request URL normalization",
+                "entity": "`PreparedRequest.prepare_url()`",
+                "evidence": ["E1"],
+            },
+            {
+                "concern": "Environment settings and proxy defaults",
+                "entity": "`Session.merge_environment_settings()`",
+                "evidence": ["E2"],
+            },
+            {
+                "concern": "Prepared request adapter sending",
+                "entity": "`HTTPAdapter.send()`",
+                "evidence": ["E3"],
+            },
+            {
+                "concern": "Universal request routing",
+                "entity": "`MagicGateway.route()`",
+                "evidence": ["E1"],
+            },
+        ],
+        "sections": [
+            {
+                "title": "URL preparation",
+                "lead": {
+                    "statements": [
+                        "The prepared request stores its normalized URL",
+                        "The `Authorization` helper retries every request",
+                    ],
+                    "evidence": ["E1"],
+                },
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`PreparedRequest.prepare_url()` normalizes HTTP "
+                            "request URLs before parsing"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+
+    rendered = _renderable_plan(plan, evidence, [])
+    markdown = _fact_plan_markdown(rendered, evidence, [])
+
+    assert rendered["purpose"]["statements"] == [
+        "`PreparedRequest.prepare_url()` normalizes HTTP request URLs"
+    ]
+    assert len(rendered["map"]) == 3
+    assert rendered["sections"][0]["lead"]["statements"] == [
+        "The prepared request stores its normalized URL"
+    ]
+    assert "RequestEncodingMixin" not in markdown
+    assert "MagicGateway" not in markdown
+    assert "Authorization" not in markdown
+    assert "user-friendly" not in markdown
+
+
+def test_fact_plan_excerpt_caption_is_neutral_source_metadata():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/codec.py",
+            start_line=1,
+            end_line=8,
+            symbol="encode_payload",
+            kind="function",
+            content=(
+                "def encode_payload(value):\n"
+                "    payload = value.encode('utf-8')\n"
+                "    return payload"
+            ),
+        )
+    ]
+    markdown = _fact_plan_markdown(
+        {
+            "sections": [
+                {
+                    "title": "Payload encoding",
+                    "excerpt": {
+                        "evidence": "E1",
+                        "why": "The function shows how values become bytes",
+                    },
+                    "claims": [
+                        {
+                            "role": "contract",
+                            "statement": (
+                                "`encode_payload()` encodes a value as UTF-8 bytes"
+                            ),
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ]
+        },
+        evidence,
+        [],
+    )
+
+    integrity = prose_integrity_report(markdown)
+
+    assert "Source excerpt. [E1]" in markdown
+    assert "`src/codec.py:1-8`" not in markdown
+    assert "shows how values become bytes" not in markdown
+    assert integrity["reference_narration_sentences"] == []
+    assert integrity["prose_integrity_valid"] is True
+
+
+def test_fact_plan_renderer_drops_a_lead_that_repeats_its_claim():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/sessions.py",
+            start_line=1,
+            end_line=8,
+            symbol="Session.merge_environment_settings",
+            kind="method",
+            content=(
+                "def merge_environment_settings(self, proxies, verify):\n"
+                "    # Collect environment settings and combine session defaults.\n"
+                "    proxies = merge_setting(proxies, self.proxies)\n"
+                "    verify = merge_setting(verify, self.verify)\n"
+                "    return proxies, verify"
+            ),
+        )
+    ]
+    markdown = _fact_plan_markdown(
+        {
+            "sections": [
+                {
+                    "title": "Environment settings",
+                    "lead": {
+                        "statements": [
+                            "`Session.merge_environment_settings()` collects "
+                            "environment settings and combines session defaults"
+                        ],
+                        "evidence": ["E1"],
+                    },
+                    "claims": [
+                        {
+                            "role": "responsibility",
+                            "statement": (
+                                "`Session.merge_environment_settings()` calls "
+                                "`merge_setting()` to combine environment "
+                                "settings with session defaults"
+                            ),
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ]
+        },
+        evidence,
+        [],
+    )
+
+    assert markdown.count("combines session defaults") == 0
+    assert markdown.count("combine environment settings with session defaults") == 1
 
 
 def test_fact_plan_rejects_behavior_not_supported_by_the_cited_body():
@@ -4008,6 +4226,109 @@ def test_readme_evidence_drops_chrome_and_keeps_complete_paragraphs():
     assert prepared.endswith((".", "!", "?"))
 
 
+def test_evidence_items_prefer_the_current_source_span(tmp_path):
+    source = tmp_path / "src" / "core.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "class Router:\n"
+        "    def dispatch(self, headers):\n"
+        "        return headers['Authorization']\n",
+        encoding="utf-8",
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        )
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+
+    evidence = wiki._evidence_items(
+        [
+            {
+                "file": "src/core.py",
+                "node_name": "Router.dispatch",
+                "type": "method",
+                "start_line": 0,
+                "end_line": 2,
+                "content": "class Router:\n    pass  # stale index excerpt",
+            }
+        ]
+    )
+
+    assert len(evidence) == 1
+    assert "Authorization" in evidence[0].content
+    assert "stale index excerpt" not in evidence[0].content
+
+
+def test_evidence_items_keep_indexed_content_for_an_incomplete_span(tmp_path):
+    source = tmp_path / "src" / "legacy.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "def live_implementation():\n"
+        "    return 'only the first source line would have been read'\n",
+        encoding="utf-8",
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        )
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+
+    evidence = wiki._evidence_items(
+        [
+            {
+                "file": "src/legacy.py",
+                "node_name": "legacy",
+                "type": "function",
+                "start_line": 0,
+                "content": (
+                    "def legacy():\n"
+                    "    indexed_body_is_complete()\n"
+                    "    return 'ready'"
+                ),
+            }
+        ]
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].start_line == 1
+    assert evidence[0].end_line == 1
+    assert "indexed_body_is_complete" in evidence[0].content
+    assert "live_implementation" not in evidence[0].content
+
+
+def test_wiki_context_exposes_page_identity_without_generated_summaries(tmp_path):
+    wiki = AgentWiki(
+        SimpleNamespace(
+            entry=SimpleNamespace(repo_dir=str(tmp_path), language="python")
+        ),
+        model="fake-model",
+    )
+    wiki._outline = {
+        "pages": [
+            {
+                "id": "routing",
+                "title": "Request Routing",
+                "summary": "The invented MagicGateway controls every request",
+            }
+        ]
+    }
+
+    context = wiki._wiki_context("overview")
+
+    assert context == "- [routing] Request Routing"
+    assert "MagicGateway" not in context
+
+
 class _FakeBM25:
     def __init__(self, nodes):
         self.nodes = nodes
@@ -4465,6 +4786,145 @@ def test_parent_without_core_files_selects_two_anchors_per_child(tmp_path):
         "RerankAgent",
         "RerankAgent.__init__",
     ]
+
+
+def test_parent_anchor_quota_counts_unique_spans_across_routes(tmp_path):
+    dense_nodes = [
+        {
+            "file": "src/models.py",
+            "node_name": "PreparedRequest.prepare_url",
+            "type": "method",
+            "start_line": 10,
+            "end_line": 30,
+            "content": "def prepare_url(self): pass",
+        },
+        {
+            "file": "src/models.py",
+            "node_name": "PreparedRequest.prepare_body",
+            "type": "method",
+            "start_line": 32,
+            "end_line": 52,
+            "content": "def prepare_body(self): pass",
+        },
+        {
+            "file": "src/sessions.py",
+            "node_name": "Session.prepare_request",
+            "type": "method",
+            "start_line": 60,
+            "end_line": 80,
+            "content": "def prepare_request(self): pass",
+        },
+        {
+            "file": "src/sessions.py",
+            "node_name": "Session.merge_environment_settings",
+            "type": "method",
+            "start_line": 82,
+            "end_line": 102,
+            "content": "def merge_environment_settings(self): pass",
+        },
+    ]
+    sparse_aliases = [
+        {
+            **dense_nodes[0],
+            "node_name": "src/models.py:PreparedRequest.prepare_url()",
+        },
+        {
+            **dense_nodes[2],
+            "node_name": "src/sessions.py:Session.prepare_request()",
+        },
+    ]
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), language="python"),
+        vector_store=_FakeVectorStore(dense_nodes),
+        bm25=_FakeBM25(sparse_aliases),
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+
+    result = wiki._retrieve(
+        {
+            "id": "request-preparation",
+            "title": "Request Preparation",
+            "summary": "Preparing URL, body, and session settings",
+            "keywords": ["prepare", "request", "settings"],
+            "files": ["src/models.py", "src/sessions.py"],
+            "children": [
+                {
+                    "id": "url-preparation",
+                    "title": "URL Preparation",
+                    "files": ["src/models.py"],
+                },
+                {
+                    "id": "session-settings",
+                    "title": "Session Settings",
+                    "files": ["src/sessions.py"],
+                },
+            ],
+        },
+        top_k=8,
+    )
+
+    assert {
+        (node["file"], node["start_line"], node["end_line"]) for node in result
+    } == {
+        ("src/models.py", 10, 30),
+        ("src/models.py", 32, 52),
+        ("src/sessions.py", 60, 80),
+        ("src/sessions.py", 82, 102),
+    }
+
+
+def test_parent_anchor_quota_keeps_distinct_symbols_without_spans(tmp_path):
+    dense_nodes = [
+        {
+            "file": "src/models.py",
+            "node_name": symbol,
+            "type": "method",
+            "start_line": 0,
+            "end_line": 0,
+            "content": content,
+        }
+        for symbol, content in (
+            ("PreparedRequest.prepare_url", "def prepare_url(self): pass"),
+            ("PreparedRequest.prepare_body", "def prepare_body(self): pass"),
+            ("PreparedRequest.prepare_headers", "def prepare_headers(self): pass"),
+        )
+    ]
+    sparse_alias = {
+        **dense_nodes[0],
+        "node_name": "src/models.py:PreparedRequest.prepare_url()",
+    }
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), language="python"),
+        vector_store=_FakeVectorStore(dense_nodes),
+        bm25=_FakeBM25([sparse_alias]),
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+
+    result = wiki._retrieve(
+        {
+            "id": "request-preparation",
+            "title": "Request Preparation",
+            "summary": "Preparing URL, body, and headers",
+            "keywords": ["prepare", "request"],
+            "files": ["src/models.py"],
+            "children": [
+                {
+                    "id": "prepared-request-fields",
+                    "title": "Prepared Request Fields",
+                    "files": ["src/models.py"],
+                }
+            ],
+        },
+        top_k=8,
+    )
+
+    assert {node["node_name"] for node in result} == {
+        "PreparedRequest.prepare_url",
+        "PreparedRequest.prepare_body",
+        "PreparedRequest.prepare_headers",
+    }
 
 
 def test_parent_with_one_shared_file_keeps_multiple_broad_symbols(tmp_path):
@@ -5354,6 +5814,86 @@ def test_generation_separates_soft_composition_and_semantic_diagnostics(tmp_path
     assert guarded["generation"]["plan_warnings"] == [semantic_warning]
 
 
+def test_generation_mode_requires_the_strict_page_quality_gate(tmp_path, monkeypatch):
+    import codenib.wiki.agent_wiki as agent_wiki_module
+
+    node = {
+        "file": "src/core.py",
+        "node_name": "Router",
+        "type": "class",
+        "start_line": 0,
+        "end_line": 5,
+        "content": (
+            "class Router:\n"
+            "    def handle(self, repository_request):\n"
+            "        return repository_request"
+        ),
+    }
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=_FakeVectorStore([node]),
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+        code_graph=lambda: None,
+    )
+    wiki = AgentWiki(bundle, model="fake-model", llm=SimpleNamespace())
+    wiki._fact_plan = lambda *_args: (
+        {
+            "thesis": {
+                "statement": "The `Router` handles repository requests",
+                "evidence": ["E1"],
+            },
+            "sections": [
+                {
+                    "title": "Request handling",
+                    "claims": [
+                        {
+                            "role": "contract",
+                            "statement": (
+                                "`Router.handle()` returns the repository request"
+                            ),
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        },
+        [],
+    )
+    real_report = agent_wiki_module._page_quality_report
+
+    def force_quality_failure(*args, **kwargs):
+        report = real_report(*args, **kwargs)
+        return {**report, "valid": False}
+
+    monkeypatch.setattr(
+        agent_wiki_module,
+        "_page_quality_report",
+        force_quality_failure,
+    )
+
+    page = wiki._generate_page(
+        {
+            "id": "routing",
+            "title": "Request Routing",
+            "summary": "Repository request handling",
+            "keywords": ["router", "request"],
+            "files": ["src/core.py"],
+        }
+    )
+
+    assert page["grounding"]["valid"] is True
+    assert page["quality"]["valid"] is False
+    assert page["generation"]["mode"] == "degraded"
+    assert page["generation"]["reason"] == "quality_guard"
+
+
 def test_page_reports_model_unavailable_when_fact_planning_falls_back(tmp_path):
     class LLM:
         cache_identity = "fake"
@@ -5564,7 +6104,7 @@ def test_flow_keeps_only_its_connected_path():
             file="a.py",
             start_line=1,
             end_line=3,
-            symbol="Session.send",
+            symbol="Session.dispatch",
             kind="method",
             content="def send(self):\n    prepare()",
         ),
@@ -5617,6 +6157,117 @@ def test_flow_keeps_only_its_connected_path():
     steps = _renderable_plan(plan, evidence, [])["flow"]["steps"]
     assert len(steps) == 2
     assert all("unrelated" not in str(s) for s in steps)
+
+
+def test_fact_plan_flow_fallback_caption_is_auditable_and_not_thin():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="a.py",
+            start_line=1,
+            end_line=6,
+            symbol="Session.send",
+            kind="method",
+            content="def dispatch(self):\n    return adapter.send()",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="b.py",
+            start_line=1,
+            end_line=6,
+            symbol="Adapter.send",
+            kind="method",
+            content="def send(self):\n    return response.build()",
+        ),
+        EvidenceItem(
+            id="E3",
+            file="c.py",
+            start_line=1,
+            end_line=6,
+            symbol="Response.build",
+            kind="method",
+            content="def build(self):\n    return Response()",
+        ),
+    ]
+    relations = [
+        RelationItem(
+            id="R1",
+            source="a.py:Session.dispatch()",
+            target="b.py:Adapter.send()",
+            anchors=("a.py:2",),
+        ),
+        RelationItem(
+            id="R2",
+            source="b.py:Adapter.send()",
+            target="c.py:Response.build()",
+            anchors=("b.py:2",),
+        ),
+    ]
+    plan = {
+        "flow": {
+            "title": "",
+            "steps": [
+                {
+                    "from": "`Session.dispatch()`",
+                    "to": "`Adapter.send()`",
+                    "evidence": ["R1"],
+                },
+                {
+                    "from": "`Adapter.send()`",
+                    "to": "`Response.build()`",
+                    "evidence": ["R2"],
+                },
+            ],
+        },
+        "sections": [
+            {
+                "title": "Dispatch",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": "`Session.dispatch()` calls `Adapter.send()`",
+                        "evidence": ["R1"],
+                    }
+                ],
+            },
+            {
+                "title": "Transport",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": "`Adapter.send()` calls `Response.build()`",
+                        "evidence": ["R2"],
+                    }
+                ],
+            },
+            {
+                "title": "Response",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": "`Response.build()` returns a response",
+                        "evidence": ["E3"],
+                    }
+                ],
+            },
+        ],
+    }
+    rendered = _renderable_plan(plan, evidence, relations)
+    markdown = _fact_plan_markdown(rendered, evidence, relations)
+    quality = _page_quality_report(
+        markdown,
+        rendered,
+        require_dense_sections=True,
+        relations=relations,
+        evidence_items=evidence,
+    )
+
+    assert "## How it fits together" in markdown
+    assert (
+        "How it fits together. The diagram traces the admitted "
+        "source-to-target handoffs between the named components. [R1] [R2]" in markdown
+    )
+    assert "How it fits together" not in quality["thin_sections"]
 
 
 def test_flow_drops_names_that_exist_without_a_proven_relation():
