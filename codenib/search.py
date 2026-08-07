@@ -3,7 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-from typing import Any, Dict, List, Optional
+import stat
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, List, Mapping, Optional
 
 from .agent.extract_agent import KeywordExtraction, extract_keywords_from_statement
 from .graph.code_graph import CodeGraph
@@ -12,8 +14,12 @@ from .llm.litellm_chat import LiteLLMChat
 from .log_utils import get_logger
 from .ls_router import LSIndexer
 from .paths import user_state_dir
+from .types import NODE_TYPE_FILE, NodeInfo, is_symbol_node
 
 logger = get_logger(__name__)
+
+_MAX_SOURCE_BYTES = 8 * 1024 * 1024
+_MAX_CONTEXT_LINES = 1_000
 
 
 class CodeSearchEngine:
@@ -132,7 +138,7 @@ class CodeSearchEngine:
         self,
         problem_statement: str,
         use_keyword_extraction: bool = True,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[NodeInfo]:
         """
         Search the repository for code relevant to the problem statement.
 
@@ -169,7 +175,7 @@ class CodeSearchEngine:
 
     def get_code_context(
         self,
-        result: Dict[str, Any],
+        result: Mapping[str, Any] | NodeInfo,
     ) -> Optional[str]:
         """
         Get source code context for a search result.
@@ -180,38 +186,24 @@ class CodeSearchEngine:
         Returns:
             Source code context as a string, or None if not available
         """
-        # check type first
-        type_of_result = result.get("type")
-        if type_of_result == "file":
-            # If the result is a file, we can return the whole file content
-            file_path = os.path.join(self.repo_path, result["file"])
-            if not os.path.exists(file_path):
-                return None
+        normalized = self._result_mapping(result)
+        path = self._resolve_source_file(normalized.get("file"))
+        if path is None:
+            return None
+        content = self._read_source(path)
+        if content is None:
+            return None
 
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                    return f.read()
-            except Exception as e:
-                logger.error(f"Error reading file {file_path}: {e}")
-                return None
-        elif type_of_result == "symbol":
-            file_path = os.path.join(self.repo_path, result["file"])
-            if not os.path.exists(file_path):
-                return None
-
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                    lines = f.readlines()
-
-                start_line = result.get("start_line", 0)
-                end_line = result.get("end_line", len(lines))
-
-                # Extract the relevant lines
-                context_code = "".join(lines[start_line:end_line])
-                return context_code
-            except Exception as e:
-                logger.error(f"Error getting code context: {e}")
-                return None
+        type_of_result = normalized.get("type")
+        if type_of_result == NODE_TYPE_FILE:
+            return content
+        if not is_symbol_node(type_of_result):
+            return None
+        return self._source_range(
+            content,
+            normalized.get("start_line"),
+            normalized.get("end_line"),
+        )
 
     def get_code_context_by_node_name(
         self,
@@ -231,40 +223,10 @@ class CodeSearchEngine:
         if not attributes:
             logger.warning(f"Node {node_name!r} not found in the code graph.")
             return None
-        # Get the type of the node
-        node_type = attributes.get("type")
-        if node_type == "file":
-            # If the node is a file, return the whole file content
-            file_path = os.path.join(self.repo_path, attributes["name"])
-            if not os.path.exists(file_path):
-                logger.warning(f"File {file_path!r} does not exist.")
-                return None
-
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                    return f.read()
-            except Exception as e:
-                logger.error(f"Error reading file {file_path}: {e}")
-                return None
-        elif node_type == "symbol":
-            file_path = os.path.join(self.repo_path, attributes["file"])
-            if not os.path.exists(file_path):
-                logger.warning(f"File {file_path!r} does not exist.")
-                return None
-
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                    lines = f.readlines()
-
-                start_line = attributes.get("start_line", 0)
-                end_line = attributes.get("end_line", len(lines))
-
-                # Extract the relevant lines
-                context_code = "".join(lines[start_line:end_line])
-                return context_code
-            except Exception as e:
-                logger.error(f"Error getting code context: {e}")
-                return None
+        if attributes.get("type") == NODE_TYPE_FILE:
+            attributes = dict(attributes)
+            attributes["file"] = attributes.get("name")
+        return self.get_code_context(attributes)
 
     def get_predecessor_nodes(
         self,
@@ -290,7 +252,9 @@ class CodeSearchEngine:
         return predecessors
 
     def get_rich_result_context(
-        self, result: Dict[str, Any], context_lines: int = 5
+        self,
+        result: Mapping[str, Any] | NodeInfo,
+        context_lines: int = 5,
     ) -> Dict[str, Any]:
         """
         Enhance a search result with source code context.
@@ -302,42 +266,110 @@ class CodeSearchEngine:
         Returns:
             Enhanced result with source code context
         """
-        if "file" not in result or not result["file"]:
-            return result
+        if (
+            not isinstance(context_lines, int)
+            or isinstance(context_lines, bool)
+            or not 0 <= context_lines <= _MAX_CONTEXT_LINES
+        ):
+            raise ValueError(
+                f"context_lines must be between 0 and {_MAX_CONTEXT_LINES}"
+            )
+        enhanced_result = self._result_mapping(result)
+        path = self._resolve_source_file(enhanced_result.get("file"))
+        if path is None:
+            return enhanced_result
+        content = self._read_source(path)
+        if content is None:
+            return enhanced_result
 
-        file_path = os.path.join(self.repo_path, result["file"])
-        if not os.path.exists(file_path):
-            return result
-
-        # Copy the result to avoid modifying the original
-        enhanced_result = dict(result)
-
-        try:
-            # Get line range from the result
-            start_line = result.get("start_line")
-            end_line = result.get("end_line")
-
-            if start_line is not None and end_line is not None:
-                # Calculate context range
-                context_start = max(0, start_line - context_lines)
-
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                    lines = f.readlines()
-
-                # Adjust context end based on file length
-                context_end = min(len(lines), end_line + context_lines)
-
-                # Extract the relevant lines
-                context_code = "".join(lines[context_start:context_end])
-                enhanced_result["context_code"] = context_code
-                enhanced_result["context_range"] = {
-                    "start": context_start,
-                    "end": context_end,
-                }
-        except Exception as e:
-            logger.error(f"Error getting code context: {e}")
-
+        start_line = self._line_number(enhanced_result.get("start_line"))
+        end_line = self._line_number(enhanced_result.get("end_line"))
+        if start_line is None or end_line is None or end_line < start_line:
+            return enhanced_result
+        lines = content.splitlines(keepends=True)
+        context_start = max(0, start_line - context_lines)
+        context_end = min(len(lines) - 1, end_line + context_lines)
+        if context_start > context_end:
+            return enhanced_result
+        enhanced_result["context_code"] = "".join(
+            lines[context_start : context_end + 1]
+        )
+        enhanced_result["context_range"] = {
+            "start": context_start,
+            "end": context_end,
+        }
         return enhanced_result
+
+    @staticmethod
+    def _result_mapping(result: Mapping[str, Any] | NodeInfo) -> Dict[str, Any]:
+        if isinstance(result, NodeInfo):
+            return result.model_dump(exclude_none=True)
+        if isinstance(result, Mapping):
+            return dict(result)
+        raise TypeError("search result must be a NodeInfo or mapping")
+
+    def _resolve_source_file(self, value: object) -> Optional[Path]:
+        if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
+            return None
+        relative = PurePosixPath(value)
+        if (
+            relative.is_absolute()
+            or value != relative.as_posix()
+            or any(part in {"", ".", ".."} for part in relative.parts)
+        ):
+            return None
+        root = Path(self.repo_path).expanduser().resolve()
+        try:
+            candidate = root.joinpath(*relative.parts).resolve(strict=True)
+        except OSError:
+            return None
+        if root != candidate and root not in candidate.parents:
+            return None
+        return candidate
+
+    @staticmethod
+    def _read_source(path: Path) -> Optional[str]:
+        descriptor = -1
+        try:
+            descriptor = os.open(
+                path,
+                os.O_RDONLY
+                | getattr(os, "O_NONBLOCK", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                return None
+            with os.fdopen(descriptor, "rb") as handle:
+                descriptor = -1
+                content = handle.read(_MAX_SOURCE_BYTES + 1)
+        except OSError:
+            return None
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+        if len(content) > _MAX_SOURCE_BYTES:
+            return None
+        return content.decode("utf-8", errors="replace")
+
+    @staticmethod
+    def _line_number(value: object) -> Optional[int]:
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return None
+        return value
+
+    @classmethod
+    def _source_range(
+        cls,
+        content: str,
+        raw_start: object,
+        raw_end: object,
+    ) -> Optional[str]:
+        start_line = cls._line_number(raw_start)
+        end_line = cls._line_number(raw_end)
+        if start_line is None or end_line is None or end_line < start_line:
+            return None
+        lines = content.splitlines(keepends=True)
+        return "".join(lines[start_line : end_line + 1])
 
     def search_with_context(
         self,
