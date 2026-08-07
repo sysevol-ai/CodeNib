@@ -66,7 +66,7 @@ jobs:
       slow-reason: ${{ steps.slow.outputs.slow-reason }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
@@ -91,7 +91,7 @@ jobs:
 
       - name: Set up classifier Python
         if: github.event_name == 'push'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
 
@@ -178,7 +178,7 @@ jobs:
           echo "TEMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up codenib conda env
         uses: conda-incubator/setup-miniconda@v3
@@ -243,7 +243,7 @@ jobs:
           echo "TEMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
@@ -329,7 +329,7 @@ jobs:
           find "$CACHE_DIR" -maxdepth 2 -mindepth 1 -type d 2>/dev/null | head -40 || true
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
@@ -384,7 +384,7 @@ jobs:
           ln -sfn "$CACHE_DIR" "$HOME/.codenib"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           submodules: recursive
 
@@ -418,7 +418,7 @@ jobs:
         run: python -m pip install pybind11
 
       - name: Cache build/core
-        uses: actions/cache@v4
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/core
           # Reuse the build dir whenever core sources, CMakeLists, and the
@@ -498,7 +498,7 @@ jobs:
           ln -sfn "$CACHE_DIR" "$HOME/.codenib"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           submodules: recursive
 
@@ -560,7 +560,7 @@ jobs:
           fi
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
