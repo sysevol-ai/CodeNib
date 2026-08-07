@@ -134,6 +134,33 @@ def test_run_iter_marks_exact_budget_step_as_stopped() -> None:
     assert steps[0].stop is True
 
 
+def test_run_iter_skips_draft_below_minimum_threshold() -> None:
+    class OneTokenDrafter:
+        def draft(self, context, max_tokens):
+            tree = DraftTree()
+            tree.add_sequence([2], source="test")
+            return tree
+
+    class RecordingOracle(OracleVerifier):
+        seen_sizes: List[int] = []
+
+        def verify(self, context, tree):
+            self.seen_sizes.append(tree.size)
+            return super().verify(context, tree)
+
+    verifier = RecordingOracle([1, 2])
+    server = SpeculativeServer(
+        drafters=[OneTokenDrafter()],
+        config=SpeculativeConfig(max_draft_tokens=8, min_draft_tokens=2),
+    )
+
+    result = server.run([1], verifier, max_new_tokens=1)
+
+    assert result.tokens == [2]
+    assert result.accepted_tokens == 0
+    assert verifier.seen_sizes == [0]
+
+
 @pytest.mark.parametrize("value", [0, -1, True, 1.5])
 def test_run_rejects_invalid_generation_budget(value):
     server = _copy_server()

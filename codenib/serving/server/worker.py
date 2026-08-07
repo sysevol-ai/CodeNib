@@ -213,6 +213,11 @@ class SpeculativeServer:
         while produced < max_new_tokens:
             remaining = max_new_tokens - produced
             tree = self.step(context, max_tokens=remaining)
+            if tree.size < self.config.min_draft_tokens:
+                # Still run the target once for its next-token prediction, but
+                # do not feed a too-small draft whose extra verification work
+                # is unlikely to amortize its overhead.
+                tree = DraftTree()
             result = verifier.verify(context, tree)
 
             emitted = result.emitted[: max_new_tokens - produced]
