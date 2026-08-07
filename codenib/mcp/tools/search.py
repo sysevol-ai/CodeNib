@@ -17,9 +17,11 @@ from ...context_delivery import project_evidence_payloads
 from ...types import NodeInfo
 from ..context import ServerContext
 from ._validation import (
+    MAX_REGEX_FILTER_CHARS,
     MAX_SEARCH_QUERY_CHARS,
     MAX_TOOL_RESULTS,
     bounded_integer,
+    bounded_text,
     required_text,
 )
 
@@ -305,6 +307,22 @@ def search_regex_impl(
         maximum=MAX_SEARCH_QUERY_CHARS,
     )
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
+    normalized_file_glob = (
+        bounded_text(
+            "" if file_glob is None else file_glob,
+            name="file_glob",
+            maximum=MAX_REGEX_FILTER_CHARS,
+        )
+        or None
+    )
+    normalized_node_type = (
+        bounded_text(
+            "" if node_type is None else node_type,
+            name="node_type",
+            maximum=MAX_REGEX_FILTER_CHARS,
+        )
+        or None
+    )
     if ctx.regex_index is None:
         raise RuntimeError(
             "Regex index is not available. "
@@ -315,18 +333,23 @@ def search_regex_impl(
             )
         )
 
+    from ...index.regex_idx import RegexSearchBudgetError, RegexSearchTimeoutError
+
     try:
         results: List[NodeInfo] = ctx.regex_index.search(
             pattern=pattern,
-            file_glob=file_glob,
-            node_type=node_type,
+            file_glob=normalized_file_glob,
+            node_type=normalized_node_type,
             case_sensitive=case_sensitive,
             use_regex=True,
+            top_k=top_k,
         )
+    except (RegexSearchBudgetError, RegexSearchTimeoutError) as exc:
+        raise RuntimeError(str(exc)) from exc
     except ValueError as exc:
         raise RuntimeError(
             f"Invalid regex pattern {pattern!r}: {exc}. "
-            "See https://docs.python.org/3/library/re.html for syntax."
+            "Use a shorter or valid regular expression."
         ) from exc
 
     return _project_nodes(results[:top_k], query=pattern)

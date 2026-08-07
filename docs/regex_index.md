@@ -13,16 +13,24 @@ An in-memory, grep-like index for regex searches across CodeGraph nodes.
 - **In-Memory Storage**: Searches the indexed node list without rescanning the repository
 - **Regex Matching**: Powerful regular expression search capabilities
 - **Glob Filtering**: File path filtering with glob pattern support
+- **Bounded Execution**: One deadline and fixed node budgets cover the full request
 
 ## Overview
 
 The `RegexNodeIndex` provides grep-like functionality for searching code content within a CodeGraph. It stores all nodes in memory with their content and supports:
 
-1. **Regex search** - Pattern matching using Python's `re` module
+1. **Regex search** - Pattern matching using the timeout-capable `regex` module
 2. **Plain string search** - Fast substring matching
 3. **File filtering** - Glob-based file path filtering
 4. **Type filtering** - Search within specific node types (function, class, file, etc.)
 5. **Case sensitivity control** - Optional case-insensitive matching
+
+Regex patterns are capped at 4096 characters. Compilation, file/type filtering,
+and content matching share one two-second deadline. A search scans at most
+100,000 graph nodes and evaluates at most 25,000 content candidates, stopping
+earlier when an optional `top_k` result limit is reached. Exceeding a deadline
+or budget raises an actionable error instead of returning an ambiguous partial
+result. Plain-string searches retain their existing behavior.
 
 ## Quick Start
 
@@ -68,7 +76,8 @@ def search(
     file_glob: Optional[str] = None,
     node_type: Optional[str] = None,
     case_sensitive: bool = False,
-    use_regex: bool = True
+    use_regex: bool = True,
+    top_k: Optional[int] = None
 ) -> List[NodeInfo]
 ```
 
@@ -93,6 +102,11 @@ def search(
 - **`use_regex`** (bool, default=True): Whether to use regex matching
   - `True`: Pattern treated as regular expression
   - `False`: Pattern treated as a plain string
+
+- **`top_k`** (int, optional): Stop after this many matches
+  - MCP calls always pass their validated result limit
+  - Direct calls that omit it retain the existing all-results behavior within
+    the regex request budgets
 
 **Returns:**
 - `List[NodeInfo]`: List of matching nodes

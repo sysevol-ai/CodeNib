@@ -14,9 +14,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from codenib.compiler.manifest import RepoManifest
+from codenib.index.regex_idx import RegexSearchBudgetError, RegexSearchTimeoutError
 from codenib.index.trigram import ZoektUnavailableError
 from codenib.index.trigram.zoekt_searcher import _file_match_to_node
-from codenib.mcp.tools._validation import MAX_SEARCH_QUERY_CHARS
+from codenib.mcp.tools._validation import MAX_REGEX_FILTER_CHARS, MAX_SEARCH_QUERY_CHARS
 from codenib.mcp.tools.search import (
     search_bm25_impl,
     search_context_impl,
@@ -378,6 +379,7 @@ class TestSearchRegex:
             node_type=None,
             case_sensitive=False,
             use_regex=True,
+            top_k=10,
         )
 
     def test_forwards_filters(self) -> None:
@@ -410,6 +412,7 @@ class TestSearchRegex:
 
         results = search_regex_impl(ctx, pattern="x", top_k=10)
         assert len(results) == 10
+        assert mock_regex.search.call_args.kwargs["top_k"] == 10
 
     def test_raises_when_index_missing(self) -> None:
         ctx = _make_ctx(regex_index=None)
@@ -424,6 +427,34 @@ class TestSearchRegex:
 
         with pytest.raises(RuntimeError, match="Invalid regex pattern"):
             search_regex_impl(ctx, pattern=r"[")
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            RegexSearchTimeoutError("request deadline exceeded"),
+            RegexSearchBudgetError("candidate match budget exceeded"),
+        ],
+    )
+    def test_execution_limits_are_not_reported_as_invalid_syntax(self, error) -> None:
+        mock_regex = MagicMock()
+        mock_regex.search.side_effect = error
+        ctx = _make_ctx(regex_index=mock_regex)
+
+        with pytest.raises(RuntimeError, match=str(error)) as exc_info:
+            search_regex_impl(ctx, pattern=r"(a+)+$")
+
+        assert "Invalid regex pattern" not in str(exc_info.value)
+
+    @pytest.mark.parametrize("field", ["file_glob", "node_type"])
+    def test_rejects_oversized_structural_filter(self, field) -> None:
+        mock_regex = MagicMock()
+        with pytest.raises(ValueError, match=f"{field} must not exceed"):
+            search_regex_impl(
+                _make_ctx(regex_index=mock_regex),
+                pattern="x",
+                **{field: "x" * (MAX_REGEX_FILTER_CHARS + 1)},
+            )
+        mock_regex.search.assert_not_called()
 
     @pytest.mark.parametrize(
         ("pattern", "top_k", "message"),

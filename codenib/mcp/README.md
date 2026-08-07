@@ -134,12 +134,19 @@ BM25 keyword retrieval over indexed symbols.
 ### `search_regex`
 Grep-like regex over CodeGraph nodes.
 
-- `pattern` (str): Python `re` pattern.
+- `pattern` (str): regex pattern, limited to 4096 characters.
 - `top_k` (int, default 20): from 1 through 100.
-- `file_glob` (str, default `""`): restrict by file path (e.g. `*.py`).
+- `file_glob` (str, default `""`): restrict by file path (e.g. `*.py`),
+  limited to 4096 characters.
 - `node_type` (str, default `""`): filter by type (`function`, `class`, `method`,
-  `file`, …).
+  `file`, …), limited to 4096 characters.
 - `case_sensitive` (bool, default `False`).
+
+All regex work, including structural filtering, shares a two-second request
+deadline. A request scans at most 100,000 graph nodes and evaluates at most
+25,000 content candidates; it stops earlier once `top_k` matches are found.
+Timeout and budget errors ask callers to simplify the pattern or narrow the
+filters. Plain-string index searches are unaffected by these regex-only guards.
 
 ### `search_zoekt`
 Trigram search over **raw repository contents** (not the CodeGraph), so results are

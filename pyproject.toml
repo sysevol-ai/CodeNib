@@ -41,6 +41,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
     "rank_bm25>=0.2.2",
+    "regex>=2024.11.6",
     "rich>=14.0.0",
     "tree-sitter>=0.25.2",
     "tree-sitter-language-pack>=1.8.1,<1.9.0",

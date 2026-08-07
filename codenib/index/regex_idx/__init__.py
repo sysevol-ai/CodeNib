@@ -2,6 +2,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from .regex_idx import RegexNodeIndex
+from .regex_idx import RegexNodeIndex, RegexSearchBudgetError, RegexSearchTimeoutError
 
-__all__ = ["RegexNodeIndex"]
+__all__ = ["RegexNodeIndex", "RegexSearchBudgetError", "RegexSearchTimeoutError"]
