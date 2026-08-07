@@ -78,7 +78,11 @@ Source of truth, in order of reliability:
 3. **Runtime introspection:**
    ```python
    from sentence_transformers import SentenceTransformer
-   m = SentenceTransformer("<repo-id>", trust_remote_code=True)
+   m = SentenceTransformer(
+       "<repo-id>",
+       revision="<full-commit-sha>",
+       trust_remote_code=True,
+   )
    print(m.prompts)
    ```
 

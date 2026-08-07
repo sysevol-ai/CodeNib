@@ -71,6 +71,36 @@ def test_embedding_pipeline_rejects_huggingface_options_for_remote_provider(
         raise AssertionError("expected provider-specific options to be rejected")
 
 
+def test_retrieve_rerank_pipeline_preserves_embedding_model_policy():
+    from codenib.model.retrieve_rerank_pipeline import RetrieveRerankPipeline
+
+    revision = "f" * 40
+    requested = {
+        "revision": revision,
+        "trust_remote_code": True,
+        "model_kwargs": {"device": "cpu"},
+        "encode_kwargs": {"normalize_embeddings": True},
+    }
+    pipeline = object.__new__(RetrieveRerankPipeline)
+
+    prepared = pipeline._prepare_embedding_kwargs(requested)
+
+    assert prepared == requested
+    assert requested["model_kwargs"] == {"device": "cpu"}
+
+
+def test_retrieve_rerank_pipeline_preserves_explicit_remote_code_rejection():
+    from codenib.model.retrieve_rerank_pipeline import RetrieveRerankPipeline
+
+    pipeline = object.__new__(RetrieveRerankPipeline)
+
+    prepared = pipeline._prepare_embedding_kwargs(
+        {"revision": "a" * 40, "trust_remote_code": False}
+    )
+
+    assert prepared == {"revision": "a" * 40, "trust_remote_code": False}
+
+
 def test_hybrid_pipeline_forwards_model_policy(monkeypatch, tmp_path):
     from codenib.agent.skills.loader import SkillLoader
     from codenib.model import hybrid_retrieve_pipeline as module

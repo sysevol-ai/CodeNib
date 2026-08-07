@@ -758,9 +758,12 @@ class RetrieveRerankPipeline:
             embedding_kwargs["model_kwargs"] = embedding_model_kwargs["model_kwargs"]
         if "encode_kwargs" in embedding_model_kwargs:
             embedding_kwargs["encode_kwargs"] = embedding_model_kwargs["encode_kwargs"]
-        if embedding_model_kwargs.get("trust_remote_code"):
-            model_kwargs = embedding_kwargs.setdefault("model_kwargs", {})
-            model_kwargs["trust_remote_code"] = True
+        if "revision" in embedding_model_kwargs:
+            embedding_kwargs["revision"] = embedding_model_kwargs["revision"]
+        if "trust_remote_code" in embedding_model_kwargs:
+            embedding_kwargs["trust_remote_code"] = embedding_model_kwargs[
+                "trust_remote_code"
+            ]
         return embedding_kwargs
 
     def _needs_engine(self, engine: str) -> bool:
