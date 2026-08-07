@@ -3843,3 +3843,114 @@ a.codepanel-name:hover {
 .addrepo-foot a {
   color: var(--accent);
 }
+
+/* ── Wiki customization (human prior injection) ────────────────────────────── */
+
+.cz-trigger { margin-top: 6px; }
+
+.cz-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.cz-dialog {
+  width: 100%;
+  max-width: 500px;
+  box-sizing: border-box;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.cz-title { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--fg); }
+.cz-sub { margin: 0 0 14px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+
+.cz-scopes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.cz-scope {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cz-scope:hover { color: var(--fg); }
+.cz-scope.on { border-color: var(--fg); color: var(--fg); font-weight: 600; }
+
+.cz-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 8px 0 4px;
+}
+.cz-hint { text-transform: none; letter-spacing: 0; }
+
+.cz-text {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  resize: vertical;
+}
+.cz-text:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+.cz-structure { font-family: var(--mono, ui-monospace, monospace); }
+
+.cz-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  gap: 10px;
+}
+.cz-count { font-size: 11px; color: var(--muted); }
+.cz-actions { display: flex; gap: 8px; }
+
+.cz-ghost {
+  padding: 6px 12px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.cz-ghost:hover { border-color: var(--fg); }
+.cz-ghost:disabled { opacity: 0.5; cursor: default; }
+
+.cz-error { margin: 10px 0 0; font-size: 12px; color: #c0392b; }
+
+/* "customized view" badge on a transformed page */
+.cz-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+@media (max-width: 560px) {
+  .cz-dialog { max-width: 100%; }
+}

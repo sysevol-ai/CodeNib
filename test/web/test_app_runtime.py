@@ -53,8 +53,18 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
             "evidence_count": 0,
             "relation_count": 0,
         },
+        # No customization store on app.state in this test, so the page passes
+        # through _apply_customization untouched but flagged.
+        "customized": False,
     }
-    assert calls == [("page_tree", ()), ("page", ("overview",))]
+    # page_tree, then page generation, then the customization pass — all off the
+    # event loop. The customization arg is the pre-flag page dict, so assert the
+    # call sequence by name rather than by dict identity.
+    assert [name for name, _ in calls] == [
+        "page_tree",
+        "page",
+        "_apply_customization",
+    ]
 
 
 def test_template_wiki_disables_narrator(tmp_path):
