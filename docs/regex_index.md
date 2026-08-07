@@ -13,16 +13,21 @@ An in-memory, grep-like index for regex searches across CodeGraph nodes.
 - **In-Memory Storage**: Searches the indexed node list without rescanning the repository
 - **Regex Matching**: Powerful regular expression search capabilities
 - **Glob Filtering**: File path filtering with glob pattern support
+- **Bounded Execution**: Regex patterns share a two-second request deadline
 
 ## Overview
 
 The `RegexNodeIndex` provides grep-like functionality for searching code content within a CodeGraph. It stores all nodes in memory with their content and supports:
 
-1. **Regex search** - Pattern matching using Python's `re` module
+1. **Regex search** - Pattern matching using the timeout-capable `regex` module
 2. **Plain string search** - Fast substring matching
 3. **File filtering** - Glob-based file path filtering
 4. **Type filtering** - Search within specific node types (function, class, file, etc.)
 5. **Case sensitivity control** - Optional case-insensitive matching
+
+Regex patterns are capped at 4096 characters. Matching across all indexed nodes
+shares one two-second deadline; a timeout raises `RegexSearchTimeoutError`.
+Plain-string searches are unaffected by these regex-only guards.
 
 ## Quick Start
 

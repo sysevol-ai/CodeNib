@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from codenib.compiler.manifest import RepoManifest
+from codenib.index.regex_idx import RegexSearchTimeoutError
 from codenib.index.trigram import ZoektUnavailableError
 from codenib.index.trigram.zoekt_searcher import _file_match_to_node
 from codenib.mcp.tools.search import (
@@ -327,6 +328,18 @@ class TestSearchRegex:
 
         with pytest.raises(RuntimeError, match="Invalid regex pattern"):
             search_regex_impl(ctx, pattern=r"[")
+
+    def test_regex_timeout_is_not_reported_as_invalid_syntax(self) -> None:
+        mock_regex = MagicMock()
+        mock_regex.search.side_effect = RegexSearchTimeoutError(
+            "Regex search exceeded the 2-second execution limit"
+        )
+        ctx = _make_ctx(regex_index=mock_regex)
+
+        with pytest.raises(RuntimeError, match="exceeded the 2-second") as exc_info:
+            search_regex_impl(ctx, pattern=r"(a+)+$")
+
+        assert "Invalid regex pattern" not in str(exc_info.value)
 
 
 # ------------------------------------------------------------------

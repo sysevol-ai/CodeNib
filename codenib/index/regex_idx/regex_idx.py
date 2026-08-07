@@ -6,17 +6,29 @@
 Regex-based in-memory index for CodeGraph nodes.
 """
 
-import re
-from fnmatch import fnmatch
-from typing import List, Optional
+from __future__ import annotations
 
-from ...graph.code_graph import CodeGraph
+import time
+from fnmatch import fnmatch
+from typing import TYPE_CHECKING, List, Optional
+
+import regex
+
 from ...log_utils import get_logger
 from ...types import NODE_TYPE_FILE, NodeInfo
+
+if TYPE_CHECKING:
+    from ...graph.code_graph import CodeGraph
 
 logger = get_logger(__name__)
 
 MAX_CONTENT_CHARS = 8000  # Content truncation to avoid memory overflow
+MAX_REGEX_PATTERN_CHARS = 4096
+REGEX_SEARCH_TIMEOUT_SECONDS = 2.0
+
+
+class RegexSearchTimeoutError(TimeoutError):
+    """Raised when regex matching exceeds the index-wide request deadline."""
 
 
 class RegexNodeIndex:
@@ -121,15 +133,39 @@ class RegexNodeIndex:
         matches = []
 
         if use_regex:
-            # Regex matching
-            flags = 0 if case_sensitive else re.IGNORECASE
+            if len(pattern) > MAX_REGEX_PATTERN_CHARS:
+                raise ValueError(
+                    "Regex pattern exceeds "
+                    f"the {MAX_REGEX_PATTERN_CHARS}-character limit"
+                )
+            flags = 0 if case_sensitive else regex.IGNORECASE
             try:
-                regex = re.compile(pattern, flags)
-            except re.error as e:
-                logger.error(f"Invalid regex pattern {pattern!r}: {e}")
-                raise ValueError(f"Invalid regex pattern: {e}") from e
+                compiled = regex.compile(pattern, flags)
+            except regex.error as exc:
+                logger.error("Invalid regex pattern %r: %s", pattern, exc)
+                raise ValueError(f"Invalid regex pattern: {exc}") from exc
 
-            matches = [n for n in candidates if n.content and regex.search(n.content)]
+            deadline = time.monotonic() + REGEX_SEARCH_TIMEOUT_SECONDS
+            for node in candidates:
+                if not node.content:
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RegexSearchTimeoutError(
+                        "Regex search exceeded the "
+                        f"{REGEX_SEARCH_TIMEOUT_SECONDS:g}-second execution limit; "
+                        "use a simpler pattern or plain-string search"
+                    )
+                try:
+                    matched = compiled.search(node.content, timeout=remaining)
+                except TimeoutError as exc:
+                    raise RegexSearchTimeoutError(
+                        "Regex search exceeded the "
+                        f"{REGEX_SEARCH_TIMEOUT_SECONDS:g}-second execution limit; "
+                        "use a simpler pattern or plain-string search"
+                    ) from exc
+                if matched:
+                    matches.append(node)
         else:
             # Plain string matching
             if case_sensitive:

@@ -277,6 +277,8 @@ def search_regex_impl(
             )
         )
 
+    from ...index.regex_idx import RegexSearchTimeoutError
+
     try:
         results: List[NodeInfo] = ctx.regex_index.search(
             pattern=pattern,
@@ -285,6 +287,8 @@ def search_regex_impl(
             case_sensitive=case_sensitive,
             use_regex=True,
         )
+    except RegexSearchTimeoutError as exc:
+        raise RuntimeError(str(exc)) from exc
     except ValueError as exc:
         raise RuntimeError(
             f"Invalid regex pattern {pattern!r}: {exc}. "

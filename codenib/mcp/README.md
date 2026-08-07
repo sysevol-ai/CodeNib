@@ -128,6 +128,10 @@ Grep-like regex over CodeGraph nodes.
   `file`, …).
 - `case_sensitive` (bool, default `False`).
 
+Patterns are limited to 4096 characters and share a two-second execution
+deadline across the indexed nodes. Timed-out patterns return an explicit error;
+use a simpler pattern or `search_zoekt` for raw repository text.
+
 ### `search_zoekt`
 Trigram search over **raw repository contents** (not the CodeGraph), so results are
 file-level (`type="file"`).
