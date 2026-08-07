@@ -12,6 +12,7 @@ without making any modifications.
 """
 
 import asyncio
+import inspect
 import json
 import os
 import re
@@ -22,6 +23,59 @@ from typing import Any, Dict, List, Optional
 from claude_agent_sdk import ClaudeAgentOptions, query
 
 from ..log_utils import get_logger
+
+_READ_ONLY_TOOLS = ("Read", "Glob", "Grep")
+_DISALLOWED_TOOLS = (
+    "Bash",
+    "Edit",
+    "MultiEdit",
+    "NotebookEdit",
+    "Task",
+    "WebFetch",
+    "WebSearch",
+    "Write",
+)
+_SAFE_PERMISSION_MODES = frozenset({"default", "dontAsk"})
+_REQUIRED_SDK_OPTIONS = frozenset(
+    {
+        "agents",
+        "allowed_tools",
+        "disallowed_tools",
+        "mcp_servers",
+        "permission_mode",
+        "plugins",
+        "setting_sources",
+        "skills",
+        "strict_mcp_config",
+        "tools",
+    }
+)
+
+
+def _require_read_only_sdk_options() -> None:
+    """Fail closed when the installed SDK cannot enforce session isolation."""
+    try:
+        parameters = inspect.signature(ClaudeAgentOptions).parameters
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "Cannot verify that the installed claude-agent-sdk supports "
+            "CodeNib's read-only session isolation; upgrade claude-agent-sdk"
+        ) from exc
+
+    if any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    ):
+        return
+
+    missing = sorted(_REQUIRED_SDK_OPTIONS.difference(parameters))
+    if missing:
+        raise RuntimeError(
+            "Installed claude-agent-sdk cannot enforce CodeNib's read-only "
+            "session isolation; upgrade claude-agent-sdk "
+            f"(missing options: {', '.join(missing)})"
+        )
+
 
 # Canonical chunker-format rules for the `name` field. Shared with
 # codex_agent so both system prompts derive from a single source of truth.
@@ -152,9 +206,37 @@ class ClaudeLocAgent:
         max_turns: int = 100,
         system_prompt: Optional[str] = None,
         allowed_tools: Optional[List[str]] = None,
-        permission_mode: str = "bypassPermissions",
+        permission_mode: str = "dontAsk",
         model: str = "sonnet",
     ):
+        if (
+            not isinstance(max_turns, int)
+            or isinstance(max_turns, bool)
+            or max_turns <= 0
+        ):
+            raise ValueError("max_turns must be a positive integer")
+        requested_tools = list(
+            _READ_ONLY_TOOLS if allowed_tools is None else allowed_tools
+        )
+        unsupported = sorted(
+            {
+                str(tool)
+                for tool in requested_tools
+                if not isinstance(tool, str) or tool not in _READ_ONLY_TOOLS
+            }
+        )
+        if unsupported:
+            raise ValueError(
+                "ClaudeLocAgent supports only read-only tools: "
+                + ", ".join(_READ_ONLY_TOOLS)
+                + f"; rejected: {', '.join(unsupported)}"
+            )
+        if permission_mode not in _SAFE_PERMISSION_MODES:
+            raise ValueError(
+                "ClaudeLocAgent permission_mode must be 'default' or 'dontAsk'"
+            )
+        _require_read_only_sdk_options()
+
         self.logger = get_logger(__name__)
         self.max_turns = max_turns
         self.permission_mode = permission_mode
@@ -166,8 +248,7 @@ class ClaudeLocAgent:
             "that are relevant to a given issue or query.\n\n"
             "CRITICAL RULES:\n"
             "- You are a READ-ONLY agent. DO NOT modify, create, or delete any files.\n"
-            "- Thoroughly explore the codebase using the available tools (Read, Glob, "
-            "Grep, Bash for git commands, etc.).\n"
+            "- Thoroughly explore the codebase using Read, Glob, and Grep.\n"
             "- Trace through call chains, imports, and dependencies to find ALL "
             "relevant locations.\n"
             "- For each relevant symbol (function, class, method, field, etc.), "
@@ -196,14 +277,7 @@ class ClaudeLocAgent:
             "than continuing to explore.\n"
         )
 
-        # Read-only tool set — no Edit/Write/NotebookEdit
-        self.allowed_tools = allowed_tools or [
-            "Task",
-            "Bash",
-            "Glob",
-            "Grep",
-            "Read",
-        ]
+        self.allowed_tools = requested_tools
 
     async def locate_code(
         self,
@@ -237,9 +311,17 @@ class ClaudeLocAgent:
                 max_turns=self.max_turns,
                 system_prompt=self.system_prompt,
                 cwd=Path(repo_path),
+                tools=self.allowed_tools,
                 allowed_tools=self.allowed_tools,
+                disallowed_tools=list(_DISALLOWED_TOOLS),
                 permission_mode=self.permission_mode,
                 model=self.model,
+                setting_sources=[],
+                skills=[],
+                plugins=[],
+                agents={},
+                mcp_servers={},
+                strict_mcp_config=True,
                 output_format={
                     "type": "json_schema",
                     "schema": LOC_OUTPUT_SCHEMA,
@@ -291,9 +373,18 @@ class ClaudeLocAgent:
 
             # Log usage summary
             if usage_info:
+                cost_usd = usage_info["total_cost_usd"]
+                try:
+                    cost_text = (
+                        f"${float(cost_usd):.4f}"
+                        if cost_usd is not None
+                        else "unavailable"
+                    )
+                except (TypeError, ValueError):
+                    cost_text = "unavailable"
                 self.logger.info(
                     f"Usage: turns={usage_info['num_turns']}, "
-                    f"cost=${usage_info['total_cost_usd']:.4f}, "
+                    f"cost={cost_text}, "
                     f"input={usage_info['input_tokens']}, "
                     f"cache_read={usage_info['cache_read_input_tokens']}, "
                     f"cache_create={usage_info['cache_creation_input_tokens']}, "
