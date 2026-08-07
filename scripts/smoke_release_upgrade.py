@@ -75,6 +75,46 @@ def _load_bm25(manifest_path: Path) -> dict[str, object]:
     return bm25
 
 
+def _installed_bm25_identity(
+    python: Path,
+    *,
+    root: Path,
+    env: dict[str, str],
+) -> dict[str, object]:
+    result = _run(
+        [
+            python,
+            "-c",
+            (
+                "import json\n"
+                "from codenib.compiler.index_builders import BM25IndexBuilder\n"
+                "print(json.dumps(BM25IndexBuilder().artifact_identity()))\n"
+            ),
+        ],
+        cwd=root,
+        env=env,
+    )
+    identity = json.loads(result.stdout)
+    if not isinstance(identity, dict):
+        raise RuntimeError(f"installed BM25 builder has no identity: {identity!r}")
+    return identity
+
+
+def _assert_builder_contract(
+    actual: object,
+    expected: dict[str, object],
+) -> None:
+    if not isinstance(actual, dict):
+        raise RuntimeError(f"upgraded BM25 view has no config: {actual!r}")
+    mismatches = {
+        key: {"expected": value, "actual": actual.get(key)}
+        for key, value in expected.items()
+        if actual.get(key) != value
+    }
+    if mismatches:
+        raise RuntimeError(f"unexpected BM25 builder contract: {mismatches!r}")
+
+
 def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
     repository = root / "upgrade-repository"
     repository.mkdir(parents=True)
@@ -135,6 +175,11 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
     version = _run([codenib, "--version"], cwd=root, env=environment).stdout.strip()
     if version != f"codenib {expected_version}":
         raise RuntimeError(f"unexpected upgraded version: {version!r}")
+    expected_bm25_identity = _installed_bm25_identity(
+        python,
+        root=root,
+        env=environment,
+    )
 
     _run(
         [codenib, "index", repository, "--preset", "fast"],
@@ -144,13 +189,7 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
     upgraded = _load_bm25(manifest_path)
     if upgraded.get("built_at") == baseline.get("built_at"):
         raise RuntimeError("0.2 reused the incompatible 0.1 BM25 view")
-    upgraded_config = upgraded.get("config")
-    if not isinstance(upgraded_config, dict):
-        raise RuntimeError(f"upgraded BM25 view has no config: {upgraded!r}")
-    if upgraded_config.get("builder_schema") != 6:
-        raise RuntimeError(f"unexpected BM25 builder schema: {upgraded_config!r}")
-    if upgraded_config.get("repository_filter_policy") != 3:
-        raise RuntimeError(f"unexpected repository filter policy: {upgraded_config!r}")
+    _assert_builder_contract(upgraded.get("config"), expected_bm25_identity)
 
     _run(
         [codenib, "index", repository, "--preset", "fast"],
