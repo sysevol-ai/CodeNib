@@ -98,6 +98,12 @@ revisions; the paper artifact reports that provenance limit. A model not listed
 here may still run through a generic adapter, but it is not a validated quality
 claim.
 
+Remote model code is disabled by default for cross-encoder rerankers. The
+validated Qwen3 and mxbai rerankers load through standard library adapters. A
+custom remote model that requires repository code must opt in explicitly and
+pin `revision` to its full 40-character commit SHA; local model directories may
+opt in without a Hub revision.
+
 ## Query-Aware Planner
 
 `RetrievalPlanner` is deterministic. It does not call an LLM. It maps three

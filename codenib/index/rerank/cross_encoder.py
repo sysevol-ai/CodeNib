@@ -22,9 +22,38 @@ Use :func:`build_reranker` as a factory; it dispatches by model name.
 from __future__ import annotations
 
 import logging
+import re
+from pathlib import Path
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
+
+_IMMUTABLE_REVISION_RE = re.compile(r"[0-9a-f]{40}\Z")
+
+
+def _model_load_kwargs(
+    model_name: str,
+    *,
+    revision: Optional[str],
+    trust_remote_code: bool,
+) -> dict[str, object]:
+    """Build least-privilege Hugging Face model-loading arguments."""
+
+    is_local_model = Path(model_name).expanduser().is_dir()
+    if (
+        trust_remote_code
+        and not is_local_model
+        and not (revision and _IMMUTABLE_REVISION_RE.fullmatch(revision))
+    ):
+        raise ValueError(
+            "trust_remote_code=True for a remote reranker requires revision to "
+            "be a full 40-character lowercase commit SHA"
+        )
+
+    kwargs: dict[str, object] = {"trust_remote_code": trust_remote_code}
+    if revision is not None:
+        kwargs["revision"] = revision
+    return kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +74,8 @@ class STCrossEncoderWrapper:
         *,
         max_length: Optional[int] = None,
         batch_size: int = 16,
-        trust_remote_code: bool = True,
+        revision: Optional[str] = None,
+        trust_remote_code: bool = False,
         device: Optional[str] = None,
         torch_dtype: Optional[str] = None,
         instruction: Optional[
@@ -64,7 +94,11 @@ class STCrossEncoderWrapper:
                 instruction,
             )
 
-        kwargs = {"trust_remote_code": trust_remote_code}
+        kwargs = _model_load_kwargs(
+            model_name,
+            revision=revision,
+            trust_remote_code=trust_remote_code,
+        )
         if max_length is not None:
             kwargs["max_length"] = max_length
         if device is not None:
@@ -75,8 +109,9 @@ class STCrossEncoderWrapper:
 
         self._model = CrossEncoder(model_name, **kwargs)
         logger.info(
-            "Loaded ST CrossEncoder: %s (max_length=%s, batch_size=%d)",
+            "Loaded ST CrossEncoder: %s (revision=%s, max_length=%s, " "batch_size=%d)",
             model_name,
+            revision,
             max_length,
             batch_size,
         )
@@ -158,7 +193,8 @@ class QwenRerankerWrapper:
         instruction: str = _QWEN_DEFAULT_INSTRUCTION,
         device: Optional[str] = None,
         torch_dtype: Optional[str] = "auto",
-        trust_remote_code: bool = True,
+        revision: Optional[str] = None,
+        trust_remote_code: bool = False,
     ) -> None:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -168,13 +204,16 @@ class QwenRerankerWrapper:
         self.batch_size = batch_size
         self.instruction = instruction
 
-        self._tokenizer = AutoTokenizer.from_pretrained(
+        load_kwargs = _model_load_kwargs(
             model_name,
-            padding_side="left",
+            revision=revision,
             trust_remote_code=trust_remote_code,
         )
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            model_name, padding_side="left", **load_kwargs
+        )
 
-        model_kwargs = {"trust_remote_code": trust_remote_code}
+        model_kwargs = dict(load_kwargs)
         if torch_dtype is not None:
             model_kwargs["torch_dtype"] = torch_dtype
         self._model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
@@ -202,9 +241,10 @@ class QwenRerankerWrapper:
         )
 
         logger.info(
-            "Loaded Qwen reranker: %s (device=%s, max_length=%d, "
+            "Loaded Qwen reranker: %s (revision=%s, device=%s, max_length=%d, "
             "batch_size=%d, instruction=%r)",
             model_name,
+            revision,
             device,
             max_length,
             batch_size,

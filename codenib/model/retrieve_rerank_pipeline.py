@@ -127,6 +127,9 @@ class RetrieveRerankPipeline:
         rerank_index_metric: Similarity metric for the rerank vector index.
         crossencoder_model: Model used by cross-encoder reranking.
         crossencoder_batch_size: Batch size used by the cross-encoder.
+        crossencoder_revision: Optional Hugging Face model revision.
+        crossencoder_trust_remote_code: Whether to execute model repository
+            code. Remote models require an immutable commit revision.
         languages: Languages to chunk for indexing (default: ["python"]).
         max_lines_per_chunk: Maximum lines per chunk passed to chunker.
         sparse_max_k: Upper bound for BM25 index fan-out; defaults to 128.
@@ -169,6 +172,8 @@ class RetrieveRerankPipeline:
         rerank_index_metric: str = "ip",
         crossencoder_model: str = "Qwen/Qwen3-Reranker-0.6B",
         crossencoder_batch_size: int = 8,
+        crossencoder_revision: Optional[str] = None,
+        crossencoder_trust_remote_code: bool = False,
         languages: Optional[List[str]] = None,
         max_lines_per_chunk: int = 100,
         sparse_max_k: int = 128,
@@ -275,6 +280,8 @@ class RetrieveRerankPipeline:
             self.cross_encoder = build_reranker(
                 crossencoder_model,
                 batch_size=crossencoder_batch_size,
+                revision=crossencoder_revision,
+                trust_remote_code=crossencoder_trust_remote_code,
             )
             logger.info(
                 "Cross-encoder reranker loaded",

@@ -36,11 +36,17 @@ class CrossEncoderContext:
             (Qwen3-Reranker logit trick), or ``None`` to auto-detect from
             the model name (``"Qwen3-Reranker"`` in name → qwen; else st).
         batch_size: Scoring batch size forwarded to the wrapper.
+        revision: Optional Hugging Face model revision. Remote model code may
+            only be trusted when this is a full immutable commit SHA.
+        trust_remote_code: Whether to execute model code supplied by the model
+            repository. Disabled by default.
     """
 
     model_name: str
     backend: Optional[str] = None
     batch_size: int = 16
+    revision: Optional[str] = None
+    trust_remote_code: bool = False
     _wrapper: Any = field(default=None, init=False, repr=False)
 
     def ensure_wrapper(self) -> Any:
@@ -51,6 +57,8 @@ class CrossEncoderContext:
                 self.model_name,
                 backend=self.backend,
                 batch_size=self.batch_size,
+                revision=self.revision,
+                trust_remote_code=self.trust_remote_code,
             )
             logger.info(
                 "Loaded cross-encoder: %s (backend=%s)", self.model_name, self.backend
