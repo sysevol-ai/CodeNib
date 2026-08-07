@@ -37,6 +37,15 @@ class _FakeSentenceTransformer:
         return self._transformer
 
 
+class _UnavailableModelMetadata:
+    def __init__(self):
+        self.tokenizer = SimpleNamespace(model_max_length=4096)
+        self.max_seq_length = 4096
+
+    def __getitem__(self, index):
+        raise RuntimeError("model metadata is unavailable")
+
+
 @pytest.mark.parametrize(
     ("max_positions", "position_padding_idx", "requested", "expected"),
     [
@@ -73,3 +82,22 @@ def test_huggingface_sequence_length_uses_the_loaded_embedding_table(
 
     assert wrapper._model.tokenizer.model_max_length == 1024
     assert wrapper._model.max_seq_length == 1024
+
+
+def test_huggingface_sequence_length_applies_explicit_cap_without_metadata():
+    wrapper = _HuggingFaceEmbeddingWrapper.__new__(_HuggingFaceEmbeddingWrapper)
+    wrapper._model = _UnavailableModelMetadata()
+
+    wrapper._apply_max_seq_length("test/model", 128)
+
+    assert wrapper._model.tokenizer.model_max_length == 128
+    assert wrapper._model.max_seq_length == 128
+
+
+@pytest.mark.parametrize("requested", [0, -1, True, 128.5, "128"])
+def test_huggingface_sequence_length_rejects_invalid_explicit_cap(requested):
+    wrapper = _HuggingFaceEmbeddingWrapper.__new__(_HuggingFaceEmbeddingWrapper)
+    wrapper._model = _FakeSentenceTransformer(1026, 1)
+
+    with pytest.raises(ValueError, match="positive integer"):
+        wrapper._apply_max_seq_length("test/model", requested)

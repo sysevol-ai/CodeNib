@@ -118,6 +118,9 @@ def test_vector_store_with_huggingface(tmp_path):
     )
     try:
         assert vector_store.embedding.client.max_seq_length <= 1024
+        long_query_embedding = vector_store.embedding.embed_query("identifier " * 2048)
+        assert len(long_query_embedding) == 768
+
         chunks = create_sample_code_chunks()
         vector_store.add_code_chunks(chunks)
         assert vector_store.get_stats()["total_documents"] == len(chunks)

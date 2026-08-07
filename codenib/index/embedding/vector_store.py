@@ -126,10 +126,21 @@ class _HuggingFaceEmbeddingWrapper:
         self, model_name: str, max_seq_length: Optional[int]
     ) -> None:
         """Cap tokenizer input to the model's usable position capacity."""
+        if max_seq_length is not None and (
+            isinstance(max_seq_length, bool)
+            or not isinstance(max_seq_length, int)
+            or max_seq_length <= 0
+        ):
+            raise ValueError("max_seq_length must be a positive integer")
+
+        effective_max = max_seq_length
         try:
-            tok = self._model.tokenizer
             auto_model = self._model[0].auto_model
-            max_pos = getattr(auto_model.config, "max_position_embeddings", None)
+            max_pos = getattr(
+                getattr(auto_model, "config", None),
+                "max_position_embeddings",
+                None,
+            )
 
             # RoBERTa-derived models number non-padding positions after their
             # padding index. Their embedding table can therefore hold fewer
@@ -145,46 +156,67 @@ class _HuggingFaceEmbeddingWrapper:
             capacities = [
                 value
                 for value in (max_pos, table_size)
-                if isinstance(value, int) and value > 0
+                if isinstance(value, int) and not isinstance(value, bool) and value > 0
             ]
             model_capacity = min(capacities) if capacities else None
             padding_idx = getattr(position_embeddings, "padding_idx", None)
             if (
                 isinstance(model_capacity, int)
                 and isinstance(padding_idx, int)
+                and not isinstance(padding_idx, bool)
                 and padding_idx >= 0
             ):
                 model_capacity -= padding_idx + 1
 
-            effective_max = max_seq_length
             if isinstance(model_capacity, int) and model_capacity > 0:
                 effective_max = (
                     min(max_seq_length, model_capacity)
                     if max_seq_length is not None
                     else model_capacity
                 )
-            if effective_max:
-                if tok.model_max_length > effective_max:
-                    tok.model_max_length = effective_max
-                if self._model.max_seq_length > effective_max:
-                    logger.info(
-                        "Capping max_seq_length from %s to %s for model %s",
-                        self._model.max_seq_length,
-                        effective_max,
-                        model_name,
-                    )
-                    self._model.max_seq_length = effective_max
         except Exception as e:
             if max_seq_length is not None:
                 logger.warning(
-                    "--max-seq-length %s was requested but could not be "
-                    "applied to model %s: %s. CUDA OOM may occur.",
-                    max_seq_length,
+                    "Could not inspect position capacity for model %s: %s. "
+                    "Applying requested --max-seq-length %s as a best-effort cap.",
                     model_name,
                     e,
+                    max_seq_length,
                 )
             else:
-                logger.debug("Could not check tokenizer max length: %s", e)
+                logger.debug("Could not inspect tokenizer position capacity: %s", e)
+
+        if effective_max is None:
+            return
+
+        failures = []
+        try:
+            tok = self._model.tokenizer
+            if tok.model_max_length > effective_max:
+                tok.model_max_length = effective_max
+        except Exception as e:
+            failures.append(f"tokenizer: {e}")
+
+        try:
+            if self._model.max_seq_length > effective_max:
+                logger.info(
+                    "Capping max_seq_length from %s to %s for model %s",
+                    self._model.max_seq_length,
+                    effective_max,
+                    model_name,
+                )
+                self._model.max_seq_length = effective_max
+        except Exception as e:
+            failures.append(f"sentence transformer: {e}")
+
+        if failures:
+            logger.warning(
+                "Sequence-length cap %s could not be fully applied to model %s "
+                "(%s). CUDA OOM or position-index errors may occur.",
+                effective_max,
+                model_name,
+                "; ".join(failures),
+            )
 
     def _build_encode_kwargs(
         self,
