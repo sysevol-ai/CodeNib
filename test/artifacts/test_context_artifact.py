@@ -17,6 +17,7 @@ from codenib.artifacts import (
     CONTEXT_ARTIFACT_SCHEMA,
     stage_context_artifact,
 )
+from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
@@ -54,6 +55,10 @@ def _fixture_manifest(
             )
             + "\n"
         )
+    view_config = {
+        "artifact_file_fingerprints": bm25_artifact_file_fingerprints(view_path),
+        **(config or {}),
+    }
     manifest_path = index_root / "repo_manifest.json"
     source_fingerprint = fingerprint_repository(repo).value
     RepoManifest(
@@ -71,7 +76,7 @@ def _fixture_manifest(
                 built_at="2026-08-04T00:00:00+00:00",
                 built_at_epoch=1.0,
                 status=status,
-                config=dict(config or {}),
+                config=view_config,
                 commit="a" * 40,
                 source_fingerprint=source_fingerprint,
             )
@@ -342,6 +347,23 @@ def test_context_artifact_rejects_tampered_vector_level(tmp_path: Path) -> None:
             manifest_path,
             tmp_path / "publish" / "context",
             repository="example/vector-project",
+        )
+
+
+def test_context_artifact_rejects_tampered_bm25_generation(tmp_path: Path) -> None:
+    repo, manifest_path, bm25 = _fixture_manifest(tmp_path)
+    documents = bm25 / "documents.json"
+    documents.write_text(
+        documents.read_text(encoding="utf-8").replace("value", "other"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="manifest fingerprints"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            tmp_path / "publish" / "context",
+            repository="example/project",
         )
 
 

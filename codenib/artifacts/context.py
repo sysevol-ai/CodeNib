@@ -18,7 +18,10 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .. import compat_pickle
 from .._version import package_version
-from ..compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
+from ..compiler.artifact_fingerprints import (
+    bm25_artifact_file_fingerprints,
+    require_bm25_manifest_artifact,
+)
 from ..compiler.checkout_identity import validate_checkout_identity
 from ..compiler.manifest import MANIFEST_FILENAME, RepoManifest
 from ..compiler.snapshot_store import normalize_repo
@@ -440,6 +443,11 @@ def stage_context_artifact(
                         route.model.replace("/", "__"),
                         expected_config,
                     )
+            elif view == "bm25":
+                # Validate the committed source generation before copying and
+                # rewriting its machine-local metadata. Otherwise staging
+                # could bless a torn or tampered source with fresh hashes.
+                require_bm25_manifest_artifact(entry)
             relative = _copy_view(source, stage, view)
             adjustments = _normalize_copied_view(
                 stage,
