@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from codenib.code_chunker import CodeChunker, RepoChunkingConfig
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.graph.code_graph import CodeGraph
 from codenib.index.sparse_idx import BM25CodeIndexer
@@ -166,6 +167,28 @@ def build_integration_graph(repo_root: Path) -> CodeGraph:
     return graph
 
 
+def _build_source_bm25(
+    repo_root: Path,
+    languages: list[str],
+    output_dir: Path,
+) -> None:
+    """Build the fixture BM25 view through the production chunk contract."""
+    primary = languages[0] if languages else "python"
+    chunker = CodeChunker(
+        language=primary,
+        repo_config=RepoChunkingConfig(languages=languages),
+        max_lines_per_chunk=300,
+        include_header_epilogue=True,
+    )
+    chunks = chunker.chunk_repository(repo_path=str(repo_root), strict=True)
+    indexer = BM25CodeIndexer(
+        chunks=chunks,
+        max_k=128,
+        project_root=str(repo_root),
+    )
+    indexer.save_index(str(output_dir))
+
+
 @pytest.fixture()
 def integration_manifest(tmp_path: Path) -> Path:
     repo_root = tmp_path / "repo"
@@ -179,9 +202,7 @@ def integration_manifest(tmp_path: Path) -> Path:
 
     bm25_dir = tmp_path / "bm25"
     bm25_dir.mkdir()
-    bm25 = BM25CodeIndexer()
-    bm25.build_index_from_graph(graph)
-    bm25.save_index(str(bm25_dir))
+    _build_source_bm25(repo_root, ["python"], bm25_dir)
 
     manifest = RepoManifest(
         repo_path=str(repo_root),
@@ -280,10 +301,12 @@ def multilanguage_integration_manifest(integration_manifest: Path) -> Path:
     graph.build_range_indexes()
     graph.save_graph(str(graph_path))
 
-    bm25 = BM25CodeIndexer()
-    bm25.build_index_from_graph(graph)
-    bm25.save_index(manifest.indexes["bm25"].path)
     manifest.languages = ["python", "typescript", "go"]
+    _build_source_bm25(
+        repo_root,
+        manifest.languages,
+        Path(manifest.indexes["bm25"].path),
+    )
     manifest.save(integration_manifest)
     return integration_manifest
 
