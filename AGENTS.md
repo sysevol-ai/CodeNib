@@ -31,6 +31,11 @@ For the current multi-language SCIP cold-start and acceleration program, use
 whenever a backend is promoted, a C++ acceleration gate changes, or a related
 issue/PR is closed.
 
+For the hybrid storage backend program, use
+`docs/storage_backend_roadmap.md` as the durable objective record. Update it
+whenever a storage milestone changes status, a publication or compatibility
+gate changes, or a related issue/PR is reconciled.
+
 ## Dev Commands
 
 ```bash
