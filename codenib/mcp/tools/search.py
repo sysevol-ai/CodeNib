@@ -16,11 +16,14 @@ from ...types import NodeInfo
 from ..context import ServerContext
 
 MAX_SEARCH_RESULTS = 100
+MAX_SEARCH_QUERY_CHARS = 16_000
 
 
-def _require_nonempty(value: str, name: str) -> str:
+def _validate_search_text(value: str, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must not be empty.")
+    if len(value) > MAX_SEARCH_QUERY_CHARS:
+        raise ValueError(f"{name} must not exceed {MAX_SEARCH_QUERY_CHARS} characters.")
     return value
 
 
@@ -48,7 +51,7 @@ def search_context_impl(
     filter_test: bool = False,
 ) -> Dict[str, Any]:
     """Plan and execute ranked retrieval over the available repository views."""
-    normalized_query = _require_nonempty(query, "query").strip()
+    normalized_query = _validate_search_text(query, "query").strip()
     top_k = _validate_top_k(top_k)
     normalized_level = (level or "l2").strip().lower()
     if normalized_level not in {"l0", "l2"}:
@@ -189,7 +192,7 @@ async def search_semantic(
         List of NodeInfo dicts with scores and content. On missing index,
         returns ``{"error": ...}`` so callers can handle gracefully.
     """
-    query = _require_nonempty(query, "query")
+    query = _validate_search_text(query, "query")
     top_k = _validate_top_k(top_k)
     if ctx.vector is None:
         return {
@@ -241,7 +244,7 @@ def search_bm25_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content, score.
     """
-    query = _require_nonempty(query, "query")
+    query = _validate_search_text(query, "query")
     top_k = _validate_top_k(top_k)
     if ctx.bm25 is None:
         raise RuntimeError(
@@ -286,7 +289,7 @@ def search_regex_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content.
     """
-    pattern = _require_nonempty(pattern, "pattern")
+    pattern = _validate_search_text(pattern, "pattern")
     top_k = _validate_top_k(top_k)
     if ctx.regex_index is None:
         raise RuntimeError(
@@ -347,7 +350,7 @@ def search_zoekt_impl(
         (``"file"``), ``file``, ``start_line``, ``end_line``, ``content``,
         ``score``, ``node_id`` (language hint, when reported).
     """
-    query = _require_nonempty(query, "query")
+    query = _validate_search_text(query, "query")
     top_k = _validate_top_k(top_k)
     if ctx.zoekt is None:
         raise RuntimeError(

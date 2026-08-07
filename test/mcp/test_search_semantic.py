@@ -15,7 +15,7 @@ import pytest
 
 from codenib.compiler.manifest import RepoManifest
 from codenib.mcp.context import ServerContext
-from codenib.mcp.tools.search import search_semantic
+from codenib.mcp.tools.search import MAX_SEARCH_QUERY_CHARS, search_semantic
 from codenib.types import NodeInfo
 
 
@@ -132,6 +132,18 @@ def test_search_semantic_empty_results(mock_context):
 def test_search_semantic_rejects_blank_query_before_provider(mock_context, query):
     with pytest.raises(ValueError, match="query must not be empty"):
         asyncio.run(search_semantic(mock_context, query=query))
+
+    mock_context.vector.search_with_content.assert_not_called()
+
+
+def test_search_semantic_rejects_oversized_query_before_provider(mock_context):
+    with pytest.raises(ValueError, match="must not exceed 16000 characters"):
+        asyncio.run(
+            search_semantic(
+                mock_context,
+                query="x" * (MAX_SEARCH_QUERY_CHARS + 1),
+            )
+        )
 
     mock_context.vector.search_with_content.assert_not_called()
 

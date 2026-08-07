@@ -82,8 +82,8 @@ also remain available. All forms accept
 
 All source locations returned by MCP use 1-based line numbers. Internal indexes
 remain 0-based; the MCP adapters perform the conversion once at the boundary.
-All search tools reject blank queries and accept integer `top_k` values from 1
-through 100.
+All search tools reject blank queries and query text longer than 16,000
+characters. They accept integer `top_k` values from 1 through 100.
 
 ### `search_context`
 Plans and executes ranked retrieval without asking the agent to choose an index.

@@ -125,7 +125,9 @@ Only tools whose backing views are fresh and available can return results.
 | `lsp_route` | `symbol_graph` | locations | Compact route anchors among related symbols |
 | `get_manifest` | manifest | repository | Repository identity, languages, view states, and capabilities |
 
-All source locations returned by MCP use 1-based line numbers.
+All source locations returned by MCP use 1-based line numbers. Search tools
+reject blank query text, cap it at 16,000 characters, and accept `top_k` values
+from 1 through 100.
 
 `search_context` accepts `query`, `top_k` (1-100), `budget`
 (`fast`, `balanced`, or `thorough`), dense `level` (`l0` or `l2`), and
