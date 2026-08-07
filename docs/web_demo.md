@@ -207,6 +207,21 @@ The backend exposes (all under `/api`):
 | `POST /api/repos/{id}/edge-label` | Short LLM phrase for how a graph edge's source uses its target (opt-in via `edge_labels`; returns `disabled` when off) |
 | `POST /api/chat` | Ask: answer + citations |
 
+Interactive requests are bounded before repository or model work:
+
+| Boundary | Public budget |
+|---|---|
+| Ask (`POST /api/chat`) | 128 messages; 65,536 characters per message; 262,144 characters across the conversation; 512 characters for `repo_id` |
+| Edge label (`POST /api/repos/{id}/edge-label`) | 4,096 characters per file path; 1,024 characters per display label; 128 characters for the commit; 32 call-site anchors with positive line numbers |
+| Direct FastAPI request body | 8 MiB, enforced while streaming even without `Content-Length` |
+| Installed same-origin proxy | 8 MiB request body and 32 MiB upstream response body |
+
+The browser sends only the first three edge-label anchors because prompt
+generation consumes at most that sample. The installed proxy rejects
+transfer-encoded request bodies and malformed, negative, or oversized
+`Content-Length` values instead of buffering them. Validation errors omit the
+rejected input so oversized prompts are not reflected back to clients.
+
 The `/commits` endpoint and the `commit` parameter are served from per-commit
 graph snapshots — see [Per-commit graph snapshots](#per-commit-graph-snapshots)
 below.

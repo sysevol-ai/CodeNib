@@ -39,6 +39,23 @@ def test_chat_request_bounds_each_message() -> None:
         )
 
 
+def test_chat_request_preserves_bounded_follow_up_history() -> None:
+    request = ChatRequest(
+        repo_id="repo",
+        messages=[
+            {"role": "user", "content": "Where is indexing configured?"},
+            {"role": "assistant", "content": "See codenib/compiler."},
+            {"role": "user", "content": "What calls it?"},
+        ],
+    )
+
+    assert [message.role for message in request.messages] == [
+        "user",
+        "assistant",
+        "user",
+    ]
+
+
 def test_edge_label_request_bounds_locations_and_anchor_count() -> None:
     endpoint = EdgeEndpoint(file="src/runtime.py", line=1)
 
@@ -49,6 +66,27 @@ def test_edge_label_request_bounds_locations_and_anchor_count() -> None:
             source=endpoint,
             target=endpoint,
             anchors=[{"file": "src/runtime.py", "line": 1}] * 33,
+        )
+
+
+def test_edge_label_request_bounds_text_fields() -> None:
+    endpoint = EdgeEndpoint(file="src/runtime.py", line=1)
+
+    with pytest.raises(ValidationError, match="at most 4096"):
+        EdgeEndpoint(file="f" * 4097, line=1)
+    with pytest.raises(ValidationError, match="at most 1024"):
+        EdgeEndpoint(file="src/runtime.py", line=1, label="n" * 1025)
+    with pytest.raises(ValidationError, match="at most 128"):
+        EdgeLabelRequest(
+            source=endpoint,
+            target=endpoint,
+            commit="c" * 129,
+        )
+    with pytest.raises(ValidationError, match="at most 4096"):
+        EdgeLabelRequest(
+            source=endpoint,
+            target=endpoint,
+            anchors=[{"file": "a" * 4097, "line": 1}],
         )
 
 

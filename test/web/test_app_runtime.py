@@ -9,7 +9,26 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+from fastapi.testclient import TestClient
+
 import codenib.web.app as web_app
+
+
+def test_oversized_chat_request_is_rejected_before_runtime_lookup(monkeypatch):
+    def unexpected_registry_lookup():
+        raise AssertionError("invalid chat payload reached the repository runtime")
+
+    monkeypatch.setattr(web_app, "_registry", unexpected_registry_lookup)
+
+    response = TestClient(web_app.app).post(
+        "/api/chat",
+        json={
+            "repo_id": "missing",
+            "messages": [{"role": "user", "content": "bounded"} for _ in range(129)],
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_wiki_generation_runs_off_event_loop(monkeypatch):
