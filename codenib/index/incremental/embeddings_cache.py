@@ -271,7 +271,10 @@ class EmbeddingsCache:
         path = Path(path)
         json_path = path.with_suffix(".json")
         npz_path = path.with_suffix(".npz")
-        if (json_path.exists() and npz_path.exists()) or path.exists():
+        # Any modern sidecar means a generation was started. Delegate to
+        # ``load`` so a torn JSON/NPZ pair is reported as corruption instead
+        # of being mistaken for a cache that has never been built.
+        if json_path.exists() or npz_path.exists() or path.exists():
             return cls.load(path)
         return cls()
 

@@ -128,6 +128,19 @@ class TestPersistence:
         loaded = EmbeddingsCache.load_or_empty(path)
         assert loaded.size() == 1
 
+    @pytest.mark.parametrize("present_suffix", [".json", ".npz"])
+    def test_load_or_empty_rejects_partial_modern_generation_without_pickle(
+        self,
+        tmp_path: Path,
+        present_suffix: str,
+    ):
+        path = tmp_path / "cache.pkl"
+        sidecar = path.with_suffix(present_suffix)
+        sidecar.write_bytes(b"[]" if present_suffix == ".json" else b"partial")
+
+        with pytest.raises(ValueError, match=r"incomplete JSON\+NPZ generation"):
+            EmbeddingsCache.load_or_empty(path)
+
     def test_load_rejects_hash_vector_generation_mismatch(self, tmp_path: Path):
         cache = EmbeddingsCache()
         cache.put("h1", make_vec(1.0))
