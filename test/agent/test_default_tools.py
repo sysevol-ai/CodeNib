@@ -45,6 +45,7 @@ from codenib.agent.skills.registry import SkillRegistry
 from codenib.agent.tool_schema import tool_to_schema
 from codenib.agent.tools.defaults import (
     _BASH_MAX_OUTPUT_CHARS,
+    _GREP_MAX_OUTPUT_CHARS,
     _MAX_LINES_LIMIT,
     _MAX_RESULTS_LIMIT,
     _READ_MAX_OUTPUT_CHARS,
@@ -331,6 +332,27 @@ class TestGrep:
 
         assert result == "Error: grep timed out after 0.05s"
 
+    def test_ripgrep_stderr_is_drained_into_a_bounded_prefix(
+        self, tmp_path, monkeypatch
+    ):
+        noisy_rg = tmp_path / "noisy-rg"
+        script = "import sys; sys.stderr.write('x' * 1000000); raise SystemExit(2)"
+        noisy_rg.write_text(
+            f"#!{sys.executable}\n{script}\n",
+            encoding="utf-8",
+        )
+        noisy_rg.chmod(0o755)
+        monkeypatch.setattr(
+            "codenib.agent.tools.defaults.shutil.which",
+            lambda _command: str(noisy_rg),
+        )
+
+        result = _grep("needle", path=str(tmp_path))
+
+        assert result.startswith("Error executing grep")
+        assert "(output truncated)" in result
+        assert len(result) <= _GREP_MAX_OUTPUT_CHARS + 200
+
     def test_invalid_output_mode_returns_error(self, sample_dir):
         result = _grep("x", path=str(sample_dir), output_mode="bogus")
         assert result.startswith("Error:") and "output_mode" in result
@@ -427,12 +449,31 @@ class TestBash:
         result = _bash("sleep 2", timeout=1000)
         assert result.startswith("Error:") and "timed out" in result
 
+    def test_subsecond_timeout_is_not_rounded_to_one_second(self):
+        result = _bash("sleep 2", timeout=100)
+
+        assert result.startswith("Error:")
+        assert "timed out after 0.1s" in result
+
     def test_timeout_kills_background_process_group(self):
         started = time.monotonic()
         result = _bash("sleep 5 &", timeout=1000)
 
         assert result.startswith("Error:") and "timed out" in result
         assert time.monotonic() - started < 3
+
+    def test_timeout_kills_background_process_with_redirected_pipes(self, tmp_path):
+        marker = tmp_path / "escaped"
+        command = (
+            f"(sleep 0.5; printf escaped > {shlex.quote(str(marker))}) "
+            ">/dev/null 2>&1 &"
+        )
+
+        result = _bash(command, timeout=100)
+        time.sleep(0.6)
+
+        assert result.startswith("Error:") and "timed out" in result
+        assert not marker.exists()
 
     def test_description_accepted(self):
         """The reference `description` metadata field is accepted and ignored."""
@@ -448,6 +489,61 @@ class TestBash:
         result = _bash("yes hello | head -n 20000")
         assert "(output truncated)" in result
         assert len(result) <= _BASH_MAX_OUTPUT_CHARS + 200
+
+    def test_stdout_stderr_and_decode_stay_bounded(self):
+        script = (
+            "import os; "
+            "os.write(1, b'\\xff' * 100000); "
+            "os.write(2, b'\\xfe' * 100000)"
+        )
+        command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
+
+        result = _bash(command, timeout=5000)
+
+        assert "(output truncated)" in result
+        assert "\N{REPLACEMENT CHARACTER}" in result
+        assert len(result) <= _BASH_MAX_OUTPUT_CHARS + 200
+
+    def test_long_command_label_does_not_hide_result(self):
+        command = "printf visible #" + ("x" * 30_000)
+
+        result = _bash(command)
+
+        assert "[command truncated]" in result
+        assert "exit code: 0" in result
+        assert "visible" in result
+
+    def test_timeout_error_bounds_long_command(self):
+        command = "sleep 2 #" + ("x" * 30_000)
+
+        result = _bash(command, timeout=100)
+
+        assert result.startswith("Error:") and "[command truncated]" in result
+        assert len(result) <= _BASH_MAX_OUTPUT_CHARS + 200
+
+    def test_spawn_error_is_bounded(self, monkeypatch):
+        def reject_spawn(*_args, **_kwargs):
+            raise OSError("x" * 100_000)
+
+        monkeypatch.setattr(
+            "codenib.agent.tools.defaults.subprocess.Popen", reject_spawn
+        )
+
+        result = _bash("true")
+
+        assert result.startswith("Error executing command")
+        assert "(output truncated)" in result
+        assert len(result) <= _BASH_MAX_OUTPUT_CHARS + 200
+
+    def test_wait_error_kills_command_and_returns_error(self, monkeypatch):
+        def reject_wait(*_args, **_kwargs):
+            raise OSError("wait failed")
+
+        monkeypatch.setattr("codenib.agent.tools.defaults._wait_for_bash", reject_wait)
+
+        result = _bash("sleep 5")
+
+        assert result == "Error executing command 'sleep 5': wait failed"
 
     def test_output_cap_does_not_cancel_command_side_effects(self, tmp_path):
         marker = tmp_path / "completed"

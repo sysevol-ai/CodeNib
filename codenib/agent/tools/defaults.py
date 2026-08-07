@@ -96,6 +96,8 @@ _BASH_TIMEOUT_MS_MAX: int = 600_000
 _BASH_MAX_COMMAND_CHARS: int = 32_000
 _BASH_MAX_OUTPUT_CHARS: int = 16_000  # matches runner._MAX_RESULT_CHARS
 _BASH_READ_CHUNK_BYTES: int = 64 * 1024
+_BASH_COMMAND_DISPLAY_CHARS: int = 2_000
+_OUTPUT_TRUNCATED_NOTICE: str = "\n... (output truncated)"
 
 # Directories to skip during recursive search (avoids scanning VCS / cache noise).
 _SKIP_DIR_PREFIXES = frozenset(
@@ -138,6 +140,30 @@ TYPE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
 _TYPE_EXTENSIONS = TYPE_EXTENSIONS
 
 _GREP_OUTPUT_MODES = ("content", "files_with_matches", "count")
+
+
+def _bounded_text(
+    text: str,
+    limit: int,
+    notice: str = _OUTPUT_TRUNCATED_NOTICE,
+) -> str:
+    """Return a fixed-size text prefix plus an explicit truncation notice."""
+
+    if len(text) <= limit:
+        return text
+    return text[:limit] + notice
+
+
+def _display_command(command: str, *, quoted: bool = False) -> str:
+    """Render a bounded command label without hiding the command result."""
+
+    truncated = len(command) > _BASH_COMMAND_DISPLAY_CHARS
+    prefix = command[:_BASH_COMMAND_DISPLAY_CHARS]
+    rendered = repr(prefix) if quoted else prefix
+    if truncated:
+        rendered += " ... [command truncated]"
+    return rendered
+
 
 # ---------------------------------------------------------------------------
 # read
@@ -531,6 +557,20 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
             proc.kill()
 
 
+def _process_group_alive(proc: subprocess.Popen[bytes]) -> bool:
+    """Return whether the command's original process group still exists."""
+
+    try:
+        os.killpg(proc.pid, 0)
+    except (AttributeError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return proc.poll() is None
+    return True
+
+
 def _grep_python_isolated(
     pattern: str,
     path: str,
@@ -651,65 +691,88 @@ def _grep_ripgrep(
         target = "."
     command.extend(("--", pattern, target))
 
-    with tempfile.TemporaryFile() as stderr_file:
-        try:
-            proc = subprocess.Popen(  # noqa: S603 - fixed executable and argv
-                command,
-                cwd=cwd,
-                stdout=subprocess.PIPE,
-                stderr=stderr_file,
-                bufsize=0,
-                start_new_session=True,
-            )
-        except (OSError, ValueError) as exc:
-            return f"Error executing grep: {exc}"
+    try:
+        proc = subprocess.Popen(  # noqa: S603 - fixed executable and argv
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+            start_new_session=True,
+        )
+    except (OSError, ValueError) as exc:
+        return _bounded_text(f"Error executing grep: {exc}", _GREP_MAX_OUTPUT_CHARS)
 
-        assert proc.stdout is not None
-        deadline = time.monotonic() + _GREP_TIMEOUT_SECONDS
-        pending = bytearray()
-        rows: List[str] = []
-        timed_out = False
-        eof = False
-        while len(rows) <= head_limit and not eof:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                timed_out = True
-                break
-            ready, _, _ = select.select((proc.stdout.fileno(),), (), (), remaining)
-            if not ready:
-                timed_out = True
-                break
-            chunk = os.read(proc.stdout.fileno(), 64 * 1024)
-            if not chunk:
-                eof = True
-            else:
-                pending.extend(chunk)
-            while b"\n" in pending and len(rows) <= head_limit:
-                raw, _, remainder = pending.partition(b"\n")
-                pending = bytearray(remainder)
-                rows.append(raw.rstrip(b"\r").decode("utf-8", errors="replace"))
-        if eof and pending and len(rows) <= head_limit:
-            rows.append(bytes(pending).rstrip(b"\r").decode("utf-8", errors="replace"))
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+    stderr_capture = _BoundedPipeOutput(_GREP_MAX_OUTPUT_CHARS)
+    stderr_reader = threading.Thread(
+        target=stderr_capture.drain,
+        args=(proc.stderr,),
+        daemon=True,
+    )
+    stderr_reader.start()
 
-        capped = len(rows) > head_limit
-        if timed_out or capped:
-            _terminate_process_group(proc)
+    deadline = time.monotonic() + _GREP_TIMEOUT_SECONDS
+    pending = bytearray()
+    rows: List[str] = []
+    timed_out = False
+    eof = False
+    while len(rows) <= head_limit and not eof:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            break
+        ready, _, _ = select.select((proc.stdout.fileno(),), (), (), remaining)
+        if not ready:
+            timed_out = True
+            break
+        chunk = os.read(proc.stdout.fileno(), 64 * 1024)
+        if not chunk:
+            eof = True
+        else:
+            pending.extend(chunk)
+        while b"\n" in pending and len(rows) <= head_limit:
+            raw, _, remainder = pending.partition(b"\n")
+            pending = bytearray(remainder)
+            rows.append(raw.rstrip(b"\r").decode("utf-8", errors="replace"))
+    if eof and pending and len(rows) <= head_limit:
+        rows.append(bytes(pending).rstrip(b"\r").decode("utf-8", errors="replace"))
+
+    capped = len(rows) > head_limit
+    if not timed_out and not capped:
+        remaining = max(0.0, deadline - time.monotonic())
         try:
-            proc.wait(timeout=1)
+            proc.wait(timeout=remaining)
         except subprocess.TimeoutExpired:
-            _terminate_process_group(proc)
-            proc.wait()
-        stderr_file.seek(0)
-        stderr = stderr_file.read().decode("utf-8", errors="replace")
-        proc.stdout.close()
+            timed_out = True
+        if not timed_out:
+            stderr_reader.join(max(0.0, deadline - time.monotonic()))
+            timed_out = stderr_reader.is_alive()
+    if timed_out or capped:
+        _terminate_process_group(proc)
+    try:
+        proc.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        _terminate_process_group(proc)
+        proc.wait()
+    stderr_reader.join(timeout=1)
+    stderr = stderr_capture.text()
+    proc.stdout.close()
 
     if timed_out:
         return f"Error: grep timed out after {_GREP_TIMEOUT_SECONDS}s"
     if not capped and proc.returncode not in (0, 1):
         detail = stderr.strip() or f"ripgrep exited with status {proc.returncode}"
         if "regex parse error" in detail.lower():
-            return f"Error: invalid regex {pattern!r}: {detail}"
-        return f"Error executing grep for pattern {pattern!r}: {detail}"
+            return _bounded_text(
+                f"Error: invalid regex {pattern!r}: {detail}",
+                _GREP_MAX_OUTPUT_CHARS,
+            )
+        return _bounded_text(
+            f"Error executing grep for pattern {pattern!r}: {detail}",
+            _GREP_MAX_OUTPUT_CHARS,
+        )
 
     rows = rows[:head_limit]
     if output_mode == "content":
@@ -1101,6 +1164,18 @@ def _wait_for_bash(
         # that child as part of the command under the same wall-clock deadline.
         timed_out = any(reader.is_alive() for reader in readers)
 
+    if not timed_out:
+        # A background child may redirect both inherited pipes before the shell
+        # exits. The readers cannot observe that child, so keep watching the
+        # original process group. ``run_in_background`` is intentionally not a
+        # supported Bash mode; no descendant may escape the command deadline.
+        while _process_group_alive(proc):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            time.sleep(min(0.01, remaining))
+
     if timed_out:
         _terminate_process_group(proc)
         try:
@@ -1144,7 +1219,7 @@ def _bash(
         return "Error: timeout must be an integer (milliseconds)"
     if not 1 <= timeout_ms <= _BASH_TIMEOUT_MS_MAX:
         return f"Error: timeout must be between 1 and {_BASH_TIMEOUT_MS_MAX} ms"
-    timeout_s = max(1.0, timeout_ms / 1000.0)
+    timeout_s = timeout_ms / 1000.0
 
     try:
         proc = subprocess.Popen(  # noqa: S602 — loose shell policy by design
@@ -1157,7 +1232,11 @@ def _bash(
             start_new_session=True,
         )
     except (OSError, TypeError, ValueError) as exc:
-        return f"Error executing command {command!r}: {exc}"
+        return _bounded_text(
+            f"Error executing command {_display_command(command, quoted=True)}: "
+            f"{exc}",
+            _BASH_MAX_OUTPUT_CHARS,
+        )
 
     assert proc.stdout is not None
     assert proc.stderr is not None
@@ -1177,13 +1256,42 @@ def _bash(
     )
     for reader in readers:
         reader.start()
-    if _wait_for_bash(proc, readers, timeout_seconds=timeout_s):
-        return f"Error: command timed out after {timeout_s:g}s: {command!r}"
+    try:
+        timed_out = _wait_for_bash(proc, readers, timeout_seconds=timeout_s)
+    except (OSError, ValueError) as exc:
+        _terminate_process_group(proc)
+        try:
+            proc.wait(timeout=1)
+        except (OSError, subprocess.TimeoutExpired):
+            if proc.poll() is None:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=1)
+                except OSError:
+                    pass
+                except subprocess.TimeoutExpired:
+                    pass
+        for reader in readers:
+            reader.join(timeout=1)
+        return _bounded_text(
+            f"Error executing command {_display_command(command, quoted=True)}: "
+            f"{exc}",
+            _BASH_MAX_OUTPUT_CHARS,
+        )
+    if timed_out:
+        return _bounded_text(
+            f"Error: command timed out after {timeout_s:g}s: "
+            f"{_display_command(command, quoted=True)}",
+            _BASH_MAX_OUTPUT_CHARS,
+        )
 
     stdout = stdout_capture.text()
     stderr = stderr_capture.text()
 
-    parts: List[str] = [f"$ {command}", f"(exit code: {proc.returncode})"]
+    parts: List[str] = [
+        f"$ {_display_command(command)}",
+        f"(exit code: {proc.returncode})",
+    ]
     if stdout:
         parts.append(f"--- stdout ---\n{stdout.rstrip()}")
     if stderr:
@@ -1195,7 +1303,7 @@ def _bash(
         or stderr_capture.truncated
         or len(text) > _BASH_MAX_OUTPUT_CHARS
     ):
-        text = text[:_BASH_MAX_OUTPUT_CHARS] + "\n... (output truncated)"
+        text = _bounded_text(text, _BASH_MAX_OUTPUT_CHARS)
     return text
 
 
