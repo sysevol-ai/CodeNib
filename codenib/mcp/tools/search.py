@@ -18,6 +18,7 @@ from ...types import NodeInfo
 from ..context import ServerContext
 from ._validation import (
     MAX_REGEX_FILTER_CHARS,
+    MAX_REGEX_PATTERN_CHARS,
     MAX_SEARCH_QUERY_CHARS,
     MAX_TOOL_RESULTS,
     bounded_integer,
@@ -304,7 +305,7 @@ def search_regex_impl(
     required_text(
         pattern,
         name="pattern",
-        maximum=MAX_SEARCH_QUERY_CHARS,
+        maximum=MAX_REGEX_PATTERN_CHARS,
     )
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     normalized_file_glob = (

@@ -38,6 +38,7 @@ from .tools._validation import (
     MAX_LSP_QUERY_CHARS,
     MAX_LSP_SYMBOL_CHARS,
     MAX_REGEX_FILTER_CHARS,
+    MAX_REGEX_PATTERN_CHARS,
     MAX_ROUTE_SYMBOLS,
     MAX_SEARCH_QUERY_CHARS,
     MAX_SOURCE_PATH_CHARS,
@@ -60,6 +61,10 @@ _SearchQuery = Annotated[
     Field(min_length=1, max_length=MAX_SEARCH_QUERY_CHARS),
 ]
 _SearchTopK = Annotated[int, Field(ge=1, le=MAX_TOOL_RESULTS)]
+_RegexPattern = Annotated[
+    str,
+    Field(min_length=1, max_length=MAX_REGEX_PATTERN_CHARS),
+]
 _RegexFilter = Annotated[str, Field(max_length=MAX_REGEX_FILTER_CHARS)]
 _SearchLevel = Literal["l0", "l2"]
 _FiniteScore = Annotated[float, Field(allow_inf_nan=False)]
@@ -212,7 +217,7 @@ async def search_bm25(
     ),
 )
 async def search_regex(
-    pattern: _SearchQuery,
+    pattern: _RegexPattern,
     top_k: _SearchTopK = 20,
     file_glob: _RegexFilter = "",
     node_type: _RegexFilter = "",
