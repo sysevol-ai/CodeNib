@@ -505,13 +505,14 @@ def test_revision_snapshot_rejects_tracked_symlinks(monkeypatch, tmp_path):
         )
 
 
-def test_revision_snapshot_rejects_archive_mutating_attributes(monkeypatch, tmp_path):
+def test_revision_snapshot_allows_unmatched_archive_attribute(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
     )
     source, _ = _git_repo(tmp_path)
     (source / ".gitattributes").write_text(
-        "tracked.txt export-ignore\n", encoding="utf-8"
+        "IPython/.git_commit_info.ini export-subst\n",
+        encoding="utf-8",
     )
     subprocess.run(["git", "-C", str(source), "add", ".gitattributes"], check=True)
     subprocess.run(
@@ -535,8 +536,52 @@ def test_revision_snapshot_rejects_archive_mutating_attributes(monkeypatch, tmp_
         capture_output=True,
         text=True,
     ).stdout.strip()
+    session = _provider(tmp_path, RecordingCLI()).create(
+        SandboxSpec(
+            source_dir=source,
+            source_revision=revision,
+            image=IMAGE,
+            platform="linux/amd64",
+        )
+    )
+    session.close()
 
-    with pytest.raises(SandboxPolicyError, match="export-ignore"):
+
+@pytest.mark.parametrize("attribute", ["export-ignore", "export-subst"])
+def test_revision_snapshot_rejects_effective_archive_attribute(
+    monkeypatch, tmp_path, attribute
+):
+    monkeypatch.setattr(
+        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+    )
+    source, _ = _git_repo(tmp_path)
+    (source / ".gitattributes").write_text(
+        f"tracked.txt {attribute}\n", encoding="utf-8"
+    )
+    subprocess.run(["git", "-C", str(source), "add", ".gitattributes"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CodeNib Test",
+            "-c",
+            "user.email=test@example.com",
+            "-C",
+            str(source),
+            "commit",
+            "-qm",
+            "add effective archive attribute",
+        ],
+        check=True,
+    )
+    revision = subprocess.run(
+        ["git", "-C", str(source), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    with pytest.raises(SandboxPolicyError, match="effective export"):
         _provider(tmp_path, RecordingCLI()).create(
             SandboxSpec(
                 source_dir=source,
@@ -545,6 +590,121 @@ def test_revision_snapshot_rejects_archive_mutating_attributes(monkeypatch, tmp_
                 platform="linux/amd64",
             )
         )
+
+
+def test_revision_snapshot_checks_attributes_from_pinned_revision(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+    )
+    source, revision = _git_repo(tmp_path)
+    (source / ".gitattributes").write_text(
+        "tracked.txt export-ignore\n", encoding="utf-8"
+    )
+
+    session = _provider(tmp_path, RecordingCLI()).create(
+        SandboxSpec(
+            source_dir=source,
+            source_revision=revision,
+            image=IMAGE,
+            platform="linux/amd64",
+        )
+    )
+    session.close()
+
+
+def test_revision_snapshot_rejects_effective_directory_archive_attribute(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+    )
+    source, _ = _git_repo(tmp_path)
+    nested = source / "generated"
+    nested.mkdir()
+    (nested / "artifact.txt").write_text("generated\n", encoding="utf-8")
+    (source / ".gitattributes").write_text(
+        "generated export-ignore\n", encoding="utf-8"
+    )
+    subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CodeNib Test",
+            "-c",
+            "user.email=test@example.com",
+            "-C",
+            str(source),
+            "commit",
+            "-qm",
+            "add directory archive attribute",
+        ],
+        check=True,
+    )
+    revision = subprocess.run(
+        ["git", "-C", str(source), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    with pytest.raises(SandboxPolicyError, match="effective export"):
+        _provider(tmp_path, RecordingCLI()).create(
+            SandboxSpec(
+                source_dir=source,
+                source_revision=revision,
+                image=IMAGE,
+                platform="linux/amd64",
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("pattern", "rejected"),
+    [
+        ("missing.txt export-ignore\n", False),
+        ("tracked.txt export-ignore\n", True),
+    ],
+)
+def test_revision_snapshot_checks_effective_info_attributes(
+    monkeypatch, tmp_path, pattern, rejected
+):
+    monkeypatch.setattr(
+        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+    )
+    source, revision = _git_repo(tmp_path)
+    info_attributes = Path(
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(source),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-path",
+                "info/attributes",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    info_attributes.write_text(pattern, encoding="utf-8")
+    spec = SandboxSpec(
+        source_dir=source,
+        source_revision=revision,
+        image=IMAGE,
+        platform="linux/amd64",
+    )
+
+    if rejected:
+        with pytest.raises(SandboxPolicyError, match="effective export"):
+            _provider(tmp_path, RecordingCLI()).create(spec)
+    else:
+        session = _provider(tmp_path, RecordingCLI()).create(spec)
+        session.close()
 
 
 def test_revision_snapshot_requires_repository_top_level(monkeypatch, tmp_path):
