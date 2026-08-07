@@ -96,6 +96,40 @@ def _build_store_with_docs(contents: List[str]):
 class TestDeltaUpdate:
     """Verify delta_update logic."""
 
+    def test_ivf_delta_preserves_search_label_document_alignment(self):
+        store, docs, _ = _build_store_with_docs([f"document {i}" for i in range(DIM)])
+        store.index_type = "ivf"
+        store.ivf_nlist = 2
+        store.ivf_nprobe = 2
+        vectors = np.eye(DIM, dtype=np.float32)
+        store.l2_index = store._build_faiss_index()
+        store._add_to_index("l2", vectors)
+        original_index = store.l2_index
+
+        replacement = _Document(
+            page_content="replacement",
+            metadata={**docs[0].metadata, "content_hash": _md5("replacement")},
+        )
+        target_docs = [replacement, *docs[1:]]
+        target_vectors = [
+            -vectors[0],
+            *[vectors[index] for index in range(1, DIM)],
+        ]
+
+        store.delta_update(
+            target_docs,
+            target_vectors,
+            {_md5("replacement")},
+            level="l2",
+            threshold=0.5,
+        )
+
+        _distances, labels = store.l2_index.search(vectors[1].reshape(1, -1), 1)
+        label = int(labels[0, 0])
+        assert label >= 0
+        assert store.l2_index is not original_index
+        assert store.l2_documents[label].page_content == docs[1].page_content
+
     def test_small_delta_patches_index(self):
         """With 1 out of 10 chunks changed, delta path should be used."""
         contents = [f"def func_{i}():\n    return {i}\n" for i in range(10)]
