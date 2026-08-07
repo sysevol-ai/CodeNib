@@ -83,6 +83,8 @@ also remain available. All forms accept
 
 All source locations returned by MCP use 1-based line numbers. Internal indexes
 remain 0-based; the MCP adapters perform the conversion once at the boundary.
+All search tools reject blank queries and query text longer than 16,000
+characters. They accept integer `top_k` values from 1 through 100.
 
 ### `search_context`
 Plans and executes ranked retrieval without asking the agent to choose an index.
@@ -113,7 +115,7 @@ expanding a response without bound.
 Vector-embedding similarity search.
 
 - `query` (str): natural-language or code query.
-- `top_k` (int, default 10): max results.
+- `top_k` (int, default 10): max results, from 1 through 100.
 - `level` (str, default `"l2"`): hierarchy level — `"l0"` (files), `"l2"`
   (functions/methods).
 - `score_threshold` (float, default 0.0): minimum similarity; `0` disables the filter.
@@ -125,14 +127,15 @@ returns `{"error": ...}` so callers can recover gracefully.
 ### `search_bm25`
 BM25 keyword retrieval over indexed symbols.
 
-- `query` (str), `top_k` (int, default 20), `filter_test` (bool, default `False`) —
+- `query` (str), `top_k` (int, default 20, from 1 through 100),
+  `filter_test` (bool, default `False`) —
   when `True`, excludes results from test files.
 
 ### `search_regex`
 Grep-like regex over CodeGraph nodes.
 
 - `pattern` (str): Python `re` pattern.
-- `top_k` (int, default 20).
+- `top_k` (int, default 20): from 1 through 100.
 - `file_glob` (str, default `""`): restrict by file path (e.g. `*.py`).
 - `node_type` (str, default `""`): filter by type (`function`, `class`, `method`,
   `file`, …).
@@ -144,7 +147,7 @@ file-level (`type="file"`).
 
 - `query` (str): plain substring, regex (`regex:foo`), or atoms like `case:yes` /
   `lang:python`.
-- `top_k` (int, default 20).
+- `top_k` (int, default 20): from 1 through 100.
 - `file_filter` (str, default `""`): glob/regex appended as `file:<expr>`.
 
 ### `dependency_subgraph`

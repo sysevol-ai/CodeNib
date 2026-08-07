@@ -81,6 +81,7 @@ def test_search_tool_schemas_publish_bounded_inputs() -> None:
         schema = tools[name].input_schema
         text_field = "pattern" if name == "search_regex" else "query"
         assert schema["properties"][text_field]["minLength"] == 1
+        assert schema["properties"][text_field]["maxLength"] == 16_000
         assert schema["properties"]["top_k"] == {
             "default": 10 if name in {"search_context", "search_semantic"} else 20,
             "maximum": 100,

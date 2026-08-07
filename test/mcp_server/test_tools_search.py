@@ -16,6 +16,7 @@ import pytest
 from codenib.compiler.manifest import RepoManifest
 from codenib.index.trigram import ZoektUnavailableError
 from codenib.index.trigram.zoekt_searcher import _file_match_to_node
+from codenib.mcp.tools._validation import MAX_SEARCH_QUERY_CHARS
 from codenib.mcp.tools.search import (
     search_bm25_impl,
     search_context_impl,
@@ -79,6 +80,27 @@ def _sample_nodes() -> list[NodeInfo]:
             score=0.0,
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    ("impl", "context_key", "query_key"),
+    [
+        (search_context_impl, "bm25", "query"),
+        (search_bm25_impl, "bm25", "query"),
+        (search_regex_impl, "regex_index", "pattern"),
+        (search_zoekt_impl, "zoekt", "query"),
+    ],
+)
+def test_search_rejects_oversized_input_before_provider(
+    impl, context_key, query_key
+) -> None:
+    provider = MagicMock()
+    ctx = _make_ctx(**{context_key: provider})
+
+    with pytest.raises(ValueError, match="must not exceed 16000 characters"):
+        impl(ctx, **{query_key: "x" * (MAX_SEARCH_QUERY_CHARS + 1)})
+
+    provider.search.assert_not_called()
 
 
 @pytest.mark.parametrize(

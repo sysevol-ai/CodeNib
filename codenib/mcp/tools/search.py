@@ -16,7 +16,12 @@ from ...agent.boundary import to_agent_repr
 from ...context_delivery import project_evidence_payloads
 from ...types import NodeInfo
 from ..context import ServerContext
-from ._validation import MAX_TOOL_RESULTS, bounded_integer, required_text
+from ._validation import (
+    MAX_SEARCH_QUERY_CHARS,
+    MAX_TOOL_RESULTS,
+    bounded_integer,
+    required_text,
+)
 
 
 def _node_to_dict(node: NodeInfo) -> Dict[str, Any]:
@@ -40,7 +45,11 @@ def search_context_impl(
     filter_test: bool = False,
 ) -> Dict[str, Any]:
     """Plan and execute ranked retrieval over the available repository views."""
-    normalized_query = required_text(query, name="query")
+    normalized_query = required_text(
+        query,
+        name="query",
+        maximum=MAX_SEARCH_QUERY_CHARS,
+    )
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     normalized_level = (level or "l2").strip().lower()
     if normalized_level not in {"l0", "l2"}:
@@ -181,7 +190,11 @@ async def search_semantic(
         List of NodeInfo dicts with scores and content. On missing index,
         returns ``{"error": ...}`` so callers can handle gracefully.
     """
-    normalized_query = required_text(query, name="query")
+    normalized_query = required_text(
+        query,
+        name="query",
+        maximum=MAX_SEARCH_QUERY_CHARS,
+    )
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     normalized_level = (level or "l2").strip().lower()
     if normalized_level not in {"l0", "l2"}:
@@ -237,7 +250,11 @@ def search_bm25_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content, score.
     """
-    normalized_query = required_text(query, name="query")
+    normalized_query = required_text(
+        query,
+        name="query",
+        maximum=MAX_SEARCH_QUERY_CHARS,
+    )
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     if ctx.bm25 is None:
         raise RuntimeError(
@@ -282,7 +299,11 @@ def search_regex_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content.
     """
-    required_text(pattern, name="pattern")
+    required_text(
+        pattern,
+        name="pattern",
+        maximum=MAX_SEARCH_QUERY_CHARS,
+    )
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     if ctx.regex_index is None:
         raise RuntimeError(
@@ -343,7 +364,11 @@ def search_zoekt_impl(
         (``"file"``), ``file``, ``start_line``, ``end_line``, ``content``,
         ``score``, ``node_id`` (language hint, when reported).
     """
-    normalized_query = required_text(query, name="query")
+    normalized_query = required_text(
+        query,
+        name="query",
+        maximum=MAX_SEARCH_QUERY_CHARS,
+    )
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     if ctx.zoekt is None:
         raise RuntimeError(

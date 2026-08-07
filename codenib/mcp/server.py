@@ -35,6 +35,7 @@ from .tools._validation import (
     MAX_GRAPH_DEPTH,
     MAX_LSP_POSITION,
     MAX_ROUTE_SYMBOLS,
+    MAX_SEARCH_QUERY_CHARS,
     MAX_SOURCE_PATH_CHARS,
     MAX_TOOL_RESULTS,
 )
@@ -50,6 +51,10 @@ logger = logging.getLogger(__name__)
 # Global context is set once at startup before the event loop runs tools.
 _ctx: Optional[ServerContext] = None
 _SearchText = Annotated[str, Field(min_length=1)]
+_SearchQuery = Annotated[
+    str,
+    Field(min_length=1, max_length=MAX_SEARCH_QUERY_CHARS),
+]
 _SearchTopK = Annotated[int, Field(ge=1, le=MAX_TOOL_RESULTS)]
 _SearchLevel = Literal["l0", "l2"]
 _FiniteScore = Annotated[float, Field(allow_inf_nan=False)]
@@ -104,7 +109,7 @@ mcp = MCPServer(
     ),
 )
 async def search_context(
-    query: _SearchText,
+    query: _SearchQuery,
     top_k: _SearchTopK = 10,
     budget: str = "balanced",
     level: _SearchLevel = "l2",
@@ -133,7 +138,7 @@ async def search_context(
     ),
 )
 async def semantic_search(
-    query: _SearchText,
+    query: _SearchQuery,
     top_k: _SearchTopK = 10,
     level: _SearchLevel = "l2",
     score_threshold: _FiniteScore = 0.0,
@@ -165,7 +170,7 @@ async def semantic_search(
     ),
 )
 async def search_bm25(
-    query: _SearchText,
+    query: _SearchQuery,
     top_k: _SearchTopK = 20,
     filter_test: bool = False,
 ) -> list[dict[str, Any]]:
@@ -187,7 +192,7 @@ async def search_bm25(
     ),
 )
 async def search_regex(
-    pattern: _SearchText,
+    pattern: _SearchQuery,
     top_k: _SearchTopK = 20,
     file_glob: str = "",
     node_type: str = "",
@@ -219,7 +224,7 @@ async def search_regex(
     ),
 )
 async def search_zoekt(
-    query: _SearchText,
+    query: _SearchQuery,
     top_k: _SearchTopK = 20,
     file_filter: str = "",
 ) -> list[dict[str, Any]]:
