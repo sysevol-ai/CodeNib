@@ -13,6 +13,7 @@ about SWE-bench scoring, answer formats, or experiment feedback gates.
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
@@ -128,6 +129,10 @@ _ENDPOINT_TERMS = {
     "validate",
 }
 _QUERY_SEED_MIN_OVERLAP = 2
+_QUERY_SEED_SCAN_BUDGET = 10_000
+_QUERY_SEED_MATCH_BUDGET = 256
+_QUERY_SEED_CANDIDATE_BUDGET = 512
+_QUERY_SEED_TIMEOUT_SECONDS = 0.1
 _ROUTE_SEED_NODE_TYPES = frozenset(
     {NODE_TYPE_CLASS, NODE_TYPE_FIELD, NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
 )
@@ -693,12 +698,19 @@ def _query_seed_candidates(
     *,
     query_terms: set[str],
     limit: int,
+    deadline: float,
 ) -> list[dict[str, Any]]:
     if not query_terms:
         return []
 
     candidates: list[dict[str, Any]] = []
+    scanned = 0
     for name in getattr(graph, "name_to_vertex", {}) or {}:
+        if scanned >= _QUERY_SEED_SCAN_BUDGET:
+            break
+        if scanned and time.monotonic() >= deadline:
+            break
+        scanned += 1
         info = graph.get_node_info_by_name(name) or {}
         node_type = str(info.get("type") or "")
         if node_type and node_type not in _ROUTE_SEED_NODE_TYPES:
@@ -721,6 +733,8 @@ def _query_seed_candidates(
             graph, candidate, query_terms=query_terms
         ) + 6.0 * len(overlap)
         candidates.append(candidate)
+        if len(candidates) >= _QUERY_SEED_MATCH_BUDGET:
+            break
 
     candidates.sort(
         key=lambda item: (
@@ -731,19 +745,13 @@ def _query_seed_candidates(
     return candidates[:limit]
 
 
-def _route_neighbors(graph: Any, name: str) -> list[tuple[str, str]]:
-    neighbors: list[tuple[str, str]] = []
+def _route_neighbors(graph: Any, name: str) -> Iterable[tuple[str, str]]:
     if hasattr(graph, "get_successors"):
-        neighbors.extend(
-            (neighbor, "successor")
-            for neighbor in _graph_names_for_ids(graph, graph.get_successors(name))
-        )
+        for neighbor in _graph_names_for_ids(graph, graph.get_successors(name)):
+            yield neighbor, "successor"
     if hasattr(graph, "get_predecessors"):
-        neighbors.extend(
-            (neighbor, "predecessor")
-            for neighbor in _graph_names_for_ids(graph, graph.get_predecessors(name))
-        )
-    return neighbors
+        for neighbor in _graph_names_for_ids(graph, graph.get_predecessors(name)):
+            yield neighbor, "predecessor"
 
 
 def _include_neighbor(
@@ -792,7 +800,11 @@ def _append_route_seed(
     source: str,
     query_terms: set[str],
     include_neighbors: bool,
+    candidate_budget: Optional[int] = None,
+    deadline: Optional[float] = None,
 ) -> None:
+    if candidate_budget is not None and len(candidates) >= candidate_budget:
+        return
     role = _role(graph, name, query_terms=query_terms)
     candidate = {
         "name": name,
@@ -807,6 +819,10 @@ def _append_route_seed(
     if not include_neighbors:
         return
     for neighbor, direction in _route_neighbors(graph, name):
+        if candidate_budget is not None and len(candidates) >= candidate_budget:
+            break
+        if deadline is not None and time.monotonic() >= deadline:
+            break
         neighbor_role = _role(graph, neighbor, query_terms=query_terms)
         if not _include_neighbor(
             graph, neighbor, role=neighbor_role, query_terms=query_terms
@@ -858,9 +874,19 @@ def lsp_route(
             )
 
     if not candidates:
+        query_seed_deadline = time.monotonic() + _QUERY_SEED_TIMEOUT_SECONDS
         for rank, candidate in enumerate(
-            _query_seed_candidates(graph, query_terms=query_terms, limit=limit)
+            _query_seed_candidates(
+                graph,
+                query_terms=query_terms,
+                limit=limit,
+                deadline=query_seed_deadline,
+            )
         ):
+            if len(candidates) >= _QUERY_SEED_CANDIDATE_BUDGET:
+                break
+            if rank and time.monotonic() >= query_seed_deadline:
+                break
             _append_route_seed(
                 graph,
                 candidates,
@@ -870,6 +896,8 @@ def lsp_route(
                 source="query_seed",
                 query_terms=query_terms,
                 include_neighbors=include_neighbors,
+                candidate_budget=_QUERY_SEED_CANDIDATE_BUDGET,
+                deadline=query_seed_deadline,
             )
 
     source_rank = {"direct_seed": 0, "query_seed": 0, "neighbor": 1}

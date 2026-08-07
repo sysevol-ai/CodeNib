@@ -70,7 +70,7 @@ _LspSymbol = Annotated[str, Field(max_length=MAX_LSP_SYMBOL_CHARS)]
 _LspQuery = Annotated[str, Field(max_length=MAX_LSP_QUERY_CHARS)]
 _RouteSymbols = Annotated[
     list[_LspSymbol],
-    Field(min_length=1, max_length=MAX_ROUTE_SYMBOLS),
+    Field(max_length=MAX_ROUTE_SYMBOLS),
 ]
 _SourcePath = Annotated[str, Field(min_length=1, max_length=MAX_SOURCE_PATH_CHARS)]
 
@@ -348,8 +348,9 @@ async def lsp_references(
     name="lsp_route",
     description=(
         "Return compact route anchors from CodeNib's static symbol graph for "
-        "one or more symbol seeds. Use this when multiple symbols need a route "
-        "map across endpoint, bridge/factory, provider/value, or type anchors. "
+        "symbol seeds, or use a query alone when no reliable symbol is known. "
+        "Use this for a route map across endpoint, bridge/factory, "
+        "provider/value, or type anchors. "
         "Results are locations only; call read_source before finalizing."
     ),
 )

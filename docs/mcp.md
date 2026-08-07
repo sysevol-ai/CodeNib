@@ -122,13 +122,18 @@ Only tools whose backing views are fresh and available can return results.
 | `dependency_subgraph` | `symbol_graph` | call graph | Caller impact, callee dependencies, or a one-hop neighborhood |
 | `lsp_definition` | `symbol_graph` | location | Static go-to-definition-shaped lookup |
 | `lsp_references` | `symbol_graph` | locations | Static find-references-shaped lookup |
-| `lsp_route` | `symbol_graph` | locations | Compact route anchors among related symbols |
+| `lsp_route` | `symbol_graph` | locations | Compact route anchors from symbol seeds or a bounded query fallback |
 | `read_source` | verified checkout | source window | Read an exact 1-based span after retrieval or navigation |
 | `get_manifest` | manifest | repository | Repository identity, languages, view states, and capabilities |
 
 All source locations returned by MCP use 1-based line numbers. Search tools
 reject blank query text, cap it at 16,000 characters, and accept `top_k` values
 from 1 through 100.
+
+Call `lsp_route` with `symbols=[]` and a non-blank query when no reliable symbol
+is known. This best-effort fallback examines at most 10,000 graph nodes, retains
+at most 256 query matches and 512 expanded candidates, and stops after 100
+milliseconds.
 
 `search_context` accepts `query`, `top_k` (1-100), `budget`
 (`fast`, `balanced`, or `thorough`), dense `level` (`l0` or `l2`), and

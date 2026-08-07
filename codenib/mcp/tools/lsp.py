@@ -185,9 +185,14 @@ def lsp_route_impl(
     """Return graph-backed route anchors for one or more symbol seeds."""
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     seeds = _coerce_symbols(symbols)
-    query = bounded_text(query, name="query", maximum=MAX_LSP_QUERY_CHARS)
-    if not seeds:
-        raise ValueError("symbols must contain at least one non-empty seed.")
+    requested_query = bounded_text(
+        query,
+        name="query",
+        maximum=MAX_LSP_QUERY_CHARS,
+    )
+    normalized_query = requested_query.strip()
+    if not seeds and not normalized_query:
+        return []
     graph = _symbol_graph(ctx)
     if graph is None:
         return {"error": "symbol_graph index not available"}
@@ -196,7 +201,7 @@ def lsp_route_impl(
 
     results = StaticLSPProvider(graph).route(
         symbols=seeds,
-        query=query or None,
+        query=normalized_query or None,
         top_k=top_k,
         include_neighbors=bool(include_neighbors),
     )

@@ -100,7 +100,7 @@ def test_search_tool_schemas_publish_bounded_inputs() -> None:
     assert dependency["max_nodes"]["maximum"] == 100
 
     route_symbols = tools["lsp_route"].input_schema["properties"]["symbols"]
-    assert route_symbols["minItems"] == 1
+    assert "minItems" not in route_symbols
     assert route_symbols["maxItems"] == 32
     assert route_symbols["items"]["maxLength"] == 1024
     assert tools["lsp_route"].input_schema["properties"]["query"]["maxLength"] == 16000
@@ -317,10 +317,45 @@ def test_lsp_tools_validate_result_and_seed_bounds():
 
     with pytest.raises(ValueError, match="top_k must be between"):
         lsp_references_impl(ctx, symbol="load_config", top_k=101)
-    with pytest.raises(ValueError, match="at least one non-empty seed"):
-        lsp_route_impl(ctx, symbols=[])
     with pytest.raises(ValueError, match="at most 32 entries"):
         lsp_route_impl(ctx, symbols=[f"symbol_{index}" for index in range(33)])
+
+
+def test_lsp_route_uses_query_fallback_without_symbol_seeds():
+    from codenib.graph.code_graph import CodeGraph
+
+    graph = CodeGraph()
+    graph._add_vertex(
+        "src/cache.py:CachePathResolver.resolve()",
+        {
+            "type": "method",
+            "file": "src/cache.py",
+            "start_line": 4,
+            "end_line": 12,
+            "unified_name": "CachePathResolver.resolve()",
+        },
+    )
+
+    result = lsp_route_impl(
+        MagicMock(symbol_graph=graph),
+        symbols=[],
+        query="  resolve cached path  ",
+        top_k=5,
+    )
+
+    assert isinstance(result, list)
+    assert [node["node_name"] for node in result] == ["CachePathResolver.resolve()"]
+    assert result[0]["file"] == "src/cache.py"
+    assert result[0]["start_line"] == 5
+
+
+def test_lsp_route_skips_provider_without_symbols_or_query():
+    ctx = MagicMock(symbol_graph=None)
+    with patch("codenib.agent.lsp_provider.StaticLSPProvider") as provider:
+        result = lsp_route_impl(ctx, symbols=[], query="   ")
+
+    assert result == []
+    provider.assert_not_called()
 
 
 @pytest.mark.parametrize(

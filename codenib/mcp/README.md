@@ -177,7 +177,10 @@ entry budget before normalization.
   `include_declaration` defaults to `true` and `top_k` to 40.
 - `lsp_route`: provide `symbols`, with optional `query`, `top_k` (default 12),
   and `include_neighbors` (default `true`) to rank endpoint, bridge/factory,
-  provider/value, and type anchors.
+  provider/value, and type anchors. If no reliable symbol is known, pass
+  `symbols=[]` with a non-blank query for a bounded, best-effort graph scan.
+  That fallback examines at most 10,000 graph nodes, retains at most 256 query
+  matches and 512 expanded candidates, and stops after 100 milliseconds.
 
 ### `read_source`
 Reads source only when server startup verified the checkout against the direct

@@ -287,6 +287,111 @@ def test_lsp_route_can_fallback_to_query_seed_candidates():
     assert route[0].content == "route provider: query match config, default"
 
 
+class _QueryBudgetGraph:
+    def __init__(self, names):
+        self.names = list(names)
+        self.name_to_vertex = {name: index for index, name in enumerate(self.names)}
+        self.seen_names = []
+        self.successors = {}
+
+    def get_node_info_by_name(self, name):
+        self.seen_names.append(name)
+        if name not in self.name_to_vertex:
+            return None
+        return {
+            "name": name,
+            "unified_name": name,
+            "type": "function",
+            "file": "routes.py",
+            "start_line": self.name_to_vertex[name],
+            "end_line": self.name_to_vertex[name] + 1,
+        }
+
+    def get_successors(self, name):
+        return self.successors.get(name, [])
+
+    def get_predecessors(self, name):
+        return []
+
+    def get_node_info_by_id(self, vertex_id):
+        if not 0 <= vertex_id < len(self.names):
+            return None
+        return self.get_node_info_by_name(self.names[vertex_id])
+
+
+def test_lsp_route_query_fallback_stops_at_scan_budget(monkeypatch):
+    graph = _QueryBudgetGraph(["NoiseOne", "NoiseTwo", "NoiseThree", "TargetRoute"])
+    monkeypatch.setattr(lsp_graph, "_QUERY_SEED_SCAN_BUDGET", 3)
+    monkeypatch.setattr(lsp_graph.time, "monotonic", lambda: 0.0)
+
+    route = lsp_graph.lsp_route(
+        graph,
+        symbols=[],
+        query="target route",
+        top_k=4,
+        include_neighbors=False,
+    )
+
+    assert route == []
+    assert "TargetRoute" not in graph.seen_names
+
+
+def test_lsp_route_query_fallback_stops_at_match_budget(monkeypatch):
+    graph = _QueryBudgetGraph(["TargetRouteOne", "TargetRouteTwo", "TargetRouteThree"])
+    monkeypatch.setattr(lsp_graph, "_QUERY_SEED_MATCH_BUDGET", 2)
+
+    route = lsp_graph.lsp_route(
+        graph,
+        symbols=[],
+        query="target route",
+        top_k=4,
+        include_neighbors=False,
+    )
+
+    assert [node.node_name for node in route] == ["TargetRouteOne", "TargetRouteTwo"]
+    assert "TargetRouteThree" not in graph.seen_names
+
+
+def test_lsp_route_query_fallback_bounds_expanded_candidates(monkeypatch):
+    graph = _QueryBudgetGraph(
+        ["TargetRoute", "EndpointOne", "EndpointTwo", "EndpointThree"]
+    )
+    graph.successors["TargetRoute"] = [1, 2, 3]
+    monkeypatch.setattr(lsp_graph, "_QUERY_SEED_CANDIDATE_BUDGET", 3)
+
+    route = lsp_graph.lsp_route(
+        graph,
+        symbols=[],
+        query="target route",
+        top_k=4,
+        include_neighbors=True,
+    )
+
+    assert [node.node_name for node in route] == [
+        "TargetRoute",
+        "EndpointOne",
+        "EndpointTwo",
+    ]
+
+
+def test_lsp_route_query_fallback_stops_at_deadline(monkeypatch):
+    graph = _QueryBudgetGraph(["NoiseOne", "TargetRoute"])
+    clock = iter([0.0, 2.0])
+    monkeypatch.setattr(lsp_graph, "_QUERY_SEED_TIMEOUT_SECONDS", 1.0)
+    monkeypatch.setattr(lsp_graph.time, "monotonic", lambda: next(clock))
+
+    route = lsp_graph.lsp_route(
+        graph,
+        symbols=[],
+        query="target route",
+        top_k=4,
+        include_neighbors=False,
+    )
+
+    assert route == []
+    assert "TargetRoute" not in graph.seen_names
+
+
 def test_lsp_skills_load_and_execute_against_expand_context(tmp_path):
     (tmp_path / "caller.py").write_text(
         "def run():\n    return load_config()\n", encoding="utf-8"
