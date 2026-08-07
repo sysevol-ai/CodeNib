@@ -77,8 +77,34 @@ def test_local_model_can_explicitly_trust_code_without_hub_revisions(tmp_path):
     assert command[-1] == "--trust-remote-code"
 
 
+@pytest.mark.parametrize("version", ["0.10.2", "0.11.0", "0.11.1rc1"])
+def test_unsafe_vllm_versions_are_rejected(monkeypatch, version):
+    monkeypatch.setattr(module, "package_version", lambda _package: version)
+
+    with pytest.raises(RuntimeError, match="vLLM>=0.11.1"):
+        module._require_safe_vllm_version()
+
+
+@pytest.mark.parametrize("version", ["0.11.1", "0.11.1.post1", "0.12.0.dev1"])
+def test_patched_vllm_versions_are_accepted(monkeypatch, version):
+    monkeypatch.setattr(module, "package_version", lambda _package: version)
+
+    assert module._require_safe_vllm_version() == version
+
+
+def test_missing_vllm_has_actionable_error(monkeypatch):
+    def missing(_package):
+        raise module.PackageNotFoundError
+
+    monkeypatch.setattr(module, "package_version", missing)
+
+    with pytest.raises(RuntimeError, match="vLLM>=0.11.1 is required"):
+        module._require_safe_vllm_version()
+
+
 def test_start_runs_the_validated_command(monkeypatch):
     calls = []
+    monkeypatch.setattr(module, "_require_safe_vllm_version", lambda: "0.11.1")
     monkeypatch.setattr(
         subprocess, "run", lambda *args, **kwargs: calls.append((args, kwargs))
     )

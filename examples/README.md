@@ -92,7 +92,7 @@ For the SweRankLLM listwise route, serve SweRankLLM-Small through an
 OpenAI-compatible endpoint and run the recipe in a second terminal:
 
 ```bash
-pip install vllm
+pip install "vllm>=0.11.1"
 vllm serve Salesforce/SweRankLLM-Small \
   --revision 5f124b0dd0bb916d5919aa6f81b5b7817f7c991d \
   --served-model-name swerank-llm-small --port 9000

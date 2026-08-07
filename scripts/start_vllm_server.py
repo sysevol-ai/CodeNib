@@ -17,9 +17,45 @@ import re
 import shlex
 import subprocess
 import sys
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 
 _FULL_COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+_VLLM_RELEASE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(.*)$")
+# GHSA-8fr4-5q9j-m8gm: trust_remote_code could be bypassed before 0.11.1.
+_MIN_SAFE_VLLM_RELEASE = (0, 11, 1)
+
+
+def _require_safe_vllm_version() -> str:
+    """Reject releases affected by vLLM's remote-code trust bypass."""
+
+    try:
+        installed = package_version("vllm")
+    except PackageNotFoundError as exc:
+        raise RuntimeError("vLLM>=0.11.1 is required to start the server") from exc
+
+    match = _VLLM_RELEASE.fullmatch(installed)
+    if match is None:
+        raise RuntimeError(
+            f"cannot verify installed vLLM version {installed!r}; "
+            "install vLLM>=0.11.1"
+        )
+    release = tuple(int(part) for part in match.groups()[:3])
+    suffix = match.group(4)
+    minimum_prerelease = release == _MIN_SAFE_VLLM_RELEASE and suffix not in (
+        "",
+        "+",
+    )
+    minimum_postrelease = suffix.startswith((".post", "+"))
+    if release < _MIN_SAFE_VLLM_RELEASE or (
+        minimum_prerelease and not minimum_postrelease
+    ):
+        raise RuntimeError(
+            f"vLLM>=0.11.1 is required to enforce remote-code policy; "
+            f"found {installed}"
+        )
+    return installed
 
 
 def _build_vllm_command(
@@ -99,6 +135,7 @@ def start_vllm_server(
         max_model_len=max_model_len,
         gpu_memory_utilization=gpu_memory_utilization,
     )
+    _require_safe_vllm_version()
 
     print("Starting vLLM server with command:")
     print(shlex.join(cmd))
