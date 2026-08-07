@@ -105,6 +105,16 @@ def test_subgraph_frontend_json():
     assert all({"source", "target", "type"} == set(e) for e in d["edges"])
 
 
+def test_subgraph_honors_node_limit():
+    g = _make_graph()
+    res = DependencyAnalyzer(g).subgraph("mid", radius=1, max_nodes=2)
+
+    assert len(res.nodes) == 1
+    assert res.truncated is True
+    names = {res.root, *(node.name for node in res.nodes)}
+    assert all(edge.source in names and edge.target in names for edge in res.edges)
+
+
 def test_files_nearest_first():
     g = _make_graph()
     res = DependencyAnalyzer(g).impact("leaf", max_depth=3)

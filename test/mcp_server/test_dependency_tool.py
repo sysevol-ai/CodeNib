@@ -9,6 +9,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import igraph as ig
+import pytest
 
 from codenib.graph.code_graph import CodeGraph
 from codenib.mcp.tools.dependency import dependency_subgraph_impl
@@ -48,6 +49,36 @@ def test_both_direction_neighborhood():
     ctx = SimpleNamespace(symbol_graph=_graph())
     out = dependency_subgraph_impl(ctx, "mid", direction="both", depth=1)
     assert {n["name"] for n in out["nodes"]} == {"a.c:caller()", "b.c:leaf()"}
+
+
+def test_both_direction_honors_max_nodes():
+    ctx = SimpleNamespace(symbol_graph=_graph())
+    out = dependency_subgraph_impl(ctx, "mid", direction="both", depth=1, max_nodes=2)
+
+    assert len(out["nodes"]) == 1
+    assert out["truncated"] is True
+    names = {out["root"], *(node["name"] for node in out["nodes"])}
+    assert all(
+        edge["source"] in names and edge["target"] in names for edge in out["edges"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"direction": "sideways"}, "direction must be"),
+        ({"depth": 0}, "depth must be between"),
+        ({"depth": 11}, "depth must be between"),
+        ({"max_nodes": 0}, "max_nodes must be between"),
+        ({"max_nodes": 201}, "max_nodes must be between"),
+        ({"max_nodes": True}, "max_nodes must be an integer"),
+    ],
+)
+def test_rejects_invalid_request_bounds(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        dependency_subgraph_impl(
+            SimpleNamespace(symbol_graph=_graph()), "mid", **kwargs
+        )
 
 
 def test_missing_graph_returns_error():

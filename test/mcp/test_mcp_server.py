@@ -26,7 +26,11 @@ from mcp.types import LATEST_PROTOCOL_VERSION
 import codenib.mcp.server as server_module
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
-from codenib.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
+from codenib.mcp.tools.lsp import (
+    lsp_definition_impl,
+    lsp_references_impl,
+    lsp_route_impl,
+)
 
 
 def test_server_import_keeps_optional_index_runtimes_lazy() -> None:
@@ -61,6 +65,41 @@ def test_server_negotiates_modern_and_legacy_protocols() -> None:
         "search_bm25",
         "search_semantic",
     } <= modern_tools
+
+
+def test_server_publishes_tool_request_bounds() -> None:
+    async def schemas() -> dict[str, dict]:
+        async with Client(server_module.mcp, cache=None) as client:
+            tools = await client.list_tools()
+            return {tool.name: tool.input_schema for tool in tools.tools}
+
+    by_name = asyncio.run(schemas())
+
+    for tool_name in (
+        "search_context",
+        "search_semantic",
+        "search_bm25",
+        "search_regex",
+        "search_zoekt",
+        "lsp_definition",
+        "lsp_references",
+        "lsp_route",
+    ):
+        top_k = by_name[tool_name]["properties"]["top_k"]
+        assert (top_k["minimum"], top_k["maximum"]) == (1, 100)
+
+    dependency = by_name["dependency_subgraph"]["properties"]
+    assert (dependency["depth"]["minimum"], dependency["depth"]["maximum"]) == (
+        1,
+        10,
+    )
+    assert (
+        dependency["max_nodes"]["minimum"],
+        dependency["max_nodes"]["maximum"],
+    ) == (1, 200)
+    assert dependency["direction"]["enum"] == ["impact", "dependencies", "both"]
+    symbols = by_name["lsp_route"]["properties"]["symbols"]
+    assert (symbols["minItems"], symbols["maxItems"]) == (1, 32)
 
 
 @pytest.fixture
@@ -251,6 +290,24 @@ def test_lsp_tools_reuse_agent_line_boundary():
         lsp_definition_impl(ctx, file_path="caller.py", line=0)
 
     assert mock_definition.call_args.kwargs["line"] == 0
+
+
+@pytest.mark.parametrize("top_k", [0, -1, 101, True])
+def test_lsp_definition_rejects_unbounded_top_k(top_k):
+    with pytest.raises(ValueError, match="top_k must be"):
+        lsp_definition_impl(
+            MagicMock(symbol_graph=MagicMock()),
+            symbol="load_config",
+            top_k=top_k,
+        )
+
+
+def test_lsp_route_bounds_symbol_seed_count():
+    with pytest.raises(ValueError, match="at most 32"):
+        lsp_route_impl(
+            MagicMock(symbol_graph=MagicMock()),
+            symbols=[f"symbol_{index}" for index in range(33)],
+        )
 
 
 def test_server_status_resource(mock_manifest: Path):

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from ._validation import MAX_ROUTE_SYMBOLS, bounded_int, bounded_text
+
 
 def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
     if isinstance(symbols, str):
@@ -47,6 +49,7 @@ def lsp_definition_impl(
     from ...agent.boundary import from_agent_repr
     from ...agent.lsp_provider import StaticLSPProvider
 
+    top_k = bounded_int(top_k, name="top_k")
     graph_line = from_agent_repr(line)
     try:
         results = StaticLSPProvider(graph).definition(
@@ -54,7 +57,7 @@ def lsp_definition_impl(
             line=graph_line,
             character=character,
             symbol=symbol or None,
-            top_k=max(1, int(top_k or 8)),
+            top_k=top_k,
         )
     except ValueError as exc:
         return {"error": str(exc)}
@@ -78,6 +81,7 @@ def lsp_references_impl(
     from ...agent.boundary import from_agent_repr
     from ...agent.lsp_provider import StaticLSPProvider
 
+    top_k = bounded_int(top_k, name="top_k")
     graph_line = from_agent_repr(line)
     try:
         results = StaticLSPProvider(graph).references(
@@ -86,7 +90,7 @@ def lsp_references_impl(
             character=character,
             symbol=symbol or None,
             include_declaration=bool(include_declaration),
-            top_k=max(1, int(top_k or 40)),
+            top_k=top_k,
         )
     except ValueError as exc:
         return {"error": str(exc)}
@@ -107,13 +111,17 @@ def lsp_route_impl(
 
     from ...agent.lsp_provider import StaticLSPProvider
 
+    top_k = bounded_int(top_k, name="top_k")
     seeds = _coerce_symbols(symbols)
     if not seeds:
         return []
+    if len(seeds) > MAX_ROUTE_SYMBOLS:
+        raise ValueError(f"symbols must contain at most {MAX_ROUTE_SYMBOLS} entries.")
+    seeds = [bounded_text(seed, name="symbol") for seed in seeds]
     results = StaticLSPProvider(graph).route(
         symbols=seeds,
         query=query or None,
-        top_k=max(1, int(top_k or 12)),
+        top_k=top_k,
         include_neighbors=bool(include_neighbors),
     )
     return [_node_to_dict(node) for node in results]

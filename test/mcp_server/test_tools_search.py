@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from unittest.mock import MagicMock
 
@@ -18,6 +19,7 @@ from codenib.mcp.tools.search import (
     search_bm25_impl,
     search_context_impl,
     search_regex_impl,
+    search_semantic,
     search_zoekt_impl,
 )
 from codenib.types import NodeInfo
@@ -256,6 +258,11 @@ class TestSearchBM25:
         assert "file" not in results[0]
         assert "score" not in results[0]
 
+    @pytest.mark.parametrize("top_k", [0, -1, 101, True])
+    def test_rejects_unbounded_top_k(self, top_k) -> None:
+        with pytest.raises(ValueError, match="top_k must be"):
+            search_bm25_impl(_make_ctx(bm25=MagicMock()), query="tax", top_k=top_k)
+
 
 # ------------------------------------------------------------------
 # search_regex
@@ -302,6 +309,14 @@ class TestSearchRegex:
         assert kwargs["node_type"] == "class"
         assert kwargs["case_sensitive"] is True
 
+    def test_preserves_significant_pattern_whitespace(self) -> None:
+        mock_regex = MagicMock()
+        mock_regex.search.return_value = []
+
+        search_regex_impl(_make_ctx(regex_index=mock_regex), pattern=" def ")
+
+        assert mock_regex.search.call_args.kwargs["pattern"] == " def "
+
     def test_top_k_truncation(self) -> None:
         many_nodes = [
             NodeInfo(node_name=f"func_{i}", type="function", content="x")
@@ -327,6 +342,13 @@ class TestSearchRegex:
 
         with pytest.raises(RuntimeError, match="Invalid regex pattern"):
             search_regex_impl(ctx, pattern=r"[")
+
+    @pytest.mark.parametrize("top_k", [0, -1, 101, True])
+    def test_rejects_unbounded_top_k(self, top_k) -> None:
+        with pytest.raises(ValueError, match="top_k must be"):
+            search_regex_impl(
+                _make_ctx(regex_index=MagicMock()), pattern="class", top_k=top_k
+            )
 
 
 # ------------------------------------------------------------------
@@ -435,3 +457,34 @@ class TestSearchZoekt:
             RuntimeError, match="Zoekt search failed.*connection refused"
         ):
             search_zoekt_impl(ctx, query="x")
+
+    @pytest.mark.parametrize("top_k", [0, -1, 101, True])
+    def test_rejects_unbounded_top_k(self, top_k) -> None:
+        with pytest.raises(ValueError, match="top_k must be"):
+            search_zoekt_impl(_make_ctx(zoekt=MagicMock()), query="TODO", top_k=top_k)
+
+
+@pytest.mark.parametrize("top_k", [0, -1, 101, True])
+def test_semantic_search_rejects_unbounded_top_k(top_k) -> None:
+    with pytest.raises(ValueError, match="top_k must be"):
+        asyncio.run(
+            search_semantic(
+                _make_ctx(vector=MagicMock()),
+                query="authentication flow",
+                top_k=top_k,
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: search_bm25_impl(_make_ctx(bm25=MagicMock()), query=" "),
+        lambda: search_regex_impl(_make_ctx(regex_index=MagicMock()), pattern=" "),
+        lambda: search_zoekt_impl(_make_ctx(zoekt=MagicMock()), query=" "),
+        lambda: asyncio.run(search_semantic(_make_ctx(vector=MagicMock()), query=" ")),
+    ],
+)
+def test_search_tools_reject_empty_text(call) -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        call()

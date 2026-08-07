@@ -23,13 +23,21 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from mcp.server import MCPServer
+from pydantic import Field
 
 from ..compiler.manifest import RepoManifest
 from .context import ServerContext
 from .prompts import CODENIB_GUIDE
+from .tools._validation import (
+    MAX_GRAPH_DEPTH,
+    MAX_GRAPH_NODES,
+    MAX_ROUTE_SYMBOLS,
+    MAX_TOOL_RESULTS,
+    MAX_TOOL_TEXT_CHARS,
+)
 from .tools.dependency import dependency_subgraph_impl
 from .tools.lsp import lsp_definition_impl, lsp_references_impl, lsp_route_impl
 from .tools.search import search_bm25_impl, search_context_impl, search_regex_impl
@@ -37,6 +45,12 @@ from .tools.search import search_semantic as _search_semantic_impl
 from .tools.search import search_zoekt_impl
 
 logger = logging.getLogger(__name__)
+
+_ToolText = Annotated[str, Field(min_length=1, max_length=MAX_TOOL_TEXT_CHARS)]
+_ToolTopK = Annotated[int, Field(ge=1, le=MAX_TOOL_RESULTS)]
+_GraphDepth = Annotated[int, Field(ge=1, le=MAX_GRAPH_DEPTH)]
+_GraphNodes = Annotated[int, Field(ge=1, le=MAX_GRAPH_NODES)]
+_RouteSymbols = Annotated[list[str], Field(min_length=1, max_length=MAX_ROUTE_SYMBOLS)]
 
 # Global context is set once at startup before the event loop runs tools.
 _ctx: Optional[ServerContext] = None
@@ -80,8 +94,8 @@ mcp = MCPServer(
     ),
 )
 async def search_context(
-    query: str,
-    top_k: int = 10,
+    query: _ToolText,
+    top_k: _ToolTopK = 10,
     budget: str = "balanced",
     level: str = "l2",
     filter_test: bool = False,
@@ -109,8 +123,8 @@ async def search_context(
     ),
 )
 async def semantic_search(
-    query: str,
-    top_k: int = 10,
+    query: _ToolText,
+    top_k: _ToolTopK = 10,
     level: str = "l2",
     score_threshold: float = 0.0,
 ) -> list[dict[str, Any]] | dict[str, str]:
@@ -141,8 +155,8 @@ async def semantic_search(
     ),
 )
 async def search_bm25(
-    query: str,
-    top_k: int = 20,
+    query: _ToolText,
+    top_k: _ToolTopK = 20,
     filter_test: bool = False,
 ) -> list[dict[str, Any]]:
     """BM25 keyword search over indexed code symbols."""
@@ -163,8 +177,8 @@ async def search_bm25(
     ),
 )
 async def search_regex(
-    pattern: str,
-    top_k: int = 20,
+    pattern: _ToolText,
+    top_k: _ToolTopK = 20,
     file_glob: str = "",
     node_type: str = "",
     case_sensitive: bool = False,
@@ -195,8 +209,8 @@ async def search_regex(
     ),
 )
 async def search_zoekt(
-    query: str,
-    top_k: int = 20,
+    query: _ToolText,
+    top_k: _ToolTopK = 20,
     file_filter: str = "",
 ) -> list[dict[str, Any]]:
     """Trigram-based search over raw repository contents."""
@@ -224,10 +238,10 @@ async def search_zoekt(
     ),
 )
 async def dependency_subgraph(
-    symbol: str,
-    direction: str = "both",
-    depth: int = 2,
-    max_nodes: int = 60,
+    symbol: _ToolText,
+    direction: Literal["impact", "dependencies", "both"] = "both",
+    depth: _GraphDepth = 2,
+    max_nodes: _GraphNodes = 60,
 ) -> dict[str, Any]:
     """Call-graph dependency/impact subgraph for *symbol* (nodes+edges JSON)."""
     if _ctx is None:
@@ -250,7 +264,7 @@ async def lsp_definition(
     line: int | None = None,
     character: int | None = None,
     symbol: str = "",
-    top_k: int = 8,
+    top_k: _ToolTopK = 8,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Graph-backed definition lookup over the static symbol graph."""
     if _ctx is None:
@@ -280,7 +294,7 @@ async def lsp_references(
     character: int | None = None,
     symbol: str = "",
     include_declaration: bool = True,
-    top_k: int = 40,
+    top_k: _ToolTopK = 40,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Graph-backed reference lookup over the static symbol graph."""
     if _ctx is None:
@@ -307,9 +321,9 @@ async def lsp_references(
     ),
 )
 async def lsp_route(
-    symbols: list[str],
+    symbols: _RouteSymbols,
     query: str = "",
-    top_k: int = 12,
+    top_k: _ToolTopK = 12,
     include_neighbors: bool = True,
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Graph-backed route map over the static symbol graph."""

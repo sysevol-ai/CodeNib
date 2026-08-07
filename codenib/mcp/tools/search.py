@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from ...agent.boundary import to_agent_repr
 from ...types import NodeInfo
 from ..context import ServerContext
+from ._validation import bounded_int, bounded_text
 
 
 def _node_to_dict(node: NodeInfo) -> Dict[str, Any]:
@@ -30,11 +31,8 @@ def search_context_impl(
     filter_test: bool = False,
 ) -> Dict[str, Any]:
     """Plan and execute ranked retrieval over the available repository views."""
-    normalized_query = (query or "").strip()
-    if not normalized_query:
-        raise ValueError("query must not be empty.")
-    if isinstance(top_k, bool) or not 1 <= top_k <= 100:
-        raise ValueError("top_k must be between 1 and 100.")
+    normalized_query = bounded_text(query, name="query")
+    top_k = bounded_int(top_k, name="top_k")
     normalized_level = (level or "l2").strip().lower()
     if normalized_level not in {"l0", "l2"}:
         raise ValueError("level must be 'l0' or 'l2'.")
@@ -174,19 +172,22 @@ async def search_semantic(
         List of NodeInfo dicts with scores and content. On missing index,
         returns ``{"error": ...}`` so callers can handle gracefully.
     """
+    query = bounded_text(query, name="query")
+    top_k = bounded_int(top_k, name="top_k")
+    normalized_level = (level or "l2").strip().lower()
+    if normalized_level not in {"l0", "l2"}:
+        raise ValueError("level must be 'l0' or 'l2'.")
+
     if ctx.vector is None:
         return {
             "error": "Vector index not loaded. Re-run indexing with embedding enabled."
         }
 
-    if level is None:
-        level = "l2"
-
     results = await asyncio.to_thread(
         ctx.vector.search_with_content,
         query=query,
         top_k=top_k,
-        level=level,
+        level=normalized_level,
         score_threshold=score_threshold,
     )
 
@@ -224,6 +225,9 @@ def search_bm25_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content, score.
     """
+    query = bounded_text(query, name="query")
+    top_k = bounded_int(top_k, name="top_k")
+
     if ctx.bm25 is None:
         raise RuntimeError(
             "BM25 index is not available. "
@@ -267,6 +271,9 @@ def search_regex_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content.
     """
+    pattern = bounded_text(pattern, name="pattern", strip=False)
+    top_k = bounded_int(top_k, name="top_k")
+
     if ctx.regex_index is None:
         raise RuntimeError(
             "Regex index is not available. "
@@ -326,6 +333,9 @@ def search_zoekt_impl(
         (``"file"``), ``file``, ``start_line``, ``end_line``, ``content``,
         ``score``, ``node_id`` (language hint, when reported).
     """
+    query = bounded_text(query, name="query")
+    top_k = bounded_int(top_k, name="top_k")
+
     if ctx.zoekt is None:
         raise RuntimeError(
             "Zoekt index is not available. "
