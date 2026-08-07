@@ -8,6 +8,19 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+MAX_LSP_RESULTS = 100
+MAX_LSP_ROUTE_SYMBOLS = 100
+
+
+def _validate_top_k(top_k: int) -> int:
+    if (
+        isinstance(top_k, bool)
+        or not isinstance(top_k, int)
+        or not 1 <= top_k <= MAX_LSP_RESULTS
+    ):
+        raise ValueError("top_k must be an integer between 1 and 100")
+    return top_k
+
 
 def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
     if isinstance(symbols, str):
@@ -49,12 +62,13 @@ def lsp_definition_impl(
 
     graph_line = from_agent_repr(line)
     try:
+        limit = _validate_top_k(top_k)
         results = StaticLSPProvider(graph).definition(
             file_path=file_path or None,
             line=graph_line,
             character=character,
             symbol=symbol or None,
-            top_k=max(1, int(top_k or 8)),
+            top_k=limit,
         )
     except ValueError as exc:
         return {"error": str(exc)}
@@ -80,13 +94,14 @@ def lsp_references_impl(
 
     graph_line = from_agent_repr(line)
     try:
+        limit = _validate_top_k(top_k)
         results = StaticLSPProvider(graph).references(
             file_path=file_path or None,
             line=graph_line,
             character=character,
             symbol=symbol or None,
             include_declaration=bool(include_declaration),
-            top_k=max(1, int(top_k or 40)),
+            top_k=limit,
         )
     except ValueError as exc:
         return {"error": str(exc)}
@@ -105,15 +120,27 @@ def lsp_route_impl(
     if graph is None:
         return {"error": "symbol_graph index not available"}
 
-    from ...agent.lsp_provider import StaticLSPProvider
-
+    try:
+        limit = _validate_top_k(top_k)
+    except ValueError as exc:
+        return {"error": str(exc)}
     seeds = _coerce_symbols(symbols)
     if not seeds:
         return []
+    if len(seeds) > MAX_LSP_ROUTE_SYMBOLS:
+        return {
+            "error": (
+                "symbols must contain at most "
+                f"{MAX_LSP_ROUTE_SYMBOLS} non-empty entries"
+            )
+        }
+
+    from ...agent.lsp_provider import StaticLSPProvider
+
     results = StaticLSPProvider(graph).route(
         symbols=seeds,
         query=query or None,
-        top_k=max(1, int(top_k or 12)),
+        top_k=limit,
         include_neighbors=bool(include_neighbors),
     )
     return [_node_to_dict(node) for node in results]

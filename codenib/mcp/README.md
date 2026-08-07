@@ -152,6 +152,7 @@ Each node's optional `line` is 1-based.
 ### `lsp_definition` / `lsp_references` / `lsp_route`
 Static LSP-shaped navigation over the loaded `symbol_graph`. These tools return
 compact locations only; clients should read source before finalizing.
+All three tools require integer `top_k` values from 1 through 100.
 
 - `lsp_definition`: provide either `symbol`, or `file_path` + 1-based `line`
   with optional 0-based `character`; `top_k` defaults to 8.
@@ -159,7 +160,8 @@ compact locations only; clients should read source before finalizing.
   `include_declaration` defaults to `true` and `top_k` to 40.
 - `lsp_route`: provide `symbols`, with optional `query`, `top_k` (default 12),
   and `include_neighbors` (default `true`) to rank endpoint, bridge/factory,
-  provider/value, and type anchors.
+  provider/value, and type anchors. At most 100 non-empty symbol seeds are
+  accepted per request.
 
 ### `get_manifest`
 Returns the manifest version; a nested `repo` object containing path, commit,

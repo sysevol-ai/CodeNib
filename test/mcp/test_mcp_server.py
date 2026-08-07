@@ -26,7 +26,11 @@ from mcp.types import LATEST_PROTOCOL_VERSION
 import codenib.mcp.server as server_module
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
-from codenib.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
+from codenib.mcp.tools.lsp import (
+    lsp_definition_impl,
+    lsp_references_impl,
+    lsp_route_impl,
+)
 
 
 def test_server_import_keeps_optional_index_runtimes_lazy() -> None:
@@ -251,6 +255,34 @@ def test_lsp_tools_reuse_agent_line_boundary():
         lsp_definition_impl(ctx, file_path="caller.py", line=0)
 
     assert mock_definition.call_args.kwargs["line"] == 0
+
+
+@pytest.mark.parametrize("top_k", [True, 0, -1, 101, 1.5])
+@pytest.mark.parametrize(
+    ("impl", "kwargs"),
+    [
+        (lsp_definition_impl, {"symbol": "load_config"}),
+        (lsp_references_impl, {"symbol": "load_config"}),
+        (lsp_route_impl, {"symbols": ["load_config"]}),
+    ],
+)
+def test_lsp_tools_reject_invalid_result_budgets_before_provider(top_k, impl, kwargs):
+    ctx = MagicMock(symbol_graph=MagicMock())
+    with patch("codenib.agent.lsp_provider.StaticLSPProvider") as provider:
+        result = impl(ctx, top_k=top_k, **kwargs)
+
+    assert result == {"error": "top_k must be an integer between 1 and 100"}
+    provider.assert_not_called()
+
+
+def test_lsp_route_rejects_oversized_symbol_list_before_provider():
+    ctx = MagicMock(symbol_graph=MagicMock())
+    symbols = [f"symbol_{index}" for index in range(101)]
+    with patch("codenib.agent.lsp_provider.StaticLSPProvider") as provider:
+        result = lsp_route_impl(ctx, symbols=symbols)
+
+    assert result == {"error": "symbols must contain at most 100 non-empty entries"}
+    provider.assert_not_called()
 
 
 def test_server_status_resource(mock_manifest: Path):
