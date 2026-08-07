@@ -45,6 +45,8 @@ def build_draft(
     drafters: Sequence[Drafter],
     context: Sequence[TokenId],
     config: SpeculativeConfig,
+    *,
+    max_tokens: Optional[int] = None,
 ) -> DraftTree:
     """Run every drafter and fuse the results into one budgeted tree.
 
@@ -52,9 +54,12 @@ def build_draft(
     copy drafter) own shared prefixes; retrieval and model drafts graft on. The
     fused tree is pruned to ``config.max_draft_tokens``.
     """
-    trees = [d.draft(context, config.max_draft_tokens) for d in drafters]
+    budget = config.max_draft_tokens
+    if max_tokens is not None:
+        budget = min(budget, max_tokens)
+    trees = [d.draft(context, budget) for d in drafters]
     trees = [t for t in trees if not t.is_empty()]
-    return fuse(trees, max_tokens=config.max_draft_tokens)
+    return fuse(trees, max_tokens=budget)
 
 
 @dataclass
@@ -167,9 +172,19 @@ class SpeculativeServer:
     drafters: List[Drafter] = field(default_factory=list)
     config: SpeculativeConfig = field(default_factory=SpeculativeConfig)
 
-    def step(self, context: Sequence[TokenId]) -> DraftTree:
+    def step(
+        self,
+        context: Sequence[TokenId],
+        *,
+        max_tokens: Optional[int] = None,
+    ) -> DraftTree:
         """Produce the draft tree for one decoding step (engine-agnostic)."""
-        return build_draft(self.drafters, context, self.config)
+        return build_draft(
+            self.drafters,
+            context,
+            self.config,
+            max_tokens=max_tokens,
+        )
 
     def run_iter(
         self,
@@ -186,11 +201,17 @@ class SpeculativeServer:
         Generation ends at EOS, at ``max_new_tokens``, or when the verifier emits
         nothing. This is the single decoding loop; :meth:`run` aggregates it.
         """
+        if isinstance(max_new_tokens, bool) or not isinstance(max_new_tokens, int):
+            raise ValueError("max_new_tokens must be a positive integer")
+        if max_new_tokens <= 0:
+            raise ValueError("max_new_tokens must be a positive integer")
+
         context: List[TokenId] = list(prompt)
         produced = 0
 
         while produced < max_new_tokens:
-            tree = self.step(context)
+            remaining = max_new_tokens - produced
+            tree = self.step(context, max_tokens=remaining)
             result = verifier.verify(context, tree)
 
             emitted = result.emitted[: max_new_tokens - produced]

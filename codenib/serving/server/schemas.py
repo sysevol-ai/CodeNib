@@ -14,29 +14,70 @@ from __future__ import annotations
 
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# These limits are enforced before model inference.  The byte-level HTTP cap
+# lives in ``server.api``; the schema limits keep JSON that fits under that cap
+# from expanding into an unbounded number of messages or tokenizer work.
+MAX_CHAT_MESSAGES = 128
+MAX_MESSAGE_CHARACTERS = 262_144
+MAX_PROMPT_CHARACTERS = 262_144
+MAX_COMPLETION_TOKENS = 4_096
+MAX_MODEL_NAME_CHARACTERS = 512
 
 
-class ChatMessage(BaseModel):
+class _StrictWireModel(BaseModel):
+    """Reject fields the endpoint does not implement instead of ignoring them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ChatMessage(_StrictWireModel):
     """A single chat message (``role`` is typically system/user/assistant)."""
 
-    role: str
-    content: str
+    role: Literal["system", "developer", "user", "assistant"]
+    content: str = Field(max_length=MAX_MESSAGE_CHARACTERS, strict=True)
 
 
-class ChatCompletionRequest(BaseModel):
+class ChatCompletionRequest(_StrictWireModel):
     """The subset of ``POST /v1/chat/completions`` fields CodeNib serving honors."""
 
-    model: str
-    messages: List[ChatMessage]
-    max_tokens: Optional[int] = None
-    max_completion_tokens: Optional[int] = None
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    stream: bool = False
+    model: str = Field(
+        min_length=1,
+        max_length=MAX_MODEL_NAME_CHARACTERS,
+        strict=True,
+    )
+    messages: List[ChatMessage] = Field(
+        min_length=1,
+        max_length=MAX_CHAT_MESSAGES,
+    )
+    max_tokens: Optional[int] = Field(
+        default=None,
+        gt=0,
+        le=MAX_COMPLETION_TOKENS,
+        strict=True,
+    )
+    max_completion_tokens: Optional[int] = Field(
+        default=None,
+        gt=0,
+        le=MAX_COMPLETION_TOKENS,
+        strict=True,
+    )
+    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    top_p: Optional[float] = Field(default=None, gt=0.0, le=1.0)
+    stream: bool = Field(default=False, strict=True)
+
+    @model_validator(mode="after")
+    def _bound_prompt_characters(self) -> "ChatCompletionRequest":
+        total = sum(len(message.content) for message in self.messages)
+        if total > MAX_PROMPT_CHARACTERS:
+            raise ValueError(
+                f"messages contain more than {MAX_PROMPT_CHARACTERS} characters"
+            )
+        return self
 
 
-class Choice(BaseModel):
+class Choice(_StrictWireModel):
     """One non-streamed completion choice."""
 
     index: int = 0
@@ -44,7 +85,7 @@ class Choice(BaseModel):
     finish_reason: Optional[str] = None
 
 
-class Usage(BaseModel):
+class Usage(_StrictWireModel):
     """Token accounting for a completion."""
 
     prompt_tokens: int
@@ -52,7 +93,7 @@ class Usage(BaseModel):
     total_tokens: int
 
 
-class ChatCompletionResponse(BaseModel):
+class ChatCompletionResponse(_StrictWireModel):
     """A non-streamed ``chat.completion`` response."""
 
     id: str
@@ -63,14 +104,14 @@ class ChatCompletionResponse(BaseModel):
     usage: Usage
 
 
-class DeltaMessage(BaseModel):
+class DeltaMessage(_StrictWireModel):
     """The incremental payload of a streaming chunk."""
 
     role: Optional[str] = None
     content: Optional[str] = None
 
 
-class ChunkChoice(BaseModel):
+class ChunkChoice(_StrictWireModel):
     """One streamed choice delta."""
 
     index: int = 0
@@ -78,7 +119,7 @@ class ChunkChoice(BaseModel):
     finish_reason: Optional[str] = None
 
 
-class ChatCompletionChunk(BaseModel):
+class ChatCompletionChunk(_StrictWireModel):
     """A single ``chat.completion.chunk`` streamed over SSE."""
 
     id: str
@@ -88,7 +129,7 @@ class ChatCompletionChunk(BaseModel):
     choices: List[ChunkChoice]
 
 
-class ModelCard(BaseModel):
+class ModelCard(_StrictWireModel):
     """One entry in ``GET /v1/models``."""
 
     id: str
@@ -97,7 +138,7 @@ class ModelCard(BaseModel):
     owned_by: str = "codenib"
 
 
-class ModelList(BaseModel):
+class ModelList(_StrictWireModel):
     """The ``GET /v1/models`` response."""
 
     object: Literal["list"] = "list"

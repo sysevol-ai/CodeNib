@@ -69,7 +69,7 @@ codenib-lsp-agent-study-run = "codenib._optional_entrypoints:lsp_agent_study_run
 codenib-artifact-bundle = "codenib.eval.artifact_bundle:main"
 codenib-swe-explore-benchmark = "codenib.eval.benchmarks.swe_explore_runner:main"
 codenib-quality-cost-report = "codenib.eval.reports.quality_cost:main"
-codenib-serve = "codenib.serving.server.api:main"
+codenib-serve = "codenib._optional_entrypoints:serving_main"
 
 [project.optional-dependencies]
 agent = [

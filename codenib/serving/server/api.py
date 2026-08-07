@@ -28,10 +28,11 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Sequence
+from typing import Any, Awaitable, Callable, List, Optional, Sequence
 
 from fastapi import FastAPI, HTTPException
 from sse_starlette.sse import EventSourceResponse
+from starlette.responses import JSONResponse
 
 from codenib.serving.drafter.base import Drafter
 from codenib.serving.drafter.copy import CopyDrafter
@@ -42,6 +43,7 @@ from codenib.serving.drafter.retrieval import (
 )
 from codenib.serving.server.hf_engine import CachedHFTreeEngine, HFTreeEngine
 from codenib.serving.server.schemas import (
+    MAX_COMPLETION_TOKENS,
     ChatCompletionChunk,
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -57,6 +59,98 @@ from codenib.serving.server.sglang import SGLangVerifier, TargetEngine
 from codenib.serving.server.tokenization import Tokenizer
 from codenib.serving.server.worker import SpeculativeConfig, SpeculativeServer
 from codenib.serving.types import TokenId
+
+DEFAULT_MAX_CONTEXT_TOKENS = 8_192
+MAX_CONFIGURED_CONTEXT_TOKENS = 32_768
+_MAX_ADVERTISED_CONTEXT_TOKENS = 16_777_216
+MAX_DRAFT_TOKENS = 256
+MAX_REQUEST_BODY_BYTES = 1_048_576
+DEFAULT_STREAM_QUEUE_ITEMS = 32
+
+
+class _RequestBodyTooLarge(Exception):
+    """Raised before FastAPI materializes an oversized JSON request."""
+
+
+class _RequestBodyLimitMiddleware:
+    """Reject oversized chat request bodies, including chunked requests."""
+
+    def __init__(self, app: Any, *, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(
+        self,
+        scope: dict,
+        receive: Callable[[], Awaitable[dict]],
+        send: Callable[[dict], Awaitable[None]],
+    ) -> None:
+        if not (
+            scope.get("type") == "http"
+            and scope.get("method") == "POST"
+            and scope.get("path") == "/v1/chat/completions"
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        content_length = headers.get(b"content-length")
+        if content_length is not None:
+            try:
+                declared = int(content_length)
+            except ValueError:
+                await self._reject(scope, receive, send, status_code=400)
+                return
+            if declared < 0:
+                await self._reject(scope, receive, send, status_code=400)
+                return
+            if declared > self.max_bytes:
+                await self._reject(scope, receive, send, status_code=413)
+                return
+
+        received = 0
+        response_started = False
+
+        async def limited_receive() -> dict:
+            nonlocal received
+            message = await receive()
+            if message.get("type") == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise _RequestBodyTooLarge
+            return message
+
+        async def tracked_send(message: dict) -> None:
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracked_send)
+        except _RequestBodyTooLarge:
+            if response_started:  # pragma: no cover - body models read before response
+                raise
+            await self._reject(scope, receive, send, status_code=413)
+
+    async def _reject(
+        self,
+        scope: dict,
+        receive: Callable[[], Awaitable[dict]],
+        send: Callable[[dict], Awaitable[None]],
+        *,
+        status_code: int,
+    ) -> None:
+        detail = (
+            f"request body exceeds {self.max_bytes} bytes"
+            if status_code == 413
+            else "invalid Content-Length header"
+        )
+        await JSONResponse({"detail": detail}, status_code=status_code)(
+            scope,
+            receive,
+            send,
+        )
 
 
 @dataclass
@@ -76,9 +170,36 @@ class AppState:
     drafters: List[Drafter]
     config: SpeculativeConfig = field(default_factory=SpeculativeConfig)
     default_max_new_tokens: int = 256
+    max_context_tokens: int = DEFAULT_MAX_CONTEXT_TOKENS
+    stream_queue_items: int = DEFAULT_STREAM_QUEUE_ITEMS
     # asyncio primitives bind to the running loop lazily (3.10+), so building
     # this outside a loop is safe.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    prompt_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.config.max_draft_tokens <= MAX_DRAFT_TOKENS:
+            raise ValueError(
+                f"config.max_draft_tokens must be between 1 and {MAX_DRAFT_TOKENS}"
+            )
+        if not 1 <= self.config.min_draft_tokens <= self.config.max_draft_tokens:
+            raise ValueError(
+                "config.min_draft_tokens must be between 1 and max_draft_tokens"
+            )
+        if not 1 <= self.default_max_new_tokens <= MAX_COMPLETION_TOKENS:
+            raise ValueError(
+                "default_max_new_tokens must be between 1 and "
+                f"{MAX_COMPLETION_TOKENS}"
+            )
+        if not 1 <= self.max_context_tokens <= MAX_CONFIGURED_CONTEXT_TOKENS:
+            raise ValueError(
+                "max_context_tokens must be between 1 and "
+                f"{MAX_CONFIGURED_CONTEXT_TOKENS}"
+            )
+        if self.default_max_new_tokens > self.max_context_tokens:
+            raise ValueError("default_max_new_tokens cannot exceed max_context_tokens")
+        if not 1 <= self.stream_queue_items <= 1_024:
+            raise ValueError("stream_queue_items must be between 1 and 1024")
 
 
 def _completion_id() -> str:
@@ -99,6 +220,18 @@ def _check_greedy(req: ChatCompletionRequest) -> None:
         )
 
 
+def _check_model(state: AppState, req: ChatCompletionRequest) -> None:
+    """Reject requests for a model this single-model process does not serve."""
+    if req.model != state.served_model_name:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"model {req.model!r} is not served; expected "
+                f"{state.served_model_name!r}"
+            ),
+        )
+
+
 def _build_prompt_ids(state: AppState, messages: List[ChatMessage]) -> List[TokenId]:
     """Turn chat messages into prompt token ids via the model's chat template.
 
@@ -116,7 +249,34 @@ def _build_prompt_ids(state: AppState, messages: List[ChatMessage]) -> List[Toke
 
 
 def _max_new_tokens(state: AppState, req: ChatCompletionRequest) -> int:
-    return req.max_completion_tokens or req.max_tokens or state.default_max_new_tokens
+    if req.max_completion_tokens is not None:
+        return req.max_completion_tokens
+    if req.max_tokens is not None:
+        return req.max_tokens
+    return state.default_max_new_tokens
+
+
+async def _prepare_prompt(
+    state: AppState,
+    req: ChatCompletionRequest,
+    max_new: int,
+) -> List[TokenId]:
+    """Serialize bounded tokenizer work and enforce the model context window."""
+    async with state.prompt_lock:
+        prompt_ids = await asyncio.to_thread(_build_prompt_ids, state, req.messages)
+    if not prompt_ids:
+        raise HTTPException(
+            status_code=400, detail="prompt tokenized to an empty sequence"
+        )
+    if len(prompt_ids) + max_new > state.max_context_tokens:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"prompt ({len(prompt_ids)} tokens) plus completion ({max_new} "
+                f"tokens) exceeds the {state.max_context_tokens}-token model context"
+            ),
+        )
+    return prompt_ids
 
 
 def _run_full(state: AppState, prompt_ids: List[TokenId], max_new: int):
@@ -208,7 +368,12 @@ def _chunk_json(
 def create_app(state: AppState) -> FastAPI:
     """Build the FastAPI app bound to ``state``."""
     app = FastAPI(title="CodeNib Serving", version="0.1.0")
+    app.add_middleware(
+        _RequestBodyLimitMiddleware,
+        max_bytes=MAX_REQUEST_BODY_BYTES,
+    )
     state.lock = asyncio.Lock()
+    state.prompt_lock = asyncio.Lock()
 
     @app.get("/health")
     async def health() -> dict:
@@ -223,12 +388,14 @@ def create_app(state: AppState) -> FastAPI:
     @app.post("/v1/chat/completions")
     async def chat_completions(req: ChatCompletionRequest):
         _check_greedy(req)
-        prompt_ids = _build_prompt_ids(state, req.messages)
+        _check_model(state, req)
         max_new = _max_new_tokens(state, req)
-        model_name = req.model or state.served_model_name
+        prompt_ids = await _prepare_prompt(state, req, max_new)
 
         if req.stream:
-            return EventSourceResponse(_stream(state, prompt_ids, max_new, model_name))
+            return EventSourceResponse(
+                _stream(state, prompt_ids, max_new, state.served_model_name)
+            )
 
         async with state.lock:
             completion_ids, finish = await asyncio.to_thread(
@@ -238,7 +405,7 @@ def create_app(state: AppState) -> FastAPI:
         return ChatCompletionResponse(
             id=_completion_id(),
             created=int(time.time()),
-            model=model_name,
+            model=state.served_model_name,
             choices=[
                 Choice(
                     message=ChatMessage(role="assistant", content=text),
@@ -269,9 +436,22 @@ async def _stream(
     created = int(time.time())
     cid = _completion_id()
     loop = asyncio.get_running_loop()
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=state.stream_queue_items)
+    queue_slots = threading.BoundedSemaphore(state.stream_queue_items)
     done = object()
     stop = threading.Event()
+
+    def enqueue(item: object) -> bool:
+        """Transfer one item to the event loop without growing memory unboundedly."""
+        while not stop.is_set():
+            if queue_slots.acquire(timeout=0.05):
+                try:
+                    loop.call_soon_threadsafe(queue.put_nowait, item)
+                except RuntimeError:
+                    queue_slots.release()
+                    return False
+                return True
+        return False
 
     def produce() -> None:
         try:
@@ -291,17 +471,18 @@ async def _stream(
                     continue
                 produced += len(step.emitted)
                 delta = decoder.push(step.emitted)
-                if delta:
-                    loop.call_soon_threadsafe(queue.put_nowait, ("delta", delta))
+                if delta and not enqueue(("delta", delta)):
+                    return
             tail = decoder.flush()
-            if tail:
-                loop.call_soon_threadsafe(queue.put_nowait, ("delta", tail))
+            if tail and not enqueue(("delta", tail)):
+                return
             finish = "length" if produced >= max_new else "stop"
-            loop.call_soon_threadsafe(queue.put_nowait, ("finish", finish))
+            if not enqueue(("finish", finish)):
+                return
         except Exception as exc:  # noqa: BLE001 - surfaced to the consumer below
-            loop.call_soon_threadsafe(queue.put_nowait, ("error", exc))
+            enqueue(("error", exc))
         finally:
-            loop.call_soon_threadsafe(queue.put_nowait, done)
+            enqueue(done)
 
     # Acquired and released by hand rather than with ``async with``: a client
     # disconnect cancels this generator at an ``await``, and a lexical
@@ -318,6 +499,7 @@ async def _stream(
         finish = "stop"
         while True:
             item = await queue.get()
+            queue_slots.release()
             if item is done:
                 break
             kind, payload = item
@@ -340,10 +522,82 @@ async def _stream(
             fut.add_done_callback(lambda _f: state.lock.release())
 
 
+def _bounded_int(name: str, minimum: int, maximum: int) -> Callable[[str], int]:
+    """Build an argparse integer parser with an explicit inclusive range."""
+
+    def parse(value: str) -> int:
+        try:
+            parsed = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"{name} must be an integer") from exc
+        if not minimum <= parsed <= maximum:
+            raise argparse.ArgumentTypeError(
+                f"{name} must be between {minimum} and {maximum}"
+            )
+        return parsed
+
+    return parse
+
+
+def _model_context_capacity(model: object, tokenizer: object) -> int:
+    """Return the smallest credible context limit advertised by model/tokenizer."""
+    candidates: List[int] = []
+    config = getattr(model, "config", None)
+    for owner, attributes in (
+        (
+            config,
+            (
+                "max_position_embeddings",
+                "n_positions",
+                "seq_length",
+                "max_sequence_length",
+            ),
+        ),
+        (tokenizer, ("model_max_length",)),
+    ):
+        for attribute in attributes:
+            value = getattr(owner, attribute, None)
+            # Tokenizers use enormous sentinel integers for "unknown".  Ignore
+            # those rather than treating them as a safe allocation budget.
+            if (
+                isinstance(value, int)
+                and not isinstance(value, bool)
+                and 1 <= value <= _MAX_ADVERTISED_CONTEXT_TOKENS
+            ):
+                candidates.append(value)
+    return min(candidates) if candidates else DEFAULT_MAX_CONTEXT_TOKENS
+
+
+def _resolve_context_limit(
+    model: object,
+    tokenizer: object,
+    requested: Optional[int],
+) -> int:
+    capacity = _model_context_capacity(model, tokenizer)
+    serving_capacity = min(capacity, MAX_CONFIGURED_CONTEXT_TOKENS)
+    if requested is not None and requested > serving_capacity:
+        raise SystemExit(
+            "codenib-serve: error: --max-context-tokens "
+            f"({requested}) exceeds the safe model/serving capacity "
+            f"({serving_capacity})"
+        )
+    if requested is not None:
+        return requested
+    return min(DEFAULT_MAX_CONTEXT_TOKENS, serving_capacity)
+
+
+def _validate_generation_limit(max_new_tokens: int, max_context_tokens: int) -> None:
+    if max_new_tokens > max_context_tokens:
+        raise SystemExit(
+            "codenib-serve: error: --max-new-tokens "
+            f"({max_new_tokens}) exceeds the context limit ({max_context_tokens})"
+        )
+
+
 def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     """Parse ``codenib-serve`` arguments (``argv`` is injected by tests)."""
     parser = argparse.ArgumentParser(
-        description="CodeNib OpenAI-compatible serving endpoint"
+        prog="codenib-serve", description="CodeNib OpenAI-compatible serving endpoint"
     )
     parser.add_argument(
         "--model",
@@ -353,10 +607,32 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--device", default=os.environ.get("CODENIB_SERVE_DEVICE", "cuda")
     )
-    parser.add_argument("--host", default="0.0.0.0")  # noqa: S104
-    parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--max-new-tokens", type=int, default=256)
-    parser.add_argument("--max-draft-tokens", type=int, default=16)
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument(
+        "--port",
+        type=_bounded_int("port", 1, 65_535),
+        default=8000,
+    )
+    parser.add_argument(
+        "--max-new-tokens",
+        type=_bounded_int("max-new-tokens", 1, MAX_COMPLETION_TOKENS),
+        default=256,
+    )
+    parser.add_argument(
+        "--max-draft-tokens",
+        type=_bounded_int("max-draft-tokens", 1, MAX_DRAFT_TOKENS),
+        default=16,
+    )
+    parser.add_argument(
+        "--max-context-tokens",
+        type=_bounded_int(
+            "max-context-tokens",
+            1,
+            MAX_CONFIGURED_CONTEXT_TOKENS,
+        ),
+        default=None,
+        help="optional context cap at or below the model/tokenizer capacity",
+    )
     parser.add_argument(
         "--manifest",
         default=os.environ.get("CODENIB_SERVE_MANIFEST"),
@@ -405,6 +681,12 @@ def main() -> None:
     base = HFTreeEngine.from_pretrained(args.model, device=args.device)
     model = base.model
     tokenizer = Tokenizer.from_pretrained(args.model)
+    max_context_tokens = _resolve_context_limit(
+        model,
+        tokenizer.hf,
+        args.max_context_tokens,
+    )
+    _validate_generation_limit(args.max_new_tokens, max_context_tokens)
     state = AppState(
         served_model_name=args.served_model_name or args.model,
         tokenizer=tokenizer,
@@ -412,6 +694,7 @@ def main() -> None:
         drafters=_build_drafters(args, tokenizer),
         config=SpeculativeConfig(max_draft_tokens=args.max_draft_tokens),
         default_max_new_tokens=args.max_new_tokens,
+        max_context_tokens=max_context_tokens,
     )
     app = create_app(state)
     uvicorn.run(app, host=args.host, port=args.port)

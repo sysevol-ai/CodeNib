@@ -15,6 +15,7 @@ from typing import Callable
 
 _OPTIONAL_IMPORT_ROOTS = {
     "mcp": frozenset({"mcp"}),
+    "serving": frozenset({"numpy", "sse_starlette", "torch", "transformers"}),
     "graph": frozenset({"google", "igraph"}),
     "full": frozenset(
         {
@@ -93,6 +94,14 @@ def mcp_main() -> int | None:
     )
 
 
+def serving_main() -> int | None:
+    return _run_optional(
+        "codenib.serving.server.api",
+        command="codenib-serve",
+        extra="serving",
+    )
+
+
 def lsp_provider_validate_main() -> int | None:
     return _run_optional(
         "codenib.eval.agent_runner.lsp_provider_cli",
@@ -158,4 +167,5 @@ __all__ = [
     "lsp_replay_benchmark_main",
     "mcp_main",
     "prebuilt_normalize_graphs_main",
+    "serving_main",
 ]

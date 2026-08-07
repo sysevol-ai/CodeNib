@@ -140,6 +140,54 @@ def test_optional_entrypoint_reports_missing_extra_without_traceback(
     assert "Traceback" not in output.err
 
 
+def test_serving_entrypoint_uses_optional_dependency_guard() -> None:
+    assert _console_scripts()["codenib-serve"] == (
+        "codenib._optional_entrypoints:serving_main"
+    )
+
+
+def test_serving_help_survives_base_install_without_extra(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = ModuleNotFoundError(
+        "No module named 'sse_starlette'",
+        name="sse_starlette",
+    )
+
+    def raise_missing(_module: str) -> None:
+        raise missing
+
+    monkeypatch.setattr(_optional_entrypoints, "_load_main", raise_missing)
+    monkeypatch.setattr("sys.argv", ["codenib-serve", "--help"])
+
+    assert _optional_entrypoints.serving_main() == 0
+    output = capsys.readouterr()
+    assert "usage: codenib-serve" in output.out
+    assert "pip install 'codenib[serving]" in output.out
+    assert output.err == ""
+
+
+def test_serving_entrypoint_reports_missing_extra_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = ModuleNotFoundError("No module named 'torch'", name="torch")
+
+    def raise_missing(_module: str) -> None:
+        raise missing
+
+    monkeypatch.setattr(_optional_entrypoints, "_load_main", raise_missing)
+    monkeypatch.setattr("sys.argv", ["codenib-serve", "--model", "local-model"])
+
+    assert _optional_entrypoints.serving_main() == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "codenib-serve: error:" in output.err
+    assert "pip install 'codenib[serving]" in output.err
+    assert "Traceback" not in output.err
+
+
 def test_optional_entrypoint_handles_runtime_optional_import(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

@@ -5,6 +5,8 @@
 
 from typing import List, Sequence
 
+import pytest
+
 from codenib.serving.drafter.copy import CopyDrafter
 from codenib.serving.drafter.retrieval import RetrievalBackend, RetrievalDrafter
 from codenib.serving.server.worker import (
@@ -13,7 +15,7 @@ from codenib.serving.server.worker import (
     SpeculativeServer,
     build_draft,
 )
-from codenib.serving.types import TokenId
+from codenib.serving.types import DraftTree, TokenId
 
 
 class _FakeBackend(RetrievalBackend):
@@ -88,6 +90,36 @@ def test_run_respects_max_new_tokens():
     server = _copy_server()
     result = server.run(truth[:100], OracleVerifier(truth), max_new_tokens=5)
     assert len(result.tokens) == 5
+
+
+def test_final_draft_is_bounded_by_remaining_generation_budget():
+    class RecordingDrafter:
+        seen = []
+
+        def draft(self, context, max_tokens):
+            self.seen.append(max_tokens)
+            tree = DraftTree()
+            tree.add_sequence([2, 3, 4], source="test")
+            return tree
+
+    drafter = RecordingDrafter()
+    server = SpeculativeServer(
+        drafters=[drafter],
+        config=SpeculativeConfig(max_draft_tokens=16),
+    )
+
+    result = server.run([1], OracleVerifier([1, 2, 3]), max_new_tokens=1)
+
+    assert result.tokens == [2]
+    assert drafter.seen == [1]
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.5])
+def test_run_rejects_invalid_generation_budget(value):
+    server = _copy_server()
+
+    with pytest.raises(ValueError, match="positive integer"):
+        server.run([1], OracleVerifier([1, 2]), max_new_tokens=value)
 
 
 def test_run_stops_at_end_of_truth():
