@@ -16,6 +16,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import List
 
+import pytest
+
 # Load examples/serving_agent_demo.py by path (``examples/`` is not a package).
 _MODULE_PATH = (
     Path(__file__).resolve().parent.parent.parent / "examples" / "serving_agent_demo.py"
@@ -43,9 +45,11 @@ class _FakeBM25:
     def __init__(self, hits: List[_Hit]) -> None:
         self.hits = hits
         self.last_query = None
+        self.last_return_code_content = None
 
     def search(self, query, top_k=5, return_code_content=False):
         self.last_query = query
+        self.last_return_code_content = return_code_content
         return self.hits
 
 
@@ -93,6 +97,13 @@ def test_retrieve_context_passes_query_to_index() -> None:
     ctx = _ctx([_Hit("x")])
     retrieve_context("my query", ctx=ctx)
     assert ctx.bm25.last_query == "my query"
+    assert ctx.bm25.last_return_code_content is False
+
+
+@pytest.mark.parametrize("top_k", [0, 101, True, "5"])
+def test_retrieve_context_rejects_unbounded_top_k(top_k) -> None:
+    with pytest.raises(ValueError, match="between 1 and 100"):
+        retrieve_context("q", ctx=_ctx([]), top_k=top_k)
 
 
 def test_retrieve_context_without_index_returns_empty() -> None:

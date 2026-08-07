@@ -31,6 +31,13 @@ from __future__ import annotations
 import argparse
 from typing import Any, List, Optional, Protocol
 
+from codenib.serving.drafter.retrieval import (
+    MAX_RETRIEVAL_BATCH_CHARACTERS,
+    MAX_RETRIEVAL_SNIPPET_CHARACTERS,
+    MAX_RETRIEVAL_SOURCE_BATCH_BYTES,
+    bounded_hit_content,
+)
+
 
 class _Completions(Protocol):
     """``client.chat.completions`` — the one call this demo makes."""
@@ -61,6 +68,25 @@ _SYSTEM_PROMPT = (
     "You are a coding assistant. Use the repository context below to answer "
     "accurately; prefer the project's own conventions."
 )
+_MAX_TOP_K = 100
+
+
+def _bounded_top_k(value: object) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 1 <= value <= _MAX_TOP_K
+    ):
+        raise ValueError(f"top_k must be an integer between 1 and {_MAX_TOP_K}")
+    return value
+
+
+def _parse_top_k(value: str) -> int:
+    try:
+        parsed = int(value)
+        return _bounded_top_k(parsed)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def retrieve_context(
@@ -75,6 +101,7 @@ def retrieve_context(
     ``ctx`` is a CodeNib ``ServerContext`` (injected for tests); if omitted it is
     loaded from ``manifest_path``.
     """
+    top_k = _bounded_top_k(top_k)
     if ctx is None:
         from codenib.mcp.context import ServerContext
 
@@ -83,11 +110,26 @@ def retrieve_context(
     bm25 = getattr(ctx, "bm25", None)
     if bm25 is None:
         return ""
-    hits = bm25.search(query, top_k=top_k, return_code_content=True)
+    hits = bm25.search(query, top_k=top_k, return_code_content=False)
     snippets = []
+    characters_left = MAX_RETRIEVAL_BATCH_CHARACTERS
+    source_bytes_left = MAX_RETRIEVAL_SOURCE_BATCH_BYTES
     for hit in hits:
-        content = getattr(hit, "content", None)
+        if characters_left <= 0 or source_bytes_left <= 0:
+            break
+        content, bytes_read = bounded_hit_content(
+            ctx,
+            "bm25",
+            hit,
+            max_characters=min(
+                MAX_RETRIEVAL_SNIPPET_CHARACTERS,
+                characters_left,
+            ),
+            max_source_bytes=source_bytes_left,
+        )
+        source_bytes_left -= bytes_read
         if content:
+            characters_left -= len(content)
             where = getattr(hit, "file", None) or getattr(hit, "node_name", "")
             snippets.append(f"# {where}\n{content}" if where else content)
     return "\n\n".join(snippets)
@@ -154,7 +196,7 @@ def main() -> None:
     parser.add_argument("--base-url", default="http://localhost:4000/v1")
     parser.add_argument("--model", default="codenib-qwen-coder")
     parser.add_argument("--api-key", default="none")
-    parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--top-k", type=_parse_top_k, default=5)
     parser.add_argument("--no-stream", action="store_true")
     args = parser.parse_args()
 

@@ -24,9 +24,8 @@ model_list:
       api_base: http://localhost:8000/v1
       api_key: "none"                       # CodeNib serving does not check keys in v1
 
-  # Fallback: a plain (non-speculative) OpenAI-compatible backend serving the same
-  # model — e.g. a second `codenib-serve` without drafters, a vLLM server, or a
-  # hosted API. Swap api_base/model for your baseline.
+  # Fallback: another OpenAI-compatible endpoint serving the same model, such as
+  # vLLM or a hosted API. Swap api_base/model for your baseline.
   - model_name: codenib-qwen-coder-fallback
     litellm_params:
       model: openai/Qwen/Qwen2.5-Coder-0.5B
