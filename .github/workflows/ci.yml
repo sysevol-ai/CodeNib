@@ -591,16 +591,26 @@ jobs:
             touch "$MARKER"
           fi
 
-      - name: Setup GCP credentials
-        run: |
-          mkdir -p "$HOME/.config/gcloud"
-          echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > "$HOME/.config/gcloud/application_default_credentials.json"
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
+
+      - name: Setup GCP credentials
+        env:
+          GCP_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+        run: |
+          mkdir -p "$HOME/.config/gcloud"
+          if [ -z "$GCP_CREDENTIALS_JSON" ]; then
+            echo "::error::GOOGLE_APPLICATION_CREDENTIALS_JSON is required for the slow tier"
+            exit 1
+          fi
+          CREDENTIALS_PATH="$HOME/.config/gcloud/application_default_credentials.json"
+          printf '%s' "$GCP_CREDENTIALS_JSON" > "$CREDENTIALS_PATH"
+          chmod 600 "$CREDENTIALS_PATH"
+          python -m json.tool "$CREDENTIALS_PATH" >/dev/null
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS_PATH" >> "$GITHUB_ENV"
 
       - name: Run slow tests (LLM + embedding)
         shell: bash -l {0}

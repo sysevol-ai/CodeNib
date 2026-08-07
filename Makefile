@@ -194,7 +194,7 @@ endef
 .PHONY: scip-php-info scip-php-tool scip-php-docker-tool scip-php-system-deps-ubuntu php-project-scip-tool
 .PHONY: lsp-smoke-tools lsp-smoke-env lsp-smoke-system-deps-ubuntu
 .PHONY: jdtls-tool csharp-lsp-tool ruby-lsp-tool intelephense-tool kotlin-lsp-tool
-.PHONY: dev test ask-quality branding-assets branding-check
+.PHONY: dev test test-all test-slow ask-quality branding-assets branding-check
 .PHONY: web-deps web-start web-stop web-restart web-reclaim web-status web-logs web-follow
 
 install:
@@ -812,7 +812,13 @@ dev:
 	pip install -e ".[dev,test]"
 
 test:
+	pytest -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short
+
+test-all:
 	pytest
+
+test-slow:
+	pytest -m "slow" --tb=short
 
 ASK_REPO ?= .
 ASK_QUALITY_ARGS ?=

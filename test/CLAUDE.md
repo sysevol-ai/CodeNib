@@ -14,11 +14,12 @@ Mirrors the `codenib/` package layout. Loads on top of the project-wide
 | `slow` | LLM API calls, GPU embeddings | ~15 min |
 
 ```bash
+make test                                         # unit only; safe local default
 pytest -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x  # unit only
 pytest -m "integration and not slow"           # parallel-safe integration
 pytest -m integration_serial                   # serial (repo-mutating)
 pytest -m integration_serial_consumer          # graph.pkl consumers
-pytest -m slow                                 # slow only
+make test-slow                                  # slow only; may make billed calls
 ```
 
 A new test defaults to the unit tier — only add a marker if it actually needs

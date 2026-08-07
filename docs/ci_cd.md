@@ -293,6 +293,12 @@ install is not CUDA-capable. This keeps slow LLM coverage available on CPU-only
 runners while making GPU coverage opt-in to a runner/toolchain that actually
 provides CUDA.
 
+Locally, `make test` runs only the unit tier and cannot make billed model calls;
+use `make test-slow` explicitly for this tier. CI requires a non-empty, valid
+`GOOGLE_APPLICATION_CREDENTIALS_JSON` secret and exports its ADC path before
+running provider tests. Missing credentials fail the selected slow job, while
+an unconfigured local run skips provider-only cases before expensive fixtures.
+
 ## Pytest markers
 
 Defined in `pyproject.toml` under `[tool.pytest.ini_options].markers`:

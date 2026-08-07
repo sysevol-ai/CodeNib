@@ -35,7 +35,9 @@ issue/PR is closed.
 
 ```bash
 make dev          # pip install -e ".[dev,test]"
-make test         # pytest
+make test         # run the local unit tier; never makes billed API calls
+make test-all     # run every marker tier, including external/slow tests
+make test-slow    # run credential- and model-dependent slow tests explicitly
 make bootstrap-ubuntu # install Ubuntu system deps, Python dev deps, and all local toolchains
 make bootstrap    # install Python dev deps and local toolchains without sudo/apt
 make multilang-tools # install active SCIP/LSP plus cold-start SCIP/LSP smoke tools

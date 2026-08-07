@@ -47,18 +47,6 @@ from codenib.agent import CodeNibAgentOptions, query
 from codenib.agent.skills.registry import SkillRegistry
 from codenib.llm.litellm_chat import LiteLLMChat
 
-# Real-LLM models exercised by the @slow test below. Each entry must be a
-# fully-qualified ``litellm`` model id. Add new models here — the test body
-# stays one-line per case.
-#
-# Anthropic on Vertex uses the publisher format ``<model-name>@<release-date>``
-# (see ``test/agent/test_vertex_ai.py``). Keep these in sync with what's been
-# enabled in the Vertex AI Model Garden console for the project.
-_VERTEX_MODELS = [
-    "vertex_ai/gemini-2.5-flash",
-    "vertex_ai/claude-haiku-4-5@20251001",
-]
-
 
 @pytest.fixture(autouse=True)
 def _reset_registry():
@@ -344,28 +332,18 @@ def test_compile_table_flows_through_query_pipeline(
 # ---------------------------------------------------------------------------
 
 
-def _skip_if_vertex_unconfigured() -> None:
-    """Skip the test unless Vertex AI auth is in place.
-
-    LiteLLM's Vertex AI backend requires application-default credentials
-    (``GOOGLE_APPLICATION_CREDENTIALS`` pointing at a service-account JSON).
-    The region falls back to ``us-central1`` when ``VERTEX_REGION`` is unset.
-    """
-    if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-        pytest.skip(
-            "Vertex AI not configured (GOOGLE_APPLICATION_CREDENTIALS unset). "
-            "Export a service-account JSON path to run this test."
-        )
-
-
 @pytest.mark.slow
-@pytest.mark.parametrize("model", _VERTEX_MODELS)
-def test_query_with_real_vertex_model(prepared_repo, codenib_base_index_cache, model):
+def test_query_with_real_vertex_model(
+    prepared_repo,
+    codenib_base_index_cache,
+    require_vertex_credentials,
+    vertex_model,
+):
     """End-to-end with a real LLM call via Vertex AI through litellm.
 
-    Parametrized over the models declared in ``_VERTEX_MODELS`` (currently
-    gemini-2.5-flash + claude-haiku-4-5). Builds a real BM25 index, then
-    drives the agent with each real model through ``LiteLLMChat``. We don't
+    Parametrized by the shared Vertex fixture (currently Gemini 2.5 Flash and
+    Claude Haiku 4.5). Builds a real BM25 index, then drives the agent with
+    each real model through ``LiteLLMChat``. We don't
     assert *what* the model produced (LLM output is non-deterministic) —
     only that the agent loop completed and that any bm25_search tool call
     landed without error.
@@ -373,8 +351,6 @@ def test_query_with_real_vertex_model(prepared_repo, codenib_base_index_cache, m
     Marked ``slow`` because each parametrization makes a billed API call
     and may take tens of seconds on first run (cold-start + index build).
     """
-    _skip_if_vertex_unconfigured()
-
     repo_path = prepared_repo["repo_path"]
     language = prepared_repo["language"]
     problem_statement = prepared_repo["row"].get("problem_statement") or (
@@ -382,7 +358,7 @@ def test_query_with_real_vertex_model(prepared_repo, codenib_base_index_cache, m
     )
 
     llm = LiteLLMChat(
-        model=model,
+        model=vertex_model,
         temperature=0.0,
         max_tokens=1024,
     )

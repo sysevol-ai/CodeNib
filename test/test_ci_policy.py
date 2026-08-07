@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import ast
 import subprocess
 from pathlib import Path
 
@@ -187,3 +188,70 @@ def test_ci_reuses_versioned_toolchains_and_serializes_consumers() -> None:
     assert 'RUSTUP="$CARGO_HOME/bin/rustup"' in action
     assert "needs: [preflight, integration-serial, scip-core]" in workflow
     assert "needs.scip-core.result != 'cancelled'" in workflow
+
+
+def test_default_make_target_excludes_external_and_billed_tiers() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    unit_expression = (
+        'pytest -m "not slow and not integration and not integration_serial '
+        'and not integration_serial_consumer" -x --tb=short'
+    )
+    assert f"test:\n\t{unit_expression}" in makefile
+    assert 'test-slow:\n\tpytest -m "slow" --tb=short' in makefile
+    assert "test-all:\n\tpytest" in makefile
+
+
+def test_slow_ci_requires_and_exports_explicit_vertex_credentials() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "GOOGLE_APPLICATION_CREDENTIALS_JSON is required" in workflow
+    assert 'python -m json.tool "$CREDENTIALS_PATH" >/dev/null' in workflow
+    assert (
+        'echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS_PATH" >> "$GITHUB_ENV"'
+        in workflow
+    )
+
+
+def test_live_provider_tests_do_not_hide_runtime_failures() -> None:
+    provider_tests = (
+        "test_vertex_ai.py",
+        "test_agent_embedding_search.py",
+        "test_bm25_search_agent.py",
+        "test_query_e2e.py",
+    )
+    violations: list[str] = []
+
+    for filename in provider_tests:
+        path = ROOT / "test" / "agent" / filename
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for function in (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name.startswith("test_")
+        ):
+            for node in ast.walk(function):
+                if (
+                    isinstance(node, ast.Return)
+                    and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, bool)
+                ):
+                    violations.append(
+                        f"{filename}:{node.lineno} returns a boolean from a test"
+                    )
+                if not isinstance(node, ast.ExceptHandler):
+                    continue
+                for child in ast.walk(node):
+                    if (
+                        isinstance(child, ast.Call)
+                        and isinstance(child.func, ast.Attribute)
+                        and isinstance(child.func.value, ast.Name)
+                        and child.func.value.id == "pytest"
+                        and child.func.attr == "skip"
+                    ):
+                        violations.append(
+                            f"{filename}:{child.lineno} skips a runtime exception"
+                        )
+
+    assert not violations, "\n".join(violations)

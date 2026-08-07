@@ -102,29 +102,18 @@ class TestAgentEmbeddingSearch:
 
         return meta
 
-    @pytest.mark.parametrize(
-        "vertex_model",
-        [
-            "vertex_ai/gemini-2.5-flash",
-            "vertex_ai/gemini-2.0-flash",
-            "vertex_ai/claude-sonnet-4@20250514",
-        ],
-    )
     def test_vertex_agent_selects_embedding_search(
-        self, real_embedding_search, vertex_model
+        self, real_embedding_search, require_vertex_credentials, vertex_model
     ):
         """Vertex AI agent must select embedding_search for a semantic query."""
-        try:
-            runner = AgentRunner(
-                model=vertex_model,
-                registry=SkillRegistry(),
-                max_turns=3,
-            )
-            result = runner.run(
-                "function that sends an HTTP request with authentication",
-            )
-        except Exception as exc:
-            pytest.skip(f"Vertex agent unavailable for {vertex_model}: {exc}")
+        runner = AgentRunner(
+            model=vertex_model,
+            registry=SkillRegistry(),
+            max_turns=3,
+        )
+        result = runner.run(
+            "function that sends an HTTP request with authentication",
+        )
 
         assert result.total_turns >= 1
         assert len(result.tool_calls) >= 1

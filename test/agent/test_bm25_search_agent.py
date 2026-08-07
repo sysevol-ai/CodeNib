@@ -84,25 +84,16 @@ class TestBM25SearchAgentE2E:
         assert isinstance(results, list)
         assert len(results) > 0
 
-    @pytest.mark.parametrize(
-        "vertex_model",
-        [
-            "vertex_ai/gemini-2.5-flash",
-            "vertex_ai/gemini-2.0-flash",
-            "vertex_ai/claude-sonnet-4@20250514",
-        ],
-    )
-    def test_vertex_agent_selects_bm25_search(self, real_bm25_search, vertex_model):
+    def test_vertex_agent_selects_bm25_search(
+        self, real_bm25_search, require_vertex_credentials, vertex_model
+    ):
         """Vertex AI agent must select bm25_search for a keyword query."""
-        try:
-            runner = AgentRunner(
-                model=vertex_model,
-                registry=SkillRegistry(),
-                max_turns=3,
-            )
-            result = runner.run("HTTPie class definition")
-        except Exception as exc:
-            pytest.skip(f"Vertex agent unavailable for {vertex_model}: {exc}")
+        runner = AgentRunner(
+            model=vertex_model,
+            registry=SkillRegistry(),
+            max_turns=3,
+        )
+        result = runner.run("HTTPie class definition")
 
         assert result.total_turns >= 1
         assert len(result.tool_calls) >= 1
