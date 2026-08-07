@@ -4,9 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Test to check if all dense chunk node_ids exist in BM25 graph nodes."""
-
-import warnings
+"""Check that dense chunks can be joined to BM25 documents by node ID."""
 
 import pytest
 
@@ -31,21 +29,6 @@ def test_dense_compatibility(httpie_cli_repo, tmp_path_factory):
     if not graph:
         pytest.fail("Failed to create BM25 graph")
 
-    # target_file = "httpie/cookies.py"
-    # target_nodes = []
-    # for vertex in graph.graph.vs:
-    #     attrs = vertex.attributes()
-    #     if vertex["name"] == target_file or attrs.get("file") == target_file:
-    #         target_nodes.append(
-    #             {
-    #                 "name": vertex["name"],
-    #                 "type": attrs.get("type"),
-    #                 "start_line": attrs.get("start_line"),
-    #                 "end_line": attrs.get("end_line"),
-    #             }
-    #         )
-    # print(f"Graph nodes for {target_file}: {target_nodes}")
-
     bm25_indexer = BM25CodeIndexer(code_graph=graph)
     bm25_node_ids = {
         doc.metadata.get("node_id")
@@ -61,24 +44,10 @@ def test_dense_compatibility(httpie_cli_repo, tmp_path_factory):
 
     dense_node_ids = {chunk.node_id for chunk in chunks if chunk.node_id}
 
-    compatible_ids = dense_node_ids.intersection(bm25_node_ids)
     missing_ids = dense_node_ids - bm25_node_ids
-    extra_bm25_ids = bm25_node_ids - dense_node_ids
-
-    compatibility_rate = (
-        len(compatible_ids) / len(dense_node_ids) * 100 if dense_node_ids else 0
-    )
-
+    assert dense_node_ids, "Dense chunking produced no addressable chunks"
+    assert bm25_node_ids, "BM25 indexing produced no addressable documents"
     assert not missing_ids, (
-        "Found dense node IDs missing in BM25: "
-        f"{sorted(missing_ids)} (compatibility={compatibility_rate:.1f}%)"
+        f"{len(missing_ids)}/{len(dense_node_ids)} dense node IDs are missing "
+        f"from BM25; sample={sorted(missing_ids)[:10]}"
     )
-
-    # Report extra BM25 IDs as context rather than failing the test. Some indices
-    # may contain auxiliary nodes that dense chunking intentionally omits.
-    if extra_bm25_ids:
-        warnings.warn(
-            f"BM25 contains node IDs without dense chunks: {sorted(extra_bm25_ids)}",
-            UserWarning,
-            stacklevel=1,
-        )
