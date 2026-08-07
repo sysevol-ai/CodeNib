@@ -126,3 +126,19 @@ def test_search_semantic_empty_results(mock_context):
 
     assert results == []
     assert isinstance(results, list)
+
+
+@pytest.mark.parametrize("query", ["", " \t"])
+def test_search_semantic_rejects_blank_query_before_provider(mock_context, query):
+    with pytest.raises(ValueError, match="query must not be empty"):
+        asyncio.run(search_semantic(mock_context, query=query))
+
+    mock_context.vector.search_with_content.assert_not_called()
+
+
+@pytest.mark.parametrize("top_k", [True, 0, -1, 101, 1.5])
+def test_search_semantic_rejects_invalid_budget_before_provider(mock_context, top_k):
+    with pytest.raises(ValueError, match="top_k must be an integer between"):
+        asyncio.run(search_semantic(mock_context, query="test", top_k=top_k))
+
+    mock_context.vector.search_with_content.assert_not_called()

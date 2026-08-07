@@ -78,6 +78,48 @@ def _sample_nodes() -> list[NodeInfo]:
     ]
 
 
+@pytest.mark.parametrize(
+    ("impl", "context_key", "query_key"),
+    [
+        (search_bm25_impl, "bm25", "query"),
+        (search_regex_impl, "regex_index", "pattern"),
+        (search_zoekt_impl, "zoekt", "query"),
+    ],
+)
+@pytest.mark.parametrize("value", ["", " \t"])
+def test_direct_search_rejects_blank_input_before_provider(
+    impl, context_key, query_key, value
+) -> None:
+    provider = MagicMock()
+    ctx = _make_ctx(**{context_key: provider})
+
+    with pytest.raises(ValueError, match=f"{query_key} must not be empty"):
+        impl(ctx, **{query_key: value})
+
+    provider.search.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("impl", "context_key", "query_key", "query"),
+    [
+        (search_bm25_impl, "bm25", "query", "tax"),
+        (search_regex_impl, "regex_index", "pattern", "tax"),
+        (search_zoekt_impl, "zoekt", "query", "tax"),
+    ],
+)
+@pytest.mark.parametrize("top_k", [True, 0, -1, 101, 1.5])
+def test_direct_search_rejects_invalid_budget_before_provider(
+    impl, context_key, query_key, query, top_k
+) -> None:
+    provider = MagicMock()
+    ctx = _make_ctx(**{context_key: provider})
+
+    with pytest.raises(ValueError, match="top_k must be an integer between"):
+        impl(ctx, top_k=top_k, **{query_key: query})
+
+    provider.search.assert_not_called()
+
+
 class TestSearchContext:
     def test_sparse_plan_returns_route_and_source_provenance(self) -> None:
         mock_bm25 = MagicMock()
@@ -190,7 +232,8 @@ class TestSearchContext:
         ("kwargs", "message"),
         [
             ({"query": ""}, "query must not be empty"),
-            ({"query": "x", "top_k": 0}, "top_k must be between"),
+            ({"query": "x", "top_k": 0}, "top_k must be an integer"),
+            ({"query": "x", "top_k": 1.5}, "top_k must be an integer"),
             ({"query": "x", "level": "l1"}, "level must be"),
         ],
     )

@@ -15,6 +15,24 @@ from ...agent.boundary import to_agent_repr
 from ...types import NodeInfo
 from ..context import ServerContext
 
+MAX_SEARCH_RESULTS = 100
+
+
+def _require_nonempty(value: str, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must not be empty.")
+    return value
+
+
+def _validate_top_k(top_k: int) -> int:
+    if (
+        isinstance(top_k, bool)
+        or not isinstance(top_k, int)
+        or not 1 <= top_k <= MAX_SEARCH_RESULTS
+    ):
+        raise ValueError("top_k must be an integer between 1 and 100.")
+    return top_k
+
 
 def _node_to_dict(node: NodeInfo) -> Dict[str, Any]:
     """Serialize a NodeInfo at the 1-based agent boundary."""
@@ -30,11 +48,8 @@ def search_context_impl(
     filter_test: bool = False,
 ) -> Dict[str, Any]:
     """Plan and execute ranked retrieval over the available repository views."""
-    normalized_query = (query or "").strip()
-    if not normalized_query:
-        raise ValueError("query must not be empty.")
-    if isinstance(top_k, bool) or not 1 <= top_k <= 100:
-        raise ValueError("top_k must be between 1 and 100.")
+    normalized_query = _require_nonempty(query, "query").strip()
+    top_k = _validate_top_k(top_k)
     normalized_level = (level or "l2").strip().lower()
     if normalized_level not in {"l0", "l2"}:
         raise ValueError("level must be 'l0' or 'l2'.")
@@ -174,6 +189,8 @@ async def search_semantic(
         List of NodeInfo dicts with scores and content. On missing index,
         returns ``{"error": ...}`` so callers can handle gracefully.
     """
+    query = _require_nonempty(query, "query")
+    top_k = _validate_top_k(top_k)
     if ctx.vector is None:
         return {
             "error": "Vector index not loaded. Re-run indexing with embedding enabled."
@@ -224,6 +241,8 @@ def search_bm25_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content, score.
     """
+    query = _require_nonempty(query, "query")
+    top_k = _validate_top_k(top_k)
     if ctx.bm25 is None:
         raise RuntimeError(
             "BM25 index is not available. "
@@ -267,6 +286,8 @@ def search_regex_impl(
         List of dicts with keys: node_name, type, file, start_line,
         end_line, content.
     """
+    pattern = _require_nonempty(pattern, "pattern")
+    top_k = _validate_top_k(top_k)
     if ctx.regex_index is None:
         raise RuntimeError(
             "Regex index is not available. "
@@ -326,6 +347,8 @@ def search_zoekt_impl(
         (``"file"``), ``file``, ``start_line``, ``end_line``, ``content``,
         ``score``, ``node_id`` (language hint, when reported).
     """
+    query = _require_nonempty(query, "query")
+    top_k = _validate_top_k(top_k)
     if ctx.zoekt is None:
         raise RuntimeError(
             "Zoekt index is not available. "
