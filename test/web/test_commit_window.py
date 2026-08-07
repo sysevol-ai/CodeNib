@@ -10,6 +10,7 @@ import subprocess
 
 import pytest
 
+from codenib.graph.code_graph import CodeGraph
 from codenib.paths import legacy_repo_index_dir, repo_index_dir
 from codenib.web.commit_window import CommitWindow, window_dir
 
@@ -191,6 +192,45 @@ class TestGraphFor:
     def test_unknown_commit_returns_none(self, tmp_path):
         _write_manifest(tmp_path, [_commit("a" * 40, "aaaaaaa", method="cold")])
         assert CommitWindow(str(tmp_path)).graph_for("deadbeef") is None
+
+    def test_graph_cache_evicts_the_least_recently_used_snapshot(
+        self, tmp_path, monkeypatch
+    ):
+        commits = []
+        graphs = {}
+        for marker in ("a", "b", "c"):
+            graph_path = tmp_path / f"graph_{marker}.pkl"
+            graph_path.touch()
+            sha = marker * 40
+            commits.append(
+                _commit(
+                    sha,
+                    marker * 7,
+                    graph_path=str(graph_path),
+                )
+            )
+            graphs[str(graph_path)] = object()
+        _write_manifest(tmp_path, commits)
+        loads = []
+
+        def load_graph(path):
+            loads.append(path)
+            return graphs[path]
+
+        monkeypatch.setattr(CodeGraph, "load_graph", load_graph)
+        window = CommitWindow(str(tmp_path))
+
+        assert window.graph_for("a" * 7) is graphs[str(tmp_path / "graph_a.pkl")]
+        assert window.graph_for("b" * 7) is graphs[str(tmp_path / "graph_b.pkl")]
+        assert window.graph_for("a" * 7) is graphs[str(tmp_path / "graph_a.pkl")]
+        assert window.graph_for("c" * 7) is graphs[str(tmp_path / "graph_c.pkl")]
+
+        assert tuple(window._graphs) == ("a" * 40, "c" * 40)
+        assert len(loads) == 3
+
+        assert window.graph_for("b" * 7) is graphs[str(tmp_path / "graph_b.pkl")]
+        assert tuple(window._graphs) == ("c" * 40, "b" * 40)
+        assert len(loads) == 4
 
 
 class TestSourceFor:

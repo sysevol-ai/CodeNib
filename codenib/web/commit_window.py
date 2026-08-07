@@ -19,7 +19,8 @@ import json
 import logging
 import os
 import threading
-from typing import TYPE_CHECKING, Dict, List, Optional
+from collections import OrderedDict
+from typing import TYPE_CHECKING, List, Optional
 
 from ..paths import legacy_repo_index_dir, repo_index_dir
 from .repository_files import git_source_slice
@@ -31,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 WINDOW_DIRNAME = "commit_window"
 MANIFEST_NAME = "commit_window.json"
+# CodeGraph snapshots can be large; retain the current and previous selection.
+_MAX_CACHED_GRAPHS = 2
 
 
 def window_dir(repo_dir: str) -> str:
@@ -101,9 +104,9 @@ def window_stats(commits: List[dict]) -> Optional[dict]:
 class CommitWindow:
     """Read-only view over one repo's per-commit graph snapshots.
 
-    Graphs are loaded lazily and cached by commit SHA. A repo with no window
-    on disk yields ``available == False`` and callers fall back to the single
-    manifest-linked graph.
+    Graphs are loaded lazily and retained in a small LRU by commit SHA. A repo
+    with no window on disk yields ``available == False`` and callers fall back
+    to the single manifest-linked graph.
     """
 
     def __init__(self, repo_dir: str) -> None:
@@ -111,7 +114,7 @@ class CommitWindow:
         self._manifest: Optional[dict] = None
         self._manifest_path: Optional[str] = None
         self._mtime: Optional[float] = None
-        self._graphs: Dict[str, Optional["CodeGraph"]] = {}
+        self._graphs: OrderedDict[str, Optional["CodeGraph"]] = OrderedDict()
         self._lock = threading.RLock()
 
     # -- manifest ---------------------------------------------------------
@@ -219,7 +222,9 @@ class CommitWindow:
         sha = str(entry.get("sha", ""))
         with self._lock:
             if sha in self._graphs:
-                return self._graphs[sha]
+                graph = self._graphs.pop(sha)
+                self._graphs[sha] = graph
+                return graph
 
             path = entry.get("graph_path")
             # Manifests record absolute paths at build time; tolerate a moved
@@ -260,6 +265,8 @@ class CommitWindow:
                     "commit-window: no usable snapshot for %s", entry.get("short")
                 )
             self._graphs[sha] = graph
+            while len(self._graphs) > _MAX_CACHED_GRAPHS:
+                self._graphs.popitem(last=False)
             return graph
 
     def source_for(
