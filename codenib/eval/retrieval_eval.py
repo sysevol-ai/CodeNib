@@ -25,7 +25,7 @@ def normalize_file_path(value: Optional[str]) -> Optional[str]:
     normalized = str(value).strip().replace("\\", "/")
     if not normalized or "\x00" in normalized:
         return None
-    if normalized.startswith("/") or re.match(r"^[A-Za-z]:/", normalized):
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized):
         return None
 
     parts: List[str] = []
@@ -45,7 +45,7 @@ def normalize_symbol_identifier(value: Optional[str]) -> Optional[str]:
     """Normalize ``file:Symbol`` so the file portion matches the retrieved form."""
     if not value:
         return None
-    if re.match(r"^[A-Za-z]:[\\/]", value):
+    if re.match(r"^[A-Za-z]:", value):
         return None
     if ":" not in value:
         return value
@@ -234,6 +234,7 @@ _MD = r"[\s>#*_`\-]*"
 _FILES_LINE = re.compile(rf"(?im)^{_MD}files?{_MD}[:=]{_MD}\s*(.+)$")
 _SYMBOLS_LINE = re.compile(rf"(?im)^{_MD}symbols?{_MD}[:=]{_MD}\s*(.+)$")
 _PATH_TOKEN = re.compile(r"[\w./\\-]+\.[A-Za-z0-9_]+")
+_REJECTED_RANK_PREFIX = "\x00rejected-rank:"
 
 
 def _rel_norm(path: str, repo_path: str) -> Optional[str]:
@@ -243,11 +244,14 @@ def _rel_norm(path: str, repo_path: str) -> Optional[str]:
         return None
     if repo_path and os.path.isabs(p):
         repo_root = os.path.abspath(repo_path)
-        candidate = os.path.abspath(p)
         try:
-            if os.path.commonpath((repo_root, candidate)) != repo_root:
+            repo_root_real = os.path.realpath(repo_root)
+            # Resolve the original component sequence. Calling abspath first
+            # would collapse ``symlink/..`` before realpath follows the link.
+            candidate_real = os.path.realpath(p)
+            if os.path.commonpath((repo_root_real, candidate_real)) != repo_root_real:
                 return None
-            p = os.path.relpath(candidate, repo_root)
+            p = os.path.relpath(p, repo_root)
         except ValueError:
             return None
     return normalize_file_path(p)
@@ -255,8 +259,12 @@ def _rel_norm(path: str, repo_path: str) -> Optional[str]:
 
 def _dedup(seq: Sequence[Optional[str]]) -> List[str]:
     seen, out = set(), []
-    for x in seq:
-        if x and x not in seen:
+    for rank, x in enumerate(seq):
+        if x is None:
+            # Invalid predictions are misses, not absent predictions. Preserve
+            # their rank so a later valid path cannot move into a smaller k.
+            out.append(f"{_REJECTED_RANK_PREFIX}{rank}")
+        elif x and x not in seen:
             seen.add(x)
             out.append(x)
     return out
