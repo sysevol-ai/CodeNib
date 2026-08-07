@@ -141,16 +141,17 @@ class RegexNodeIndex:
             >>> idx.search('calculator', use_regex=False)  # Plain string search
             >>> idx.search('class', node_type='file')  # Search in file nodes only
         """
+        if top_k is not None and (
+            isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1
+        ):
+            raise ValueError("top_k must be a positive integer")
+
         if use_regex:
             if len(pattern) > MAX_REGEX_PATTERN_CHARS:
                 raise ValueError(
                     "Regex pattern exceeds "
                     f"the {MAX_REGEX_PATTERN_CHARS}-character limit"
                 )
-            if top_k is not None and (
-                isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1
-            ):
-                raise ValueError("top_k must be a positive integer")
 
             # Start the request-wide clock before compiling or evaluating either
             # user-controlled structural filter. A single filtered-out scan is

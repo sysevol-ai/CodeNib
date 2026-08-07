@@ -205,3 +205,13 @@ def test_plain_string_search_is_not_subject_to_regex_limits(monkeypatch):
     results = index.search("x" * 4097 + "needle", use_regex=False)
 
     assert results == []
+
+
+@pytest.mark.parametrize("top_k", [0, -1, True, 1.5])
+def test_plain_string_search_rejects_invalid_top_k(top_k):
+    index = _index_with_nodes(
+        NodeInfo(node_name="plain", type="file", content="needle")
+    )
+
+    with pytest.raises(ValueError, match="top_k must be a positive integer"):
+        index.search("needle", use_regex=False, top_k=top_k)
