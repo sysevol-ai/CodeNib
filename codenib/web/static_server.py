@@ -16,6 +16,8 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlsplit
 
+from .limits import MAX_PROXY_RESPONSE_BYTES, MAX_REQUEST_BODY_BYTES
+
 _HOP_BY_HOP_HEADERS = {
     "connection",
     "keep-alive",
@@ -26,8 +28,8 @@ _HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
-_MAX_PROXY_REQUEST_BYTES = 8 * 1024 * 1024
-_MAX_PROXY_RESPONSE_BYTES = 32 * 1024 * 1024
+_MAX_PROXY_REQUEST_BYTES = MAX_REQUEST_BODY_BYTES
+_MAX_PROXY_RESPONSE_BYTES = MAX_PROXY_RESPONSE_BYTES
 
 
 def runtime_config(api_base: str) -> bytes:

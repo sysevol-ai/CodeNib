@@ -2,11 +2,54 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the demo API response mapping (pure logic, no indexes)."""
+"""Unit tests for demo API schemas and response mapping."""
+
+import pytest
+from pydantic import ValidationError
 
 from codenib.agent.agent_types import AgentResult, ToolCallRecord
 from codenib.types import QueriedNode
-from codenib.web.schemas import agent_result_to_response
+from codenib.web.schemas import (
+    ChatRequest,
+    EdgeEndpoint,
+    EdgeLabelRequest,
+    agent_result_to_response,
+)
+
+
+def test_chat_request_bounds_message_count_and_total_context() -> None:
+    with pytest.raises(ValidationError, match="at most 128"):
+        ChatRequest(
+            repo_id="repo",
+            messages=[{"role": "user", "content": "x"}] * 129,
+        )
+
+    with pytest.raises(ValidationError, match="chat context limit"):
+        ChatRequest(
+            repo_id="repo",
+            messages=[{"role": "user", "content": "x" * 60_000}] * 5,
+        )
+
+
+def test_chat_request_bounds_each_message() -> None:
+    with pytest.raises(ValidationError, match="at most 65536"):
+        ChatRequest(
+            repo_id="repo",
+            messages=[{"role": "user", "content": "x" * 65_537}],
+        )
+
+
+def test_edge_label_request_bounds_locations_and_anchor_count() -> None:
+    endpoint = EdgeEndpoint(file="src/runtime.py", line=1)
+
+    with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        EdgeEndpoint(file="src/runtime.py", line=0)
+    with pytest.raises(ValidationError, match="at most 32"):
+        EdgeLabelRequest(
+            source=endpoint,
+            target=endpoint,
+            anchors=[{"file": "src/runtime.py", "line": 1}] * 33,
+        )
 
 
 def _node(file, start, end, name="fn", score=1.0):

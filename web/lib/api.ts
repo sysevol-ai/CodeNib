@@ -533,7 +533,9 @@ export async function fetchEdgeLabel(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      // The server reads at most three call-site snippets when constructing the
+      // label prompt. Do not send the full aggregate edge history over HTTP.
+      body: JSON.stringify({ ...body, anchors: body.anchors.slice(0, 3) }),
       signal: opts.signal,
     }
   );

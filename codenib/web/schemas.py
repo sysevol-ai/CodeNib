@@ -14,9 +14,17 @@ import os
 import re
 from typing import Any, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from codenib.agent.boundary import to_agent_repr
+
+_MAX_REPO_ID_CHARS = 512
+_MAX_PATH_CHARS = 4096
+_MAX_EDGE_LABEL_CHARS = 1024
+_MAX_EDGE_ANCHORS = 32
+_MAX_CHAT_MESSAGES = 128
+_MAX_CHAT_MESSAGE_CHARS = 64 * 1024
+_MAX_CHAT_TOTAL_CHARS = 256 * 1024
 
 
 class WindowStats(BaseModel):
@@ -71,8 +79,8 @@ class RepoInfo(BaseModel):
 class CallSite(BaseModel):
     """An exact call site (1-based line), mirroring the frontend ``CallSite``."""
 
-    file: str = ""
-    line: Optional[int] = None
+    file: str = Field(default="", max_length=_MAX_PATH_CHARS)
+    line: Optional[int] = Field(default=None, ge=1)
 
 
 class EdgeEndpoint(BaseModel):
@@ -83,10 +91,10 @@ class EdgeEndpoint(BaseModel):
     is addressed by (file, line span) rather than a symbol name.
     """
 
-    file: str
-    line: Optional[int] = None  # 1-based start
-    end_line: Optional[int] = None  # 1-based end
-    label: str = ""  # display name, for the prompt only (not identity)
+    file: str = Field(max_length=_MAX_PATH_CHARS)
+    line: Optional[int] = Field(default=None, ge=1)  # 1-based start
+    end_line: Optional[int] = Field(default=None, ge=1)  # 1-based end
+    label: str = Field(default="", max_length=_MAX_EDGE_LABEL_CHARS)  # display only
 
 
 class EdgeLabelRequest(BaseModel):
@@ -94,9 +102,12 @@ class EdgeLabelRequest(BaseModel):
 
     source: EdgeEndpoint
     target: EdgeEndpoint
-    commit: Optional[str] = None
+    commit: Optional[str] = Field(default=None, max_length=128)
     # Exact call sites where source references target (1-based), if known.
-    anchors: List[CallSite] = Field(default_factory=list)
+    anchors: List[CallSite] = Field(
+        default_factory=list,
+        max_length=_MAX_EDGE_ANCHORS,
+    )
 
 
 class EdgeLabelResponse(BaseModel):
@@ -109,15 +120,27 @@ class ChatMessage(BaseModel):
     """One conversation message (text only — citations stay client-side)."""
 
     role: Literal["user", "assistant"]
-    content: str
+    content: str = Field(max_length=_MAX_CHAT_MESSAGE_CHARS)
 
 
 class ChatRequest(BaseModel):
-    repo_id: str
+    repo_id: str = Field(min_length=1, max_length=_MAX_REPO_ID_CHARS)
     # Full conversation, oldest first; the last message is the current question
     # and must be from the user (OpenAI/DeepWiki-style). Earlier messages give
     # the agent context for follow-ups.
-    messages: List[ChatMessage]
+    messages: List[ChatMessage] = Field(
+        min_length=1,
+        max_length=_MAX_CHAT_MESSAGES,
+    )
+
+    @model_validator(mode="after")
+    def _bound_conversation(self) -> "ChatRequest":
+        if (
+            sum(len(message.content) for message in self.messages)
+            > _MAX_CHAT_TOTAL_CHARS
+        ):
+            raise ValueError("conversation exceeds the CodeNib chat context limit")
+        return self
 
 
 class Citation(BaseModel):

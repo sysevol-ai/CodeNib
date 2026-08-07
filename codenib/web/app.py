@@ -23,8 +23,11 @@ import os
 from contextlib import asynccontextmanager
 from functools import partial
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from ..log_utils import get_logger
 from ..wiki import WikiBuilder
@@ -32,6 +35,7 @@ from ..wiki.narrator import Narrator
 from .config import load_config
 from .repo_registry import RepoRegistry
 from .repository_files import live_source_slice
+from .request_limits import RequestBodyLimitMiddleware
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -94,12 +98,32 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
 
+app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=load_config().cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error(
+    _request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    """Return useful validation details without echoing untrusted payloads."""
+    errors = []
+    for raw_error in exc.errors():
+        error = {key: value for key, value in raw_error.items() if key != "input"}
+        context = error.get("ctx")
+        if isinstance(context, dict):
+            error["ctx"] = {key: str(value) for key, value in context.items()}
+        errors.append(error)
+    return JSONResponse(
+        status_code=422,
+        content=jsonable_encoder({"detail": errors}),
+    )
 
 
 def _registry() -> RepoRegistry:
