@@ -13,6 +13,14 @@ from typing import Any, Mapping, Sequence
 DEFAULT_TOTAL_CONTENT_CHARS = 10_000
 DEFAULT_MIN_EXCERPT_CHARS = 800
 DEFAULT_MAX_EXCERPT_CHARS = 2_400
+DEFAULT_METADATA_FIELD_LIMITS = {
+    "file": 4_096,
+    "node_id": 2_048,
+    "node_name": 512,
+    "type": 128,
+}
+
+_METADATA_ELISION = "... metadata truncated ..."
 
 _QUERY_STOP_TERMS = frozenset(
     {
@@ -132,6 +140,37 @@ def project_content(content: str, *, query: str, max_chars: int) -> ContentProje
     )
 
 
+def _project_metadata_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    result = dict(payload)
+    projected_fields: dict[str, dict[str, int | str]] = {}
+    for field, max_chars in DEFAULT_METADATA_FIELD_LIMITS.items():
+        value = result.get(field)
+        if not isinstance(value, str) or len(value) <= max_chars:
+            continue
+
+        available = max_chars - len(_METADATA_ELISION)
+        prefix_chars = max(0, available // 2)
+        suffix_chars = max(0, available - prefix_chars)
+        projected = (
+            value[:prefix_chars]
+            + _METADATA_ELISION[:max_chars]
+            + (value[-suffix_chars:] if suffix_chars else "")
+        )[:max_chars]
+        result[field] = projected
+        projected_fields[field] = {
+            "original_chars": len(value),
+            "returned_chars": len(projected),
+            "strategy": "middle_elision",
+        }
+
+    if projected_fields:
+        result["metadata_projection"] = {
+            "truncated": True,
+            "fields": projected_fields,
+        }
+    return result
+
+
 def _content_budgets(
     count: int,
     *,
@@ -177,7 +216,7 @@ def project_evidence_payloads(
     remaining = total_chars
     projected_payloads: list[dict[str, Any]] = []
     for payload in payloads:
-        result = dict(payload)
+        result = _project_metadata_fields(payload)
         content = result.get("content")
         if not isinstance(content, str) or not content:
             projected_payloads.append(result)
@@ -207,6 +246,7 @@ def project_evidence_payloads(
 __all__ = [
     "ContentProjection",
     "DEFAULT_MAX_EXCERPT_CHARS",
+    "DEFAULT_METADATA_FIELD_LIMITS",
     "DEFAULT_MIN_EXCERPT_CHARS",
     "DEFAULT_TOTAL_CONTENT_CHARS",
     "focus_source_content",

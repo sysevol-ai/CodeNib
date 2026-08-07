@@ -135,7 +135,9 @@ All source locations returned by MCP use 1-based line numbers.
 silently labels a sparse fallback as hybrid or graph-expanded execution.
 Across all search tools, ranked metadata is retained while source bodies share
 a 10,000-character response budget. Projected hits report original and returned
-character counts under `content_projection`. `read_source` accepts a
+character counts under `content_projection`. Path and symbol fields have
+separate limits and report pathological truncation under `metadata_projection`.
+`read_source` accepts a
 repository-relative POSIX path and a 1-based inclusive range of at most 200
 lines; it returns at most 16,000 characters with commit and source-fingerprint
 provenance. Source reads remain disabled when startup cannot verify the checkout

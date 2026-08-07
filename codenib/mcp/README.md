@@ -105,7 +105,9 @@ All five search tools retain every admitted ranked metadata row while sharing a
 characters; lower-ranked results beyond the content budget remain as locations.
 A projected result includes `content_projection` with `truncated`,
 `original_chars`, `returned_chars`, and the projection strategy. Ranking and
-the full source span do not change.
+the full source span do not change. Path and symbol metadata also have explicit
+field limits; pathological values carry `metadata_projection` rather than
+expanding a response without bound.
 
 ### `search_semantic`
 Vector-embedding similarity search.
