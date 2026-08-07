@@ -26,22 +26,25 @@ def test_command_uses_active_interpreter_and_does_not_trust_by_default():
 
 
 @pytest.mark.parametrize(
-    ("revision", "code_revision", "missing_option"),
+    ("revision", "code_revision", "tokenizer_revision", "missing_option"),
     [
-        (None, "b" * 40, "--revision"),
-        ("main", "b" * 40, "--revision"),
-        ("a" * 40, None, "--code-revision"),
-        ("a" * 40, "main", "--code-revision"),
+        (None, "b" * 40, "c" * 40, "--revision"),
+        ("main", "b" * 40, "c" * 40, "--revision"),
+        ("a" * 40, None, "c" * 40, "--code-revision"),
+        ("a" * 40, "main", "c" * 40, "--code-revision"),
+        ("a" * 40, "b" * 40, None, "--tokenizer-revision"),
+        ("a" * 40, "b" * 40, "main", "--tokenizer-revision"),
     ],
 )
 def test_trusted_hub_code_requires_immutable_revisions(
-    revision, code_revision, missing_option
+    revision, code_revision, tokenizer_revision, missing_option
 ):
     with pytest.raises(ValueError, match=missing_option):
         module._build_vllm_command(
             "vendor/custom-model",
             revision=revision,
             code_revision=code_revision,
+            tokenizer_revision=tokenizer_revision,
             trust_remote_code=True,
         )
 
@@ -49,18 +52,19 @@ def test_trusted_hub_code_requires_immutable_revisions(
 def test_trusted_hub_code_forwards_pinned_revisions():
     revision = "a" * 40
     code_revision = "b" * 40
+    tokenizer_revision = "c" * 40
 
     command = module._build_vllm_command(
         "vendor/custom-model",
         revision=revision,
         code_revision=code_revision,
-        tokenizer_revision="tokenizer-v1",
+        tokenizer_revision=tokenizer_revision,
         trust_remote_code=True,
     )
 
     assert command[command.index("--revision") + 1] == revision
     assert command[command.index("--code-revision") + 1] == code_revision
-    assert command[command.index("--tokenizer-revision") + 1] == "tokenizer-v1"
+    assert command[command.index("--tokenizer-revision") + 1] == tokenizer_revision
     assert command[-1] == "--trust-remote-code"
 
 

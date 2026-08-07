@@ -76,6 +76,7 @@ def _build_vllm_command(
         for option, value in (
             ("--revision", revision),
             ("--code-revision", code_revision),
+            ("--tokenizer-revision", tokenizer_revision),
         ):
             if not isinstance(value, str) or not _FULL_COMMIT_SHA.fullmatch(value):
                 raise ValueError(
@@ -196,7 +197,8 @@ def main():
         action="store_true",
         help=(
             "Execute Hugging Face model repository code. Remote models require "
-            "full commit SHAs for --revision and --code-revision."
+            "full commit SHAs for --revision, --code-revision, and "
+            "--tokenizer-revision."
         ),
     )
 
