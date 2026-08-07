@@ -93,6 +93,37 @@ def test_malformed_structured_output_preserves_first_stage_order():
     assert [node.node_name for node in ranked] == ["node_0", "node_1", "node_2"]
 
 
+def test_partial_output_preserves_candidates_without_content_and_scores():
+    nodes = _nodes()
+    nodes[0].score = 0.7
+    nodes[1].content = None
+    nodes[1].score = 0.6
+    nodes[2].score = 0.5
+    llm = _StructuredLLM(RerankResult(ranked_indices=[1], scores=[0.9]))
+
+    ranked = RerankAgent(llm).rerank_nodes("find bug", nodes)
+
+    assert [node.node_name for node in ranked] == ["node_2", "node_0", "node_1"]
+    assert [node.score for node in ranked] == [0.9, 0.7, 0.6]
+
+
+def test_unexpected_rerank_error_preserves_first_stage_order(monkeypatch):
+    nodes = _nodes()
+    nodes[0].score = 0.8
+    agent = RerankAgent(_StructuredLLM())
+
+    def fail_rerank(*_args, **_kwargs):
+        raise RuntimeError("malformed provider result")
+
+    monkeypatch.setattr(agent, "_rerank_window", fail_rerank)
+
+    ranked = agent.rerank_nodes("find bug", nodes, top_k=2, include_content=True)
+
+    assert [node.node_name for node in ranked] == ["node_0", "node_1"]
+    assert [node.score for node in ranked] == [0.8, 0.0]
+    assert ranked[0].content == nodes[0].content
+
+
 def test_rankgpt_invocation_failure_preserves_first_stage_top_k():
     llm = _RankGPTLLM(error=RuntimeError("provider unavailable"))
 

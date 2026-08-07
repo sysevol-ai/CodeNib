@@ -128,16 +128,21 @@ class RerankAgent:
                     valid_nodes.append((i, node))
 
             if not valid_nodes:
-                logger.warning("No nodes with content found for reranking")
-                return []
+                logger.warning(
+                    "No nodes with content found for reranking; preserving "
+                    "the first-stage candidate order."
+                )
+                return self._preserve_first_stage(
+                    nodes,
+                    top_k=top_k,
+                    include_content=include_content,
+                )
 
             logger.info(
                 f"Reranking {len(valid_nodes)} nodes with query: {query[:100]}..."
             )
 
-            node_lookup: Dict[int, NodeInfo] = {
-                original_idx: node for original_idx, node in valid_nodes
-            }
+            node_lookup: Dict[int, NodeInfo] = dict(enumerate(nodes))
 
             total_nodes = len(valid_nodes)
             window_size = window_size or total_nodes
@@ -193,8 +198,11 @@ class RerankAgent:
             )
             ranked_ids = {idx for idx, _score in sorted_indices}
             sorted_indices.extend(
-                (original_idx, 0.0)
-                for original_idx, _node in valid_nodes
+                (
+                    original_idx,
+                    float(node.score) if node.score is not None else 0.0,
+                )
+                for original_idx, node in enumerate(nodes)
                 if original_idx not in ranked_ids
             )
 
@@ -203,18 +211,13 @@ class RerankAgent:
                 node = node_lookup.get(original_idx)
                 if not node:
                     continue
-                payload = {
-                    "node_name": node.node_name,
-                    "type": node.type,
-                    "file": node.file,
-                    "node_id": node.node_id,
-                    "start_line": node.start_line,
-                    "end_line": node.end_line,
-                    "score": float(score),
-                }
-                if include_content:
-                    payload["content"] = node.content
-                ranked_nodes.append(QueriedNode(**payload))
+                ranked_nodes.append(
+                    self._to_queried_node(
+                        node,
+                        score=float(score),
+                        include_content=include_content,
+                    )
+                )
                 if top_k and len(ranked_nodes) >= top_k:
                     break
 
@@ -227,7 +230,49 @@ class RerankAgent:
 
         except Exception as e:
             logger.error(f"Error during reranking: {e}")
-            return []
+            return self._preserve_first_stage(
+                nodes,
+                top_k=top_k,
+                include_content=include_content,
+            )
+
+    @staticmethod
+    def _to_queried_node(
+        node: NodeInfo,
+        *,
+        score: float,
+        include_content: bool,
+    ) -> QueriedNode:
+        payload = {
+            "node_name": node.node_name,
+            "type": node.type,
+            "file": node.file,
+            "node_id": node.node_id,
+            "start_line": node.start_line,
+            "end_line": node.end_line,
+            "score": score,
+        }
+        if include_content:
+            payload["content"] = node.content
+        return QueriedNode(**payload)
+
+    @classmethod
+    def _preserve_first_stage(
+        cls,
+        nodes: Sequence[NodeInfo],
+        *,
+        top_k: Optional[int],
+        include_content: bool,
+    ) -> List[QueriedNode]:
+        limit = len(nodes) if top_k is None else top_k
+        return [
+            cls._to_queried_node(
+                node,
+                score=float(node.score) if node.score is not None else 0.0,
+                include_content=include_content,
+            )
+            for node in nodes[:limit]
+        ]
 
     def _rerank_window(
         self, query: str, window_nodes: Sequence[Tuple[int, NodeInfo]]
