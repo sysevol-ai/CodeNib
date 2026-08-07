@@ -170,6 +170,61 @@ def test_npm_workspaces_are_walked_when_the_root_exports_nothing(tmp_path):
     ]
 
 
+def test_package_manifest_paths_cannot_escape_the_repository(tmp_path):
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    _write(repo, "nested/.keep")
+    _write(outside, "secret.js", "export const secret = true;\n")
+    (repo / "linked").symlink_to(outside, target_is_directory=True)
+    _write(
+        repo,
+        "package.json",
+        json.dumps(
+            {
+                "name": "unsafe",
+                "source": "nested/../../outside/secret.js",
+                "exports": {"./linked": "./linked/secret.js"},
+            }
+        ),
+    )
+
+    assert discover_entry_points(str(repo)) == []
+
+
+def test_workspace_members_cannot_escape_the_repository(tmp_path):
+    npm_repo = tmp_path / "npm-repo"
+    cargo_repo = tmp_path / "cargo-repo"
+    outside = tmp_path / "outside"
+    _write(npm_repo, "nested/.keep")
+    _write(cargo_repo, "nested/.keep")
+    _write(outside, "src/index.js", "export const secret = true;\n")
+    _write(outside, "src/lib.rs", "pub fn secret() {}\n")
+    _write(
+        outside,
+        "package.json",
+        json.dumps({"name": "outside", "source": "src/index.js"}),
+    )
+    _write(
+        npm_repo,
+        "package.json",
+        json.dumps(
+            {
+                "name": "unsafe-workspace",
+                "private": True,
+                "workspaces": ["nested/../../outside"],
+            }
+        ),
+    )
+    _write(
+        cargo_repo,
+        "Cargo.toml",
+        '[workspace]\nmembers = ["nested/../../outside"]\n',
+    )
+
+    assert discover_entry_points(str(npm_repo)) == []
+    assert discover_entry_points(str(cargo_repo)) == []
+
+
 def test_a_broken_or_absent_manifest_yields_nothing(tmp_path):
     assert discover_entry_points(str(tmp_path)) == []
     assert discover_entry_points(None) == []

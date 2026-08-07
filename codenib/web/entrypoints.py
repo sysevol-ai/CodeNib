@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import PurePosixPath
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 try:  # Python 3.11+
@@ -74,12 +75,39 @@ class EntryPoint:
         return f"EntryPoint({self.path!r}, {self.kind!r}, {self.label!r})"
 
 
-def _normalize(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./").strip("/")
+def _normalize(path: str) -> Optional[str]:
+    """Return a lexical repository-relative manifest path, or ``None``."""
+
+    raw = path.replace("\\", "/").strip()
+    while raw.startswith("./"):
+        raw = raw[2:]
+    if not raw or "\x00" in raw:
+        return None
+
+    value = PurePosixPath(raw)
+    if value.is_absolute() or not value.parts or ".." in value.parts:
+        return None
+    first = value.parts[0]
+    if len(first) >= 2 and first[0].isalpha() and first[1] == ":":
+        return None
+    return value.as_posix()
+
+
+def _repo_path_is(repo_dir: str, relative: str, *, directory: bool) -> bool:
+    """Return whether *relative* resolves to the requested kind inside the repo."""
+
+    root = os.path.realpath(repo_dir)
+    candidate = os.path.realpath(os.path.join(root, *PurePosixPath(relative).parts))
+    try:
+        if os.path.commonpath((root, candidate)) != root:
+            return False
+    except ValueError:
+        return False
+    return os.path.isdir(candidate) if directory else os.path.isfile(candidate)
 
 
 def _under_build_dir(path: str) -> bool:
-    parts = _normalize(path).split("/")
+    parts = path.split("/")
     return any(part in _BUILD_DIRS for part in parts[:-1])
 
 
@@ -98,7 +126,7 @@ def _resolve_in_repo(repo_dir: str, path: str) -> Optional[str]:
         # A declaration entry is worth a second look; a bundle is not.
         stem = _declaration_sibling(repo_dir, relative)
         return stem
-    if os.path.isfile(os.path.join(repo_dir, relative)):
+    if _repo_path_is(repo_dir, relative, directory=False):
         return relative
     return None
 
@@ -113,7 +141,7 @@ def _declaration_sibling(repo_dir: str, relative: str) -> Optional[str]:
         stem = relative[: -len(suffix)]
         for extension in candidates:
             candidate = f"{stem}{extension}"
-            if os.path.isfile(os.path.join(repo_dir, candidate)):
+            if _repo_path_is(repo_dir, candidate, directory=False):
                 return candidate
         return None
     return None
@@ -248,8 +276,8 @@ def _module_to_file(repo_dir: str, module: str) -> Optional[str]:
     stem = module.replace(".", "/")
     for candidate in (f"{stem}.py", f"{stem}/__init__.py"):
         for prefix in ("", "src/", "lib/"):
-            relative = f"{prefix}{candidate}"
-            if os.path.isfile(os.path.join(repo_dir, relative)):
+            relative = _normalize(f"{prefix}{candidate}")
+            if relative and _repo_path_is(repo_dir, relative, directory=False):
                 return relative
     return None
 
@@ -319,13 +347,20 @@ def _expand_glob(repo_dir: str, pattern: str) -> List[str]:
     import glob as _glob
 
     normalized = _normalize(pattern)
+    if normalized is None:
+        return []
     if "*" not in normalized:
-        return [normalized] if os.path.isdir(os.path.join(repo_dir, normalized)) else []
-    matches = _glob.glob(os.path.join(repo_dir, normalized))
+        return (
+            [normalized] if _repo_path_is(repo_dir, normalized, directory=True) else []
+        )
+    matches = _glob.glob(os.path.join(repo_dir, *PurePosixPath(normalized).parts))
     return sorted(
-        os.path.relpath(match, repo_dir).replace("\\", "/")
+        relative
         for match in matches
-        if os.path.isdir(match)
+        if (
+            (relative := _normalize(os.path.relpath(match, repo_dir))) is not None
+            and _repo_path_is(repo_dir, relative, directory=True)
+        )
     )
 
 
