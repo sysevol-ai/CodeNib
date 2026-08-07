@@ -277,6 +277,11 @@ def test_context_artifact_restores_previous_output_on_publish_failure(
     )
     previous = _tree(output)
     (view_path / "documents.json").write_text("[]\n", encoding="utf-8")
+    manifest = RepoManifest.load(manifest_path)
+    manifest.indexes["bm25"].config["artifact_file_fingerprints"] = (
+        bm25_artifact_file_fingerprints(view_path)
+    )
+    manifest.save(manifest_path)
     real_replace = os.replace
 
     def fail_final_publish(source, target):
