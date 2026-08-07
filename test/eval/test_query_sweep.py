@@ -44,13 +44,13 @@ run_metadata:
 def test_query_targets_normalizes_files_and_simplified_symbols():
     files, symbols = query_targets(
         {
-            "gt_files": ["/tmp/repo/src/app.py", ""],
+            "gt_files": ["./src/app.py", ""],
             "gt_symbols": ["src/app.py:App", "src/app.py:App.run()"],
         },
         simplified_symbols=True,
     )
 
-    assert files == ["tmp/repo/src/app.py"]
+    assert files == ["src/app.py"]
     assert symbols == ["src/app.py:App.run()"]
 
 
