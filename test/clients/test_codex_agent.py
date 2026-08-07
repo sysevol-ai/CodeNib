@@ -35,6 +35,14 @@ def codex_module(monkeypatch):
         workspace_write = "workspace-write"
         danger_full_access = "danger-full-access"
 
+    class ReasoningEffort(Enum):
+        none = "none"
+        minimal = "minimal"
+        low = "low"
+        medium = "medium"
+        high = "high"
+        xhigh = "xhigh"
+
     class Thread:
         async def run(self, prompt, *, output_schema):
             calls.prompt = prompt
@@ -74,6 +82,7 @@ def codex_module(monkeypatch):
 
     codex_sdk.ApprovalMode = ApprovalMode
     codex_sdk.AsyncCodex = AsyncCodex
+    codex_types.ReasoningEffort = ReasoningEffort
     codex_types.SandboxMode = SandboxMode
     monkeypatch.setitem(sys.modules, "openai_codex", codex_sdk)
     monkeypatch.setitem(sys.modules, "openai_codex.types", codex_types)
@@ -114,6 +123,15 @@ def test_constructor_rejects_auto_review(codex_module):
 
     with pytest.raises(ValueError, match="ApprovalMode.deny_all"):
         module.CodexLocAgent(approval_mode=module.ApprovalMode.auto_review)
+
+
+@pytest.mark.parametrize("reasoning_effort", ["none", "minimal", "xhigh"])
+def test_constructor_accepts_sdk_reasoning_efforts(codex_module, reasoning_effort):
+    module, _calls = codex_module
+
+    agent = module.CodexLocAgent(reasoning_effort=reasoning_effort)
+
+    assert agent.reasoning_effort == reasoning_effort
 
 
 @pytest.mark.parametrize("reasoning_effort", ["", "extreme", None, True])

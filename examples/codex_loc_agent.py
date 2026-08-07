@@ -68,8 +68,10 @@ def parse_args():
         "--reasoning-effort",
         type=str,
         default="medium",
-        choices=["minimal", "low", "medium", "high"],
-        help="model_reasoning_effort passed to openai_codex thread config.",
+        help=(
+            "model_reasoning_effort passed to openai_codex; supported values "
+            "are validated against the installed SDK."
+        ),
     )
     return parser.parse_args()
 

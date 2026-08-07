@@ -28,7 +28,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from openai_codex import ApprovalMode, AsyncCodex
-from openai_codex.types import SandboxMode
+from openai_codex.types import ReasoningEffort, SandboxMode
 
 from ..log_utils import get_logger
 from .claude_agent import (
@@ -66,7 +66,7 @@ _DEFAULT_SYSTEM_PROMPT = (
     "output_schema (a `locations` array of symbol objects).\n"
 )
 
-_REASONING_EFFORTS = frozenset({"minimal", "low", "medium", "high"})
+_REASONING_EFFORTS = frozenset(effort.value for effort in ReasoningEffort)
 
 
 class CodexLocAgent:
