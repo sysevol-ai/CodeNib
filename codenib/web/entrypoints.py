@@ -96,8 +96,11 @@ def _normalize(path: str) -> Optional[str]:
 def _repo_path_is(repo_dir: str, relative: str, *, directory: bool) -> bool:
     """Return whether *relative* resolves to the requested kind inside the repo."""
 
+    normalized = _normalize(relative)
+    if normalized is None:
+        return False
     root = os.path.realpath(repo_dir)
-    candidate = os.path.realpath(os.path.join(root, *PurePosixPath(relative).parts))
+    candidate = os.path.realpath(os.path.join(root, *PurePosixPath(normalized).parts))
     try:
         if os.path.commonpath((root, candidate)) != root:
             return False
@@ -223,7 +226,8 @@ def _npm_workspaces(repo_dir: str, workspaces: Any) -> List[EntryPoint]:
             continue
         for directory in _expand_glob(repo_dir, pattern):
             member_root = os.path.join(repo_dir, directory)
-            if not os.path.isfile(os.path.join(member_root, "package.json")):
+            manifest = f"{directory}/package.json"
+            if not _repo_path_is(repo_dir, manifest, directory=False):
                 continue
             for entry in _package_json_entries(member_root):
                 entries.append(
@@ -313,7 +317,7 @@ def _cargo_entries(repo_dir: str) -> List[EntryPoint]:
             entries.append(EntryPoint(resolved, "library", name))
     # Cargo's conventional targets need no declaration.
     for relative, kind in (("src/main.rs", "binary"), ("src/lib.rs", "library")):
-        if os.path.isfile(os.path.join(repo_dir, relative)):
+        if _repo_path_is(repo_dir, relative, directory=False):
             entries.append(EntryPoint(relative, kind, name))
 
     # A workspace root (tokio, ruff) has no targets of its own — its members do.
@@ -334,7 +338,7 @@ def _workspace_members(repo_dir: str, members: Any) -> List[EntryPoint]:
         for directory in _expand_glob(repo_dir, member):
             for suffix, kind in (("src/lib.rs", "library"), ("src/main.rs", "binary")):
                 relative = f"{directory}/{suffix}"
-                if os.path.isfile(os.path.join(repo_dir, relative)):
+                if _repo_path_is(repo_dir, relative, directory=False):
                     entries.append(
                         EntryPoint(relative, kind, directory.rsplit("/", 1)[-1])
                     )
@@ -365,19 +369,21 @@ def _expand_glob(repo_dir: str, pattern: str) -> List[str]:
 
 
 def _go_entries(repo_dir: str) -> List[EntryPoint]:
-    if not os.path.isfile(os.path.join(repo_dir, "go.mod")):
+    if not _repo_path_is(repo_dir, "go.mod", directory=False):
         return []
     entries: List[EntryPoint] = []
-    if os.path.isfile(os.path.join(repo_dir, "main.go")):
+    if _repo_path_is(repo_dir, "main.go", directory=False):
         entries.append(EntryPoint("main.go", "binary", os.path.basename(repo_dir)))
     cmd_dir = os.path.join(repo_dir, "cmd")
+    if not _repo_path_is(repo_dir, "cmd", directory=True):
+        return entries
     try:
         children = sorted(os.listdir(cmd_dir))
     except OSError:
         return entries
     for child in children:
         relative = f"cmd/{child}/main.go"
-        if os.path.isfile(os.path.join(repo_dir, relative)):
+        if _repo_path_is(repo_dir, relative, directory=False):
             entries.append(EntryPoint(relative, "binary", child))
     return entries
 

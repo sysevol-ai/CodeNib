@@ -170,6 +170,86 @@ def test_npm_workspaces_are_walked_when_the_root_exports_nothing(tmp_path):
     ]
 
 
+def test_npm_workspace_manifest_symlink_cannot_be_read_outside_repo(
+    tmp_path, monkeypatch
+):
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    _write(repo, "packages/core/src/index.js")
+    external_manifest = _write(
+        outside,
+        "package.json",
+        json.dumps({"name": "outside", "source": "src/index.js"}),
+    )
+    (repo / "packages/core/package.json").symlink_to(external_manifest)
+    _write(
+        repo,
+        "package.json",
+        json.dumps({"private": True, "workspaces": ["packages/*"]}),
+    )
+
+    loaded = []
+    load = json.load
+
+    def record_load(handle):
+        loaded.append(handle.name)
+        return load(handle)
+
+    monkeypatch.setattr(json, "load", record_load)
+
+    assert discover_entry_points(str(repo)) == []
+    assert str(repo / "packages/core/package.json") not in loaded
+
+
+def test_cargo_conventional_target_symlink_cannot_escape_repo(tmp_path):
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    _write(repo, "Cargo.toml", '[package]\nname = "root"\n')
+    _write(repo, "src/lib.rs", "pub fn safe() {}\n")
+    external_main = _write(outside, "main.rs", "fn main() {}\n")
+    (repo / "src/main.rs").symlink_to(external_main)
+
+    assert entry_point_files(str(repo)) == {"src/lib.rs"}
+
+
+def test_cargo_workspace_target_symlink_cannot_escape_repo(tmp_path):
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    _write(repo, "crates/safe/src/lib.rs", "pub fn safe() {}\n")
+    external_main = _write(outside, "main.rs", "fn main() {}\n")
+    escaped_target = repo / "crates/escaped/src/main.rs"
+    escaped_target.parent.mkdir(parents=True)
+    escaped_target.symlink_to(external_main)
+    _write(repo, "Cargo.toml", '[workspace]\nmembers = ["crates/*"]\n')
+
+    assert entry_point_files(str(repo)) == {"crates/safe/src/lib.rs"}
+
+
+def test_go_target_symlinks_cannot_escape_repo(tmp_path):
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    _write(repo, "go.mod", "module example.com/thing\n")
+    _write(repo, "cmd/safe/main.go", "package main\n")
+    external_root = _write(outside, "root-main.go", "package main\n")
+    external_cmd = _write(outside, "tool-main.go", "package main\n")
+    (repo / "main.go").symlink_to(external_root)
+    escaped_cmd = repo / "cmd/escaped/main.go"
+    escaped_cmd.parent.mkdir()
+    escaped_cmd.symlink_to(external_cmd)
+
+    assert entry_point_files(str(repo)) == {"cmd/safe/main.go"}
+
+
+def test_go_cmd_directory_symlink_cannot_escape_repo(tmp_path):
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    _write(repo, "go.mod", "module example.com/thing\n")
+    _write(outside, "cmd/tool/main.go", "package main\n")
+    (repo / "cmd").symlink_to(outside / "cmd", target_is_directory=True)
+
+    assert discover_entry_points(str(repo)) == []
+
+
 def test_package_manifest_paths_cannot_escape_the_repository(tmp_path):
     repo = tmp_path / "repo"
     outside = tmp_path / "outside"
