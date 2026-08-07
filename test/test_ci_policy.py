@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import subprocess
 from pathlib import Path
 
@@ -257,6 +258,18 @@ def test_draft_ci_defers_hosted_unit_tests_until_review() -> None:
     assert "ready_for_review" in workflow
     assert "github.event.pull_request.draft" in workflow
     assert "contains(github.event.pull_request.labels.*.name, 'full-ci')" in workflow
+
+
+def test_pull_request_ci_control_labels_are_synced() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    labels = yaml.safe_load((ROOT / ".github/labels.yml").read_text(encoding="utf-8"))
+    configured = {str(label["name"]) for label in labels}
+    referenced = set(
+        re.findall(r"pull_request\.labels\.\*\.name,\s*'([^']+)'", workflow)
+    )
+
+    assert referenced == {"full-ci", "skip-tests"}
+    assert referenced <= configured
 
 
 def test_default_make_target_excludes_external_and_billed_tiers() -> None:

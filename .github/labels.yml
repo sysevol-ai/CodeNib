@@ -114,6 +114,12 @@
   description: 1 week+
 
 # ── GitHub-native / special ──────────────────────────────────────────
+- name: full-ci
+  color: "0e8a16"
+  description: Run the hosted unit gate while a pull request is draft
+- name: skip-tests
+  color: "e4e669"
+  description: Skip the hosted pull-request unit gate
 - name: good first issue
   color: "7057ff"
   description: Good for newcomers
