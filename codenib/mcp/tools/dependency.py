@@ -22,7 +22,6 @@ from ._validation import (
     required_text,
 )
 
-
 def dependency_subgraph_impl(
     ctx: Any,
     symbol: str,
@@ -57,6 +56,10 @@ def dependency_subgraph_impl(
     graph = getattr(ctx, "symbol_graph", None)
     if graph is None:
         return {"error": "symbol_graph index not available"}
+    if not isinstance(max_nodes, int) or isinstance(max_nodes, bool):
+        raise ValueError("max_nodes must be an integer between 1 and 200")
+    if not 1 <= max_nodes <= MAX_DEPENDENCY_NODES:
+        raise ValueError("max_nodes must be between 1 and 200")
 
     from ...graph.dependency import DependencyAnalyzer
 

@@ -244,7 +244,8 @@ async def search_zoekt(
         "relies on); 'both' = 1-hop caller+callee neighborhood (for a dependency "
         "view). The structural 'who calls X / what does X reach' question that "
         "grep/keyword search cannot answer; backs impact analysis and dependency "
-        "visualization. Symbols are fuzzy-matched; unresolved names return a note."
+        "visualization. max_nodes includes the queried root. Symbols are "
+        "fuzzy-matched; unresolved names return a note."
     ),
 )
 async def dependency_subgraph(
@@ -253,7 +254,7 @@ async def dependency_subgraph(
     depth: _GraphDepth = 2,
     max_nodes: _SearchTopK = 60,
 ) -> dict[str, Any]:
-    """Call-graph dependency/impact subgraph for *symbol* (nodes+edges JSON)."""
+    """Call-graph subgraph for *symbol*, bounded root-inclusively by max_nodes."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(

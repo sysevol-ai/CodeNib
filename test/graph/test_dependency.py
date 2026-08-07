@@ -105,6 +105,31 @@ def test_subgraph_frontend_json():
     assert all({"source", "target", "type"} == set(e) for e in d["edges"])
 
 
+def test_subgraph_respects_root_inclusive_node_budget():
+    g = _make_graph()
+    res = DependencyAnalyzer(g).subgraph("mid", radius=2, max_nodes=2)
+
+    assert [n.name for n in res.nodes] == ["b.c:leaf()"]
+    assert [e.to_dict() for e in res.edges] == [
+        {"source": "a.c:mid()", "target": "b.c:leaf()", "type": "reference"}
+    ]
+    assert res.truncated is True
+    included = {res.root, *(node.name for node in res.nodes)}
+    assert all(
+        edge.source in included and edge.target in included for edge in res.edges
+    )
+
+
+def test_subgraph_deduplicates_logical_edges():
+    g = _make_graph()
+    g.graph.add_edge(0, 1, type="reference")
+
+    res = DependencyAnalyzer(g).subgraph("mid", radius=2)
+    edge_keys = {(edge.source, edge.target, edge.type) for edge in res.edges}
+
+    assert len(res.edges) == len(edge_keys) == 2
+
+
 def test_files_nearest_first():
     g = _make_graph()
     res = DependencyAnalyzer(g).impact("leaf", max_depth=3)

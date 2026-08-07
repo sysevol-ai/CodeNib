@@ -28,13 +28,13 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from ..types import is_symbol_node, node_is_reference_only
+from ..types import EDGE_TYPE_REFERENCE, is_symbol_node, node_is_reference_only
 from .code_graph import CodeGraph
 from .traverse_graph import RepoDependencySearcher
 
 # Call/use edges (X references Y). The other edge type, ``contain`` (file→symbol
 # nesting), is structural, not a dependency — excluded from impact by default.
-_REFERENCE_EDGES = {"reference"}
+_REFERENCE_EDGES = {EDGE_TYPE_REFERENCE}
 
 
 @dataclass
@@ -161,7 +161,7 @@ class DependencyAnalyzer:
                     DepEdge(
                         self.code_graph.display_name(names[depth - 1]),
                         self.code_graph.display_name(nm),
-                        "reference",
+                        EDGE_TYPE_REFERENCE,
                     )
                 )
         return res
@@ -185,7 +185,9 @@ class DependencyAnalyzer:
             )
             return res
 
+        max_nodes = max(1, int(max_nodes))
         seen: Set[str] = {canonical}
+        emitted_edges: Set[Tuple[str, str, str]] = set()
         queue: deque[Tuple[str, int]] = deque([(canonical, 0)])
         dirs = ["forward", "backward"] if direction == "both" else [direction]
         while queue:
@@ -205,13 +207,14 @@ class DependencyAnalyzer:
                         seen.add(neighbor)
                         res.nodes.append(self._node(neighbor, depth + 1))
                         queue.append((neighbor, depth + 1))
-                    res.edges.append(
-                        DepEdge(
-                            self.code_graph.display_name(src),
-                            self.code_graph.display_name(tgt),
-                            attr.get("type", "reference"),
-                        )
+                    edge = (
+                        self.code_graph.display_name(src),
+                        self.code_graph.display_name(tgt),
+                        attr.get("type", EDGE_TYPE_REFERENCE),
                     )
+                    if edge not in emitted_edges:
+                        emitted_edges.add(edge)
+                        res.edges.append(DepEdge(*edge))
         return res
 
     def _node(self, canonical_name: str, depth: int) -> DepNode:
