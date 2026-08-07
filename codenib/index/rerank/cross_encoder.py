@@ -21,6 +21,7 @@ Use :func:`build_reranker` as a factory; it dispatches by model name.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import re
 from pathlib import Path
@@ -53,6 +54,60 @@ def _model_load_kwargs(
     kwargs: dict[str, object] = {"trust_remote_code": trust_remote_code}
     if revision is not None:
         kwargs["revision"] = revision
+    return kwargs
+
+
+def _cross_encoder_kwargs(
+    cross_encoder: object,
+    model_name: str,
+    *,
+    revision: Optional[str],
+    trust_remote_code: bool,
+    torch_dtype: Optional[str],
+) -> dict[str, object]:
+    """Adapt model-loading arguments across sentence-transformers releases."""
+
+    load_kwargs = _model_load_kwargs(
+        model_name,
+        revision=revision,
+        trust_remote_code=trust_remote_code,
+    )
+    try:
+        parameters = inspect.signature(cross_encoder).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    accepts_extra_kwargs = not parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+
+    def accepts(name: str) -> bool:
+        return accepts_extra_kwargs or name in parameters
+
+    kwargs: dict[str, object] = {}
+    for name, value in load_kwargs.items():
+        if accepts(name):
+            kwargs[name] = value
+        elif name == "trust_remote_code" and value is False:
+            # sentence-transformers 2.x predates this opt-in flag and keeps
+            # remote code disabled in its underlying Transformers calls.
+            continue
+        else:
+            raise RuntimeError(
+                "The installed sentence-transformers CrossEncoder cannot honor "
+                f"the requested {name}; upgrade sentence-transformers"
+            )
+
+    if torch_dtype is not None:
+        if accepts("model_kwargs"):
+            kwargs["model_kwargs"] = {"torch_dtype": torch_dtype}
+        elif accepts("automodel_args"):
+            kwargs["automodel_args"] = {"torch_dtype": torch_dtype}
+        else:
+            raise RuntimeError(
+                "The installed sentence-transformers CrossEncoder cannot set "
+                "torch_dtype; upgrade sentence-transformers"
+            )
     return kwargs
 
 
@@ -94,19 +149,17 @@ class STCrossEncoderWrapper:
                 instruction,
             )
 
-        kwargs = _model_load_kwargs(
+        kwargs = _cross_encoder_kwargs(
+            CrossEncoder,
             model_name,
             revision=revision,
             trust_remote_code=trust_remote_code,
+            torch_dtype=torch_dtype,
         )
         if max_length is not None:
             kwargs["max_length"] = max_length
         if device is not None:
             kwargs["device"] = device
-        # CrossEncoder forwards ``model_kwargs`` to the underlying HF model.
-        if torch_dtype is not None:
-            kwargs["model_kwargs"] = {"torch_dtype": torch_dtype}
-
         self._model = CrossEncoder(model_name, **kwargs)
         logger.info(
             "Loaded ST CrossEncoder: %s (revision=%s, max_length=%s, " "batch_size=%d)",

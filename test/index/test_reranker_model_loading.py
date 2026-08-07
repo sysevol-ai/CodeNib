@@ -27,6 +27,35 @@ def _install_fake_sentence_transformers(monkeypatch, calls):
     monkeypatch.setitem(sys.modules, "sentence_transformers", module)
 
 
+def _install_legacy_sentence_transformers(monkeypatch, calls):
+    module = ModuleType("sentence_transformers")
+
+    class LegacyCrossEncoder:
+        def __init__(
+            self,
+            model_name,
+            num_labels=None,
+            max_length=None,
+            device=None,
+            tokenizer_args=None,
+            automodel_args=None,
+            default_activation_function=None,
+        ):
+            calls.append(
+                (
+                    model_name,
+                    {
+                        "max_length": max_length,
+                        "device": device,
+                        "automodel_args": automodel_args,
+                    },
+                )
+            )
+
+    module.CrossEncoder = LegacyCrossEncoder
+    monkeypatch.setitem(sys.modules, "sentence_transformers", module)
+
+
 def _install_fake_qwen_dependencies(monkeypatch, tokenizer_calls, model_calls):
     torch_module = ModuleType("torch")
     torch_module.cuda = SimpleNamespace(is_available=lambda: False)
@@ -71,6 +100,53 @@ def test_st_reranker_denies_remote_code_by_default(monkeypatch):
     STCrossEncoderWrapper("vendor/reranker")
 
     assert calls == [("vendor/reranker", {"trust_remote_code": False})]
+
+
+def test_st_reranker_routes_dtype_through_model_kwargs(monkeypatch):
+    calls = []
+    _install_fake_sentence_transformers(monkeypatch, calls)
+
+    STCrossEncoderWrapper("vendor/reranker", torch_dtype="float16")
+
+    assert calls == [
+        (
+            "vendor/reranker",
+            {
+                "trust_remote_code": False,
+                "model_kwargs": {"torch_dtype": "float16"},
+            },
+        )
+    ]
+
+
+def test_st_reranker_supports_legacy_automodel_args(monkeypatch):
+    calls = []
+    _install_legacy_sentence_transformers(monkeypatch, calls)
+
+    STCrossEncoderWrapper(
+        "vendor/reranker",
+        max_length=512,
+        device="cpu",
+        torch_dtype="float16",
+    )
+
+    assert calls == [
+        (
+            "vendor/reranker",
+            {
+                "max_length": 512,
+                "device": "cpu",
+                "automodel_args": {"torch_dtype": "float16"},
+            },
+        )
+    ]
+
+
+def test_st_reranker_rejects_revision_on_legacy_api(monkeypatch):
+    _install_legacy_sentence_transformers(monkeypatch, [])
+
+    with pytest.raises(RuntimeError, match="requested revision"):
+        STCrossEncoderWrapper("vendor/reranker", revision="a" * 40)
 
 
 def test_qwen_reranker_denies_remote_code_by_default(monkeypatch):
