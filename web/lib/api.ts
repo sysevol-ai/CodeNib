@@ -235,11 +235,16 @@ export interface CodemapNode {
   // but held out of the importance ranking so a wall of typedefs cannot pass
   // itself off as the repo's core.
   declaration?: boolean;
+  /** Precomputed source preview used by static Wiki exports. Live runtimes
+   *  normally omit this and resolve the same slice through /source. */
+  source?: SourceSlice | null;
 }
 
 export interface CallSite {
   file: string;
   line: number | null;
+  /** Bounded exact call-site context embedded by the static Wiki exporter. */
+  source?: SourceSlice | null;
 }
 
 export interface CodemapEdge {
@@ -275,6 +280,8 @@ export interface CodemapHierarchyNode {
   importance?: number;
   open_by_default?: boolean;
   external?: boolean;
+  /** Source for projected parent scopes that are not standalone view nodes. */
+  source?: SourceSlice | null;
 }
 
 export interface CodemapHierarchy {

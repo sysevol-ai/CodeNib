@@ -163,6 +163,7 @@ function nodeToInfo(node: CMNode): GraphNodeInfo {
     endLine: node.end_line ?? null,
     kind: node.kind,
     external: node.external === true,
+    source: node.source,
   };
 }
 
@@ -263,7 +264,11 @@ function buildSystem(data: CodemapResponse): {
       links.set(key, link);
     }
     link.weight += weight;
-    if (edge.anchors) link.anchors.push(...edge.anchors);
+    if (edge.anchors) {
+      link.anchors.push(
+        ...edge.anchors.filter((anchor) => anchor.source !== null),
+      );
+    }
     if (internal) continue;
     // Stage ordering reads flow *between* components; counting a component's
     // internal traffic as both its own inbound and outbound would flatten it.
@@ -391,6 +396,10 @@ export default function SystemMap({
                         key={node.id}
                         type="button"
                         className={`system-symbol ${node.is_root ? "root" : ""}`}
+                        disabled={
+                          !onNodeClick ||
+                          (!node.external && node.source === null)
+                        }
                         onClick={() => onNodeClick?.(nodeToInfo(node))}
                         title={`${node.label}${node.file ? ` (${repoRelative(node.file)}:${node.line ?? "?"})` : ""}`}
                       >
