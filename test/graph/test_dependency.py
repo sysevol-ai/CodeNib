@@ -47,6 +47,53 @@ def _make_graph(unified_empty: bool = True) -> CodeGraph:
     return g
 
 
+def _make_display_collision_graph() -> CodeGraph:
+    g = CodeGraph()
+    gg = ig.Graph(directed=True)
+    gg.add_vertices(4)
+    gg.vs["name"] = ["hashRoot", "hashLeft", "hashRight", "hashLeaf"]
+    gg.vs["unified_name"] = [
+        "root.c:root()",
+        "shared.c:duplicate()",
+        "shared.c:duplicate()",
+        "leaf.c:leaf()",
+    ]
+    gg.vs["type"] = ["function"] * 4
+    gg.vs["file"] = ["root.c", "left.c", "right.c", "leaf.c"]
+    gg.vs["start_line"] = [1, 2, 3, 4]
+    gg.vs["end_line"] = [1, 2, 3, 4]
+    gg.add_edges([(0, 1), (0, 2), (2, 3)])
+    gg.es["type"] = ["reference"] * 3
+    g.graph = gg
+    g.name_to_vertex = {
+        "hashRoot": 0,
+        "hashLeft": 1,
+        "hashRight": 2,
+        "hashLeaf": 3,
+    }
+    return g
+
+
+def _make_fanout_graph(size: int) -> CodeGraph:
+    g = CodeGraph()
+    gg = ig.Graph(directed=True)
+    gg.add_vertices(size + 1)
+    gg.vs["name"] = ["root", *(f"child-{i}" for i in range(size))]
+    gg.vs["unified_name"] = [
+        "root.c:root()",
+        *(f"child.c:child_{i}()" for i in range(size)),
+    ]
+    gg.vs["type"] = ["function"] * (size + 1)
+    gg.vs["file"] = ["root.c", *("child.c" for _ in range(size))]
+    gg.vs["start_line"] = list(range(size + 1))
+    gg.vs["end_line"] = list(range(size + 1))
+    gg.add_edges((0, i) for i in range(1, size + 1))
+    gg.es["type"] = ["reference"] * size
+    g.graph = gg
+    g.name_to_vertex = {name: i for i, name in enumerate(gg.vs["name"])}
+    return g
+
+
 def test_resolve_symbol_bare_to_hash():
     g = _make_graph()
     name, cands = g.resolve_symbol("leaf")
@@ -128,6 +175,71 @@ def test_subgraph_deduplicates_logical_edges():
     edge_keys = {(edge.source, edge.target, edge.type) for edge in res.edges}
 
     assert len(res.edges) == len(edge_keys) == 2
+
+
+def test_dependencies_keep_canonical_nodes_when_display_names_collide():
+    res = DependencyAnalyzer(_make_display_collision_graph()).dependencies(
+        "hashRoot", max_depth=2
+    )
+
+    # The colliding nodes fall back to their canonical identities so nodes and
+    # edges remain distinguishable in the serialized response.
+    assert [node.name for node in res.nodes] == [
+        "hashLeft",
+        "hashRight",
+        "leaf.c:leaf()",
+    ]
+    assert [edge.to_dict() for edge in res.edges] == [
+        {"source": "root.c:root()", "target": "hashLeft", "type": "reference"},
+        {"source": "root.c:root()", "target": "hashRight", "type": "reference"},
+        {"source": "hashRight", "target": "leaf.c:leaf()", "type": "reference"},
+    ]
+
+
+def test_edge_budget_stops_consuming_high_fanout_neighbors():
+    analyzer = DependencyAnalyzer(_make_fanout_graph(50))
+    original = analyzer.searcher.iter_neighbors
+    consumed = 0
+
+    def counted_neighbors(*args, **kwargs):
+        nonlocal consumed
+        for neighbor in original(*args, **kwargs):
+            consumed += 1
+            yield neighbor
+
+    analyzer.searcher.iter_neighbors = counted_neighbors
+    res = analyzer.dependencies("root", max_depth=1, max_edges=2)
+
+    assert len(res.edges) == 2
+    assert res.truncated is True
+    # One look-ahead edge establishes truncation; the other 47 edge tuples are
+    # never allocated or inspected by the dependency traversal.
+    assert consumed == 3
+
+
+def test_edge_budget_stops_parallel_edges_before_later_unique_edge():
+    graph = _make_fanout_graph(2)
+    graph.graph.delete_edges(range(graph.graph.ecount()))
+    graph.graph.add_edges([(0, 1)] * 50 + [(0, 2)])
+    graph.graph.es["type"] = ["reference"] * 51
+    analyzer = DependencyAnalyzer(graph)
+    original = analyzer.searcher.iter_neighbors
+    consumed = 0
+
+    def counted_neighbors(*args, **kwargs):
+        nonlocal consumed
+        for neighbor in original(*args, **kwargs):
+            consumed += 1
+            yield neighbor
+
+    analyzer.searcher.iter_neighbors = counted_neighbors
+    res = analyzer.dependencies("root", max_depth=1, max_edges=1)
+
+    assert len(res.edges) == 1
+    assert res.truncated is True
+    # Parallel anchors have distinct raw edge IDs. The bounded duplicate slack
+    # stops the scan instead of consuming all 51 edges to find the later node.
+    assert consumed == 3
 
 
 def test_subgraph_respects_edge_budget_without_orphan_nodes():

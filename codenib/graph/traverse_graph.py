@@ -5,7 +5,8 @@
 # Revised from:
 # https://github.com/All-Hands-AI/openhands-aci/blob/main/openhands_aci/indexing/locagent/repo/dependency_graph/traverse_graph.py
 
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, Generator, List, Optional, Set, Tuple
 
 from ..utils import is_test_file
 from .code_graph import CodeGraph
@@ -17,6 +18,15 @@ def _has_definition_location(attributes) -> bool:
         isinstance(attributes.get(field), int)
         for field in ("start_line", "selection_line")
     )
+
+
+@dataclass
+class NeighborScanBudget:
+    """Bound distinct raw graph edges inspected across neighbor walks."""
+
+    remaining: int
+    exhausted: bool = False
+    edge_ids_seen: Set[int] = field(default_factory=set)
 
 
 class RepoDependencySearcher:
@@ -51,8 +61,41 @@ class RepoDependencySearcher:
         """
         nodes, edges = [], []
 
+        for neighbor, edge in self.iter_neighbors(
+            nid,
+            direction=direction,
+            ntype_filter=ntype_filter,
+            etype_filter=etype_filter,
+            ignore_test_file=ignore_test_file,
+        ):
+            nodes.append(neighbor)
+            edges.append(edge)
+
+        return nodes, edges
+
+    def iter_neighbors(
+        self,
+        nid,
+        direction="forward",
+        ntype_filter=None,
+        etype_filter=None,
+        ignore_test_file=True,
+        scan_budget: Optional[NeighborScanBudget] = None,
+    ) -> Generator[Tuple[str, Tuple[str, str, int, Dict[str, Any]]], None, None]:
+        """Yield filtered neighbors one edge at a time.
+
+        Consumers with their own result budget can stop this iterator without
+        first materializing a second Python list for every incident edge.
+        ``scan_budget`` additionally bounds raw edge inspection, including
+        filtered and parallel edges, while avoiding double-charging an edge
+        reached from both endpoints.
+
+        ``igraph.Graph.incident`` still resolves the incident edge IDs up front,
+        but edge attribute reads and result tuple allocation remain lazy.
+        """
+
         if nid not in self.code_graph.name_to_vertex:
-            return nodes, edges
+            return
 
         vertex_id = self.code_graph.name_to_vertex[nid]
 
@@ -65,6 +108,15 @@ class RepoDependencySearcher:
             edge_ids = self.graph.incident(vertex_id, mode="all")
 
         for eid in edge_ids:
+            if scan_budget is not None:
+                if eid in scan_budget.edge_ids_seen:
+                    continue
+                if scan_budget.remaining <= 0:
+                    scan_budget.exhausted = True
+                    return
+                scan_budget.edge_ids_seen.add(eid)
+                scan_budget.remaining -= 1
+
             edge = self.graph.es[eid]
             # The "other" end depends on direction; for "all" we infer per-edge.
             if edge.source == vertex_id:
@@ -111,12 +163,10 @@ class RepoDependencySearcher:
                 "anchor_line": attrs.get("anchor_line"),
             }
             if edge_dir == "forward":
-                edges.append((nid, neighbor_nid, 0, meta))
+                result = (nid, neighbor_nid, 0, meta)
             else:
-                edges.append((neighbor_nid, nid, 0, meta))
-            nodes.append(neighbor_nid)
-
-        return nodes, edges
+                result = (neighbor_nid, nid, 0, meta)
+            yield neighbor_nid, result
 
 
 def traverse_tree_structure(
