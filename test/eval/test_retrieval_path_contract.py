@@ -76,6 +76,21 @@ def test_repo_aware_normalization_resolves_symlink_before_parent_segments(tmp_pa
     assert _rel_norm(str(escaped), str(repo)) is None
 
 
+def test_repo_aware_normalization_canonicalizes_contained_symlink_parent_segments(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    child = repo / "other" / "child"
+    child.mkdir(parents=True)
+    target = repo / "other" / "target.py"
+    target.write_text("inside", encoding="utf-8")
+    (repo / "jump").symlink_to(child, target_is_directory=True)
+
+    aliased = repo / "jump" / ".." / "target.py"
+
+    assert _rel_norm(str(aliased), str(repo)) == "other/target.py"
+
+
 def test_invalid_file_and_symbol_predictions_cannot_receive_hits(tmp_path):
     metrics = score_agent_localization(
         answer=("Files: ../src/target.py\n" "Symbols: ../src/target.py:target()"),

@@ -251,7 +251,7 @@ def _rel_norm(path: str, repo_path: str) -> Optional[str]:
             candidate_real = os.path.realpath(p)
             if os.path.commonpath((repo_root_real, candidate_real)) != repo_root_real:
                 return None
-            p = os.path.relpath(p, repo_root)
+            p = os.path.relpath(candidate_real, repo_root_real)
         except ValueError:
             return None
     return normalize_file_path(p)
