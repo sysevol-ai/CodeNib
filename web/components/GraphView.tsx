@@ -65,6 +65,8 @@ function SourcePeek({
   const sites: CallSite[] = isNode
     ? [{ file: source.node.file || "", line: source.node.line }]
     : source.anchors;
+  const totalSites =
+    source.kind === "edge" ? Math.max(source.anchorCount, sites.length) : sites.length;
 
   const [idx, setIdx] = useState(0);
   const [code, setCode] = useState("");
@@ -185,7 +187,7 @@ function SourcePeek({
           <span className="callsite-kindtag">{sourceMeta}</span>
           {source.kind === "edge" && sites.length > 1 && (
             <span className="callsite-pager">
-              {sites.length} call sites:
+              {totalSites} call sites{totalSites > sites.length ? ` (${sites.length} shown)` : ""}:
               {sites.map((a, i) => (
                 <button
                   key={i}

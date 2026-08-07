@@ -6,6 +6,7 @@ import { fetchEdgeLabel, type CallSite, type CodemapResponse } from "@/lib/api";
 
 export interface EdgeClickInfo {
   anchors: CallSite[];
+  anchorCount: number;
   srcLabel: string;
   tgtLabel: string;
   srcFile?: string;
@@ -481,6 +482,7 @@ function buildElements(
         target,
         anchors: a.symbolEdge ? a.anchors : [], // click-peek: exact edges only
         labelAnchors: a.anchors, // on-hover LLM label: all edges, incl. file-level
+        anchorCount: a.weight || a.anchors.length,
         weight: a.weight || 1, // # call sites -> drives edge width
         hasAnchor: a.symbolEdge && a.anchors.length ? 1 : 0,
         meta: a.symbolEdge ? 0 : 1, // file-level aggregate (dashed) vs exact reference
@@ -1723,6 +1725,7 @@ export default function CodeGraph({
         const t = edge.target().data();
         onEdgeClickRef.current?.({
           anchors: d.anchors,
+          anchorCount: d.anchorCount ?? d.anchors.length,
           srcLabel: d.srcShort || d.srcDisplay || "",
           tgtLabel: d.tgtShort || d.tgtDisplay || "",
           srcFile: d.srcFile,

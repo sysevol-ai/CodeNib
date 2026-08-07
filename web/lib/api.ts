@@ -245,10 +245,11 @@ export interface CallSite {
 export interface CodemapEdge {
   source: string;
   target: string;
-  // Exact LSP/SCIP reference (call) site(s) for this edge — the caller file +
-  // line where the call happens. Lets the UI jump an edge to its source.
+  // Bounded sample of exact LSP/SCIP reference sites. `weight` retains the
+  // complete distinct-site count when the sample is truncated.
   anchors?: CallSite[];
-  weight?: number; // count of distinct call sites (= anchors.length) — drives edge width
+  weight?: number; // complete count of distinct call sites — drives edge width
+  hidden_anchors?: number;
   source_hierarchy?: string;
   target_hierarchy?: string;
   bundle_path?: string[]; // containment route used for hierarchical edge bundling

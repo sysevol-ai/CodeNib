@@ -236,6 +236,7 @@ export default function HierarchyMap({
                   clickable &&
                   onEdgeClick?.({
                     anchors: link.anchors,
+                    anchorCount: link.weight,
                     srcLabel: link.srcLabel,
                     tgtLabel: link.tgtLabel,
                   })

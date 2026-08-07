@@ -16,7 +16,7 @@ from codenib.web.codemap import (
 )
 
 
-def _symbol_graph_with_many_call_sites() -> CodeGraph:
+def _symbol_graph_with_many_call_sites(count: int = 12) -> CodeGraph:
     graph = CodeGraph()
     graph._add_vertex(
         "src/main.py:caller()",
@@ -38,7 +38,7 @@ def _symbol_graph_with_many_call_sites() -> CodeGraph:
             "unified_name": "src/helper.py:callee()",
         },
     )
-    for line in range(12):
+    for line in range(count):
         graph._add_edge(
             "src/main.py:caller()",
             "src/helper.py:callee()",
@@ -67,6 +67,89 @@ def test_codemap_preserves_all_call_site_anchors():
     assert edge["bundle_path"][-1] == f"hier::symbol::{edge['target']}"
     assert edge["bundle_lca"] == "hier::root"
     assert edge["cross_file"] is True
+
+
+def test_codemap_bounds_anchor_samples_without_losing_exact_weight():
+    graph = _symbol_graph_with_many_call_sites(100)
+
+    result = build_codemap(
+        graph, symbol="caller", direction="callees", depth=1, max_nodes=5
+    )
+
+    edge = result["edges"][0]
+    assert edge["weight"] == 100
+    assert len(edge["anchors"]) == 12
+    assert edge["hidden_anchors"] == 88
+    assert [anchor["line"] for anchor in edge["anchors"]] == list(range(1, 13))
+
+
+def test_page_subgraph_bounds_repeated_anchor_collection():
+    graph = _symbol_graph_with_many_call_sites(100)
+
+    result = build_page_subgraph(
+        graph,
+        [
+            {"file": "src/main.py", "start_line": 1, "node_name": "caller"},
+            {"file": "src/helper.py", "start_line": 11, "node_name": "callee"},
+        ],
+    )
+
+    edge = result["edges"][0]
+    assert edge["weight"] == 100
+    assert len(edge["anchors"]) == 12
+    assert edge["hidden_anchors"] == 88
+
+
+def test_page_subgraph_ranks_bridges_by_exact_anchor_count():
+    graph = CodeGraph()
+    vertices = {
+        "src/a.py:seed_a()": ("src/a.py", 0),
+        "src/b.py:seed_b()": ("src/b.py", 10),
+        "src/strong.py:strong()": ("src/strong.py", 20),
+        "src/skew.py:skew()": ("src/skew.py", 30),
+    }
+    for name, (file_path, line) in vertices.items():
+        graph._add_vertex(
+            name,
+            {
+                "type": "function",
+                "file": file_path,
+                "start_line": line,
+                "end_line": line + 2,
+                "unified_name": name,
+            },
+        )
+
+    edge_counts = [
+        ("src/a.py:seed_a()", "src/strong.py:strong()", 4),
+        ("src/strong.py:strong()", "src/b.py:seed_b()", 4),
+        ("src/a.py:seed_a()", "src/skew.py:skew()", 1),
+        ("src/skew.py:skew()", "src/b.py:seed_b()", 6),
+    ]
+    anchor_line = 0
+    for source, target, count in edge_counts:
+        for _ in range(count):
+            graph._add_edge(
+                source,
+                target,
+                "reference",
+                anchor_file=vertices[source][0],
+                anchor_line=anchor_line,
+            )
+            anchor_line += 1
+
+    result = build_page_subgraph(
+        graph,
+        [
+            {"file": "src/a.py", "start_line": 1, "node_name": "seed_a"},
+            {"file": "src/b.py", "start_line": 11, "node_name": "seed_b"},
+        ],
+        max_nodes=3,
+    )
+
+    labels = {node["label"] for node in result["nodes"]}
+    assert "src/strong.py:strong()" in labels
+    assert "src/skew.py:skew()" not in labels
 
 
 def test_codemap_returns_explicit_containment_hierarchy():

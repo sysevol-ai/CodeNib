@@ -35,7 +35,7 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple
 from ..graph.code_graph import CodeGraph
 from ..types import NODE_TYPE_FILE
 from ..utils import is_test_file
-from .codemap import _DerivedFiles
+from .codemap import EDGE_ANCHOR_SAMPLE, _DerivedFiles
 from .entrypoints import discover_entry_points
 
 # Symbols that can carry a file attribution (excludes file/directory/root nodes).
@@ -44,8 +44,6 @@ GRANULARITIES = ("auto", "file", "directory")
 # Above this many files, "auto" rolls up to directories: a 400-file map is a
 # hairball whatever the layout engine does.
 _AUTO_FILE_LIMIT = 60
-# Per module edge; the true count stays in ``weight``.
-_ANCHOR_SAMPLE = 12
 _MERMAID_MAX_LABEL = 42
 _ROOT_DIR = "."
 
@@ -144,7 +142,7 @@ def _project(
         )
         projection.anchor_total[key] += 1
         anchor_file = edge.attributes().get("anchor_file")
-        if anchor_file and len(projection.anchors[key]) < _ANCHOR_SAMPLE:
+        if anchor_file and len(projection.anchors[key]) < EDGE_ANCHOR_SAMPLE:
             anchor_line = edge.attributes().get("anchor_line")
             # anchor_line is 0-based (tree-sitter/LSP); expose 1-based.
             entry = {

@@ -258,8 +258,8 @@ the right. The middle column leads with the graph, then the prose:
   It deliberately does **not** expand a one-hop neighbourhood: the only
   non-cited symbols admitted are up to two **bridge** symbols, each of which
   must touch at least two cited symbols (ranked by call-site evidence), keeping
-  the map grounded in the page's evidence. Edges carry the exact call-site
-  **anchors**.
+  the map grounded in the page's evidence. Edges retain the exact call-site
+  count and carry up to 12 source-linked **anchor** samples.
 - **Relevant source files.** A `<details>` list of the distinct repo-relative
   files cited on the page, each linking to the exact GitHub blob at the indexed
   commit.
@@ -318,13 +318,13 @@ Cytoscape + layout code) so the narrative paints first. It is a single
 
 ### Click an edge → exact source
 
-Every edge is a real reference (call/use) relation, and CodeNib aggregates
-the exact LSP/SCIP **call sites** (anchors) onto it. Clicking an edge opens a
-**source peek** (`SourcePeek` in `GraphView.tsx`) at the precise line where the
-call happens; if a call relation has several sites, a pager lets you step
-through each one. Anchor lines are exposed 1-based (converted from the 0-based
-tree-sitter/LSP origin in `codemap.py`). Hovering an edge shows its call-site
-count.
+Every edge is a real reference (call/use) relation. CodeNib retains the exact
+number of distinct LSP/SCIP **call sites** while serializing at most 12 source
+anchors per edge. Clicking an edge opens a **source peek** (`SourcePeek` in
+`GraphView.tsx`) at one of those precise lines; the pager states both the total
+and displayed sample when an edge is truncated. Anchor lines are exposed
+1-based (converted from the 0-based tree-sitter/LSP origin in `codemap.py`).
+Hovering an edge shows the complete call-site count.
 
 ### Click a node → definition
 
@@ -372,8 +372,8 @@ Node and edge encodings come from `_score()` / `_enrich()` in
 - **Colour = kind.** Node border colour is fixed per symbol kind (function,
   method, class, interface, struct, …) since position already encodes
   file + line. Roots render filled blue.
-- **Edge width = call-site count.** `weight` = number of distinct call-site
-  anchors on the edge; a heavily-used call reads thicker.
+- **Edge width = call-site count.** `weight` is the complete number of distinct
+  call sites even when `anchors` is sampled; a heavily-used call reads thicker.
 - **Hub collapsing.** A node with more than `hub_cap` (8) outgoing edges keeps
   only the edges to its highest-importance targets; the rest are folded away
   and counted in `hidden_callees`, surfaced in the UI as a **"+N"** badge on the
