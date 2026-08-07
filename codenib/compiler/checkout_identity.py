@@ -33,11 +33,18 @@ def validate_checkout_identity(
 ) -> None:
     """Reject source or commit drift between a checkout and its manifest."""
 
+    repo_path = repo_path.expanduser().resolve()
+    artifact_root = artifact_root.expanduser().resolve()
+    excluded_roots = (
+        (artifact_root,)
+        if artifact_root != repo_path and repo_path in artifact_root.parents
+        else ()
+    )
     expected_source = (manifest.source_fingerprint or "").strip()
     if expected_source:
         actual_source = fingerprint_repository(
             repo_path,
-            exclude_roots=(artifact_root,),
+            exclude_roots=excluded_roots,
         ).value
         if actual_source != expected_source:
             raise ValueError(
