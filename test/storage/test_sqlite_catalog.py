@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 
@@ -61,6 +63,21 @@ def _stage(
         schema_version="1",
         metadata={"document_count": 4},
     )
+
+
+def _setup_staged_view(catalog: SQLiteCatalog, suffix: str = "a"):
+    repository_id = catalog.create_repository("owner/repo")
+    source_revision_id = _source(catalog, repository_id)
+    profile_id = catalog.create_view_profile("bm25", {})
+    object_digest = _object(catalog, suffix)
+    view_id = _stage(
+        catalog,
+        repository_id,
+        source_revision_id,
+        profile_id,
+        object_digest,
+    )
+    return repository_id, source_revision_id, profile_id, object_digest, view_id
 
 
 def test_initializes_pragmas_default_namespace_and_idempotent_reopen(tmp_path):
@@ -408,8 +425,10 @@ def test_publish_resolves_complete_pinned_manifest(tmp_path):
         direct = catalog.get_manifest_summary(published["snapshot_id"])
 
         assert published["generation"] == 1
+        assert published["changed"] is True
         assert resolved["snapshot_id"] == published["snapshot_id"]
         assert resolved["generation"] == 1
+        assert published["updated_at"] == resolved["updated_at"]
         assert resolved["manifest"] == direct
         assert direct["status"] == "ready"
         assert direct["source"]["source_revision_id"] == source_revision_id
@@ -432,6 +451,286 @@ def test_publish_resolves_complete_pinned_manifest(tmp_path):
             "SELECT DISTINCT status FROM view_generations"
         ).fetchall()
         assert [row["status"] for row in statuses] == ["ready"]
+
+
+def test_publish_retry_for_current_snapshot_is_desired_state_idempotent(tmp_path):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+
+        first = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+        retry_with_current_generation = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=1,
+        )
+        retry_with_original_generation = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+
+        assert first["changed"] is True
+        for retry in (retry_with_current_generation, retry_with_original_generation):
+            assert retry == {
+                "snapshot_id": first["snapshot_id"],
+                "repository_id": repository_id,
+                "ref_name": "main",
+                "generation": 1,
+                "updated_at": first["updated_at"],
+                "changed": False,
+            }
+        assert catalog.resolve_ref(repository_id)["generation"] == 1
+
+
+@pytest.mark.parametrize(
+    ("table", "key_column", "dependency"),
+    (
+        ("repositories", "repository_id", "repository"),
+        ("source_revisions", "source_revision_id", "source"),
+        ("view_profiles", "profile_id", "profile"),
+        ("objects", "digest", "object"),
+    ),
+)
+def test_idempotent_retry_revalidates_input_dependencies(
+    tmp_path, table, key_column, dependency
+):
+    path = tmp_path / f"{dependency}.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        (
+            repository_id,
+            source_revision_id,
+            profile_id,
+            object_digest,
+            view_id,
+        ) = _setup_staged_view(catalog)
+        catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+
+    identifiers = {
+        "repositories": repository_id,
+        "source_revisions": source_revision_id,
+        "view_profiles": profile_id,
+        "objects": object_digest,
+    }
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute(
+        f"DELETE FROM {table} WHERE {key_column} = ?", (identifiers[table],)
+    )
+    connection.commit()
+    connection.close()
+
+    with SQLiteCatalog(path) as catalog:
+        with pytest.raises(CatalogNotFoundError, match="not found"):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=0,
+            )
+
+
+@pytest.mark.parametrize(
+    ("trigger", "corruption", "target", "message"),
+    (
+        (
+            "ready_snapshot_views_cannot_be_deleted",
+            "DELETE FROM snapshot_views WHERE view_generation_id = ?",
+            "view",
+            "membership conflicts",
+        ),
+        (
+            "snapshot_seal_is_the_only_update",
+            """
+            UPDATE snapshots SET status = 'building', published_at = NULL
+            WHERE snapshot_id = ?
+            """,
+            "snapshot",
+            "seal state conflicts",
+        ),
+        (
+            "ready_view_generations_are_immutable",
+            """
+            UPDATE view_generations SET status = 'staged', ready_at = NULL
+            WHERE view_generation_id = ?
+            """,
+            "view",
+            "membership conflicts",
+        ),
+        (
+            "ready_view_generations_are_immutable",
+            """
+            UPDATE view_generations SET ready_at = ''
+            WHERE view_generation_id = ?
+            """,
+            "view",
+            "membership conflicts",
+        ),
+    ),
+)
+def test_idempotent_retry_rejects_corrupt_ready_state(
+    tmp_path, trigger, corruption, target, message
+):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+        catalog._connection.execute(f"DROP TRIGGER {trigger}")
+        target_id = published["snapshot_id"] if target == "snapshot" else view_id
+        catalog._connection.execute(corruption, (target_id,))
+
+        with pytest.raises(CatalogConflictError, match=message):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=0,
+            )
+
+
+@pytest.mark.parametrize("identity_column", ("profile_id", "object_digest"))
+def test_idempotent_retry_rejects_generation_dependency_mismatch(
+    tmp_path, identity_column
+):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+        replacements = {
+            "profile_id": catalog.create_view_profile(
+                "bm25", {"variant": "tampered"}, name="tampered"
+            ),
+            "object_digest": _object(catalog, "b"),
+        }
+        catalog._connection.execute(
+            "DROP TRIGGER staged_view_generation_identity_is_immutable"
+        )
+        catalog._connection.execute("DROP TRIGGER ready_view_generations_are_immutable")
+        catalog._connection.execute(
+            f"""
+            UPDATE view_generations SET {identity_column} = ?
+            WHERE view_generation_id = ?
+            """,
+            (replacements[identity_column], view_id),
+        )
+
+        with pytest.raises(CatalogConflictError, match="generation identity conflicts"):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=0,
+            )
+
+
+def test_two_connections_converge_on_the_same_desired_snapshot(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+
+    barrier = Barrier(2)
+
+    def publish():
+        with SQLiteCatalog(path, busy_timeout_ms=5_000) as catalog:
+            barrier.wait()
+            return catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=0,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(publish) for _ in range(2)]
+        results = [future.result() for future in futures]
+
+    assert sorted(result["changed"] for result in results) == [False, True]
+    assert {result["generation"] for result in results} == {1}
+    assert {result["snapshot_id"] for result in results} == {results[0]["snapshot_id"]}
+    assert {result["updated_at"] for result in results} == {results[0]["updated_at"]}
+    with SQLiteCatalog(path) as catalog:
+        assert catalog.resolve_ref(repository_id)["generation"] == 1
+
+
+def test_two_connections_keep_cas_for_different_desired_snapshots(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_id, source_revision_id, profile_id, _, first_view = (
+            _setup_staged_view(catalog)
+        )
+        second_view = _stage(
+            catalog,
+            repository_id,
+            source_revision_id,
+            profile_id,
+            _object(catalog, "b"),
+        )
+        views = (first_view, second_view)
+
+    barrier = Barrier(2)
+
+    def publish(view_id):
+        with SQLiteCatalog(path, busy_timeout_ms=5_000) as catalog:
+            barrier.wait()
+            try:
+                result = catalog.publish_snapshot(
+                    repository_id,
+                    source_revision_id,
+                    [view_id],
+                    expected_generation=0,
+                )
+            except CatalogConflictError:
+                return view_id, None
+            return view_id, result
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(publish, view_id) for view_id in views]
+        outcomes = [future.result() for future in futures]
+
+    successes = [
+        (view_id, result) for view_id, result in outcomes if result is not None
+    ]
+    conflicts = [(view_id, result) for view_id, result in outcomes if result is None]
+    assert len(successes) == 1
+    assert len(conflicts) == 1
+    winning_view, published = successes[0]
+    losing_view, _ = conflicts[0]
+    assert published["changed"] is True
+    assert published["generation"] == 1
+
+    with SQLiteCatalog(path) as catalog:
+        resolved = catalog.resolve_ref(repository_id)
+        statuses = {
+            row["view_generation_id"]: row["status"]
+            for row in catalog._connection.execute(
+                """
+                SELECT view_generation_id, status FROM view_generations
+                WHERE view_generation_id IN (?, ?)
+                """,
+                views,
+            ).fetchall()
+        }
+        assert resolved["snapshot_id"] == published["snapshot_id"]
+        assert statuses == {winning_view: "ready", losing_view: "staged"}
 
 
 def test_stale_cas_rolls_back_and_keeps_old_ref(tmp_path):
@@ -528,6 +827,8 @@ def test_ready_generation_can_be_reused_in_a_later_snapshot(tmp_path):
             expected_generation=0,
         )
         assert alias["snapshot_id"] == first["snapshot_id"]
+        assert alias["changed"] is True
+        assert alias["generation"] == 1
         vector = _stage(
             catalog,
             repository_id,

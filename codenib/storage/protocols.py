@@ -97,7 +97,16 @@ class IndexCatalog(Protocol):
         *,
         ref_name: str = "main",
         expected_generation: int = 0,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any]:
+        """Publish a desired snapshot or return its unchanged current ref.
+
+        Implementations return ``changed=False`` without advancing the ref when
+        it already targets the fully validated desired snapshot.  Otherwise,
+        ``expected_generation`` is a compare-and-swap precondition and a
+        successful advance returns ``changed=True``.
+        """
+
+        ...
 
     def resolve_ref(
         self,

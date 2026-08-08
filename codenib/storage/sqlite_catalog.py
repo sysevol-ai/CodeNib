@@ -1993,10 +1993,13 @@ class SQLiteCatalog:
         ref_name: str = "main",
         expected_generation: int = 0,
     ) -> dict[str, Any]:
-        """Atomically publish views and advance a ref with compare-and-swap.
+        """Publish the desired snapshot and advance a ref when necessary.
 
-        A missing ref has generation zero.  On any validation or CAS failure,
-        the snapshot insertion and every staged-to-ready transition roll back.
+        A missing ref has generation zero.  A retry whose ref already targets
+        the fully validated desired snapshot is idempotent even when it carries
+        the generation expected before the first publication.  On any
+        validation or CAS failure, the snapshot insertion and every
+        staged-to-ready transition roll back.
         """
         repository = _required_text(repository_id, "repository ID")
         source = _required_text(source_revision_id, "source revision ID")
@@ -2058,21 +2061,7 @@ class SQLiteCatalog:
                     )
                 view_types.add(row["view_type"])
 
-            current_ref = self._connection.execute(
-                """
-                SELECT generation FROM refs
-                WHERE repository_id = ? AND ref_name = ?
-                """,
-                (repository, normalized_ref),
-            ).fetchone()
-            current_generation = (
-                int(current_ref["generation"]) if current_ref is not None else 0
-            )
-            if current_generation != expected_generation:
-                raise CatalogConflictError(
-                    f"ref {normalized_ref!r} generation is {current_generation}; "
-                    f"expected {expected_generation}"
-                )
+                self._validate_view_generation_input(row)
 
             members = sorted(
                 (row["view_type"], row["view_generation_id"]) for row in rows
@@ -2084,10 +2073,55 @@ class SQLiteCatalog:
             }
             snapshot_id = content_id("snapshot", snapshot_identity)
             content_digest = snapshot_id.removeprefix("snapshot_")
-            published_at = _now()
+
+            current_ref = self._connection.execute(
+                """
+                SELECT snapshot_id, generation, updated_at FROM refs
+                WHERE repository_id = ? AND ref_name = ?
+                """,
+                (repository, normalized_ref),
+            ).fetchone()
+            current_generation = (
+                int(current_ref["generation"]) if current_ref is not None else 0
+            )
+            if current_ref is not None and (
+                current_generation < 1
+                or not isinstance(current_ref["updated_at"], str)
+                or not current_ref["updated_at"].strip()
+            ):
+                raise CatalogConflictError(
+                    f"ref {normalized_ref!r} has invalid publication metadata"
+                )
+
             existing_snapshot = self._connection.execute(
                 "SELECT * FROM snapshots WHERE snapshot_id = ?", (snapshot_id,)
             ).fetchone()
+            if current_ref is not None and current_ref["snapshot_id"] == snapshot_id:
+                self._validate_ready_snapshot(
+                    existing_snapshot,
+                    repository_id=repository,
+                    source_revision_id=source,
+                    content_digest=content_digest,
+                    members=members,
+                    view_rows=rows,
+                )
+                result = {
+                    "snapshot_id": snapshot_id,
+                    "repository_id": repository,
+                    "ref_name": normalized_ref,
+                    "generation": current_generation,
+                    "updated_at": current_ref["updated_at"],
+                    "changed": False,
+                }
+                return result
+
+            if current_generation != expected_generation:
+                raise CatalogConflictError(
+                    f"ref {normalized_ref!r} generation is {current_generation}; "
+                    f"expected {expected_generation}"
+                )
+
+            published_at = _now()
             if existing_snapshot is None:
                 self._connection.execute(
                     """
@@ -2126,44 +2160,16 @@ class SQLiteCatalog:
                 if seal.rowcount != 1:
                     raise CatalogConflictError("snapshot could not be sealed")
             else:
-                expected_snapshot = (
-                    repository,
-                    source,
-                    content_digest,
-                    "ready",
+                self._validate_ready_snapshot(
+                    existing_snapshot,
+                    repository_id=repository,
+                    source_revision_id=source,
+                    content_digest=content_digest,
+                    members=members,
+                    view_rows=rows,
                 )
-                actual_snapshot = tuple(
-                    existing_snapshot[key]
-                    for key in (
-                        "repository_id",
-                        "source_revision_id",
-                        "content_digest",
-                        "status",
-                    )
-                )
-                if actual_snapshot != expected_snapshot:
-                    raise CatalogConflictError(
-                        "existing snapshot identity or seal state conflicts"
-                    )
-                existing_members = self._connection.execute(
-                    """
-                    SELECT view_type, view_generation_id FROM snapshot_views
-                    WHERE snapshot_id = ? ORDER BY view_type
-                    """,
-                    (snapshot_id,),
-                ).fetchall()
-                actual_members = [
-                    (row["view_type"], row["view_generation_id"])
-                    for row in existing_members
-                ]
-                if actual_members != members or any(
-                    row["status"] != "ready" for row in rows
-                ):
-                    raise CatalogConflictError(
-                        "existing ready snapshot membership conflicts"
-                    )
 
-            next_generation = expected_generation + 1
+            next_generation = current_generation + 1
             if current_ref is None:
                 self._connection.execute(
                     """
@@ -2205,7 +2211,139 @@ class SQLiteCatalog:
             "repository_id": repository,
             "ref_name": normalized_ref,
             "generation": next_generation,
+            "updated_at": published_at,
+            "changed": True,
         }
+
+    def _validate_view_generation_input(self, row: sqlite3.Row) -> None:
+        """Validate the immutable profile, object, and generation identities."""
+        profile_row = self._require_record(
+            "view_profiles", "profile_id", row["profile_id"]
+        )
+        if profile_row["view_type"] != row["view_type"]:
+            raise CatalogValidationError("view type does not match the view profile")
+        try:
+            profile_config = json.loads(profile_row["config_json"])
+            if not isinstance(profile_config, dict):
+                raise CatalogValidationError(
+                    "view profile config must be a JSON object"
+                )
+            canonical_profile_config = canonical_json(profile_config)
+        except (TypeError, json.JSONDecodeError, CatalogValidationError) as exc:
+            raise CatalogConflictError("view profile identity conflicts") from exc
+        expected_profile_id = content_id(
+            "profile",
+            {
+                "view_type": profile_row["view_type"],
+                "name": profile_row["name"],
+                "config": profile_config,
+            },
+        )
+        if (
+            profile_row["profile_id"] != expected_profile_id
+            or profile_row["profile_digest"]
+            != expected_profile_id.removeprefix("profile_")
+            or profile_row["config_json"] != canonical_profile_config
+        ):
+            raise CatalogConflictError("view profile identity conflicts")
+
+        object_row = self._require_record("objects", "digest", row["object_digest"])
+        try:
+            object_record = ObjectRecord(
+                digest=object_row["digest"],
+                storage_key=object_row["storage_key"],
+                byte_size=object_row["byte_size"],
+                media_type=object_row["media_type"],
+            )
+        except CatalogValidationError as exc:
+            raise CatalogConflictError("registered object metadata conflicts") from exc
+        if object_record.digest != row["object_digest"]:
+            raise CatalogConflictError("registered object identity conflicts")
+
+        try:
+            metadata = json.loads(row["metadata_json"])
+            if not isinstance(metadata, dict):
+                raise CatalogValidationError(
+                    "view generation metadata must be a JSON object"
+                )
+            canonical_metadata = canonical_json(metadata)
+        except (TypeError, json.JSONDecodeError, CatalogValidationError) as exc:
+            raise CatalogConflictError("view generation identity conflicts") from exc
+        expected_view_generation_id = content_id(
+            "view",
+            {
+                "repository_id": row["repository_id"],
+                "source_revision_id": row["source_revision_id"],
+                "profile_id": row["profile_id"],
+                "view_type": row["view_type"],
+                "object_digest": row["object_digest"],
+                "schema_version": row["schema_version"],
+                "metadata": metadata,
+            },
+        )
+        if (
+            row["view_generation_id"] != expected_view_generation_id
+            or row["metadata_json"] != canonical_metadata
+        ):
+            raise CatalogConflictError("view generation identity conflicts")
+
+    def _validate_ready_snapshot(
+        self,
+        snapshot: sqlite3.Row | None,
+        *,
+        repository_id: str,
+        source_revision_id: str,
+        content_digest: str,
+        members: Sequence[tuple[str, str]],
+        view_rows: Sequence[sqlite3.Row],
+    ) -> None:
+        """Fail closed unless a persisted snapshot exactly matches its identity."""
+        expected_snapshot = (
+            repository_id,
+            source_revision_id,
+            content_digest,
+            "ready",
+        )
+        actual_snapshot = (
+            tuple(
+                snapshot[key]
+                for key in (
+                    "repository_id",
+                    "source_revision_id",
+                    "content_digest",
+                    "status",
+                )
+            )
+            if snapshot is not None
+            else None
+        )
+        if (
+            actual_snapshot != expected_snapshot
+            or snapshot is None
+            or not isinstance(snapshot["published_at"], str)
+            or not snapshot["published_at"].strip()
+        ):
+            raise CatalogConflictError(
+                "existing snapshot identity or seal state conflicts"
+            )
+
+        persisted_members = self._connection.execute(
+            """
+            SELECT view_type, view_generation_id FROM snapshot_views
+            WHERE snapshot_id = ? ORDER BY view_type
+            """,
+            (snapshot["snapshot_id"],),
+        ).fetchall()
+        actual_members = [
+            (row["view_type"], row["view_generation_id"]) for row in persisted_members
+        ]
+        if actual_members != list(members) or any(
+            row["status"] != "ready"
+            or not isinstance(row["ready_at"], str)
+            or not row["ready_at"].strip()
+            for row in view_rows
+        ):
+            raise CatalogConflictError("existing ready snapshot membership conflicts")
 
     def resolve_ref(self, repository_id: str, ref_name: str = "main") -> dict[str, Any]:
         """Resolve a named ref and return its pinned manifest summary."""
