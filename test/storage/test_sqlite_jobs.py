@@ -864,29 +864,39 @@ def test_renew_requeue_restart_and_fencing_token_are_durable(tmp_path) -> None:
         assert restarted.error_code is None
 
 
-def test_high_frequency_one_millisecond_renewal_has_one_conflict_boundary(
-    tmp_path,
-) -> None:
-    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+def test_one_millisecond_renewal_uses_strict_db_clock_boundary(tmp_path) -> None:
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        # Keep every lease check on SQLite's clock while making the exact
+        # millisecond boundary deterministic.  A wall-clock loop can be
+        # descheduled past a short lease before its first renewal under xdist.
+        clock = {"raw_ms": 0}
+        catalog._connection.create_function(
+            "julianday",
+            1,
+            lambda _value: 2440587.5 + clock["raw_ms"] / 86_400_000,
+        )
+        assert catalog._db_now_ms() == 0
+
         job = _job_setup(catalog)
         lease = catalog.acquire_job_lease(
-            job.job_id, owner_id="worker", lease_duration_ms=10
+            job.job_id, owner_id="worker", lease_duration_ms=1
         )
-        renewed_count = 0
-        for _ in range(50):
-            try:
-                lease = catalog.renew_job_lease(
-                    job.job_id,
-                    owner_id="worker",
-                    fencing_token=lease.fencing_token,
-                    lease_duration_ms=1,
-                )
-            except CatalogConflictError:
-                break
-            renewed_count += 1
+        assert lease.heartbeat_at_ms == 0
+        assert lease.lease_expires_at_ms == 1
+        assert catalog._db_now_ms() == lease.lease_expires_at_ms - 1
 
-        assert renewed_count >= 1
-        time.sleep(0.08)
+        lease = catalog.renew_job_lease(
+            job.job_id,
+            owner_id="worker",
+            fencing_token=lease.fencing_token,
+            lease_duration_ms=1,
+        )
+        assert lease.heartbeat_at_ms == 0
+        assert lease.lease_expires_at_ms == 2
+
+        clock["raw_ms"] = 2
+        assert catalog._db_now_ms() == lease.lease_expires_at_ms
         with pytest.raises(CatalogConflictError, match="expired"):
             catalog.renew_job_lease(
                 job.job_id,
@@ -894,6 +904,18 @@ def test_high_frequency_one_millisecond_renewal_has_one_conflict_boundary(
                 fencing_token=lease.fencing_token,
                 lease_duration_ms=1,
             )
+
+    # The test clock is connection-local and cannot leak into a restarted
+    # catalog or alter the persisted lease while the failed renewal rolls back.
+    with SQLiteCatalog(path) as restarted:
+        assert restarted._db_now_ms() > lease.lease_expires_at_ms
+        persisted = restarted._connection.execute(
+            "SELECT * FROM ref_job_leases WHERE job_id = ?",
+            (job.job_id,),
+        ).fetchone()
+        assert persisted is not None
+        assert persisted["heartbeat_at_ms"] == lease.heartbeat_at_ms
+        assert persisted["lease_expires_at_ms"] == lease.lease_expires_at_ms
 
 
 def test_expired_lease_cannot_mutate_and_takeover_atomically_requeues(tmp_path) -> None:
