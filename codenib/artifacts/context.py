@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-from .. import compat_pickle
 from .._atomic_directory import (
     capture_directory_ownership,
     discard_owned_directory,
@@ -24,22 +23,16 @@ from .._atomic_directory import (
     publish_staged_directory,
 )
 from .._version import package_version
-from ..compiler.artifact_fingerprints import (
-    bm25_artifact_file_fingerprints,
-    require_bm25_manifest_artifact,
-)
+from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.checkout_identity import validate_checkout_identity
 from ..compiler.manifest import MANIFEST_FILENAME, RepoManifest
 from ..compiler.snapshot_store import normalize_repo
 from ..index.embedding.artifact_integrity import (
-    VECTOR_PERSISTENCE_SCHEMA,
     require_complete_vector_view,
     validate_vector_config_artifact,
-    validate_vector_generation_artifacts,
-    vector_config_artifact_record,
-    vector_level_artifact_records,
 )
 from ..provider_routes import resolve_embedding_artifact_route
+from .portable_views import normalize_owned_query_view
 from .security import assert_no_credential_fields, assert_publishable_tree, file_sha256
 
 CONTEXT_ARTIFACT_SCHEMA = "codenib.context-artifact.v1"
@@ -164,190 +157,6 @@ def _copy_view(source: Path, stage: Path, view: str) -> str:
     target = destination / source.name
     shutil.copy2(source, target)
     return target.relative_to(stage).as_posix()
-
-
-def _normalize_copied_view(
-    stage: Path,
-    *,
-    repo_path: Path,
-    view: str,
-    relative: str,
-    view_config: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Rewrite view-local machine paths and return identity adjustments."""
-
-    target = stage.joinpath(*PurePosixPath(relative).parts)
-    if view == "vector":
-        route = resolve_embedding_artifact_route(view_config)
-        return _normalize_vector_view(
-            target,
-            repo_path,
-            embedding_model=route.model,
-        )
-    if view != "bm25":
-        raise ValueError(
-            f"view {view!r} is not yet supported by portable context artifacts; "
-            "select bm25 and/or vector"
-        )
-    root = target if target.is_dir() else target.parent
-    metadata_path = root / "bm25_metadata.json"
-    if not metadata_path.is_file():
-        raise ValueError("portable BM25 view is missing bm25_metadata.json")
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    if not isinstance(metadata, dict):
-        raise ValueError("portable BM25 metadata must be a JSON object")
-    metadata["project_root"] = "source"
-    metadata_path.write_bytes(_json_bytes(metadata))
-    return {"artifact_file_fingerprints": bm25_artifact_file_fingerprints(root)}
-
-
-def _portable_source_path(value: object, repo_path: Path, *, source: str) -> str:
-    raw = str(value or "")
-    if not raw:
-        return ""
-    path = Path(raw).expanduser()
-    if path.is_absolute():
-        try:
-            path = path.resolve().relative_to(repo_path)
-        except ValueError as exc:
-            raise ValueError(f"{source} points outside the repository: {raw}") from exc
-    normalized = PurePosixPath(path.as_posix())
-    if normalized.is_absolute() or ".." in normalized.parts:
-        raise ValueError(f"{source} is not repository-relative: {raw}")
-    return normalized.as_posix()
-
-
-def _convert_vector_documents(path: Path, repo_path: Path) -> Path:
-    """Convert a trusted local document pickle to portable, inert JSON."""
-
-    with path.open("rb") as handle:
-        documents = compat_pickle.load(handle)
-    if not isinstance(documents, list):
-        raise ValueError(f"portable vector documents must be a list: {path.name}")
-    payload: list[dict[str, Any]] = []
-    for index, document in enumerate(documents):
-        page_content = getattr(document, "page_content", None)
-        if not isinstance(page_content, str):
-            raise ValueError(
-                f"portable vector document {index} has invalid content: {path.name}"
-            )
-        metadata = getattr(document, "metadata", None)
-        if not isinstance(metadata, dict):
-            raise ValueError(
-                f"portable vector document {index} has invalid metadata: {path.name}"
-            )
-        normalized_metadata = dict(metadata)
-        normalized_metadata["file"] = _portable_source_path(
-            metadata.get("file"),
-            repo_path,
-            source=f"vector document {index} file",
-        )
-        payload.append(
-            {
-                "page_content": page_content,
-                "metadata": normalized_metadata,
-            }
-        )
-
-    output = path.with_suffix(".json")
-    output.write_bytes(_json_bytes(payload))
-    path.unlink()
-    return output
-
-
-def _refresh_vector_persistence_records(target: Path) -> None:
-    """Commit the portable JSON/index pairs in copied vector configs."""
-
-    for config_path in sorted(target.glob("config_*.json")):
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        if not isinstance(config, dict):
-            raise ValueError(f"portable vector config must be an object: {config_path}")
-        embedding_model = config.get("embedding_model")
-        if not isinstance(embedding_model, str) or not embedding_model:
-            continue
-        model_suffix = embedding_model.replace("/", "__")
-        level_artifacts: dict[str, dict[str, dict[str, Any]]] = {}
-        has_level_counts = False
-        for level in ("l0", "l2"):
-            count = config.get(f"{level}_documents")
-            if count is None:
-                continue
-            has_level_counts = True
-            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
-                raise ValueError(
-                    f"portable vector config has invalid {level} count: {count!r}"
-                )
-            if count == 0:
-                continue
-            level_path = target / level
-            documents_path = level_path / f"documents_{model_suffix}.json"
-            level_artifacts[level] = vector_level_artifact_records(
-                level_path,
-                model_suffix,
-                documents_file=documents_path.name,
-            )
-        if has_level_counts:
-            config["persistence_schema"] = VECTOR_PERSISTENCE_SCHEMA
-            config["level_artifacts"] = level_artifacts
-            config_path.write_bytes(_json_bytes(config))
-
-
-def _normalize_vector_view(
-    target: Path,
-    repo_path: Path,
-    *,
-    embedding_model: str,
-) -> dict[str, Any]:
-    if not target.is_dir():
-        raise ValueError("portable vector view must be a directory")
-    require_complete_vector_view(target)
-    interrupted = sorted(target.glob(".config_*.json.save-in-progress"))
-    if interrupted:
-        raise ValueError(
-            "portable vector view contains an interrupted save marker: "
-            f"{interrupted[0].name}"
-        )
-
-    model_suffix = embedding_model.replace("/", "__")
-    # Validate the source generation before replacing its trusted local pickle
-    # with portable JSON. Recomputing records first would bless torn level files.
-    validate_vector_generation_artifacts(target, model_suffix)
-
-    # Query serving does not need the mutable state used to build the next
-    # commit. Excluding it keeps the downloadable artifact smaller and avoids
-    # publishing build-machine paths from incremental caches.
-    for name in (
-        "chunk_store.json",
-        "chunk_store.pkl",
-        "embeddings_cache.json",
-        "embeddings_cache.npz",
-        "embeddings_cache.pkl",
-        "incremental_state.json",
-    ):
-        (target / name).unlink(missing_ok=True)
-
-    document_files = sorted(target.glob("l[02]/documents_*.pkl"))
-    if not document_files:
-        raise ValueError(
-            "portable vector view requires the current documents_*.pkl format; "
-            "rebuild the vector view"
-        )
-    for path in document_files:
-        _convert_vector_documents(path, repo_path)
-
-    # The current document files supersede legacy LangChain docstore pickles.
-    # Leaving both formats would retain duplicate absolute source paths.
-    for legacy in target.glob("l[02]/index_*.pkl"):
-        legacy.unlink()
-    _refresh_vector_persistence_records(target)
-    return {
-        "artifact_scope": "query-serving",
-        "portable_document_format": "codenib.vector-documents.v1",
-        "persistence_config_fingerprint": vector_config_artifact_record(
-            target,
-            model_suffix,
-        ),
-    }
 
 
 def _inventory(root: Path) -> list[dict[str, Any]]:
@@ -485,11 +294,10 @@ def stage_context_artifact(
                 # could bless a torn or tampered source with fresh hashes.
                 require_bm25_manifest_artifact(entry)
             relative = _copy_view(source, stage, view)
-            adjustments = _normalize_copied_view(
-                stage,
+            adjustments = normalize_owned_query_view(
+                stage.joinpath(*PurePosixPath(relative).parts),
                 repo_path=repo_path,
-                view=view,
-                relative=relative,
+                view_type=view,
                 view_config=entry.config,
             )
             entry_data = entry.to_dict()
