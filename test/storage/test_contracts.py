@@ -14,7 +14,7 @@ from codenib.storage.models import (
     ViewGeneration,
     ViewProfile,
 )
-from codenib.storage.protocols import IndexCatalog, ObjectStore
+from codenib.storage.protocols import IndexCatalog, JobCatalog, ObjectStore
 from codenib.storage.sqlite_catalog import DEFAULT_NAMESPACE_ID, SQLiteCatalog
 
 
@@ -24,6 +24,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
     try:
         assert isinstance(object_store, ObjectStore)
         assert isinstance(catalog, IndexCatalog)
+        assert isinstance(catalog, JobCatalog)
     finally:
         catalog.close()
 

@@ -176,8 +176,25 @@ Status: in progress.
   equivalent `RepoManifest` v1.1.
 
 The SQLite/CAS foundation through refs and atomic snapshot sealing is
-implemented.  Initial job/lease records plus legacy manifest import/export are
-the remaining M1 deliverables.
+implemented.  Schema v2 now adds canonical idempotent job requests, immutable
+per-view request mappings, bounded retry state, and database-clock fenced
+per-ref leases.  Catalog reads revalidate the normalized view rows against the
+canonical request; the M2 publication transaction must repeat that gate before
+associating outputs.  An explicit acquire may atomically retire an expired
+holder while taking over its slot; this slice adds no background reaper and is
+not wired to the compiler or Web workers.  Legacy manifest import/export
+remains the outstanding M1 deliverable.
+
+Schema v2 deliberately retains complete job aggregates.  Duplicate-insert
+guards reject `REPLACE` of jobs, requested views, and persistent lease slots
+even from ordinary SQLite connections whose connection-local recursive trigger
+setting is disabled.  Catalog connections additionally enable recursive
+triggers; direct deletion of requested view rows and cascading deletion of
+their parent job remain blocked.  A future retention/GC milestone must add an
+explicit aggregate-deletion migration and policy rather than bypassing these
+audit guards.  Schema v2 also rejects successful job rows; M2 must remove that
+temporary gate only inside the migration which introduces atomic
+`publish_job_snapshot` completion.
 
 ### M2: Immutable generation publication
 
@@ -198,8 +215,9 @@ Status: pending.
 
 Status: pending.
 
-- Add idempotent index jobs, progress/events, heartbeats, leases, cancellation,
-  and one-publisher-per-repository/ref enforcement.
+- Wire the M1 idempotent jobs, heartbeats, cancellation, and fenced per-ref
+  leases into workers; add progress/events without weakening the catalog state
+  machine.
 - Expose the #266 status and update APIs with accurate incremental versus
   rebuild behavior.
 - Load a complete new bundle and swap it RCU-style; pin old bundles for in-flight

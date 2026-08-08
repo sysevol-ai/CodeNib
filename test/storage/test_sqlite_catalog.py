@@ -73,6 +73,9 @@ def test_initializes_pragmas_default_namespace_and_idempotent_reopen(tmp_path):
             == LATEST_SCHEMA_VERSION
         )
         assert catalog._connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        assert (
+            catalog._connection.execute("PRAGMA recursive_triggers").fetchone()[0] == 1
+        )
         assert catalog._connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         assert catalog._connection.execute("PRAGMA busy_timeout").fetchone()[0] == 1_234
         assert catalog._connection.execute("PRAGMA synchronous").fetchone()[0] == 2
@@ -85,7 +88,7 @@ def test_initializes_pragmas_default_namespace_and_idempotent_reopen(tmp_path):
         migration_count = reopened._connection.execute(
             "SELECT COUNT(*) FROM schema_migrations"
         ).fetchone()[0]
-        assert migration_count == 1
+        assert migration_count == LATEST_SCHEMA_VERSION
 
 
 def test_reopen_rejects_mismatched_schema_version_records(tmp_path):

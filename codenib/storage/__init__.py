@@ -6,10 +6,18 @@
 
 from .cas import BlobInfo, LocalCAS
 from .models import (
+    INDEX_JOB_REQUEST_CONTRACT,
     ArtifactMember,
+    IndexJobCompletion,
+    IndexJobRecord,
+    IndexJobRequest,
+    IndexJobRequestedMode,
+    IndexJobStatus,
+    IndexJobViewRecord,
     ObjectRecord,
     PublishConflict,
     PublishedSnapshot,
+    RefJobLease,
     RefState,
     RepositoryIdentity,
     SnapshotView,
@@ -21,7 +29,7 @@ from .models import (
     ViewGeneration,
     ViewProfile,
 )
-from .protocols import IndexCatalog, ObjectStore
+from .protocols import IndexCatalog, JobCatalog, ObjectStore
 from .sqlite_catalog import (
     DEFAULT_NAMESPACE_ID,
     CatalogConflictError,
@@ -39,13 +47,22 @@ __all__ = [
     "CatalogNotFoundError",
     "CatalogValidationError",
     "DEFAULT_NAMESPACE_ID",
+    "INDEX_JOB_REQUEST_CONTRACT",
     "IndexCatalog",
+    "IndexJobCompletion",
+    "IndexJobRecord",
+    "IndexJobRequest",
+    "IndexJobRequestedMode",
+    "IndexJobStatus",
+    "IndexJobViewRecord",
+    "JobCatalog",
     "LocalCAS",
     "ObjectRecord",
     "ObjectStore",
     "PublishConflict",
     "PublishedSnapshot",
     "RefState",
+    "RefJobLease",
     "RepositoryIdentity",
     "SQLiteCatalog",
     "SnapshotView",

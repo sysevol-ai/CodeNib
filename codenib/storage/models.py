@@ -11,10 +11,32 @@ import json
 import math
 import re
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Mapping
 
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
+_CATALOG_INT64_MAX = 9_223_372_036_854_775_807
+INDEX_JOB_REQUEST_CONTRACT = "codenib.index-job-request.v1"
+_SECRET_FIELD_NAMES = frozenset(
+    {
+        "access_key",
+        "access_token",
+        "api_key",
+        "apikey",
+        "authorization",
+        "client_secret",
+        "cookie",
+        "credential",
+        "credentials",
+        "password",
+        "passwd",
+        "private_key",
+        "refresh_token",
+        "secret",
+        "token",
+    }
+)
 
 
 class StorageError(RuntimeError):
@@ -115,6 +137,23 @@ def _optional_text(value: str | None, field: str) -> str | None:
     return normalized or None
 
 
+def _bounded_text(value: str, field: str, *, max_length: int) -> str:
+    normalized = _required_text(value, field)
+    if "\x00" in normalized:
+        raise StorageValidationError(f"{field} must not contain NUL")
+    if len(normalized) > max_length:
+        raise StorageValidationError(f"{field} must not exceed {max_length} characters")
+    return normalized
+
+
+def _optional_bounded_text(
+    value: str | None, field: str, *, max_length: int
+) -> str | None:
+    if value is None:
+        return None
+    return _bounded_text(value, field, max_length=max_length)
+
+
 def _canonical_relative_path(value: str, field: str) -> str:
     path = _required_text(value, field)
     if "\\" in path or "\x00" in path:
@@ -125,6 +164,62 @@ def _canonical_relative_path(value: str, field: str) -> str:
     if path != normalized.as_posix() or path in {".", ""}:
         raise StorageValidationError(f"{field} is not canonical")
     return normalized.as_posix()
+
+
+def _nonnegative_integer(value: int, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise StorageValidationError(f"{field} must be an integer")
+    if value < 0:
+        raise StorageValidationError(f"{field} must not be negative")
+    return value
+
+
+def _optional_nonnegative_integer(value: int | None, field: str) -> int | None:
+    if value is None:
+        return None
+    return _nonnegative_integer(value, field)
+
+
+def _canonical_json_object(value: str, field: str) -> tuple[str, dict[str, Any]]:
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise StorageValidationError(f"{field} must be valid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise StorageValidationError(f"{field} must be a JSON object")
+    return canonical_json(parsed), parsed
+
+
+def _reject_secret_fields(value: Any, *, path: str = "request") -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            normalized = key.lower().replace("-", "_")
+            if normalized in _SECRET_FIELD_NAMES:
+                raise StorageValidationError(
+                    f"index job request must not contain secret field: {path}.{key}"
+                )
+            _reject_secret_fields(child, path=f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _reject_secret_fields(child, path=f"{path}[{index}]")
+
+
+class IndexJobStatus(str, Enum):
+    """Persisted lifecycle states for an index job."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class IndexJobCompletion(str, Enum):
+    """M1 lease-release outcomes; success is reserved for M2 publication."""
+
+    REQUEUE = "requeue"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,6 +583,390 @@ class PublishedSnapshot:
         )
 
 
+class IndexJobRequestedMode(str, Enum):
+    """Requested builder behavior before capability fallback is resolved."""
+
+    AUTO = "auto"
+    FULL = "full"
+    INCREMENTAL = "incremental"
+
+
+@dataclass(frozen=True, slots=True)
+class IndexJobViewRecord:
+    """Immutable requested profile, mode, and requirement for one job view."""
+
+    job_id: str
+    view_type: str
+    profile_id: str
+    requested_mode: IndexJobRequestedMode
+    required: bool
+
+    def __post_init__(self) -> None:
+        try:
+            mode = IndexJobRequestedMode(self.requested_mode)
+        except ValueError as exc:
+            raise StorageValidationError(
+                f"invalid requested index mode: {self.requested_mode}"
+            ) from exc
+        if not isinstance(self.required, bool):
+            raise StorageValidationError("index job view required must be boolean")
+        object.__setattr__(
+            self, "job_id", _bounded_text(self.job_id, "job ID", max_length=80)
+        )
+        object.__setattr__(
+            self,
+            "view_type",
+            _bounded_text(self.view_type, "view type", max_length=128),
+        )
+        object.__setattr__(
+            self,
+            "profile_id",
+            _bounded_text(self.profile_id, "profile ID", max_length=96),
+        )
+        object.__setattr__(self, "requested_mode", mode)
+
+    @property
+    def request(self) -> dict[str, Any]:
+        return {
+            "profile_id": self.profile_id,
+            "requested_mode": self.requested_mode.value,
+            "required": self.required,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class IndexJobRequest:
+    """Canonical, secret-free request scoped by an idempotency key."""
+
+    repository_id: str
+    source_revision_id: str
+    ref_name: str
+    idempotency_key: str
+    expected_ref_generation: int
+    max_attempts: int
+    request_json: str
+
+    def __post_init__(self) -> None:
+        repository = _bounded_text(self.repository_id, "repository ID", max_length=96)
+        source = _bounded_text(
+            self.source_revision_id, "source revision ID", max_length=96
+        )
+        ref_name = _bounded_text(self.ref_name, "ref name", max_length=512)
+        idempotency_key = _bounded_text(
+            self.idempotency_key, "idempotency key", max_length=256
+        )
+        expected = _nonnegative_integer(
+            self.expected_ref_generation, "expected ref generation"
+        )
+        if expected > _CATALOG_INT64_MAX:
+            raise StorageValidationError(
+                "expected ref generation exceeds catalog int64 range"
+            )
+        max_attempts = _nonnegative_integer(self.max_attempts, "maximum attempts")
+        if max_attempts < 1 or max_attempts > 1_000:
+            raise StorageValidationError("maximum attempts must be between 1 and 1000")
+        request_json, request = _canonical_json_object(
+            self.request_json, "index job request"
+        )
+        if len(request_json) > 65_536:
+            raise StorageValidationError(
+                "index job request must not exceed 65536 characters"
+            )
+        _reject_secret_fields(request)
+        if set(request) != {"contract", "views"}:
+            raise StorageValidationError(
+                "index job request must contain exactly contract and views"
+            )
+        if request.get("contract") != INDEX_JOB_REQUEST_CONTRACT:
+            raise StorageValidationError(
+                "index job request contract must be " f"{INDEX_JOB_REQUEST_CONTRACT!r}"
+            )
+        views = request.get("views")
+        if not isinstance(views, dict) or not views:
+            raise StorageValidationError(
+                "index job request views must be a non-empty JSON object"
+            )
+        if len(views) > 64:
+            raise StorageValidationError("index job request must not exceed 64 views")
+        for view_type, view_request in views.items():
+            if not isinstance(view_request, dict) or set(view_request) != {
+                "profile_id",
+                "requested_mode",
+                "required",
+            }:
+                raise StorageValidationError(
+                    "index job view request must contain exactly profile_id, "
+                    f"requested_mode, and required: {view_type}"
+                )
+            normalized_view = IndexJobViewRecord(
+                job_id="job_" + "0" * 64,
+                view_type=view_type,
+                profile_id=view_request.get("profile_id"),
+                requested_mode=view_request.get("requested_mode"),
+                required=view_request.get("required"),
+            )
+            if (
+                normalized_view.view_type != view_type
+                or normalized_view.profile_id != view_request["profile_id"]
+                or normalized_view.requested_mode.value
+                != view_request["requested_mode"]
+            ):
+                raise StorageValidationError(
+                    f"index job view request strings must be canonical: {view_type}"
+                )
+        object.__setattr__(self, "repository_id", repository)
+        object.__setattr__(self, "source_revision_id", source)
+        object.__setattr__(self, "ref_name", ref_name)
+        object.__setattr__(self, "idempotency_key", idempotency_key)
+        object.__setattr__(self, "expected_ref_generation", expected)
+        object.__setattr__(self, "max_attempts", max_attempts)
+        object.__setattr__(self, "request_json", request_json)
+
+    @classmethod
+    def create(
+        cls,
+        repository_id: str,
+        source_revision_id: str,
+        idempotency_key: str,
+        request: Mapping[str, Any],
+        *,
+        ref_name: str = "main",
+        expected_ref_generation: int = 0,
+        max_attempts: int = 3,
+    ) -> IndexJobRequest:
+        return cls(
+            repository_id=repository_id,
+            source_revision_id=source_revision_id,
+            ref_name=ref_name,
+            idempotency_key=idempotency_key,
+            expected_ref_generation=expected_ref_generation,
+            max_attempts=max_attempts,
+            request_json=canonical_json(request),
+        )
+
+    @property
+    def request(self) -> dict[str, Any]:
+        return json.loads(self.request_json)
+
+    @property
+    def contract(self) -> str:
+        return str(self.request["contract"])
+
+    @property
+    def view_requests(self) -> tuple[IndexJobViewRecord, ...]:
+        return tuple(
+            IndexJobViewRecord(
+                job_id=self.job_id,
+                view_type=view_type,
+                profile_id=view_request["profile_id"],
+                requested_mode=view_request["requested_mode"],
+                required=view_request["required"],
+            )
+            for view_type, view_request in sorted(self.request["views"].items())
+        )
+
+    @property
+    def job_id(self) -> str:
+        return content_id(
+            "job",
+            {
+                "repository_id": self.repository_id,
+                "idempotency_key": self.idempotency_key,
+            },
+        )
+
+    @property
+    def request_digest(self) -> str:
+        return content_id(
+            "jobreq",
+            {
+                "repository_id": self.repository_id,
+                "source_revision_id": self.source_revision_id,
+                "ref_name": self.ref_name,
+                "expected_ref_generation": self.expected_ref_generation,
+                "max_attempts": self.max_attempts,
+                "request": self.request,
+            },
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class IndexJobRecord:
+    """Backend-neutral persisted state for one index job."""
+
+    job_id: str
+    repository_id: str
+    source_revision_id: str
+    ref_name: str
+    idempotency_key: str
+    expected_ref_generation: int
+    max_attempts: int
+    request_json: str
+    request_digest: str
+    status: IndexJobStatus
+    cancel_requested: bool
+    attempt_count: int
+    result_snapshot_id: str | None
+    error_code: str | None
+    error_message: str | None
+    created_at_ms: int
+    updated_at_ms: int
+    started_at_ms: int | None
+    finished_at_ms: int | None
+
+    def __post_init__(self) -> None:
+        request = IndexJobRequest(
+            repository_id=self.repository_id,
+            source_revision_id=self.source_revision_id,
+            ref_name=self.ref_name,
+            idempotency_key=self.idempotency_key,
+            expected_ref_generation=self.expected_ref_generation,
+            max_attempts=self.max_attempts,
+            request_json=self.request_json,
+        )
+        try:
+            status = IndexJobStatus(self.status)
+        except ValueError as exc:
+            raise StorageValidationError(
+                f"invalid index job status: {self.status}"
+            ) from exc
+        if self.job_id != request.job_id:
+            raise StorageValidationError(
+                "job ID does not match its idempotency identity"
+            )
+        if self.request_digest != request.request_digest:
+            raise StorageValidationError(
+                "job request digest does not match its request"
+            )
+        snapshot = _optional_bounded_text(
+            self.result_snapshot_id, "result snapshot ID", max_length=96
+        )
+        error_code = _optional_bounded_text(
+            self.error_code, "job error code", max_length=128
+        )
+        error_message = _optional_bounded_text(
+            self.error_message, "job error message", max_length=4_096
+        )
+        if error_message is not None and error_code is None:
+            raise StorageValidationError("job error message requires an error code")
+        terminal = status in {
+            IndexJobStatus.SUCCEEDED,
+            IndexJobStatus.FAILED,
+            IndexJobStatus.CANCELLED,
+        }
+        if terminal != (self.finished_at_ms is not None):
+            raise StorageValidationError("terminal index jobs require a finish time")
+        if status is IndexJobStatus.SUCCEEDED and snapshot is None:
+            raise StorageValidationError(
+                "successful index jobs require a result snapshot"
+            )
+        if status is not IndexJobStatus.SUCCEEDED and snapshot is not None:
+            raise StorageValidationError(
+                "only successful index jobs may have a result snapshot"
+            )
+        if status is IndexJobStatus.FAILED and error_code is None:
+            raise StorageValidationError("failed index jobs require an error code")
+        if status is IndexJobStatus.SUCCEEDED and error_code is not None:
+            raise StorageValidationError("successful index jobs cannot have an error")
+        if status is IndexJobStatus.RUNNING and self.started_at_ms is None:
+            raise StorageValidationError("running index jobs require a start time")
+        if status is IndexJobStatus.CANCELLED and not self.cancel_requested:
+            raise StorageValidationError("cancelled index jobs require cancellation")
+        if not isinstance(self.cancel_requested, bool):
+            raise StorageValidationError("cancel requested must be boolean")
+
+        object.__setattr__(self, "job_id", request.job_id)
+        object.__setattr__(self, "repository_id", request.repository_id)
+        object.__setattr__(self, "source_revision_id", request.source_revision_id)
+        object.__setattr__(self, "ref_name", request.ref_name)
+        object.__setattr__(self, "idempotency_key", request.idempotency_key)
+        object.__setattr__(
+            self, "expected_ref_generation", request.expected_ref_generation
+        )
+        object.__setattr__(self, "max_attempts", request.max_attempts)
+        object.__setattr__(self, "request_json", request.request_json)
+        object.__setattr__(self, "request_digest", request.request_digest)
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "result_snapshot_id", snapshot)
+        object.__setattr__(self, "error_code", error_code)
+        object.__setattr__(self, "error_message", error_message)
+        object.__setattr__(
+            self,
+            "attempt_count",
+            _nonnegative_integer(self.attempt_count, "job attempt count"),
+        )
+        if self.attempt_count > self.max_attempts:
+            raise StorageValidationError("job attempts exceed the configured maximum")
+        for field in ("created_at_ms", "updated_at_ms"):
+            object.__setattr__(
+                self, field, _nonnegative_integer(getattr(self, field), field)
+            )
+        for field in ("started_at_ms", "finished_at_ms"):
+            object.__setattr__(
+                self,
+                field,
+                _optional_nonnegative_integer(getattr(self, field), field),
+            )
+        if self.updated_at_ms < self.created_at_ms:
+            raise StorageValidationError("job update time precedes creation")
+        if self.started_at_ms is not None and (
+            self.started_at_ms < self.created_at_ms
+            or self.updated_at_ms < self.started_at_ms
+        ):
+            raise StorageValidationError("job start time is out of order")
+        if self.finished_at_ms is not None:
+            finish_floor = self.started_at_ms or self.created_at_ms
+            if (
+                self.finished_at_ms < finish_floor
+                or self.updated_at_ms < self.finished_at_ms
+            ):
+                raise StorageValidationError("job finish time is out of order")
+
+    @property
+    def request(self) -> dict[str, Any]:
+        return json.loads(self.request_json)
+
+
+@dataclass(frozen=True, slots=True)
+class RefJobLease:
+    """Active, fenced ownership of the single publisher slot for a ref."""
+
+    repository_id: str
+    ref_name: str
+    job_id: str
+    owner_id: str
+    fencing_token: int
+    acquired_at_ms: int
+    heartbeat_at_ms: int
+    lease_expires_at_ms: int
+
+    def __post_init__(self) -> None:
+        token = _nonnegative_integer(self.fencing_token, "lease fencing token")
+        if token < 1:
+            raise StorageValidationError("lease fencing token must be positive")
+        object.__setattr__(
+            self,
+            "repository_id",
+            _bounded_text(self.repository_id, "repository ID", max_length=96),
+        )
+        object.__setattr__(
+            self, "ref_name", _bounded_text(self.ref_name, "ref name", max_length=512)
+        )
+        object.__setattr__(
+            self, "job_id", _bounded_text(self.job_id, "job ID", max_length=80)
+        )
+        object.__setattr__(
+            self, "owner_id", _bounded_text(self.owner_id, "owner ID", max_length=256)
+        )
+        object.__setattr__(self, "fencing_token", token)
+        for field in ("acquired_at_ms", "heartbeat_at_ms", "lease_expires_at_ms"):
+            object.__setattr__(
+                self, field, _nonnegative_integer(getattr(self, field), field)
+            )
+        if not self.acquired_at_ms <= self.heartbeat_at_ms < self.lease_expires_at_ms:
+            raise StorageValidationError("lease timestamps are not ordered")
+
+
 @dataclass(frozen=True, slots=True)
 class RefState:
     """A generation-counted repository ref resolved to one snapshot."""
@@ -513,11 +992,19 @@ class RefState:
 
 __all__ = [
     "ArtifactMember",
+    "INDEX_JOB_REQUEST_CONTRACT",
+    "IndexJobCompletion",
+    "IndexJobRecord",
+    "IndexJobRequest",
+    "IndexJobRequestedMode",
+    "IndexJobStatus",
+    "IndexJobViewRecord",
     "ObjectRecord",
     "PublishConflict",
     "PublishedSnapshot",
     "RefState",
     "RepositoryIdentity",
+    "RefJobLease",
     "SnapshotView",
     "SourceRevision",
     "StorageError",

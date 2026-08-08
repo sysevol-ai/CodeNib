@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, BinaryIO, Mapping, Protocol, Sequence, runtime_checkable
 
 from .cas import BlobInfo
+from .models import IndexJobCompletion, IndexJobRecord, IndexJobViewRecord, RefJobLease
 
 
 @runtime_checkable
@@ -107,4 +108,55 @@ class IndexCatalog(Protocol):
     def get_manifest_summary(self, snapshot_id: str) -> dict[str, Any]: ...
 
 
-__all__ = ["IndexCatalog", "ObjectStore"]
+@runtime_checkable
+class JobCatalog(Protocol):
+    """Durable index-job coordination, separate from snapshot publication."""
+
+    def create_job(
+        self,
+        repository_id: str,
+        source_revision_id: str,
+        idempotency_key: str,
+        request: Mapping[str, Any],
+        *,
+        ref_name: str = "main",
+        expected_ref_generation: int = 0,
+        max_attempts: int = 3,
+    ) -> IndexJobRecord: ...
+
+    def get_job(self, job_id: str) -> IndexJobRecord: ...
+
+    def get_job_views(self, job_id: str) -> tuple[IndexJobViewRecord, ...]: ...
+
+    def acquire_job_lease(
+        self,
+        job_id: str,
+        *,
+        owner_id: str,
+        lease_duration_ms: int,
+    ) -> RefJobLease: ...
+
+    def renew_job_lease(
+        self,
+        job_id: str,
+        *,
+        owner_id: str,
+        fencing_token: int,
+        lease_duration_ms: int,
+    ) -> RefJobLease: ...
+
+    def request_job_cancel(self, job_id: str) -> IndexJobRecord: ...
+
+    def finish_job_attempt(
+        self,
+        job_id: str,
+        *,
+        owner_id: str,
+        fencing_token: int,
+        outcome: IndexJobCompletion,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> IndexJobRecord: ...
+
+
+__all__ = ["IndexCatalog", "JobCatalog", "ObjectStore"]
