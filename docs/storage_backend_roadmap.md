@@ -170,13 +170,19 @@ Status: in progress.
   transactions, and forward-only migrations.
 - Implement a filesystem SHA-256 object store with atomic writes and verified
   materialization.
+- Encode multi-file query views as deterministic, bounded `view-bundle v1`
+  objects (`bundle.json` plus `payload/`) before registering them in the object
+  store; materialization must verify the complete canonical inventory first.
 - Store namespaces, repositories, source revisions, profiles, objects,
   generations, snapshots, snapshot views, refs, and initial job/lease records.
 - Import one existing cache/manifest as a ready snapshot and export an
   equivalent `RepoManifest` v1.1.
 
 The SQLite/CAS foundation through refs and atomic snapshot sealing is
-implemented.  Schema v2 now adds canonical idempotent job requests, immutable
+implemented.  The deterministic single-object view-bundle bridge now preserves
+multi-file view paths, bytes, and normalized executable modes with bounded,
+fail-closed verification and atomic materialization.  Schema v2 now adds
+canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
 per-ref leases.  Catalog reads revalidate the normalized view rows against the
 canonical request; the M2 publication transaction must repeat that gate before
