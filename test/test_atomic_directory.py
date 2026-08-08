@@ -12,7 +12,10 @@ from types import SimpleNamespace
 import pytest
 
 import codenib._atomic_directory as atomic_module
-from codenib._atomic_directory import publish_staged_directory
+from codenib._atomic_directory import (
+    capture_directory_ownership,
+    publish_staged_directory,
+)
 
 
 def test_publish_staged_directory_replaces_existing_tree(tmp_path: Path) -> None:
@@ -168,6 +171,11 @@ def test_publish_staged_directory_preserves_late_destination_entry(
         (destination / "late.txt").write_text("late", encoding="utf-8")
         return real_mkdtemp(*args, **kwargs)
 
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_identity",
+        lambda metadata: (metadata.st_dev, metadata.st_ino, metadata.st_mode),
+    )
     monkeypatch.setattr(atomic_module.tempfile, "mkdtemp", mutate_then_allocate)
 
     with pytest.raises(RuntimeError, match="changed at the publication boundary"):
@@ -175,6 +183,511 @@ def test_publish_staged_directory_preserves_late_destination_entry(
 
     assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
     assert (destination / "late.txt").read_text(encoding="utf-8") == "late"
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+def test_publish_staged_directory_preserves_nested_late_destination_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    nested = destination / "nested"
+    nested.mkdir(parents=True)
+    (nested / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    real_mkdtemp = atomic_module.tempfile.mkdtemp
+
+    def mutate_then_allocate(*args, **kwargs):
+        (nested / "late.txt").write_text("late", encoding="utf-8")
+        return real_mkdtemp(*args, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_identity",
+        lambda metadata: (metadata.st_dev, metadata.st_ino, metadata.st_mode),
+    )
+    monkeypatch.setattr(atomic_module.tempfile, "mkdtemp", mutate_then_allocate)
+
+    with pytest.raises(RuntimeError, match="changed at the publication boundary"):
+        publish_staged_directory(stage, destination)
+
+    assert (destination / "nested" / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (destination / "nested" / "late.txt").read_text(encoding="utf-8") == ("late")
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+def test_publish_staged_directory_rejects_nested_stage_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    nested = stage / "nested"
+    nested.mkdir(parents=True)
+    (nested / "new.txt").write_text("new", encoding="utf-8")
+    real_mkdtemp = atomic_module.tempfile.mkdtemp
+
+    def mutate_then_allocate(*args, **kwargs):
+        (nested / "late.txt").write_text("late", encoding="utf-8")
+        return real_mkdtemp(*args, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_identity",
+        lambda metadata: (metadata.st_dev, metadata.st_ino, metadata.st_mode),
+    )
+    monkeypatch.setattr(atomic_module.tempfile, "mkdtemp", mutate_then_allocate)
+
+    with pytest.raises(RuntimeError, match="before destination publication"):
+        publish_staged_directory(stage, destination)
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (stage / "nested" / "new.txt").read_text(encoding="utf-8") == "new"
+    assert (stage / "nested" / "late.txt").read_text(encoding="utf-8") == "late"
+
+
+def test_publish_staged_directory_rejects_same_size_destination_rewrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    previous = destination / "old.txt"
+    previous.write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    real_mkdtemp = atomic_module.tempfile.mkdtemp
+
+    def mutate_then_allocate(*args, **kwargs):
+        previous.write_text("NEW", encoding="utf-8")
+        return real_mkdtemp(*args, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_identity",
+        lambda metadata: (metadata.st_dev, metadata.st_ino, metadata.st_mode),
+    )
+    monkeypatch.setattr(atomic_module.tempfile, "mkdtemp", mutate_then_allocate)
+
+    with pytest.raises(RuntimeError, match="changed at the publication boundary"):
+        publish_staged_directory(stage, destination)
+
+    assert previous.read_text(encoding="utf-8") == "NEW"
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+def test_publish_staged_directory_preserves_raced_missing_target_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    real_mkdtemp = atomic_module.tempfile.mkdtemp
+
+    def mutate_then_allocate(*args, **kwargs):
+        (destination / "late.txt").write_text("late", encoding="utf-8")
+        return real_mkdtemp(*args, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_identity",
+        lambda metadata: (metadata.st_dev, metadata.st_ino, metadata.st_mode),
+    )
+    monkeypatch.setattr(atomic_module.tempfile, "mkdtemp", mutate_then_allocate)
+
+    with pytest.raises(RuntimeError, match="raced content remains"):
+        publish_staged_directory(
+            stage,
+            destination,
+            expected_destination_identity=None,
+            validate_moved_destination=lambda _path: None,
+            validate_published_destination=lambda _path: None,
+        )
+
+    assert (destination / "late.txt").read_text(encoding="utf-8") == "late"
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+@pytest.mark.parametrize(
+    ("constant", "limit", "files", "error"),
+    [
+        ("_MAX_OWNERSHIP_ENTRIES", 1, {"a": "1", "b": "2"}, "entry limit"),
+        ("_MAX_OWNERSHIP_BYTES", 2, {"a": "123"}, "byte limit"),
+        ("_MAX_OWNERSHIP_METADATA_BYTES", 1, {"a": "1"}, "metadata"),
+        ("_MAX_OWNERSHIP_COMPONENT_BYTES", 1, {"aa": "1"}, "component"),
+    ],
+)
+def test_publish_staged_directory_bounds_builtin_ownership_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    constant: str,
+    limit: int,
+    files: dict[str, str],
+    error: str,
+) -> None:
+    destination = tmp_path / "published"
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    for name, content in files.items():
+        (stage / name).write_text(content, encoding="utf-8")
+    monkeypatch.setattr(atomic_module, constant, limit)
+
+    with pytest.raises(RuntimeError, match=error):
+        publish_staged_directory(stage, destination)
+
+    assert not destination.exists()
+    for name, content in files.items():
+        assert (stage / name).read_text(encoding="utf-8") == content
+
+
+def test_directory_ownership_is_independent_of_entry_order(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    for name in ("a", "b", "c"):
+        (first / name).write_text(name, encoding="utf-8")
+    for name in ("c", "b", "a"):
+        (second / name).write_text(name, encoding="utf-8")
+
+    first_token = capture_directory_ownership(first)
+    second_token = capture_directory_ownership(second)
+    assert (
+        first_token.digest,
+        first_token.entries,
+        first_token.byte_count,
+        first_token.metadata_bytes,
+    ) == (
+        second_token.digest,
+        second_token.entries,
+        second_token.byte_count,
+        second_token.metadata_bytes,
+    )
+
+
+@pytest.mark.parametrize(
+    ("constant", "limit", "error"),
+    [
+        ("_MAX_SAFE_REMOVAL_DEPTH", 1, "depth limit"),
+        ("_MAX_OWNERSHIP_PATH_BYTES", 3, "path exceeds"),
+    ],
+)
+def test_directory_ownership_bounds_derived_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    constant: str,
+    limit: int,
+    error: str,
+) -> None:
+    root = tmp_path / "root"
+    nested = root / "aa" / "bb"
+    nested.mkdir(parents=True)
+    (nested / "value").write_text("value", encoding="utf-8")
+    monkeypatch.setattr(atomic_module, constant, limit)
+
+    with pytest.raises(RuntimeError, match=error):
+        capture_directory_ownership(root)
+
+
+def test_directory_ownership_reserves_parent_entries_before_child_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root"
+    child = root / "child"
+    child.mkdir(parents=True)
+    (child / "one").write_text("one", encoding="utf-8")
+    (child / "two").write_text("two", encoding="utf-8")
+    monkeypatch.setattr(atomic_module, "_MAX_OWNERSHIP_ENTRIES", 2)
+
+    with pytest.raises(RuntimeError, match="entry limit"):
+        capture_directory_ownership(root)
+
+
+def test_directory_ownership_binds_required_root_marker(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "payload").write_text("payload", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="required marker"):
+        capture_directory_ownership(
+            root,
+            required_root_file="manifest.json",
+            allow_empty_root=True,
+        )
+
+    (root / "manifest.json").mkdir()
+    with pytest.raises(RuntimeError, match="marker is not a regular file"):
+        capture_directory_ownership(
+            root,
+            required_root_file="manifest.json",
+            allow_empty_root=True,
+        )
+
+
+def test_directory_ownership_detects_same_size_rewrite_across_tokens(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    payload = root / "payload"
+    payload.write_bytes(b"original")
+    real_read = atomic_module.os.read
+    mutated = False
+
+    def rewrite_after_read(descriptor: int, size: int) -> bytes:
+        nonlocal mutated
+        result = real_read(descriptor, size)
+        if result and not mutated:
+            mutated = True
+            payload.write_bytes(b"modified")
+        return result
+
+    expected = capture_directory_ownership(root)
+    monkeypatch.setattr(atomic_module.os, "read", rewrite_after_read)
+
+    try:
+        raced = capture_directory_ownership(root)
+    except RuntimeError as exc:
+        assert "file changed" in str(exc)
+    else:
+        observed = capture_directory_ownership(root)
+        assert raced != observed
+        assert expected != observed
+
+
+def test_expected_destination_ownership_rejects_identical_root_swap(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    expected = capture_directory_ownership(destination)
+    stolen = tmp_path / "stolen"
+    destination.rename(stolen)
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="changed before directory publication"):
+        publish_staged_directory(
+            stage,
+            destination,
+            expected_destination_ownership=expected,
+        )
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (stolen / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+def test_expected_stage_root_preserves_substituted_cleanup_path(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    expected = capture_directory_ownership(stage)
+    stolen = tmp_path / "stolen-stage"
+    stage.rename(stolen)
+    stage.mkdir()
+    (stage / "foreign.txt").write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="root changed before publication"):
+        publish_staged_directory(
+            stage,
+            destination,
+            expected_stage_root_ownership=expected,
+        )
+    atomic_module.discard_owned_directory(stage, expected)
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    assert stolen.is_dir()
+    assert (stage / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+
+
+def test_publish_staged_directory_restores_old_tree_on_scan_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    real_require = atomic_module._require_tree_ownership
+
+    def interrupt_moved_tree(path, expected, *, label):
+        if label == "moved destination":
+            raise KeyboardInterrupt("injected ownership interruption")
+        return real_require(path, expected, label=label)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_require_tree_ownership",
+        interrupt_moved_tree,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="ownership interruption"):
+        publish_staged_directory(stage, destination)
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+    assert not list(tmp_path.glob(".published.previous-*"))
+
+
+def test_publish_restores_old_tree_when_moved_lstat_is_interrupted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    real_directory_or_missing = atomic_module._directory_or_missing
+
+    def interrupt_moved_lstat(path: Path, *, label: str):
+        if label == "moved destination":
+            raise KeyboardInterrupt("injected moved lstat interruption")
+        return real_directory_or_missing(path, label=label)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_or_missing",
+        interrupt_moved_lstat,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="moved lstat interruption"):
+        publish_staged_directory(stage, destination)
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+    assert not list(tmp_path.glob(".published.previous-*"))
+
+
+def test_publish_restores_old_tree_when_rename_completes_then_interrupts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    real_replace = atomic_module.os.replace
+
+    def interrupt_after_old_rename(source, target):
+        result = real_replace(source, target)
+        if Path(source) == destination and Path(target).name.startswith(
+            ".published.previous-"
+        ):
+            raise KeyboardInterrupt("injected post-rename interruption")
+        return result
+
+    monkeypatch.setattr(atomic_module.os, "replace", interrupt_after_old_rename)
+
+    with pytest.raises(KeyboardInterrupt, match="post-rename interruption"):
+        publish_staged_directory(stage, destination)
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+    assert not list(tmp_path.glob(".published.previous-*"))
+
+
+def test_publish_restores_old_tree_when_final_stage_lstat_is_interrupted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    real_directory_or_missing = atomic_module._directory_or_missing
+    staged_calls = 0
+
+    def interrupt_final_stage_lstat(path: Path, *, label: str):
+        nonlocal staged_calls
+        if label == "staged directory":
+            staged_calls += 1
+            if staged_calls == 3:
+                raise KeyboardInterrupt("injected final stage lstat interruption")
+        return real_directory_or_missing(path, label=label)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_or_missing",
+        interrupt_final_stage_lstat,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="final stage lstat interruption"):
+        publish_staged_directory(stage, destination)
+
+    assert staged_calls == 3
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+    assert not list(tmp_path.glob(".published.previous-*"))
+
+
+def test_first_publication_works_without_safe_ownership_fds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    monkeypatch.setattr(atomic_module, "_SAFE_OWNERSHIP_DIRECTORY_FDS", False)
+
+    publish_staged_directory(
+        stage,
+        destination,
+        expected_destination_ownership=None,
+        validate_staged_directory=lambda _path: None,
+        validate_published_destination=lambda _path: None,
+    )
+
+    assert (destination / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+def test_existing_publication_fails_closed_without_safe_ownership_fds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    monkeypatch.setattr(atomic_module, "_SAFE_OWNERSHIP_DIRECTORY_FDS", False)
+
+    with pytest.raises(RuntimeError, match="non-empty trees"):
+        publish_staged_directory(
+            stage,
+            destination,
+            validate_staged_directory=lambda _path: None,
+            validate_published_destination=lambda _path: None,
+        )
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
     assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
 
 
@@ -207,6 +720,40 @@ def test_publish_staged_directory_quarantines_failed_published_identity(
     assert (quarantines[0] / "late.txt").read_text(encoding="utf-8") == "late"
     assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
     assert not stage.exists()
+
+
+def test_published_callback_cannot_bypass_exact_tree_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    real_replace = os.replace
+
+    def add_empty_directory_after_publish(source, target):
+        result = real_replace(source, target)
+        if Path(source) == stage and Path(target) == destination:
+            (destination / "late-empty").mkdir()
+        return result
+
+    monkeypatch.setattr(atomic_module.os, "replace", add_empty_directory_after_publish)
+
+    with pytest.raises(RuntimeError, match="quarantined"):
+        publish_staged_directory(
+            stage,
+            destination,
+            validate_staged_directory=lambda _path: None,
+            validate_published_destination=lambda _path: None,
+        )
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    quarantines = list(tmp_path.glob(".published.quarantine-*"))
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "late-empty").is_dir()
 
 
 def test_published_boundary_quarantines_new_before_lost_backup_check(
@@ -295,7 +842,7 @@ def test_published_callback_quarantines_new_before_lost_backup_check(
     assert (quarantines[0] / "new.txt").read_text(encoding="utf-8") == "new"
 
 
-def test_publish_staged_directory_rolls_back_before_mounted_tree_cleanup(
+def test_publish_staged_directory_rejects_mounted_tree_before_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -316,15 +863,14 @@ def test_publish_staged_directory_rolls_back_before_mounted_tree_cleanup(
 
     monkeypatch.setattr(atomic_module, "_path_is_mount_point", fake_mount_check)
 
-    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+    with pytest.raises(RuntimeError, match="ownership scan refuses mounted"):
         publish_staged_directory(stage, destination)
 
     assert (destination / "mounted" / "external.txt").read_text(
         encoding="utf-8"
     ) == "preserve"
-    quarantines = list(tmp_path.glob(".published.quarantine-*"))
-    assert len(quarantines) == 1
-    assert (quarantines[0] / "new.txt").read_text(encoding="utf-8") == "new"
+    assert (stage / "new.txt").read_text(encoding="utf-8") == "new"
+    assert not list(tmp_path.glob(".published.quarantine-*"))
 
 
 def test_publish_staged_directory_fails_closed_without_safe_cleanup_fds(

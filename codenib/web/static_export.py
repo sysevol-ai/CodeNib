@@ -17,7 +17,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 
-from .._atomic_directory import publish_staged_directory
+from .._atomic_directory import (
+    capture_directory_ownership,
+    discard_owned_directory,
+    lexical_directory_path,
+    publish_staged_directory,
+)
 from .._version import package_version
 from ..artifacts.security import assert_publishable_tree, file_sha256
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
@@ -691,7 +696,7 @@ def _generation_summary(pages: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
 def _file_inventory(root: Path) -> list[dict[str, Any]]:
     files = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.name == STATIC_EXPORT_MANIFEST:
+        if not path.is_file() or path == root / STATIC_EXPORT_MANIFEST:
             continue
         size, digest = file_sha256(path)
         files.append(
@@ -708,10 +713,14 @@ def _validated_output(
     repo_path: Path,
     manifest_root: Path,
     output_dir: Path,
-) -> Path:
+) -> tuple[Path, object | None]:
     repo_path = repo_path.resolve()
     manifest_root = manifest_root.resolve()
-    output_dir = output_dir.expanduser().resolve()
+    output_dir = lexical_directory_path(output_dir)
+    if output_dir.is_symlink():
+        raise ValueError(
+            f"static export output must not be a symbolic link: {output_dir}"
+        )
     for source, label in (
         (repo_path, "target repository"),
         (manifest_root, "index root"),
@@ -722,13 +731,22 @@ def _validated_output(
             raise ValueError(f"static export output must not contain the {label}")
     if output_dir.exists() and not output_dir.is_dir():
         raise ValueError(f"static export output is not a directory: {output_dir}")
-    if output_dir.exists() and any(output_dir.iterdir()):
-        if not (output_dir / STATIC_EXPORT_MANIFEST).is_file():
-            raise ValueError(
-                "refusing to replace a non-empty directory that is not a CodeNib "
-                f"static export: {output_dir}"
+    try:
+        expected_ownership = (
+            capture_directory_ownership(
+                output_dir,
+                required_root_file=STATIC_EXPORT_MANIFEST,
+                allow_empty_root=True,
             )
-    return output_dir
+            if output_dir.exists()
+            else None
+        )
+    except RuntimeError as exc:
+        raise ValueError(
+            "refusing to replace a non-empty directory that is not a CodeNib "
+            f"static export: {output_dir}"
+        ) from exc
+    return output_dir, expected_ownership
 
 
 def export_static_wiki(
@@ -744,7 +762,11 @@ def export_static_wiki(
 
     repo_path = repo_path.expanduser().resolve()
     manifest_path = manifest_path.expanduser().resolve()
-    output_dir = _validated_output(repo_path, manifest_path.parent, output_dir)
+    output_dir, expected_output_ownership = _validated_output(
+        repo_path,
+        manifest_path.parent,
+        output_dir,
+    )
     base_path = normalize_base_path(base_path)
     frontend = _prebuilt_frontend(frontend_dir)
     environment = os.environ if environ is None else environ
@@ -794,12 +816,15 @@ def export_static_wiki(
     repo_info["source_url"] = _github_repository_url(repo_path)
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)
-    stage = Path(
-        tempfile.mkdtemp(
-            prefix=f".{output_dir.name}.tmp-",
-            dir=str(output_dir.parent),
+    stage = lexical_directory_path(
+        Path(
+            tempfile.mkdtemp(
+                prefix=f".{output_dir.name}.tmp-",
+                dir=str(output_dir.parent),
+            )
         )
-    ).resolve()
+    )
+    stage_root_ownership = capture_directory_ownership(stage)
     try:
         _copy_frontend(frontend, stage, base_path=base_path)
         _write_bytes(stage, "runtime-config.js", _runtime_config(base_path))
@@ -873,10 +898,36 @@ def export_static_wiki(
             label="static export",
         )
 
-        publish_staged_directory(stage, output_dir)
+        expected_manifest_bytes = _json_bytes(export_manifest)
+
+        def validate_export(candidate: Path) -> None:
+            assert_publishable_tree(
+                candidate,
+                forbidden_paths=(repo_path, manifest_path.parent),
+                environ=environment,
+                label="static export",
+            )
+            candidate_manifest = candidate / STATIC_EXPORT_MANIFEST
+            if (
+                not candidate_manifest.is_file()
+                or candidate_manifest.read_bytes() != expected_manifest_bytes
+                or _file_inventory(candidate) != export_manifest["files"]
+            ):
+                raise ValueError(
+                    "published static export differs from its staged identity"
+                )
+
+        publish_staged_directory(
+            stage,
+            output_dir,
+            expected_stage_root_ownership=stage_root_ownership,
+            expected_destination_ownership=expected_output_ownership,
+            validate_staged_directory=validate_export,
+            validate_published_destination=validate_export,
+        )
         manifest_file = output_dir / manifest_file.relative_to(stage)
-    except Exception:
-        shutil.rmtree(stage, ignore_errors=True)
+    except BaseException:
+        discard_owned_directory(stage, stage_root_ownership)
         raise
 
     return StaticExportResult(

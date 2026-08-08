@@ -17,7 +17,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from .. import compat_pickle
-from .._atomic_directory import publish_staged_directory
+from .._atomic_directory import (
+    capture_directory_ownership,
+    discard_owned_directory,
+    lexical_directory_path,
+    publish_staged_directory,
+)
 from .._version import package_version
 from ..compiler.artifact_fingerprints import (
     bm25_artifact_file_fingerprints,
@@ -96,8 +101,16 @@ def _repository_slug(repo_path: Path, explicit: str | None) -> str:
     return normalize_repo(origin or repo_path.name)
 
 
-def _validated_output(repo_path: Path, manifest_root: Path, output_dir: Path) -> Path:
-    output = output_dir.expanduser().resolve()
+def _validated_output(
+    repo_path: Path,
+    manifest_root: Path,
+    output_dir: Path,
+) -> tuple[Path, object | None]:
+    output = lexical_directory_path(output_dir)
+    if output.is_symlink():
+        raise ValueError(
+            f"context artifact output must not be a symbolic link: {output}"
+        )
     for source, label in (
         (repo_path.resolve(), "repository"),
         (manifest_root.resolve(), "index root"),
@@ -106,13 +119,22 @@ def _validated_output(repo_path: Path, manifest_root: Path, output_dir: Path) ->
             raise ValueError(f"context artifact output overlaps the {label}: {output}")
     if output.exists() and not output.is_dir():
         raise ValueError(f"context artifact output is not a directory: {output}")
-    if output.exists() and any(output.iterdir()):
-        if not (output / CONTEXT_ARTIFACT_MANIFEST).is_file():
-            raise ValueError(
-                "refusing to replace a non-empty directory that is not a CodeNib "
-                f"context artifact: {output}"
+    try:
+        expected_ownership = (
+            capture_directory_ownership(
+                output,
+                required_root_file=CONTEXT_ARTIFACT_MANIFEST,
+                allow_empty_root=True,
             )
-    return output
+            if output.exists()
+            else None
+        )
+    except RuntimeError as exc:
+        raise ValueError(
+            "refusing to replace a non-empty directory that is not a CodeNib "
+            f"context artifact: {output}"
+        ) from exc
+    return output, expected_ownership
 
 
 def _view_source(entry_path: str, manifest_root: Path, *, view: str) -> Path:
@@ -402,7 +424,11 @@ def stage_context_artifact(
     if not manifest_path.is_file():
         raise ValueError(f"repository manifest does not exist: {manifest_path}")
     manifest_root = manifest_path.parent
-    output_dir = _validated_output(repo_path, manifest_root, output_dir)
+    output_dir, expected_output_ownership = _validated_output(
+        repo_path,
+        manifest_root,
+        output_dir,
+    )
     environment = os.environ if environ is None else environ
     manifest = RepoManifest.load(manifest_path)
     if validate_checkout:
@@ -421,12 +447,15 @@ def stage_context_artifact(
     slug = _repository_slug(repo_path, repository)
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)
-    stage = Path(
-        tempfile.mkdtemp(
-            prefix=f".{output_dir.name}.tmp-",
-            dir=str(output_dir.parent),
+    stage = lexical_directory_path(
+        Path(
+            tempfile.mkdtemp(
+                prefix=f".{output_dir.name}.tmp-",
+                dir=str(output_dir.parent),
+            )
         )
-    ).resolve()
+    )
+    stage_root_ownership = capture_directory_ownership(stage)
     try:
         portable = manifest.to_dict()
         portable["repo"]["path"] = "source"
@@ -518,9 +547,40 @@ def stage_context_artifact(
             label="context artifact",
         )
 
-        publish_staged_directory(stage, output_dir)
+        expected_metadata_bytes = _json_bytes(metadata)
+
+        def validate_artifact(candidate: Path) -> None:
+            assert_publishable_tree(
+                candidate,
+                forbidden_paths=(repo_path, manifest_root),
+                environ=environment,
+                label="context artifact",
+            )
+            candidate_metadata = candidate / CONTEXT_ARTIFACT_MANIFEST
+            actual_files = [
+                record
+                for record in _inventory(candidate)
+                if record["path"] != CONTEXT_ARTIFACT_MANIFEST
+            ]
+            if (
+                not candidate_metadata.is_file()
+                or candidate_metadata.read_bytes() != expected_metadata_bytes
+                or actual_files != files
+            ):
+                raise ValueError(
+                    "published context artifact differs from its staged identity"
+                )
+
+        publish_staged_directory(
+            stage,
+            output_dir,
+            expected_stage_root_ownership=stage_root_ownership,
+            expected_destination_ownership=expected_output_ownership,
+            validate_staged_directory=validate_artifact,
+            validate_published_destination=validate_artifact,
+        )
     except BaseException:
-        shutil.rmtree(stage, ignore_errors=True)
+        discard_owned_directory(stage, stage_root_ownership)
         raise
 
     byte_count = sum(int(item["bytes"]) for item in files)

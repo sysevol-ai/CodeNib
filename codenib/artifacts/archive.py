@@ -6,13 +6,17 @@
 
 from __future__ import annotations
 
-import shutil
 import stat
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from .._atomic_directory import publish_staged_directory
+from .._atomic_directory import (
+    capture_directory_ownership,
+    discard_owned_directory,
+    lexical_directory_path,
+    publish_staged_directory,
+)
 from .context import CONTEXT_ARTIFACT_MANIFEST
 from .runtime import VerifiedContextArtifact, verify_context_artifact
 
@@ -150,28 +154,39 @@ def extract_context_artifact_archive(
     archive_path = archive_candidate.resolve()
     if not archive_path.is_file():
         raise ValueError(f"context artifact archive does not exist: {archive_path}")
-    output_candidate = Path(output_dir).expanduser()
-    if output_candidate.is_symlink():
+    output = lexical_directory_path(Path(output_dir))
+    if output.is_symlink():
         raise ValueError(
-            f"context artifact output must not be a symbolic link: {output_candidate}"
+            f"context artifact output must not be a symbolic link: {output}"
         )
-    output = output_candidate.resolve()
     if output.exists() and not output.is_dir():
         raise ValueError(f"context artifact output is not a directory: {output}")
-    if output.exists() and any(output.iterdir()):
-        if not (output / CONTEXT_ARTIFACT_MANIFEST).is_file():
-            raise ValueError(
-                "refusing to replace a non-empty directory that is not a "
-                f"CodeNib context artifact: {output}"
+    try:
+        expected_output_ownership = (
+            capture_directory_ownership(
+                output,
+                required_root_file=CONTEXT_ARTIFACT_MANIFEST,
+                allow_empty_root=True,
             )
+            if output.exists()
+            else None
+        )
+    except RuntimeError as exc:
+        raise ValueError(
+            "refusing to replace a non-empty directory that is not a "
+            f"CodeNib context artifact: {output}"
+        ) from exc
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    stage = Path(
-        tempfile.mkdtemp(
-            prefix=f".{output.name}.extract-",
-            dir=str(output.parent),
+    stage = lexical_directory_path(
+        Path(
+            tempfile.mkdtemp(
+                prefix=f".{output.name}.extract-",
+                dir=str(output.parent),
+            )
         )
-    ).resolve()
+    )
+    stage_root_ownership = capture_directory_ownership(stage)
     try:
         with zipfile.ZipFile(archive_path) as archive:
             members = _validated_members(
@@ -181,21 +196,32 @@ def extract_context_artifact_archive(
             )
             for info, relative in members:
                 _extract_member(archive, info, relative, stage)
-        verify_context_artifact(
+
+        def validate_artifact(candidate: Path) -> None:
+            verify_context_artifact(
+                candidate,
+                expected_repository=expected_repository,
+                expected_commit=expected_commit,
+                max_files=max_files,
+                max_bytes=max_bytes,
+            )
+
+        validate_artifact(stage)
+        publish_staged_directory(
             stage,
-            expected_repository=expected_repository,
-            expected_commit=expected_commit,
-            max_files=max_files,
-            max_bytes=max_bytes,
+            output,
+            expected_stage_root_ownership=stage_root_ownership,
+            expected_destination_ownership=expected_output_ownership,
+            validate_staged_directory=validate_artifact,
+            validate_published_destination=validate_artifact,
         )
-        publish_staged_directory(stage, output)
     except zipfile.BadZipFile as exc:
-        shutil.rmtree(stage, ignore_errors=True)
+        discard_owned_directory(stage, stage_root_ownership)
         raise ValueError(
             f"context artifact archive is not a valid ZIP: {archive_path}"
         ) from exc
     except BaseException:
-        shutil.rmtree(stage, ignore_errors=True)
+        discard_owned_directory(stage, stage_root_ownership)
         raise
 
     return verify_context_artifact(

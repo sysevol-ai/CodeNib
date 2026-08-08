@@ -438,7 +438,7 @@ def materialize_view_bundle(
     output = _output_path(output)
     _reject_overlap(output, archive, label="view bundle archive and output")
     _reject_forbidden_roots(output, forbidden_roots, label="view bundle output")
-    _validate_materialization_target(
+    expected_ownership = _validate_materialization_target(
         output,
         max_files=max_files,
         max_bytes=max_bytes,
@@ -511,12 +511,6 @@ def materialize_view_bundle(
                 raise StorageIntegrityError(
                     "view bundle materialization stage changed before publication"
                 )
-        expected_ownership = _validate_materialization_target(
-            output,
-            max_files=max_files,
-            max_bytes=max_bytes,
-            max_metadata_bytes=max_metadata_bytes,
-        )
 
         def validate_moved_destination(moved: Path) -> None:
             try:
@@ -2826,7 +2820,7 @@ def _remove_owned_stage(stage: Path, expected_identity: tuple[int, ...]) -> None
             pass
         return
     try:
-        _remove_owned_directory(cleanup, _directory_identity(moved_metadata))
+        _remove_owned_directory(cleanup, _directory_inode_identity(moved_metadata))
     except (OSError, RuntimeError, ValueError):
         # Cleanup is best effort.  The owned tree remains quarantined under a
         # unique sibling name rather than following a changed path.

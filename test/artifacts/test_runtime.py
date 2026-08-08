@@ -498,6 +498,94 @@ def test_extract_archive_restores_previous_output_on_publish_failure(
     assert not list(output.parent.glob(".extracted.previous-*"))
 
 
+def test_extract_archive_preserves_output_changed_during_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    archive = tmp_path / "artifact.zip"
+    _zip_tree(artifact, archive)
+    output = tmp_path / "extracted"
+    extract_context_artifact_archive(archive, output)
+    previous_metadata = (output / CONTEXT_ARTIFACT_MANIFEST).read_bytes()
+
+    from codenib.artifacts import archive as archive_module
+
+    real_extract = archive_module._extract_member
+    mutated = False
+
+    def mutate_old_output(*args, **kwargs):
+        nonlocal mutated
+        if not mutated:
+            mutated = True
+            nested = output / "late"
+            nested.mkdir()
+            (nested / "preserve.txt").write_text("preserve", encoding="utf-8")
+        return real_extract(*args, **kwargs)
+
+    monkeypatch.setattr(archive_module, "_extract_member", mutate_old_output)
+
+    with pytest.raises(RuntimeError, match="changed before directory publication"):
+        extract_context_artifact_archive(archive, output)
+
+    assert (output / CONTEXT_ARTIFACT_MANIFEST).read_bytes() == previous_metadata
+    assert (output / "late" / "preserve.txt").read_text(encoding="utf-8") == (
+        "preserve"
+    )
+
+
+def test_extract_archive_rejects_output_symlink(tmp_path: Path) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    archive = tmp_path / "artifact.zip"
+    _zip_tree(artifact, archive)
+    victim = tmp_path / "victim"
+    extract_context_artifact_archive(archive, victim)
+    previous = (victim / CONTEXT_ARTIFACT_MANIFEST).read_bytes()
+    output = tmp_path / "output"
+    output.symlink_to(victim, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        extract_context_artifact_archive(archive, output)
+
+    assert output.is_symlink()
+    assert (victim / CONTEXT_ARTIFACT_MANIFEST).read_bytes() == previous
+
+
+def test_extract_archive_does_not_follow_swapped_stage_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    archive = tmp_path / "artifact.zip"
+    _zip_tree(artifact, archive)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "keep.txt").write_text("keep", encoding="utf-8")
+    stolen = tmp_path / "stolen-stage"
+
+    from codenib.artifacts import archive as archive_module
+
+    real_mkdtemp = archive_module.tempfile.mkdtemp
+    swapped: Path | None = None
+
+    def swap_stage(*args, **kwargs):
+        nonlocal swapped
+        created = Path(real_mkdtemp(*args, **kwargs))
+        created.rename(stolen)
+        created.symlink_to(victim, target_is_directory=True)
+        swapped = created
+        return str(created)
+
+    monkeypatch.setattr(archive_module.tempfile, "mkdtemp", swap_stage)
+
+    with pytest.raises(ValueError, match="link"):
+        extract_context_artifact_archive(archive, tmp_path / "output")
+
+    assert swapped is not None and swapped.is_symlink()
+    assert stolen.is_dir()
+    assert (victim / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
 def test_extract_archive_rejects_traversal_and_symlink(tmp_path: Path) -> None:
     traversal = tmp_path / "traversal.zip"
     with zipfile.ZipFile(traversal, "w") as archive:

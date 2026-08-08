@@ -1352,6 +1352,7 @@ def test_materialization_failure_preserves_previous_bundle(
 
     assert _tree(output) == previous
     assert not list(tmp_path.glob(".runtime.materialize-*"))
+    assert not [path for path in tmp_path.iterdir() if ".cleanup-" in path.name]
 
 
 def test_materialization_rejects_late_destination_mutation_without_deleting_it(
@@ -1386,6 +1387,55 @@ def test_materialization_rejects_late_destination_mutation_without_deleting_it(
         encoding="utf-8"
     ) == "preserve"
     assert (output / "payload" / "documents.json").read_bytes() == b"[]\n"
+
+
+def test_materialization_rejects_concurrent_valid_generation_without_deleting_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    documents = source / "documents.json"
+    first_archive = tmp_path / "first.zip"
+    build_view_bundle(source, first_archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    materialize_view_bundle(first_archive, output)
+
+    documents.write_bytes(b"[1]\n")
+    second_archive = tmp_path / "second.zip"
+    build_view_bundle(source, second_archive, view_type="bm25")
+    documents.write_bytes(b"[2]\n")
+    concurrent_archive = tmp_path / "concurrent.zip"
+    build_view_bundle(source, concurrent_archive, view_type="bm25")
+    concurrent = tmp_path / "concurrent"
+    materialize_view_bundle(concurrent_archive, concurrent)
+
+    original_verify = bundle_module._verify_archive_handle
+    stolen = tmp_path / "stolen-original"
+    swapped = False
+
+    def verify_then_publish_concurrent(*args: object, **kwargs: object):
+        nonlocal swapped
+        result = original_verify(*args, **kwargs)
+        os.replace(output, stolen)
+        os.replace(concurrent, output)
+        swapped = True
+        return result
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_verify_archive_handle",
+        verify_then_publish_concurrent,
+    )
+    with pytest.raises(RuntimeError, match="destination changed before"):
+        materialize_view_bundle(second_archive, output)
+
+    assert swapped
+    assert (output / "payload" / "documents.json").read_bytes() == b"[2]\n"
+    assert (stolen / "payload" / "documents.json").read_bytes() == b"[]\n"
+    assert not concurrent.exists()
+    assert not list(tmp_path.glob(".runtime.materialize-*"))
+    assert not list(tmp_path.glob(".runtime.previous-*"))
+    assert not [path for path in tmp_path.iterdir() if ".cleanup-" in path.name]
 
 
 def test_materialization_boundary_revalidates_same_size_payload_digest(

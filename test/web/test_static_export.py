@@ -269,6 +269,128 @@ def test_static_export_is_deterministic_and_publishable(
     assert "href='#heading'" in index
 
 
+def test_static_export_preserves_output_changed_during_build(
+    export_setup,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup = export_setup
+    monkeypatch.setattr(
+        "codenib.web.static_export._github_repository_url",
+        lambda _repo: "https://github.com/owner/demo",
+    )
+    export_static_wiki(
+        setup.repo,
+        setup.manifest_path,
+        setup.output,
+        frontend_dir=setup.frontend,
+    )
+    previous = _tree_bytes(setup.output)
+
+    from codenib.web import static_export as static_export_module
+
+    real_copy = static_export_module._copy_frontend
+    mutated = False
+
+    def mutate_old_output(*args, **kwargs):
+        nonlocal mutated
+        if not mutated:
+            mutated = True
+            nested = setup.output / "late"
+            nested.mkdir()
+            (nested / "preserve.txt").write_text("preserve", encoding="utf-8")
+        return real_copy(*args, **kwargs)
+
+    monkeypatch.setattr(static_export_module, "_copy_frontend", mutate_old_output)
+
+    with pytest.raises(RuntimeError, match="changed before directory publication"):
+        export_static_wiki(
+            setup.repo,
+            setup.manifest_path,
+            setup.output,
+            frontend_dir=setup.frontend,
+        )
+
+    for relative, content in previous.items():
+        assert (setup.output / relative).read_bytes() == content
+    assert (setup.output / "late" / "preserve.txt").read_text(encoding="utf-8") == (
+        "preserve"
+    )
+
+
+def test_static_export_rejects_output_symlink(
+    export_setup,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup = export_setup
+    monkeypatch.setattr(
+        "codenib.web.static_export._github_repository_url",
+        lambda _repo: "https://github.com/owner/demo",
+    )
+    victim = setup.output
+    export_static_wiki(
+        setup.repo,
+        setup.manifest_path,
+        victim,
+        frontend_dir=setup.frontend,
+    )
+    previous = _tree_bytes(victim)
+    output = setup.output.parent / "output-link"
+    output.symlink_to(victim, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        export_static_wiki(
+            setup.repo,
+            setup.manifest_path,
+            output,
+            frontend_dir=setup.frontend,
+        )
+
+    assert output.is_symlink()
+    assert _tree_bytes(victim) == previous
+
+
+def test_static_export_does_not_follow_swapped_stage_symlink(
+    export_setup,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup = export_setup
+    monkeypatch.setattr(
+        "codenib.web.static_export._github_repository_url",
+        lambda _repo: "https://github.com/owner/demo",
+    )
+    victim = setup.output.parent / "victim"
+    victim.mkdir()
+    (victim / "keep.txt").write_text("keep", encoding="utf-8")
+    stolen = setup.output.parent / "stolen-stage"
+
+    from codenib.web import static_export as static_export_module
+
+    real_mkdtemp = static_export_module.tempfile.mkdtemp
+    swapped: Path | None = None
+
+    def swap_stage(*args, **kwargs):
+        nonlocal swapped
+        created = Path(real_mkdtemp(*args, **kwargs))
+        created.rename(stolen)
+        created.symlink_to(victim, target_is_directory=True)
+        swapped = created
+        return str(created)
+
+    monkeypatch.setattr(static_export_module.tempfile, "mkdtemp", swap_stage)
+
+    with pytest.raises(ValueError, match="link"):
+        export_static_wiki(
+            setup.repo,
+            setup.manifest_path,
+            setup.output,
+            frontend_dir=setup.frontend,
+        )
+
+    assert swapped is not None and swapped.is_symlink()
+    assert stolen.is_dir()
+    assert (victim / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
 def test_publishability_rejects_json_escaped_windows_path(tmp_path: Path) -> None:
     root = tmp_path / "site"
     root.mkdir()

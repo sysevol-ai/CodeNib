@@ -199,6 +199,16 @@ original destination-to-`.previous-*` rename is the only old-file handoff; after
 publication, builders only revalidate that path against the still-open previous
 descriptor and never reserve, rename, or unlink it. Controlled M5 GC is
 responsible for reclaiming verified old files and missing-destination sentinels.
+Generic staged-directory publication now uses the same ownership boundary:
+callers capture a bounded, no-follow receipt for the authorized old root before
+building, bind the original temporary-root inode, and run their semantic
+validator inside an exact tree-token sandwich before and after the atomic
+rename.  The token covers the raw relative entry set, exact portable modes,
+regular-file sizes and SHA-256 bytes under the view-bundle file, byte, metadata,
+path, component, and depth limits.  This avoids relying on directory timestamps,
+which are not reliable on every supported filesystem.  Existing non-empty trees
+fail closed on platforms without safe directory-fd traversal; a first publish
+may proceed only with caller validation and an ownership-checked empty sentinel.
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced

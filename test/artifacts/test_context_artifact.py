@@ -306,6 +306,114 @@ def test_context_artifact_restores_previous_output_on_publish_failure(
     assert not list(output.parent.glob(".context.previous-*"))
 
 
+def test_context_artifact_preserves_output_changed_during_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, manifest_path, _view_path = _fixture_manifest(tmp_path)
+    output = tmp_path / "publish" / "context"
+    stage_context_artifact(
+        repo,
+        manifest_path,
+        output,
+        repository="example/project",
+    )
+    previous = _tree(output)
+
+    from codenib.artifacts import context as context_module
+
+    real_copy = context_module._copy_view
+    mutated = False
+
+    def mutate_old_output(*args, **kwargs):
+        nonlocal mutated
+        if not mutated:
+            mutated = True
+            nested = output / "late"
+            nested.mkdir()
+            (nested / "preserve.txt").write_text("preserve", encoding="utf-8")
+        return real_copy(*args, **kwargs)
+
+    monkeypatch.setattr(context_module, "_copy_view", mutate_old_output)
+
+    with pytest.raises(RuntimeError, match="changed before directory publication"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            output,
+            repository="example/project",
+        )
+
+    for relative, content in previous.items():
+        assert (output / relative).read_bytes() == content
+    assert (output / "late" / "preserve.txt").read_text(encoding="utf-8") == (
+        "preserve"
+    )
+
+
+def test_context_artifact_rejects_output_symlink(tmp_path: Path) -> None:
+    repo, manifest_path, _view_path = _fixture_manifest(tmp_path)
+    victim = tmp_path / "victim"
+    stage_context_artifact(
+        repo,
+        manifest_path,
+        victim,
+        repository="example/project",
+    )
+    previous = _tree(victim)
+    output = tmp_path / "output"
+    output.symlink_to(victim, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            output,
+            repository="example/project",
+        )
+
+    assert output.is_symlink()
+    assert _tree(victim) == previous
+
+
+def test_context_artifact_does_not_follow_swapped_stage_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, manifest_path, _view_path = _fixture_manifest(tmp_path)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "keep.txt").write_text("keep", encoding="utf-8")
+    stolen = tmp_path / "stolen-stage"
+
+    from codenib.artifacts import context as context_module
+
+    real_mkdtemp = context_module.tempfile.mkdtemp
+    swapped: Path | None = None
+
+    def swap_stage(*args, **kwargs):
+        nonlocal swapped
+        created = Path(real_mkdtemp(*args, **kwargs))
+        created.rename(stolen)
+        created.symlink_to(victim, target_is_directory=True)
+        swapped = created
+        return str(created)
+
+    monkeypatch.setattr(context_module.tempfile, "mkdtemp", swap_stage)
+
+    with pytest.raises(ValueError, match="link"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            tmp_path / "output",
+            repository="example/project",
+        )
+
+    assert swapped is not None and swapped.is_symlink()
+    assert stolen.is_dir()
+    assert (victim / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
 def test_context_artifact_default_ignores_nonportable_current_views(
     tmp_path: Path,
 ) -> None:
