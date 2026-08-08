@@ -18,8 +18,61 @@ from codenib.storage.models import (
     StorageValidationError,
     ViewGeneration,
     ViewProfile,
+    assert_no_secret_fields,
     canonical_json,
 )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "access_key",
+        "cookie",
+        "credential",
+        "refresh_token",
+        "secret",
+        "Refresh-Token",
+        "accessKey",
+        "headers",
+        "Proxy-Authorization",
+        "proxy_authorization_options",
+        "X-API-Key",
+        "x-api-key-secondary",
+        "X-Auth-Token",
+        "aws_secret_access_key",
+        "github_token",
+        "auth_token",
+        "my_client_secret",
+    ],
+)
+def test_shared_secret_classifier_rejects_normalized_field_names(field: str) -> None:
+    with pytest.raises(StorageValidationError, match="secret field"):
+        assert_no_secret_fields({"nested": [{field: "value"}]}, source="profile")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://user:password@example.test/api",
+        "//user:password@example.test/api",
+        "Bearer token-value",
+        "Basic dXNlcjpwYXNz",
+    ],
+)
+def test_shared_secret_classifier_rejects_credential_values(value: str) -> None:
+    with pytest.raises(StorageValidationError, match="credentials"):
+        assert_no_secret_fields({"endpoint": value}, source="profile")
+
+
+def test_shared_secret_classifier_does_not_reject_noncredential_token_words() -> None:
+    assert_no_secret_fields(
+        {
+            "authorization_url": "https://example.test/oauth/authorize",
+            "token_count": 10,
+            "tokenizer": "cl100k_base",
+        },
+        source="profile",
+    )
 
 
 def _object(suffix: str) -> ObjectRecord:

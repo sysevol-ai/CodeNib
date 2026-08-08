@@ -9,25 +9,137 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 from pathlib import Path
 from typing import Any, Mapping
 
 VECTOR_PERSISTENCE_SCHEMA = 1
 VECTOR_VIEW_UPDATE_MARKER = ".vector-view.update-in-progress"
 _DIGEST_BYTES = 1024 * 1024
+_MAX_CONFIG_BYTES = 16 * 1024 * 1024
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _UPDATE_MARKER_PAYLOAD = b'{"schema":"codenib.vector-view-update.v1"}\n'
 
 
+def _file_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+        metadata.st_nlink,
+        getattr(metadata, "st_file_attributes", 0),
+    )
+
+
+def _open_stable_regular(path: Path) -> tuple[int, os.stat_result]:
+    descriptor = -1
+    try:
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or bool(
+                getattr(before, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT
+            )
+        ):
+            raise ValueError(f"invalid vector artifact file: {path}")
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or _file_identity(opened) != _file_identity(
+            before
+        ):
+            raise ValueError(f"vector artifact changed while opening: {path}")
+        return descriptor, opened
+    except ValueError:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise
+    except OSError as exc:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise ValueError(f"invalid vector artifact file: {path}") from exc
+
+
+def _read_exact(descriptor: int, size: int, path: Path) -> bytearray:
+    payload = bytearray()
+    remaining = size
+    while remaining:
+        block = os.read(descriptor, min(remaining, _DIGEST_BYTES))
+        if not block:
+            raise ValueError(f"vector artifact was truncated: {path}")
+        payload.extend(block)
+        remaining -= len(block)
+    if os.read(descriptor, 1):
+        raise ValueError(f"vector artifact grew while reading: {path}")
+    return payload
+
+
+def _verify_open_file(
+    descriptor: int,
+    opened: os.stat_result,
+    path: Path,
+) -> None:
+    try:
+        after_open = os.fstat(descriptor)
+        after_path = path.lstat()
+    except OSError as exc:
+        raise ValueError(f"vector artifact changed while reading: {path}") from exc
+    if _file_identity(after_open) != _file_identity(opened) or _file_identity(
+        after_path
+    ) != _file_identity(opened):
+        raise ValueError(f"vector artifact changed while reading: {path}")
+
+
 def _file_record(path: Path) -> dict[str, Any]:
-    if path.is_symlink() or not path.is_file():
-        raise ValueError(f"invalid vector artifact file: {path}")
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as handle:
-        while block := handle.read(_DIGEST_BYTES):
+    descriptor, opened = _open_stable_regular(path)
+    try:
+        digest = hashlib.sha256()
+        remaining = opened.st_size
+        while remaining:
+            block = os.read(descriptor, min(remaining, _DIGEST_BYTES))
+            if not block:
+                raise ValueError(f"vector artifact was truncated: {path}")
             digest.update(block)
-            size += len(block)
-    return {"file": path.name, "size": size, "sha256": digest.hexdigest()}
+            remaining -= len(block)
+        if os.read(descriptor, 1):
+            raise ValueError(f"vector artifact grew while hashing: {path}")
+        _verify_open_file(descriptor, opened, path)
+        return {
+            "file": path.name,
+            "size": opened.st_size,
+            "sha256": digest.hexdigest(),
+        }
+    except OSError as exc:
+        raise ValueError(f"vector artifact could not be read: {path}") from exc
+    finally:
+        os.close(descriptor)
+
+
+def _load_config(path: Path) -> dict[str, Any]:
+    descriptor, opened = _open_stable_regular(path)
+    try:
+        if opened.st_size > _MAX_CONFIG_BYTES:
+            raise ValueError(f"vector generation config exceeds its byte limit: {path}")
+        payload = _read_exact(descriptor, opened.st_size, path)
+        _verify_open_file(descriptor, opened, path)
+        try:
+            config = json.loads(payload)
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"vector generation config is invalid JSON: {path}"
+            ) from exc
+    except OSError as exc:
+        raise ValueError(f"vector generation config could not be read: {path}") from exc
+    finally:
+        os.close(descriptor)
+    if not isinstance(config, dict):
+        raise ValueError(f"vector generation config must be an object: {path}")
+    return config
 
 
 def vector_level_artifact_records(
@@ -180,12 +292,7 @@ def validate_vector_generation_artifacts(
     """Validate every file committed by one modern top-level vector config."""
 
     config_path = Path(root) / f"config_{model_suffix}.json"
-    if config_path.is_symlink() or not config_path.is_file():
-        raise ValueError(f"invalid vector generation config: {config_path}")
-    with config_path.open(encoding="utf-8") as handle:
-        config = json.load(handle)
-    if not isinstance(config, dict):
-        raise ValueError(f"vector generation config must be an object: {config_path}")
+    config = _load_config(config_path)
 
     persistence_schema = config.get("persistence_schema")
     committed_levels = config.get("level_artifacts")

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from ._contained_source import update_repository_file_hash
 from .repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     repository_path_is_visible,
@@ -73,11 +74,8 @@ def fingerprint_repository(
     file_count = 0
 
     for path in walk_repository_files(root_path, exclude_roots=exclude_roots):
-        relative = (
-            path.relative_to(root_path)
-            .as_posix()
-            .encode("utf-8", errors="surrogateescape")
-        )
+        relative_text = path.relative_to(root_path).as_posix()
+        relative = relative_text.encode("utf-8", errors="surrogateescape")
         try:
             mode = path.lstat().st_mode
         except OSError as exc:
@@ -87,7 +85,9 @@ def fingerprint_repository(
 
         if stat.S_ISLNK(mode):
             try:
-                target = os.readlink(path).encode("utf-8", errors="surrogateescape")
+                before_link = path.lstat()
+                raw_target = os.readlink(path)
+                target = raw_target.encode("utf-8", errors="surrogateescape")
             except OSError as exc:
                 raise RepositoryChangedError(
                     f"repository link changed while it was being inspected: {path}"
@@ -97,16 +97,28 @@ def fingerprint_repository(
             hasher.update(b"\0")
             hasher.update(target)
             hasher.update(b"\0")
-            if path.is_file():
-                hasher.update(b"C\0")
-                try:
-                    _update_file(hasher, path)
-                except OSError as exc:
-                    raise RepositoryChangedError(
-                        "repository link target could not be read consistently: "
-                        f"{path}"
-                    ) from exc
-                hasher.update(b"\0")
+            hasher.update(b"C\0")
+            try:
+                update_repository_file_hash(root_path, relative_text, hasher)
+                after_link = path.lstat()
+                after_target = os.readlink(path)
+            except (OSError, ValueError) as exc:
+                raise RepositoryChangedError(
+                    "repository link target could not be read consistently: " f"{path}"
+                ) from exc
+            if (
+                before_link.st_dev != after_link.st_dev
+                or before_link.st_ino != after_link.st_ino
+                or before_link.st_mode != after_link.st_mode
+                or before_link.st_size != after_link.st_size
+                or before_link.st_mtime_ns != after_link.st_mtime_ns
+                or before_link.st_ctime_ns != after_link.st_ctime_ns
+                or raw_target != after_target
+            ):
+                raise RepositoryChangedError(
+                    f"repository link changed while it was being read: {path}"
+                )
+            hasher.update(b"\0")
             file_count += 1
             continue
 

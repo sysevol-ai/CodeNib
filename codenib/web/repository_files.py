@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import os
 import re
-import stat
 import subprocess
 from functools import lru_cache
 from typing import Optional
+
+from .._contained_source import read_repository_file
 
 _COMMIT_RE = re.compile(r"[0-9a-fA-F]{7,64}\Z")
 _MAX_SOURCE_BYTES = 8 * 1024 * 1024
@@ -212,24 +213,12 @@ def live_source_slice(
     relative = safe_repo_relative_path(repo_dir, file_path)
     if relative is None:
         return None
-    candidate = os.path.realpath(os.path.join(repo_dir, relative))
-    descriptor = -1
     try:
-        descriptor = os.open(
-            candidate,
-            os.O_RDONLY | getattr(os, "O_NONBLOCK", 0),
+        content = read_repository_file(
+            repo_dir,
+            relative,
+            max_bytes=_MAX_SOURCE_BYTES,
         )
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            return None
-        handle = os.fdopen(descriptor, "rb")
-        descriptor = -1
-        with handle:
-            content = handle.read(_MAX_SOURCE_BYTES + 1)
-    except OSError:
-        return None
-    finally:
-        if descriptor >= 0:
-            os.close(descriptor)
-    if len(content) > _MAX_SOURCE_BYTES:
+    except ValueError:
         return None
     return _source_slice(relative, content, start, end)

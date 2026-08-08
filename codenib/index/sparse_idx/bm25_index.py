@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, List, Optional
 
 from rank_bm25 import BM25Okapi
 
+from ..._contained_source import read_repository_file
 from ...code_chunker import CodeChunk
 from ...log_utils import get_logger
 from ...types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, NodeInfo, is_symbol_node
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_MAX_RUNTIME_SOURCE_BYTES = 64 * 1024 * 1024
 _SECURE_SOURCE_DIRECTORY_FDS = (
     os.name == "posix"
     and hasattr(os, "O_DIRECTORY")
@@ -325,10 +327,19 @@ def _read_source_text(project_root: object, file_path: object) -> Optional[str]:
         return None
     root, _source_path, parts = contained
     if _SECURE_SOURCE_DIRECTORY_FDS:
-        descriptor = _open_regular_file_beneath(root, parts)
-        if descriptor is None:
+        try:
+            payload = read_repository_file(
+                root,
+                "/".join(parts),
+                max_bytes=_MAX_RUNTIME_SOURCE_BYTES,
+            )
+        except ValueError:
             return None
-        return _read_open_descriptor(descriptor)
+        return (
+            payload.decode("utf-8", errors="replace")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+        )
     return _read_static_contained_source(root, parts)
 
 

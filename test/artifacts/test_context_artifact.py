@@ -641,7 +641,15 @@ def test_context_artifact_rejects_source_drift(tmp_path: Path) -> None:
 
 def test_context_artifact_rejects_configured_secret_in_view(tmp_path: Path) -> None:
     repo, manifest_path, view_path = _fixture_manifest(tmp_path)
-    (view_path / "leak.bin").write_bytes(b"runtime-secret-value")
+    documents_path = view_path / "documents.json"
+    documents = json.loads(documents_path.read_text(encoding="utf-8"))
+    documents[0]["metadata"]["note"] = "runtime-secret-value"
+    documents_path.write_text(json.dumps(documents), encoding="utf-8")
+    manifest = RepoManifest.load(manifest_path)
+    manifest.indexes["bm25"].config["artifact_file_fingerprints"] = (
+        bm25_artifact_file_fingerprints(view_path)
+    )
+    manifest.save(manifest_path)
 
     with pytest.raises(ValueError, match="configured credential"):
         stage_context_artifact(
@@ -656,15 +664,54 @@ def test_context_artifact_stream_scan_finds_boundary_spanning_secret(
     tmp_path: Path,
 ) -> None:
     repo, manifest_path, view_path = _fixture_manifest(tmp_path)
-    secret = b"boundary-spanning-secret"
-    (view_path / "large.bin").write_bytes(b"x" * (1024 * 1024 - 5) + secret)
+    secret = "boundary-spanning-secret"
+    documents = [
+        {
+            "page_content": "value",
+            "metadata": {"file": "sample.py", "note": secret},
+        }
+    ]
+    probe = (
+        json.dumps(
+            documents,
+            allow_nan=False,
+            ensure_ascii=True,
+            indent=2,
+            sort_keys=True,
+            separators=(",", ": "),
+        )
+        + "\n"
+    )
+    secret_offset = probe.index(secret)
+    documents[0]["metadata"]["note"] = "x" * (1024 * 1024 - 5 - secret_offset) + secret
+    documents_payload = (
+        json.dumps(
+            documents,
+            allow_nan=False,
+            ensure_ascii=True,
+            indent=2,
+            sort_keys=True,
+            separators=(",", ": "),
+        )
+        + "\n"
+    )
+    assert documents_payload.index(secret) == 1024 * 1024 - 5
+    (view_path / "documents.json").write_text(
+        documents_payload,
+        encoding="utf-8",
+    )
+    manifest = RepoManifest.load(manifest_path)
+    manifest.indexes["bm25"].config["artifact_file_fingerprints"] = (
+        bm25_artifact_file_fingerprints(view_path)
+    )
+    manifest.save(manifest_path)
 
     with pytest.raises(ValueError, match="configured credential"):
         stage_context_artifact(
             repo,
             manifest_path,
             tmp_path / "publish" / "context",
-            environ={"CODENIB_ACTION_EMBEDDING_KEY": secret.decode()},
+            environ={"CODENIB_ACTION_EMBEDDING_KEY": secret},
         )
 
 

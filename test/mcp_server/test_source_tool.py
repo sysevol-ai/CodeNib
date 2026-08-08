@@ -68,16 +68,46 @@ def test_read_source_rejects_noncanonical_paths(
         read_source_impl(_context(tmp_path), file_path)
 
 
-def test_read_source_rejects_symlinks_and_nonregular_files(tmp_path: Path) -> None:
+def test_read_source_rejects_absolute_symlinks_and_nonregular_files(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "source.py"
     source.write_text("value = 1\n", encoding="utf-8")
     (tmp_path / "link.py").symlink_to(source)
     (tmp_path / "folder").mkdir()
 
-    with pytest.raises(ValueError, match="symbolic link"):
+    with pytest.raises(ValueError, match="readable regular"):
         read_source_impl(_context(tmp_path), "link.py")
     with pytest.raises(ValueError, match="readable regular"):
         read_source_impl(_context(tmp_path), "folder")
+
+
+def test_read_source_accepts_relative_symlink_contained_in_repository(
+    tmp_path: Path,
+) -> None:
+    real = tmp_path / "real" / "source.py"
+    real.parent.mkdir()
+    real.write_text("contained = True\n", encoding="utf-8")
+    (tmp_path / "alias.py").symlink_to("real/source.py")
+
+    result = read_source_impl(_context(tmp_path), "alias.py", 1, 1)
+
+    assert result["content"] == "contained = True\n"
+
+
+def test_read_source_accepts_contained_intermediate_symlink_with_parent(
+    tmp_path: Path,
+) -> None:
+    real = tmp_path / "real" / "source.py"
+    real.parent.mkdir()
+    real.write_text("contained = True\n", encoding="utf-8")
+    links = tmp_path / "links"
+    links.mkdir()
+    (links / "package").symlink_to("../real", target_is_directory=True)
+
+    result = read_source_impl(_context(tmp_path), "links/package/source.py", 1, 1)
+
+    assert result["content"] == "contained = True\n"
 
 
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX FIFO required")

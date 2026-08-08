@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from .._secret_fields import assert_no_secret_fields
+
 _SENSITIVE_ENV_NAMES = {
     "ANTHROPIC_API_KEY",
     "AWS_SECRET_ACCESS_KEY",
@@ -26,33 +28,42 @@ _SENSITIVE_ENV_NAMES = {
 }
 _SENSITIVE_ENV_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET")
 _SCAN_CHUNK_BYTES = 1024 * 1024
-_CREDENTIAL_FIELDS = {
-    "access_token",
-    "api_key",
-    "apikey",
-    "authorization",
-    "bearer_token",
-    "client_secret",
-    "headers",
-    "password",
-    "private_key",
-    "secret_key",
-    "token",
-}
 
 
 def assert_no_credential_fields(value: Any, *, source: str) -> None:
     """Reject credential-shaped keys in metadata intended for publication."""
 
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            name = str(key).strip().lower().replace("-", "_")
-            if name in _CREDENTIAL_FIELDS:
-                raise ValueError(f"{source} contains a credential field: {key}")
-            assert_no_credential_fields(item, source=source)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            assert_no_credential_fields(item, source=source)
+    assert_no_secret_fields(value, source=source)
+
+
+def assert_publishable_json_value(
+    value: Any,
+    *,
+    forbidden_paths: Iterable[Path],
+    environ: Mapping[str, str],
+    label: str,
+) -> None:
+    """Scan decoded JSON semantics without depending on their source encoding."""
+
+    assert_no_credential_fields(value, source=label)
+    payload = json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    forbidden_values: list[str] = []
+    for path in forbidden_paths:
+        resolved = path.expanduser().resolve()
+        forbidden_values.extend((str(resolved), resolved.as_posix()))
+    if any(
+        pattern and pattern in payload
+        for pattern in _serialized_patterns(forbidden_values)
+    ):
+        raise ValueError(f"{label} contains an absolute build-machine path")
+    if any(pattern and pattern in payload for pattern in _secret_values(environ)):
+        raise ValueError(f"{label} contains a configured credential")
 
 
 def _serialized_patterns(values: Iterable[str]) -> tuple[bytes, ...]:
@@ -168,6 +179,7 @@ def assert_publishable_tree(
 
 __all__ = [
     "assert_no_credential_fields",
+    "assert_publishable_json_value",
     "assert_publishable_tree",
     "file_sha256",
 ]

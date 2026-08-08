@@ -32,7 +32,7 @@ from ..index.embedding.artifact_integrity import (
     validate_vector_config_artifact,
 )
 from ..provider_routes import resolve_embedding_artifact_route
-from .portable_views import normalize_owned_query_view
+from .portable_views import normalize_owned_query_view, validate_portable_query_view
 from .security import assert_no_credential_fields, assert_publishable_tree, file_sha256
 
 CONTEXT_ARTIFACT_SCHEMA = "codenib.context-artifact.v1"
@@ -269,6 +269,7 @@ def stage_context_artifact(
         portable = manifest.to_dict()
         portable["repo"]["path"] = "source"
         portable_indexes: dict[str, Any] = {}
+        portable_validation: dict[str, tuple[str, dict[str, Any]]] = {}
         for view in selected:
             entry = manifest.indexes[view]
             assert_no_credential_fields(entry.config, source=f"view {view!r} config")
@@ -305,6 +306,15 @@ def stage_context_artifact(
             entry_data["path"] = relative
             for section in ("config", "metadata"):
                 entry_data[section].update(adjustments)
+            validate_portable_query_view(
+                stage.joinpath(*PurePosixPath(relative).parts),
+                repo_path=repo_path,
+                view_type=view,
+                view_config=entry_data["config"],
+                forbidden_paths=(manifest_root,),
+                environ=environment,
+            )
+            portable_validation[view] = (relative, dict(entry_data["config"]))
             portable_indexes[view] = entry_data
         portable["indexes"] = portable_indexes
         portable["capabilities"] = _portable_capabilities(
@@ -359,6 +369,15 @@ def stage_context_artifact(
         expected_metadata_bytes = _json_bytes(metadata)
 
         def validate_artifact(candidate: Path) -> None:
+            for view, (relative, config) in portable_validation.items():
+                validate_portable_query_view(
+                    candidate.joinpath(*PurePosixPath(relative).parts),
+                    repo_path=repo_path,
+                    view_type=view,
+                    view_config=config,
+                    forbidden_paths=(manifest_root,),
+                    environ=environment,
+                )
             assert_publishable_tree(
                 candidate,
                 forbidden_paths=(repo_path, manifest_root),

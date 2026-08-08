@@ -218,6 +218,28 @@ path, component, and depth limits.  This avoids relying on directory timestamps,
 which are not reliable on every supported filesystem.  Existing non-empty trees
 fail closed on platforms without safe directory-fd traversal; a first publish
 may proceed only with caller validation and an ownership-checked empty sentinel.
+Portable BM25 and vector normalization now exposes a read-only validation
+boundary for storage publishers.  Retained JSON must be bounded,
+duplicate-safe canonical JSON; decoded metadata and configuration pass the
+shared credential and build-path policy.  BM25 validation binds normalized
+document paths and artifact fingerprints, while vector validation binds the
+provider/model/revision/dimension/metric contract, persistence fingerprints,
+level inventories, document counts, and FAISS type/training semantics inside a
+bounded full-tree ownership sandwich.  Validation holds a no-follow root
+descriptor, authenticates JSON and indexes through descriptor-relative stable
+opens, and gives FAISS a callback over the already authenticated index
+descriptor rather than reopening an attacker-replaceable path.  The M1 JSON
+format has a fixed 16 MiB configuration limit and 256 MiB documents-file limit;
+larger repositories require a future streaming or sharded format rather than a
+manifest-controlled memory override.  Repository-relative source aliases may
+use bounded relative symlinks only when resolution remains inside the pinned
+checkout; absolute, outside, looping, raced, and reparse-point paths fail
+closed in staging, binding, BM25 reads, and MCP reads.  The shared credential
+classifier lives outside both artifacts and storage so the artifact layer does
+not depend on the catalog implementation.  These gates close the current
+portable context publication surface; they are a prerequisite for, but do not
+complete, the remaining legacy manifest import/export adapter or a future
+streaming payload revision.
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced

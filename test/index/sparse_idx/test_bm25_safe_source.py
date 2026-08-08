@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import codenib._contained_source as contained_source_module
 from codenib.code_chunking.base import CodeChunk
 from codenib.index.sparse_idx import bm25_index as bm25_module
 from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
@@ -221,7 +222,7 @@ def test_source_on_a_different_windows_drive_is_rejected(tmp_path: Path) -> None
     )
 
 
-def test_final_source_symlink_is_rejected(tmp_path: Path) -> None:
+def test_absolute_final_source_symlink_is_rejected(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     target = repo / "real.py"
@@ -231,6 +232,124 @@ def test_final_source_symlink_is_rejected(tmp_path: Path) -> None:
     indexer = _indexer(repo, "source.py", node_type=NODE_TYPE_FILE)
 
     assert _content(indexer) is None
+
+
+def test_relative_final_source_symlink_inside_root_is_accepted(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "real.py").write_text("contained alias target\n", encoding="utf-8")
+    _symlink_or_skip(repo / "source.py", Path("real.py"))
+
+    indexer = _indexer(repo, "source.py", node_type=NODE_TYPE_FILE)
+
+    assert _content(indexer) == "contained alias target\n"
+
+
+def test_relative_intermediate_symlink_with_parent_inside_root_is_accepted(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    real = repo / "real" / "source.py"
+    real.parent.mkdir(parents=True)
+    real.write_text("inside_call()\n", encoding="utf-8")
+    links = repo / "links"
+    links.mkdir()
+    _symlink_or_skip(links / "pkg", Path("../real"), directory=True)
+    indexer = _indexer(repo, "links/pkg/source.py", node_type=NODE_TYPE_FILE)
+
+    assert _content(indexer) == "inside_call()\n"
+    occurrences = indexer.search_identifier_occurrences(
+        "inside_call",
+        wrap_with_ln=False,
+    )
+    assert [item.content for item in occurrences] == ["inside_call()\n"]
+
+
+@pytest.mark.parametrize("target", ["../outside.py", "missing.py"])
+def test_relative_final_source_symlink_outside_or_broken_is_rejected(
+    tmp_path: Path,
+    target: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (tmp_path / "outside.py").write_text("outside secret\n", encoding="utf-8")
+    _symlink_or_skip(repo / "source.py", Path(target))
+
+    indexer = _indexer(repo, "source.py", node_type=NODE_TYPE_FILE)
+
+    assert _content(indexer) is None
+
+
+def test_source_symlink_loop_is_rejected(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _symlink_or_skip(repo / "source.py", Path("other.py"))
+    _symlink_or_skip(repo / "other.py", Path("source.py"))
+
+    assert _content(_indexer(repo, "source.py", node_type=NODE_TYPE_FILE)) is None
+
+
+def test_source_symlink_hop_limit_is_enforced(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "real.py").write_text("safe\n", encoding="utf-8")
+    for index in range(41):
+        target = f"link-{index + 1}.py" if index < 40 else "real.py"
+        _symlink_or_skip(repo / f"link-{index}.py", Path(target))
+
+    assert _content(_indexer(repo, "link-0.py", node_type=NODE_TYPE_FILE)) is None
+
+
+def test_source_symlink_reversible_swap_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "real.py").write_text("safe\n", encoding="utf-8")
+    outside = tmp_path / "outside.py"
+    outside.write_text("outside secret\n", encoding="utf-8")
+    link = repo / "source.py"
+    _symlink_or_skip(link, Path("real.py"))
+    real_verify = contained_source_module._BoundRepositoryFile.verify
+    calls = 0
+
+    def swap_then_restore(binding) -> None:
+        nonlocal calls
+        calls += 1
+        if calls != 2:
+            return real_verify(binding)
+        link.unlink()
+        link.symlink_to(Path("../outside.py"))
+        try:
+            return real_verify(binding)
+        finally:
+            link.unlink()
+            link.symlink_to(Path("real.py"))
+
+    monkeypatch.setattr(
+        contained_source_module._BoundRepositoryFile,
+        "verify",
+        swap_then_restore,
+    )
+
+    assert _content(_indexer(repo, "source.py", node_type=NODE_TYPE_FILE)) is None
+    assert calls == 2
+
+
+@pytest.mark.skipif(not Path("/proc/self/fd").is_dir(), reason="requires procfs")
+def test_contained_symlink_reads_do_not_leak_descriptors(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "real.py").write_text("safe\n", encoding="utf-8")
+    _symlink_or_skip(repo / "source.py", Path("real.py"))
+    indexer = _indexer(repo, "source.py", node_type=NODE_TYPE_FILE)
+    before = len(list(Path("/proc/self/fd").iterdir()))
+
+    for _ in range(20):
+        assert _content(indexer) == "safe\n"
+
+    assert len(list(Path("/proc/self/fd").iterdir())) == before
 
 
 def test_intermediate_source_symlink_is_rejected(tmp_path: Path) -> None:

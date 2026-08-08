@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from codenib.artifacts import normalize_owned_query_view
+from codenib.artifacts import normalize_owned_query_view, validate_portable_query_view
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
@@ -45,12 +45,46 @@ def _tree(root: Path) -> dict[str, bytes]:
     }
 
 
+def _canonical_json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=True,
+            indent=2,
+            sort_keys=True,
+            separators=(",", ": "),
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
 def _repository(root: Path) -> tuple[Path, Path]:
     repo = root / "repo"
     repo.mkdir(parents=True)
     source = repo / "sample.py"
     source.write_text("VALUE = 1\n", encoding="utf-8")
     return repo, source
+
+
+def _bm25_view(
+    root: Path,
+    *,
+    documents: list[dict[str, object]] | None = None,
+    metadata: dict[str, object] | None = None,
+) -> tuple[Path, Path]:
+    repo, _source = _repository(root)
+    bm25 = root / "state" / "bm25"
+    bm25.mkdir(parents=True)
+    (bm25 / "documents.json").write_text(
+        json.dumps(documents or []),
+        encoding="utf-8",
+    )
+    (bm25 / "bm25_metadata.json").write_text(
+        json.dumps(metadata or {}),
+        encoding="utf-8",
+    )
+    return repo, bm25
 
 
 def _write_faiss(
@@ -300,6 +334,443 @@ def test_normalize_bm25_rewrites_project_root_and_refreshes_fingerprints(
     }
 
 
+def test_normalize_bm25_rejects_unicode_escaped_secret_metadata(
+    tmp_path: Path,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    (bm25 / "documents.json").write_text(
+        '[{"page_content":"safe","metadata":{"x\\u002dapi\\u002dkey":"value"}}]',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="secret field"):
+        normalize_owned_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config={},
+        )
+
+
+def test_normalize_bm25_does_not_scan_semantic_page_content(tmp_path: Path) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "example Authorization: Bearer documentation-token",
+                "metadata": {"file": "sample.py"},
+            }
+        ],
+    )
+
+    normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+
+
+@pytest.mark.parametrize("extra", ["extra.json", "nested/extra.txt"])
+def test_normalize_bm25_rejects_every_extra_entry(
+    tmp_path: Path,
+    extra: str,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    path = bm25 / extra
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unexpected (file|directory)"):
+        normalize_owned_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config={},
+        )
+
+
+def test_normalize_bm25_rejects_source_symlink_component(tmp_path: Path) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "outside",
+                "metadata": {"file": "linked/outside.py"},
+            }
+        ],
+    )
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "outside.py").write_text("OUTSIDE = 1\n", encoding="utf-8")
+    (repo / "linked").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="stable contained source"):
+        normalize_owned_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config={},
+        )
+
+
+def test_portable_view_validator_detects_source_symlink_swap(tmp_path: Path) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "VALUE = 1",
+                "metadata": {"file": "sample.py"},
+            }
+        ],
+    )
+    adjustments = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    outside = tmp_path / "outside.py"
+    outside.write_text("OUTSIDE = 1\n", encoding="utf-8")
+    (repo / "sample.py").unlink()
+    (repo / "sample.py").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="stable contained source"):
+        validate_portable_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config=adjustments,
+        )
+
+
+@pytest.mark.parametrize("leak", ["path", "secret"])
+def test_portable_bm25_validator_rejects_decoded_metadata_without_mutation(
+    tmp_path: Path,
+    leak: str,
+) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "VALUE = 1",
+                "metadata": {"file": "sample.py"},
+            }
+        ],
+    )
+    normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    documents_path = bm25 / "documents.json"
+    documents = json.loads(documents_path.read_text(encoding="utf-8"))
+    secret = "decoded-runtime-secret"
+    documents[0]["metadata"]["innocent_note"] = str(repo) if leak == "path" else secret
+    documents_path.write_bytes(_canonical_json_bytes(documents))
+    view_config = {"artifact_file_fingerprints": bm25_artifact_file_fingerprints(bm25)}
+    before = _tree(bm25)
+
+    with pytest.raises(ValueError, match="build-machine path|configured credential"):
+        validate_portable_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config=view_config,
+            environ={"MODELS_TOKEN": secret},
+        )
+
+    assert _tree(bm25) == before
+
+
+def test_portable_bm25_accepts_contained_relative_source_symlink(
+    tmp_path: Path,
+) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "VALUE = 1",
+                "metadata": {"file": "alias.py"},
+            }
+        ],
+    )
+    (repo / "alias.py").symlink_to("sample.py")
+
+    adjustments = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    validate_portable_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config=adjustments,
+    )
+
+
+def test_portable_bm25_rejects_contained_source_symlink_swap_and_restore(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "VALUE = 1",
+                "metadata": {"file": "alias.py"},
+            }
+        ],
+    )
+    alias = repo / "alias.py"
+    alias.symlink_to("sample.py")
+    outside = tmp_path / "outside.py"
+    outside.write_text("SECRET = 1\n", encoding="utf-8")
+    adjustments = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    import codenib._contained_source as contained_source_module
+
+    real_verify = contained_source_module._BoundRepositoryFile.verify
+    calls = 0
+
+    def swap_then_restore(binding) -> None:
+        nonlocal calls
+        calls += 1
+        if calls != 2:
+            return real_verify(binding)
+        alias.unlink()
+        alias.symlink_to("../outside.py")
+        try:
+            return real_verify(binding)
+        finally:
+            alias.unlink()
+            alias.symlink_to("sample.py")
+
+    monkeypatch.setattr(
+        contained_source_module._BoundRepositoryFile,
+        "verify",
+        swap_then_restore,
+    )
+
+    with pytest.raises(ValueError, match="stable contained source"):
+        validate_portable_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config=adjustments,
+        )
+
+    assert calls == 2
+
+
+def test_portable_bm25_requires_complete_file_fingerprints(tmp_path: Path) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+
+    for view_config in (None, {}, {"artifact_file_fingerprints": {}}):
+        with pytest.raises(ValueError, match="view config|complete artifact"):
+            validate_portable_query_view(
+                bm25,
+                repo_path=repo,
+                view_type="bm25",
+                view_config=view_config,
+            )
+
+
+def test_portable_bm25_rejects_documents_replaced_after_authentication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "VALUE = 1",
+                "metadata": {"file": "sample.py"},
+            }
+        ],
+    )
+    adjustments = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    import codenib.artifacts.portable_views as portable_views_module
+
+    real_authenticate = portable_views_module._OwnedViewReader.authenticate
+    replaced = False
+
+    def replace_after_authentication(reader, path, expected, **kwargs):
+        nonlocal replaced
+        result = real_authenticate(reader, path, expected, **kwargs)
+        if Path(path).name == "documents.json" and not replaced:
+            replaced = True
+            Path(path).write_bytes(_canonical_json_bytes([]))
+        return result
+
+    monkeypatch.setattr(
+        portable_views_module._OwnedViewReader,
+        "authenticate",
+        replace_after_authentication,
+    )
+
+    with pytest.raises(RuntimeError, match="changed during semantic validation"):
+        validate_portable_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config=adjustments,
+        )
+
+    assert replaced
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO requires POSIX")
+@pytest.mark.timeout(2)
+def test_portable_bm25_rejects_fifo_swapped_after_capture_without_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    adjustments = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    import codenib.artifacts.portable_views as portable_views_module
+
+    real_capture = portable_views_module.capture_directory_ownership
+    documents = bm25 / "documents.json"
+    original = documents.read_bytes()
+    swapped = False
+
+    def capture_then_swap(path, **kwargs):
+        nonlocal swapped
+        token = real_capture(path, **kwargs)
+        if Path(path) == bm25 and not swapped:
+            swapped = True
+            documents.unlink()
+            os.mkfifo(documents)
+        return token
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "capture_directory_ownership",
+        capture_then_swap,
+    )
+    try:
+        with pytest.raises(ValueError, match="private file|safely readable"):
+            validate_portable_query_view(
+                bm25,
+                repo_path=repo,
+                view_type="bm25",
+                view_config=adjustments,
+            )
+    finally:
+        if documents.exists():
+            documents.unlink()
+        documents.write_bytes(original)
+
+
+def test_portable_validator_does_not_use_path_rglob(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    adjustments = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+
+    def forbidden_rglob(*_args, **_kwargs):
+        raise AssertionError("portable validation must use its bounded fd inventory")
+
+    monkeypatch.setattr(Path, "rglob", forbidden_rglob)
+    validate_portable_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config=adjustments,
+    )
+
+
+def test_portable_documents_contract_has_a_fixed_nonconfigurable_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    adjustments = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    monkeypatch.setattr(
+        "codenib.artifacts.portable_views._MAX_DOCUMENTS_JSON_BYTES",
+        1,
+    )
+
+    with pytest.raises(ValueError, match="size mismatch"):
+        validate_portable_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config={**adjustments, "max_documents_bytes": 10**12},
+        )
+
+
+def test_normalize_json_disappearance_is_reported_as_value_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    documents = bm25 / "documents.json"
+    import codenib.artifacts.portable_views as portable_views_module
+
+    real_capture = portable_views_module.capture_directory_ownership
+    disappeared = False
+
+    def capture_then_disappear(path, **kwargs):
+        nonlocal disappeared
+        token = real_capture(path, **kwargs)
+        if Path(path) == bm25 and not disappeared:
+            disappeared = True
+            documents.unlink()
+        return token
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "capture_directory_ownership",
+        capture_then_disappear,
+    )
+
+    with pytest.raises(ValueError, match="safely readable"):
+        normalize_owned_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config={},
+        )
+
+    assert disappeared
+
+
 def test_normalize_vector_converts_trusted_pickle_and_strips_build_state(
     tmp_path: Path,
 ) -> None:
@@ -364,6 +835,418 @@ def test_normalize_committed_json_vector_is_idempotent(tmp_path: Path) -> None:
 
     assert _tree(vector) == first_tree
     assert second_adjustments == first_adjustments
+
+
+def test_portable_vector_validator_rejects_noncanonical_json_without_mutation(
+    tmp_path: Path,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=_VECTOR_CONFIG,
+    )
+    documents_path = vector / "l2" / f"documents_{_MODEL_SUFFIX}.json"
+    documents = json.loads(documents_path.read_text(encoding="utf-8"))
+    documents_path.write_text(json.dumps(documents), encoding="utf-8")
+    config_path = vector / f"config_{_MODEL_SUFFIX}.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["level_artifacts"]["l2"] = vector_level_artifact_records(
+        vector / "l2",
+        _MODEL_SUFFIX,
+        documents_file=documents_path.name,
+    )
+    config_path.write_bytes(_canonical_json_bytes(config))
+    view_config = {
+        **_VECTOR_CONFIG,
+        **adjustments,
+        "persistence_config_fingerprint": vector_config_artifact_record(
+            vector,
+            _MODEL_SUFFIX,
+        ),
+    }
+    before = _tree(vector)
+    before_modes = {
+        path.relative_to(vector).as_posix(): path.stat().st_mode
+        for path in vector.rglob("*")
+    }
+
+    with pytest.raises(ValueError, match="not canonical JSON"):
+        validate_portable_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+    assert _tree(vector) == before
+    assert {
+        path.relative_to(vector).as_posix(): path.stat().st_mode
+        for path in vector.rglob("*")
+    } == before_modes
+
+
+def test_portable_vector_validator_rechecks_faiss_semantics_after_records(
+    tmp_path: Path,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=_VECTOR_CONFIG,
+    )
+    level = vector / "l2"
+    _write_faiss(level / f"index_{_MODEL_SUFFIX}.faiss", dimension=8)
+    config_path = vector / f"config_{_MODEL_SUFFIX}.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["level_artifacts"]["l2"] = vector_level_artifact_records(
+        level,
+        _MODEL_SUFFIX,
+        documents_file=f"documents_{_MODEL_SUFFIX}.json",
+    )
+    config_path.write_bytes(_canonical_json_bytes(config))
+    view_config = {
+        **_VECTOR_CONFIG,
+        **adjustments,
+        "persistence_config_fingerprint": vector_config_artifact_record(
+            vector,
+            _MODEL_SUFFIX,
+        ),
+    }
+
+    with pytest.raises(ValueError, match="FAISS dimension mismatch"):
+        validate_portable_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
+@pytest.mark.parametrize("artifact", ["config", "documents", "faiss"])
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO requires POSIX")
+@pytest.mark.timeout(2)
+def test_portable_vector_rejects_fifo_swapped_after_capture_without_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact: str,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=_VECTOR_CONFIG,
+    )
+    view_config = {**_VECTOR_CONFIG, **adjustments}
+    targets = {
+        "config": vector / f"config_{_MODEL_SUFFIX}.json",
+        "documents": vector / "l2" / f"documents_{_MODEL_SUFFIX}.json",
+        "faiss": vector / "l2" / f"index_{_MODEL_SUFFIX}.faiss",
+    }
+    target = targets[artifact]
+    original = target.read_bytes()
+    import codenib.artifacts.portable_views as portable_views_module
+
+    real_capture = portable_views_module.capture_directory_ownership
+    swapped = False
+
+    def capture_then_swap(path, **kwargs):
+        nonlocal swapped
+        token = real_capture(path, **kwargs)
+        if Path(path) == vector and not swapped:
+            swapped = True
+            target.unlink()
+            os.mkfifo(target)
+        return token
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "capture_directory_ownership",
+        capture_then_swap,
+    )
+    try:
+        with pytest.raises(
+            ValueError,
+            match=(
+                "private file|safely readable|manifest fingerprint|"
+                "committed documents"
+            ),
+        ):
+            validate_portable_query_view(
+                vector,
+                repo_path=repo,
+                view_type="vector",
+                view_config=view_config,
+            )
+    finally:
+        if target.exists():
+            target.unlink()
+        target.write_bytes(original)
+
+
+def test_portable_vector_parses_faiss_from_authenticated_callback_reader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=_VECTOR_CONFIG,
+    )
+    faiss = importlib.import_module("faiss")
+    real_read_index = faiss.read_index
+    sources: list[object] = []
+
+    def tracking_read_index(source, *args, **kwargs):
+        sources.append(source)
+        return real_read_index(source, *args, **kwargs)
+
+    monkeypatch.setattr(faiss, "read_index", tracking_read_index)
+    validate_portable_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config={**_VECTOR_CONFIG, **adjustments},
+    )
+
+    assert len(sources) == 1
+    assert not isinstance(sources[0], (str, Path))
+
+
+def test_portable_vector_rejects_external_symlink_swap_and_restore(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=_VECTOR_CONFIG,
+    )
+    target = vector / "l2" / f"documents_{_MODEL_SUFFIX}.json"
+    saved = target.with_name("saved-documents.json")
+    outside = tmp_path / "outside.json"
+    outside.write_text('[{"secret": "outside"}]', encoding="utf-8")
+    import codenib.artifacts.portable_views as portable_views_module
+
+    real_open = portable_views_module._OwnedViewReader._open_file
+    swapped = False
+
+    def swap_then_restore(reader, relative):
+        nonlocal swapped
+        if relative.name != target.name or swapped:
+            return real_open(reader, relative)
+        swapped = True
+        target.rename(saved)
+        target.symlink_to(outside)
+        try:
+            return real_open(reader, relative)
+        finally:
+            target.unlink()
+            saved.rename(target)
+
+    monkeypatch.setattr(
+        portable_views_module._OwnedViewReader,
+        "_open_file",
+        swap_then_restore,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="private file|safely readable|committed documents",
+    ):
+        validate_portable_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config={**_VECTOR_CONFIG, **adjustments},
+        )
+
+    assert swapped
+
+
+@pytest.mark.skipif(not Path("/proc/self/fd").is_dir(), reason="requires procfs")
+def test_portable_validator_closes_anchored_descriptors(tmp_path: Path) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    adjustments = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    before = len(list(Path("/proc/self/fd").iterdir()))
+
+    for _ in range(20):
+        validate_portable_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config=adjustments,
+        )
+
+    assert len(list(Path("/proc/self/fd").iterdir())) == before
+
+
+@pytest.mark.parametrize("mutation", ["faiss-dimension", "unicode-secret"])
+def test_portable_vector_validator_rejects_late_synchronized_tree_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=_VECTOR_CONFIG,
+    )
+    view_config = {**_VECTOR_CONFIG, **adjustments}
+    import codenib.artifacts.portable_views as portable_views_module
+
+    real_validate = portable_views_module._validate_normalized_document_sources
+    validation_calls = 0
+    secret = "晚到的凭据秘密值-12345678"
+
+    def mutate_after_document_validation(path, repo_path, **kwargs):
+        nonlocal validation_calls
+        result = real_validate(path, repo_path, **kwargs)
+        validation_calls += 1
+        if validation_calls == 1:
+            level = vector / "l2"
+            documents_path = level / f"documents_{_MODEL_SUFFIX}.json"
+            if mutation == "faiss-dimension":
+                _write_faiss(
+                    level / f"index_{_MODEL_SUFFIX}.faiss",
+                    dimension=8,
+                )
+            else:
+                documents = json.loads(documents_path.read_text(encoding="utf-8"))
+                documents[0]["metadata"]["innocent_note"] = secret
+                documents_path.write_bytes(_canonical_json_bytes(documents))
+            config_path = vector / f"config_{_MODEL_SUFFIX}.json"
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config["level_artifacts"]["l2"] = vector_level_artifact_records(
+                level,
+                _MODEL_SUFFIX,
+                documents_file=documents_path.name,
+            )
+            config_path.write_bytes(_canonical_json_bytes(config))
+        return result
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "_validate_normalized_document_sources",
+        mutate_after_document_validation,
+    )
+    with pytest.raises(RuntimeError, match="changed during semantic validation"):
+        validate_portable_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+            environ={"MODELS_TOKEN": secret},
+        )
+
+    assert validation_calls == 1
+
+
+@pytest.mark.parametrize("extra", ["extra.json", "l2/nested/extra.json"])
+def test_normalize_vector_rejects_every_extra_entry(
+    tmp_path: Path,
+    extra: str,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    path = vector / extra
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unexpected (file|directory)"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=_VECTOR_CONFIG,
+        )
+
+
+def test_normalize_vector_rejects_root_config_url_credentials(tmp_path: Path) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    config_path = vector / f"config_{_MODEL_SUFFIX}.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["endpoint"] = "//user:password@example.test/api"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="URL credentials"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=_VECTOR_CONFIG,
+        )
+
+
+def test_normalize_vector_rejects_level_config_authorization_header(
+    tmp_path: Path,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    level_config = vector / "l2" / f"config_{_MODEL_SUFFIX}.json"
+    level_config.write_text(
+        json.dumps(
+            {
+                "embedding_model": "test/model",
+                "embedding_provider": "huggingface",
+                "embedding_revision": None,
+                "dimension": 4,
+                "index_type": "flat",
+                "index_metric": "ip",
+                "level": "l2",
+                "num_documents": 1,
+                "Proxy-Authorization": "Basic dXNlcjpwYXNz",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="secret field"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=_VECTOR_CONFIG,
+        )
+
+
+def test_normalize_vector_rejects_document_metadata_secret(tmp_path: Path) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    documents_path = vector / "l2" / f"documents_{_MODEL_SUFFIX}.json"
+    documents = json.loads(documents_path.read_text(encoding="utf-8"))
+    documents[0]["metadata"]["github_token"] = "value"
+    documents_path.write_text(json.dumps(documents), encoding="utf-8")
+    _refresh_level_record(vector)
+
+    with pytest.raises(ValueError, match="secret field"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=_VECTOR_CONFIG,
+        )
 
 
 def test_normalize_portable_json_is_idempotent_in_a_different_checkout(
@@ -1167,6 +2050,7 @@ def test_normalize_rejects_level_config_semantic_drift(tmp_path: Path) -> None:
             {
                 "embedding_model": "test/model",
                 "embedding_provider": "huggingface",
+                "embedding_revision": None,
                 "dimension": 4,
                 "index_type": "flat",
                 "index_metric": "l2",

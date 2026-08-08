@@ -6,7 +6,11 @@ from __future__ import annotations
 
 import subprocess
 
+import pytest
+
+import codenib._contained_source as contained_source_module
 from codenib.source_fingerprint import (
+    RepositoryChangedError,
     fingerprint_repository,
     repository_source_is_dirty,
 )
@@ -56,10 +60,10 @@ def test_fingerprint_ignores_git_worktree_pointer_file(tmp_path):
 def test_fingerprint_includes_symlink_target_and_content(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    target = tmp_path / "target.py"
+    target = repo / "target.py"
     target.write_text("VALUE = 1\n")
     link = repo / "current.py"
-    link.symlink_to(target)
+    link.symlink_to("target.py")
     initial = fingerprint_repository(repo)
 
     target.write_text("VALUE = 2\n")
@@ -67,8 +71,55 @@ def test_fingerprint_includes_symlink_target_and_content(tmp_path):
     assert changed_content.value != initial.value
 
     link.unlink()
-    link.symlink_to(tmp_path / "other.py")
+    (repo / "other.py").write_text("VALUE = 3\n")
+    link.symlink_to("other.py")
     assert fingerprint_repository(repo).value != changed_content.value
+
+
+def test_fingerprint_rejects_source_symlink_outside_repository(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (tmp_path / "outside.py").write_text("SECRET = 1\n")
+    (repo / "current.py").symlink_to("../outside.py")
+
+    with pytest.raises(RepositoryChangedError, match="could not be read consistently"):
+        fingerprint_repository(repo)
+
+
+def test_fingerprint_rejects_reversible_source_symlink_swap(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "target.py").write_text("VALUE = 1\n")
+    (tmp_path / "outside.py").write_text("SECRET = 1\n")
+    link = repo / "current.py"
+    link.symlink_to("target.py")
+    real_verify = contained_source_module._BoundRepositoryFile.verify
+    calls = 0
+
+    def swap_then_restore(binding) -> None:
+        nonlocal calls
+        calls += 1
+        if calls != 2:
+            return real_verify(binding)
+        link.unlink()
+        link.symlink_to("../outside.py")
+        try:
+            return real_verify(binding)
+        finally:
+            link.unlink()
+            link.symlink_to("target.py")
+
+    monkeypatch.setattr(
+        contained_source_module._BoundRepositoryFile,
+        "verify",
+        swap_then_restore,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="could not be read consistently"):
+        fingerprint_repository(repo)
 
 
 def test_dirty_check_ignores_generated_dirs_but_detects_source_changes(tmp_path):

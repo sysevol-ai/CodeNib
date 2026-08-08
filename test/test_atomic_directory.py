@@ -14,6 +14,7 @@ import pytest
 import codenib._atomic_directory as atomic_module
 from codenib._atomic_directory import (
     capture_directory_ownership,
+    directory_ownership_inventory,
     publish_staged_directory,
 )
 
@@ -369,6 +370,24 @@ def test_directory_ownership_is_independent_of_entry_order(tmp_path: Path) -> No
         second_token.entries,
         second_token.byte_count,
         second_token.metadata_bytes,
+    )
+
+
+def test_directory_ownership_inventory_comes_from_the_bounded_scan(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (root / "one.txt").write_text("one", encoding="utf-8")
+    (nested / "two.txt").write_text("two", encoding="utf-8")
+
+    ownership = capture_directory_ownership(root)
+
+    assert directory_ownership_inventory(ownership) == (
+        ("nested", "directory"),
+        ("nested/two.txt", "file"),
+        ("one.txt", "file"),
     )
 
 
