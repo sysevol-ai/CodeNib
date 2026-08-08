@@ -6,9 +6,11 @@
 
 from __future__ import annotations
 
+import importlib
 import json
+import re
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from .. import compat_pickle
 from ..compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
@@ -16,11 +18,12 @@ from ..index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
     VECTOR_VIEW_UPDATE_MARKER,
     require_complete_vector_view,
+    validate_vector_config_artifact,
     validate_vector_generation_artifacts,
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
-from ..provider_routes import resolve_embedding_artifact_route
+from ..provider_routes import normalize_provider, resolve_embedding_artifact_route
 
 _VECTOR_LEVELS = ("l0", "l2")
 _REMOVABLE_MUTABLE_VECTOR_FILES = frozenset(
@@ -38,6 +41,9 @@ _MUTABLE_VECTOR_PREFIXES = (
     "embeddings_cache.",
     "incremental_state.",
 )
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
+_PICKLE_SUFFIXES = frozenset({".pkl", ".pickle"})
+SourceTrust = Literal["portable-inert", "trusted-local"]
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -105,14 +111,37 @@ def _portable_source_path(value: object, repo_path: Path, *, source: str) -> str
     raw = str(value or "")
     if not raw:
         return ""
+    if any(ord(character) < 32 or ord(character) == 127 for character in raw):
+        raise ValueError(
+            f"{source} is not a portable repository-relative path: {raw!r}"
+        )
+
     path = Path(raw).expanduser()
     if path.is_absolute():
         try:
             path = path.resolve().relative_to(repo_path)
-        except ValueError as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             raise ValueError(f"{source} points outside the repository: {raw}") from exc
-    normalized = PurePosixPath(path.as_posix())
-    if normalized.is_absolute() or ".." in normalized.parts:
+        raw = path.as_posix()
+    else:
+        native = path.as_posix()
+        if native != raw:
+            raw_parts = raw.replace("\\", "/").split("/")
+            if any(part in {"", ".", ".."} for part in raw_parts):
+                raise ValueError(f"{source} is not repository-relative: {raw}")
+            raw = native
+        elif "\\" in raw or raw.startswith("//") or _WINDOWS_DRIVE_RE.match(raw):
+            raise ValueError(
+                f"{source} is not a portable repository-relative path: {raw!r}"
+            )
+
+    raw_parts = raw.split("/")
+    normalized = PurePosixPath(raw)
+    if (
+        normalized.is_absolute()
+        or any(part in {"", ".", ".."} for part in raw_parts)
+        or raw != normalized.as_posix()
+    ):
         raise ValueError(f"{source} is not repository-relative: {raw}")
     return normalized.as_posix()
 
@@ -160,6 +189,23 @@ def _normalize_pickle_documents(
     # Validate serializability before any file in the owned view is changed.
     _json_bytes(payload)
     return payload
+
+
+def _pickle_paths(root: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix.casefold() in _PICKLE_SUFFIXES
+    )
+
+
+def _reject_inert_pickles(root: Path) -> None:
+    pickles = _pickle_paths(root)
+    if pickles:
+        raise ValueError(
+            "portable-inert query view must not contain pickle: "
+            f"{pickles[0].relative_to(root)}"
+        )
 
 
 def _normalize_json_documents(
@@ -215,20 +261,228 @@ def _is_mutable_vector_state(path: Path) -> bool:
     )
 
 
+def _validate_vector_model_policy(
+    root: Path,
+    *,
+    model_suffix: str,
+    source_trust: SourceTrust,
+) -> None:
+    """Reject ambiguous multi-model trees and untrusted serialized objects."""
+
+    allowed_model_artifacts = {
+        root / f"config_{model_suffix}.json",
+    }
+    for level in _VECTOR_LEVELS:
+        allowed_model_artifacts.update(
+            {
+                root / level / f"config_{model_suffix}.json",
+                root / level / f"documents_{model_suffix}.json",
+                root / level / f"documents_{model_suffix}.pkl",
+                root / level / f"index_{model_suffix}.faiss",
+                root / level / f"index_{model_suffix}.pkl",
+            }
+        )
+    unexpected_model_artifacts = sorted(
+        path
+        for path in root.rglob("*")
+        if path.name.casefold().startswith(("config_", "documents_", "index_"))
+        and path not in allowed_model_artifacts
+    )
+    if unexpected_model_artifacts:
+        raise ValueError(
+            "portable vector view contains an unknown or other-model artifact: "
+            f"{unexpected_model_artifacts[0].relative_to(root)}"
+        )
+
+    pickles = _pickle_paths(root)
+    if source_trust == "portable-inert":
+        _reject_inert_pickles(root)
+        return
+
+    allowed_pickles = {
+        root / level / f"documents_{model_suffix}.pkl" for level in _VECTOR_LEVELS
+    }
+    allowed_pickles.update(
+        root / level / f"index_{model_suffix}.pkl" for level in _VECTOR_LEVELS
+    )
+    allowed_pickles.update(
+        root / name for name in _REMOVABLE_MUTABLE_VECTOR_FILES if name.endswith(".pkl")
+    )
+    unexpected = [path for path in pickles if path not in allowed_pickles]
+    if unexpected:
+        raise ValueError(
+            "trusted-local vector view contains an unexpected pickle: "
+            f"{unexpected[0].relative_to(root)}"
+        )
+
+
+def _validate_vector_semantics(
+    config: Mapping[str, Any],
+    view_config: Mapping[str, Any],
+) -> tuple[str, int]:
+    """Close the manifest-route to persisted-config compatibility contract."""
+
+    route = resolve_embedding_artifact_route(view_config)
+    required_checks: tuple[tuple[str, object], ...] = (
+        ("embedding_model", route.model),
+        ("dimension", route.dimension),
+    )
+    for key, expected in required_checks:
+        if config.get(key) != expected:
+            raise ValueError(
+                f"portable vector persistence {key} does not match its view route"
+            )
+    if "embedding_dimension" in config and config["embedding_dimension"] != (
+        route.dimension
+    ):
+        raise ValueError(
+            "portable vector persistence embedding_dimension does not match its "
+            "view route"
+        )
+    try:
+        provider = normalize_provider(str(config.get("embedding_provider", "")))
+    except ValueError as exc:
+        raise ValueError(
+            "portable vector persistence has an invalid embedding provider"
+        ) from exc
+    if provider != route.provider:
+        raise ValueError(
+            "portable vector persistence embedding provider does not match "
+            "its view route"
+        )
+
+    expected_metric = view_config.get("index_metric")
+    persisted_metric = config.get("index_metric")
+    if expected_metric is not None and persisted_metric != expected_metric:
+        raise ValueError(
+            "portable vector persistence index metric does not match its view config"
+        )
+
+    persisted_identity = config.get("artifact")
+    if persisted_identity is not None:
+        if not isinstance(persisted_identity, Mapping):
+            raise ValueError("portable vector persistence artifact identity is invalid")
+        persisted_route = resolve_embedding_artifact_route(persisted_identity)
+        if persisted_route.public_identity() != route.public_identity():
+            raise ValueError(
+                "portable vector persistence route identity does not match its view "
+                "route"
+            )
+        persisted_identity_metric = persisted_identity.get("index_metric")
+        if (
+            expected_metric is not None
+            and persisted_identity_metric is not None
+            and persisted_identity_metric != expected_metric
+        ):
+            raise ValueError(
+                "portable vector persistence identity metric does not match its "
+                "view config"
+            )
+    elif "embedding_kwargs" in config:
+        # Legacy configs sometimes expose the semantic options directly. When
+        # present, absence is not treated as a wildcard.
+        persisted_route = resolve_embedding_artifact_route(config)
+        if persisted_route.public_identity() != route.public_identity():
+            raise ValueError(
+                "portable vector persistence options do not match its view route"
+            )
+
+    if route.dimension is None:
+        raise ValueError("portable vector route is missing its embedding dimension")
+    return route.model.replace("/", "__"), route.dimension
+
+
+def _faiss_shape(path: Path) -> tuple[int, int]:
+    """Read only the persisted index shape, importing FAISS on demand."""
+
+    try:
+        faiss = importlib.import_module("faiss")
+        index = faiss.read_index(str(path))
+        dimension = int(index.d)
+        total = int(index.ntotal)
+    except Exception as exc:
+        raise ValueError(f"portable vector FAISS index is unreadable: {path}") from exc
+    return dimension, total
+
+
+def _validate_level_semantics(
+    path: Path,
+    *,
+    level: str,
+    model: str,
+    provider: str,
+    dimension: int,
+    metric: object,
+    count: int,
+) -> None:
+    if not path.exists():
+        return
+    config = _load_json_object(path, label=f"portable vector {level} config")
+    checks: tuple[tuple[str, object], ...] = (
+        ("embedding_model", model),
+        ("dimension", dimension),
+        ("index_metric", metric),
+        ("level", level),
+        ("num_documents", count),
+    )
+    for key, expected in checks:
+        if key in config and expected is not None and config[key] != expected:
+            raise ValueError(
+                f"portable vector {level} persistence {key} does not match"
+            )
+    if "embedding_provider" in config:
+        try:
+            persisted_provider = normalize_provider(str(config["embedding_provider"]))
+        except ValueError as exc:
+            raise ValueError(
+                f"portable vector {level} persistence provider is invalid"
+            ) from exc
+        if persisted_provider != provider:
+            raise ValueError(
+                f"portable vector {level} persistence provider does not match"
+            )
+
+
 def _validate_vector_layout(
     root: Path,
     repo_path: Path,
     *,
     model_suffix: str,
     config: Mapping[str, Any],
-) -> tuple[str, dict[Path, list[dict[str, Any]]]]:
+    expected_model: str,
+    expected_provider: str,
+    expected_dimension: int,
+    expected_metric: object,
+    source_trust: SourceTrust,
+) -> tuple[
+    str,
+    dict[Path, list[dict[str, Any]]],
+    dict[str, int],
+    set[Path],
+]:
     expected_documents: set[Path] = set()
     selected: dict[Path, list[dict[str, Any]]] = {}
     formats: set[str] = set()
+    counts_present = [f"{level}_documents" in config for level in _VECTOR_LEVELS]
+    if any(counts_present) and not all(counts_present):
+        raise ValueError("portable vector config has partial level counts")
+    legacy_counts = not any(counts_present)
+    if legacy_counts and (
+        config.get("persistence_schema") is not None
+        or config.get("level_artifacts") is not None
+    ):
+        raise ValueError(
+            "portable vector config with persistence records requires level counts"
+        )
+
+    derived_counts: dict[str, int] = {}
+    stale_paths: set[Path] = set()
 
     for level in _VECTOR_LEVELS:
-        count = config.get(f"{level}_documents")
-        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        count = config.get(f"{level}_documents") if not legacy_counts else None
+        if count is not None and (
+            not isinstance(count, int) or isinstance(count, bool) or count < 0
+        ):
             raise ValueError(
                 f"portable vector config has invalid {level} count: {count!r}"
             )
@@ -237,37 +491,94 @@ def _validate_vector_layout(
         json_path = level_path / f"documents_{model_suffix}.json"
         present = [path for path in (pickle_path, json_path) if path.is_file()]
         expected_documents.update(present)
+        index_path = level_path / f"index_{model_suffix}.faiss"
 
         if count == 0:
-            if present:
-                raise ValueError(
-                    f"portable vector view contains documents for empty {level} level"
+            # A zero count is authoritative. Older writers left uncommitted
+            # current-model level files behind; this caller-owned copy may prune
+            # those exact names, but never unknown or other-model artifacts.
+            stale_paths.update(
+                path
+                for path in (
+                    pickle_path,
+                    json_path,
+                    index_path,
+                    level_path / f"index_{model_suffix}.pkl",
+                    level_path / f"config_{model_suffix}.json",
                 )
+                if path.is_file()
+            )
+            derived_counts[level] = 0
             continue
         if len(present) > 1:
             raise ValueError(
                 f"portable vector view mixes pickle and JSON documents in {level}"
             )
-        if not present:
+        if not present and (count is not None and count > 0):
             raise ValueError(
                 f"portable vector view is missing documents for non-empty {level}"
             )
-        index_path = level_path / f"index_{model_suffix}.faiss"
+        if not present and count is None:
+            if (
+                index_path.exists()
+                or (level_path / f"config_{model_suffix}.json").exists()
+            ):
+                raise ValueError(f"portable legacy vector {level} level is incomplete")
+            derived_counts[level] = 0
+            continue
         if index_path.is_symlink() or not index_path.is_file():
             raise ValueError(f"portable vector view is missing its index: {index_path}")
 
         path = present[0]
         document_format = path.suffix.removeprefix(".")
-        formats.add(document_format)
         if document_format == "pkl":
+            if source_trust != "trusted-local":
+                raise ValueError(
+                    "portable-inert vector view must not deserialize documents"
+                )
             payload = _normalize_pickle_documents(path, repo_path)
         else:
             payload = _normalize_json_documents(path, repo_path)
-        if len(payload) != count:
+        if count is not None and len(payload) != count:
             raise ValueError(
                 f"portable vector {level} count differs from {path.name}: "
                 f"expected {count}, found {len(payload)}"
             )
+        count = len(payload)
+        dimension, total = _faiss_shape(index_path)
+        if dimension != expected_dimension:
+            raise ValueError(
+                f"portable vector FAISS dimension mismatch in {level}: "
+                f"expected {expected_dimension}, found {dimension}"
+            )
+        if total != count:
+            raise ValueError(
+                f"portable vector FAISS count mismatch in {level}: "
+                f"expected {count}, found {total}"
+            )
+        _validate_level_semantics(
+            level_path / f"config_{model_suffix}.json",
+            level=level,
+            model=expected_model,
+            provider=expected_provider,
+            dimension=expected_dimension,
+            metric=expected_metric,
+            count=count,
+        )
+        derived_counts[level] = count
+        if legacy_counts and count == 0:
+            stale_paths.update(
+                candidate
+                for candidate in (
+                    path,
+                    index_path,
+                    level_path / f"index_{model_suffix}.pkl",
+                    level_path / f"config_{model_suffix}.json",
+                )
+                if candidate.is_file()
+            )
+            continue
+        formats.add(document_format)
         selected[path] = payload
 
     if not selected:
@@ -278,7 +589,7 @@ def _validate_vector_layout(
     candidates = {
         path
         for path in root.rglob("documents_*")
-        if path.suffix.lower() in {".json", ".pkl"}
+        if path.suffix.casefold() in {".json", ".pkl", ".pickle"}
     }
     unexpected_documents = sorted(candidates - expected_documents)
     if unexpected_documents:
@@ -288,6 +599,9 @@ def _validate_vector_layout(
         )
 
     allowed_pickles = {path for path in selected if path.suffix.lower() == ".pkl"}
+    allowed_pickles.update(
+        path for path in stale_paths if path.suffix.casefold() in _PICKLE_SUFFIXES
+    )
     allowed_pickles.update(
         path for path in root.glob("l[02]/index_*.pkl") if path.is_file()
     )
@@ -299,7 +613,7 @@ def _validate_vector_layout(
     residual_pickles = sorted(
         path
         for path in root.rglob("*")
-        if path.suffix.lower() == ".pkl" and path not in allowed_pickles
+        if path.suffix.casefold() in _PICKLE_SUFFIXES and path not in allowed_pickles
     )
     if residual_pickles:
         raise ValueError(
@@ -320,7 +634,7 @@ def _validate_vector_layout(
             f"{residual_mutable[0].relative_to(root)}"
         )
 
-    return next(iter(formats)), selected
+    return next(iter(formats)), selected, derived_counts, stale_paths
 
 
 def _refresh_vector_persistence_records(
@@ -353,7 +667,7 @@ def _refresh_vector_persistence_records(
 
 def _assert_normalized_vector_tree(root: Path) -> None:
     for path in sorted(root.rglob("*")):
-        if path.suffix.lower() == ".pkl":
+        if path.suffix.casefold() in _PICKLE_SUFFIXES:
             raise ValueError(
                 "portable vector normalization left a pickle behind: "
                 f"{path.relative_to(root)}"
@@ -370,6 +684,7 @@ def _normalize_vector_view(
     repo_path: Path,
     *,
     view_config: Mapping[str, Any],
+    source_trust: SourceTrust,
 ) -> dict[str, Any]:
     require_complete_vector_view(root)
     interrupted = sorted(root.glob(".config_*.json.save-in-progress"))
@@ -381,19 +696,40 @@ def _normalize_vector_view(
 
     route = resolve_embedding_artifact_route(view_config)
     model_suffix = route.model.replace("/", "__")
+    _validate_vector_model_policy(
+        root,
+        model_suffix=model_suffix,
+        source_trust=source_trust,
+    )
+    expected_config = view_config.get("persistence_config_fingerprint")
+    if expected_config is not None:
+        validate_vector_config_artifact(
+            root,
+            model_suffix,
+            expected_config,
+        )
     # Validate the committed source generation before replacing any trusted-local
     # pickle or refreshing records. Otherwise normalization could bless torn files.
     validate_vector_generation_artifacts(root, model_suffix)
     config_path = root / f"config_{model_suffix}.json"
     config = _load_json_object(config_path, label="portable vector config")
-    if config.get("embedding_model") != route.model:
+    semantic_suffix, expected_dimension = _validate_vector_semantics(
+        config,
+        view_config,
+    )
+    if semantic_suffix != model_suffix:
         raise ValueError("portable vector config embedding model does not match")
 
-    document_format, documents = _validate_vector_layout(
+    document_format, documents, counts, stale_paths = _validate_vector_layout(
         root,
         repo_path,
         model_suffix=model_suffix,
         config=config,
+        expected_model=route.model,
+        expected_provider=route.provider,
+        expected_dimension=expected_dimension,
+        expected_metric=view_config.get("index_metric"),
+        source_trust=source_trust,
     )
 
     for path, payload in documents.items():
@@ -401,6 +737,18 @@ def _normalize_vector_view(
         output.write_bytes(_json_bytes(payload))
         if document_format == "pkl":
             path.unlink()
+
+    for path in sorted(stale_paths):
+        path.unlink(missing_ok=True)
+    for level in _VECTOR_LEVELS:
+        level_path = root / level
+        try:
+            level_path.rmdir()
+        except OSError:
+            pass
+
+    config.update({f"{level}_documents": counts[level] for level in _VECTOR_LEVELS})
+    config_path.write_bytes(_json_bytes(config))
 
     # Query serving does not need build-time incremental state. These exact
     # machine-local files are safe to discard from the owned copy; unfamiliar
@@ -429,20 +777,27 @@ def normalize_owned_query_view(
     repo_path: Path,
     view_type: str,
     view_config: Mapping[str, Any],
+    source_trust: SourceTrust = "portable-inert",
 ) -> dict[str, Any]:
     """Normalize one copied view and return its portable identity adjustments.
 
-    ``root`` must be a caller-owned copy that can be safely rewritten. Local
-    vector pickles are deserialized only on that explicit trust boundary;
-    already-portable JSON document stores are parsed as inert data.
+    ``root`` must be a caller-owned copy that can be safely rewritten.
+    ``source_trust`` defaults to inert portable data; only ``trusted-local`` may
+    deserialize the exact legacy vector pickle names owned by this program.
     """
 
+    if not isinstance(source_trust, str) or source_trust not in {
+        "portable-inert",
+        "trusted-local",
+    }:
+        raise ValueError(f"invalid portable query view source trust: {source_trust!r}")
     normalized_root, repository = _owned_view_root(root, repo_path)
     if view_type == "vector":
         return _normalize_vector_view(
             normalized_root,
             repository,
             view_config=view_config,
+            source_trust=source_trust,
         )
     if view_type != "bm25":
         raise ValueError(
@@ -450,6 +805,7 @@ def normalize_owned_query_view(
             "select bm25 and/or vector"
         )
 
+    _reject_inert_pickles(normalized_root)
     metadata_path = normalized_root / "bm25_metadata.json"
     metadata = _load_json_object(metadata_path, label="portable BM25 metadata")
     metadata["project_root"] = "source"
@@ -459,4 +815,4 @@ def normalize_owned_query_view(
     }
 
 
-__all__ = ["normalize_owned_query_view"]
+__all__ = ["SourceTrust", "normalize_owned_query_view"]
