@@ -15,28 +15,14 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Mapping
 
+from .._secret_fields import (
+    SecretFieldError,
+)
+from .._secret_fields import assert_no_secret_fields as _assert_no_secret_fields
+
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _CATALOG_INT64_MAX = 9_223_372_036_854_775_807
 INDEX_JOB_REQUEST_CONTRACT = "codenib.index-job-request.v1"
-_SECRET_FIELD_NAMES = frozenset(
-    {
-        "access_key",
-        "access_token",
-        "api_key",
-        "apikey",
-        "authorization",
-        "client_secret",
-        "cookie",
-        "credential",
-        "credentials",
-        "password",
-        "passwd",
-        "private_key",
-        "refresh_token",
-        "secret",
-        "token",
-    }
-)
 
 
 class StorageError(RuntimeError):
@@ -190,18 +176,21 @@ def _canonical_json_object(value: str, field: str) -> tuple[str, dict[str, Any]]
     return canonical_json(parsed), parsed
 
 
+def assert_no_secret_fields(value: Any, *, source: str = "value") -> None:
+    """Apply the shared credential policy with a storage validation error.
+
+    The classifier lives outside storage so artifacts do not depend on the
+    catalog layer; this wrapper preserves the public storage exception contract.
+    """
+
+    try:
+        _assert_no_secret_fields(value, source=source)
+    except SecretFieldError as exc:
+        raise StorageValidationError(str(exc)) from exc
+
+
 def _reject_secret_fields(value: Any, *, path: str = "request") -> None:
-    if isinstance(value, Mapping):
-        for key, child in value.items():
-            normalized = key.lower().replace("-", "_")
-            if normalized in _SECRET_FIELD_NAMES:
-                raise StorageValidationError(
-                    f"index job request must not contain secret field: {path}.{key}"
-                )
-            _reject_secret_fields(child, path=f"{path}.{key}")
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            _reject_secret_fields(child, path=f"{path}[{index}]")
+    assert_no_secret_fields(value, source="index job request")
 
 
 class IndexJobStatus(str, Enum):
@@ -1013,6 +1002,7 @@ __all__ = [
     "StorageValidationError",
     "ViewGeneration",
     "ViewProfile",
+    "assert_no_secret_fields",
     "canonical_json",
     "content_id",
     "normalize_digest",

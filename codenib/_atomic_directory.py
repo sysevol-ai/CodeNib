@@ -63,6 +63,7 @@ class _TreeOwnership:
     entries: int
     byte_count: int
     metadata_bytes: int
+    inventory: tuple[tuple[str, str], ...]
 
 
 class _PreviousOutputIdentityLost(RuntimeError):
@@ -275,6 +276,7 @@ def _scan_owned_directory(
     root_device: int,
     mount_points: frozenset[str],
     budget: _OwnershipBudget,
+    inventory: list[tuple[str, str]],
     depth: int,
     required_root_file: bytes | None = None,
     allow_empty_root: bool = False,
@@ -352,6 +354,7 @@ def _scan_owned_directory(
                     root_device=root_device,
                     mount_points=mount_points,
                     budget=budget,
+                    inventory=inventory,
                     depth=depth + 1,
                 )
                 after = os.fstat(child_descriptor)
@@ -378,6 +381,7 @@ def _scan_owned_directory(
             _ownership_hash_field(entry_hasher, relative)
             entry_hasher.update(stat.S_IMODE(metadata.st_mode).to_bytes(4, "big"))
             entry_hasher.update(child_digest)
+            inventory.append((os.fsdecode(relative), "directory"))
         elif stat.S_ISREG(metadata.st_mode):
             size, digest = _hash_owned_regular_file(
                 descriptor,
@@ -393,6 +397,7 @@ def _scan_owned_directory(
             entry_hasher.update(stat.S_IMODE(metadata.st_mode).to_bytes(4, "big"))
             entry_hasher.update(size.to_bytes(8, "big"))
             entry_hasher.update(digest_bytes)
+            inventory.append((os.fsdecode(relative), "file"))
         else:
             raise RuntimeError(
                 f"directory ownership scan refuses special content: {child_path}"
@@ -458,6 +463,7 @@ def capture_directory_ownership(
             entries=0,
             byte_count=0,
             metadata_bytes=0,
+            inventory=(),
         )
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     flags |= getattr(os, "O_CLOEXEC", 0)
@@ -467,6 +473,7 @@ def capture_directory_ownership(
         if _ownership_binding_identity(opened) != _ownership_binding_identity(metadata):
             raise RuntimeError(f"directory ownership root changed: {path}")
         budget = _OwnershipBudget()
+        inventory: list[tuple[str, str]] = []
         digest = _scan_owned_directory(
             descriptor,
             path,
@@ -474,6 +481,7 @@ def capture_directory_ownership(
             root_device=opened.st_dev,
             mount_points=_linux_mount_points(),
             budget=budget,
+            inventory=inventory,
             depth=0,
             required_root_file=required_root_file_bytes,
             allow_empty_root=allow_empty_root,
@@ -494,7 +502,28 @@ def capture_directory_ownership(
         entries=budget.entries,
         byte_count=budget.byte_count,
         metadata_bytes=budget.metadata_bytes,
+        inventory=tuple(sorted(inventory)),
     )
+
+
+def directory_ownership_inventory(
+    ownership: _TreeOwnership,
+) -> tuple[tuple[str, str], ...]:
+    """Return the bounded no-follow inventory captured with an ownership token."""
+
+    if not isinstance(ownership, _TreeOwnership):
+        raise TypeError("ownership must be a captured directory ownership token")
+    return ownership.inventory
+
+
+def directory_ownership_root_identity(
+    ownership: _TreeOwnership,
+) -> tuple[int, ...]:
+    """Return the no-follow root identity bound by an ownership token."""
+
+    if not isinstance(ownership, _TreeOwnership):
+        raise TypeError("ownership must be a captured directory ownership token")
+    return ownership.root_identity
 
 
 def _require_tree_ownership(
@@ -1356,6 +1385,8 @@ def publish_staged_directory(
 
 __all__ = [
     "capture_directory_ownership",
+    "directory_ownership_inventory",
+    "directory_ownership_root_identity",
     "discard_owned_directory",
     "lexical_directory_path",
     "publish_staged_directory",

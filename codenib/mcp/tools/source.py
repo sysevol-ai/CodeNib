@@ -39,11 +39,6 @@ def _repository_relative_source(ctx: ServerContext, value: str) -> str:
         raise ValueError("file_path must be a repository-relative POSIX path.")
 
     root = Path(ctx.manifest.repo_path).expanduser().resolve()
-    candidate = root
-    for part in path.parts:
-        candidate = candidate / part
-        if candidate.is_symlink():
-            raise ValueError("file_path must not traverse a symbolic link.")
     relative = safe_repo_relative_path(str(root), path_text)
     if relative != path_text:
         raise ValueError("file_path must resolve inside the repository checkout.")

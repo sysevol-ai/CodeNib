@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
+from .._contained_source import validate_repository_file
 from ..compiler.checkout_identity import checkout_commit
 from ..compiler.manifest import MANIFEST_FILENAME, MANIFEST_VERSION, RepoManifest
 from ..compiler.snapshot_store import normalize_repo
@@ -30,6 +31,7 @@ _REPOSITORY_RE = re.compile(r"^[a-z0-9_.-]+(?:/[a-z0-9_.-]+)*$")
 _DEFAULT_MAX_FILES = 100_000
 _DEFAULT_MAX_BYTES = 64 * 1024 * 1024 * 1024
 _MAX_METADATA_BYTES = 16 * 1024 * 1024
+_MAX_DOCUMENTS_BYTES = 256 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,7 +278,7 @@ def _validate_view_payloads(
         metadata = _load_json_object(
             root / metadata_relative,
             label="portable BM25 metadata",
-            max_bytes=inventory[metadata_relative][0],
+            max_bytes=_MAX_METADATA_BYTES,
         )
         if metadata.get("project_root") != "source":
             raise ValueError("portable BM25 project root must be 'source'")
@@ -284,7 +286,7 @@ def _validate_view_payloads(
             _document_source_paths(
                 root / documents_relative,
                 label="portable BM25 documents",
-                max_bytes=inventory[documents_relative][0],
+                max_bytes=_MAX_DOCUMENTS_BYTES,
             )
         )
 
@@ -311,7 +313,7 @@ def _validate_view_payloads(
                 _document_source_paths(
                     root.joinpath(*path.parts),
                     label=f"portable vector documents {relative}",
-                    max_bytes=inventory[relative][0],
+                    max_bytes=_MAX_DOCUMENTS_BYTES,
                 )
             )
     return tuple(sorted(source_paths))
@@ -572,15 +574,13 @@ def bind_context_artifact(
             "repository file count does not match the context artifact manifest"
         )
     for relative in artifact.source_paths:
-        candidate = repo.joinpath(*PurePosixPath(relative).parts)
-        resolved_source = candidate.resolve()
-        if not resolved_source.is_file() or (
-            resolved_source != repo and repo not in resolved_source.parents
-        ):
+        try:
+            validate_repository_file(repo, relative)
+        except ValueError as exc:
             raise ValueError(
-                "context artifact source path does not resolve to a file inside "
+                "context artifact source path is not a stable file inside "
                 f"the repository checkout: {relative}"
-            )
+            ) from exc
 
     manifest_data = artifact.manifest.to_dict()
     manifest_data["repo"]["path"] = str(repo)

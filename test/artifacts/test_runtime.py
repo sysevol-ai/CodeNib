@@ -39,7 +39,8 @@ from codenib.compiler.index_builders import VectorIndexBuilder
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
-from codenib.source_fingerprint import fingerprint_repository
+from codenib.mcp.tools.source import read_source_impl
+from codenib.source_fingerprint import RepositoryChangedError, fingerprint_repository
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -55,20 +56,26 @@ def _bm25_artifact(
     tmp_path: Path,
     *,
     source_symlink: bool = False,
+    internal_source_symlink: bool = False,
 ) -> tuple[Path, Path, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
     source = repo / "sample.py"
+    if source_symlink and internal_source_symlink:
+        raise ValueError("source symlink fixture modes are mutually exclusive")
     if source_symlink:
         outside = tmp_path / "outside.py"
         outside.write_text("SECRET = 'outside checkout'\n", encoding="utf-8")
         source.symlink_to(outside)
+    elif internal_source_symlink:
+        (repo / "real.py").write_text("VALUE = 1\n", encoding="utf-8")
+        source.symlink_to("real.py")
     else:
         source.write_text("VALUE = 1\n", encoding="utf-8")
     _git(repo, "init", "--quiet")
     _git(repo, "config", "user.name", "CodeNib Test")
     _git(repo, "config", "user.email", "codenib@example.invalid")
-    _git(repo, "add", "sample.py")
+    _git(repo, "add", ".")
     _git(repo, "commit", "--quiet", "-m", "fixture")
     commit = _git(repo, "rev-parse", "HEAD")
 
@@ -299,6 +306,34 @@ def test_verify_and_bind_artifact_before_loading_bm25(tmp_path: Path) -> None:
     assert "VALUE = 1" in (results[0].content or "")
 
 
+def test_stage_bind_query_and_mcp_accept_contained_source_symlink(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(
+        tmp_path,
+        internal_source_symlink=True,
+    )
+    binding = bind_context_artifact(
+        artifact,
+        repo,
+        expected_repository="example/project",
+        expected_commit=commit,
+    )
+    context = ServerContext.load(
+        binding.manifest,
+        views=["bm25"],
+        artifact={"repository": "example/project"},
+    )
+    context.source_verified = True
+    context.source_error = None
+
+    assert context.bm25 is not None
+    results = context.bm25.search("value", return_code_content=True)
+    assert "VALUE = 1" in (results[0].content or "")
+    source = read_source_impl(context, "sample.py", 1, 1)
+    assert source["content"] == "VALUE = 1\n"
+
+
 def test_bind_and_query_portable_semantic_artifact_without_pickle(
     tmp_path: Path,
 ) -> None:
@@ -421,11 +456,12 @@ def test_verify_rejects_unsafe_bm25_source_contract(tmp_path: Path) -> None:
         verify_context_artifact(artifact)
 
 
-def test_bind_rejects_source_symlink_outside_checkout(tmp_path: Path) -> None:
-    repo, artifact, _commit = _bm25_artifact(tmp_path, source_symlink=True)
-
-    with pytest.raises(ValueError, match="inside the repository checkout"):
-        bind_context_artifact(artifact, repo)
+def test_stage_rejects_source_symlink_outside_checkout(tmp_path: Path) -> None:
+    with pytest.raises(
+        (ValueError, RepositoryChangedError),
+        match="stable contained source|resolves outside|could not be read consistently",
+    ):
+        _bm25_artifact(tmp_path, source_symlink=True)
 
 
 def test_bind_rejects_checkout_commit_drift(tmp_path: Path) -> None:
