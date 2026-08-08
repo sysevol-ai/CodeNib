@@ -2342,20 +2342,37 @@ def _recover_bundle_file_publication(
     return quarantine
 
 
-def _cleanup_previous_bundle_file(
+def _is_expected_previous_bundle_file(
+    moved: os.stat_result,
+    opened: os.stat_result,
+    expected_identity: tuple[int, ...],
+) -> bool:
+    return (
+        not _is_link_or_reparse(moved)
+        and stat.S_ISREG(moved.st_mode)
+        and _file_boundary_identity(moved) == _file_boundary_identity(opened)
+        and _file_boundary_identity(opened) == expected_identity
+    )
+
+
+def _orphan_previous_bundle_file(
     backup: Path,
     destination: Path,
     *,
     previous_descriptor: int,
     previous_signature: tuple[int, ...],
 ) -> None:
-    """Quarantine the exact previous inode before destructive unlink."""
+    """Retain the exact previous inode under a discoverable orphan name.
+
+    Publication never unlinks this path.  A later ownership-aware GC pass may
+    reclaim ``.previous-orphan-*`` files after independently validating them.
+    """
 
     try:
-        cleanup = _reserve_file_slot(
+        orphan = _reserve_file_slot(
             destination.parent,
             destination.name,
-            suffix="previous-cleanup",
+            suffix="previous-orphan",
         )
     except OSError as exc:
         raise StorageIntegrityError(
@@ -2363,37 +2380,28 @@ def _cleanup_previous_bundle_file(
             f"output remains at {backup}"
         ) from exc
     try:
-        os.replace(backup, cleanup)
+        os.replace(backup, orphan)
     except OSError as exc:
         raise StorageIntegrityError(
             "view bundle publication committed; cleanup incomplete; previous "
             f"output remains at {backup}"
         ) from exc
     try:
-        moved = cleanup.lstat()
+        moved = orphan.lstat()
         opened = os.fstat(previous_descriptor)
     except OSError as exc:
         raise StorageIntegrityError(
             "view bundle publication committed; cleanup incomplete; previous "
-            f"output remains at {cleanup}"
+            f"output remains at {orphan}"
         ) from exc
-    if (
-        _is_link_or_reparse(moved)
-        or not stat.S_ISREG(moved.st_mode)
-        or _file_boundary_identity(moved) != _file_boundary_identity(opened)
-        or _file_boundary_identity(opened) != previous_signature
-    ):
+    if not _is_expected_previous_bundle_file(moved, opened, previous_signature):
         raise StorageIntegrityError(
             "view bundle publication committed; cleanup incomplete; untrusted "
-            f"previous output is preserved at {cleanup}"
+            f"previous output is preserved at {orphan}"
         )
-    try:
-        cleanup.unlink()
-    except OSError as exc:
-        raise StorageIntegrityError(
-            "view bundle publication committed; cleanup incomplete; previous "
-            f"output remains at {cleanup}"
-        ) from exc
+    # There is deliberately no path-based unlink after validation.  Even if
+    # another process replaces the orphan name now, publication cannot delete
+    # either the verified previous inode or the replacement.
 
 
 def _publish_open_bundle_file(
@@ -2550,7 +2558,7 @@ def _publish_open_bundle_file(
                 destination_was_missing=destination_was_missing,
             )
             raise
-        _cleanup_previous_bundle_file(
+        _orphan_previous_bundle_file(
             backup,
             destination,
             previous_descriptor=previous_descriptor,

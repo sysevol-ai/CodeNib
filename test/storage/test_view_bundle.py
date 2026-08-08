@@ -685,7 +685,7 @@ def test_build_preserves_output_that_appears_at_publication_boundary(
     assert quarantines[0].read_bytes() == b"late foreign output"
 
 
-def test_build_preserves_swapped_old_backup_before_destructive_cleanup(
+def test_build_preserves_swapped_old_backup_during_orphan_validation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -703,7 +703,7 @@ def test_build_preserves_swapped_old_backup_before_destructive_cleanup(
         if (
             not swapped
             and source_path.name.startswith(".bundle.zip.previous-")
-            and destination_path.name.startswith(".bundle.zip.previous-cleanup-")
+            and destination_path.name.startswith(".bundle.zip.previous-orphan-")
         ):
             swapped = True
             source_path.rename(stolen)
@@ -718,9 +718,66 @@ def test_build_preserves_swapped_old_backup_before_destructive_cleanup(
     assert swapped
     verify_view_bundle(archive, expected_view_type="bm25")
     assert stolen.read_bytes() == b"previous bundle"
-    cleanups = list(tmp_path.glob(".bundle.zip.previous-cleanup-*"))
-    assert len(cleanups) == 1
-    assert cleanups[0].read_bytes() == b"foreign backup"
+    orphans = list(tmp_path.glob(".bundle.zip.previous-orphan-*"))
+    assert len(orphans) == 1
+    assert orphans[0].read_bytes() == b"foreign backup"
+    assert not list(tmp_path.glob(".bundle.zip.quarantine-*"))
+
+
+def test_build_retains_verified_previous_bundle_as_discoverable_orphan(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    archive.write_bytes(b"previous bundle")
+
+    built = build_view_bundle(source, archive, view_type="bm25")
+
+    assert verify_view_bundle(archive, expected_view_type="bm25") == built
+    orphans = list(tmp_path.glob(".bundle.zip.previous-orphan-*"))
+    assert len(orphans) == 1
+    assert orphans[0].read_bytes() == b"previous bundle"
+
+
+def test_build_never_unlinks_orphan_replaced_after_identity_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    archive.write_bytes(b"previous bundle")
+    stolen = tmp_path / "stolen-validated-previous-bundle"
+    real_previous_validator = bundle_module._is_expected_previous_bundle_file
+    swapped = False
+
+    def swap_orphan_after_identity_validation(
+        moved: os.stat_result,
+        opened: os.stat_result,
+        expected_identity: tuple[int, ...],
+    ) -> bool:
+        nonlocal swapped
+        valid = real_previous_validator(moved, opened, expected_identity)
+        if valid:
+            orphan = next(tmp_path.glob(".bundle.zip.previous-orphan-*"))
+            orphan.rename(stolen)
+            orphan.write_bytes(b"foreign orphan")
+            swapped = True
+        return valid
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_is_expected_previous_bundle_file",
+        swap_orphan_after_identity_validation,
+    )
+
+    built = build_view_bundle(source, archive, view_type="bm25")
+
+    assert swapped
+    assert verify_view_bundle(archive, expected_view_type="bm25") == built
+    assert stolen.read_bytes() == b"previous bundle"
+    orphans = list(tmp_path.glob(".bundle.zip.previous-orphan-*"))
+    assert len(orphans) == 1
+    assert orphans[0].read_bytes() == b"foreign orphan"
     assert not list(tmp_path.glob(".bundle.zip.quarantine-*"))
 
 

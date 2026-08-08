@@ -342,14 +342,62 @@ def test_publish_staged_directory_does_not_reacquire_swapped_backup(
         swap_backup_then_remove,
     )
 
-    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "publication committed; cleanup incomplete; previous output identity lost"
+        ),
+    ):
         publish_staged_directory(stage, destination)
 
-    assert (destination / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    assert (destination / "new.txt").read_text(encoding="utf-8") == "new"
     assert (stolen / "old.txt").read_text(encoding="utf-8") == "old"
-    quarantines = list(tmp_path.glob(".published.quarantine-*"))
-    assert len(quarantines) == 1
-    assert (quarantines[0] / "new.txt").read_text(encoding="utf-8") == "new"
+    backups = list(tmp_path.glob(".published.previous-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    assert not list(tmp_path.glob(".published.quarantine-*"))
+
+
+def test_publish_staged_directory_never_restores_swapped_callback_backup(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    stolen = tmp_path / "stolen-old"
+    callback_calls = 0
+
+    def swap_backup_on_second_validation(path: Path) -> None:
+        nonlocal callback_calls
+        callback_calls += 1
+        if callback_calls == 2:
+            path.rename(stolen)
+            path.mkdir()
+            (path / "foreign.txt").write_text("preserve", encoding="utf-8")
+            raise RuntimeError("injected second validation failure")
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "publication committed; cleanup incomplete; previous output identity lost"
+        ),
+    ):
+        publish_staged_directory(
+            stage,
+            destination,
+            validate_moved_destination=swap_backup_on_second_validation,
+        )
+
+    assert callback_calls == 2
+    assert (destination / "new.txt").read_text(encoding="utf-8") == "new"
+    assert (stolen / "old.txt").read_text(encoding="utf-8") == "old"
+    backups = list(tmp_path.glob(".published.previous-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    assert not list(tmp_path.glob(".published.quarantine-*"))
 
 
 def test_publish_staged_directory_does_not_rollback_after_cleanup_starts(

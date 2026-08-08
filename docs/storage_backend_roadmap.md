@@ -187,12 +187,16 @@ and directory modes are not a portable bundle contract. The destination rename
 is the old tree's ownership linearization point; both the moved old tree and the
 published new tree are revalidated against their full ownership tokens before
 cleanup. Cleanup is fully preflighted: failure before its first unlink/rmdir can
-roll back, while failure after deletion starts leaves the verified new output
-committed and preserves the partial backup for recovery. Secure extraction
+roll back only while the backup retains the captured moved-root identity. If
+that identity is lost, or deletion has started, the verified new output remains
+committed and the backup path is preserved for recovery. Secure extraction
 requires no-follow directory-fd support and never writes through the replaceable
 stage pathname. Archive builders publish the verified open temporary inode with
-a same-filesystem no-clobber link, move the previous file to a unique cleanup
-name, revalidate it against the still-open descriptor, and only then unlink it.
+a same-filesystem no-clobber link, move the previous file to a discoverable
+`.previous-orphan-*` name, and revalidate it against the still-open descriptor.
+Publication never unlinks that orphan pathname, so a concurrent replacement is
+also preserved; controlled M5 GC is responsible for reclaiming verified old
+files and missing-destination sentinels.
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
@@ -262,6 +266,8 @@ Status: pending.
   contamination.
 - Add snapshot leases, pins, retention policy, mark-and-sweep GC, and crash
   recovery.
+- Discover and ownership-validate view-bundle `.previous-orphan-*` files before
+  reclaiming verified old outputs and missing-destination sentinels.
 - Add path-aware overlay upsert/delete generations and owner isolation.
 
 ### M6: PostgreSQL and object-storage deployment

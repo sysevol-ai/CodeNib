@@ -33,6 +33,10 @@ class _RemovalState:
     destructive_started: bool = False
 
 
+class _PreviousOutputIdentityLost(RuntimeError):
+    """The moved previous tree can no longer be trusted for rollback."""
+
+
 def _lexical_child_of_resolved_parent(path: Path) -> Path:
     """Resolve the parent without ever following the final path component."""
 
@@ -362,7 +366,27 @@ def _recover_invalid_publication(
     destination: Path,
     *,
     destination_was_missing: bool,
+    expected_backup_identity: tuple[int, ...] | None = None,
 ) -> Path | None:
+    if expected_backup_identity is not None:
+        try:
+            backup_metadata = _directory_or_missing(
+                backup,
+                label="previous destination",
+            )
+        except (OSError, ValueError) as exc:
+            raise _PreviousOutputIdentityLost(
+                "publication committed; cleanup incomplete; previous output "
+                "identity lost"
+            ) from exc
+        if (
+            backup_metadata is None
+            or _directory_identity(backup_metadata) != expected_backup_identity
+        ):
+            raise _PreviousOutputIdentityLost(
+                "publication committed; cleanup incomplete; previous output "
+                "identity lost"
+            )
     try:
         quarantine = _quarantine_destination(destination)
     except Exception as quarantine_error:
@@ -412,10 +436,11 @@ def publish_staged_directory(
     point. ``validate_moved_destination`` runs against that exact moved tree
     both before and after stage publication. ``validate_published_destination``
     binds the new tree's complete ownership token before cleanup. All cleanup
-    preflight runs before deletion; until the first unlink/rmdir, failure can
-    quarantine the new tree and restore the old one. Once destructive cleanup
-    starts, publication is committed: failures retain the new destination and
-    report the partial backup instead of restoring incomplete old state.
+    preflight runs before deletion. Until the first unlink/rmdir, failure can
+    quarantine the new tree and restore the old one only while the moved old
+    root still has its captured identity. If that identity is lost, or once
+    destructive cleanup starts, publication is committed: failures retain the
+    new destination and preserve whatever remains at the backup path.
     """
 
     # Only parents are resolved.  Resolving the final destination component
@@ -594,6 +619,7 @@ def publish_staged_directory(
             backup,
             destination,
             destination_was_missing=destination_was_missing,
+            expected_backup_identity=_directory_identity(moved_metadata),
         )
         quarantine_message = (
             f" at {quarantine}" if quarantine is not None else " because it vanished"
@@ -607,17 +633,22 @@ def publish_staged_directory(
             backup,
             destination,
             destination_was_missing=destination_was_missing,
+            expected_backup_identity=_directory_identity(moved_metadata),
         )
         raise
     if validate_moved_destination is not None and not destination_was_missing:
         try:
             validate_moved_destination(backup)
         except Exception as cleanup_error:
-            quarantine = _recover_invalid_publication(
-                backup,
-                destination,
-                destination_was_missing=destination_was_missing,
-            )
+            try:
+                quarantine = _recover_invalid_publication(
+                    backup,
+                    destination,
+                    destination_was_missing=destination_was_missing,
+                    expected_backup_identity=_directory_identity(moved_metadata),
+                )
+            except _PreviousOutputIdentityLost as recovery_error:
+                raise recovery_error from cleanup_error
             quarantine_message = (
                 f" at {quarantine}"
                 if quarantine is not None
@@ -645,6 +676,7 @@ def publish_staged_directory(
             backup,
             destination,
             destination_was_missing=destination_was_missing,
+            expected_backup_identity=_directory_identity(moved_metadata),
         )
         quarantine_message = (
             f" at {quarantine}" if quarantine is not None else " because it vanished"
