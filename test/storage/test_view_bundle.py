@@ -685,7 +685,60 @@ def test_build_preserves_output_that_appears_at_publication_boundary(
     assert quarantines[0].read_bytes() == b"late foreign output"
 
 
-def test_build_preserves_swapped_old_backup_during_orphan_validation(
+def test_build_never_reserves_or_unlinks_a_second_previous_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    archive.write_bytes(b"previous bundle")
+    real_link = os.link
+    real_unlink = Path.unlink
+    real_reserve = bundle_module._reserve_file_slot
+    published = False
+    injected = False
+    post_publication_reserves = 0
+
+    def mark_publication(source_path, destination_path, **kwargs: object):
+        nonlocal published
+        result = real_link(source_path, destination_path, **kwargs)
+        if Path(destination_path) == archive:
+            published = True
+        return result
+
+    def record_reservation(parent: Path, name: str, *, suffix: str) -> Path:
+        nonlocal post_publication_reserves
+        if published and suffix.startswith("previous"):
+            post_publication_reserves += 1
+        return real_reserve(parent, name, suffix=suffix)
+
+    def inject_foreign_before_reserved_path_unlink(
+        path: Path,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        nonlocal injected
+        if published and path.name.startswith(".bundle.zip.previous-"):
+            injected = True
+            path.rename(tmp_path / "stolen-reserved-slot")
+            path.write_bytes(b"foreign reserved path")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(bundle_module.os, "link", mark_publication)
+    monkeypatch.setattr(bundle_module, "_reserve_file_slot", record_reservation)
+    monkeypatch.setattr(Path, "unlink", inject_foreign_before_reserved_path_unlink)
+
+    built = build_view_bundle(source, archive, view_type="bm25")
+
+    assert not injected
+    assert post_publication_reserves == 0
+    assert verify_view_bundle(archive, expected_view_type="bm25") == built
+    backups = list(tmp_path.glob(".bundle.zip.previous-*"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == b"previous bundle"
+
+
+def test_build_never_renames_previous_backup_after_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -693,35 +746,46 @@ def test_build_preserves_swapped_old_backup_during_orphan_validation(
     archive = tmp_path / "bundle.zip"
     archive.write_bytes(b"previous bundle")
     stolen = tmp_path / "stolen-previous-bundle"
+    real_link = os.link
     real_replace = os.replace
-    swapped = False
+    published = False
+    injected = False
 
-    def swap_backup_before_cleanup(source_path, destination_path):
-        nonlocal swapped
+    def mark_publication(source_path, destination_path, **kwargs: object):
+        nonlocal published
+        result = real_link(source_path, destination_path, **kwargs)
+        if Path(destination_path) == archive:
+            published = True
+        return result
+
+    def inject_foreign_before_secondary_replace(source_path, destination_path):
+        nonlocal injected
         source_path = Path(source_path)
-        destination_path = Path(destination_path)
         if (
-            not swapped
+            published
+            and not injected
             and source_path.name.startswith(".bundle.zip.previous-")
-            and destination_path.name.startswith(".bundle.zip.previous-orphan-")
         ):
-            swapped = True
+            injected = True
             source_path.rename(stolen)
             source_path.write_bytes(b"foreign backup")
         return real_replace(source_path, destination_path)
 
-    monkeypatch.setattr(bundle_module.os, "replace", swap_backup_before_cleanup)
+    monkeypatch.setattr(bundle_module.os, "link", mark_publication)
+    monkeypatch.setattr(
+        bundle_module.os,
+        "replace",
+        inject_foreign_before_secondary_replace,
+    )
 
-    with pytest.raises(StorageIntegrityError, match="committed; cleanup incomplete"):
-        build_view_bundle(source, archive, view_type="bm25")
+    built = build_view_bundle(source, archive, view_type="bm25")
 
-    assert swapped
-    verify_view_bundle(archive, expected_view_type="bm25")
-    assert stolen.read_bytes() == b"previous bundle"
-    orphans = list(tmp_path.glob(".bundle.zip.previous-orphan-*"))
-    assert len(orphans) == 1
-    assert orphans[0].read_bytes() == b"foreign backup"
-    assert not list(tmp_path.glob(".bundle.zip.quarantine-*"))
+    assert not injected
+    assert verify_view_bundle(archive, expected_view_type="bm25") == built
+    backups = list(tmp_path.glob(".bundle.zip.previous-*"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == b"previous bundle"
+    assert not stolen.exists()
 
 
 def test_build_retains_verified_previous_bundle_as_discoverable_orphan(
@@ -734,7 +798,7 @@ def test_build_retains_verified_previous_bundle_as_discoverable_orphan(
     built = build_view_bundle(source, archive, view_type="bm25")
 
     assert verify_view_bundle(archive, expected_view_type="bm25") == built
-    orphans = list(tmp_path.glob(".bundle.zip.previous-orphan-*"))
+    orphans = list(tmp_path.glob(".bundle.zip.previous-*"))
     assert len(orphans) == 1
     assert orphans[0].read_bytes() == b"previous bundle"
 
@@ -758,7 +822,7 @@ def test_build_never_unlinks_orphan_replaced_after_identity_validation(
         nonlocal swapped
         valid = real_previous_validator(moved, opened, expected_identity)
         if valid:
-            orphan = next(tmp_path.glob(".bundle.zip.previous-orphan-*"))
+            orphan = next(tmp_path.glob(".bundle.zip.previous-*"))
             orphan.rename(stolen)
             orphan.write_bytes(b"foreign orphan")
             swapped = True
@@ -775,7 +839,7 @@ def test_build_never_unlinks_orphan_replaced_after_identity_validation(
     assert swapped
     assert verify_view_bundle(archive, expected_view_type="bm25") == built
     assert stolen.read_bytes() == b"previous bundle"
-    orphans = list(tmp_path.glob(".bundle.zip.previous-orphan-*"))
+    orphans = list(tmp_path.glob(".bundle.zip.previous-*"))
     assert len(orphans) == 1
     assert orphans[0].read_bytes() == b"foreign orphan"
     assert not list(tmp_path.glob(".bundle.zip.quarantine-*"))

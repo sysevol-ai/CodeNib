@@ -366,27 +366,30 @@ def _recover_invalid_publication(
     destination: Path,
     *,
     destination_was_missing: bool,
-    expected_backup_identity: tuple[int, ...] | None = None,
+    expected_backup_identity: tuple[int, ...],
+    published_output_trusted: bool,
 ) -> Path | None:
-    if expected_backup_identity is not None:
+    def require_expected_backup(*, message: str) -> None:
         try:
             backup_metadata = _directory_or_missing(
                 backup,
                 label="previous destination",
             )
         except (OSError, ValueError) as exc:
-            raise _PreviousOutputIdentityLost(
-                "publication committed; cleanup incomplete; previous output "
-                "identity lost"
-            ) from exc
+            raise _PreviousOutputIdentityLost(message) from exc
         if (
             backup_metadata is None
             or _directory_identity(backup_metadata) != expected_backup_identity
         ):
-            raise _PreviousOutputIdentityLost(
+            raise _PreviousOutputIdentityLost(message)
+
+    if published_output_trusted:
+        require_expected_backup(
+            message=(
                 "publication committed; cleanup incomplete; previous output "
                 "identity lost"
             )
+        )
     try:
         quarantine = _quarantine_destination(destination)
     except Exception as quarantine_error:
@@ -395,6 +398,19 @@ def _recover_invalid_publication(
             f"output remains at {destination} and the previous output remains "
             f"at {backup}"
         ) from quarantine_error
+    if not published_output_trusted:
+        suspect_disposition = (
+            f"suspect output was quarantined at {quarantine}"
+            if quarantine is not None
+            else "suspect output vanished before quarantine"
+        )
+        require_expected_backup(
+            message=(
+                "published directory identity failed validation; "
+                f"{suspect_disposition}; previous output identity lost; active "
+                "destination is absent"
+            )
+        )
     try:
         _restore_previous_directory(
             backup,
@@ -436,11 +452,11 @@ def publish_staged_directory(
     point. ``validate_moved_destination`` runs against that exact moved tree
     both before and after stage publication. ``validate_published_destination``
     binds the new tree's complete ownership token before cleanup. All cleanup
-    preflight runs before deletion. Until the first unlink/rmdir, failure can
-    quarantine the new tree and restore the old one only while the moved old
-    root still has its captured identity. If that identity is lost, or once
-    destructive cleanup starts, publication is committed: failures retain the
-    new destination and preserve whatever remains at the backup path.
+    preflight runs before deletion. An untrusted published tree is quarantined
+    before the previous root is considered for restoration. During cleanup,
+    the already-verified new tree stays active if the moved old root loses its
+    captured identity. Once destructive cleanup starts, publication is also
+    committed and failures preserve whatever remains at the backup path.
     """
 
     # Only parents are resolved.  Resolving the final destination component
@@ -620,6 +636,7 @@ def publish_staged_directory(
             destination,
             destination_was_missing=destination_was_missing,
             expected_backup_identity=_directory_identity(moved_metadata),
+            published_output_trusted=False,
         )
         quarantine_message = (
             f" at {quarantine}" if quarantine is not None else " because it vanished"
@@ -634,6 +651,7 @@ def publish_staged_directory(
             destination,
             destination_was_missing=destination_was_missing,
             expected_backup_identity=_directory_identity(moved_metadata),
+            published_output_trusted=False,
         )
         raise
     if validate_moved_destination is not None and not destination_was_missing:
@@ -646,6 +664,7 @@ def publish_staged_directory(
                     destination,
                     destination_was_missing=destination_was_missing,
                     expected_backup_identity=_directory_identity(moved_metadata),
+                    published_output_trusted=True,
                 )
             except _PreviousOutputIdentityLost as recovery_error:
                 raise recovery_error from cleanup_error
@@ -677,6 +696,7 @@ def publish_staged_directory(
             destination,
             destination_was_missing=destination_was_missing,
             expected_backup_identity=_directory_identity(moved_metadata),
+            published_output_trusted=True,
         )
         quarantine_message = (
             f" at {quarantine}" if quarantine is not None else " because it vanished"

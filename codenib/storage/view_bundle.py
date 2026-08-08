@@ -2355,52 +2355,35 @@ def _is_expected_previous_bundle_file(
     )
 
 
-def _orphan_previous_bundle_file(
+def _retain_previous_bundle_file(
     backup: Path,
-    destination: Path,
     *,
     previous_descriptor: int,
     previous_signature: tuple[int, ...],
 ) -> None:
-    """Retain the exact previous inode under a discoverable orphan name.
+    """Validate and retain the initial previous-file backup as an orphan.
 
-    Publication never unlinks this path.  A later ownership-aware GC pass may
-    reclaim ``.previous-orphan-*`` files after independently validating them.
+    The initial destination-to-``.previous-*`` rename is the only handoff.
+    Successful publication never reserves another name, renames this path, or
+    unlinks it.  A later ownership-aware GC pass may reclaim the orphan after
+    independently validating it.
     """
 
     try:
-        orphan = _reserve_file_slot(
-            destination.parent,
-            destination.name,
-            suffix="previous-orphan",
-        )
-    except OSError as exc:
-        raise StorageIntegrityError(
-            "view bundle publication committed; cleanup incomplete; previous "
-            f"output remains at {backup}"
-        ) from exc
-    try:
-        os.replace(backup, orphan)
-    except OSError as exc:
-        raise StorageIntegrityError(
-            "view bundle publication committed; cleanup incomplete; previous "
-            f"output remains at {backup}"
-        ) from exc
-    try:
-        moved = orphan.lstat()
+        moved = backup.lstat()
         opened = os.fstat(previous_descriptor)
     except OSError as exc:
         raise StorageIntegrityError(
             "view bundle publication committed; cleanup incomplete; previous "
-            f"output remains at {orphan}"
+            f"output remains at {backup}"
         ) from exc
     if not _is_expected_previous_bundle_file(moved, opened, previous_signature):
         raise StorageIntegrityError(
             "view bundle publication committed; cleanup incomplete; untrusted "
-            f"previous output is preserved at {orphan}"
+            f"previous output is preserved at {backup}"
         )
-    # There is deliberately no path-based unlink after validation.  Even if
-    # another process replaces the orphan name now, publication cannot delete
+    # There is deliberately no path operation after validation.  Even if
+    # another process replaces the backup name now, publication cannot delete
     # either the verified previous inode or the replacement.
 
 
@@ -2558,9 +2541,8 @@ def _publish_open_bundle_file(
                 destination_was_missing=destination_was_missing,
             )
             raise
-        _orphan_previous_bundle_file(
+        _retain_previous_bundle_file(
             backup,
-            destination,
             previous_descriptor=previous_descriptor,
             previous_signature=previous_signature,
         )

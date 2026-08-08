@@ -209,6 +209,92 @@ def test_publish_staged_directory_quarantines_failed_published_identity(
     assert not stage.exists()
 
 
+def test_published_boundary_quarantines_new_before_lost_backup_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    stolen = tmp_path / "stolen-old"
+    real_replace = os.replace
+
+    def lose_backup_after_publish(source, target):
+        result = real_replace(source, target)
+        if Path(source) == stage and Path(target) == destination:
+            backup = next(tmp_path.glob(".published.previous-*"))
+            backup.rename(stolen)
+            backup.mkdir()
+            (backup / "foreign.txt").write_text("preserve", encoding="utf-8")
+            (destination / "late.txt").write_text("late", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(atomic_module.os, "replace", lose_backup_after_publish)
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "suspect output was quarantined at .*previous output identity lost; "
+            "active destination is absent"
+        ),
+    ):
+        publish_staged_directory(stage, destination)
+
+    assert not destination.exists()
+    assert (stolen / "old.txt").read_text(encoding="utf-8") == "old"
+    backups = list(tmp_path.glob(".published.previous-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    quarantines = list(tmp_path.glob(".published.quarantine-*"))
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "new.txt").read_text(encoding="utf-8") == "new"
+    assert (quarantines[0] / "late.txt").read_text(encoding="utf-8") == "late"
+
+
+def test_published_callback_quarantines_new_before_lost_backup_check(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    stolen = tmp_path / "stolen-old"
+
+    def lose_backup_during_published_validation(_path: Path) -> None:
+        backup = next(tmp_path.glob(".published.previous-*"))
+        backup.rename(stolen)
+        backup.mkdir()
+        (backup / "foreign.txt").write_text("preserve", encoding="utf-8")
+        raise RuntimeError("injected published-token validation failure")
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "suspect output was quarantined at .*previous output identity lost; "
+            "active destination is absent"
+        ),
+    ):
+        publish_staged_directory(
+            stage,
+            destination,
+            validate_published_destination=lose_backup_during_published_validation,
+        )
+
+    assert not destination.exists()
+    assert (stolen / "old.txt").read_text(encoding="utf-8") == "old"
+    backups = list(tmp_path.glob(".published.previous-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    quarantines = list(tmp_path.glob(".published.quarantine-*"))
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "new.txt").read_text(encoding="utf-8") == "new"
+
+
 def test_publish_staged_directory_rolls_back_before_mounted_tree_cleanup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -188,15 +188,17 @@ is the old tree's ownership linearization point; both the moved old tree and the
 published new tree are revalidated against their full ownership tokens before
 cleanup. Cleanup is fully preflighted: failure before its first unlink/rmdir can
 roll back only while the backup retains the captured moved-root identity. If
-that identity is lost, or deletion has started, the verified new output remains
-committed and the backup path is preserved for recovery. Secure extraction
-requires no-follow directory-fd support and never writes through the replaceable
-stage pathname. Archive builders publish the verified open temporary inode with
-a same-filesystem no-clobber link, move the previous file to a discoverable
-`.previous-orphan-*` name, and revalidate it against the still-open descriptor.
-Publication never unlinks that orphan pathname, so a concurrent replacement is
-also preserved; controlled M5 GC is responsible for reclaiming verified old
-files and missing-destination sentinels.
+that identity is lost after the new tree is verified, the new output remains
+active; if boundary validation has not succeeded, the suspect new tree is
+quarantined first and the active destination remains absent. Deletion failures
+after cleanup starts also retain the verified new output and preserve the
+partial backup. Secure extraction requires no-follow directory-fd support and
+never writes through the replaceable stage pathname. Archive builders publish
+the verified open temporary inode with a same-filesystem no-clobber link. The
+original destination-to-`.previous-*` rename is the only old-file handoff; after
+publication, builders only revalidate that path against the still-open previous
+descriptor and never reserve, rename, or unlink it. Controlled M5 GC is
+responsible for reclaiming verified old files and missing-destination sentinels.
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
@@ -266,7 +268,7 @@ Status: pending.
   contamination.
 - Add snapshot leases, pins, retention policy, mark-and-sweep GC, and crash
   recovery.
-- Discover and ownership-validate view-bundle `.previous-orphan-*` files before
+- Discover and ownership-validate view-bundle `.previous-*` files before
   reclaiming verified old outputs and missing-destination sentinels.
 - Add path-aware overlay upsert/delete generations and owner isolation.
 
