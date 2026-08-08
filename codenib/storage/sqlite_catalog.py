@@ -842,6 +842,111 @@ _SCHEMA_V3 = (
         SELECT RAISE(ABORT, 'referenced objects cannot be deleted');
     END
     """,
+    """
+    CREATE TRIGGER view_generations_reject_duplicate_inserts
+    BEFORE INSERT ON view_generations
+    WHEN EXISTS (
+        SELECT 1 FROM view_generations AS existing
+        WHERE existing.view_generation_id = NEW.view_generation_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate view generation insert is forbidden');
+    END
+    """,
+    """
+    CREATE TRIGGER referenced_view_generations_cannot_be_deleted
+    BEFORE DELETE ON view_generations
+    WHEN EXISTS (
+        SELECT 1 FROM snapshot_views AS member
+        WHERE member.view_generation_id = OLD.view_generation_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'referenced view generations cannot be deleted');
+    END
+    """,
+    """
+    CREATE TRIGGER snapshots_reject_duplicate_inserts
+    BEFORE INSERT ON snapshots
+    WHEN EXISTS (
+        SELECT 1 FROM snapshots AS existing
+        WHERE existing.snapshot_id = NEW.snapshot_id
+            OR (
+                existing.repository_id = NEW.repository_id
+                AND existing.content_digest = NEW.content_digest
+            )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate snapshot insert is forbidden');
+    END
+    """,
+    """
+    CREATE TRIGGER referenced_snapshots_cannot_be_deleted
+    BEFORE DELETE ON snapshots
+    WHEN EXISTS (
+        SELECT 1 FROM refs AS ref
+        WHERE ref.snapshot_id = OLD.snapshot_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'referenced snapshots cannot be deleted');
+    END
+    """,
+    """
+    CREATE TRIGGER refs_reject_duplicate_inserts
+    BEFORE INSERT ON refs
+    WHEN EXISTS (
+        SELECT 1 FROM refs AS existing
+        WHERE existing.repository_id = NEW.repository_id
+            AND existing.ref_name = NEW.ref_name
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate ref insert is forbidden');
+    END
+    """,
+    """
+    CREATE TRIGGER refs_cannot_be_deleted
+    BEFORE DELETE ON refs
+    BEGIN
+        SELECT RAISE(ABORT, 'refs cannot be deleted');
+    END
+    """,
+    """
+    CREATE TRIGGER ref_identity_is_immutable
+    BEFORE UPDATE ON refs
+    WHEN
+        NEW.repository_id IS NOT OLD.repository_id
+        OR NEW.ref_name IS NOT OLD.ref_name
+    BEGIN
+        SELECT RAISE(ABORT, 'ref identity is immutable');
+    END
+    """,
+    "DROP TRIGGER refs_require_ready_snapshot_on_insert",
+    "DROP TRIGGER refs_require_ready_snapshot_on_update",
+    """
+    CREATE TRIGGER refs_require_ready_snapshot_on_insert
+    BEFORE INSERT ON refs
+    WHEN NOT EXISTS (
+        SELECT 1 FROM snapshots AS snapshot
+        WHERE snapshot.snapshot_id = NEW.snapshot_id
+            AND snapshot.repository_id = NEW.repository_id
+            AND snapshot.status = 'ready'
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'refs may only target ready snapshots in their repository');
+    END
+    """,
+    """
+    CREATE TRIGGER refs_require_ready_snapshot_on_update
+    BEFORE UPDATE ON refs
+    WHEN NOT EXISTS (
+        SELECT 1 FROM snapshots AS snapshot
+        WHERE snapshot.snapshot_id = NEW.snapshot_id
+            AND snapshot.repository_id = NEW.repository_id
+            AND snapshot.status = 'ready'
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'refs may only target ready snapshots in their repository');
+    END
+    """,
 )
 
 _MIGRATIONS: dict[int, tuple[str, ...]] = {
@@ -1999,29 +2104,34 @@ class SQLiteCatalog:
                     "view type does not match the view profile"
                 )
             self._require_record("objects", "digest", digest)
-            self._connection.execute(
-                """
-                INSERT OR IGNORE INTO view_generations(
-                    view_generation_id, repository_id, source_revision_id,
-                    profile_id, view_type, object_digest, schema_version,
-                    metadata_json, status, created_at, ready_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'staged', ?, NULL)
-                """,
-                (
-                    view_generation_id,
-                    repository,
-                    source,
-                    profile,
-                    normalized_view_type,
-                    digest,
-                    normalized_schema_version,
-                    metadata_json,
-                    _now(),
-                ),
-            )
-            row = self._require_record(
-                "view_generations", "view_generation_id", view_generation_id
-            )
+            row = self._connection.execute(
+                "SELECT * FROM view_generations WHERE view_generation_id = ?",
+                (view_generation_id,),
+            ).fetchone()
+            if row is None:
+                self._connection.execute(
+                    """
+                    INSERT INTO view_generations(
+                        view_generation_id, repository_id, source_revision_id,
+                        profile_id, view_type, object_digest, schema_version,
+                        metadata_json, status, created_at, ready_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'staged', ?, NULL)
+                    """,
+                    (
+                        view_generation_id,
+                        repository,
+                        source,
+                        profile,
+                        normalized_view_type,
+                        digest,
+                        normalized_schema_version,
+                        metadata_json,
+                        _now(),
+                    ),
+                )
+                row = self._require_record(
+                    "view_generations", "view_generation_id", view_generation_id
+                )
             expected = (
                 repository,
                 source,
@@ -2340,10 +2450,17 @@ class SQLiteCatalog:
         expected_source_id = source_identity.source_revision_id
         if (
             namespace_row["namespace_id"] != expected_namespace_id
+            or namespace_row["name"] != namespace_name
             or repository_row["repository_id"] != repository_identity.repository_id
+            or repository_row["namespace_id"] != repository_identity.namespace_id
+            or repository_row["repository_key"] != repository_identity.repository_key
             or source_row["repository_id"] != repository_row["repository_id"]
             or source_row["source_revision_id"] != expected_source_id
             or source_row["identity_digest"] != expected_source_id.removeprefix("src_")
+            or source_row["source_kind"] != source_identity.source_kind
+            or source_row["commit_sha"] != source_identity.commit_sha
+            or source_row["tree_sha"] != source_identity.tree_sha
+            or source_row["source_fingerprint"] != source_identity.source_fingerprint
         ):
             raise CatalogConflictError(
                 "repository or source revision identity conflicts"
@@ -2525,6 +2642,10 @@ class SQLiteCatalog:
                     f"ref {normalized_ref!r} has invalid publication metadata"
                 ) from exc
             manifest = self._manifest_summary(row["snapshot_id"])
+            if manifest["repository_id"] != repository:
+                raise CatalogConflictError(
+                    f"ref {normalized_ref!r} targets another repository"
+                )
             return {
                 "repository_id": repository,
                 "ref_name": normalized_ref,
@@ -2554,11 +2675,63 @@ class SQLiteCatalog:
             "source_revisions", "source_revision_id", snapshot["source_revision_id"]
         )
         self._validate_repository_source_identity(repository, source)
+        raw_member_rows = self._connection.execute(
+            """
+            SELECT view_type, view_generation_id
+            FROM snapshot_views
+            WHERE snapshot_id = ?
+            ORDER BY view_type
+            """,
+            (snapshot_id,),
+        ).fetchall()
+        raw_members: list[tuple[str, str]] = []
+        for member in raw_member_rows:
+            try:
+                view_type = _required_text(member["view_type"], "snapshot view type")
+                generation_id = _required_text(
+                    member["view_generation_id"], "snapshot view generation ID"
+                )
+            except (TypeError, CatalogValidationError) as exc:
+                raise CatalogConflictError(
+                    "snapshot membership is not canonical"
+                ) from exc
+            if (
+                member["view_type"] != view_type
+                or member["view_generation_id"] != generation_id
+            ):
+                raise CatalogConflictError("snapshot membership is not canonical")
+            raw_members.append((view_type, generation_id))
+        if (
+            not raw_members
+            or len({view_type for view_type, _ in raw_members}) != len(raw_members)
+            or len({generation_id for _, generation_id in raw_members})
+            != len(raw_members)
+        ):
+            raise CatalogConflictError("snapshot membership is incomplete")
+
+        expected_snapshot_id = content_id(
+            "snapshot",
+            {
+                "repository_id": snapshot["repository_id"],
+                "source_revision_id": snapshot["source_revision_id"],
+                "views": raw_members,
+            },
+        )
+        if snapshot["snapshot_id"] != expected_snapshot_id or snapshot[
+            "content_digest"
+        ] != expected_snapshot_id.removeprefix("snapshot_"):
+            raise CatalogConflictError("snapshot content identity conflicts")
+
         view_rows = self._connection.execute(
             """
             SELECT
-                sv.view_type,
+                sv.view_type AS snapshot_view_type,
+                sv.view_generation_id AS selected_view_generation_id,
                 vg.view_generation_id,
+                vg.repository_id,
+                vg.source_revision_id,
+                vg.profile_id,
+                vg.view_type,
                 vg.schema_version,
                 vg.metadata_json,
                 vg.object_digest,
@@ -2580,14 +2753,31 @@ class SQLiteCatalog:
             """,
             (snapshot_id,),
         ).fetchall()
+        joined_members = [
+            (row["snapshot_view_type"], row["selected_view_generation_id"])
+            for row in view_rows
+        ]
+        if joined_members != raw_members:
+            raise CatalogConflictError(
+                "snapshot membership dependencies are missing or inconsistent"
+            )
         for row in view_rows:
+            if (
+                row["selected_view_generation_id"] != row["view_generation_id"]
+                or row["snapshot_view_type"] != row["view_type"]
+                or row["repository_id"] != snapshot["repository_id"]
+                or row["source_revision_id"] != snapshot["source_revision_id"]
+            ):
+                raise CatalogConflictError(
+                    "snapshot membership dependencies are inconsistent"
+                )
+            self._validate_view_generation_input(row)
             if row["status"] != "ready":
                 raise CatalogConflictError(
                     "ready snapshot contains a non-ready view generation"
                 )
-            _persisted_utc_timestamp(row["ready_at"], "view generation ready_at")
         views = {
-            row["view_type"]: {
+            row["snapshot_view_type"]: {
                 "view_generation_id": row["view_generation_id"],
                 "schema_version": row["schema_version"],
                 "metadata": json.loads(row["metadata_json"]),

@@ -230,13 +230,17 @@ audit guards.  Schema v2 also rejects successful job rows; M2 must remove that
 temporary gate only inside the migration which introduces atomic
 `publish_job_snapshot` completion.
 
-Schema v3 closes the equivalent receipt-replacement gap for immutable objects:
-duplicate digest or storage-key inserts are rejected even when a raw SQLite
-client disables foreign keys and recursive triggers.  Referenced objects cannot
-be deleted, while unreferenced rows remain deletable for the future explicit GC
-policy.  Snapshot publication also recomputes repository/source content
-identities, requires exact staged/ready timestamp pairing, validates canonical
-UTC publication timestamps, and refuses non-integer persisted ref generations.
+Schema v3 closes the equivalent replacement gap across the published aggregate
+even when a raw SQLite client disables foreign keys and recursive triggers.
+Duplicate objects, generations, snapshots, and refs are rejected before
+`REPLACE` can erase their dependency rows; referenced objects, generations, and
+snapshots cannot be deleted, and refs are persistent.  Unreferenced object rows
+remain deletable for the future explicit GC policy.  Ref gates require a ready
+snapshot in the same repository, while manifest reads compare raw membership
+with fully joined dependencies and recompute every content identity.  Snapshot
+publication also requires exact staged/ready timestamp pairing, canonical UTC
+publication timestamps, canonical repository/source fields, and positive
+integer persisted ref generations.
 
 ### M2: Immutable generation publication
 

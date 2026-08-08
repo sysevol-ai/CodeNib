@@ -706,6 +706,422 @@ def test_raw_connection_can_delete_unreferenced_object_for_future_gc(tmp_path):
     connection.close()
 
 
+def test_raw_connection_cannot_replace_or_delete_published_aggregate(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA recursive_triggers = OFF")
+    replacements = (
+        (
+            "duplicate view generation insert",
+            """
+            INSERT OR REPLACE INTO view_generations(
+                view_generation_id, repository_id, source_revision_id,
+                profile_id, view_type, object_digest, schema_version,
+                metadata_json, status, created_at, ready_at
+            ) SELECT
+                view_generation_id, repository_id, source_revision_id,
+                profile_id, view_type, object_digest, schema_version,
+                metadata_json, status, created_at, ready_at
+            FROM view_generations WHERE view_generation_id = ?
+            """,
+            (view_id,),
+        ),
+        (
+            "duplicate snapshot insert",
+            """
+            INSERT OR REPLACE INTO snapshots(
+                snapshot_id, repository_id, source_revision_id,
+                content_digest, status, published_at
+            ) SELECT
+                snapshot_id, repository_id, source_revision_id,
+                content_digest, status, published_at
+            FROM snapshots WHERE snapshot_id = ?
+            """,
+            (published["snapshot_id"],),
+        ),
+        (
+            "duplicate snapshot insert",
+            """
+            INSERT OR REPLACE INTO snapshots(
+                snapshot_id, repository_id, source_revision_id,
+                content_digest, status, published_at
+            ) SELECT
+                'snapshot_replacement', repository_id, source_revision_id,
+                content_digest, status, published_at
+            FROM snapshots WHERE snapshot_id = ?
+            """,
+            (published["snapshot_id"],),
+        ),
+        (
+            "duplicate ref insert",
+            """
+            INSERT OR REPLACE INTO refs(
+                repository_id, ref_name, snapshot_id, generation, updated_at
+            ) SELECT
+                repository_id, ref_name, snapshot_id, generation, updated_at
+            FROM refs WHERE repository_id = ? AND ref_name = 'main'
+            """,
+            (repository_id,),
+        ),
+    )
+    for message, statement, parameters in replacements:
+        with pytest.raises(sqlite3.IntegrityError, match=message):
+            connection.execute(statement, parameters)
+    with pytest.raises(sqlite3.IntegrityError, match="ref identity is immutable"):
+        connection.execute(
+            "UPDATE refs SET ref_name = 'renamed' "
+            "WHERE repository_id = ? AND ref_name = 'main'",
+            (repository_id,),
+        )
+
+    deletions = (
+        (
+            "referenced view generations",
+            "DELETE FROM view_generations WHERE view_generation_id = ?",
+            view_id,
+        ),
+        (
+            "referenced snapshots",
+            "DELETE FROM snapshots WHERE snapshot_id = ?",
+            published["snapshot_id"],
+        ),
+        (
+            "refs cannot be deleted",
+            "DELETE FROM refs WHERE repository_id = ? AND ref_name = 'main'",
+            repository_id,
+        ),
+    )
+    for message, statement, identifier in deletions:
+        with pytest.raises(sqlite3.IntegrityError, match=message):
+            connection.execute(statement, (identifier,))
+    connection.rollback()
+    assert (
+        connection.execute("SELECT COUNT(*) FROM view_generations").fetchone()[0] == 1
+    )
+    assert connection.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 1
+    assert connection.execute("SELECT COUNT(*) FROM refs").fetchone()[0] == 1
+    connection.close()
+
+
+def test_concurrent_stage_calls_converge_without_replace(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_id = catalog.create_repository("owner/repo")
+        source_revision_id = _source(catalog, repository_id)
+        profile_id = catalog.create_view_profile("bm25", {})
+        object_digest = _object(catalog, "a")
+
+    barrier = Barrier(2)
+
+    def stage():
+        with SQLiteCatalog(path) as catalog:
+            barrier.wait()
+            return _stage(
+                catalog,
+                repository_id,
+                source_revision_id,
+                profile_id,
+                object_digest,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(stage) for _ in range(2)]
+        results = [future.result() for future in futures]
+
+    assert results[0] == results[1]
+    with SQLiteCatalog(path) as catalog:
+        assert (
+            catalog._connection.execute(
+                "SELECT COUNT(*) FROM view_generations"
+            ).fetchone()[0]
+            == 1
+        )
+
+
+def test_ref_database_gates_reject_cross_repository_targets(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_one, source_one, _, _, view_one = _setup_staged_view(catalog, "a")
+        snapshot_one = catalog.publish_snapshot(
+            repository_one,
+            source_one,
+            [view_one],
+            expected_generation=0,
+        )
+        repository_two = catalog.create_repository("owner/two")
+        source_two = _source(catalog, repository_two, "b")
+        profile_two = catalog.create_view_profile("vector", {})
+        view_two = _stage(
+            catalog,
+            repository_two,
+            source_two,
+            profile_two,
+            _object(catalog, "b"),
+            view_type="vector",
+        )
+        catalog.publish_snapshot(
+            repository_two,
+            source_two,
+            [view_two],
+            expected_generation=0,
+        )
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA recursive_triggers = OFF")
+    updated_at = connection.execute(
+        "SELECT updated_at FROM refs WHERE repository_id = ?",
+        (repository_one,),
+    ).fetchone()[0]
+    with pytest.raises(sqlite3.IntegrityError, match="their repository"):
+        connection.execute(
+            """
+            INSERT INTO refs(
+                repository_id, ref_name, snapshot_id, generation, updated_at
+            ) VALUES (?, 'cross', ?, 1, ?)
+            """,
+            (repository_two, snapshot_one["snapshot_id"], updated_at),
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="their repository"):
+        connection.execute(
+            "UPDATE refs SET snapshot_id = ? "
+            "WHERE repository_id = ? AND ref_name = 'main'",
+            (snapshot_one["snapshot_id"], repository_two),
+        )
+    connection.rollback()
+    connection.close()
+
+
+def test_resolve_ref_rejects_cross_repository_target_after_trigger_bypass(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_one, source_one, _, _, view_one = _setup_staged_view(catalog, "a")
+        snapshot_one = catalog.publish_snapshot(
+            repository_one,
+            source_one,
+            [view_one],
+            expected_generation=0,
+        )
+        repository_two = catalog.create_repository("owner/two")
+        source_two = _source(catalog, repository_two, "b")
+        profile_two = catalog.create_view_profile("vector", {})
+        view_two = _stage(
+            catalog,
+            repository_two,
+            source_two,
+            profile_two,
+            _object(catalog, "b"),
+            view_type="vector",
+        )
+        catalog.publish_snapshot(
+            repository_two,
+            source_two,
+            [view_two],
+            expected_generation=0,
+        )
+        catalog._connection.execute(
+            "DROP TRIGGER refs_require_ready_snapshot_on_update"
+        )
+        catalog._connection.execute("PRAGMA foreign_keys = OFF")
+        catalog._connection.execute(
+            "UPDATE refs SET snapshot_id = ? "
+            "WHERE repository_id = ? AND ref_name = 'main'",
+            (snapshot_one["snapshot_id"], repository_two),
+        )
+        catalog._connection.execute("PRAGMA foreign_keys = ON")
+
+        with pytest.raises(CatalogConflictError, match="another repository"):
+            catalog.resolve_ref(repository_two)
+
+
+@pytest.mark.parametrize("column", ("commit_sha", "tree_sha"))
+def test_publish_rejects_noncanonical_uppercase_source_fields(tmp_path, column):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA recursive_triggers = OFF")
+    row = connection.execute(
+        "SELECT * FROM source_revisions WHERE source_revision_id = ?",
+        (source_revision_id,),
+    ).fetchone()
+    values = list(row)
+    values[3 if column == "commit_sha" else 4] = values[
+        3 if column == "commit_sha" else 4
+    ].upper()
+    connection.execute(
+        """
+        INSERT OR REPLACE INTO source_revisions(
+            source_revision_id, repository_id, source_kind, commit_sha,
+            tree_sha, source_fingerprint, identity_digest, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        values,
+    )
+    connection.commit()
+    connection.close()
+
+    with SQLiteCatalog(path) as catalog:
+        with pytest.raises(
+            CatalogConflictError, match="repository or source revision identity"
+        ):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=0,
+            )
+        with pytest.raises(
+            CatalogConflictError, match="repository or source revision identity"
+        ):
+            catalog.get_manifest_summary(published["snapshot_id"])
+
+
+@pytest.mark.parametrize("missing", ("profile", "generation", "object", "member"))
+def test_manifest_summary_rejects_missing_membership_dependencies(tmp_path, missing):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_id, source_revision_id, profile_id, object_digest, view_id = (
+            _setup_staged_view(catalog)
+        )
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA recursive_triggers = OFF")
+    operations = {
+        "profile": ("DELETE FROM view_profiles WHERE profile_id = ?", profile_id),
+        "generation": (
+            "DROP TRIGGER referenced_view_generations_cannot_be_deleted",
+            None,
+        ),
+        "object": ("DROP TRIGGER referenced_objects_cannot_be_deleted", None),
+        "member": ("DROP TRIGGER ready_snapshot_views_cannot_be_deleted", None),
+    }
+    statement, identifier = operations[missing]
+    connection.execute(statement, () if identifier is None else (identifier,))
+    if missing == "generation":
+        connection.execute(
+            "DELETE FROM view_generations WHERE view_generation_id = ?", (view_id,)
+        )
+    elif missing == "object":
+        connection.execute("DELETE FROM objects WHERE digest = ?", (object_digest,))
+    elif missing == "member":
+        connection.execute(
+            "DELETE FROM snapshot_views WHERE snapshot_id = ?",
+            (published["snapshot_id"],),
+        )
+    connection.commit()
+    connection.close()
+
+    with SQLiteCatalog(path) as catalog:
+        with pytest.raises(CatalogConflictError, match="membership"):
+            catalog.get_manifest_summary(published["snapshot_id"])
+        with pytest.raises(CatalogConflictError, match="membership"):
+            catalog.resolve_ref(repository_id)
+
+
+@pytest.mark.parametrize("dependency", ("profile", "generation"))
+def test_manifest_summary_recomputes_joined_dependency_identities(tmp_path, dependency):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_id, source_revision_id, profile_id, _, view_id = _setup_staged_view(
+            catalog
+        )
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA recursive_triggers = OFF")
+    if dependency == "profile":
+        row = connection.execute(
+            "SELECT * FROM view_profiles WHERE profile_id = ?", (profile_id,)
+        ).fetchone()
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO view_profiles(
+                profile_id, view_type, name, config_json,
+                profile_digest, created_at
+            ) VALUES (?, ?, 'tampered', ?, ?, ?)
+            """,
+            (row[0], row[1], row[3], row[4], row[5]),
+        )
+        message = "profile identity"
+    else:
+        connection.execute("DROP TRIGGER view_generations_reject_duplicate_inserts")
+        row = connection.execute(
+            "SELECT * FROM view_generations WHERE view_generation_id = ?", (view_id,)
+        ).fetchone()
+        values = list(row)
+        values[7] = '{"tampered":true}'
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO view_generations(
+                view_generation_id, repository_id, source_revision_id,
+                profile_id, view_type, object_digest, schema_version,
+                metadata_json, status, created_at, ready_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            values,
+        )
+        message = "generation identity"
+    connection.commit()
+    connection.close()
+
+    with SQLiteCatalog(path) as catalog:
+        with pytest.raises(CatalogConflictError, match=message):
+            catalog.get_manifest_summary(published["snapshot_id"])
+
+
+def test_manifest_summary_rejects_membership_and_snapshot_identity_drift(tmp_path):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+        catalog._connection.execute("DROP TRIGGER snapshot_views_are_immutable")
+        catalog._connection.execute("PRAGMA foreign_keys = OFF")
+        catalog._connection.execute(
+            "UPDATE snapshot_views SET view_type = 'vector' " "WHERE snapshot_id = ?",
+            (published["snapshot_id"],),
+        )
+        catalog._connection.execute("PRAGMA foreign_keys = ON")
+
+        with pytest.raises(CatalogConflictError, match="snapshot content identity"):
+            catalog.get_manifest_summary(published["snapshot_id"])
+
+
 @pytest.mark.parametrize(
     "timestamp", ("now", "2026-01-01T00:00:00", "2026-01-01T01:00:00+01:00")
 )
