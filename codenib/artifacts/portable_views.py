@@ -23,6 +23,9 @@ from ..index.embedding.artifact_integrity import (
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
+from ..index.embedding.model_policy import (
+    resolve_embedding_load_policy_from_options,
+)
 from ..provider_routes import normalize_provider, resolve_embedding_artifact_route
 
 _VECTOR_LEVELS = ("l0", "l2")
@@ -313,13 +316,18 @@ def _validate_vector_model_policy(
 def _validate_vector_semantics(
     config: Mapping[str, Any],
     view_config: Mapping[str, Any],
-) -> tuple[str, int]:
+) -> tuple[str, int, str | None, str, str]:
     """Close the manifest-route to persisted-config compatibility contract."""
 
     route = resolve_embedding_artifact_route(view_config)
+    load_policy = resolve_embedding_load_policy_from_options(
+        route.model,
+        route.compatibility_options,
+    )
     required_checks: tuple[tuple[str, object], ...] = (
         ("embedding_model", route.model),
         ("dimension", route.dimension),
+        ("embedding_revision", load_policy.revision),
     )
     for key, expected in required_checks:
         if config.get(key) != expected:
@@ -345,14 +353,39 @@ def _validate_vector_semantics(
             "its view route"
         )
 
-    expected_metric = view_config.get("index_metric")
+    expected_metric = view_config.get("index_metric", "ip")
+    if expected_metric not in {"ip", "l2"}:
+        raise ValueError(
+            f"portable vector view has unsupported index metric: {expected_metric!r}"
+        )
     persisted_metric = config.get("index_metric")
-    if expected_metric is not None and persisted_metric != expected_metric:
+    if persisted_metric != expected_metric:
         raise ValueError(
             "portable vector persistence index metric does not match its view config"
         )
 
+    expected_index_type = view_config.get("index_type", "flat")
+    if expected_index_type not in {"flat", "ivf"}:
+        raise ValueError(
+            "portable vector view has unsupported index type: "
+            f"{expected_index_type!r}"
+        )
+    if config.get("index_type") != expected_index_type:
+        raise ValueError(
+            "portable vector persistence index type does not match its view config"
+        )
+
     persisted_identity = config.get("artifact")
+    builder_schema = view_config.get("builder_schema")
+    identity_required = (
+        view_config.get("embedding_fingerprint") is not None
+        or (
+            isinstance(builder_schema, int)
+            and not isinstance(builder_schema, bool)
+            and builder_schema >= 3
+        )
+        or bool(route.compatibility_options)
+    )
     if persisted_identity is not None:
         if not isinstance(persisted_identity, Mapping):
             raise ValueError("portable vector persistence artifact identity is invalid")
@@ -362,16 +395,34 @@ def _validate_vector_semantics(
                 "portable vector persistence route identity does not match its view "
                 "route"
             )
-        persisted_identity_metric = persisted_identity.get("index_metric")
+        expected_fingerprint = view_config.get("embedding_fingerprint")
         if (
-            expected_metric is not None
-            and persisted_identity_metric is not None
-            and persisted_identity_metric != expected_metric
+            expected_fingerprint is not None
+            and persisted_identity.get("embedding_fingerprint") != expected_fingerprint
         ):
+            raise ValueError(
+                "portable vector persistence embedding fingerprint does not match "
+                "its view config"
+            )
+        persisted_policy = resolve_embedding_load_policy_from_options(
+            persisted_route.model,
+            persisted_route.compatibility_options,
+        )
+        if persisted_policy.revision != load_policy.revision:
+            raise ValueError(
+                "portable vector persistence artifact revision does not match its "
+                "view config"
+            )
+        persisted_identity_metric = persisted_identity.get("index_metric")
+        if persisted_identity_metric != expected_metric:
             raise ValueError(
                 "portable vector persistence identity metric does not match its "
                 "view config"
             )
+    elif identity_required:
+        raise ValueError(
+            "portable vector persistence is missing its embedding artifact identity"
+        )
     elif "embedding_kwargs" in config:
         # Legacy configs sometimes expose the semantic options directly. When
         # present, absence is not treated as a wildcard.
@@ -383,20 +434,43 @@ def _validate_vector_semantics(
 
     if route.dimension is None:
         raise ValueError("portable vector route is missing its embedding dimension")
-    return route.model.replace("/", "__"), route.dimension
+    return (
+        route.model.replace("/", "__"),
+        route.dimension,
+        load_policy.revision,
+        expected_metric,
+        expected_index_type,
+    )
 
 
-def _faiss_shape(path: Path) -> tuple[int, int]:
-    """Read only the persisted index shape, importing FAISS on demand."""
+def _faiss_contract(path: Path) -> tuple[int, int, str, str]:
+    """Read the persisted index contract, importing FAISS on demand."""
 
     try:
         faiss = importlib.import_module("faiss")
         index = faiss.read_index(str(path))
         dimension = int(index.d)
         total = int(index.ntotal)
+        metric_type = int(index.metric_type)
+        if metric_type == int(faiss.METRIC_INNER_PRODUCT):
+            metric = "ip"
+        elif metric_type == int(faiss.METRIC_L2):
+            metric = "l2"
+        else:
+            raise ValueError(
+                f"portable vector FAISS index has unsupported metric: {metric_type}"
+            )
+        if isinstance(index, faiss.IndexIVF):
+            index_type = "ivf"
+        elif isinstance(index, faiss.IndexFlat):
+            index_type = "flat"
+        else:
+            raise ValueError(
+                f"portable vector FAISS index has unsupported type: {type(index).__name__}"
+            )
     except Exception as exc:
         raise ValueError(f"portable vector FAISS index is unreadable: {path}") from exc
-    return dimension, total
+    return dimension, total, metric, index_type
 
 
 def _validate_level_semantics(
@@ -405,8 +479,10 @@ def _validate_level_semantics(
     level: str,
     model: str,
     provider: str,
+    revision: str | None,
     dimension: int,
     metric: object,
+    index_type: str,
     count: int,
 ) -> None:
     if not path.exists():
@@ -414,27 +490,28 @@ def _validate_level_semantics(
     config = _load_json_object(path, label=f"portable vector {level} config")
     checks: tuple[tuple[str, object], ...] = (
         ("embedding_model", model),
+        ("embedding_revision", revision),
         ("dimension", dimension),
         ("index_metric", metric),
+        ("index_type", index_type),
         ("level", level),
         ("num_documents", count),
     )
     for key, expected in checks:
-        if key in config and expected is not None and config[key] != expected:
+        if config.get(key) != expected:
             raise ValueError(
                 f"portable vector {level} persistence {key} does not match"
             )
-    if "embedding_provider" in config:
-        try:
-            persisted_provider = normalize_provider(str(config["embedding_provider"]))
-        except ValueError as exc:
-            raise ValueError(
-                f"portable vector {level} persistence provider is invalid"
-            ) from exc
-        if persisted_provider != provider:
-            raise ValueError(
-                f"portable vector {level} persistence provider does not match"
-            )
+    try:
+        persisted_provider = normalize_provider(
+            str(config.get("embedding_provider", ""))
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"portable vector {level} persistence provider is invalid"
+        ) from exc
+    if persisted_provider != provider:
+        raise ValueError(f"portable vector {level} persistence provider does not match")
 
 
 def _validate_vector_layout(
@@ -445,8 +522,10 @@ def _validate_vector_layout(
     config: Mapping[str, Any],
     expected_model: str,
     expected_provider: str,
+    expected_revision: str | None,
     expected_dimension: int,
-    expected_metric: object,
+    expected_metric: str,
+    expected_index_type: str,
     source_trust: SourceTrust,
 ) -> tuple[
     str,
@@ -540,7 +619,7 @@ def _validate_vector_layout(
                 f"expected {count}, found {len(payload)}"
             )
         count = len(payload)
-        dimension, total = _faiss_shape(index_path)
+        dimension, total, metric, index_type = _faiss_contract(index_path)
         if dimension != expected_dimension:
             raise ValueError(
                 f"portable vector FAISS dimension mismatch in {level}: "
@@ -551,15 +630,16 @@ def _validate_vector_layout(
                 f"portable vector FAISS count mismatch in {level}: "
                 f"expected {count}, found {total}"
             )
-        _validate_level_semantics(
-            level_path / f"config_{model_suffix}.json",
-            level=level,
-            model=expected_model,
-            provider=expected_provider,
-            dimension=expected_dimension,
-            metric=expected_metric,
-            count=count,
-        )
+        if metric != expected_metric:
+            raise ValueError(
+                f"portable vector FAISS metric mismatch in {level}: "
+                f"expected {expected_metric}, found {metric}"
+            )
+        if index_type != expected_index_type:
+            raise ValueError(
+                f"portable vector FAISS index type mismatch in {level}: "
+                f"expected {expected_index_type}, found {index_type}"
+            )
         derived_counts[level] = count
         if legacy_counts and count == 0:
             stale_paths.update(
@@ -574,6 +654,17 @@ def _validate_vector_layout(
             )
             formats.discard(document_format)
             continue
+        _validate_level_semantics(
+            level_path / f"config_{model_suffix}.json",
+            level=level,
+            model=expected_model,
+            provider=expected_provider,
+            revision=expected_revision,
+            dimension=expected_dimension,
+            metric=expected_metric,
+            index_type=expected_index_type,
+            count=count,
+        )
         selected[path] = payload
 
     if not selected:
@@ -660,6 +751,36 @@ def _refresh_vector_persistence_records(
     config_path.write_bytes(_json_bytes(config))
 
 
+def _validate_view_document_count(
+    view_config: Mapping[str, Any],
+    counts: Mapping[str, int],
+) -> None:
+    if "document_count" not in view_config:
+        return
+    raw = view_config["document_count"]
+    if not isinstance(raw, Mapping):
+        raise ValueError("portable vector document_count must be a mapping")
+    expected = {
+        level: count for level in _VECTOR_LEVELS if (count := counts[level]) > 0
+    }
+    if set(raw) != set(expected):
+        raise ValueError(
+            "portable vector document_count must contain exactly the non-empty "
+            "levels"
+        )
+    for level, count in raw.items():
+        if (
+            not isinstance(level, str)
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or count <= 0
+            or count != expected[level]
+        ):
+            raise ValueError(
+                "portable vector document_count does not match persisted levels"
+            )
+
+
 def _assert_normalized_vector_tree(root: Path) -> None:
     for path in sorted(root.rglob("*")):
         if path.suffix.casefold() in _PICKLE_SUFFIXES:
@@ -708,10 +829,13 @@ def _normalize_vector_view(
     validate_vector_generation_artifacts(root, model_suffix)
     config_path = root / f"config_{model_suffix}.json"
     config = _load_json_object(config_path, label="portable vector config")
-    semantic_suffix, expected_dimension = _validate_vector_semantics(
-        config,
-        view_config,
-    )
+    (
+        semantic_suffix,
+        expected_dimension,
+        expected_revision,
+        expected_metric,
+        expected_index_type,
+    ) = _validate_vector_semantics(config, view_config)
     if semantic_suffix != model_suffix:
         raise ValueError("portable vector config embedding model does not match")
 
@@ -722,10 +846,13 @@ def _normalize_vector_view(
         config=config,
         expected_model=route.model,
         expected_provider=route.provider,
+        expected_revision=expected_revision,
         expected_dimension=expected_dimension,
-        expected_metric=view_config.get("index_metric"),
+        expected_metric=expected_metric,
+        expected_index_type=expected_index_type,
         source_trust=source_trust,
     )
+    _validate_view_document_count(view_config, counts)
 
     for path, payload in documents.items():
         output = path.with_suffix(".json")

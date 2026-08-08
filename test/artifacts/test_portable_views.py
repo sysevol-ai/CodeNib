@@ -21,6 +21,7 @@ from codenib.index.embedding.artifact_integrity import (
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
+from codenib.provider_routes import resolve_inference_route
 
 _VECTOR_CONFIG = {
     "builder_schema": 2,
@@ -32,6 +33,7 @@ _VECTOR_CONFIG = {
     "index_metric": "ip",
 }
 _MODEL_SUFFIX = "test__model"
+_REVISION = "a" * 40
 
 
 def _tree(root: Path) -> dict[str, bytes]:
@@ -50,12 +52,33 @@ def _repository(root: Path) -> tuple[Path, Path]:
     return repo, source
 
 
-def _write_faiss(path: Path, *, count: int = 1, dimension: int = 4) -> None:
+def _write_faiss(
+    path: Path,
+    *,
+    count: int = 1,
+    dimension: int = 4,
+    metric: str = "ip",
+    index_type: str = "flat",
+) -> None:
     faiss = importlib.import_module("faiss")
     numpy = importlib.import_module("numpy")
-    index = faiss.IndexFlatIP(dimension)
+    if metric == "ip":
+        quantizer = faiss.IndexFlatIP(dimension)
+        metric_type = faiss.METRIC_INNER_PRODUCT
+    else:
+        quantizer = faiss.IndexFlatL2(dimension)
+        metric_type = faiss.METRIC_L2
+    if index_type == "ivf":
+        index = faiss.IndexIVFFlat(quantizer, dimension, max(1, count), metric_type)
+    else:
+        index = quantizer
     if count:
-        index.add(numpy.zeros((count, dimension), dtype="float32"))
+        vectors = numpy.arange(count * dimension, dtype="float32").reshape(
+            count, dimension
+        )
+        if index_type == "ivf":
+            index.train(vectors)
+        index.add(vectors)
     faiss.write_index(index, str(path))
 
 
@@ -140,6 +163,109 @@ def _refresh_level_record(vector: Path, level: str = "l2") -> None:
         documents_file=documents.name,
     )
     config_path.write_text(json.dumps(config), encoding="utf-8")
+
+
+def _schema6_identity(
+    *,
+    metric: str = "ip",
+    revision: str = _REVISION,
+) -> dict[str, object]:
+    options = {"revision": revision, "trust_remote_code": False}
+    route = resolve_inference_route(
+        operation="embeddings",
+        provider="huggingface",
+        model="test/model",
+        dimension=4,
+        compatibility_options=options,
+    )
+    return {
+        "builder_schema": 6,
+        "embedding_model": route.model,
+        "embedding_provider": route.provider,
+        "embedding_dimension": 4,
+        "dimension": 4,
+        "embedding_endpoint": route.endpoint,
+        "embedding_kwargs": route.compatibility_options,
+        "embedding_route": route.public_identity(),
+        "embedding_fingerprint": route.compatibility_fingerprint,
+        "index_metric": metric,
+        "levels": ["l2"],
+    }
+
+
+def _production_vector_view(
+    root: Path,
+    *,
+    index_type: str = "flat",
+    metric: str = "ip",
+) -> tuple[Path, Path, dict[str, object]]:
+    repo, _source = _repository(root)
+    vector = _vector_view(root, repo, document_format="json")
+    level = vector / "l2"
+    _write_faiss(
+        level / f"index_{_MODEL_SUFFIX}.faiss",
+        metric=metric,
+        index_type=index_type,
+    )
+    identity = _schema6_identity(metric=metric)
+    (level / f"config_{_MODEL_SUFFIX}.json").write_text(
+        json.dumps(
+            {
+                "embedding_model": "test/model",
+                "embedding_provider": "huggingface",
+                "embedding_revision": _REVISION,
+                "dimension": 4,
+                "index_type": index_type,
+                "index_metric": metric,
+                "level": "l2",
+                "num_documents": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    documents = level / f"documents_{_MODEL_SUFFIX}.json"
+    config = {
+        "embedding_model": "test/model",
+        "embedding_provider": "huggingface",
+        "embedding_revision": _REVISION,
+        "dimension": 4,
+        "index_type": index_type,
+        "index_metric": metric,
+        "l0_documents": 0,
+        "l2_documents": 1,
+        "persistence_schema": VECTOR_PERSISTENCE_SCHEMA,
+        "level_artifacts": {
+            "l2": vector_level_artifact_records(
+                level,
+                _MODEL_SUFFIX,
+                documents_file=documents.name,
+            )
+        },
+        "artifact": identity,
+    }
+    config_path = vector / f"config_{_MODEL_SUFFIX}.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    view_config = {
+        **identity,
+        "document_count": {"l2": 1},
+        "persistence_config_fingerprint": vector_config_artifact_record(
+            vector,
+            _MODEL_SUFFIX,
+        ),
+    }
+    if index_type != "flat":
+        view_config["index_type"] = index_type
+    return repo, vector, view_config
+
+
+def _refresh_view_fingerprint(
+    vector: Path,
+    view_config: dict[str, object],
+) -> None:
+    view_config["persistence_config_fingerprint"] = vector_config_artifact_record(
+        vector,
+        _MODEL_SUFFIX,
+    )
 
 
 def test_normalize_bm25_rewrites_project_root_and_refreshes_fingerprints(
@@ -409,6 +535,186 @@ def test_portable_views_do_not_import_faiss_eagerly() -> None:
     subprocess.run([sys.executable, "-c", script], check=True)
 
 
+@pytest.mark.parametrize("index_type", ["flat", "ivf"])
+def test_normalize_schema6_view_loads_with_runtime_contract(
+    tmp_path: Path,
+    index_type: str,
+) -> None:
+    from codenib.index.embedding.vector_store import CodeVectorStore
+
+    class _Embedding:
+        def embed_query(self, _text: str) -> list[float]:
+            return [0.0] * 4
+
+        def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            return [[0.0] * 4 for _text in texts]
+
+    repo, vector, view_config = _production_vector_view(
+        tmp_path,
+        index_type=index_type,
+    )
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=view_config,
+    )
+    portable_config = {**view_config, **adjustments}
+    store = CodeVectorStore(
+        embedding_model="test/model",
+        embedding_provider="huggingface",
+        dimension=4,
+        index_type=index_type,
+        index_metric="ip",
+        store_path=str(vector),
+        embedding=_Embedding(),
+        artifact_metadata=portable_config,
+        revision=_REVISION,
+        trust_remote_code=False,
+    )
+
+    store.load()
+
+    assert len(store.l2_documents) == 1
+    assert int(store.l2_index.ntotal) == 1
+    assert store.artifact_metadata["embedding_fingerprint"] == (
+        view_config["embedding_fingerprint"]
+    )
+
+
+def test_normalize_schema6_rejects_top_revision_drift(tmp_path: Path) -> None:
+    repo, vector, view_config = _production_vector_view(tmp_path)
+    config_path = vector / f"config_{_MODEL_SUFFIX}.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["embedding_revision"] = "b" * 40
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    _refresh_view_fingerprint(vector, view_config)
+
+    with pytest.raises(ValueError, match="embedding_revision"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
+def test_normalize_schema6_rejects_level_revision_drift(tmp_path: Path) -> None:
+    repo, vector, view_config = _production_vector_view(tmp_path)
+    config_path = vector / "l2" / f"config_{_MODEL_SUFFIX}.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["embedding_revision"] = "b" * 40
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="l2 persistence embedding_revision"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
+def test_normalize_schema6_requires_persisted_artifact_identity(
+    tmp_path: Path,
+) -> None:
+    repo, vector, view_config = _production_vector_view(tmp_path)
+    config_path = vector / f"config_{_MODEL_SUFFIX}.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config.pop("artifact")
+    config["embedding_kwargs"] = view_config["embedding_kwargs"]
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    _refresh_view_fingerprint(vector, view_config)
+
+    with pytest.raises(ValueError, match="missing.*artifact identity"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
+def test_normalize_schema6_rejects_persisted_artifact_revision_drift(
+    tmp_path: Path,
+) -> None:
+    repo, vector, view_config = _production_vector_view(tmp_path)
+    config_path = vector / f"config_{_MODEL_SUFFIX}.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["artifact"] = _schema6_identity(revision="b" * 40)
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    _refresh_view_fingerprint(vector, view_config)
+
+    with pytest.raises(ValueError, match="route identity|artifact revision"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
+def test_normalize_schema6_rejects_faiss_metric_drift(tmp_path: Path) -> None:
+    repo, vector, view_config = _production_vector_view(tmp_path)
+    _write_faiss(
+        vector / "l2" / f"index_{_MODEL_SUFFIX}.faiss",
+        metric="l2",
+    )
+    _refresh_level_record(vector)
+    _refresh_view_fingerprint(vector, view_config)
+
+    with pytest.raises(ValueError, match="FAISS metric mismatch"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
+def test_normalize_schema6_rejects_faiss_index_type_drift(tmp_path: Path) -> None:
+    repo, vector, view_config = _production_vector_view(tmp_path)
+    _write_faiss(
+        vector / "l2" / f"index_{_MODEL_SUFFIX}.faiss",
+        index_type="ivf",
+    )
+    _refresh_level_record(vector)
+    _refresh_view_fingerprint(vector, view_config)
+
+    with pytest.raises(ValueError, match="FAISS index type mismatch"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
+@pytest.mark.parametrize(
+    "document_count",
+    [
+        {"l2": 2},
+        {"l0": 0, "l2": 1},
+        {"other": 1, "l2": 1},
+        [1],
+    ],
+)
+def test_normalize_rejects_noncanonical_view_document_count(
+    tmp_path: Path,
+    document_count: object,
+) -> None:
+    repo, vector, view_config = _production_vector_view(tmp_path)
+    view_config["document_count"] = document_count
+
+    with pytest.raises(ValueError, match="document_count"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
 def test_normalize_vector_rejects_mixed_document_formats(tmp_path: Path) -> None:
     repo, _source = _repository(tmp_path)
     vector = _vector_view(tmp_path, repo, document_format="pkl")
@@ -578,6 +884,7 @@ def test_normalize_vector_rejects_nonportable_document_paths(
         ("embedding_provider", "openai", "embedding provider"),
         ("dimension", 8, "dimension"),
         ("index_metric", "l2", "index metric"),
+        ("index_type", "ivf", "index type"),
     ],
 )
 def test_normalize_rejects_persistence_semantic_drift(
@@ -612,6 +919,7 @@ def test_normalize_rejects_level_config_semantic_drift(tmp_path: Path) -> None:
                 "embedding_model": "test/model",
                 "embedding_provider": "huggingface",
                 "dimension": 4,
+                "index_type": "flat",
                 "index_metric": "l2",
                 "level": "l2",
                 "num_documents": 1,
