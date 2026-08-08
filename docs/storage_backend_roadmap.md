@@ -181,7 +181,15 @@ Status: in progress.
 The SQLite/CAS foundation through refs and atomic snapshot sealing is
 implemented.  The deterministic single-object view-bundle bridge now preserves
 multi-file view paths, bytes, and normalized executable modes with bounded,
-fail-closed verification and atomic materialization.  Schema v2 now adds
+fail-closed verification and atomic materialization.  Materialized metadata is
+exactly mode `0644`, payload files are exactly `0644` or `0755` as declared,
+and directory modes are not a portable bundle contract.  The destination rename
+is the ownership linearization point; the moved old tree is revalidated before
+and after publication, while suspect new output is quarantined before rollback.
+Secure extraction requires no-follow directory-fd support and never writes
+through the replaceable stage pathname.  Archive builders publish the verified
+open temporary inode with a same-filesystem no-clobber link, then recheck its
+inode and digest before releasing the prior output.  Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
 per-ref leases.  Catalog reads revalidate the normalized view rows against the

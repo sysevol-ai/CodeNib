@@ -19,6 +19,10 @@ def test_publish_staged_directory_replaces_existing_tree(tmp_path: Path) -> None
     destination = tmp_path / "published"
     destination.mkdir()
     (destination / "old.txt").write_text("old", encoding="utf-8")
+    nested = destination / "nested"
+    nested.mkdir()
+    (nested / "one.txt").write_text("one", encoding="utf-8")
+    (nested / "two.txt").write_text("two", encoding="utf-8")
     stage = tmp_path / ".published.tmp"
     stage.mkdir()
     (stage / "new.txt").write_text("new", encoding="utf-8")
@@ -203,6 +207,75 @@ def test_publish_staged_directory_quarantines_failed_published_identity(
     assert (quarantines[0] / "late.txt").read_text(encoding="utf-8") == "late"
     assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
     assert not stage.exists()
+
+
+def test_publish_staged_directory_rolls_back_before_mounted_tree_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    mounted = destination / "mounted"
+    mounted.mkdir(parents=True)
+    (mounted / "external.txt").write_text("preserve", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    original_mount_check = atomic_module._path_is_mount_point
+
+    def fake_mount_check(
+        path: Path,
+        **kwargs: object,
+    ) -> bool:
+        return Path(path).name == "mounted" or original_mount_check(path, **kwargs)
+
+    monkeypatch.setattr(atomic_module, "_path_is_mount_point", fake_mount_check)
+
+    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+        publish_staged_directory(stage, destination)
+
+    assert (destination / "mounted" / "external.txt").read_text(
+        encoding="utf-8"
+    ) == "preserve"
+    quarantines = list(tmp_path.glob(".published.quarantine-*"))
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+def test_publish_staged_directory_fails_closed_without_safe_cleanup_fds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "foreign.txt").write_text("preserve", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    monkeypatch.setattr(atomic_module, "_SAFE_REMOVAL_DIRECTORY_FDS", False)
+
+    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+        publish_staged_directory(stage, destination)
+
+    assert (destination / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    quarantines = list(tmp_path.glob(".published.quarantine-*"))
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+def test_publish_staged_directory_removes_empty_sentinel_without_cleanup_fds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    monkeypatch.setattr(atomic_module, "_SAFE_REMOVAL_DIRECTORY_FDS", False)
+
+    publish_staged_directory(stage, destination)
+
+    assert (destination / "new.txt").read_text(encoding="utf-8") == "new"
+    assert not list(tmp_path.glob(".published.previous-*"))
 
 
 def test_quarantine_replace_failure_preserves_original_exception(

@@ -171,6 +171,10 @@ def test_build_verify_and_materialize_round_trip(tmp_path: Path) -> None:
         (materialized.output_dir / VIEW_BUNDLE_MANIFEST).read_text(encoding="utf-8")
     )
     assert metadata["schema"] == VIEW_BUNDLE_SCHEMA
+    assert (
+        stat.S_IMODE((materialized.output_dir / VIEW_BUNDLE_MANIFEST).stat().st_mode)
+        == 0o644
+    )
 
 
 def test_bundle_bytes_are_deterministic_across_metadata_and_creation_order(
@@ -318,7 +322,21 @@ def test_central_directory_budget_is_checked_before_zipfile(
 
 @pytest.mark.parametrize(
     "relative",
-    ["AUX.txt", "name. ", "bad:name", "control\nname", "decomposed-e\u0301"],
+    [
+        "AUX.txt",
+        "CONIN$.txt",
+        "conout$",
+        "COM¹.log",
+        "lpt¹.bin",
+        "com²",
+        "lpt²",
+        "COM³",
+        "LPT³.txt",
+        "name. ",
+        "bad:name",
+        "control\nname",
+        "decomposed-e\u0301",
+    ],
 )
 def test_build_rejects_nonportable_member_names(
     tmp_path: Path,
@@ -330,6 +348,14 @@ def test_build_rejects_nonportable_member_names(
 
     with pytest.raises(StorageValidationError, match="not portable|NFC"):
         build_view_bundle(source, tmp_path / "bundle.zip", view_type="bm25")
+
+    malicious = tmp_path / "malicious.zip"
+    _write_custom_bundle(
+        malicious,
+        [(f"payload/{relative}", b"x", 0o644)],
+    )
+    with pytest.raises(StorageValidationError, match="not portable|NFC"):
+        verify_view_bundle(malicious)
 
 
 def test_build_rejects_casefold_collision(tmp_path: Path) -> None:
@@ -540,20 +566,122 @@ def test_build_publish_failure_preserves_existing_bundle(
     source = _source(tmp_path)
     archive = tmp_path / "bundle.zip"
     archive.write_bytes(b"previous bundle")
-    real_replace = os.replace
+    real_link = os.link
+    failed = False
 
-    def fail_final_replace(source_path, destination_path):
-        if Path(destination_path) == archive:
+    def fail_final_link(source_path, destination_path, **kwargs: object):
+        nonlocal failed
+        if (
+            not failed
+            and Path(destination_path) == archive
+            and Path(source_path).name.startswith(".bundle.zip.")
+        ):
+            failed = True
             raise OSError("injected bundle publish failure")
-        return real_replace(source_path, destination_path)
+        return real_link(source_path, destination_path, **kwargs)
 
-    monkeypatch.setattr(bundle_module.os, "replace", fail_final_replace)
+    monkeypatch.setattr(bundle_module.os, "link", fail_final_link)
 
     with pytest.raises(OSError, match="injected bundle publish failure"):
         build_view_bundle(source, archive, view_type="bm25")
 
     assert archive.read_bytes() == b"previous bundle"
     assert not list(tmp_path.glob(".bundle.zip.*.tmp"))
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_build_quarantines_replaced_temporary_and_restores_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    existing: bool,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    previous = b"previous bundle"
+    if existing:
+        archive.write_bytes(previous)
+    stolen = tmp_path / "stolen-canonical.zip"
+    real_link = os.link
+    swapped = False
+
+    def swap_temporary_then_link(
+        source_path,
+        destination_path,
+        **kwargs: object,
+    ):
+        nonlocal swapped
+        source_path = Path(source_path)
+        destination_path = Path(destination_path)
+        if (
+            not swapped
+            and destination_path == archive
+            and source_path.name.startswith(".bundle.zip.")
+        ):
+            swapped = True
+            source_path.rename(stolen)
+            source_path.write_bytes(b"attacker bytes")
+        return real_link(source_path, destination_path, **kwargs)
+
+    monkeypatch.setattr(bundle_module.os, "link", swap_temporary_then_link)
+
+    with pytest.raises(StorageIntegrityError, match="quarantined"):
+        build_view_bundle(source, archive, view_type="bm25")
+
+    assert swapped
+    if existing:
+        assert archive.read_bytes() == previous
+    else:
+        assert not archive.exists()
+    quarantines = list(tmp_path.glob(".bundle.zip.quarantine-*"))
+    assert len(quarantines) == 1
+    assert quarantines[0].read_bytes() == b"attacker bytes"
+    verify_view_bundle(stolen, expected_view_type="bm25")
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_build_preserves_output_that_appears_at_publication_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    existing: bool,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    previous = b"previous bundle"
+    if existing:
+        archive.write_bytes(previous)
+    real_link = os.link
+    injected = False
+
+    def inject_output_then_link(
+        source_path,
+        destination_path,
+        **kwargs: object,
+    ):
+        nonlocal injected
+        source_path = Path(source_path)
+        destination_path = Path(destination_path)
+        if (
+            not injected
+            and destination_path == archive
+            and source_path.name.startswith(".bundle.zip.")
+        ):
+            injected = True
+            destination_path.write_bytes(b"late foreign output")
+        return real_link(source_path, destination_path, **kwargs)
+
+    monkeypatch.setattr(bundle_module.os, "link", inject_output_then_link)
+
+    with pytest.raises(FileExistsError):
+        build_view_bundle(source, archive, view_type="bm25")
+
+    assert injected
+    if existing:
+        assert archive.read_bytes() == previous
+    else:
+        assert not archive.exists()
+    quarantines = list(tmp_path.glob(".bundle.zip.quarantine-*"))
+    assert len(quarantines) == 1
+    assert quarantines[0].read_bytes() == b"late foreign output"
 
 
 @pytest.mark.parametrize(
@@ -1129,6 +1257,258 @@ def test_materialization_boundary_revalidates_same_size_payload_digest(
     assert (output / "payload" / "documents.json").read_bytes() == b"xx\n"
 
 
+@pytest.mark.parametrize(
+    "relative, changed_mode",
+    [
+        (VIEW_BUNDLE_MANIFEST, 0o600),
+        ("payload/documents.json", 0o600),
+        ("payload/documents.json", 0o666),
+        ("payload/documents.json", 0o4644),
+        ("payload/index/shard", 0o700),
+        ("payload/index/shard", 0o4755),
+    ],
+)
+def test_materialization_rejects_noncanonical_existing_file_mode(
+    tmp_path: Path,
+    relative: str,
+    changed_mode: int,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    build_view_bundle(source, archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    materialize_view_bundle(archive, output)
+    changed = output / relative
+    changed.chmod(changed_mode)
+
+    with pytest.raises(StorageValidationError, match="non-CodeNib"):
+        materialize_view_bundle(archive, output)
+
+    assert changed.stat().st_mode & 0o7777 == changed_mode
+
+
+def test_materialization_rolls_back_late_payload_mode_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    build_view_bundle(source, archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    materialize_view_bundle(archive, output)
+    original_publish = bundle_module.publish_staged_directory
+
+    def publish_with_late_chmod(
+        stage: Path,
+        destination: Path,
+        **kwargs: object,
+    ) -> None:
+        validate = kwargs["validate_moved_destination"]
+        calls = 0
+
+        def validate_then_mutate(moved: Path) -> None:
+            nonlocal calls
+            assert callable(validate)
+            validate(moved)
+            calls += 1
+            if calls == 1:
+                (moved / "payload" / "documents.json").chmod(0o600)
+
+        kwargs["validate_moved_destination"] = validate_then_mutate
+        original_publish(stage, destination, **kwargs)
+
+    monkeypatch.setattr(
+        bundle_module,
+        "publish_staged_directory",
+        publish_with_late_chmod,
+    )
+
+    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+        materialize_view_bundle(archive, output)
+
+    assert stat.S_IMODE((output / "payload" / "documents.json").stat().st_mode) == 0o600
+    assert (output / "payload" / "documents.json").read_bytes() == b"[]\n"
+
+
+def test_materialization_rolls_back_write_after_first_boundary_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    build_view_bundle(source, archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    materialize_view_bundle(archive, output)
+    original_publish = bundle_module.publish_staged_directory
+
+    def publish_with_late_write(
+        stage: Path,
+        destination: Path,
+        **kwargs: object,
+    ) -> None:
+        validate = kwargs["validate_moved_destination"]
+        calls = 0
+
+        def validate_then_write(moved: Path) -> None:
+            nonlocal calls
+            assert callable(validate)
+            validate(moved)
+            calls += 1
+            if calls == 1:
+                (moved / "payload" / "index" / "late.txt").write_text(
+                    "preserve",
+                    encoding="utf-8",
+                )
+
+        kwargs["validate_moved_destination"] = validate_then_write
+        original_publish(stage, destination, **kwargs)
+
+    monkeypatch.setattr(
+        bundle_module,
+        "publish_staged_directory",
+        publish_with_late_write,
+    )
+
+    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+        materialize_view_bundle(archive, output)
+
+    assert (output / "payload" / "index" / "late.txt").read_text(
+        encoding="utf-8"
+    ) == "preserve"
+
+
+def test_materialization_stage_symlink_swap_cannot_write_victim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not bundle_module._SAFE_DIRECTORY_FDS:
+        pytest.skip("requires secure directory-fd materialization")
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    build_view_bundle(source, archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "keep.txt").write_text("keep", encoding="utf-8")
+    stolen = tmp_path / "stolen-stage"
+    original_open = bundle_module._open_extraction_file
+    swapped = False
+
+    def swap_stage_then_open(
+        root_descriptor: int,
+        parts: tuple[str, ...],
+        mode: int,
+    ):
+        nonlocal swapped
+        if not swapped and parts[0] == "payload":
+            swapped = True
+            stage = next(tmp_path.glob(".runtime.materialize-*"))
+            stage.rename(stolen)
+            stage.symlink_to(victim, target_is_directory=True)
+        return original_open(root_descriptor, parts, mode)
+
+    monkeypatch.setattr(bundle_module, "_open_extraction_file", swap_stage_then_open)
+
+    with pytest.raises(StorageIntegrityError, match="stage changed"):
+        materialize_view_bundle(archive, output)
+
+    assert swapped
+    assert (victim / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert not (victim / VIEW_BUNDLE_MANIFEST).exists()
+    assert not (victim / "payload").exists()
+    assert (stolen / VIEW_BUNDLE_MANIFEST).is_file()
+    assert (stolen / "payload" / "documents.json").read_bytes() == b"[]\n"
+
+
+def test_materialization_fails_closed_without_safe_directory_fds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    build_view_bundle(source, archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    monkeypatch.setattr(bundle_module, "_SAFE_DIRECTORY_FDS", False)
+
+    with pytest.raises(StorageValidationError, match="directory-fd"):
+        materialize_view_bundle(archive, output)
+
+    assert not output.exists()
+
+
+def test_materialization_rejects_owned_payload_mount_without_deleting_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    build_view_bundle(source, archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    materialize_view_bundle(archive, output)
+    mounted = output / "payload" / "index"
+    original_mount_check = bundle_module._path_is_mount_point
+
+    def fake_mount_check(path: Path, **kwargs: object) -> bool:
+        return Path(path) == mounted or original_mount_check(path, **kwargs)
+
+    monkeypatch.setattr(bundle_module, "_path_is_mount_point", fake_mount_check)
+
+    with pytest.raises(StorageValidationError, match="non-CodeNib"):
+        materialize_view_bundle(archive, output)
+
+    assert (mounted / "shard").read_bytes() == b"immutable shard"
+
+
+def test_materialization_rolls_back_mount_detected_after_linearization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    build_view_bundle(source, archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    materialize_view_bundle(archive, output)
+    original_publish = bundle_module.publish_staged_directory
+    mounted = False
+    original_mount_check = bundle_module._path_is_mount_point
+
+    def fake_mount_check(path: Path, **kwargs: object) -> bool:
+        return (
+            mounted and Path(path).parts[-2:] == ("payload", "index")
+        ) or original_mount_check(path, **kwargs)
+
+    def publish_with_late_mount(
+        stage: Path,
+        destination: Path,
+        **kwargs: object,
+    ) -> None:
+        validate = kwargs["validate_moved_destination"]
+        calls = 0
+
+        def validate_then_mount(moved: Path) -> None:
+            nonlocal calls, mounted
+            assert callable(validate)
+            validate(moved)
+            calls += 1
+            if calls == 1:
+                mounted = True
+
+        kwargs["validate_moved_destination"] = validate_then_mount
+        original_publish(stage, destination, **kwargs)
+
+    monkeypatch.setattr(bundle_module, "_path_is_mount_point", fake_mount_check)
+    monkeypatch.setattr(
+        bundle_module,
+        "publish_staged_directory",
+        publish_with_late_mount,
+    )
+
+    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+        materialize_view_bundle(archive, output)
+
+    assert (output / "payload" / "index" / "shard").read_bytes() == b"immutable shard"
+
+
 def test_materialization_cleanup_preserves_swapped_in_stage_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1169,24 +1549,15 @@ def test_materialized_mode_is_applied_before_file_fsync(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[str] = []
-    target = tmp_path / "mode-test"
+    target = tmp_path / "root" / "mode-test"
+    target.parent.mkdir()
+    real_fchmod = bundle_module.os.fchmod
 
-    if hasattr(bundle_module.os, "fchmod"):
-        real_fchmod = bundle_module.os.fchmod
+    def record_fchmod(descriptor: int, mode: int) -> None:
+        events.append("chmod")
+        real_fchmod(descriptor, mode)
 
-        def record_fchmod(descriptor: int, mode: int) -> None:
-            events.append("chmod")
-            real_fchmod(descriptor, mode)
-
-        monkeypatch.setattr(bundle_module.os, "fchmod", record_fchmod)
-    else:
-        real_chmod = Path.chmod
-
-        def record_chmod(path: Path, mode: int) -> None:
-            events.append("chmod")
-            real_chmod(path, mode)
-
-        monkeypatch.setattr(Path, "chmod", record_chmod)
+    monkeypatch.setattr(bundle_module.os, "fchmod", record_fchmod)
     real_fsync = bundle_module.os.fsync
 
     def record_fsync(descriptor: int) -> None:
@@ -1195,9 +1566,19 @@ def test_materialized_mode_is_applied_before_file_fsync(
 
     monkeypatch.setattr(bundle_module.os, "fsync", record_fsync)
 
-    bundle_module._write_bytes_stable(target, b"payload", 0o755)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptor = os.open(target.parent, flags)
+    try:
+        bundle_module._write_extraction_bytes(
+            descriptor,
+            (target.name,),
+            b"payload",
+            0o755,
+        )
+    finally:
+        os.close(descriptor)
 
-    assert events == ["chmod", "fsync"]
+    assert events[:2] == ["chmod", "fsync"]
     assert stat.S_IMODE(target.stat().st_mode) == 0o755
 
 

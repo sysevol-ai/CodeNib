@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import stat
 import tempfile
 from pathlib import Path
@@ -15,6 +14,17 @@ from typing import Callable
 
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _EXPECTED_DESTINATION_UNSET = object()
+_MAX_SAFE_REMOVAL_DEPTH = 256
+_SAFE_REMOVAL_DIRECTORY_FDS = (
+    hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+    and os.open in os.supports_dir_fd
+    and os.stat in os.supports_dir_fd
+    and os.stat in os.supports_follow_symlinks
+    and os.scandir in os.supports_fd
+    and os.unlink in os.supports_dir_fd
+    and os.rmdir in os.supports_dir_fd
+)
 
 
 def _lexical_child_of_resolved_parent(path: Path) -> Path:
@@ -54,6 +64,242 @@ def _directory_identity(metadata: os.stat_result) -> tuple[int, ...]:
         metadata.st_mtime_ns,
         getattr(metadata, "st_file_attributes", 0),
     )
+
+
+def _directory_inode_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        getattr(metadata, "st_file_attributes", 0),
+    )
+
+
+def _is_link_or_reparse(metadata: os.stat_result) -> bool:
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT
+    )
+
+
+def _mountinfo_path(value: str) -> str:
+    """Decode the octal escapes used for paths in Linux mountinfo."""
+
+    return (
+        value.replace(r"\040", " ")
+        .replace(r"\011", "\t")
+        .replace(r"\012", "\n")
+        .replace(r"\134", "\\")
+    )
+
+
+def _linux_mount_points() -> frozenset[str]:
+    if os.name != "posix" or not Path("/proc/self/mountinfo").is_file():
+        return frozenset()
+    points: set[str] = set()
+    try:
+        with open("/proc/self/mountinfo", encoding="utf-8") as mountinfo:
+            for line in mountinfo:
+                fields = line.split()
+                if len(fields) >= 5:
+                    points.add(os.path.normpath(_mountinfo_path(fields[4])))
+    except OSError:
+        # os.path.ismount and device checks remain the portable baseline.
+        return frozenset()
+    return frozenset(points)
+
+
+def _path_is_mount_point(
+    path: Path,
+    *,
+    mount_points: frozenset[str] | None = None,
+) -> bool:
+    lexical = os.path.normpath(os.path.abspath(path))
+    observed_mount_points = (
+        _linux_mount_points() if mount_points is None else mount_points
+    )
+    return os.path.ismount(path) or lexical in observed_mount_points
+
+
+def _require_safe_tree(
+    path: Path,
+    *,
+    root_device: int,
+    mount_points: frozenset[str],
+    depth: int = 0,
+) -> None:
+    """Preflight cleanup without following links or crossing mount boundaries."""
+
+    if depth > _MAX_SAFE_REMOVAL_DEPTH:
+        raise RuntimeError(f"directory cleanup exceeds its depth limit: {path}")
+    metadata = path.lstat()
+    if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+        raise RuntimeError(f"directory cleanup target changed: {path}")
+    if metadata.st_dev != root_device or _path_is_mount_point(
+        path,
+        mount_points=mount_points,
+    ):
+        raise RuntimeError(f"refusing to remove a mounted directory tree: {path}")
+    with os.scandir(path) as entries:
+        for entry in entries:
+            child = path / entry.name
+            child_metadata = entry.stat(follow_symlinks=False)
+            if child_metadata.st_dev != root_device:
+                raise RuntimeError(
+                    f"refusing to cross a device during directory cleanup: {child}"
+                )
+            if _path_is_mount_point(child, mount_points=mount_points):
+                raise RuntimeError(
+                    f"refusing to remove a mounted filesystem entry: {child}"
+                )
+            if _is_link_or_reparse(child_metadata):
+                if stat.S_ISDIR(child_metadata.st_mode) or bool(
+                    getattr(child_metadata, "st_file_attributes", 0)
+                    & _FILE_ATTRIBUTE_REPARSE_POINT
+                ):
+                    raise RuntimeError(
+                        f"refusing to follow a linked directory during cleanup: {child}"
+                    )
+                continue
+            if stat.S_ISDIR(child_metadata.st_mode):
+                _require_safe_tree(
+                    child,
+                    root_device=root_device,
+                    mount_points=mount_points,
+                    depth=depth + 1,
+                )
+
+
+def _remove_tree_at(
+    parent_descriptor: int,
+    name: str,
+    path: Path,
+    *,
+    root_device: int,
+    mount_points: frozenset[str],
+    depth: int,
+) -> None:
+    if depth > _MAX_SAFE_REMOVAL_DEPTH:
+        raise RuntimeError(f"directory cleanup exceeds its depth limit: {path}")
+    metadata = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+    if (
+        _is_link_or_reparse(metadata)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_dev != root_device
+        or _path_is_mount_point(path, mount_points=mount_points)
+    ):
+        raise RuntimeError(f"directory cleanup target changed: {path}")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptor = os.open(name, flags, dir_fd=parent_descriptor)
+    try:
+        opened = os.fstat(descriptor)
+        if _directory_identity(opened) != _directory_identity(metadata):
+            raise RuntimeError(f"directory cleanup target changed: {path}")
+        if opened.st_dev != root_device or _path_is_mount_point(
+            path,
+            mount_points=mount_points,
+        ):
+            raise RuntimeError(f"refusing to remove a mounted directory tree: {path}")
+        while True:
+            # A fresh open file description resets the directory stream without
+            # materializing an attacker-sized list of names.  ``dup`` is not
+            # sufficient because it shares the directory offset.
+            scan_descriptor = os.open(".", flags, dir_fd=descriptor)
+            try:
+                if _directory_inode_identity(
+                    os.fstat(scan_descriptor)
+                ) != _directory_inode_identity(opened):
+                    raise RuntimeError(f"directory cleanup target changed: {path}")
+                with os.scandir(scan_descriptor) as entries:
+                    entry = next(iter(entries), None)
+            finally:
+                os.close(scan_descriptor)
+            if entry is None:
+                break
+            child_metadata = os.stat(
+                entry.name,
+                dir_fd=descriptor,
+                follow_symlinks=False,
+            )
+            child_path = path / entry.name
+            if child_metadata.st_dev != root_device:
+                raise RuntimeError(
+                    f"refusing to cross a device during directory cleanup: {child_path}"
+                )
+            if _path_is_mount_point(child_path, mount_points=mount_points):
+                raise RuntimeError(
+                    f"refusing to remove a mounted filesystem entry: {child_path}"
+                )
+            if stat.S_ISDIR(child_metadata.st_mode) and not _is_link_or_reparse(
+                child_metadata
+            ):
+                _remove_tree_at(
+                    descriptor,
+                    entry.name,
+                    child_path,
+                    root_device=root_device,
+                    mount_points=mount_points,
+                    depth=depth + 1,
+                )
+            else:
+                if bool(
+                    getattr(child_metadata, "st_file_attributes", 0)
+                    & _FILE_ATTRIBUTE_REPARSE_POINT
+                ):
+                    raise RuntimeError(
+                        f"refusing to remove a reparse point during cleanup: {child_path}"
+                    )
+                os.unlink(entry.name, dir_fd=descriptor)
+        if _directory_inode_identity(os.fstat(descriptor)) != _directory_inode_identity(
+            opened
+        ):
+            raise RuntimeError(f"directory cleanup target changed: {path}")
+    finally:
+        os.close(descriptor)
+    os.rmdir(name, dir_fd=parent_descriptor)
+
+
+def _remove_owned_directory(path: Path, expected_identity: tuple[int, ...]) -> None:
+    """Remove an owned tree without following links or crossing mounts."""
+
+    metadata = _directory_or_missing(path, label="directory cleanup target")
+    if metadata is None or _directory_identity(metadata) != expected_identity:
+        raise RuntimeError(f"directory cleanup target changed: {path}")
+    root_device = metadata.st_dev
+    if not _SAFE_REMOVAL_DIRECTORY_FDS:
+        with os.scandir(path) as entries:
+            if next(iter(entries), None) is not None:
+                raise RuntimeError(
+                    "safe directory cleanup requires no-follow directory-fd support"
+                )
+        final_metadata = _directory_or_missing(
+            path,
+            label="empty directory cleanup target",
+        )
+        if (
+            final_metadata is None
+            or _directory_identity(final_metadata) != expected_identity
+        ):
+            raise RuntimeError(f"directory cleanup target changed: {path}")
+        path.rmdir()
+        return
+    _require_safe_tree(
+        path,
+        root_device=root_device,
+        mount_points=_linux_mount_points(),
+    )
+    parent_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    parent_descriptor = os.open(path.parent, parent_flags)
+    try:
+        _remove_tree_at(
+            parent_descriptor,
+            path.name,
+            path,
+            root_device=root_device,
+            mount_points=_linux_mount_points(),
+            depth=0,
+        )
+    finally:
+        os.close(parent_descriptor)
 
 
 def _restore_previous_directory(
@@ -144,7 +390,9 @@ def publish_staged_directory(
     The destination-to-backup rename is the ownership linearization point.
     ``validate_moved_destination`` runs against that exact moved directory, so
     every mutation completed before the rename must be reflected in validation.
-    After the callback succeeds, the moved tree is owned by this publication.
+    The callback runs again after the staged tree is published and immediately
+    before no-follow cleanup.  A failed second validation quarantines the new
+    tree and restores the moved destination instead of deleting changed data.
     """
 
     # Only parents are resolved.  Resolving the final destination component
@@ -289,7 +537,36 @@ def publish_staged_directory(
         )
         raise
     else:
-        shutil.rmtree(backup, ignore_errors=True)
+        try:
+            if validate_moved_destination is not None and not destination_was_missing:
+                validate_moved_destination(backup)
+            backup_metadata = _directory_or_missing(
+                backup,
+                label="owned previous destination",
+            )
+            if backup_metadata is None:
+                raise RuntimeError(
+                    "previous destination disappeared before owned cleanup"
+                )
+            _remove_owned_directory(
+                backup,
+                _directory_identity(backup_metadata),
+            )
+        except Exception as cleanup_error:
+            quarantine = _recover_invalid_publication(
+                backup,
+                destination,
+                destination_was_missing=destination_was_missing,
+            )
+            quarantine_message = (
+                f" at {quarantine}"
+                if quarantine is not None
+                else " because it vanished"
+            )
+            raise RuntimeError(
+                "previous destination failed safe cleanup validation; newly "
+                f"published output was quarantined{quarantine_message}"
+            ) from cleanup_error
 
 
 __all__ = ["publish_staged_directory"]

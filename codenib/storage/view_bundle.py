@@ -10,7 +10,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import stat
 import struct
 import tempfile
@@ -21,7 +20,13 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO, Iterable, Iterator, Mapping
 
-from .._atomic_directory import _directory_identity, publish_staged_directory
+from .._atomic_directory import (
+    _directory_identity,
+    _linux_mount_points,
+    _path_is_mount_point,
+    _remove_owned_directory,
+    publish_staged_directory,
+)
 from .models import (
     ArtifactMember,
     StorageIntegrityError,
@@ -53,18 +58,22 @@ _ZIP_FILECOUNT_LIMIT = (1 << 16) - 1
 _FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 _VIEW_TYPE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z", re.ASCII)
 _WINDOWS_RESERVED_NAMES = frozenset(
-    {"CON", "PRN", "AUX", "NUL"}
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
     | {f"COM{number}" for number in range(1, 10)}
     | {f"LPT{number}" for number in range(1, 10)}
 )
+_WINDOWS_SUPERSCRIPT_DIGITS = str.maketrans({"¹": "1", "²": "2", "³": "3"})
 _WINDOWS_FORBIDDEN = frozenset('<>:"|?*')
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _SAFE_DIRECTORY_FDS = (
     hasattr(os, "O_DIRECTORY")
     and hasattr(os, "O_NOFOLLOW")
+    and hasattr(os, "fchmod")
     and os.open in os.supports_dir_fd
+    and os.mkdir in os.supports_dir_fd
     and os.stat in os.supports_dir_fd
     and os.stat in os.supports_follow_symlinks
+    and os.scandir in os.supports_fd
 )
 
 
@@ -128,6 +137,7 @@ class _MaterializationOwnership:
     root_identity: tuple[int, ...] | None
     manifest_digest: str | None
     members: tuple[ArtifactMember, ...]
+    directory_modes: tuple[tuple[str, int], ...]
 
 
 class _CanonicalZipInfo(zipfile.ZipInfo):
@@ -238,8 +248,10 @@ def build_view_bundle(
         suffix=".tmp",
     )
     temporary = Path(temporary_name)
+    temporary_identity: tuple[int, ...] | None = None
     try:
         with os.fdopen(descriptor, "w+b") as raw_archive:
+            temporary_identity = _file_inode_identity(os.fstat(raw_archive.fileno()))
             with zipfile.ZipFile(
                 raw_archive,
                 mode="w",
@@ -275,31 +287,48 @@ def build_view_bundle(
                             )
             raw_archive.flush()
             os.fsync(raw_archive.fileno())
-
-        _require_source_snapshot(snapshot, max_files=max_files, max_bytes=max_bytes)
-        verified = verify_view_bundle(
-            temporary,
-            expected_view_type=view_type,
-            max_files=max_files,
-            max_bytes=max_bytes,
-            max_metadata_bytes=max_metadata_bytes,
-        )
-        _require_source_snapshot(
-            snapshot,
-            max_files=max_files,
-            max_bytes=max_bytes,
-        )
-        _validate_bundle_file_target(resolved_output)
-        os.replace(temporary, resolved_output)
-        return ViewBundleRecord(
-            path=resolved_output,
-            view_type=verified.view_type,
-            digest=verified.digest,
-            byte_size=verified.byte_size,
-            members=verified.members,
-        )
+            archive_signature = _path_signature(os.fstat(raw_archive.fileno()))
+            raw_archive.seek(0)
+            archive_digest, archive_size = _consume_exact_file(
+                raw_archive,
+                archive_signature[3],
+                label="staged view bundle archive",
+            )
+            raw_archive.seek(0)
+            verified, _verified_manifest = _verify_archive_handle(
+                raw_archive,
+                temporary,
+                expected_view_type=view_type,
+                archive_digest=archive_digest,
+                archive_size=archive_size,
+                max_files=max_files,
+                max_bytes=max_bytes,
+                max_metadata_bytes=max_metadata_bytes,
+            )
+            _require_source_snapshot(
+                snapshot,
+                max_files=max_files,
+                max_bytes=max_bytes,
+            )
+            _validate_bundle_file_target(resolved_output)
+            _publish_open_bundle_file(
+                raw_archive,
+                temporary,
+                resolved_output,
+                expected_signature=archive_signature,
+                expected_digest=archive_digest,
+                expected_size=archive_size,
+            )
+            return ViewBundleRecord(
+                path=resolved_output,
+                view_type=verified.view_type,
+                digest=verified.digest,
+                byte_size=verified.byte_size,
+                members=verified.members,
+            )
     finally:
-        temporary.unlink(missing_ok=True)
+        if temporary_identity is not None:
+            _remove_owned_temporary_file(temporary, temporary_identity)
 
 
 def verify_view_bundle(
@@ -379,6 +408,11 @@ def materialize_view_bundle(
     """Verify, extract, and atomically publish a bundle's payload directory."""
 
     _validate_limits(max_files, max_bytes, max_metadata_bytes)
+    if not _SAFE_DIRECTORY_FDS:
+        raise StorageValidationError(
+            "secure view bundle materialization requires no-follow directory-fd "
+            "support on this platform"
+        )
     forbidden_roots = tuple(forbidden_roots)
     expected_view = (
         _validate_view_type(expected_view_type)
@@ -418,51 +452,50 @@ def materialize_view_bundle(
     )
     stage_root_identity = _directory_inode_identity(stage.lstat())
     try:
-        with _open_stable_regular_file(
-            archive,
-            label="view bundle archive",
-        ) as (resolved, handle, signature):
-            if (
-                expected_object_size is not None
-                and signature[3] != expected_object_size
-            ):
-                raise StorageIntegrityError(
-                    "view bundle archive size does not match the expected object"
-                )
-            _validate_archive_physical_size(
-                signature[3],
-                max_files=max_files,
-                max_bytes=max_bytes,
-                max_metadata_bytes=max_metadata_bytes,
-            )
-            observed_digest, observed_size = _consume_exact_file(
-                handle,
-                signature[3],
+        with _open_extraction_root(stage, stage_root_identity) as stage_descriptor:
+            with _open_stable_regular_file(
+                archive,
                 label="view bundle archive",
-            )
-            if (
-                expected_object_digest is not None
-                and observed_digest != expected_object_digest
-            ):
-                raise StorageIntegrityError(
-                    "view bundle archive digest does not match the expected object"
+            ) as (resolved, handle, signature):
+                if (
+                    expected_object_size is not None
+                    and signature[3] != expected_object_size
+                ):
+                    raise StorageIntegrityError(
+                        "view bundle archive size does not match the expected object"
+                    )
+                _validate_archive_physical_size(
+                    signature[3],
+                    max_files=max_files,
+                    max_bytes=max_bytes,
+                    max_metadata_bytes=max_metadata_bytes,
                 )
-            handle.seek(0)
-            record, manifest_bytes = _verify_archive_handle(
-                handle,
-                resolved,
-                expected_view_type=expected_view,
-                archive_digest=observed_digest,
-                archive_size=observed_size,
-                max_files=max_files,
-                max_bytes=max_bytes,
-                max_metadata_bytes=max_metadata_bytes,
-                extraction_root=stage,
-            )
-        manifest_path = stage / VIEW_BUNDLE_MANIFEST
-        if not manifest_path.exists():
-            _write_bytes_stable(manifest_path, manifest_bytes, 0o644)
-        _fsync_tree(stage)
+                observed_digest, observed_size = _consume_exact_file(
+                    handle,
+                    signature[3],
+                    label="view bundle archive",
+                )
+                if (
+                    expected_object_digest is not None
+                    and observed_digest != expected_object_digest
+                ):
+                    raise StorageIntegrityError(
+                        "view bundle archive digest does not match the expected object"
+                    )
+                handle.seek(0)
+                record, _manifest_bytes_value = _verify_archive_handle(
+                    handle,
+                    resolved,
+                    expected_view_type=expected_view,
+                    archive_digest=observed_digest,
+                    archive_size=observed_size,
+                    max_files=max_files,
+                    max_bytes=max_bytes,
+                    max_metadata_bytes=max_metadata_bytes,
+                    extraction_root_descriptor=stage_descriptor,
+                )
+            os.fsync(stage_descriptor)
+            _require_owned_stage_path(stage, stage_root_identity)
         expected_ownership = _validate_materialization_target(
             output,
             max_files=max_files,
@@ -588,7 +621,8 @@ def _canonical_member_path(value: str) -> str:
             or part[-1:] in {" ", "."}
             or any(ord(character) < 32 or ord(character) == 127 for character in part)
             or any(character in _WINDOWS_FORBIDDEN for character in part)
-            or part.split(".", 1)[0].upper() in _WINDOWS_RESERVED_NAMES
+            or part.split(".", 1)[0].translate(_WINDOWS_SUPERSCRIPT_DIGITS).upper()
+            in _WINDOWS_RESERVED_NAMES
         ):
             raise StorageValidationError(
                 f"view bundle member path is not portable: {value!r}"
@@ -1091,7 +1125,7 @@ def _verify_archive_handle(
     max_files: int,
     max_bytes: int,
     max_metadata_bytes: int,
-    extraction_root: Path | None = None,
+    extraction_root_descriptor: int | None = None,
 ) -> tuple[ViewBundleRecord, bytes]:
     handle.seek(0)
     envelope = _read_zip_envelope(
@@ -1149,9 +1183,10 @@ def _verify_archive_handle(
                 )
             _validate_canonical_zip_info(metadata_info, 0o644, guarded=False)
 
-            if extraction_root is not None:
-                _write_bytes_stable(
-                    extraction_root / VIEW_BUNDLE_MANIFEST,
+            if extraction_root_descriptor is not None:
+                _write_extraction_bytes(
+                    extraction_root_descriptor,
+                    (VIEW_BUNDLE_MANIFEST,),
                     manifest_bytes,
                     0o644,
                 )
@@ -1167,15 +1202,16 @@ def _verify_archive_handle(
                     raise StorageIntegrityError(
                         f"view bundle member size mismatch: {member.path}"
                     )
-                target = (
-                    extraction_root / VIEW_BUNDLE_PAYLOAD / PurePosixPath(member.path)
-                    if extraction_root is not None
+                target_parts = (
+                    (VIEW_BUNDLE_PAYLOAD, *PurePosixPath(member.path).parts)
+                    if extraction_root_descriptor is not None
                     else None
                 )
                 observed_digest, observed_size = _stream_zip_member(
                     archive,
                     info,
-                    target=target,
+                    extraction_root_descriptor=extraction_root_descriptor,
+                    target_parts=target_parts,
                     mode=member.mode,
                     max_member_bytes=member.byte_size,
                     max_total_bytes=max_bytes,
@@ -1308,7 +1344,8 @@ def _stream_zip_member(
     archive: zipfile.ZipFile,
     info: zipfile.ZipInfo,
     *,
-    target: Path | None,
+    extraction_root_descriptor: int | None,
+    target_parts: tuple[str, ...] | None,
     mode: int,
     max_member_bytes: int,
     max_total_bytes: int,
@@ -1316,11 +1353,17 @@ def _stream_zip_member(
 ) -> tuple[str, int]:
     digest = hashlib.sha256()
     written = 0
-    destination: BinaryIO | None = None
-    try:
-        if target is not None:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            destination = target.open("xb")
+    if extraction_root_descriptor is None:
+        destination_context = _optional_binary_writer(None)
+    else:
+        if target_parts is None:
+            raise StorageIntegrityError("view bundle extraction target is missing")
+        destination_context = _open_extraction_file(
+            extraction_root_descriptor,
+            target_parts,
+            mode,
+        )
+    with destination_context as destination:
         with archive.open(info, mode="r") as source:
             while chunk := source.read(_COPY_CHUNK_BYTES):
                 written += len(chunk)
@@ -1340,12 +1383,141 @@ def _stream_zip_member(
                 f"view bundle ZIP member size changed while reading: {info.filename}"
             )
         if destination is not None:
-            assert target is not None
-            _flush_file_with_mode(destination, target, mode)
-    finally:
-        if destination is not None:
-            destination.close()
+            _flush_extraction_file(destination, mode)
     return digest.hexdigest(), written
+
+
+@contextmanager
+def _optional_binary_writer(
+    writer: BinaryIO | None,
+) -> Iterator[BinaryIO | None]:
+    yield writer
+
+
+@contextmanager
+def _open_extraction_root(
+    stage: Path,
+    expected_identity: tuple[int, ...],
+) -> Iterator[int]:
+    """Hold the original stage inode while every extraction write is relative."""
+
+    metadata = stage.lstat()
+    if (
+        _is_link_or_reparse(metadata)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or _directory_inode_identity(metadata) != expected_identity
+    ):
+        raise StorageIntegrityError("view bundle materialization stage changed")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptor = os.open(stage, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if _directory_inode_identity(opened) != expected_identity:
+            raise StorageIntegrityError(
+                "view bundle materialization stage changed while opening"
+            )
+        yield descriptor
+        if _directory_inode_identity(os.fstat(descriptor)) != expected_identity:
+            raise StorageIntegrityError(
+                "view bundle materialization stage changed during extraction"
+            )
+    finally:
+        os.close(descriptor)
+
+
+@contextmanager
+def _open_extraction_file(
+    root_descriptor: int,
+    parts: tuple[str, ...],
+    mode: int,
+) -> Iterator[BinaryIO]:
+    """Create one file beneath an already-open stage without following paths."""
+
+    if not parts or any(part in {"", ".", ".."} or "/" in part for part in parts):
+        raise StorageValidationError("view bundle extraction path is unsafe")
+    root_metadata = os.fstat(root_descriptor)
+    root_device = root_metadata.st_dev
+    descriptor = os.dup(root_descriptor)
+    try:
+        for part in parts[:-1]:
+            created = False
+            try:
+                metadata = os.stat(part, dir_fd=descriptor, follow_symlinks=False)
+            except FileNotFoundError:
+                try:
+                    os.mkdir(part, mode=0o700, dir_fd=descriptor)
+                    created = True
+                except FileExistsError:
+                    pass
+                metadata = os.stat(part, dir_fd=descriptor, follow_symlinks=False)
+            if (
+                _is_link_or_reparse(metadata)
+                or not stat.S_ISDIR(metadata.st_mode)
+                or metadata.st_dev != root_device
+            ):
+                raise StorageIntegrityError(
+                    "view bundle extraction directory changed or crosses a device"
+                )
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            child = os.open(part, flags, dir_fd=descriptor)
+            opened = os.fstat(child)
+            if (
+                _directory_inode_identity(opened) != _directory_inode_identity(metadata)
+                or opened.st_dev != root_device
+            ):
+                os.close(child)
+                raise StorageIntegrityError(
+                    "view bundle extraction directory changed while opening"
+                )
+            if created:
+                os.fsync(descriptor)
+            os.close(descriptor)
+            descriptor = child
+
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        flags |= getattr(os, "O_BINARY", 0)
+        file_descriptor = os.open(
+            parts[-1],
+            flags,
+            mode,
+            dir_fd=descriptor,
+        )
+        try:
+            opened_file = os.fstat(file_descriptor)
+            if (
+                _is_link_or_reparse(opened_file)
+                or not stat.S_ISREG(opened_file.st_mode)
+                or opened_file.st_dev != root_device
+            ):
+                raise StorageIntegrityError(
+                    "view bundle extraction file changed while opening"
+                )
+            with os.fdopen(file_descriptor, "wb") as handle:
+                file_descriptor = -1
+                yield handle
+            os.fsync(descriptor)
+        finally:
+            if file_descriptor >= 0:
+                os.close(file_descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_extraction_bytes(
+    root_descriptor: int,
+    parts: tuple[str, ...],
+    payload: bytes,
+    mode: int,
+) -> None:
+    with _open_extraction_file(root_descriptor, parts, mode) as handle:
+        handle.write(payload)
+        _flush_extraction_file(handle, mode)
+
+
+def _flush_extraction_file(handle: BinaryIO, mode: int) -> None:
+    os.fchmod(handle.fileno(), mode)
+    handle.flush()
+    os.fsync(handle.fileno())
 
 
 def _scan_source_tree(
@@ -1354,19 +1526,31 @@ def _scan_source_tree(
     include_digests: bool,
     max_files: int,
     max_bytes: int,
+    preserve_modes: bool = False,
+    required_device: int | None = None,
+    reject_mounts: bool = False,
 ) -> _SourceSnapshot:
+    mount_points = _linux_mount_points() if reject_mounts else frozenset()
     if _SAFE_DIRECTORY_FDS:
         return _scan_source_tree_at(
             root,
             include_digests=include_digests,
             max_files=max_files,
             max_bytes=max_bytes,
+            preserve_modes=preserve_modes,
+            required_device=required_device,
+            reject_mounts=reject_mounts,
+            mount_points=mount_points,
         )
     return _scan_source_tree_by_path(
         root,
         include_digests=include_digests,
         max_files=max_files,
         max_bytes=max_bytes,
+        preserve_modes=preserve_modes,
+        required_device=required_device,
+        reject_mounts=reject_mounts,
+        mount_points=mount_points,
     )
 
 
@@ -1376,6 +1560,10 @@ def _scan_source_tree_at(
     include_digests: bool,
     max_files: int,
     max_bytes: int,
+    preserve_modes: bool,
+    required_device: int | None,
+    reject_mounts: bool,
+    mount_points: frozenset[str],
 ) -> _SourceSnapshot:
     directories: dict[tuple[str, ...], tuple[int, ...]] = {}
     files: list[_ScannedFile] = []
@@ -1385,6 +1573,12 @@ def _scan_source_tree_at(
     with _open_directory_path(root, label="view bundle source") as root_descriptor:
         assert root_descriptor is not None
         root_signature = _path_signature(os.fstat(root_descriptor))
+        if required_device is not None and root_signature[0] != required_device:
+            raise StorageValidationError(
+                "view bundle source crosses a filesystem boundary"
+            )
+        if reject_mounts and _path_is_mount_point(root, mount_points=mount_points):
+            raise StorageValidationError("view bundle source contains a mount point")
 
         def visit(descriptor: int, parts: tuple[str, ...]) -> None:
             nonlocal total_bytes, visited_entries
@@ -1411,6 +1605,17 @@ def _scan_source_tree_at(
                     PurePosixPath(*relative_parts).as_posix()
                 )
                 metadata = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+                if required_device is not None and metadata.st_dev != required_device:
+                    raise StorageValidationError(
+                        f"view bundle source crosses a filesystem boundary: {relative}"
+                    )
+                if reject_mounts and _path_is_mount_point(
+                    root.joinpath(*relative_parts),
+                    mount_points=mount_points,
+                ):
+                    raise StorageValidationError(
+                        f"view bundle source contains a mount point: {relative}"
+                    )
                 if _is_link_or_reparse(metadata):
                     raise StorageValidationError(
                         f"view bundle source contains a symbolic link: {relative}"
@@ -1442,7 +1647,11 @@ def _scan_source_tree_at(
                     if include_digests
                     else None
                 )
-                mode = 0o755 if metadata.st_mode & 0o111 else 0o644
+                mode = (
+                    metadata.st_mode & 0o7777
+                    if preserve_modes
+                    else 0o755 if metadata.st_mode & 0o111 else 0o644
+                )
                 files.append(
                     _ScannedFile(
                         path=relative,
@@ -1475,6 +1684,10 @@ def _scan_source_tree_by_path(
     include_digests: bool,
     max_files: int,
     max_bytes: int,
+    preserve_modes: bool,
+    required_device: int | None,
+    reject_mounts: bool,
+    mount_points: frozenset[str],
 ) -> _SourceSnapshot:
     directories: dict[tuple[str, ...], tuple[int, ...]] = {}
     files: list[_ScannedFile] = []
@@ -1482,6 +1695,10 @@ def _scan_source_tree_by_path(
     visited_entries = 0
     maximum_entries = 2 * max_files + 1
     root_signature = _path_signature(root.lstat())
+    if required_device is not None and root_signature[0] != required_device:
+        raise StorageValidationError("view bundle source crosses a filesystem boundary")
+    if reject_mounts and _path_is_mount_point(root, mount_points=mount_points):
+        raise StorageValidationError("view bundle source contains a mount point")
 
     def visit(directory: Path, parts: tuple[str, ...]) -> None:
         nonlocal total_bytes, visited_entries
@@ -1507,6 +1724,17 @@ def _scan_source_tree_by_path(
             relative_parts = (*parts, candidate.name)
             relative = _canonical_member_path(PurePosixPath(*relative_parts).as_posix())
             metadata = candidate.lstat()
+            if required_device is not None and metadata.st_dev != required_device:
+                raise StorageValidationError(
+                    f"view bundle source crosses a filesystem boundary: {relative}"
+                )
+            if reject_mounts and _path_is_mount_point(
+                candidate,
+                mount_points=mount_points,
+            ):
+                raise StorageValidationError(
+                    f"view bundle source contains a mount point: {relative}"
+                )
             if _is_link_or_reparse(metadata):
                 raise StorageValidationError(
                     f"view bundle source contains a symbolic link: {relative}"
@@ -1531,7 +1759,11 @@ def _scan_source_tree_by_path(
                 if include_digests
                 else None
             )
-            mode = 0o755 if metadata.st_mode & 0o111 else 0o644
+            mode = (
+                metadata.st_mode & 0o7777
+                if preserve_modes
+                else 0o755 if metadata.st_mode & 0o111 else 0o644
+            )
             files.append(
                 _ScannedFile(
                     path=relative,
@@ -1937,6 +2169,343 @@ def _validate_bundle_file_target(path: Path) -> None:
         )
 
 
+def _file_inode_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        getattr(metadata, "st_file_attributes", 0),
+    )
+
+
+def _file_boundary_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    """Identity stable across rename but sensitive to content/mode mutation."""
+
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        getattr(metadata, "st_file_attributes", 0),
+    )
+
+
+def _require_open_bundle_path(
+    handle: BinaryIO,
+    path: Path,
+    *,
+    expected_signature: tuple[int, ...],
+    expected_digest: str,
+    expected_size: int,
+    label: str,
+) -> None:
+    opened_signature = _path_signature(os.fstat(handle.fileno()))
+    if opened_signature != expected_signature:
+        raise StorageIntegrityError(f"{label} changed through its open descriptor")
+    with _open_stable_regular_file(path, label=label) as (
+        _resolved,
+        observed_handle,
+        observed_signature,
+    ):
+        if observed_signature != expected_signature:
+            raise StorageIntegrityError(f"{label} path no longer names the open file")
+        digest, size = _consume_exact_file(
+            observed_handle,
+            expected_size,
+            label=label,
+        )
+    if digest != expected_digest or size != expected_size:
+        raise StorageIntegrityError(f"{label} failed its publication digest check")
+
+
+def _reserve_file_slot(parent: Path, name: str, *, suffix: str) -> Path:
+    descriptor, reserved_name = tempfile.mkstemp(
+        prefix=f".{name}.{suffix}-",
+        dir=str(parent),
+    )
+    reserved = Path(reserved_name)
+    try:
+        os.close(descriptor)
+        descriptor = -1
+        reserved.unlink()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    return reserved
+
+
+def _quarantine_bundle_file(destination: Path) -> Path | None:
+    try:
+        destination.lstat()
+    except FileNotFoundError:
+        return None
+    quarantine = _reserve_file_slot(
+        destination.parent,
+        destination.name,
+        suffix="quarantine",
+    )
+    os.replace(destination, quarantine)
+    return quarantine
+
+
+def _restore_previous_bundle_file(
+    backup: Path,
+    destination: Path,
+    *,
+    previous_descriptor: int,
+    previous_signature: tuple[int, ...],
+    destination_was_missing: bool,
+) -> None:
+    # Never overwrite an object that appeared while the destination name was
+    # vacant.  Moving it aside preserves both the unexpected object and the
+    # previous output even if the subsequent restore fails.
+    _quarantine_bundle_file(destination)
+    os.replace(backup, destination)
+    restored = destination.lstat()
+    opened = os.fstat(previous_descriptor)
+    if (
+        _is_link_or_reparse(restored)
+        or not stat.S_ISREG(restored.st_mode)
+        or _file_boundary_identity(restored) != _file_boundary_identity(opened)
+        or _file_boundary_identity(opened) != previous_signature
+    ):
+        raise RuntimeError(
+            f"previous view bundle output changed during rollback: {destination}"
+        )
+    if destination_was_missing:
+        destination.unlink()
+
+
+def _recover_bundle_file_publication(
+    backup: Path,
+    destination: Path,
+    *,
+    previous_descriptor: int,
+    previous_signature: tuple[int, ...],
+    destination_was_missing: bool,
+) -> Path | None:
+    try:
+        quarantine = _quarantine_bundle_file(destination)
+    except OSError as exc:
+        raise RuntimeError(
+            "view bundle publication failed; suspect output remains at "
+            f"{destination} and previous output remains at {backup}"
+        ) from exc
+    try:
+        _restore_previous_bundle_file(
+            backup,
+            destination,
+            previous_descriptor=previous_descriptor,
+            previous_signature=previous_signature,
+            destination_was_missing=destination_was_missing,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "view bundle publication failed and previous output could not be "
+            f"restored from {backup}; suspect output is at {quarantine}"
+        ) from exc
+    return quarantine
+
+
+def _publish_open_bundle_file(
+    handle: BinaryIO,
+    temporary: Path,
+    destination: Path,
+    *,
+    expected_signature: tuple[int, ...],
+    expected_digest: str,
+    expected_size: int,
+) -> None:
+    """Publish the exact open archive with rollback and suspect quarantine."""
+
+    destination_was_missing = False
+    previous_descriptor = -1
+    backup: Path | None = None
+    try:
+        try:
+            previous_metadata = destination.lstat()
+        except FileNotFoundError:
+            destination_was_missing = True
+            flags = os.O_RDWR | os.O_CREAT | os.O_EXCL
+            flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+            try:
+                previous_descriptor = os.open(destination, flags, 0o600)
+            except FileExistsError as exc:
+                raise StorageIntegrityError(
+                    "view bundle output appeared during publication"
+                ) from exc
+            previous_metadata = os.fstat(previous_descriptor)
+        else:
+            if _is_link_or_reparse(previous_metadata) or not stat.S_ISREG(
+                previous_metadata.st_mode
+            ):
+                raise StorageValidationError(
+                    f"view bundle output is not a regular file: {destination}"
+                )
+            previous_descriptor = os.open(destination, _regular_read_flags())
+            opened_previous = os.fstat(previous_descriptor)
+            if _path_signature(opened_previous) != _path_signature(previous_metadata):
+                raise StorageIntegrityError(
+                    "view bundle output changed while opening for publication"
+                )
+            previous_metadata = opened_previous
+        previous_signature = _file_boundary_identity(previous_metadata)
+
+        backup = _reserve_file_slot(
+            destination.parent,
+            destination.name,
+            suffix="previous",
+        )
+        try:
+            os.replace(destination, backup)
+        except BaseException:
+            if destination_was_missing:
+                try:
+                    current = destination.lstat()
+                except FileNotFoundError:
+                    pass
+                else:
+                    if _file_inode_identity(current) == _file_inode_identity(
+                        os.fstat(previous_descriptor)
+                    ):
+                        destination.unlink()
+            raise
+        moved = backup.lstat()
+        opened_previous = os.fstat(previous_descriptor)
+        if (
+            _is_link_or_reparse(moved)
+            or not stat.S_ISREG(moved.st_mode)
+            or _path_signature(moved) != _path_signature(opened_previous)
+        ):
+            try:
+                _restore_previous_bundle_file(
+                    backup,
+                    destination,
+                    previous_descriptor=previous_descriptor,
+                    previous_signature=previous_signature,
+                    destination_was_missing=destination_was_missing,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    "view bundle output changed at the publication boundary; "
+                    "the moved object was preserved"
+                ) from exc
+            raise StorageIntegrityError(
+                "view bundle output changed at the publication boundary"
+            )
+        previous_signature = _file_boundary_identity(opened_previous)
+
+        published = False
+        try:
+            _require_open_bundle_path(
+                handle,
+                temporary,
+                expected_signature=expected_signature,
+                expected_digest=expected_digest,
+                expected_size=expected_size,
+                label="staged view bundle archive",
+            )
+            # The old destination has already moved to ``backup``.  A hard
+            # link publishes without clobbering any object that appeared in
+            # the vacant name, and binds the published name to one inode.  The
+            # still-open descriptor and digest are checked immediately below.
+            os.link(temporary, destination, follow_symlinks=False)
+            published = True
+            destination_signature = _path_signature(os.fstat(handle.fileno()))
+            _require_open_bundle_path(
+                handle,
+                destination,
+                expected_signature=destination_signature,
+                expected_digest=expected_digest,
+                expected_size=expected_size,
+                label="published view bundle archive",
+            )
+            if _file_inode_identity(os.fstat(handle.fileno()))[
+                :3
+            ] != _file_inode_identity_from_signature(expected_signature):
+                raise StorageIntegrityError(
+                    "staged view bundle archive changed during publication"
+                )
+            moved = backup.lstat()
+            if (
+                _file_boundary_identity(moved)
+                != _file_boundary_identity(os.fstat(previous_descriptor))
+                or _file_boundary_identity(moved) != previous_signature
+            ):
+                raise StorageIntegrityError(
+                    "previous view bundle output changed during publication"
+                )
+            backup.unlink()
+        except BaseException as publication_error:
+            if published:
+                quarantine = _recover_bundle_file_publication(
+                    backup,
+                    destination,
+                    previous_descriptor=previous_descriptor,
+                    previous_signature=previous_signature,
+                    destination_was_missing=destination_was_missing,
+                )
+                quarantine_message = (
+                    f" at {quarantine}"
+                    if quarantine is not None
+                    else " because it vanished"
+                )
+                raise StorageIntegrityError(
+                    "published view bundle archive failed identity validation; "
+                    f"suspect output was quarantined{quarantine_message}"
+                ) from publication_error
+            _restore_previous_bundle_file(
+                backup,
+                destination,
+                previous_descriptor=previous_descriptor,
+                previous_signature=previous_signature,
+                destination_was_missing=destination_was_missing,
+            )
+            raise
+    finally:
+        if previous_descriptor >= 0:
+            os.close(previous_descriptor)
+
+
+def _file_inode_identity_from_signature(signature: tuple[int, ...]) -> tuple[int, ...]:
+    return (signature[0], signature[1], stat.S_IFMT(signature[2]))
+
+
+def _remove_owned_temporary_file(
+    path: Path,
+    expected_identity: tuple[int, ...],
+) -> None:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return
+    if (
+        _is_link_or_reparse(metadata)
+        or _file_inode_identity(metadata) != expected_identity
+    ):
+        return
+    cleanup = _reserve_file_slot(path.parent, path.name, suffix="cleanup")
+    try:
+        os.replace(path, cleanup)
+    except OSError:
+        return
+    try:
+        moved = cleanup.lstat()
+    except FileNotFoundError:
+        return
+    if _is_link_or_reparse(moved) or _file_inode_identity(moved) != expected_identity:
+        try:
+            os.replace(cleanup, path)
+        except OSError:
+            pass
+        return
+    try:
+        cleanup.unlink()
+    except OSError:
+        pass
+
+
 def _validate_materialization_target(
     path: Path,
     *,
@@ -1947,11 +2516,14 @@ def _validate_materialization_target(
     try:
         metadata = path.lstat()
     except FileNotFoundError:
-        return _MaterializationOwnership("missing", None, None, ())
+        return _MaterializationOwnership("missing", None, None, (), ())
     if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
         raise StorageValidationError(
             f"view bundle output is not a real directory: {path}"
         )
+    if _path_is_mount_point(path):
+        raise StorageValidationError(f"refusing to replace a mounted directory: {path}")
+    root_device = metadata.st_dev
     entry_names: set[str] = set()
     try:
         with os.scandir(path) as entries:
@@ -1978,6 +2550,7 @@ def _validate_materialization_target(
             _directory_identity(final_metadata),
             None,
             (),
+            (),
         )
     if entry_names != {
         VIEW_BUNDLE_MANIFEST,
@@ -1998,9 +2571,14 @@ def _validate_materialization_target(
     if (
         _is_link_or_reparse(manifest_metadata)
         or not stat.S_ISREG(manifest_metadata.st_mode)
+        or manifest_metadata.st_dev != root_device
+        or _path_is_mount_point(manifest)
+        or manifest_metadata.st_mode & 0o7777 != 0o644
         or manifest_metadata.st_size > max_metadata_bytes
         or _is_link_or_reparse(payload_metadata)
         or not stat.S_ISDIR(payload_metadata.st_mode)
+        or payload_metadata.st_dev != root_device
+        or _path_is_mount_point(payload)
     ):
         raise StorageValidationError(
             f"refusing to replace a non-CodeNib directory: {path}"
@@ -2037,6 +2615,9 @@ def _validate_materialization_target(
             include_digests=True,
             max_files=max_files,
             max_bytes=max_bytes,
+            preserve_modes=True,
+            required_device=root_device,
+            reject_mounts=True,
         )
     except (OSError, StorageValidationError, StorageIntegrityError) as exc:
         raise StorageValidationError(
@@ -2076,6 +2657,15 @@ def _validate_materialization_target(
         _directory_identity(final_metadata),
         _manifest_digest,
         members,
+        tuple(
+            sorted(
+                (
+                    PurePosixPath(*parts).as_posix() if parts else "",
+                    signature[2] & 0o7777,
+                )
+                for parts, signature in snapshot.directories.items()
+            )
+        ),
     )
 
 
@@ -2086,6 +2676,26 @@ def _directory_inode_identity(metadata: os.stat_result) -> tuple[int, ...]:
         stat.S_IFMT(metadata.st_mode),
         getattr(metadata, "st_file_attributes", 0),
     )
+
+
+def _require_owned_stage_path(
+    stage: Path,
+    expected_identity: tuple[int, ...],
+) -> None:
+    try:
+        metadata = stage.lstat()
+    except FileNotFoundError as exc:
+        raise StorageIntegrityError(
+            "view bundle materialization stage disappeared"
+        ) from exc
+    if (
+        _is_link_or_reparse(metadata)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or _directory_inode_identity(metadata) != expected_identity
+    ):
+        raise StorageIntegrityError(
+            "view bundle materialization stage changed during extraction"
+        )
 
 
 def _remove_owned_stage(stage: Path, expected_identity: tuple[int, ...]) -> None:
@@ -2132,7 +2742,12 @@ def _remove_owned_stage(stage: Path, expected_identity: tuple[int, ...]) -> None
         except OSError:
             pass
         return
-    shutil.rmtree(cleanup, ignore_errors=True)
+    try:
+        _remove_owned_directory(cleanup, _directory_identity(moved_metadata))
+    except (OSError, RuntimeError, ValueError):
+        # Cleanup is best effort.  The owned tree remains quarantined under a
+        # unique sibling name rather than following a changed path.
+        pass
 
 
 def _reject_forbidden_roots(
@@ -2155,45 +2770,6 @@ def _reject_overlap(left: Path, right: Path, *, label: str) -> None:
         return
     if common in {left_value, right_value}:
         raise StorageValidationError(f"{label} overlap: {left}")
-
-
-def _write_bytes_stable(path: Path, payload: bytes, mode: int) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("xb") as handle:
-        handle.write(payload)
-        _flush_file_with_mode(handle, path, mode)
-
-
-def _flush_file_with_mode(handle: BinaryIO, path: Path, mode: int) -> None:
-    if hasattr(os, "fchmod"):
-        os.fchmod(handle.fileno(), mode)
-    else:
-        path.chmod(mode)
-    handle.flush()
-    os.fsync(handle.fileno())
-
-
-def _fsync_tree(root: Path) -> None:
-    directories = [root]
-    for directory, child_directories, _files in os.walk(root):
-        base = Path(directory)
-        directories.extend(base / name for name in child_directories)
-    for directory in reversed(directories):
-        _fsync_directory(directory)
-
-
-def _fsync_directory(path: Path) -> None:
-    flags = os.O_RDONLY
-    if hasattr(os, "O_DIRECTORY"):
-        flags |= os.O_DIRECTORY
-    try:
-        descriptor = os.open(path, flags)
-    except OSError:
-        return
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def _path_signature(metadata: os.stat_result) -> tuple[int, ...]:
