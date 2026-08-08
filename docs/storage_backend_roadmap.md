@@ -219,6 +219,19 @@ holder while taking over its slot; this slice adds no background reaper and is
 not wired to the compiler or Web workers.  Legacy manifest import/export
 remains the outstanding M1 deliverable.
 
+The shared compiler-cache lock is a cooperative serialization boundary for
+compiler and importer processes using a cache namespace private to one OS
+account.  It opens the fixed coordination entry without truncation, validates
+it as a single-link regular inode, and binds its visible identity before
+entering the operation.  It does not protect the manifest or view tree from a
+user who actively replaces paths while the lock is held.  POSIX opens the lock
+read/write for `flock` implementations that require write access on NFS, using
+`O_PATH` for Linux cache-directory descriptors, `O_SEARCH` where another POSIX
+exposes it, and an explicit read-only directory fallback otherwise.  Windows
+retains a cooperative `msvcrt` byte lock with pre-entry reparse/link and
+identity checks; a future handle-based implementation is required before
+adversarial junction or path-replacement races can enter its contract.
+
 Schema v2 deliberately retains complete job aggregates.  Duplicate-insert
 guards reject `REPLACE` of jobs, requested views, and persistent lease slots
 even from ordinary SQLite connections whose connection-local recursive trigger

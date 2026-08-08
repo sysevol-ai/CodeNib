@@ -29,21 +29,18 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from filelock import FileLock
-
 from ..paths import REPO_INDEX_DIRNAME
 from ..source_fingerprint import (
     SourceFingerprint,
     fingerprint_repository,
     repository_source_is_dirty,
 )
+from .cache_lock import compiler_cache_lock
 from .index_builders import IndexBuilderRegistry
 from .manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
 from .resources import IndexStatus
 
 logger = logging.getLogger(__name__)
-
-_COMPILER_LOCK_FILENAME = ".index-compiler.lock"
 
 
 @dataclass(slots=True)
@@ -107,8 +104,7 @@ class IndexCompiler:
         """
         repo_path = os.path.abspath(repo_path)
         cache = self._resolve_cache_dir(repo_path, cache_dir)
-        os.makedirs(cache, exist_ok=True)
-        with FileLock(os.path.join(cache, _COMPILER_LOCK_FILENAME)):
+        with compiler_cache_lock(cache):
             existing = self._load_existing_manifest(cache)
             return self._compile(
                 repo_path,
@@ -138,8 +134,7 @@ class IndexCompiler:
         """
         repo_path = os.path.abspath(repo_path)
         cache = self._resolve_cache_dir(repo_path, cache_dir)
-        os.makedirs(cache, exist_ok=True)
-        with FileLock(os.path.join(cache, _COMPILER_LOCK_FILENAME)):
+        with compiler_cache_lock(cache):
             return self._update_repo_locked(
                 repo_path,
                 index_types=index_types,
@@ -256,7 +251,6 @@ class IndexCompiler:
         """Build requested views while preserving independent manifest entries."""
         repo_path = os.path.abspath(repo_path)
         cache = cache_dir or os.path.join(repo_path, self._config.cache_dir_name)
-        os.makedirs(cache, exist_ok=True)
 
         types_to_build = index_types or self._config.index_types
 
