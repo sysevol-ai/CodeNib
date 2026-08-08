@@ -22,6 +22,10 @@ def test_local_specification_rollout_controls_are_forwarded(tmp_path):
             "fixture-task",
             "--guardian-explorer-count",
             "3",
+            "--guardian-explorer-model",
+            "codex:gpt-5.6-luna",
+            "--guardian-aggregator-model",
+            "codex:gpt-5.6-sol",
             "--guardian-max-findings",
             "4",
             "--guardian-max-cycles",
@@ -39,6 +43,8 @@ def test_local_specification_rollout_controls_are_forwarded(tmp_path):
     )
 
     assert "guardian_explorer_count=3" in command
+    assert "guardian_explorer_model=codex:gpt-5.6-luna" in command
+    assert "guardian_aggregator_model=codex:gpt-5.6-sol" in command
     assert "guardian_max_findings=4" in command
     assert "guardian_max_cycles=2" in command
     assert "guardian_rollout_timeout=123.0" in command
@@ -64,9 +70,36 @@ def test_reframed_guardian_defaults_are_explicit(tmp_path):
     )
 
     assert "guardian_explorer_count=2" in command
+    assert "guardian_explorer_model=codex:gpt-5.6-terra" in command
+    assert "guardian_aggregator_model=codex:gpt-5.6-terra" in command
     assert "guardian_max_findings=5" in command
     assert "guardian_max_cycles=3" in command
     assert "guardian_rollout_timeout=600.0" in command
+
+
+def test_legacy_guardian_model_remains_a_shared_fallback(tmp_path):
+    args = ablation.parse_args(
+        [
+            "--model",
+            "gpt-5.6-terra",
+            "--reasoning-effort",
+            "medium",
+            "--tasks",
+            "fixture-task",
+            "--guardian-model",
+            "codex:gpt-5.6-luna",
+        ]
+    )
+
+    command = ablation._build_pier_command(
+        args,
+        task="fixture-task",
+        baseline="guardian",
+        logs_dir=Path(tmp_path),
+    )
+
+    assert "guardian_explorer_model=codex:gpt-5.6-luna" in command
+    assert "guardian_aggregator_model=codex:gpt-5.6-luna" in command
 
 
 def test_baseline_selection_can_run_only_guardian(tmp_path, monkeypatch):
@@ -188,6 +221,7 @@ def test_guardian_run_status_aggregates_every_cycle(tmp_path):
             "degraded": True,
             "analysis_status": "degraded",
             "exit_reason": "ReportSubmitted",
+            "analysis_warnings": ["explorer_1 used an invalid evidence path"],
             "llm_tokens": {
                 "prompt": 100,
                 "cached_input": 60,
@@ -222,6 +256,7 @@ def test_guardian_run_status_aggregates_every_cycle(tmp_path):
     assert status["backlog"] == 0
     assert status["cycle_count"] == 2
     assert status["exit_reasons"] == ["ReportSubmitted", "ReportSubmitted"]
+    assert status["analysis_warnings"] == ["explorer_1 used an invalid evidence path"]
     assert status["degraded"] is True
     assert status["analysis_status"] == "degraded"
     assert status["llm_tokens"] == {

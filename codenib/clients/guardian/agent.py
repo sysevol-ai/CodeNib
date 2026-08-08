@@ -112,6 +112,7 @@ class GuardianAgent:
             candidates=candidates,
             findings=findings,
             backlog=backlog,
+            assessments=assessed,
             summary=summary,
             rollouts=rollouts,
             errors=all_errors,

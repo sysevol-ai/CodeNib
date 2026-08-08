@@ -44,6 +44,20 @@ Guardian performs at most three review cycles by default. Configure this with
 its unresolved findings; subsequent solver edits can be acknowledged by the
 checkpoint command but cannot launch another Guardian review.
 
+Across those cycles, the host controller maintains a local-specification ledger
+outside the solver repository and Guardian rollout sandboxes. Each remembered
+specification retains snapshot-addressed evidence and per-snapshot assessments;
+evidence is marked stale when its repository blob changes. Explorers and the
+aggregator receive this ledger as fallible context and must revalidate it. The
+live ledger stays in host-private storage while the solver runs, then is exported
+to `agent_logs/guardian_memory/` with its append-only `events.jsonl` journal for
+experiment analysis.
+
+Configure the inference allocation independently with
+`--guardian-explorer-model` and `--guardian-aggregator-model`. The legacy
+`--guardian-model` option remains a shared fallback for both roles. When none
+of these options is provided, both roles continue to use the solver model.
+
 Generated trial data belongs under `data/deepswe_outputs/`; generated
 `dashboard/data.json` is ignored and can be recreated by the exporter.
 Set `CODENIB_DEEPSWE_ROOT` to use a DeepSWE checkout outside the default

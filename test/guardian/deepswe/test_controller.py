@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 from codenib.clients.guardian import GuardianConfig, GuardianResult, ReviewStatus
+from scripts.guardian.deepswe.harness import controller as controller_module
 from scripts.guardian.deepswe.harness.controller import GuardianHostController
 
 
@@ -103,17 +104,53 @@ def _publish_next(repo: Path, exchange: Path, base: str) -> str:
 
 
 class FakeReviewer:
-    def __init__(self, requests: list) -> None:
+    def __init__(
+        self,
+        requests: list,
+        *,
+        status: ReviewStatus = ReviewStatus.COMPLETE,
+        errors: tuple[str, ...] = (),
+    ) -> None:
         self.requests = requests
+        self.status = status
+        self.errors = errors
 
     async def review(self, request):
         self.requests.append(request)
         return GuardianResult(
             base_commit=request.base_commit,
             candidate_commit=request.candidate_commit,
-            status=ReviewStatus.COMPLETE,
+            status=self.status,
             summary="No admitted violation.",
+            errors=self.errors,
         )
+
+
+def test_sandbox_reviewer_uses_stable_codex_tool_execution(
+    tmp_path: Path, monkeypatch
+) -> None:
+    executor_options = {}
+
+    class FakeExecutor:
+        def __init__(self, **kwargs) -> None:
+            executor_options.update(kwargs)
+
+    monkeypatch.setattr(controller_module, "CodexExecutor", FakeExecutor)
+    factory = controller_module.sandbox_reviewer_factory(
+        config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+        image="fixture:latest",
+        codex_executable="/usr/local/bin/codex-guardian",
+        auth_json=None,
+    )
+
+    reviewer = factory(tmp_path)
+
+    assert reviewer.executor is not None
+    assert executor_options["enabled_features"] == ("unified_exec",)
+    assert executor_options["disabled_features"] == (
+        "code_mode",
+        "code_mode_host",
+    )
 
 
 def test_host_controller_reviews_materialized_snapshot(tmp_path: Path) -> None:
@@ -142,9 +179,13 @@ def test_host_controller_reviews_materialized_snapshot(tmp_path: Path) -> None:
     )
     assert status["analysis_status"] == "complete"
     assert status["llm_backend"] == "codex-cli+codenib-sandbox"
+    assert status["explorer_model"] == "luna"
+    assert status["aggregator_model"] == "terra"
     assert status["cycle_index"] == 1
     assert status["max_cycles"] == 3
     assert status["terminal"] is False
+    assert status["memory_specifications"] == 0
+    assert status["memory_snapshots"] == 1
     assert (exchange / "latest" / "findings.md").is_file()
     assert (tmp_path / "episodes" / candidate / "status.json").is_file()
 
@@ -171,6 +212,117 @@ def test_host_controller_reports_invalid_bundle_without_review(tmp_path: Path) -
     )
     assert status["analysis_status"] == "failed"
     assert "checksum" in status["error"]
+
+
+def test_host_controller_exposes_degraded_analysis_warnings(tmp_path: Path) -> None:
+    exchange, base, candidate = _publish(tmp_path)
+    validation_error = "explorer_1 candidate 2 evidence path does not resolve"
+    controller = GuardianHostController(
+        exchange_root=exchange,
+        episodes_root=tmp_path / "episodes",
+        config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+        reviewer_factory=lambda _workspace: FakeReviewer(
+            [],
+            status=ReviewStatus.DEGRADED,
+            errors=(validation_error,),
+        ),
+        initial_base_commit=base,
+    )
+
+    assert asyncio.run(controller.process_pending()) == 1
+    status = json.loads(
+        (exchange / "responses" / candidate / "status.json").read_text()
+    )
+    assert status["analysis_status"] == "degraded"
+    assert status["exit_reason"] == "ReviewCompleted"
+    assert status["error"] == ""
+    assert status["analysis_warnings"] == [validation_error]
+
+
+def test_host_controller_labels_failed_review_truthfully(tmp_path: Path) -> None:
+    exchange, base, candidate = _publish(tmp_path)
+    controller = GuardianHostController(
+        exchange_root=exchange,
+        episodes_root=tmp_path / "episodes",
+        config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+        reviewer_factory=lambda _workspace: FakeReviewer(
+            [],
+            status=ReviewStatus.FAILED,
+            errors=("explorers unavailable",),
+        ),
+        initial_base_commit=base,
+    )
+
+    assert asyncio.run(controller.process_pending()) == 1
+    status = json.loads(
+        (exchange / "responses" / candidate / "status.json").read_text()
+    )
+    assert status["analysis_status"] == "failed"
+    assert status["exit_reason"] == "ReviewFailed"
+    assert status["review_performed"] is True
+    assert status["error"] == "explorers unavailable"
+    assert status["analysis_warnings"] == ["explorers unavailable"]
+
+
+def test_host_controller_processes_pending_requests_in_commit_order(
+    tmp_path: Path,
+) -> None:
+    exchange, base, candidate = _publish(tmp_path)
+    revised = _publish_next(tmp_path / "solver", exchange, candidate)
+    # Make filesystem order disagree with commit order. The controller must
+    # still start with the request rooted at its current review head.
+    first_manifest = exchange / "requests" / f"{candidate}.json"
+    second_manifest = exchange / "requests" / f"{revised}.json"
+    first_manifest.touch()
+    second_manifest.touch()
+    second_mtime = second_manifest.stat().st_mtime_ns
+    first_manifest.touch()
+    assert first_manifest.stat().st_mtime_ns >= second_mtime
+
+    requests = []
+    controller = GuardianHostController(
+        exchange_root=exchange,
+        episodes_root=tmp_path / "episodes",
+        config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+        reviewer_factory=lambda _workspace: FakeReviewer(requests),
+        initial_base_commit=base,
+    )
+
+    assert asyncio.run(controller.process_pending()) == 2
+    assert [request.candidate_commit for request in requests] == [candidate, revised]
+    assert requests[0].memory.observed_snapshots == ()
+    assert requests[1].memory.observed_snapshots == (candidate,)
+    memory = json.loads((tmp_path / "guardian_state" / "memory.json").read_text())
+    assert memory["observed_snapshots"] == [candidate, revised]
+    assert (tmp_path / "guardian_state" / "events.jsonl").read_text().count("\n") == 2
+
+
+def test_host_controller_marks_stale_request_superseded_without_replacing_latest(
+    tmp_path: Path,
+) -> None:
+    exchange, base, candidate = _publish(tmp_path)
+    requests = []
+    controller = GuardianHostController(
+        exchange_root=exchange,
+        episodes_root=tmp_path / "episodes",
+        config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+        reviewer_factory=lambda _workspace: FakeReviewer(requests),
+        initial_base_commit=base,
+    )
+    assert asyncio.run(controller.process_pending()) == 1
+
+    stale = _publish_next(tmp_path / "solver", exchange, base)
+    assert asyncio.run(controller.process_pending()) == 1
+
+    assert len(requests) == 1
+    stale_status = json.loads(
+        (exchange / "responses" / stale / "status.json").read_text()
+    )
+    assert stale_status["analysis_status"] == "not_run"
+    assert stale_status["exit_reason"] == "ReviewSuperseded"
+    assert stale_status["termination_reason"] == "stale_base_commit"
+    latest_status = json.loads((exchange / "latest" / "status.json").read_text())
+    assert latest_status["commit"] == candidate
 
 
 def test_host_controller_stops_before_review_beyond_cycle_limit(tmp_path: Path) -> None:

@@ -6,6 +6,7 @@
 
 from .agent import GuardianAgent
 from .artifacts import render_markdown
+from .memory import GuardianMemoryStore
 from .types import (
     ContextMessage,
     Evidence,
@@ -13,10 +14,14 @@ from .types import (
     FindingStatus,
     GuardianConfig,
     GuardianFinding,
+    GuardianMemory,
     GuardianRequest,
     GuardianResult,
     LocalSpecification,
+    RememberedEvidence,
+    RememberedSpecification,
     ReviewStatus,
+    SpecificationAssessment,
 )
 
 __all__ = [
@@ -27,9 +32,14 @@ __all__ = [
     "GuardianAgent",
     "GuardianConfig",
     "GuardianFinding",
+    "GuardianMemory",
+    "GuardianMemoryStore",
     "GuardianRequest",
     "GuardianResult",
     "LocalSpecification",
+    "RememberedEvidence",
+    "RememberedSpecification",
     "ReviewStatus",
+    "SpecificationAssessment",
     "render_markdown",
 ]

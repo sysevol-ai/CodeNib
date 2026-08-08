@@ -65,8 +65,13 @@ def test_guardian_checkpoint_prints_fresh_report(tmp_path):
                 "analysis_status": "degraded",
                 "exit_reason": "ReportSubmitted",
                 "llm_model": "codex:gpt-5.6-luna",
+                "explorer_model": "gpt-5.6-luna",
+                "aggregator_model": "gpt-5.6-sol",
                 "llm_backend": "codex-sdk",
                 "llm_tokens": {"total": 123},
+                "analysis_warnings": [
+                    "explorer_1 candidate evidence path does not resolve"
+                ],
                 "error": "",
             }
         ),
@@ -96,6 +101,8 @@ def test_guardian_checkpoint_prints_fresh_report(tmp_path):
     )
 
     assert "Guardian checkpoint: report ready" in result.stdout
+    assert "explorer model: gpt-5.6-luna" in result.stdout
+    assert "aggregator model: gpt-5.6-sol" in result.stdout
     assert "backend: codex-sdk" in result.stdout
     assert "backlog: 1" in result.stdout
     assert "high-confidence backlog: 1" in result.stdout
@@ -103,6 +110,8 @@ def test_guardian_checkpoint_prints_fresh_report(tmp_path):
     assert "tokens: 123" in result.stdout
     assert "Risk found." in result.stdout
     assert "must not be treated as a complete clean review" in result.stderr
+    assert "Guardian analysis warnings: 1" in result.stderr
+    assert "evidence path does not resolve" in result.stderr
 
 
 def test_guardian_checkpoint_times_out_on_stale_report(tmp_path):

@@ -733,36 +733,6 @@ class DockerSandboxProvider:
             raise SandboxPolicyError(
                 "Git symlinks are unsupported in revision-pinned sandboxes"
             )
-        archive_attributes = subprocess.run(
-            self._git_command(
-                [
-                    "-c",
-                    "core.hooksPath=/dev/null",
-                    "-C",
-                    str(source),
-                    "grep",
-                    "--quiet",
-                    "--extended-regexp",
-                    r"export-(ignore|subst)",
-                    revision,
-                    "--",
-                    ".gitattributes",
-                    ":(glob)**/.gitattributes",
-                ]
-            ),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env=_safe_git_environment(),
-        )
-        if archive_attributes.returncode == 0:
-            raise SandboxPolicyError(
-                "export-ignore/export-subst attributes are unsupported in exact "
-                "revision snapshots"
-            )
-        if archive_attributes.returncode != 1:
-            raise SandboxPolicyError("source archive attributes cannot be inspected")
         info_attributes = common_dir / "info" / "attributes"
         try:
             info_attributes_stat = info_attributes.lstat()
@@ -777,19 +747,95 @@ class DockerSandboxProvider:
                 raise SandboxPolicyError(
                     "Git info attributes must be a regular, non-symlink file"
                 )
-            try:
-                if info_attributes_stat.st_size > 1024**2:
-                    raise SandboxPolicyError("Git info attributes file is too large")
-                info_text = info_attributes.read_text(
-                    encoding="utf-8", errors="replace"
+            if info_attributes_stat.st_size > 1024**2:
+                raise SandboxPolicyError("Git info attributes file is too large")
+        tree_paths = subprocess.run(
+            self._git_command(
+                [
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "-C",
+                    str(source),
+                    "ls-tree",
+                    "-rzt",
+                    "--full-tree",
+                    "--name-only",
+                    revision,
+                ]
+            ),
+            check=False,
+            capture_output=True,
+            timeout=30,
+            env=_safe_git_environment(),
+        )
+        if tree_paths.returncode != 0:
+            raise SandboxPolicyError("source Git paths cannot be inspected safely")
+        # Use a private index so attribute matching is revision-scoped without
+        # relying on the caller's mutable index or requiring newer Git's
+        # ``check-attr --source`` option.
+        with tempfile.TemporaryDirectory(prefix="codenib-git-index-") as temp_dir:
+            attribute_env = _safe_git_environment()
+            attribute_env["GIT_INDEX_FILE"] = str(Path(temp_dir) / "index")
+            read_tree = subprocess.run(
+                self._git_command(
+                    [
+                        "-c",
+                        "core.hooksPath=/dev/null",
+                        "-C",
+                        str(source),
+                        "read-tree",
+                        revision,
+                    ]
+                ),
+                check=False,
+                capture_output=True,
+                timeout=30,
+                env=attribute_env,
+            )
+            if read_tree.returncode != 0:
+                raise SandboxPolicyError(
+                    "source archive attributes cannot be inspected"
                 )
-            except OSError as exc:
+            archive_attributes = subprocess.run(
+                self._git_command(
+                    [
+                        "-c",
+                        "core.hooksPath=/dev/null",
+                        "-C",
+                        str(source),
+                        "check-attr",
+                        "-z",
+                        "--stdin",
+                        "--cached",
+                        "export-ignore",
+                        "export-subst",
+                    ]
+                ),
+                check=False,
+                input=tree_paths.stdout,
+                capture_output=True,
+                timeout=30,
+                env=attribute_env,
+            )
+        if archive_attributes.returncode != 0:
+            raise SandboxPolicyError("source archive attributes cannot be inspected")
+        attribute_fields = archive_attributes.stdout.split(b"\0")
+        if attribute_fields[-1:] == [b""]:
+            attribute_fields.pop()
+        if len(attribute_fields) % 3:
+            raise SandboxPolicyError("source archive attributes are malformed")
+        for _, attribute, value in zip(
+            attribute_fields[0::3],
+            attribute_fields[1::3],
+            attribute_fields[2::3],
+            strict=True,
+        ):
+            if attribute not in {b"export-ignore", b"export-subst"}:
+                raise SandboxPolicyError("source archive attributes are malformed")
+            if value not in {b"unspecified", b"unset"}:
                 raise SandboxPolicyError(
-                    "Git info attributes file cannot be inspected"
-                ) from exc
-            if re.search(r"export-(?:ignore|subst)", info_text):
-                raise SandboxPolicyError(
-                    "Git info export attributes are unsupported in exact snapshots"
+                    "effective export-ignore/export-subst attributes are unsupported "
+                    "in exact revision snapshots"
                 )
         self._validate_host_mount_path(common_dir)
         return common_dir

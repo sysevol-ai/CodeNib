@@ -133,14 +133,35 @@ class CodexExecutor:
         executable: str = "codex",
         process_runner: ProcessRunner | None = None,
         max_output_bytes: int = 8 * 1024**2,
+        enabled_features: Sequence[str] = (),
+        disabled_features: Sequence[str] = (),
     ) -> None:
         if not executable or "\x00" in executable:
             raise ValueError("executable must be a non-empty, NUL-free string")
         if max_output_bytes <= 0:
             raise ValueError("max_output_bytes must be positive")
+        for name, features in (
+            ("enabled_features", enabled_features),
+            ("disabled_features", disabled_features),
+        ):
+            if isinstance(features, (str, bytes)) or any(
+                not isinstance(feature, str) or not feature or "\x00" in feature
+                for feature in features
+            ):
+                raise ValueError(f"{name} must contain non-empty, NUL-free strings")
+        enabled = tuple(enabled_features)
+        disabled = tuple(disabled_features)
+        overlap = sorted(set(enabled) & set(disabled))
+        if overlap:
+            raise ValueError(
+                "Codex features cannot be both enabled and disabled: "
+                + ", ".join(overlap)
+            )
         self._executable = executable
         self._process_runner = process_runner or LocalProcessRunner()
         self._max_output_bytes = max_output_bytes
+        self._enabled_features = enabled
+        self._disabled_features = disabled
 
     def _unsupported_policy(self, request: AgentRunRequest) -> AgentRunResult | None:
         if request.policy.network is NetworkAccess.DISABLED:
@@ -169,6 +190,10 @@ class CodexExecutor:
             "--cd",
             str(request.workspace),
         ]
+        for feature in self._enabled_features:
+            command.extend(("--enable", feature))
+        for feature in self._disabled_features:
+            command.extend(("--disable", feature))
         if request.policy.isolation is ExecutionIsolation.EXTERNAL:
             command.append("--dangerously-bypass-approvals-and-sandbox")
         else:

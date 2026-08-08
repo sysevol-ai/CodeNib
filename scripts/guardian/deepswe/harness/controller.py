@@ -20,6 +20,7 @@ from codenib.clients.guardian import (
     ContextMessage,
     GuardianAgent,
     GuardianConfig,
+    GuardianMemoryStore,
     GuardianRequest,
     GuardianResult,
     ReviewStatus,
@@ -77,23 +78,33 @@ def _write_result(
     path: Path,
     result: GuardianResult,
     *,
-    model: str,
+    explorer_model: str,
+    aggregator_model: str,
+    explorer_count: int,
     cycle_index: int,
     max_cycles: int,
+    memory_specifications: int,
+    memory_snapshots: int,
 ) -> None:
     terminal = result.status is not ReviewStatus.FAILED and cycle_index >= max_cycles
+    exit_reason = (
+        "ReviewFailed" if result.status is ReviewStatus.FAILED else "ReviewCompleted"
+    )
     _write_text_atomic(path / "findings.md", render_markdown(result))
     _write_json_atomic(path / "findings.json", result.to_dict())
     rollout_dir = path / "rollouts"
     rollout_dir.mkdir(parents=True, exist_ok=True)
     for index, rollout in enumerate(result.rollouts, 1):
         prefix = rollout_dir / f"rollout_{index:02d}"
+        is_explorer = index <= explorer_count
         _write_text_atomic(prefix.with_suffix(".jsonl"), rollout.raw_output)
         _write_text_atomic(prefix.with_suffix(".stderr.txt"), rollout.stderr)
         _write_json_atomic(
             prefix.with_suffix(".metadata.json"),
             {
                 "status": rollout.status.value,
+                "role": "explorer" if is_explorer else "aggregator",
+                "model": explorer_model if is_explorer else aggregator_model,
                 "exit_code": rollout.exit_code,
                 "duration_seconds": rollout.duration_seconds,
                 "error": (
@@ -125,16 +136,21 @@ def _write_result(
             "candidate_count": len(result.candidates),
             "degraded": result.status is not ReviewStatus.COMPLETE,
             "analysis_status": result.status.value,
-            "exit_reason": "ReviewCompleted",
+            "exit_reason": exit_reason,
             "review_performed": True,
             "cycle_index": cycle_index,
             "max_cycles": max_cycles,
             "terminal": terminal,
             "termination_reason": "max_cycles_reached" if terminal else "",
-            "llm_model": model,
+            "llm_model": aggregator_model,
+            "explorer_model": explorer_model,
+            "aggregator_model": aggregator_model,
             "llm_backend": "codex-cli+codenib-sandbox",
             "llm_transport_history": ["codex-cli+codenib-sandbox"],
             "llm_tokens": _tokens(result),
+            "analysis_warnings": list(result.errors),
+            "memory_specifications": memory_specifications,
+            "memory_snapshots": memory_snapshots,
             "running": False,
             "error": (
                 ""
@@ -150,7 +166,8 @@ def _write_limit_response(
     *,
     request_id: str,
     base_commit: str,
-    model: str,
+    explorer_model: str,
+    aggregator_model: str,
     completed_cycles: int,
     max_cycles: int,
 ) -> None:
@@ -179,9 +196,65 @@ def _write_limit_response(
             "max_cycles": max_cycles,
             "terminal": True,
             "termination_reason": "max_cycles_reached",
-            "llm_model": model,
+            "llm_model": aggregator_model,
+            "explorer_model": explorer_model,
+            "aggregator_model": aggregator_model,
             "llm_backend": "codex-cli+codenib-sandbox",
             "llm_tokens": {"prompt": 0, "cached_input": 0, "completion": 0, "total": 0},
+            "analysis_warnings": [],
+            "running": False,
+            "error": "",
+        },
+    )
+
+
+def _write_superseded_response(
+    path: Path,
+    *,
+    request_id: str,
+    base_commit: str,
+    expected_base_commit: str,
+    explorer_model: str,
+    aggregator_model: str,
+    completed_cycles: int,
+    max_cycles: int,
+) -> None:
+    _write_text_atomic(
+        path / "findings.md",
+        "# Repository Guardian Superseded Review\n\n"
+        f"Candidate `{request_id}` was not reviewed because its base "
+        f"`{base_commit}` is no longer Guardian's current review head "
+        f"`{expected_base_commit}`.\n",
+    )
+    _write_json_atomic(
+        path / "status.json",
+        {
+            "commit": request_id,
+            "base_commit": base_commit,
+            "expected_base_commit": expected_base_commit,
+            "findings": 0,
+            "backlog": 0,
+            "high_confidence_backlog": 0,
+            "candidate_count": 0,
+            "degraded": False,
+            "analysis_status": "not_run",
+            "exit_reason": "ReviewSuperseded",
+            "review_performed": False,
+            "cycle_index": completed_cycles,
+            "max_cycles": max_cycles,
+            "terminal": False,
+            "termination_reason": "stale_base_commit",
+            "llm_model": aggregator_model,
+            "explorer_model": explorer_model,
+            "aggregator_model": aggregator_model,
+            "llm_backend": "codex-cli+codenib-sandbox",
+            "llm_tokens": {
+                "prompt": 0,
+                "cached_input": 0,
+                "completion": 0,
+                "total": 0,
+            },
+            "analysis_warnings": [],
             "running": False,
             "error": "",
         },
@@ -193,7 +266,8 @@ def _write_failure(
     *,
     request_id: str,
     error: str,
-    model: str,
+    explorer_model: str,
+    aggregator_model: str,
     cycle_index: int,
     max_cycles: int,
 ) -> None:
@@ -218,9 +292,12 @@ def _write_failure(
             "max_cycles": max_cycles,
             "terminal": False,
             "termination_reason": "",
-            "llm_model": model,
+            "llm_model": aggregator_model,
+            "explorer_model": explorer_model,
+            "aggregator_model": aggregator_model,
             "llm_backend": "codex-cli+codenib-sandbox",
             "llm_tokens": {"prompt": 0, "cached_input": 0, "completion": 0, "total": 0},
+            "analysis_warnings": [],
             "running": False,
             "error": error,
         },
@@ -284,6 +361,7 @@ class GuardianHostController:
         config: GuardianConfig,
         reviewer_factory: ReviewerFactory,
         initial_base_commit: str | None = None,
+        memory_root: Path | None = None,
         max_cycles: int = 3,
         poll_interval_seconds: float = 1.0,
     ) -> None:
@@ -295,6 +373,9 @@ class GuardianHostController:
         self.episodes_root = episodes_root
         self.config = config
         self.reviewer_factory = reviewer_factory
+        self.memory_store = GuardianMemoryStore(
+            memory_root or self.episodes_root.parent / "guardian_state"
+        )
         self._expected_base_commit = initial_base_commit
         self.max_cycles = max_cycles
         self._completed_cycles = 0
@@ -333,22 +414,31 @@ class GuardianHostController:
         if (response / "status.json").exists():
             return
         response.mkdir(parents=True, exist_ok=True)
+        publish_latest = True
         try:
             request, bundle = load_exchange_request(self.exchange_root, manifest)
             if (
                 self._expected_base_commit is not None
                 and request.base_commit != self._expected_base_commit
             ):
-                raise ValueError(
-                    "request base does not match the controller-owned review head: "
-                    f"expected {self._expected_base_commit}, got {request.base_commit}"
+                _write_superseded_response(
+                    response,
+                    request_id=request_id,
+                    base_commit=request.base_commit,
+                    expected_base_commit=self._expected_base_commit,
+                    explorer_model=self.config.explorer_model,
+                    aggregator_model=self.config.aggregator_model,
+                    completed_cycles=self._completed_cycles,
+                    max_cycles=self.max_cycles,
                 )
-            if self._completed_cycles >= self.max_cycles:
+                publish_latest = False
+            elif self._completed_cycles >= self.max_cycles:
                 _write_limit_response(
                     response,
                     request_id=request_id,
                     base_commit=request.base_commit,
-                    model=self.config.aggregator_model,
+                    explorer_model=self.config.explorer_model,
+                    aggregator_model=self.config.aggregator_model,
                     completed_cycles=self._completed_cycles,
                     max_cycles=self.max_cycles,
                 )
@@ -363,20 +453,22 @@ class GuardianHostController:
                 response,
                 request_id=request_id,
                 error=f"{type(exc).__name__}: {exc}",
-                model=self.config.aggregator_model,
+                explorer_model=self.config.explorer_model,
+                aggregator_model=self.config.aggregator_model,
                 cycle_index=self._completed_cycles + 1,
                 max_cycles=self.max_cycles,
             )
         episode = self.episodes_root / request_id
         _copy_report(response, episode)
-        latest = self.exchange_root / "latest"
-        latest.mkdir(parents=True, exist_ok=True)
-        for stale in latest.iterdir():
-            if stale.is_dir():
-                shutil.rmtree(stale)
-            else:
-                stale.unlink()
-        _copy_report(response, latest)
+        if publish_latest:
+            latest = self.exchange_root / "latest"
+            latest.mkdir(parents=True, exist_ok=True)
+            for stale in latest.iterdir():
+                if stale.is_dir():
+                    shutil.rmtree(stale)
+                else:
+                    stale.unlink()
+            _copy_report(response, latest)
 
     async def _review_request(
         self,
@@ -397,6 +489,7 @@ class GuardianHostController:
             )
             patch = _git_patch(workspace, request.base_commit, request.candidate_commit)
             reviewer = self.reviewer_factory(workspace)
+            memory = self.memory_store.load(workspace)
             result = await reviewer.review(
                 GuardianRequest(
                     workspace=workspace,
@@ -404,14 +497,22 @@ class GuardianHostController:
                     candidate_commit=request.candidate_commit,
                     context=_context(self.exchange_root, workspace),
                     change_patch=patch,
+                    memory=memory,
                 )
             )
+            updated_memory = memory
+            if result.status is not ReviewStatus.FAILED:
+                updated_memory = self.memory_store.update(result, workspace)
             _write_result(
                 response,
                 result,
-                model=self.config.aggregator_model,
+                explorer_model=self.config.explorer_model,
+                aggregator_model=self.config.aggregator_model,
+                explorer_count=self.config.explorer_count,
                 cycle_index=cycle_index,
                 max_cycles=self.max_cycles,
+                memory_specifications=len(updated_memory.specifications),
+                memory_snapshots=len(updated_memory.observed_snapshots),
             )
             if result.status is not ReviewStatus.FAILED:
                 self._expected_base_commit = request.candidate_commit
@@ -420,10 +521,46 @@ class GuardianHostController:
     async def process_pending(self) -> int:
         self._prepare()
         processed = 0
-        for manifest in sorted((self.exchange_root / "requests").glob("*.json")):
-            response = self.exchange_root / "responses" / manifest.stem / "status.json"
-            if response.exists():
-                continue
+        while True:
+            pending = [
+                manifest
+                for manifest in (self.exchange_root / "requests").glob("*.json")
+                if not (
+                    self.exchange_root / "responses" / manifest.stem / "status.json"
+                ).exists()
+            ]
+            if not pending:
+                break
+
+            ordered = sorted(
+                pending,
+                key=lambda path: (path.lstat().st_mtime_ns, path.name),
+            )
+            eligible: list[Path] = []
+            malformed: list[Path] = []
+            for manifest in ordered:
+                try:
+                    if manifest.is_symlink():
+                        raise ValueError("request manifest must not be a symlink")
+                    request = ReviewExchangeRequest.from_dict(
+                        json.loads(manifest.read_text(encoding="utf-8"))
+                    )
+                except (OSError, json.JSONDecodeError, ValueError):
+                    malformed.append(manifest)
+                    continue
+                if (
+                    self._expected_base_commit is None
+                    or request.base_commit == self._expected_base_commit
+                ):
+                    eligible.append(manifest)
+
+            # A malformed request must not block later valid work. Otherwise,
+            # follow the commit chain from the controller-owned review head.
+            # Requests left behind after the chain advances are handled as
+            # superseded rather than operational failures.
+            manifest = (
+                eligible[0] if eligible else malformed[0] if malformed else ordered[0]
+            )
             await self.process_manifest(manifest)
             processed += 1
         return processed
@@ -491,6 +628,8 @@ def sandbox_reviewer_factory(
                 executable=codex_executable,
                 process_runner=runner,
                 max_output_bytes=limits.output_bytes,
+                enabled_features=("unified_exec",),
+                disabled_features=("code_mode", "code_mode_host"),
             ),
         )
 

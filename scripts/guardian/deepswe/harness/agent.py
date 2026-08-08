@@ -34,6 +34,8 @@ import importlib
 import logging
 import re
 import shlex
+import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -106,7 +108,9 @@ class GuardianCodingAgent(BaseInstalledAgent):
         # Guardian kwargs (from --ak)
         solver: str = "codex",
         guardian_repo: str = "/app",
-        guardian_model: str = "codex:gpt-5.6-luna",
+        guardian_model: str | None = None,
+        guardian_explorer_model: str | None = None,
+        guardian_aggregator_model: str | None = None,
         guardian_explorer_count: int = 2,
         guardian_max_findings: int = 5,
         guardian_max_cycles: int = 3,
@@ -132,7 +136,11 @@ class GuardianCodingAgent(BaseInstalledAgent):
 
         self._solver_name = solver
         self._guardian_repo = guardian_repo
-        self._guardian_model = guardian_model
+        shared_guardian_model = guardian_model or "codex:gpt-5.6-luna"
+        self._guardian_explorer_model = guardian_explorer_model or shared_guardian_model
+        self._guardian_aggregator_model = (
+            guardian_aggregator_model or shared_guardian_model
+        )
         self._guardian_explorer_count = int(guardian_explorer_count)
         self._guardian_max_findings = int(guardian_max_findings)
         self._guardian_max_cycles = int(guardian_max_cycles)
@@ -300,7 +308,16 @@ class GuardianCodingAgent(BaseInstalledAgent):
             return path
 
         default = Path.home() / ".codex" / "auth.json"
-        if self._guardian_model.startswith("codex:") and default.is_file():
+        if (
+            any(
+                model.startswith("codex:")
+                for model in (
+                    self._guardian_explorer_model,
+                    self._guardian_aggregator_model,
+                )
+            )
+            and default.is_file()
+        ):
             return default
 
         return None
@@ -356,10 +373,9 @@ class GuardianCodingAgent(BaseInstalledAgent):
         augmented = f"{guardian_preamble}\n\n---\n\n{instruction}"
         auth_path = self._resolve_codex_auth_json_path()
         auth_json = auth_path.read_bytes() if auth_path is not None else None
-        model = self._guardian_model.removeprefix("codex:")
         config = GuardianConfig(
-            explorer_model=model,
-            aggregator_model=model,
+            explorer_model=self._guardian_explorer_model.removeprefix("codex:"),
+            aggregator_model=self._guardian_aggregator_model.removeprefix("codex:"),
             explorer_count=self._guardian_explorer_count,
             rollout_timeout_seconds=self._guardian_rollout_timeout,
             max_findings=self._guardian_max_findings,
@@ -373,23 +389,31 @@ class GuardianCodingAgent(BaseInstalledAgent):
             docker_host=self._guardian_docker_host,
             platform=self._guardian_platform,
         )
-        controller = GuardianHostController(
-            exchange_root=self._guardian_host_exchange_dir,
-            episodes_root=self._guardian_host_exchange_dir.parent / "guardian_episodes",
-            config=config,
-            reviewer_factory=reviewer_factory,
-            initial_base_commit=self._guardian_baseline_commit,
-            max_cycles=self._guardian_max_cycles,
-            poll_interval_seconds=self._guardian_poll_interval,
-        )
-        stop = asyncio.Event()
-        controller_task = asyncio.create_task(controller.serve(stop))
-        try:
-            await self._inner.run(augmented, environment, context)
-        finally:
-            stop.set()
-            await controller_task
-            await self._write_codex_token_summary(environment)
+        with tempfile.TemporaryDirectory(prefix="guardian-memory-") as memory_dir:
+            controller = GuardianHostController(
+                exchange_root=self._guardian_host_exchange_dir,
+                episodes_root=(
+                    self._guardian_host_exchange_dir.parent / "guardian_episodes"
+                ),
+                memory_root=Path(memory_dir),
+                config=config,
+                reviewer_factory=reviewer_factory,
+                initial_base_commit=self._guardian_baseline_commit,
+                max_cycles=self._guardian_max_cycles,
+                poll_interval_seconds=self._guardian_poll_interval,
+            )
+            stop = asyncio.Event()
+            controller_task = asyncio.create_task(controller.serve(stop))
+            try:
+                await self._inner.run(augmented, environment, context)
+            finally:
+                stop.set()
+                await controller_task
+                exported_memory = (
+                    self._guardian_host_exchange_dir.parent / "guardian_memory"
+                )
+                shutil.copytree(memory_dir, exported_memory, dirs_exist_ok=True)
+                await self._write_codex_token_summary(environment)
 
     async def _write_codex_token_summary(self, environment: BaseEnvironment) -> None:
         """Parse codex turn.completed events and write token totals to codex_tokens.json."""

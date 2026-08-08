@@ -241,6 +241,43 @@ def test_codex_executor_translates_workspace_write_policy(tmp_path: Path) -> Non
     assert "--model" not in command
 
 
+def test_codex_executor_applies_explicit_feature_policy(tmp_path: Path) -> None:
+    output = _jsonl(
+        {
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": "done"},
+        }
+    )
+    runner = FakeProcessRunner(_process_result(output))
+    executor = CodexExecutor(
+        process_runner=runner,
+        enabled_features=("unified_exec",),
+        disabled_features=("code_mode", "code_mode_host"),
+    )
+
+    result = asyncio.run(executor.run(_request(tmp_path)))
+
+    assert result.succeeded
+    command = runner.requests[0].argv
+    assert command.count("--enable") == 1
+    assert command[command.index("--enable") + 1] == "unified_exec"
+    assert command.count("--disable") == 2
+    disabled = {
+        command[index + 1]
+        for index, value in enumerate(command)
+        if value == "--disable"
+    }
+    assert disabled == {"code_mode", "code_mode_host"}
+
+
+def test_codex_executor_rejects_conflicting_feature_policy() -> None:
+    with pytest.raises(ValueError, match="both enabled and disabled"):
+        CodexExecutor(
+            enabled_features=("unified_exec",),
+            disabled_features=("unified_exec",),
+        )
+
+
 def test_codex_executor_delegates_sandboxing_only_when_explicit(tmp_path: Path) -> None:
     output = _jsonl(
         {

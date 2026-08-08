@@ -267,7 +267,13 @@ def main() -> int:
                 "Guardian checkpoint: "
                 + ("report ready" if submitted else "report incomplete")
             )
-            print(f"model: {status.get('llm_model', '')}")
+            explorer_model = status.get("explorer_model")
+            aggregator_model = status.get("aggregator_model")
+            if explorer_model or aggregator_model:
+                print(f"explorer model: {explorer_model or 'unknown'}")
+                print(f"aggregator model: {aggregator_model or 'unknown'}")
+            else:
+                print(f"model: {status.get('llm_model', '')}")
             print(f"backend: {status.get('llm_backend', '')}")
             print(f"findings: {status.get('findings', 0)}")
             print(f"backlog: {status.get('backlog', 0)}")
@@ -293,6 +299,19 @@ def main() -> int:
                     "not be treated as a complete clean review.",
                     file=sys.stderr,
                 )
+            analysis_warnings = status.get("analysis_warnings")
+            if isinstance(analysis_warnings, list) and analysis_warnings:
+                print(
+                    f"Guardian analysis warnings: {len(analysis_warnings)}",
+                    file=sys.stderr,
+                )
+                for warning in analysis_warnings[:3]:
+                    print(f"- {warning}", file=sys.stderr)
+                if len(analysis_warnings) > 3:
+                    print(
+                        f"- ... and {len(analysis_warnings) - 3} more",
+                        file=sys.stderr,
+                    )
             tokens = status.get("llm_tokens")
             if isinstance(tokens, dict):
                 print(f"tokens: {tokens.get('total', 0)}")
