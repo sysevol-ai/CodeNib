@@ -8,10 +8,12 @@ import errno
 import multiprocessing
 import os
 import select
+import shutil
 import signal
 import socket
 import stat
 import sys
+import tempfile
 import threading
 import time
 import warnings
@@ -184,24 +186,33 @@ def test_rejects_unsafe_lock_without_mutating_victim(
     tmp_path: Path,
     kind: str,
 ) -> None:
-    cache = tmp_path / "cache"
-    cache.mkdir()
-    victim, bound_socket = _install_unsafe_entry(cache, tmp_path, kind)
-    lock_path = cache / COMPILER_CACHE_LOCK_FILENAME
-    lock_before = _metadata_identity(lock_path)
-    victim_before = victim.read_bytes() if victim is not None else None
+    socket_root: Path | None = None
+    root = tmp_path
+    if kind == "socket":
+        socket_root = Path(tempfile.mkdtemp(prefix="codenib-lock-", dir="/tmp"))
+        root = socket_root
 
+    bound_socket: socket.socket | None = None
     try:
+        cache = root / "cache"
+        cache.mkdir()
+        victim, bound_socket = _install_unsafe_entry(cache, root, kind)
+        lock_path = cache / COMPILER_CACHE_LOCK_FILENAME
+        lock_before = _metadata_identity(lock_path)
+        victim_before = victim.read_bytes() if victim is not None else None
+
         with pytest.raises(RuntimeError, match="compiler cache lock"):
             with compiler_cache_lock(cache):
                 raise AssertionError("unreachable")
+
+        assert _metadata_identity(lock_path) == lock_before
+        if victim is not None:
+            assert victim.read_bytes() == victim_before
     finally:
         if bound_socket is not None:
             bound_socket.close()
-
-    assert _metadata_identity(lock_path) == lock_before
-    if victim is not None:
-        assert victim.read_bytes() == victim_before
+        if socket_root is not None:
+            shutil.rmtree(socket_root)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires a POSIX device node")
