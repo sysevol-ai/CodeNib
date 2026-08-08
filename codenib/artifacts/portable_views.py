@@ -443,7 +443,7 @@ def _validate_vector_semantics(
     )
 
 
-def _faiss_contract(path: Path) -> tuple[int, int, str, str]:
+def _faiss_contract(path: Path) -> tuple[int, int, str, str, bool]:
     """Read the persisted index contract, importing FAISS on demand."""
 
     try:
@@ -451,26 +451,23 @@ def _faiss_contract(path: Path) -> tuple[int, int, str, str]:
         index = faiss.read_index(str(path))
         dimension = int(index.d)
         total = int(index.ntotal)
+        is_trained = bool(index.is_trained)
         metric_type = int(index.metric_type)
         if metric_type == int(faiss.METRIC_INNER_PRODUCT):
             metric = "ip"
         elif metric_type == int(faiss.METRIC_L2):
             metric = "l2"
         else:
-            raise ValueError(
-                f"portable vector FAISS index has unsupported metric: {metric_type}"
-            )
+            metric = f"unsupported:{metric_type}"
         if isinstance(index, faiss.IndexIVF):
             index_type = "ivf"
         elif isinstance(index, faiss.IndexFlat):
             index_type = "flat"
         else:
-            raise ValueError(
-                f"portable vector FAISS index has unsupported type: {type(index).__name__}"
-            )
+            index_type = f"unsupported:{type(index).__name__}"
     except Exception as exc:
         raise ValueError(f"portable vector FAISS index is unreadable: {path}") from exc
-    return dimension, total, metric, index_type
+    return dimension, total, metric, index_type, is_trained
 
 
 def _validate_level_semantics(
@@ -619,7 +616,7 @@ def _validate_vector_layout(
                 f"expected {count}, found {len(payload)}"
             )
         count = len(payload)
-        dimension, total, metric, index_type = _faiss_contract(index_path)
+        dimension, total, metric, index_type, is_trained = _faiss_contract(index_path)
         if dimension != expected_dimension:
             raise ValueError(
                 f"portable vector FAISS dimension mismatch in {level}: "
@@ -629,16 +626,6 @@ def _validate_vector_layout(
             raise ValueError(
                 f"portable vector FAISS count mismatch in {level}: "
                 f"expected {count}, found {total}"
-            )
-        if metric != expected_metric:
-            raise ValueError(
-                f"portable vector FAISS metric mismatch in {level}: "
-                f"expected {expected_metric}, found {metric}"
-            )
-        if index_type != expected_index_type:
-            raise ValueError(
-                f"portable vector FAISS index type mismatch in {level}: "
-                f"expected {expected_index_type}, found {index_type}"
             )
         derived_counts[level] = count
         if legacy_counts and count == 0:
@@ -654,6 +641,20 @@ def _validate_vector_layout(
             )
             formats.discard(document_format)
             continue
+        if metric != expected_metric:
+            raise ValueError(
+                f"portable vector FAISS metric mismatch in {level}: "
+                f"expected {expected_metric}, found {metric}"
+            )
+        if index_type != expected_index_type:
+            raise ValueError(
+                f"portable vector FAISS index type mismatch in {level}: "
+                f"expected {expected_index_type}, found {index_type}"
+            )
+        if index_type == "ivf" and not is_trained:
+            raise ValueError(
+                f"portable vector active IVF index is untrained in {level}"
+            )
         _validate_level_semantics(
             level_path / f"config_{model_suffix}.json",
             level=level,

@@ -59,6 +59,7 @@ def _write_faiss(
     dimension: int = 4,
     metric: str = "ip",
     index_type: str = "flat",
+    trained: bool = True,
 ) -> None:
     faiss = importlib.import_module("faiss")
     numpy = importlib.import_module("numpy")
@@ -77,8 +78,12 @@ def _write_faiss(
             count, dimension
         )
         if index_type == "ivf":
-            index.train(vectors)
-        index.add(vectors)
+            if trained:
+                index.train(vectors)
+            else:
+                index.ntotal = count
+        if index_type != "ivf" or trained:
+            index.add(vectors)
     faiss.write_index(index, str(path))
 
 
@@ -414,7 +419,15 @@ def test_normalize_upgrades_fully_legacy_vector_config(tmp_path: Path) -> None:
     assert not list(vector.rglob("*.pkl"))
 
 
-def test_normalize_prunes_derived_empty_legacy_level(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("stale_index_type", "stale_metric"),
+    [("ivf", "ip"), ("flat", "l2")],
+)
+def test_normalize_prunes_semantically_mismatched_derived_empty_legacy_level(
+    tmp_path: Path,
+    stale_index_type: str,
+    stale_metric: str,
+) -> None:
     repo, _source = _repository(tmp_path)
     vector = _vector_view(tmp_path, repo, document_format="json")
     config_path = vector / f"config_{_MODEL_SUFFIX}.json"
@@ -430,7 +443,12 @@ def test_normalize_prunes_derived_empty_legacy_level(tmp_path: Path) -> None:
     empty = vector / "l0"
     empty.mkdir()
     (empty / f"documents_{_MODEL_SUFFIX}.json").write_text("[]\n", encoding="utf-8")
-    _write_faiss(empty / f"index_{_MODEL_SUFFIX}.faiss", count=0)
+    _write_faiss(
+        empty / f"index_{_MODEL_SUFFIX}.faiss",
+        count=0,
+        index_type=stale_index_type,
+        metric=stale_metric,
+    )
     (empty / f"config_{_MODEL_SUFFIX}.json").write_text("{}\n", encoding="utf-8")
 
     normalize_owned_query_view(
@@ -682,6 +700,56 @@ def test_normalize_schema6_rejects_faiss_index_type_drift(tmp_path: Path) -> Non
     _refresh_view_fingerprint(vector, view_config)
 
     with pytest.raises(ValueError, match="FAISS index type mismatch"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
+def test_normalize_rejects_untrained_active_ivf_before_runtime_first_search(
+    tmp_path: Path,
+) -> None:
+    from codenib.index.embedding.vector_store import CodeVectorStore
+
+    class _Embedding:
+        def embed_query(self, _text: str) -> list[float]:
+            return [0.0] * 4
+
+        def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            return [[0.0] * 4 for _text in texts]
+
+    repo, vector, view_config = _production_vector_view(
+        tmp_path,
+        index_type="ivf",
+    )
+    _write_faiss(
+        vector / "l2" / f"index_{_MODEL_SUFFIX}.faiss",
+        count=1,
+        index_type="ivf",
+        trained=False,
+    )
+    _refresh_level_record(vector)
+    _refresh_view_fingerprint(vector, view_config)
+    store = CodeVectorStore(
+        embedding_model="test/model",
+        embedding_provider="huggingface",
+        dimension=4,
+        index_type="ivf",
+        index_metric="ip",
+        store_path=str(vector),
+        embedding=_Embedding(),
+        artifact_metadata=view_config,
+        revision=_REVISION,
+        trust_remote_code=False,
+    )
+    store.load()
+    assert store.l2_index.is_trained is False
+    with pytest.raises(RuntimeError, match="is_trained"):
+        store.search("VALUE", top_k=1)
+
+    with pytest.raises(ValueError, match="active IVF index is untrained"):
         normalize_owned_query_view(
             vector,
             repo_path=repo,
