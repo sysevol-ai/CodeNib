@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, List, Optional
 
@@ -21,6 +22,325 @@ if TYPE_CHECKING:
     from ...graph.code_graph import CodeGraph
 
 logger = get_logger(__name__)
+
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_SECURE_SOURCE_DIRECTORY_FDS = (
+    os.name == "posix"
+    and hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+    and hasattr(os, "O_NONBLOCK")
+    and os.open in getattr(os, "supports_dir_fd", ())
+)
+
+
+def _is_link_or_reparse(metadata: os.stat_result) -> bool:
+    """Return whether metadata represents a link-like filesystem entry."""
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT
+    )
+
+
+def _path_components(path: str) -> Optional[tuple[str, ...]]:
+    """Split a native path without normalizing away parent traversal."""
+    normalized = path
+    if os.altsep:
+        normalized = normalized.replace(os.altsep, os.sep)
+    _drive, tail = os.path.splitdrive(normalized)
+    parts = tuple(part for part in tail.split(os.sep) if part not in {"", "."})
+    if not parts or any(part == ".." for part in parts):
+        return None
+    return parts
+
+
+def _contained_source_path(
+    project_root: object,
+    file_path: object,
+) -> Optional[tuple[str, str, tuple[str, ...]]]:
+    """Resolve a lexical source path beneath a canonical repository root."""
+    try:
+        root_value = os.fspath(project_root)
+        source_value = os.fspath(file_path)
+    except TypeError:
+        return None
+    if (
+        not isinstance(root_value, str)
+        or not isinstance(source_value, str)
+        or not source_value
+        or "\x00" in root_value
+        or "\x00" in source_value
+        or _path_components(source_value) is None
+    ):
+        return None
+
+    try:
+        # The configured root is trusted and may itself be reached through a
+        # stable developer-facing alias. Canonicalize that anchor once, but do
+        # not resolve source components: links below the root must be rejected.
+        root = os.path.realpath(os.path.abspath(root_value))
+        if os.path.isabs(source_value):
+            candidate = os.path.abspath(source_value)
+        else:
+            drive, _tail = os.path.splitdrive(source_value)
+            if drive:
+                # ``C:relative.py`` is drive-relative on Windows and therefore
+                # cannot be safely anchored beneath the configured root.
+                return None
+            candidate = os.path.abspath(os.path.join(root, source_value))
+
+        common = os.path.commonpath((root, candidate))
+        if os.path.normcase(common) != os.path.normcase(root):
+            return None
+        relative = os.path.relpath(candidate, root)
+        parts = _path_components(relative)
+        if parts is None:
+            return None
+        return root, os.path.join(root, *parts), parts
+    except (OSError, ValueError):
+        # Different Windows drives, malformed paths, and unavailable roots are
+        # all unreadable through the contained source boundary.
+        return None
+
+
+def _regular_source_flags(*, nofollow: bool) -> int:
+    flags = os.O_RDONLY
+    for name in ("O_NONBLOCK", "O_CLOEXEC", "O_BINARY"):
+        flags |= getattr(os, name, 0)
+    if nofollow:
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+    return flags
+
+
+def _open_regular_file_beneath(root: str, parts: tuple[str, ...]) -> Optional[int]:
+    """Open one regular file through descriptor-relative POSIX traversal."""
+    directory_fd: Optional[int] = None
+    source_fd: Optional[int] = None
+    directory_flags = (
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | os.O_NOFOLLOW
+        | os.O_NONBLOCK
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        directory_fd = os.open(root, directory_flags)
+        root_metadata = os.fstat(directory_fd)
+        if _is_link_or_reparse(root_metadata) or not stat.S_ISDIR(
+            root_metadata.st_mode
+        ):
+            return None
+        for part in parts[:-1]:
+            child_fd: Optional[int] = None
+            try:
+                child_fd = os.open(part, directory_flags, dir_fd=directory_fd)
+                child_metadata = os.fstat(child_fd)
+                if _is_link_or_reparse(child_metadata) or not stat.S_ISDIR(
+                    child_metadata.st_mode
+                ):
+                    return None
+                previous_fd = directory_fd
+                directory_fd = child_fd
+                child_fd = None
+                os.close(previous_fd)
+            finally:
+                if child_fd is not None:
+                    os.close(child_fd)
+
+        source_fd = os.open(
+            parts[-1],
+            _regular_source_flags(nofollow=True),
+            dir_fd=directory_fd,
+        )
+        opened = os.fstat(source_fd)
+        if _is_link_or_reparse(opened) or not stat.S_ISREG(opened.st_mode):
+            return None
+        descriptor = source_fd
+        source_fd = None
+        return descriptor
+    except (NotImplementedError, OSError, ValueError):
+        return None
+    finally:
+        if source_fd is not None:
+            os.close(source_fd)
+        if directory_fd is not None:
+            os.close(directory_fd)
+
+
+def _static_regular_source(
+    root: str,
+    parts: tuple[str, ...],
+) -> Optional[tuple[str, os.stat_result, tuple[tuple[int, int, int], ...]]]:
+    """Validate a contained, link-free path on platforms without safe dir FDs."""
+    try:
+        metadata = os.lstat(root)
+        identity = _file_identity(metadata)
+        if (
+            _is_link_or_reparse(metadata)
+            or not stat.S_ISDIR(metadata.st_mode)
+            or identity is None
+        ):
+            return None
+        identities = [identity]
+        current = root
+        for part in parts[:-1]:
+            current = os.path.join(current, part)
+            metadata = os.lstat(current)
+            identity = _file_identity(metadata)
+            if (
+                _is_link_or_reparse(metadata)
+                or not stat.S_ISDIR(metadata.st_mode)
+                or identity is None
+            ):
+                return None
+            identities.append(identity)
+        source = os.path.join(current, parts[-1])
+        metadata = os.lstat(source)
+        identity = _file_identity(metadata)
+        if (
+            _is_link_or_reparse(metadata)
+            or not stat.S_ISREG(metadata.st_mode)
+            or identity is None
+        ):
+            return None
+        identities.append(identity)
+        return source, metadata, tuple(identities)
+    except (OSError, ValueError):
+        return None
+
+
+def _file_identity(metadata: os.stat_result) -> Optional[tuple[int, int, int]]:
+    """Return a usable path identity, or ``None`` for inode-less metadata."""
+    device = getattr(metadata, "st_dev", None)
+    inode = getattr(metadata, "st_ino", None)
+    if (
+        not isinstance(device, int)
+        or isinstance(device, bool)
+        or device < 0
+        or not isinstance(inode, int)
+        or isinstance(inode, bool)
+        or inode <= 0
+    ):
+        return None
+    return device, inode, stat.S_IFMT(metadata.st_mode)
+
+
+def _read_open_descriptor(descriptor: int) -> Optional[str]:
+    try:
+        with os.fdopen(
+            descriptor,
+            "r",
+            encoding="utf-8",
+            errors="replace",
+        ) as source:
+            descriptor = -1
+            return source.read()
+    except (OSError, ValueError):
+        return None
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _read_static_contained_source(
+    root: str,
+    parts: tuple[str, ...],
+) -> Optional[str]:
+    """Read after a portable component check and bind the opened file identity."""
+    validated = _static_regular_source(root, parts)
+    if validated is None:
+        return None
+    source_path, expected, expected_path_identities = validated
+    expected_identity = _file_identity(expected)
+    if expected_identity is None:
+        return None
+
+    descriptor: Optional[int] = None
+    try:
+        descriptor = os.open(source_path, _regular_source_flags(nofollow=True))
+        opened = os.fstat(descriptor)
+        opened_identity = _file_identity(opened)
+        if (
+            _is_link_or_reparse(opened)
+            or not stat.S_ISREG(opened.st_mode)
+            or opened_identity is None
+            or opened_identity != expected_identity
+        ):
+            return None
+        owned_descriptor = descriptor
+        descriptor = None
+        content = _read_open_descriptor(owned_descriptor)
+    except (NotImplementedError, OSError, ValueError):
+        return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+    # Windows and other fallback platforms cannot make every component lookup
+    # descriptor-relative. Recheck the static path after reading so a final or
+    # intermediate link swap fails closed instead of returning source bytes.
+    current = _static_regular_source(root, parts)
+    if content is None or current is None or current[2] != expected_path_identities:
+        return None
+    return content
+
+
+def _read_legacy_source(file_path: object) -> Optional[str]:
+    """Preserve direct-path reads for old indexes that have no project root.
+
+    Without a trusted root there is no meaningful containment boundary. Older
+    graph artifacts commonly store absolute source paths, so keep following a
+    final link in this compatibility branch while still refusing non-files and
+    using non-blocking flags where the platform provides them.
+    """
+    try:
+        source_path = os.fspath(file_path)
+    except TypeError:
+        return None
+    if not isinstance(source_path, str) or not source_path or "\x00" in source_path:
+        return None
+
+    descriptor: Optional[int] = None
+    try:
+        descriptor = os.open(source_path, _regular_source_flags(nofollow=False))
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            return None
+        owned_descriptor = descriptor
+        descriptor = None
+        content = _read_open_descriptor(owned_descriptor)
+        return content
+    except (NotImplementedError, OSError, ValueError):
+        return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _read_source_text(project_root: object, file_path: object) -> Optional[str]:
+    """Read source through containment when a repository root is available."""
+    if project_root is None:
+        return _read_legacy_source(file_path)
+
+    contained = _contained_source_path(project_root, file_path)
+    if contained is None:
+        return None
+    root, _source_path, parts = contained
+    if _SECURE_SOURCE_DIRECTORY_FDS:
+        descriptor = _open_regular_file_beneath(root, parts)
+        if descriptor is None:
+            return None
+        return _read_open_descriptor(descriptor)
+    return _read_static_contained_source(root, parts)
+
+
+def _split_source_lines(source_text: str) -> List[str]:
+    """Split only on normalized LF while retaining TextIO ``readlines`` shape."""
+    if not source_text:
+        return []
+    segments = source_text.split("\n")
+    lines = [segment + "\n" for segment in segments[:-1]]
+    if segments[-1]:
+        lines.append(segments[-1])
+    return lines
 
 
 @dataclass(slots=True)
@@ -434,62 +754,42 @@ class BM25CodeIndexer:
             # Handle code content if requested
             content = None
             if return_code_content and file_path:
-                # Construct full file path using project_root if available
-                full_file_path = file_path
-                if self.project_root and not os.path.isabs(file_path):
-                    full_file_path = os.path.join(self.project_root, file_path)
-
-                try:
-                    with open(
-                        full_file_path, "r", encoding="utf-8", errors="replace"
-                    ) as f:
-                        if node_type == NODE_TYPE_FILE:
-                            # For file nodes, return entire file content
-                            code_content = f.read()
-                            if wrap_with_ln:
-                                lines = code_content.split("\n")
-                                content = wrap_code_snippet(code_content, 1, len(lines))
-                            else:
-                                content = code_content
+                source_text = _read_source_text(self.project_root, file_path)
+                if source_text is not None:
+                    if node_type == NODE_TYPE_FILE:
+                        # For file nodes, return entire file content.
+                        code_content = source_text
+                        if wrap_with_ln:
+                            lines = code_content.split("\n")
+                            content = wrap_code_snippet(code_content, 1, len(lines))
                         else:
-                            # For symbol nodes, extract specific lines
-                            if start_line is not None and end_line is not None:
-                                lines = f.readlines()
-                                # start_line and end_line are already 0-based and inclusive
-                                start_idx = max(0, start_line)
-                                end_idx = min(
-                                    len(lines), end_line + 1
-                                )  # +1 for slice end exclusivity
+                            content = code_content
+                    elif start_line is not None and end_line is not None:
+                        # Symbol ranges remain 0-based and inclusive.
+                        lines = _split_source_lines(source_text)
+                        start_idx = max(0, start_line)
+                        end_idx = min(
+                            len(lines), end_line + 1
+                        )  # +1 for slice end exclusivity
+                        extracted_lines = lines[start_idx:end_idx]
 
-                                extracted_lines = lines[start_idx:end_idx]
+                        # Strip trailing blank lines to avoid extra whitespace.
+                        original_end_idx = len(extracted_lines)
+                        while extracted_lines and extracted_lines[-1].strip() == "":
+                            extracted_lines.pop()
 
-                                # Strip trailing blank lines to avoid extra whitespace.
-                                original_end_idx = len(extracted_lines)
-                                while (
-                                    extracted_lines
-                                    and extracted_lines[-1].strip() == ""
-                                ):
-                                    extracted_lines.pop()
-
-                                code_content = "".join(extracted_lines)
-
-                                if wrap_with_ln:
-                                    # Calculate the actual end line after removing empty lines
-                                    lines_removed = original_end_idx - len(
-                                        extracted_lines
-                                    )
-                                    actual_end_line = end_line - lines_removed
-                                    # Convert to 1-based for display purposes
-                                    content = wrap_code_snippet(
-                                        code_content,
-                                        start_line + 1,
-                                        actual_end_line + 1,
-                                    )
-                                else:
-                                    content = code_content
-                except (IOError, UnicodeDecodeError):
-                    # If file reading fails, content remains None
-                    pass
+                        code_content = "".join(extracted_lines)
+                        if wrap_with_ln:
+                            # Calculate the actual end line after removing empty lines.
+                            lines_removed = original_end_idx - len(extracted_lines)
+                            actual_end_line = end_line - lines_removed
+                            content = wrap_code_snippet(
+                                code_content,
+                                start_line + 1,
+                                actual_end_line + 1,
+                            )
+                        else:
+                            content = code_content
 
             # Create NodeInfo object (LangChain BM25Retriever doesn't provide scores)
             result = NodeInfo(
@@ -574,21 +874,18 @@ class BM25CodeIndexer:
             if declared_name.rsplit(".", 1)[-1] == symbol:
                 continue
 
-            full_path = file_path
-            if self.project_root and not os.path.isabs(file_path):
-                full_path = os.path.join(self.project_root, file_path)
-            if full_path not in files:
-                try:
-                    with open(
-                        full_path,
-                        "r",
-                        encoding="utf-8",
-                        errors="replace",
-                    ) as source:
-                        files[full_path] = source.readlines()
-                except OSError:
-                    files[full_path] = []
-            lines = files[full_path]
+            try:
+                source_key = os.fspath(file_path)
+            except TypeError:
+                continue
+            if not isinstance(source_key, str):
+                continue
+            if source_key not in files:
+                source_text = _read_source_text(self.project_root, source_key)
+                files[source_key] = (
+                    _split_source_lines(source_text) if source_text is not None else []
+                )
+            lines = files[source_key]
             if not lines:
                 continue
 
