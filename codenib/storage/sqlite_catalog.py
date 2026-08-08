@@ -31,6 +31,7 @@ from .models import (
     ObjectRecord,
     PublishConflict,
     RefJobLease,
+    RepositoryIdentity,
     SourceRevision,
     StorageError,
     StorageIntegrityError,
@@ -41,7 +42,7 @@ from .models import (
     normalize_digest,
 )
 
-LATEST_SCHEMA_VERSION = 2
+LATEST_SCHEMA_VERSION = 3
 DEFAULT_NAMESPACE_ID = "ns_default"
 DEFAULT_NAMESPACE_NAME = "default"
 
@@ -51,6 +52,7 @@ CatalogNotFoundError = StorageNotFound
 CatalogValidationError = StorageValidationError
 
 _DB_NOW_MS_SQL = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
+_SQLITE_INT64_MAX = 9_223_372_036_854_775_807
 
 
 def _now() -> str:
@@ -83,6 +85,37 @@ def _optional_bounded_text(
 def _positive_integer(value: int, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise CatalogValidationError(f"{field} must be a positive integer")
+    return value
+
+
+def _persisted_positive_int64(value: object, field: str) -> int:
+    """Reject SQLite numeric coercions when reading an identity counter."""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < 1
+        or value > _SQLITE_INT64_MAX
+    ):
+        raise CatalogConflictError(f"{field} must be a positive 64-bit integer")
+    return value
+
+
+def _persisted_utc_timestamp(value: object, field: str) -> str:
+    """Require the exact UTC ISO-8601 representation emitted by ``_now``."""
+    if not isinstance(value, str):
+        raise CatalogConflictError(f"{field} must be a canonical UTC timestamp")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise CatalogConflictError(
+            f"{field} must be a canonical UTC timestamp"
+        ) from exc
+    if (
+        parsed.tzinfo is None
+        or parsed.utcoffset() != timezone.utc.utcoffset(parsed)
+        or parsed.isoformat() != value
+    ):
+        raise CatalogConflictError(f"{field} must be a canonical UTC timestamp")
     return value
 
 
@@ -785,7 +818,37 @@ _SCHEMA_V2 = (
     """,
 )
 
-_MIGRATIONS: dict[int, tuple[str, ...]] = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
+_SCHEMA_V3 = (
+    """
+    CREATE TRIGGER objects_reject_duplicate_inserts
+    BEFORE INSERT ON objects
+    WHEN EXISTS (
+        SELECT 1 FROM objects AS existing
+        WHERE existing.digest = NEW.digest
+            OR existing.storage_key = NEW.storage_key
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate object insert is forbidden');
+    END
+    """,
+    """
+    CREATE TRIGGER referenced_objects_cannot_be_deleted
+    BEFORE DELETE ON objects
+    WHEN EXISTS (
+        SELECT 1 FROM view_generations AS generation
+        WHERE generation.object_digest = OLD.digest
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'referenced objects cannot be deleted');
+    END
+    """,
+)
+
+_MIGRATIONS: dict[int, tuple[str, ...]] = {
+    1: _SCHEMA_V1,
+    2: _SCHEMA_V2,
+    3: _SCHEMA_V3,
+}
 
 
 class SQLiteCatalog:
@@ -2010,6 +2073,10 @@ class SQLiteCatalog:
             raise CatalogValidationError("expected generation must be an integer")
         if expected_generation < 0:
             raise CatalogValidationError("expected generation must not be negative")
+        if expected_generation > _SQLITE_INT64_MAX:
+            raise CatalogValidationError(
+                "expected generation must fit in a signed 64-bit integer"
+            )
         if isinstance(view_generation_ids, (str, bytes)):
             raise CatalogValidationError("view generation IDs must be a sequence")
         view_ids = [
@@ -2021,7 +2088,9 @@ class SQLiteCatalog:
             raise CatalogValidationError("duplicate view generation IDs")
 
         with self._transaction():
-            self._require_record("repositories", "repository_id", repository)
+            repository_row = self._require_record(
+                "repositories", "repository_id", repository
+            )
             source_row = self._require_record(
                 "source_revisions", "source_revision_id", source
             )
@@ -2029,6 +2098,7 @@ class SQLiteCatalog:
                 raise CatalogValidationError(
                     "snapshot source revision belongs to another repository"
                 )
+            self._validate_repository_source_identity(repository_row, source_row)
 
             placeholders = ",".join("?" for _ in view_ids)
             rows = self._connection.execute(
@@ -2081,17 +2151,20 @@ class SQLiteCatalog:
                 """,
                 (repository, normalized_ref),
             ).fetchone()
-            current_generation = (
-                int(current_ref["generation"]) if current_ref is not None else 0
-            )
-            if current_ref is not None and (
-                current_generation < 1
-                or not isinstance(current_ref["updated_at"], str)
-                or not current_ref["updated_at"].strip()
-            ):
-                raise CatalogConflictError(
-                    f"ref {normalized_ref!r} has invalid publication metadata"
-                )
+            if current_ref is None:
+                current_generation = 0
+            else:
+                try:
+                    current_generation = _persisted_positive_int64(
+                        current_ref["generation"], "ref generation"
+                    )
+                    _persisted_utc_timestamp(
+                        current_ref["updated_at"], "ref updated_at"
+                    )
+                except CatalogConflictError as exc:
+                    raise CatalogConflictError(
+                        f"ref {normalized_ref!r} has invalid publication metadata"
+                    ) from exc
 
             existing_snapshot = self._connection.execute(
                 "SELECT * FROM snapshots WHERE snapshot_id = ?", (snapshot_id,)
@@ -2159,6 +2232,24 @@ class SQLiteCatalog:
                 )
                 if seal.rowcount != 1:
                     raise CatalogConflictError("snapshot could not be sealed")
+                existing_snapshot = self._connection.execute(
+                    "SELECT * FROM snapshots WHERE snapshot_id = ?", (snapshot_id,)
+                ).fetchone()
+                rows = self._connection.execute(
+                    f"""
+                    SELECT * FROM view_generations
+                    WHERE view_generation_id IN ({placeholders})
+                    """,
+                    view_ids,
+                ).fetchall()
+                self._validate_ready_snapshot(
+                    existing_snapshot,
+                    repository_id=repository,
+                    source_revision_id=source,
+                    content_digest=content_digest,
+                    members=members,
+                    view_rows=rows,
+                )
             else:
                 self._validate_ready_snapshot(
                     existing_snapshot,
@@ -2169,6 +2260,8 @@ class SQLiteCatalog:
                     view_rows=rows,
                 )
 
+            if current_generation == _SQLITE_INT64_MAX:
+                raise CatalogConflictError("ref generation cannot be incremented")
             next_generation = current_generation + 1
             if current_ref is None:
                 self._connection.execute(
@@ -2215,8 +2308,60 @@ class SQLiteCatalog:
             "changed": True,
         }
 
+    def _validate_repository_source_identity(
+        self, repository_row: sqlite3.Row, source_row: sqlite3.Row
+    ) -> None:
+        """Recompute the content identities that bind a publication source."""
+        namespace_row = self._require_record(
+            "namespaces", "namespace_id", repository_row["namespace_id"]
+        )
+        try:
+            namespace_name = _required_text(namespace_row["name"], "namespace name")
+            expected_namespace_id = (
+                DEFAULT_NAMESPACE_ID
+                if namespace_name == DEFAULT_NAMESPACE_NAME
+                else content_id("ns", {"name": namespace_name})
+            )
+            repository_identity = RepositoryIdentity(
+                namespace_id=repository_row["namespace_id"],
+                repository_key=repository_row["repository_key"],
+            )
+            source_identity = SourceRevision(
+                repository_id=source_row["repository_id"],
+                source_kind=source_row["source_kind"],
+                commit_sha=source_row["commit_sha"],
+                tree_sha=source_row["tree_sha"],
+                source_fingerprint=source_row["source_fingerprint"],
+            )
+        except (TypeError, CatalogValidationError) as exc:
+            raise CatalogConflictError(
+                "repository or source revision identity conflicts"
+            ) from exc
+        expected_source_id = source_identity.source_revision_id
+        if (
+            namespace_row["namespace_id"] != expected_namespace_id
+            or repository_row["repository_id"] != repository_identity.repository_id
+            or source_row["repository_id"] != repository_row["repository_id"]
+            or source_row["source_revision_id"] != expected_source_id
+            or source_row["identity_digest"] != expected_source_id.removeprefix("src_")
+        ):
+            raise CatalogConflictError(
+                "repository or source revision identity conflicts"
+            )
+
     def _validate_view_generation_input(self, row: sqlite3.Row) -> None:
         """Validate the immutable profile, object, and generation identities."""
+        status = row["status"]
+        ready_at = row["ready_at"]
+        if status == "staged":
+            if ready_at is not None:
+                raise CatalogConflictError(
+                    "staged view generation has invalid readiness metadata"
+                )
+        elif status == "ready":
+            _persisted_utc_timestamp(ready_at, "view generation ready_at")
+        else:
+            raise CatalogConflictError("view generation has invalid readiness state")
         profile_row = self._require_record(
             "view_profiles", "profile_id", row["profile_id"]
         )
@@ -2317,15 +2462,16 @@ class SQLiteCatalog:
             if snapshot is not None
             else None
         )
-        if (
-            actual_snapshot != expected_snapshot
-            or snapshot is None
-            or not isinstance(snapshot["published_at"], str)
-            or not snapshot["published_at"].strip()
-        ):
+        if actual_snapshot != expected_snapshot or snapshot is None:
             raise CatalogConflictError(
                 "existing snapshot identity or seal state conflicts"
             )
+        try:
+            _persisted_utc_timestamp(snapshot["published_at"], "snapshot published_at")
+        except CatalogConflictError as exc:
+            raise CatalogConflictError(
+                "existing snapshot identity or seal state conflicts"
+            ) from exc
 
         persisted_members = self._connection.execute(
             """
@@ -2337,13 +2483,19 @@ class SQLiteCatalog:
         actual_members = [
             (row["view_type"], row["view_generation_id"]) for row in persisted_members
         ]
-        if actual_members != list(members) or any(
-            row["status"] != "ready"
-            or not isinstance(row["ready_at"], str)
-            or not row["ready_at"].strip()
-            for row in view_rows
-        ):
+        if actual_members != list(members):
             raise CatalogConflictError("existing ready snapshot membership conflicts")
+        for row in view_rows:
+            if row["status"] != "ready":
+                raise CatalogConflictError(
+                    "existing ready snapshot membership conflicts"
+                )
+            try:
+                _persisted_utc_timestamp(row["ready_at"], "view generation ready_at")
+            except CatalogConflictError as exc:
+                raise CatalogConflictError(
+                    "existing ready snapshot membership conflicts"
+                ) from exc
 
     def resolve_ref(self, repository_id: str, ref_name: str = "main") -> dict[str, Any]:
         """Resolve a named ref and return its pinned manifest summary."""
@@ -2361,13 +2513,24 @@ class SQLiteCatalog:
                 raise CatalogNotFoundError(
                     f"ref not found: {repository}:{normalized_ref}"
                 )
+            try:
+                generation = _persisted_positive_int64(
+                    row["generation"], "ref generation"
+                )
+                updated_at = _persisted_utc_timestamp(
+                    row["updated_at"], "ref updated_at"
+                )
+            except CatalogConflictError as exc:
+                raise CatalogConflictError(
+                    f"ref {normalized_ref!r} has invalid publication metadata"
+                ) from exc
             manifest = self._manifest_summary(row["snapshot_id"])
             return {
                 "repository_id": repository,
                 "ref_name": normalized_ref,
                 "snapshot_id": row["snapshot_id"],
-                "generation": int(row["generation"]),
-                "updated_at": row["updated_at"],
+                "generation": generation,
+                "updated_at": updated_at,
                 "manifest": manifest,
             }
 
@@ -2383,9 +2546,14 @@ class SQLiteCatalog:
             raise CatalogValidationError(
                 f"snapshot is not ready for publication: {snapshot_id}"
             )
+        _persisted_utc_timestamp(snapshot["published_at"], "snapshot published_at")
+        repository = self._require_record(
+            "repositories", "repository_id", snapshot["repository_id"]
+        )
         source = self._require_record(
             "source_revisions", "source_revision_id", snapshot["source_revision_id"]
         )
+        self._validate_repository_source_identity(repository, source)
         view_rows = self._connection.execute(
             """
             SELECT
@@ -2394,6 +2562,8 @@ class SQLiteCatalog:
                 vg.schema_version,
                 vg.metadata_json,
                 vg.object_digest,
+                vg.status,
+                vg.ready_at,
                 vp.profile_id,
                 vp.name AS profile_name,
                 vp.config_json AS profile_config_json,
@@ -2410,6 +2580,12 @@ class SQLiteCatalog:
             """,
             (snapshot_id,),
         ).fetchall()
+        for row in view_rows:
+            if row["status"] != "ready":
+                raise CatalogConflictError(
+                    "ready snapshot contains a non-ready view generation"
+                )
+            _persisted_utc_timestamp(row["ready_at"], "view generation ready_at")
         views = {
             row["view_type"]: {
                 "view_generation_id": row["view_generation_id"],

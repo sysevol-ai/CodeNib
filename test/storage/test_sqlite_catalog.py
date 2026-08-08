@@ -525,6 +525,8 @@ def test_idempotent_retry_revalidates_input_dependencies(
     }
     connection = sqlite3.connect(path)
     connection.execute("PRAGMA foreign_keys = OFF")
+    if table == "objects":
+        connection.execute("DROP TRIGGER referenced_objects_cannot_be_deleted")
     connection.execute(
         f"DELETE FROM {table} WHERE {key_column} = ?", (identifiers[table],)
     )
@@ -539,6 +541,297 @@ def test_idempotent_retry_revalidates_input_dependencies(
                 [view_id],
                 expected_generation=0,
             )
+
+
+@pytest.mark.parametrize("dependency", ("repository", "source", "source_digest"))
+def test_publish_recomputes_repository_and_source_content_identities(
+    tmp_path, dependency
+):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        mutations = {
+            "repository": (
+                "repositories_are_immutable",
+                "UPDATE repositories SET repository_key = 'owner/tampered' "
+                "WHERE repository_id = ?",
+                repository_id,
+            ),
+            "source": (
+                "source_revisions_are_immutable",
+                "UPDATE source_revisions SET commit_sha = ? "
+                "WHERE source_revision_id = ?",
+                ("b" * 40, source_revision_id),
+            ),
+            "source_digest": (
+                "source_revisions_are_immutable",
+                "UPDATE source_revisions SET identity_digest = ? "
+                "WHERE source_revision_id = ?",
+                ("b" * 64, source_revision_id),
+            ),
+        }
+        trigger, statement, parameters = mutations[dependency]
+        catalog._connection.execute(f"DROP TRIGGER {trigger}")
+        if isinstance(parameters, tuple):
+            catalog._connection.execute(statement, parameters)
+        else:
+            catalog._connection.execute(statement, (parameters,))
+
+        with pytest.raises(
+            CatalogConflictError, match="repository or source revision identity"
+        ):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=0,
+            )
+
+
+@pytest.mark.parametrize("dependency", ("repository", "source"))
+def test_publish_rejects_raw_replace_of_repository_or_source_identity(
+    tmp_path, dependency
+):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA recursive_triggers = OFF")
+    if dependency == "repository":
+        row = connection.execute(
+            "SELECT namespace_id, created_at FROM repositories "
+            "WHERE repository_id = ?",
+            (repository_id,),
+        ).fetchone()
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO repositories(
+                repository_id, namespace_id, repository_key, created_at
+            ) VALUES (?, ?, 'owner/tampered', ?)
+            """,
+            (repository_id, row[0], row[1]),
+        )
+    else:
+        row = connection.execute(
+            "SELECT * FROM source_revisions WHERE source_revision_id = ?",
+            (source_revision_id,),
+        ).fetchone()
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO source_revisions(
+                source_revision_id, repository_id, source_kind, commit_sha,
+                tree_sha, source_fingerprint, identity_digest, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row[0],
+                row[1],
+                row[2],
+                "b" * 40,
+                row[4],
+                row[5],
+                row[6],
+                row[7],
+            ),
+        )
+    connection.commit()
+    connection.close()
+
+    with SQLiteCatalog(path) as catalog:
+        with pytest.raises(
+            CatalogConflictError, match="repository or source revision identity"
+        ):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=0,
+            )
+
+
+def test_raw_connection_cannot_replace_or_delete_referenced_object(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        _, _, _, object_digest, _ = _setup_staged_view(catalog)
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA recursive_triggers = OFF")
+    original = connection.execute(
+        "SELECT digest, storage_key, byte_size, media_type FROM objects"
+    ).fetchone()
+    assert original is not None
+    with pytest.raises(sqlite3.IntegrityError, match="duplicate object insert"):
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO objects(
+                digest, storage_key, byte_size, media_type, created_at
+            ) VALUES (?, 'sha256/changed/object', 99, 'application/evil', 'now')
+            """,
+            (object_digest,),
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="duplicate object insert"):
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO objects(
+                digest, storage_key, byte_size, media_type, created_at
+            ) VALUES (?, ?, 99, 'application/evil', 'now')
+            """,
+            ("b" * 64, original[1]),
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="referenced objects"):
+        connection.execute("DELETE FROM objects WHERE digest = ?", (object_digest,))
+    connection.rollback()
+    assert (
+        connection.execute(
+            "SELECT digest, storage_key, byte_size, media_type FROM objects"
+        ).fetchone()
+        == original
+    )
+    connection.close()
+
+
+def test_raw_connection_can_delete_unreferenced_object_for_future_gc(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        digest = _object(catalog, "a")
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA recursive_triggers = OFF")
+    connection.execute("DELETE FROM objects WHERE digest = ?", (digest,))
+    connection.commit()
+    assert connection.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 0
+    connection.close()
+
+
+@pytest.mark.parametrize(
+    "timestamp", ("now", "2026-01-01T00:00:00", "2026-01-01T01:00:00+01:00")
+)
+def test_idempotent_publish_rejects_noncanonical_publication_timestamps(
+    tmp_path, timestamp
+):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+        catalog._connection.execute(
+            "UPDATE refs SET updated_at = ? WHERE repository_id = ?",
+            (timestamp, repository_id),
+        )
+
+        with pytest.raises(CatalogConflictError, match="publication metadata"):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=0,
+            )
+        with pytest.raises(CatalogConflictError, match="publication metadata"):
+            catalog.resolve_ref(repository_id)
+        assert published["changed"] is True
+
+
+def test_publish_rejects_real_ref_generation_without_integer_coercion(tmp_path):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+        catalog._connection.execute(
+            "UPDATE refs SET generation = 1.5 WHERE repository_id = ?",
+            (repository_id,),
+        )
+
+        with pytest.raises(CatalogConflictError, match="publication metadata"):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=1,
+            )
+        with pytest.raises(CatalogConflictError, match="publication metadata"):
+            catalog.resolve_ref(repository_id)
+
+
+def test_new_publish_rejects_invalid_staged_readiness_and_rolls_back(tmp_path):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        catalog._connection.execute("PRAGMA ignore_check_constraints = ON")
+        catalog._connection.execute(
+            "UPDATE view_generations SET ready_at = 'now' "
+            "WHERE view_generation_id = ?",
+            (view_id,),
+        )
+
+        with pytest.raises(CatalogConflictError, match="readiness metadata"):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                [view_id],
+                expected_generation=0,
+            )
+
+        assert (
+            catalog._connection.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]
+            == 0
+        )
+        assert (
+            catalog._connection.execute(
+                "SELECT status FROM view_generations WHERE view_generation_id = ?",
+                (view_id,),
+            ).fetchone()["status"]
+            == "staged"
+        )
+
+
+@pytest.mark.parametrize("target", ("snapshot", "view"))
+def test_publish_rejects_noncanonical_ready_timestamps_on_all_reuse_paths(
+    tmp_path, target
+):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+        if target == "snapshot":
+            catalog._connection.execute("DROP TRIGGER snapshot_seal_is_the_only_update")
+            catalog._connection.execute(
+                "UPDATE snapshots SET published_at = 'now' WHERE snapshot_id = ?",
+                (published["snapshot_id"],),
+            )
+            message = "seal state conflicts"
+        else:
+            catalog._connection.execute(
+                "DROP TRIGGER ready_view_generations_are_immutable"
+            )
+            catalog._connection.execute(
+                "UPDATE view_generations SET ready_at = 'now' "
+                "WHERE view_generation_id = ?",
+                (view_id,),
+            )
+            message = "ready_at"
+
+        for ref_name in ("main", "stable"):
+            with pytest.raises(CatalogConflictError, match=message):
+                catalog.publish_snapshot(
+                    repository_id,
+                    source_revision_id,
+                    [view_id],
+                    ref_name=ref_name,
+                    expected_generation=0,
+                )
 
 
 @pytest.mark.parametrize(
@@ -575,7 +868,7 @@ def test_idempotent_retry_revalidates_input_dependencies(
             WHERE view_generation_id = ?
             """,
             "view",
-            "membership conflicts",
+            "ready_at",
         ),
     ),
 )

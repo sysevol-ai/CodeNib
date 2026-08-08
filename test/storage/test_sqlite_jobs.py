@@ -260,13 +260,13 @@ def test_forward_migrates_v1_catalog_without_losing_existing_rows(
         sqlite_catalog_module, "LATEST_SCHEMA_VERSION", LATEST_SCHEMA_VERSION
     )
     with SQLiteCatalog(path) as catalog:
-        assert catalog.schema_version == 2
+        assert catalog.schema_version == LATEST_SCHEMA_VERSION
         assert catalog.create_repository("owner/repo") == repository_id
         assert (
             catalog._connection.execute(
                 "SELECT COUNT(*) FROM schema_migrations"
             ).fetchone()[0]
-            == 2
+            == LATEST_SCHEMA_VERSION
         )
         tables = {
             row[0]
@@ -309,6 +309,77 @@ def test_failed_v2_migration_rolls_back_as_one_transaction(
             ).fetchone()[0]
             == 0
         )
+    finally:
+        connection.close()
+
+
+def test_forward_migrates_v2_object_guards_for_existing_rows(
+    tmp_path, monkeypatch
+) -> None:
+    path = tmp_path / "catalog.sqlite3"
+    monkeypatch.setattr(sqlite_catalog_module, "LATEST_SCHEMA_VERSION", 2)
+    with SQLiteCatalog(path) as catalog:
+        digest = catalog.register_object(
+            "a" * 64,
+            storage_key="sha256/aa/object",
+            byte_size=1,
+        )
+        assert catalog.schema_version == 2
+
+    monkeypatch.setattr(
+        sqlite_catalog_module, "LATEST_SCHEMA_VERSION", LATEST_SCHEMA_VERSION
+    )
+    with SQLiteCatalog(path) as catalog:
+        assert catalog.schema_version == LATEST_SCHEMA_VERSION
+        assert (
+            catalog._connection.execute(
+                "SELECT byte_size FROM objects WHERE digest = ?", (digest,)
+            ).fetchone()["byte_size"]
+            == 1
+        )
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("PRAGMA recursive_triggers = OFF")
+    with pytest.raises(sqlite3.IntegrityError, match="duplicate object insert"):
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO objects(
+                digest, storage_key, byte_size, media_type, created_at
+            ) VALUES (?, 'sha256/replaced', 2, 'application/evil', 'now')
+            """,
+            (digest,),
+        )
+    connection.close()
+
+
+def test_failed_v3_migration_rolls_back_object_guards(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "catalog.sqlite3"
+    monkeypatch.setattr(sqlite_catalog_module, "LATEST_SCHEMA_VERSION", 2)
+    with SQLiteCatalog(path):
+        pass
+
+    broken = dict(sqlite_catalog_module._MIGRATIONS)
+    broken[3] = (
+        sqlite_catalog_module._MIGRATIONS[3][0],
+        "THIS IS NOT VALID SQL",
+    )
+    monkeypatch.setattr(sqlite_catalog_module, "_MIGRATIONS", broken)
+    monkeypatch.setattr(sqlite_catalog_module, "LATEST_SCHEMA_VERSION", 3)
+    with pytest.raises(sqlite3.OperationalError):
+        SQLiteCatalog(path)
+
+    connection = sqlite3.connect(path)
+    try:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert (
+            connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
+            == 2
+        )
+        assert connection.execute("""
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type = 'trigger' AND name = 'objects_reject_duplicate_inserts'
+            """).fetchone()[0] == 0
     finally:
         connection.close()
 
