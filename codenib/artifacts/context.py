@@ -270,6 +270,7 @@ def stage_context_artifact(
                 repo_path=repo_path,
                 view_type=view,
                 view_config=entry.config,
+                source_trust="trusted-local",
             )
             entry_data = entry.to_dict()
             entry_data["path"] = relative

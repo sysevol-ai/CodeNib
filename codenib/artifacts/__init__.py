@@ -19,7 +19,7 @@ from .github import (
     resolve_github_context_artifact,
 )
 from .mcp_config import MCP_CONFIG_HOSTS, render_artifact_mcp_config
-from .portable_views import normalize_owned_query_view
+from .portable_views import SourceTrust, normalize_owned_query_view
 from .runtime import (
     ContextArtifactBinding,
     VerifiedContextArtifact,
@@ -36,6 +36,7 @@ __all__ = [
     "GitHubArtifactFetchResult",
     "GitHubArtifactRecord",
     "MCP_CONFIG_HOSTS",
+    "SourceTrust",
     "VerifiedContextArtifact",
     "bind_context_artifact",
     "extract_context_artifact_archive",

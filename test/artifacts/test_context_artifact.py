@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import pickle
@@ -17,6 +18,7 @@ from codenib.artifacts import (
     CONTEXT_ARTIFACT_MANIFEST,
     CONTEXT_ARTIFACT_SCHEMA,
     stage_context_artifact,
+    verify_context_artifact,
 )
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
@@ -27,6 +29,15 @@ from codenib.index.embedding.artifact_integrity import (
     vector_level_artifact_records,
 )
 from codenib.source_fingerprint import fingerprint_repository
+
+
+def _write_faiss(path: Path, *, count: int = 1, dimension: int = 4) -> None:
+    faiss = importlib.import_module("faiss")
+    numpy = importlib.import_module("numpy")
+    index = faiss.IndexFlatIP(dimension)
+    if count:
+        index.add(numpy.zeros((count, dimension), dtype="float32"))
+    faiss.write_index(index, str(path))
 
 
 def _fixture_manifest(
@@ -117,7 +128,7 @@ def _fixture_vector_manifest(root: Path) -> tuple[Path, Path, Path]:
             ],
             handle,
         )
-    (level / "index_test__model.faiss").write_bytes(b"serving-index")
+    _write_faiss(level / "index_test__model.faiss")
     (level / "index_test__model.pkl").write_bytes(
         pickle.dumps({"legacy_path": str(source)})
     )
@@ -379,6 +390,29 @@ def test_context_artifact_keeps_only_portable_vector_serving_state(
     )
     assert not list(output.rglob("*.pkl"))
     assert str(repo).encode() not in b"".join(_tree(output).values())
+    verified = verify_context_artifact(
+        output,
+        expected_repository="example/vector-project",
+        expected_commit="b" * 40,
+    )
+    assert verified.views == ("vector",)
+
+
+@pytest.mark.parametrize("name", ["cache.PKL", "cache.pickle", "cache.PICKLE"])
+def test_context_artifact_rejects_pickle_in_any_view_case_insensitively(
+    tmp_path: Path,
+    name: str,
+) -> None:
+    repo, manifest_path, bm25 = _fixture_manifest(tmp_path)
+    (bm25 / name).write_bytes(b"unsafe")
+
+    with pytest.raises(ValueError, match="must not contain pickle"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            tmp_path / "publish" / "context",
+            repository="example/project",
+        )
 
 
 def test_context_artifact_rejects_interrupted_vector_save(tmp_path: Path) -> None:
