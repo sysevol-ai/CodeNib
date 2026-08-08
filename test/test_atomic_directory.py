@@ -278,6 +278,114 @@ def test_publish_staged_directory_removes_empty_sentinel_without_cleanup_fds(
     assert not list(tmp_path.glob(".published.previous-*"))
 
 
+def test_publish_staged_directory_rejects_real_stage_swap_before_destination_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    expected_stage_identity = atomic_module._directory_identity(stage.lstat())
+    stolen = tmp_path / "stolen-stage"
+    real_mkdtemp = atomic_module.tempfile.mkdtemp
+
+    def swap_stage_then_allocate(*args, **kwargs):
+        allocated = real_mkdtemp(*args, **kwargs)
+        stage.rename(stolen)
+        stage.mkdir()
+        (stage / "foreign.txt").write_text("preserve", encoding="utf-8")
+        return allocated
+
+    monkeypatch.setattr(atomic_module.tempfile, "mkdtemp", swap_stage_then_allocate)
+
+    with pytest.raises(RuntimeError, match="before destination publication"):
+        publish_staged_directory(
+            stage,
+            destination,
+            expected_stage_identity=expected_stage_identity,
+        )
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    assert (stolen / "new.txt").read_text(encoding="utf-8") == "new"
+    assert (stage / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+
+
+def test_publish_staged_directory_does_not_reacquire_swapped_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    stolen = tmp_path / "stolen-old"
+    original_remove = atomic_module._remove_owned_directory
+
+    def swap_backup_then_remove(
+        path: Path,
+        expected_identity: tuple[int, ...],
+        **kwargs: object,
+    ) -> None:
+        path.rename(stolen)
+        path.mkdir()
+        (path / "foreign.txt").write_text("preserve", encoding="utf-8")
+        original_remove(path, expected_identity, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_remove_owned_directory",
+        swap_backup_then_remove,
+    )
+
+    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+        publish_staged_directory(stage, destination)
+
+    assert (destination / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    assert (stolen / "old.txt").read_text(encoding="utf-8") == "old"
+    quarantines = list(tmp_path.glob(".published.quarantine-*"))
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+def test_publish_staged_directory_does_not_rollback_after_cleanup_starts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    destination.mkdir()
+    (destination / "one.txt").write_text("one", encoding="utf-8")
+    (destination / "two.txt").write_text("two", encoding="utf-8")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "new.txt").write_text("new", encoding="utf-8")
+    real_unlink = atomic_module.os.unlink
+    unlink_calls = 0
+
+    def fail_second_unlink(path, *args, **kwargs):
+        nonlocal unlink_calls
+        unlink_calls += 1
+        if unlink_calls == 2:
+            raise OSError("injected second unlink failure")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(atomic_module.os, "unlink", fail_second_unlink)
+
+    with pytest.raises(RuntimeError, match="publication committed; cleanup incomplete"):
+        publish_staged_directory(stage, destination)
+
+    assert unlink_calls == 2
+    assert (destination / "new.txt").read_text(encoding="utf-8") == "new"
+    backups = list(tmp_path.glob(".published.previous-*"))
+    assert len(backups) == 1
+    assert len(list(backups[0].iterdir())) == 1
+    assert not list(tmp_path.glob(".published.quarantine-*"))
+
+
 def test_quarantine_replace_failure_preserves_original_exception(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

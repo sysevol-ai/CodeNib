@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+import codenib._atomic_directory as atomic_module
 import codenib.storage.view_bundle as bundle_module
 from codenib.storage import (
     VIEW_BUNDLE_MANIFEST,
@@ -682,6 +683,45 @@ def test_build_preserves_output_that_appears_at_publication_boundary(
     quarantines = list(tmp_path.glob(".bundle.zip.quarantine-*"))
     assert len(quarantines) == 1
     assert quarantines[0].read_bytes() == b"late foreign output"
+
+
+def test_build_preserves_swapped_old_backup_before_destructive_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    archive.write_bytes(b"previous bundle")
+    stolen = tmp_path / "stolen-previous-bundle"
+    real_replace = os.replace
+    swapped = False
+
+    def swap_backup_before_cleanup(source_path, destination_path):
+        nonlocal swapped
+        source_path = Path(source_path)
+        destination_path = Path(destination_path)
+        if (
+            not swapped
+            and source_path.name.startswith(".bundle.zip.previous-")
+            and destination_path.name.startswith(".bundle.zip.previous-cleanup-")
+        ):
+            swapped = True
+            source_path.rename(stolen)
+            source_path.write_bytes(b"foreign backup")
+        return real_replace(source_path, destination_path)
+
+    monkeypatch.setattr(bundle_module.os, "replace", swap_backup_before_cleanup)
+
+    with pytest.raises(StorageIntegrityError, match="committed; cleanup incomplete"):
+        build_view_bundle(source, archive, view_type="bm25")
+
+    assert swapped
+    verify_view_bundle(archive, expected_view_type="bm25")
+    assert stolen.read_bytes() == b"previous bundle"
+    cleanups = list(tmp_path.glob(".bundle.zip.previous-cleanup-*"))
+    assert len(cleanups) == 1
+    assert cleanups[0].read_bytes() == b"foreign backup"
+    assert not list(tmp_path.glob(".bundle.zip.quarantine-*"))
 
 
 @pytest.mark.parametrize(
@@ -1420,6 +1460,81 @@ def test_materialization_stage_symlink_swap_cannot_write_victim(
     assert (stolen / "payload" / "documents.json").read_bytes() == b"[]\n"
 
 
+def test_materialization_rejects_real_stage_swap_at_publish_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    archive = tmp_path / "bundle.zip"
+    build_view_bundle(source, archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    stolen = tmp_path / "stolen-stage"
+    original_publish = bundle_module.publish_staged_directory
+    substitute: Path | None = None
+
+    def swap_stage_then_publish(
+        stage: Path,
+        destination: Path,
+        **kwargs: object,
+    ) -> None:
+        nonlocal substitute
+        stage.rename(stolen)
+        stage.mkdir()
+        (stage / "foreign.txt").write_text("preserve", encoding="utf-8")
+        substitute = stage
+        original_publish(stage, destination, **kwargs)
+
+    monkeypatch.setattr(
+        bundle_module,
+        "publish_staged_directory",
+        swap_stage_then_publish,
+    )
+
+    with pytest.raises(RuntimeError, match="staged directory changed"):
+        materialize_view_bundle(archive, output)
+
+    assert not output.exists()
+    assert substitute is not None
+    assert (substitute / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    assert (stolen / VIEW_BUNDLE_MANIFEST).is_file()
+    assert (stolen / "payload" / "documents.json").read_bytes() == b"[]\n"
+
+
+def test_materialization_revalidates_published_stage_before_old_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    first_archive = tmp_path / "first.zip"
+    build_view_bundle(source, first_archive, view_type="bm25")
+    output = tmp_path / "runtime"
+    materialize_view_bundle(first_archive, output)
+    previous = _tree(output)
+
+    (source / "documents.json").write_bytes(b"new")
+    second_archive = tmp_path / "second.zip"
+    build_view_bundle(source, second_archive, view_type="bm25")
+    real_replace = atomic_module.os.replace
+
+    def mutate_after_stage_publish(source_path, destination_path):
+        result = real_replace(source_path, destination_path)
+        if Path(destination_path) == output and Path(source_path).name.startswith(
+            ".runtime.materialize-"
+        ):
+            (output / "payload" / "documents.json").write_bytes(b"bad")
+        return result
+
+    monkeypatch.setattr(atomic_module.os, "replace", mutate_after_stage_publish)
+
+    with pytest.raises(RuntimeError, match="published directory identity"):
+        materialize_view_bundle(second_archive, output)
+
+    assert _tree(output) == previous
+    quarantines = list(tmp_path.glob(".runtime.quarantine-*"))
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "payload" / "documents.json").read_bytes() == b"bad"
+
+
 def test_materialization_fails_closed_without_safe_directory_fds(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1473,8 +1588,14 @@ def test_materialization_rolls_back_mount_detected_after_linearization(
     original_mount_check = bundle_module._path_is_mount_point
 
     def fake_mount_check(path: Path, **kwargs: object) -> bool:
+        candidate = Path(path)
+        is_moved_old_tree = any(
+            part.startswith(".runtime.previous-") for part in candidate.parts
+        )
         return (
-            mounted and Path(path).parts[-2:] == ("payload", "index")
+            mounted
+            and is_moved_old_tree
+            and candidate.parts[-2:] == ("payload", "index")
         ) or original_mount_check(path, **kwargs)
 
     def publish_with_late_mount(

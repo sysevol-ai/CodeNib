@@ -496,6 +496,21 @@ def materialize_view_bundle(
                 )
             os.fsync(stage_descriptor)
             _require_owned_stage_path(stage, stage_root_identity)
+            final_stage_identity = _directory_identity(os.fstat(stage_descriptor))
+            expected_new_ownership = _validate_materialization_target(
+                stage,
+                max_files=max_files,
+                max_bytes=max_bytes,
+                max_metadata_bytes=max_metadata_bytes,
+            )
+            if (
+                expected_new_ownership.root_identity != final_stage_identity
+                or _directory_identity(os.fstat(stage_descriptor))
+                != final_stage_identity
+            ):
+                raise StorageIntegrityError(
+                    "view bundle materialization stage changed before publication"
+                )
         expected_ownership = _validate_materialization_target(
             output,
             max_files=max_files,
@@ -520,11 +535,30 @@ def materialize_view_bundle(
                     "moved destination failed publication-boundary validation"
                 )
 
+        def validate_published_destination(published: Path) -> None:
+            try:
+                observed = _validate_materialization_target(
+                    published,
+                    max_files=max_files,
+                    max_bytes=max_bytes,
+                    max_metadata_bytes=max_metadata_bytes,
+                )
+            except (OSError, StorageValidationError, StorageIntegrityError) as exc:
+                raise StorageIntegrityError(
+                    "published stage failed publication-boundary validation"
+                ) from exc
+            if observed != expected_new_ownership:
+                raise StorageIntegrityError(
+                    "published stage failed publication-boundary validation"
+                )
+
         publish_staged_directory(
             stage,
             output,
             expected_destination_identity=expected_ownership.root_identity,
+            expected_stage_identity=final_stage_identity,
             validate_moved_destination=validate_moved_destination,
+            validate_published_destination=validate_published_destination,
         )
         return MaterializedViewBundle(
             output_dir=output,
@@ -2308,6 +2342,60 @@ def _recover_bundle_file_publication(
     return quarantine
 
 
+def _cleanup_previous_bundle_file(
+    backup: Path,
+    destination: Path,
+    *,
+    previous_descriptor: int,
+    previous_signature: tuple[int, ...],
+) -> None:
+    """Quarantine the exact previous inode before destructive unlink."""
+
+    try:
+        cleanup = _reserve_file_slot(
+            destination.parent,
+            destination.name,
+            suffix="previous-cleanup",
+        )
+    except OSError as exc:
+        raise StorageIntegrityError(
+            "view bundle publication committed; cleanup incomplete; previous "
+            f"output remains at {backup}"
+        ) from exc
+    try:
+        os.replace(backup, cleanup)
+    except OSError as exc:
+        raise StorageIntegrityError(
+            "view bundle publication committed; cleanup incomplete; previous "
+            f"output remains at {backup}"
+        ) from exc
+    try:
+        moved = cleanup.lstat()
+        opened = os.fstat(previous_descriptor)
+    except OSError as exc:
+        raise StorageIntegrityError(
+            "view bundle publication committed; cleanup incomplete; previous "
+            f"output remains at {cleanup}"
+        ) from exc
+    if (
+        _is_link_or_reparse(moved)
+        or not stat.S_ISREG(moved.st_mode)
+        or _file_boundary_identity(moved) != _file_boundary_identity(opened)
+        or _file_boundary_identity(opened) != previous_signature
+    ):
+        raise StorageIntegrityError(
+            "view bundle publication committed; cleanup incomplete; untrusted "
+            f"previous output is preserved at {cleanup}"
+        )
+    try:
+        cleanup.unlink()
+    except OSError as exc:
+        raise StorageIntegrityError(
+            "view bundle publication committed; cleanup incomplete; previous "
+            f"output remains at {cleanup}"
+        ) from exc
+
+
 def _publish_open_bundle_file(
     handle: BinaryIO,
     temporary: Path,
@@ -2436,7 +2524,6 @@ def _publish_open_bundle_file(
                 raise StorageIntegrityError(
                     "previous view bundle output changed during publication"
                 )
-            backup.unlink()
         except BaseException as publication_error:
             if published:
                 quarantine = _recover_bundle_file_publication(
@@ -2463,6 +2550,12 @@ def _publish_open_bundle_file(
                 destination_was_missing=destination_was_missing,
             )
             raise
+        _cleanup_previous_bundle_file(
+            backup,
+            destination,
+            previous_descriptor=previous_descriptor,
+            previous_signature=previous_signature,
+        )
     finally:
         if previous_descriptor >= 0:
             os.close(previous_descriptor)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import stat
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -25,6 +26,11 @@ _SAFE_REMOVAL_DIRECTORY_FDS = (
     and os.unlink in os.supports_dir_fd
     and os.rmdir in os.supports_dir_fd
 )
+
+
+@dataclass(slots=True)
+class _RemovalState:
+    destructive_started: bool = False
 
 
 def _lexical_child_of_resolved_parent(path: Path) -> Path:
@@ -176,6 +182,7 @@ def _remove_tree_at(
     *,
     root_device: int,
     mount_points: frozenset[str],
+    removal_state: _RemovalState,
     depth: int,
 ) -> None:
     if depth > _MAX_SAFE_REMOVAL_DEPTH:
@@ -238,6 +245,7 @@ def _remove_tree_at(
                     child_path,
                     root_device=root_device,
                     mount_points=mount_points,
+                    removal_state=removal_state,
                     depth=depth + 1,
                 )
             else:
@@ -248,6 +256,7 @@ def _remove_tree_at(
                     raise RuntimeError(
                         f"refusing to remove a reparse point during cleanup: {child_path}"
                     )
+                removal_state.destructive_started = True
                 os.unlink(entry.name, dir_fd=descriptor)
         if _directory_inode_identity(os.fstat(descriptor)) != _directory_inode_identity(
             opened
@@ -255,12 +264,20 @@ def _remove_tree_at(
             raise RuntimeError(f"directory cleanup target changed: {path}")
     finally:
         os.close(descriptor)
+    removal_state.destructive_started = True
     os.rmdir(name, dir_fd=parent_descriptor)
 
 
-def _remove_owned_directory(path: Path, expected_identity: tuple[int, ...]) -> None:
+def _remove_owned_directory(
+    path: Path,
+    expected_identity: tuple[int, ...],
+    *,
+    removal_state: _RemovalState | None = None,
+) -> None:
     """Remove an owned tree without following links or crossing mounts."""
 
+    if removal_state is None:
+        removal_state = _RemovalState()
     metadata = _directory_or_missing(path, label="directory cleanup target")
     if metadata is None or _directory_identity(metadata) != expected_identity:
         raise RuntimeError(f"directory cleanup target changed: {path}")
@@ -280,6 +297,7 @@ def _remove_owned_directory(path: Path, expected_identity: tuple[int, ...]) -> N
             or _directory_identity(final_metadata) != expected_identity
         ):
             raise RuntimeError(f"directory cleanup target changed: {path}")
+        removal_state.destructive_started = True
         path.rmdir()
         return
     _require_safe_tree(
@@ -296,6 +314,7 @@ def _remove_owned_directory(path: Path, expected_identity: tuple[int, ...]) -> N
             path,
             root_device=root_device,
             mount_points=_linux_mount_points(),
+            removal_state=removal_state,
             depth=0,
         )
     finally:
@@ -379,7 +398,9 @@ def publish_staged_directory(
     expected_destination_identity: tuple[int, ...] | None | object = (
         _EXPECTED_DESTINATION_UNSET
     ),
+    expected_stage_identity: tuple[int, ...] | None = None,
     validate_moved_destination: Callable[[Path], None] | None = None,
+    validate_published_destination: Callable[[Path], None] | None = None,
 ) -> None:
     """Publish *stage*, restoring an existing destination on rename failure.
 
@@ -387,12 +408,14 @@ def publish_staged_directory(
     successful call consumes *stage*. If the final rename fails, the previous
     destination is restored and *stage* remains available to caller cleanup.
 
-    The destination-to-backup rename is the ownership linearization point.
-    ``validate_moved_destination`` runs against that exact moved directory, so
-    every mutation completed before the rename must be reflected in validation.
-    The callback runs again after the staged tree is published and immediately
-    before no-follow cleanup.  A failed second validation quarantines the new
-    tree and restores the moved destination instead of deleting changed data.
+    The destination-to-backup rename is the old tree's ownership linearization
+    point. ``validate_moved_destination`` runs against that exact moved tree
+    both before and after stage publication. ``validate_published_destination``
+    binds the new tree's complete ownership token before cleanup. All cleanup
+    preflight runs before deletion; until the first unlink/rmdir, failure can
+    quarantine the new tree and restore the old one. Once destructive cleanup
+    starts, publication is committed: failures retain the new destination and
+    report the partial backup instead of restoring incomplete old state.
     """
 
     # Only parents are resolved.  Resolving the final destination component
@@ -407,6 +430,13 @@ def publish_staged_directory(
     stage_metadata = _directory_or_missing(stage, label="staged directory")
     if stage_metadata is None:
         raise ValueError(f"staged directory does not exist: {stage}")
+    observed_stage_identity = _directory_identity(stage_metadata)
+    if (
+        expected_stage_identity is not None
+        and observed_stage_identity != expected_stage_identity
+    ):
+        raise RuntimeError("staged directory changed before directory publication")
+    required_stage_identity = expected_stage_identity or observed_stage_identity
     destination_metadata = _directory_or_missing(
         destination,
         label="destination",
@@ -447,6 +477,26 @@ def publish_staged_directory(
         if destination_was_missing:
             destination.rmdir()
         raise
+
+    try:
+        stage_before_destination_rename = _directory_or_missing(
+            stage,
+            label="staged directory",
+        )
+    except (OSError, ValueError) as exc:
+        if destination_was_missing:
+            destination.rmdir()
+        raise RuntimeError(
+            "staged directory changed before destination publication"
+        ) from exc
+    if (
+        stage_before_destination_rename is None
+        or _directory_identity(stage_before_destination_rename)
+        != required_stage_identity
+    ):
+        if destination_was_missing:
+            destination.rmdir()
+        raise RuntimeError("staged directory changed before destination publication")
 
     try:
         os.replace(destination, backup)
@@ -490,6 +540,29 @@ def publish_staged_directory(
             raise
 
     try:
+        stage_before_publish = _directory_or_missing(
+            stage,
+            label="staged directory",
+        )
+    except (OSError, ValueError) as exc:
+        _restore_previous_directory(
+            backup,
+            destination,
+            destination_was_missing=destination_was_missing,
+        )
+        raise RuntimeError("staged directory changed before final publication") from exc
+    if (
+        stage_before_publish is None
+        or _directory_identity(stage_before_publish) != required_stage_identity
+    ):
+        _restore_previous_directory(
+            backup,
+            destination,
+            destination_was_missing=destination_was_missing,
+        )
+        raise RuntimeError("staged directory changed before final publication")
+
+    try:
         os.replace(stage, destination)
     except BaseException:
         try:
@@ -512,10 +585,10 @@ def publish_staged_directory(
         )
         if published_metadata is None:
             raise RuntimeError("staged directory disappeared during publication")
-        if _directory_identity(published_metadata) != _directory_identity(
-            stage_metadata
-        ):
+        if _directory_identity(published_metadata) != required_stage_identity:
             raise RuntimeError("staged directory changed at the publication boundary")
+        if validate_published_destination is not None:
+            validate_published_destination(destination)
     except Exception as boundary_error:
         quarantine = _recover_invalid_publication(
             backup,
@@ -536,22 +609,9 @@ def publish_staged_directory(
             destination_was_missing=destination_was_missing,
         )
         raise
-    else:
+    if validate_moved_destination is not None and not destination_was_missing:
         try:
-            if validate_moved_destination is not None and not destination_was_missing:
-                validate_moved_destination(backup)
-            backup_metadata = _directory_or_missing(
-                backup,
-                label="owned previous destination",
-            )
-            if backup_metadata is None:
-                raise RuntimeError(
-                    "previous destination disappeared before owned cleanup"
-                )
-            _remove_owned_directory(
-                backup,
-                _directory_identity(backup_metadata),
-            )
+            validate_moved_destination(backup)
         except Exception as cleanup_error:
             quarantine = _recover_invalid_publication(
                 backup,
@@ -567,6 +627,32 @@ def publish_staged_directory(
                 "previous destination failed safe cleanup validation; newly "
                 f"published output was quarantined{quarantine_message}"
             ) from cleanup_error
+
+    removal_state = _RemovalState()
+    try:
+        _remove_owned_directory(
+            backup,
+            _directory_identity(moved_metadata),
+            removal_state=removal_state,
+        )
+    except Exception as cleanup_error:
+        if removal_state.destructive_started:
+            raise RuntimeError(
+                "directory publication committed; cleanup incomplete; previous "
+                f"output remains partially at {backup}"
+            ) from cleanup_error
+        quarantine = _recover_invalid_publication(
+            backup,
+            destination,
+            destination_was_missing=destination_was_missing,
+        )
+        quarantine_message = (
+            f" at {quarantine}" if quarantine is not None else " because it vanished"
+        )
+        raise RuntimeError(
+            "previous destination failed safe cleanup validation; newly "
+            f"published output was quarantined{quarantine_message}"
+        ) from cleanup_error
 
 
 __all__ = ["publish_staged_directory"]
