@@ -10,9 +10,9 @@ import hashlib
 import os
 import stat
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _EXPECTED_DESTINATION_UNSET = object()
@@ -57,13 +57,29 @@ class _OwnershipBudget:
 
 
 @dataclass(frozen=True, slots=True)
+class TreeFileRecord:
+    """Canonical content record captured before an owned file is consumed."""
+
+    path: str
+    mode: int
+    size: int
+    sha256: str
+
+
+DirectoryEntryPolicy = Callable[[str, Literal["directory", "file"], int, int], None]
+
+
+@dataclass(frozen=True, slots=True)
 class _TreeOwnership:
     root_identity: tuple[int, ...]
+    root_version_identity: tuple[int, ...]
     digest: str
     entries: int
     byte_count: int
     metadata_bytes: int
     inventory: tuple[tuple[str, str], ...]
+    file_records: tuple[TreeFileRecord, ...]
+    entry_identities: tuple[tuple[str, str, tuple[int, ...]], ...]
 
 
 class _PreviousOutputIdentityLost(RuntimeError):
@@ -223,7 +239,9 @@ def _hash_owned_regular_file(
     *,
     root_device: int,
     budget: _OwnershipBudget,
-) -> tuple[int, str]:
+    relative: str,
+    entry_policy: DirectoryEntryPolicy | None,
+) -> tuple[int, str, tuple[int, ...]]:
     flags = os.O_RDONLY | os.O_NOFOLLOW
     flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NONBLOCK", 0)
@@ -238,6 +256,8 @@ def _hash_owned_regular_file(
         ):
             raise RuntimeError(f"directory ownership file changed: {path}")
         size = opened.st_size
+        if entry_policy is not None:
+            entry_policy(relative, "file", stat.S_IMODE(opened.st_mode), size)
         if size < 0 or budget.byte_count + size > _MAX_OWNERSHIP_BYTES:
             raise RuntimeError("directory ownership scan exceeds its byte limit")
         digest = hashlib.sha256()
@@ -265,7 +285,7 @@ def _hash_owned_regular_file(
     finally:
         os.close(descriptor)
     budget.byte_count += size
-    return size, digest.hexdigest()
+    return size, digest.hexdigest(), _ownership_version_identity(after)
 
 
 def _scan_owned_directory(
@@ -277,6 +297,9 @@ def _scan_owned_directory(
     mount_points: frozenset[str],
     budget: _OwnershipBudget,
     inventory: list[tuple[str, str]],
+    file_records: list[TreeFileRecord],
+    entry_identities: list[tuple[str, str, tuple[int, ...]]],
+    entry_policy: DirectoryEntryPolicy | None,
     depth: int,
     required_root_file: bytes | None = None,
     allow_empty_root: bool = False,
@@ -338,6 +361,13 @@ def _scan_owned_directory(
 
         entry_hasher = hashlib.sha256()
         if stat.S_ISDIR(metadata.st_mode):
+            if entry_policy is not None:
+                entry_policy(
+                    os.fsdecode(relative),
+                    "directory",
+                    stat.S_IMODE(metadata.st_mode),
+                    0,
+                )
             child_descriptor = os.open(name, flags, dir_fd=descriptor)
             try:
                 opened = os.fstat(child_descriptor)
@@ -355,6 +385,9 @@ def _scan_owned_directory(
                     mount_points=mount_points,
                     budget=budget,
                     inventory=inventory,
+                    file_records=file_records,
+                    entry_identities=entry_identities,
+                    entry_policy=entry_policy,
                     depth=depth + 1,
                 )
                 after = os.fstat(child_descriptor)
@@ -382,14 +415,23 @@ def _scan_owned_directory(
             entry_hasher.update(stat.S_IMODE(metadata.st_mode).to_bytes(4, "big"))
             entry_hasher.update(child_digest)
             inventory.append((os.fsdecode(relative), "directory"))
+            entry_identities.append(
+                (
+                    os.fsdecode(relative),
+                    "directory",
+                    _ownership_version_identity(after),
+                )
+            )
         elif stat.S_ISREG(metadata.st_mode):
-            size, digest = _hash_owned_regular_file(
+            size, digest, file_identity = _hash_owned_regular_file(
                 descriptor,
                 name,
                 child_path,
                 metadata,
                 root_device=root_device,
                 budget=budget,
+                relative=os.fsdecode(relative),
+                entry_policy=entry_policy,
             )
             digest_bytes = bytes.fromhex(digest)
             entry_hasher.update(b"F")
@@ -398,6 +440,15 @@ def _scan_owned_directory(
             entry_hasher.update(size.to_bytes(8, "big"))
             entry_hasher.update(digest_bytes)
             inventory.append((os.fsdecode(relative), "file"))
+            file_records.append(
+                TreeFileRecord(
+                    path=os.fsdecode(relative),
+                    mode=stat.S_IMODE(metadata.st_mode),
+                    size=size,
+                    sha256=digest,
+                )
+            )
+            entry_identities.append((os.fsdecode(relative), "file", file_identity))
         else:
             raise RuntimeError(
                 f"directory ownership scan refuses special content: {child_path}"
@@ -417,6 +468,7 @@ def capture_directory_ownership(
     *,
     required_root_file: str | None = None,
     allow_empty_root: bool = False,
+    entry_policy: DirectoryEntryPolicy | None = None,
 ) -> _TreeOwnership:
     """Return a bounded content token for one stable, real directory tree."""
 
@@ -459,11 +511,14 @@ def capture_directory_ownership(
         digest.update(stat.S_IMODE(metadata.st_mode).to_bytes(4, "big"))
         return _TreeOwnership(
             root_identity=_directory_inode_identity(metadata),
+            root_version_identity=_ownership_version_identity(metadata),
             digest=digest.hexdigest(),
             entries=0,
             byte_count=0,
             metadata_bytes=0,
             inventory=(),
+            file_records=(),
+            entry_identities=(),
         )
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     flags |= getattr(os, "O_CLOEXEC", 0)
@@ -474,6 +529,8 @@ def capture_directory_ownership(
             raise RuntimeError(f"directory ownership root changed: {path}")
         budget = _OwnershipBudget()
         inventory: list[tuple[str, str]] = []
+        file_records: list[TreeFileRecord] = []
+        entry_identities: list[tuple[str, str, tuple[int, ...]]] = []
         digest = _scan_owned_directory(
             descriptor,
             path,
@@ -482,6 +539,9 @@ def capture_directory_ownership(
             mount_points=_linux_mount_points(),
             budget=budget,
             inventory=inventory,
+            file_records=file_records,
+            entry_identities=entry_identities,
+            entry_policy=entry_policy,
             depth=0,
             required_root_file=required_root_file_bytes,
             allow_empty_root=allow_empty_root,
@@ -498,11 +558,14 @@ def capture_directory_ownership(
         raise RuntimeError(f"directory ownership root changed: {path}")
     return _TreeOwnership(
         root_identity=_directory_inode_identity(opened),
+        root_version_identity=_ownership_version_identity(opened),
         digest=digest.hex(),
         entries=budget.entries,
         byte_count=budget.byte_count,
         metadata_bytes=budget.metadata_bytes,
         inventory=tuple(sorted(inventory)),
+        file_records=tuple(sorted(file_records, key=lambda record: record.path)),
+        entry_identities=tuple(sorted(entry_identities)),
     )
 
 
@@ -516,6 +579,36 @@ def directory_ownership_inventory(
     return ownership.inventory
 
 
+def directory_ownership_file_records(
+    ownership: _TreeOwnership,
+) -> tuple[TreeFileRecord, ...]:
+    """Return canonical per-file records bound by an ownership token."""
+
+    if not isinstance(ownership, _TreeOwnership):
+        raise TypeError("ownership must be a captured directory ownership token")
+    return ownership.file_records
+
+
+def directory_ownership_entry_identities(
+    ownership: _TreeOwnership,
+) -> tuple[tuple[str, str, tuple[int, ...]], ...]:
+    """Return private filesystem identities captured for every tree entry."""
+
+    if not isinstance(ownership, _TreeOwnership):
+        raise TypeError("ownership must be a captured directory ownership token")
+    return ownership.entry_identities
+
+
+def directory_ownership_root_version_identity(
+    ownership: _TreeOwnership,
+) -> tuple[int, ...]:
+    """Return the captured root version identity used by pinned readers."""
+
+    if not isinstance(ownership, _TreeOwnership):
+        raise TypeError("ownership must be a captured directory ownership token")
+    return ownership.root_version_identity
+
+
 def directory_ownership_root_identity(
     ownership: _TreeOwnership,
 ) -> tuple[int, ...]:
@@ -526,17 +619,38 @@ def directory_ownership_root_identity(
     return ownership.root_identity
 
 
+def directory_ownership_digest(ownership: _TreeOwnership) -> str:
+    """Return the canonical complete-tree digest bound by a token."""
+
+    if not isinstance(ownership, _TreeOwnership):
+        raise TypeError("ownership must be a captured directory ownership token")
+    return ownership.digest
+
+
 def _require_tree_ownership(
     path: Path,
     expected: _TreeOwnership,
     *,
     label: str,
+    allow_root_rename: bool = False,
 ) -> None:
+    allow_root_rename = allow_root_rename or label in {
+        "moved destination",
+        "previous destination",
+        "published staged directory",
+    }
     try:
         observed = capture_directory_ownership(path)
     except (OSError, ValueError, RuntimeError) as exc:
         raise RuntimeError(f"{label} changed during directory publication") from exc
-    if observed != expected:
+    if observed != expected and not (
+        allow_root_rename
+        and replace(
+            observed,
+            root_version_identity=expected.root_version_identity,
+        )
+        == expected
+    ):
         raise RuntimeError(f"{label} changed during directory publication")
 
 
@@ -1384,9 +1498,15 @@ def publish_staged_directory(
 
 
 __all__ = [
+    "DirectoryEntryPolicy",
+    "TreeFileRecord",
     "capture_directory_ownership",
+    "directory_ownership_digest",
+    "directory_ownership_entry_identities",
+    "directory_ownership_file_records",
     "directory_ownership_inventory",
     "directory_ownership_root_identity",
+    "directory_ownership_root_version_identity",
     "discard_owned_directory",
     "lexical_directory_path",
     "publish_staged_directory",

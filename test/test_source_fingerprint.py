@@ -4,16 +4,33 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
 import codenib._contained_source as contained_source_module
+from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION
 from codenib.source_fingerprint import (
+    SOURCE_FINGERPRINT_VERSION,
     RepositoryChangedError,
     fingerprint_repository,
     repository_source_is_dirty,
 )
+
+
+def _legacy_link_only_digest(path: bytes, target: bytes) -> str:
+    digest = hashlib.sha256()
+    digest.update(
+        (
+            f"codenib-source-fingerprint:{SOURCE_FINGERPRINT_VERSION}:"
+            f"{REPOSITORY_FILTER_POLICY_VERSION}\0"
+        ).encode("ascii")
+    )
+    digest.update(b"L\0" + path + b"\0" + target + b"\0")
+    return f"sha256:{digest.hexdigest()}"
 
 
 def test_fingerprint_changes_with_source_content_and_path(tmp_path):
@@ -74,6 +91,41 @@ def test_fingerprint_includes_symlink_target_and_content(tmp_path):
     (repo / "other.py").write_text("VALUE = 3\n")
     link.symlink_to("other.py")
     assert fingerprint_repository(repo).value != changed_content.value
+
+
+@pytest.mark.parametrize("terminal", ["missing", "fifo", "loop"])
+def test_fingerprint_preserves_v1_link_only_terminal_digest(
+    tmp_path: Path,
+    terminal: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    link = repo / "link.py"
+    if terminal == "missing":
+        target = "missing.py"
+    elif terminal == "fifo":
+        target = ".codenib-hidden-pipe"
+        os.mkfifo(repo / target)
+    else:
+        target = "link.py"
+    link.symlink_to(target)
+
+    observed = fingerprint_repository(repo)
+
+    assert observed.file_count == 1
+    assert observed.value == _legacy_link_only_digest(b"link.py", os.fsencode(target))
+
+
+def test_fingerprint_accepts_absolute_contained_symlink(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    target = repo / "target.py"
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+    (repo / "link.py").symlink_to(target)
+
+    observed = fingerprint_repository(repo)
+
+    assert observed.file_count == 2
 
 
 def test_fingerprint_rejects_source_symlink_outside_repository(tmp_path) -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -46,24 +47,49 @@ def assert_publishable_json_value(
     """Scan decoded JSON semantics without depending on their source encoding."""
 
     assert_no_credential_fields(value, source=label)
-    payload = json.dumps(
-        value,
-        allow_nan=False,
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("ascii")
     forbidden_values: list[str] = []
     for path in forbidden_paths:
         resolved = path.expanduser().resolve()
         forbidden_values.extend((str(resolved), resolved.as_posix()))
-    if any(
-        pattern and pattern in payload
-        for pattern in _serialized_patterns(forbidden_values)
-    ):
-        raise ValueError(f"{label} contains an absolute build-machine path")
-    if any(pattern and pattern in payload for pattern in _secret_values(environ)):
-        raise ValueError(f"{label} contains a configured credential")
+    forbidden = tuple(item for item in forbidden_values if item)
+    secrets = tuple(
+        value
+        for name, value in environ.items()
+        if isinstance(value, str)
+        and len(value) >= 8
+        and (
+            name.upper() in _SENSITIVE_ENV_NAMES
+            or name.upper().endswith(_SENSITIVE_ENV_SUFFIXES)
+        )
+    )
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, Mapping):
+            for key, child in current.items():
+                if not isinstance(key, str):
+                    raise ValueError(f"{label} contains a non-text JSON object key")
+                if any(pattern in key for pattern in forbidden):
+                    raise ValueError(f"{label} contains an absolute build-machine path")
+                if any(pattern in key for pattern in secrets):
+                    raise ValueError(f"{label} contains a configured credential")
+                stack.append(child)
+        elif isinstance(current, (list, tuple)):
+            stack.extend(current)
+        elif isinstance(current, str):
+            if any(pattern in current for pattern in forbidden):
+                raise ValueError(f"{label} contains an absolute build-machine path")
+            if any(pattern in current for pattern in secrets):
+                raise ValueError(f"{label} contains a configured credential")
+        elif current is None or isinstance(current, (bool, int)):
+            continue
+        elif isinstance(current, float):
+            if not math.isfinite(current):
+                raise ValueError(f"{label} contains a non-finite JSON number")
+        else:
+            raise ValueError(
+                f"{label} contains unsupported JSON value: " f"{type(current).__name__}"
+            )
 
 
 def _serialized_patterns(values: Iterable[str]) -> tuple[bytes, ...]:

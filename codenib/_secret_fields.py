@@ -69,38 +69,82 @@ class SecretFieldError(ValueError):
     """A decoded value contains credential-shaped publication data."""
 
 
+def _trim_bounds(value: str) -> tuple[int, int]:
+    start = 0
+    end = len(value)
+    while start < end and value[start].isspace():
+        start += 1
+    while end > start and value[end - 1].isspace():
+        end -= 1
+    return start, end
+
+
+def _authority_contains_userinfo(value: str, start: int, end: int) -> bool:
+    """Check a URL authority without copying a potentially huge document."""
+
+    position = start
+    while position < end:
+        char = value[position]
+        if char in "/?#" or char.isspace():
+            break
+        if char == "@":
+            return True
+        position += 1
+    return False
+
+
+def _string_contains_url_credentials(value: str, start: int, end: int) -> bool:
+    if end - start <= 8_192:
+        candidate = value[start:end]
+        if "://" not in candidate and not candidate.startswith("//"):
+            return False
+        try:
+            parsed = urlsplit(candidate)
+        except ValueError as exc:
+            raise SecretFieldError("value contains an invalid URL") from exc
+        return parsed.username is not None or parsed.password is not None
+
+    if value.startswith("//", start) and _authority_contains_userinfo(
+        value, start + 2, end
+    ):
+        return True
+    search_from = start
+    while (separator := value.find("://", search_from, end)) >= 0:
+        if _authority_contains_userinfo(value, separator + 3, end):
+            return True
+        search_from = separator + 3
+    return False
+
+
 def assert_no_secret_fields(value: Any, *, source: str = "value") -> None:
     """Reject decoded credential keys, URL userinfo, and auth header values."""
 
-    if isinstance(value, Mapping):
-        for key, child in value.items():
-            normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
-            if (
-                normalized in _NORMALIZED_SECRET_FIELD_NAMES
-                or normalized.endswith(_NORMALIZED_SECRET_FIELD_SUFFIXES)
-                or normalized.startswith(_NORMALIZED_SECRET_HEADER_PREFIXES)
-            ):
-                raise SecretFieldError(
-                    f"{source} contains a credential field or secret field: {key}"
-                )
-            assert_no_secret_fields(child, source=source)
-    elif isinstance(value, (list, tuple)):
-        for child in value:
-            assert_no_secret_fields(child, source=source)
-    elif isinstance(value, str):
-        stripped = value.strip()
-        if "://" in stripped or stripped.startswith("//"):
-            try:
-                parsed = urlsplit(stripped)
-            except ValueError as exc:
-                raise SecretFieldError(f"{source} contains an invalid URL") from exc
-            if parsed.username is not None or parsed.password is not None:
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, Mapping):
+            for key, child in current.items():
+                normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
+                if (
+                    normalized in _NORMALIZED_SECRET_FIELD_NAMES
+                    or normalized.endswith(_NORMALIZED_SECRET_FIELD_SUFFIXES)
+                    or normalized.startswith(_NORMALIZED_SECRET_HEADER_PREFIXES)
+                ):
+                    raise SecretFieldError(
+                        f"{source} contains a credential field or secret field: {key}"
+                    )
+                stack.append(child)
+        elif isinstance(current, (list, tuple)):
+            stack.extend(current)
+        elif isinstance(current, str):
+            start, end = _trim_bounds(current)
+            if _string_contains_url_credentials(current, start, end):
                 raise SecretFieldError(f"{source} must not contain URL credentials")
-        normalized = stripped.casefold()
-        if normalized.startswith(("bearer ", "basic ")):
-            raise SecretFieldError(
-                f"{source} must not contain authorization credentials"
-            )
+            prefix = current[start : min(end, start + 7)].casefold()
+            if prefix.startswith(("bearer ", "basic ")):
+                raise SecretFieldError(
+                    f"{source} must not contain authorization credentials"
+                )
 
 
 __all__ = ["SecretFieldError", "assert_no_secret_fields"]
