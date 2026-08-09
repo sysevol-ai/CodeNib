@@ -14,7 +14,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from ._contained_source import update_repository_file_hash
+from ._contained_source import (
+    _version_identity,
+    resolved_repository_file,
+    update_repository_file_hash,
+)
 from .repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     repository_path_is_visible,
@@ -22,7 +26,6 @@ from .repository_filters import (
 )
 
 SOURCE_FINGERPRINT_VERSION = 1
-_READ_SIZE = 1024 * 1024
 
 
 class RepositoryChangedError(RuntimeError):
@@ -37,20 +40,20 @@ class SourceFingerprint:
     file_count: int
 
 
-def _update_file(hasher: "hashlib._Hash", path: Path) -> None:
-    before = path.stat()
-    with path.open("rb") as handle:
-        while block := handle.read(_READ_SIZE):
-            hasher.update(block)
-    after = path.stat()
-    if (
-        before.st_size != after.st_size
-        or before.st_mtime_ns != after.st_mtime_ns
-        or before.st_ino != after.st_ino
-    ):
-        raise RepositoryChangedError(
-            f"repository file changed while it was being read: {path}"
-        )
+def _link_matches(
+    path: Path,
+    *,
+    initial: os.stat_result,
+    target: str,
+) -> bool:
+    try:
+        observed = path.lstat()
+        observed_target = os.readlink(path)
+    except OSError:
+        return False
+    return _version_identity(observed) == _version_identity(initial) and (
+        observed_target == target
+    )
 
 
 def fingerprint_repository(
@@ -77,15 +80,15 @@ def fingerprint_repository(
         relative_text = path.relative_to(root_path).as_posix()
         relative = relative_text.encode("utf-8", errors="surrogateescape")
         try:
-            mode = path.lstat().st_mode
+            initial_metadata = path.lstat()
         except OSError as exc:
             raise RepositoryChangedError(
                 f"repository file disappeared while it was being inspected: {path}"
             ) from exc
 
+        mode = initial_metadata.st_mode
         if stat.S_ISLNK(mode):
             try:
-                before_link = path.lstat()
                 raw_target = os.readlink(path)
                 target = raw_target.encode("utf-8", errors="surrogateescape")
             except OSError as exc:
@@ -97,28 +100,25 @@ def fingerprint_repository(
             hasher.update(b"\0")
             hasher.update(target)
             hasher.update(b"\0")
-            hasher.update(b"C\0")
             try:
-                update_repository_file_hash(root_path, relative_text, hasher)
-                after_link = path.lstat()
-                after_target = os.readlink(path)
+                with resolved_repository_file(
+                    root_path,
+                    relative_text,
+                    expected_final_identity=_version_identity(initial_metadata),
+                ) as binding:
+                    if binding.is_regular:
+                        hasher.update(b"C\0")
+                        binding.update_hash(hasher)
             except (OSError, ValueError) as exc:
                 raise RepositoryChangedError(
                     "repository link target could not be read consistently: " f"{path}"
                 ) from exc
-            if (
-                before_link.st_dev != after_link.st_dev
-                or before_link.st_ino != after_link.st_ino
-                or before_link.st_mode != after_link.st_mode
-                or before_link.st_size != after_link.st_size
-                or before_link.st_mtime_ns != after_link.st_mtime_ns
-                or before_link.st_ctime_ns != after_link.st_ctime_ns
-                or raw_target != after_target
-            ):
+            if not _link_matches(path, initial=initial_metadata, target=raw_target):
                 raise RepositoryChangedError(
                     f"repository link changed while it was being read: {path}"
                 )
-            hasher.update(b"\0")
+            if binding.is_regular:
+                hasher.update(b"\0")
             file_count += 1
             continue
 
@@ -129,8 +129,13 @@ def fingerprint_repository(
         hasher.update(relative)
         hasher.update(b"\0")
         try:
-            _update_file(hasher, path)
-        except OSError as exc:
+            update_repository_file_hash(
+                root_path,
+                relative_text,
+                hasher,
+                expected_final_identity=_version_identity(initial_metadata),
+            )
+        except (OSError, ValueError) as exc:
             raise RepositoryChangedError(
                 f"repository file could not be read consistently: {path}"
             ) from exc
