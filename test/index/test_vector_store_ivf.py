@@ -16,12 +16,14 @@ from __future__ import annotations
 import hashlib
 import json
 import pickle
+from pathlib import Path
 from unittest.mock import patch
 
 import faiss
 import numpy as np
 import pytest
 
+from codenib._atomic_directory import capture_directory_ownership
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
     VECTOR_VIEW_UPDATE_MARKER,
@@ -29,6 +31,7 @@ from codenib.index.embedding.artifact_integrity import (
     vector_level_artifact_records,
 )
 from codenib.index.embedding.vector_store import CodeVectorStore
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 
 _DIM = 16
 
@@ -63,6 +66,30 @@ def _make_store(**kwargs) -> CodeVectorStore:
         return_value=_FakeEmbedding(_DIM),
     ):
         return CodeVectorStore(dimension=_DIM, **kwargs)
+
+
+def _authorization(store: CodeVectorStore, path=None):
+    root = Path(path) if path is not None else Path(store.store_path)
+    return _mint_trusted_local_admin_authorization(
+        capture_directory_ownership(root),
+        view_type="vector",
+        semantic_contract=store.artifact_metadata,
+        evidence=("vector-store-test-local-admin",),
+    )
+
+
+def _load_trusted(store: CodeVectorStore, path=None) -> None:
+    store.load(
+        path,
+        native_index_authorization=_authorization(store, path),
+    )
+
+
+def _swap_trusted(store: CodeVectorStore, path) -> None:
+    store.swap_index(
+        str(path),
+        native_index_authorization=_authorization(store, path),
+    )
 
 
 def _chunks(n: int) -> list:
@@ -183,7 +210,7 @@ def test_ivf_save_load_roundtrip(tmp_path):
     store.save(path)
 
     loaded = _make_store(index_type="ivf", ivf_nlist=5, ivf_nprobe=5, store_path=path)
-    loaded.load(path)
+    _load_trusted(loaded, path)
     assert loaded.l2_index.ntotal == 5
     res = loaded.search(chunks[1]["content"], top_k=3)
     assert res and res[0].node_name == chunks[1]["name"]
@@ -204,7 +231,7 @@ def test_save_removes_persisted_level_after_last_document_is_deleted(tmp_path):
     assert config["l2_documents"] == 0
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
-    loaded.load()
+    _load_trusted(loaded)
     assert loaded.l2_index.ntotal == 0
     assert loaded.l2_documents == []
 
@@ -237,11 +264,11 @@ def test_failed_save_blocks_load_until_successful_retry(tmp_path):
     assert marker.is_file()
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
     with pytest.raises(ValueError, match="interrupted save marker"):
-        loaded.load()
+        _load_trusted(loaded)
 
     store.save(str(path))
     assert not marker.exists()
-    loaded.load()
+    _load_trusted(loaded)
     assert len(loaded.l2_documents) == 2
 
 
@@ -254,7 +281,7 @@ def test_load_rejects_incomplete_multi_artifact_update(tmp_path):
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
     with pytest.raises(ValueError, match="incomplete update marker"):
-        loaded.load()
+        _load_trusted(loaded)
 
 
 def test_load_prefers_portable_json_documents(tmp_path):
@@ -287,7 +314,7 @@ def test_load_prefers_portable_json_documents(tmp_path):
     _commit_portable_documents(path, "test__model")
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
-    loaded.load()
+    _load_trusted(loaded)
 
     assert [document.metadata["file"] for document in loaded.l2_documents] == [
         "m0.py",
@@ -311,7 +338,7 @@ def test_load_rejects_invalid_portable_json_documents(tmp_path):
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
     with pytest.raises(ValueError, match="invalid content or metadata"):
-        loaded.load()
+        _load_trusted(loaded)
 
 
 def test_load_rejects_faiss_document_count_mismatch(tmp_path):
@@ -337,7 +364,7 @@ def test_load_rejects_faiss_document_count_mismatch(tmp_path):
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
     with pytest.raises(ValueError, match="2 vectors for 1 documents"):
-        loaded.load()
+        _load_trusted(loaded)
 
 
 def test_load_rejects_top_level_document_count_mismatch(tmp_path):
@@ -353,7 +380,7 @@ def test_load_rejects_top_level_document_count_mismatch(tmp_path):
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
     with pytest.raises(ValueError, match="config expects 3 documents, loaded 2"):
-        loaded.load()
+        _load_trusted(loaded)
 
 
 def test_load_rejects_same_count_torn_document_write(tmp_path):
@@ -372,9 +399,12 @@ def test_load_rejects_same_count_torn_document_write(tmp_path):
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
     with pytest.raises(
         ValueError,
-        match="committed documents vector artifact does not match",
+        match=(
+            "committed documents vector artifact does not match|"
+            "vector artifact does not match its fingerprint"
+        ),
     ):
-        loaded.load()
+        _load_trusted(loaded)
 
 
 def test_load_rejects_vector_config_from_another_manifest_generation(tmp_path):
@@ -395,8 +425,11 @@ def test_load_rejects_vector_config_from_another_manifest_generation(tmp_path):
         artifact_metadata={"persistence_config_fingerprint": expected},
     )
 
-    with pytest.raises(ValueError, match="manifest fingerprint"):
-        loaded.load()
+    with pytest.raises(
+        ValueError,
+        match="manifest fingerprint|vector artifact does not match its fingerprint",
+    ):
+        _load_trusted(loaded)
 
 
 def test_zero_top_level_count_does_not_resurrect_stale_level_files(tmp_path):
@@ -413,7 +446,7 @@ def test_zero_top_level_count_does_not_resurrect_stale_level_files(tmp_path):
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
     loaded = _make_store(embedding_model="test/model", store_path=str(path))
-    loaded.load()
+    _load_trusted(loaded)
 
     assert loaded.l2_index.ntotal == 0
     assert loaded.l2_documents == []
@@ -431,7 +464,7 @@ def test_failed_swap_preserves_the_serving_index(tmp_path):
     (replacement_path / "l2" / "documents_test__model.pkl").unlink()
 
     with pytest.raises(ValueError, match="vector artifact file"):
-        current.swap_index(str(replacement_path))
+        _swap_trusted(current, replacement_path)
 
     assert current.l2_index.ntotal == 2
     assert len(current.l2_documents) == 2
@@ -452,7 +485,7 @@ def test_successful_swap_replaces_all_levels(tmp_path):
     replacement.add_code_chunks([replacement_chunk], level="l2")
     replacement.save(str(replacement_path))
 
-    current.swap_index(str(replacement_path))
+    _swap_trusted(current, replacement_path)
 
     assert current.l0_index.ntotal == 0
     assert current.l0_documents == []
@@ -485,4 +518,4 @@ def test_load_rejects_faiss_dimension_mismatch(tmp_path):
         )
 
     with pytest.raises(ValueError, match="FAISS dimension mismatch"):
-        loaded.load()
+        _load_trusted(loaded)

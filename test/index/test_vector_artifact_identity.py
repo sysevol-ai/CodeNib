@@ -4,15 +4,19 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from codenib._atomic_directory import capture_directory_ownership
 from codenib.index.embedding.vector_store import (
     CodeVectorStore,
     _OpenAIEmbeddingWrapper,
+    _read_authenticated_faiss,
 )
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 
 
 class _Embedding:
@@ -24,6 +28,51 @@ class _Embedding:
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [[0.0] * self.dimension for _ in texts]
+
+
+def test_faiss_callback_caps_oversized_native_read_requests(monkeypatch) -> None:
+    payload_size = 8 * 1024 * 1024 + 17
+
+    class _Snapshot:
+        def __init__(self) -> None:
+            self.record = SimpleNamespace(size=payload_size)
+            self.offset = 0
+            self.requests: list[int] = []
+
+        def read(self, size: int) -> bytes:
+            self.requests.append(size)
+            remaining = payload_size - self.offset
+            consumed = min(size, remaining)
+            self.offset += consumed
+            return b"x" * consumed
+
+    snapshot = _Snapshot()
+    view = SimpleNamespace(
+        authenticated_snapshot=lambda _relative: nullcontext(
+            (snapshot, snapshot.record)
+        )
+    )
+    observed: list[int] = []
+    sentinel = object()
+
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.faiss.PyCallbackIOReader",
+        lambda callback: callback,
+    )
+
+    def read_index(callback):
+        while block := callback(1 << 60):
+            observed.append(len(block))
+        return sentinel
+
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.faiss.read_index",
+        read_index,
+    )
+
+    assert _read_authenticated_faiss(view, "l2/index.faiss") is sentinel
+    assert observed == [8 * 1024 * 1024, 17]
+    assert max(snapshot.requests) == 8 * 1024 * 1024
 
 
 def _store(
@@ -45,6 +94,51 @@ def _store(
     )
 
 
+def _authorization(path, store):
+    return _mint_trusted_local_admin_authorization(
+        capture_directory_ownership(path),
+        view_type="vector",
+        semantic_contract=store.artifact_metadata,
+        evidence=("vector-artifact-test-local-admin",),
+    )
+
+
+def test_load_denies_missing_authorization_before_tree_capture(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.capture_authenticated_vector_view",
+        lambda _path: pytest.fail("denied native load must not capture the tree"),
+    )
+
+    with pytest.raises(ValueError, match="requires external authorization"):
+        store.load()
+
+
+def test_load_denies_foreign_pid_authorization_before_tree_capture(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import codenib.native_index_authorization as authorization_module
+
+    store = _store(tmp_path, fingerprint="sha256:expected")
+    authorization = _authorization(tmp_path, store)
+    monkeypatch.setattr(
+        authorization_module.os,
+        "getpid",
+        lambda: authorization.process_id + 1,
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.capture_authenticated_vector_view",
+        lambda _path: pytest.fail("foreign-PID load must not capture the tree"),
+    )
+
+    with pytest.raises(ValueError, match="another process"):
+        store.load(native_index_authorization=authorization)
+
+
 def test_load_rejects_manifest_and_saved_artifact_fingerprint_mismatch(
     tmp_path,
 ) -> None:
@@ -52,7 +146,7 @@ def test_load_rejects_manifest_and_saved_artifact_fingerprint_mismatch(
     reopened = _store(tmp_path, fingerprint="sha256:second")
 
     with pytest.raises(ValueError, match="does not match manifest"):
-        reopened.load()
+        reopened.load(native_index_authorization=_authorization(tmp_path, reopened))
 
 
 def test_load_rejects_provider_substitution(tmp_path) -> None:
@@ -64,7 +158,7 @@ def test_load_rejects_provider_substitution(tmp_path) -> None:
     )
 
     with pytest.raises(ValueError, match="provider mismatch"):
-        reopened.load()
+        reopened.load(native_index_authorization=_authorization(tmp_path, reopened))
 
 
 def test_load_rejects_embedding_revision_substitution(tmp_path) -> None:
@@ -76,7 +170,7 @@ def test_load_rejects_embedding_revision_substitution(tmp_path) -> None:
     )
 
     with pytest.raises(ValueError, match="embedding revision mismatch"):
-        reopened.load()
+        reopened.load(native_index_authorization=_authorization(tmp_path, reopened))
 
 
 @pytest.mark.parametrize("option", ["revision", "trust_remote_code"])
@@ -98,7 +192,7 @@ def test_load_requires_saved_identity_when_manifest_has_a_fingerprint(tmp_path) 
     reopened = _store(tmp_path, fingerprint="sha256:expected")
 
     with pytest.raises(ValueError, match="top-level configuration"):
-        reopened.load()
+        reopened.load(native_index_authorization=_authorization(tmp_path, reopened))
 
 
 def test_openai_wrapper_sends_vector_options_on_embedding_requests() -> None:

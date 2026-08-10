@@ -16,22 +16,29 @@ import pickle
 import tempfile
 from collections.abc import Mapping
 from contextlib import contextmanager, nullcontext
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple
 
 import faiss
 import numpy as np
 
 from ... import compat_pickle
+from ..._bounded_json import iter_bounded_json_array
+from ..._captured_directory import AuthenticatedSnapshotReader
 from ...log_utils import get_logger
+from ...native_index_authorization import (
+    NativeIndexAuthorization,
+    require_native_index_authorization,
+    require_native_index_authorization_preflight,
+)
 from ...profiler import Profiler
 from ...provider_routes import normalize_provider
 from ...types import NodeInfo
 from .artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
-    require_complete_vector_view,
-    validate_vector_config_artifact,
-    validate_vector_level_artifacts,
+    VECTOR_VIEW_UPDATE_MARKER,
+    AuthenticatedVectorView,
+    capture_authenticated_vector_view,
     vector_level_artifact_records,
 )
 from .model_policy import (
@@ -57,6 +64,28 @@ _HUGGINGFACE_ONLY_OPTIONS = frozenset(
         "trust_remote_code",
     }
 )
+
+
+@contextmanager
+def _authenticated_binary_file(
+    view: AuthenticatedVectorView,
+    relative: str,
+):
+    """Yield a file object backed only by an immutable authenticated snapshot."""
+
+    with view.authenticated_snapshot(relative) as (snapshot, _record):
+        yield AuthenticatedSnapshotReader(snapshot)
+
+
+def _read_authenticated_faiss(
+    view: AuthenticatedVectorView,
+    relative: str,
+) -> Any:
+    """Give FAISS only a fixed-chunk reader over an authenticated snapshot."""
+
+    with view.authenticated_snapshot(relative) as (snapshot, _record):
+        source = AuthenticatedSnapshotReader(snapshot)
+        return faiss.read_index(faiss.PyCallbackIOReader(source.read))
 
 
 def _pop_compatible_model_option(
@@ -785,14 +814,22 @@ class CodeVectorStore:
                 results.append((documents[idx], float(dist)))
         return results
 
-    def swap_index(self, path: str) -> None:
+    def swap_index(
+        self,
+        path: str,
+        *,
+        native_index_authorization: NativeIndexAuthorization | None = None,
+    ) -> None:
         """Hot-swap the FAISS index without reloading the embedding model.
 
         The replacement is fully loaded and validated before the current
         L0/L2 state is released. The embedding model is left intact so the
         caller can reuse the same model across many instances.
         """
-        self.load(path)
+        self.load(
+            path,
+            native_index_authorization=native_index_authorization,
+        )
 
     def close(self) -> None:
         """Release embeddings and FAISS resources to free memory."""
@@ -1321,32 +1358,60 @@ class CodeVectorStore:
         logger.info(f"Saved {level.upper()} store with {len(documents)} documents")
         return artifacts
 
-    def load(self, path: Optional[str] = None) -> None:
+    def load(
+        self,
+        path: Optional[str] = None,
+        *,
+        native_index_authorization: NativeIndexAuthorization | None = None,
+    ) -> None:
         """
         Load the vector store from disk.
 
         Args:
             path: Path to load the store from (uses self.store_path if not provided)
+            native_index_authorization: Process-local authorization bound to the
+                exact captured tree and semantic view contract. Artifact fields
+                cannot provide this capability.
         """
         load_path = Path(path) if path else self.store_path
         if load_path is None:
             raise ValueError("No load path provided")
+        require_native_index_authorization_preflight(
+            native_index_authorization,
+            view_type="vector",
+        )
+        view = capture_authenticated_vector_view(load_path)
+        try:
+            require_native_index_authorization(
+                native_index_authorization,
+                view.ownership,
+                view_type="vector",
+                semantic_contract=self.artifact_metadata,
+            )
+            self._load_captured(view)
+            view.verify_final()
+        finally:
+            view.close()
 
-        load_path = Path(load_path)
-        if not load_path.exists():
-            raise FileNotFoundError(f"Vector store not found at {load_path}")
+    def _load_captured(self, view: AuthenticatedVectorView) -> None:
+        """Load native state only through one already-authorized captured tree."""
 
-        logger.info(f"Loading vector store from {load_path}")
-        require_complete_vector_view(load_path)
+        load_path = view.root
+        logger.info("Loading authenticated vector store from %s", load_path)
+        if view.has_file(VECTOR_VIEW_UPDATE_MARKER):
+            raise ValueError(
+                "vector view has an incomplete update marker: "
+                f"{VECTOR_VIEW_UPDATE_MARKER}"
+            )
 
         model_suffix = self.embedding_model.replace("/", "__")
 
         # Load top-level configuration
-        config_path = load_path / f"config_{model_suffix}.json"
-        if not config_path.exists():
-            config_path = load_path / "config.json"
-        save_marker = load_path / f".config_{model_suffix}.json.save-in-progress"
-        if save_marker.exists():
+        config_relative = f"config_{model_suffix}.json"
+        if not view.has_file(config_relative):
+            config_relative = "config.json"
+        save_marker = f".config_{model_suffix}.json.save-in-progress"
+        if view.has_file(save_marker):
             raise ValueError(
                 f"Vector store has an interrupted save marker: {save_marker}"
             )
@@ -1354,17 +1419,19 @@ class CodeVectorStore:
         expected_artifact = dict(self.artifact_metadata)
         expected_config = expected_artifact.get("persistence_config_fingerprint")
         if expected_config is not None:
-            config_path = validate_vector_config_artifact(
-                load_path,
-                model_suffix,
+            config_relative = f"config_{model_suffix}.json"
+            view.require_record(
+                config_relative,
                 expected_config,
             )
         loaded_artifact = expected_artifact
         expected_counts: Dict[str, Optional[int]] = {"l0": None, "l2": None}
         committed_levels: Optional[dict[str, object]] = None
-        if config_path.exists():
-            with open(config_path, "r") as f:
-                config = json.load(f)
+        if view.has_file(config_relative):
+            config = view.load_json_object(
+                config_relative,
+                label="vector generation config",
+            )
 
             saved_model = config.get("embedding_model")
             if saved_model is not None and saved_model != self.embedding_model:
@@ -1453,8 +1520,7 @@ class CodeVectorStore:
         loaded_levels = {}
         for level in ("l0", "l2"):
             expected_count = expected_counts[level]
-            level_path = load_path / level
-            faiss_path = level_path / f"index_{model_suffix}.faiss"
+            faiss_relative = f"{level}/index_{model_suffix}.faiss"
             committed_artifacts = (
                 committed_levels.get(level) if committed_levels is not None else None
             )
@@ -1479,16 +1545,17 @@ class CodeVectorStore:
                     f"Vector config is missing committed artifacts for {level}"
                 )
 
-            if committed_artifacts is not None or faiss_path.exists():
+            if committed_artifacts is not None or view.has_file(faiss_relative):
                 index, documents = self._load_level(
-                    level_path,
+                    view,
+                    level,
                     model_suffix,
                     committed_artifacts=committed_artifacts,
                 )
             elif expected_count is not None and expected_count > 0:
                 raise FileNotFoundError(
                     f"Vector config expects {expected_count} {level} documents, "
-                    f"but {faiss_path} is missing"
+                    f"but {faiss_relative} is missing"
                 )
             else:
                 index, documents = self._build_faiss_index(), []
@@ -1536,7 +1603,8 @@ class CodeVectorStore:
 
     def _load_level(
         self,
-        level_path: Path,
+        view: AuthenticatedVectorView,
+        level: str,
         model_suffix: str,
         *,
         committed_artifacts: object = None,
@@ -1546,72 +1614,96 @@ class CodeVectorStore:
         Handles both the new format (raw FAISS + _Document list) and the
         legacy LangChain format (FAISS + docstore pkl) transparently.
         """
+        level_path = view.root / level
         index_name = f"index_{model_suffix}"
-        committed_documents_path = None
+        faiss_relative = f"{level}/{index_name}.faiss"
+        committed_documents_relative = None
         if committed_artifacts is not None:
-            faiss_path, committed_documents_path = validate_vector_level_artifacts(
-                level_path,
-                model_suffix,
-                committed_artifacts,
+            if not isinstance(committed_artifacts, Mapping) or set(
+                committed_artifacts
+            ) != {"index", "documents"}:
+                raise ValueError(f"invalid committed vector artifacts for {level_path}")
+            view.require_record(faiss_relative, committed_artifacts["index"])
+            documents_record = committed_artifacts["documents"]
+            if not isinstance(documents_record, Mapping):
+                raise ValueError(
+                    f"invalid documents vector artifact record for {level_path}"
+                )
+            documents_name = documents_record.get("file")
+            if documents_name not in {
+                f"documents_{model_suffix}.json",
+                f"documents_{model_suffix}.pkl",
+            }:
+                raise ValueError(
+                    f"invalid documents vector artifact filename for {level_path}"
+                )
+            committed_documents_relative = f"{level}/{documents_name}"
+            view.require_record(
+                committed_documents_relative,
+                documents_record,
             )
-        else:
-            faiss_path = level_path / f"{index_name}.faiss"
 
-        if not faiss_path.exists():
-            raise FileNotFoundError(f"FAISS index not found at {faiss_path}")
+        if not view.has_file(faiss_relative):
+            raise FileNotFoundError(f"FAISS index not found at {faiss_relative}")
 
         try:
-            index = faiss.read_index(str(faiss_path))
+            index = _read_authenticated_faiss(view, faiss_relative)
         except Exception as e:
             raise ValueError(
-                f"Could not load FAISS index from {faiss_path}: {e}"
+                f"Could not load FAISS index from {faiss_relative}: {e}"
             ) from e
         if int(index.d) != self.dimension:
             raise ValueError(
-                f"FAISS dimension mismatch at {faiss_path}: "
+                f"FAISS dimension mismatch at {faiss_relative}: "
                 f"expected {self.dimension}, found {int(index.d)}"
             )
 
         # Portable artifacts use inert JSON so a downloaded document store is
         # never unpickled. Local indexes retain the pickle fallback for
         # compatibility with previously built artifacts.
-        json_path = level_path / f"documents_{model_suffix}.json"
-        if committed_documents_path is not None:
-            if committed_documents_path.suffix == ".json":
-                documents = self._load_documents_json(committed_documents_path)
+        json_relative = f"{level}/documents_{model_suffix}.json"
+        if committed_documents_relative is not None:
+            if PurePosixPath(committed_documents_relative).suffix == ".json":
+                documents = self._load_documents_json(
+                    view,
+                    committed_documents_relative,
+                )
             else:
                 try:
-                    with committed_documents_path.open("rb") as handle:
+                    with _authenticated_binary_file(
+                        view,
+                        committed_documents_relative,
+                    ) as handle:
                         raw_docs = compat_pickle.load(handle)
                     documents = [_to_document(document) for document in raw_docs]
                 except Exception as exc:
                     raise ValueError(
                         "Could not load committed vector documents from "
-                        f"{committed_documents_path}: {exc}"
+                        f"{committed_documents_relative}: {exc}"
                     ) from exc
-        elif json_path.exists():
-            documents = self._load_documents_json(json_path)
+        elif view.has_file(json_relative):
+            documents = self._load_documents_json(view, json_relative)
         else:
             documents = None
 
             # Try loading the local documents pickle (works for both new
             # _Document and legacy LangChain Document objects).
-            docs_path = level_path / f"documents_{model_suffix}.pkl"
-            if docs_path.exists():
+            docs_relative = f"{level}/documents_{model_suffix}.pkl"
+            if view.has_file(docs_relative):
                 try:
-                    with open(docs_path, "rb") as f:
-                        raw_docs = compat_pickle.load(f)
+                    with _authenticated_binary_file(view, docs_relative) as source:
+                        raw_docs = compat_pickle.load(source)
                     documents = [_to_document(d) for d in raw_docs]
                 except Exception as exc:
                     logger.warning(
-                        "Could not load documents from %s: %s", docs_path, exc
+                        "Could not load documents from %s: %s", docs_relative, exc
                     )
 
             # Fallback: LangChain stores use index_name.pkl for their docstore.
-            lc_pkl_path = level_path / f"{index_name}.pkl"
-            if documents is None and lc_pkl_path.exists():
+            lc_pkl_relative = f"{level}/{index_name}.pkl"
+            if documents is None and view.has_file(lc_pkl_relative):
                 try:
-                    documents = self._load_langchain_pkl(lc_pkl_path)
+                    documents = self._load_langchain_pkl(view, lc_pkl_relative)
                     logger.info(
                         "Loaded %d documents from legacy LangChain format",
                         len(documents),
@@ -1619,7 +1711,7 @@ class CodeVectorStore:
                 except Exception as exc:
                     logger.warning(
                         "Could not load legacy LangChain pkl from %s: %s",
-                        lc_pkl_path,
+                        lc_pkl_relative,
                         exc,
                     )
 
@@ -1636,44 +1728,107 @@ class CodeVectorStore:
                 f"Misaligned vector level {level_path}: {int(index.ntotal)} vectors "
                 f"for {len(documents)} documents"
             )
+        self._validate_loaded_faiss_index(
+            index,
+            relative=faiss_relative,
+            document_count=len(documents),
+        )
+        level_config_relative = f"{level}/config_{model_suffix}.json"
+        if view.has_file(level_config_relative):
+            level_config = view.load_json_object(
+                level_config_relative,
+                label=f"vector {level} config",
+            )
+            expected_level_config = {
+                "embedding_model": self.embedding_model,
+                "embedding_provider": self.embedding_provider,
+                "embedding_revision": self.embedding_revision,
+                "dimension": self.dimension,
+                "index_type": self.index_type,
+                "index_metric": self.index_metric,
+                "level": level,
+                "num_documents": len(documents),
+            }
+            for field, expected in expected_level_config.items():
+                if level_config.get(field) != expected:
+                    raise ValueError(
+                        f"vector {level} config {field} mismatch: "
+                        f"expected {expected!r}, found {level_config.get(field)!r}"
+                    )
         return index, documents
 
+    def _validate_loaded_faiss_index(
+        self,
+        index: faiss.Index,
+        *,
+        relative: str,
+        document_count: int,
+    ) -> None:
+        expected_metric = self._faiss_metric()
+        if int(index.metric_type) != int(expected_metric):
+            raise ValueError(
+                f"FAISS metric mismatch at {relative}: expected "
+                f"{self.index_metric}, found {int(index.metric_type)}"
+            )
+        if self.index_type == "flat":
+            valid_type = isinstance(index, faiss.IndexFlat)
+        else:
+            valid_type = isinstance(index, faiss.IndexIVF)
+        if not valid_type:
+            raise ValueError(
+                f"FAISS index type mismatch at {relative}: expected {self.index_type}"
+            )
+        if document_count > 0 and not bool(index.is_trained):
+            raise ValueError(f"FAISS index is not trained at {relative}")
+
     @staticmethod
-    def _load_documents_json(path: Path) -> List[_Document]:
+    def _load_documents_json(
+        view: AuthenticatedVectorView,
+        relative: str,
+    ) -> List[_Document]:
         """Load the non-executable portable vector document format."""
 
-        with path.open(encoding="utf-8") as handle:
-            payload = json.load(handle)
-        if not isinstance(payload, list):
-            raise ValueError(f"vector documents must be a JSON list: {path}")
-
         documents: List[_Document] = []
-        for index, item in enumerate(payload):
-            if not isinstance(item, dict):
-                raise ValueError(
-                    f"vector document {index} must be a JSON object: {path}"
+        with view.open_file(relative) as source:
+            for index, item in enumerate(
+                iter_bounded_json_array(
+                    source,
+                    label=f"vector documents {relative}",
                 )
-            page_content = item.get("page_content")
-            metadata = item.get("metadata")
-            if not isinstance(page_content, str) or not isinstance(metadata, dict):
-                raise ValueError(
-                    f"vector document {index} has invalid content or metadata: {path}"
+            ):
+                if not isinstance(item, dict) or set(item) != {
+                    "page_content",
+                    "metadata",
+                }:
+                    raise ValueError(
+                        f"vector document {index} must have canonical shape: "
+                        f"{relative}"
+                    )
+                page_content = item.get("page_content")
+                metadata = item.get("metadata")
+                if not isinstance(page_content, str) or not isinstance(metadata, dict):
+                    raise ValueError(
+                        f"vector document {index} has invalid content or metadata: "
+                        f"{relative}"
+                    )
+                documents.append(
+                    _Document(page_content=page_content, metadata=dict(metadata))
                 )
-            documents.append(
-                _Document(page_content=page_content, metadata=dict(metadata))
-            )
         return documents
 
     @staticmethod
-    def _load_langchain_pkl(pkl_path: Path) -> List[_Document]:
+    def _load_langchain_pkl(
+        view: AuthenticatedVectorView,
+        relative: str,
+    ) -> List[_Document]:
         """Extract documents from a LangChain FAISS pkl file.
 
         The pkl file contains ``(InMemoryDocstore, index_to_docstore_id)``
         where ``index_to_docstore_id`` maps integer FAISS indices to
         docstore string IDs.
         """
-        with open(pkl_path, "rb") as f:
-            docstore, index_to_docstore_id = compat_pickle.load(f)
+        with _authenticated_binary_file(view, relative) as source:
+            docstore, index_to_docstore_id = compat_pickle.load(source)
 
         documents: List[_Document] = []
         for i in sorted(index_to_docstore_id.keys()):
