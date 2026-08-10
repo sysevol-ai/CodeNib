@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Iterable, Iterator
 from typing import Any, BinaryIO, Protocol
 
@@ -83,7 +84,12 @@ class _ByteStream:
         while self._position >= len(self._block):
             if self._eof:
                 return None
-            self._block = self._source.read(_READ_BYTES)
+            block = self._source.read(_READ_BYTES)
+            if type(block) is not bytes or len(block) > _READ_BYTES:
+                raise ValueError(
+                    "bounded JSON reader returned an invalid or oversized block"
+                )
+            self._block = block
             self._position = 0
             if not self._block:
                 self._eof = True
@@ -108,6 +114,7 @@ class _ByteStream:
 
 _JSON_WHITESPACE = frozenset(b" \t\r\n")
 _ATOM_DELIMITERS = frozenset(b" \t\r\n,]}:")
+_STRING_SPECIAL = re.compile(rb'["\\]')
 
 
 def _next_non_whitespace(stream: _ByteStream) -> int | None:
@@ -123,24 +130,42 @@ def _frame_json_element(
     *,
     label: str,
     max_element_bytes: int,
+    max_nodes: int,
     max_tokens: int,
     max_depth: int,
 ) -> tuple[bytearray, int]:
     """Frame one complete array element before allocating its decoded DOM."""
 
     payload = bytearray()
-    stack: list[int] = []
+    stack: list[list[Any]] = []
     in_string = False
+    string_is_key = False
     escaped = False
     string_bytes = 0
     in_atom = False
     atom_bytes = 0
     token_count = 0
+    node_count = 0
     first_pending = True
 
     def reserve(count: int) -> None:
         if len(payload) + count > max_element_bytes:
             raise ValueError(f"{label} element exceeds {max_element_bytes} bytes")
+
+    def start_value() -> None:
+        nonlocal node_count
+        # Match ``validate_json_complexity``: the element root is level one,
+        # and each containing object/array adds one level for its children.
+        depth = len(stack) + 1
+        if depth > max_depth:
+            raise ValueError(f"{label} exceeds its {max_depth}-level depth limit")
+        node_count += 1
+        if node_count > max_nodes:
+            raise ValueError(f"{label} exceeds its {max_nodes}-node limit")
+
+    def finish_value() -> None:
+        if stack:
+            stack[-1][1] = "comma_or_end"
 
     while True:
         if first_pending:
@@ -165,19 +190,21 @@ def _frame_json_element(
                     string_bytes += 1
                     index += 1
                     continue
-                quote = block.find(b'"', index)
-                slash = block.find(b"\\", index)
-                candidates = tuple(item for item in (quote, slash) if item >= 0)
-                special = min(candidates) if candidates else -1
-                if special < 0:
+                match = _STRING_SPECIAL.search(block, index)
+                if match is None:
                     string_bytes += len(block) - index
                     index = len(block)
                     break
+                special = match.start()
                 string_bytes += special - index + 1
                 if block[special] == ord("\\"):
                     escaped = True
                 else:
                     in_string = False
+                    if string_is_key:
+                        stack[-1][1] = "colon"
+                    else:
+                        finish_value()
                 index = special + 1
                 if string_bytes > max_element_bytes:
                     raise ValueError(
@@ -189,6 +216,7 @@ def _frame_json_element(
                 if current in _ATOM_DELIMITERS:
                     in_atom = False
                     atom_bytes = 0
+                    finish_value()
                 else:
                     atom_bytes += 1
                     if atom_bytes > 1_024:
@@ -211,22 +239,33 @@ def _frame_json_element(
                 token_count += 1
                 in_string = True
                 string_bytes = 0
+                string_is_key = bool(
+                    stack and stack[-1][0] == ord("{") and stack[-1][1] == "key_or_end"
+                )
+                if not string_is_key:
+                    start_value()
             elif current in {ord("{"), ord("[")}:
                 token_count += 1
-                stack.append(current)
-                if len(stack) > max_depth:
-                    raise ValueError(
-                        f"{label} exceeds its {max_depth}-level depth limit"
-                    )
+                start_value()
+                state = "key_or_end" if current == ord("{") else "value_or_end"
+                stack.append([current, state])
             elif current in {ord("}"), ord("]")}:
                 expected = ord("{") if current == ord("}") else ord("[")
-                if not stack or stack[-1] != expected:
+                if not stack or stack[-1][0] != expected:
                     raise ValueError(f"{label} contains mismatched JSON delimiters")
                 stack.pop()
+                finish_value()
             elif current in b"-0123456789tfn":
                 token_count += 1
+                start_value()
                 in_atom = True
                 atom_bytes = 1
+            elif current == ord(":") and stack and stack[-1][0] == ord("{"):
+                stack[-1][1] = "value"
+            elif current == ord(",") and stack:
+                stack[-1][1] = (
+                    "key_or_end" if stack[-1][0] == ord("{") else "value_or_end"
+                )
             if token_count > max_tokens:
                 raise ValueError(f"{label} exceeds its {max_tokens}-token limit")
             index += 1
@@ -297,28 +336,32 @@ def iter_bounded_json_array(
     while True:
         if first is None:
             break
+        if item_count >= max_items:
+            raise ValueError(f"{label} exceeds its {max_items}-item limit")
         element_offset = stream.offset - 1
-        while True:
+        framed, delimiter = _frame_json_element(
+            stream,
+            first,
+            label=label,
+            max_element_bytes=max_element_bytes,
+            max_nodes=max_nodes_per_element,
+            max_tokens=max_lexical_tokens,
+            max_depth=max_depth,
+        )
+        try:
             try:
-                framed, delimiter = _frame_json_element(
-                    stream,
-                    first,
-                    label=label,
-                    max_element_bytes=max_element_bytes,
-                    max_tokens=max_lexical_tokens,
-                    max_depth=max_depth,
-                )
                 text = framed.decode("utf-8", errors="strict")
                 value, end = decoder.raw_decode(text, 0)
                 if end != len(text):
                     raise ValueError(f"{label} element contains trailing data")
-                del text, framed
-                break
-            except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
-                raise ValueError(
-                    f"{label} element {item_count} at byte {element_offset} "
-                    "contains invalid JSON"
-                ) from exc
+            finally:
+                del framed
+        except (RecursionError, ValueError) as exc:
+            raise ValueError(
+                f"{label} element {item_count} at byte {element_offset} "
+                "contains invalid JSON"
+            ) from exc
+        del text
         validate_json_complexity(
             value,
             label=f"{label} element {item_count}",
@@ -327,8 +370,6 @@ def iter_bounded_json_array(
             max_key_bytes=max_key_bytes,
         )
         item_count += 1
-        if item_count > max_items:
-            raise ValueError(f"{label} exceeds its {max_items}-item limit")
         yield value
         if delimiter == ord("]"):
             first = None
