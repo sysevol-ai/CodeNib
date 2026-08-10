@@ -11,7 +11,16 @@ from pathlib import Path
 import pytest
 
 from codenib import cli
+from codenib._atomic_directory import (
+    PublicationDirectoryReader,
+    capture_directory_ownership,
+    reopen_authenticated_directory,
+)
 from codenib.artifacts import CONTEXT_ARTIFACT_MANIFEST
+from codenib.artifacts.security import (
+    assert_publishable_json_value,
+    assert_publishable_tree_reader,
+)
 from codenib.compiler.index_compiler import IndexCompiler
 from codenib.paths import repo_index_dir
 from codenib.web.static_export import STATIC_EXPORT_MANIFEST
@@ -340,3 +349,76 @@ def test_publication_environment_marks_custom_embedding_key_as_secret(
     assert environment["CODENIB_PUBLICATION_CREDENTIAL_SECRET"] == (
         "runtime-secret-value"
     )
+
+
+@pytest.mark.parametrize("value", [12345678, 12345678.0])
+def test_publishability_scans_canonical_numeric_scalars(value: object) -> None:
+    with pytest.raises(ValueError, match="configured credential"):
+        assert_publishable_json_value(
+            {"innocent": value},
+            forbidden_paths=(),
+            environ={"MY_TOKEN": "12345678"},
+            label="numeric config",
+        )
+
+
+def test_publishability_always_rejects_lexical_path_when_resolve_is_redirected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lexical = tmp_path / "owned-repository"
+    foreign = tmp_path / "foreign-repository"
+    real_resolve = Path.resolve
+
+    def redirected_resolve(path: Path, *args: object, **kwargs: object) -> Path:
+        if path == lexical:
+            return foreign
+        return real_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", redirected_resolve)
+
+    with pytest.raises(ValueError, match="absolute build-machine path"):
+        assert_publishable_json_value(
+            {"path": str(lexical)},
+            forbidden_paths=(lexical,),
+            environ={},
+            label="redirected config",
+        )
+
+
+@pytest.mark.parametrize("relative", ["config.json", "note.txt"])
+def test_publishability_reader_rejects_lexical_path_when_resolve_is_redirected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relative: str,
+) -> None:
+    lexical = tmp_path / "owned-repository"
+    foreign = tmp_path / "foreign-repository"
+    root = tmp_path / "publishable"
+    root.mkdir()
+    payload = (
+        json.dumps({"path": str(lexical)})
+        if relative.endswith(".json")
+        else f"source={lexical}\n"
+    )
+    (root / relative).write_text(payload, encoding="utf-8")
+    ownership = capture_directory_ownership(root)
+    real_resolve = Path.resolve
+
+    def redirected_resolve(path: Path, *args: object, **kwargs: object) -> Path:
+        if path == lexical:
+            return foreign
+        return real_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", redirected_resolve)
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        assert_publishable_tree_reader(
+            reader,
+            forbidden_paths=(lexical,),
+            environ={},
+            label="redirected tree",
+        )
+
+    with pytest.raises(ValueError, match="absolute build-machine path"):
+        reopen_authenticated_directory(root, ownership, validate)
