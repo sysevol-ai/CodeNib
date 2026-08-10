@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import stat
@@ -17,14 +18,22 @@ import unicodedata
 import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO, Iterable, Iterator, Mapping
+from typing import Any, BinaryIO, Callable, Iterable, Iterator, Mapping
 
 from .._atomic_directory import (
+    DirectoryOrphan,
+    PublicationDirectoryReader,
     _directory_identity,
     _linux_mount_points,
     _path_is_mount_point,
-    _remove_owned_directory,
+    capture_directory_ownership,
+    directory_ownership_entry_identities,
+    directory_ownership_file_records,
+    directory_ownership_inventory,
+    directory_ownership_root_identity,
+    discard_owned_directory,
     publish_staged_directory,
 )
 from .models import (
@@ -39,6 +48,27 @@ VIEW_BUNDLE_SCHEMA = "codenib.view-bundle.v1"
 VIEW_BUNDLE_MANIFEST = "bundle.json"
 VIEW_BUNDLE_PAYLOAD = "payload"
 VIEW_BUNDLE_MEDIA_TYPE = "application/vnd.codenib.view-bundle.v1+zip"
+logger = logging.getLogger(__name__)
+
+
+def _record_publication_orphan(
+    orphan: DirectoryOrphan | None,
+    *,
+    operation: str,
+) -> None:
+    if orphan is None:
+        return
+    logger.warning(
+        "View-bundle %s retained an orphan for quiescent GC: "
+        "path=%s digest=%s entries=%d bytes=%d verified=%s",
+        operation,
+        orphan.path,
+        orphan.ownership_digest,
+        orphan.entries,
+        orphan.byte_count,
+        orphan.verified_at_isolation,
+    )
+
 
 DEFAULT_MAX_BUNDLE_FILES = 100_000
 DEFAULT_MAX_BUNDLE_BYTES = 64 * 1024 * 1024 * 1024
@@ -94,6 +124,7 @@ class MaterializedViewBundle:
 
     output_dir: Path
     payload_dir: Path
+    ownership: object = dataclass_field(repr=False, compare=False)
     view_type: str
     digest: str
     byte_size: int
@@ -451,6 +482,7 @@ def materialize_view_bundle(
         )
     )
     stage_root_identity = _directory_inode_identity(stage.lstat())
+    published_ownership: list[object] = []
     try:
         with _open_extraction_root(stage, stage_root_identity) as stage_descriptor:
             with _open_stable_regular_file(
@@ -512,9 +544,11 @@ def materialize_view_bundle(
                     "view bundle materialization stage changed before publication"
                 )
 
-        def validate_moved_destination(moved: Path) -> None:
+        def validate_moved_destination(
+            moved: PublicationDirectoryReader,
+        ) -> None:
             try:
-                observed = _validate_materialization_target(
+                observed, _ownership = _validate_materialization_reader(
                     moved,
                     max_files=max_files,
                     max_bytes=max_bytes,
@@ -524,14 +558,19 @@ def materialize_view_bundle(
                 raise StorageIntegrityError(
                     "moved destination failed publication-boundary validation"
                 ) from exc
-            if observed != expected_ownership:
+            if not _same_materialization_semantics(
+                observed,
+                expected_ownership,
+            ):
                 raise StorageIntegrityError(
                     "moved destination failed publication-boundary validation"
                 )
 
-        def validate_published_destination(published: Path) -> None:
+        def validate_published_destination(
+            published: PublicationDirectoryReader,
+        ) -> None:
             try:
-                observed = _validate_materialization_target(
+                observed, ownership = _validate_materialization_reader(
                     published,
                     max_files=max_files,
                     max_bytes=max_bytes,
@@ -541,12 +580,16 @@ def materialize_view_bundle(
                 raise StorageIntegrityError(
                     "published stage failed publication-boundary validation"
                 ) from exc
-            if observed != expected_new_ownership:
+            if not _same_materialization_semantics(
+                observed,
+                expected_new_ownership,
+            ):
                 raise StorageIntegrityError(
                     "published stage failed publication-boundary validation"
                 )
+            published_ownership.append(ownership)
 
-        publish_staged_directory(
+        publication_orphan = publish_staged_directory(
             stage,
             output,
             expected_destination_identity=expected_ownership.root_identity,
@@ -554,9 +597,15 @@ def materialize_view_bundle(
             validate_moved_destination=validate_moved_destination,
             validate_published_destination=validate_published_destination,
         )
+        _record_publication_orphan(publication_orphan, operation="publication")
+        if len(published_ownership) != 1:
+            raise StorageIntegrityError(
+                "published materialized bundle has no authenticated ownership"
+            )
         return MaterializedViewBundle(
             output_dir=output,
             payload_dir=output / VIEW_BUNDLE_PAYLOAD,
+            ownership=published_ownership[0],
             view_type=record.view_type,
             digest=record.digest,
             byte_size=record.byte_size,
@@ -2583,6 +2632,185 @@ def _remove_owned_temporary_file(
         pass
 
 
+def _same_materialization_semantics(
+    left: _MaterializationOwnership,
+    right: _MaterializationOwnership,
+) -> bool:
+    """Compare bundle semantics without reinterpreting filesystem identities.
+
+    PublicationDirectoryReader is already bound to the exact outer ownership
+    token.  Its portable root identity intentionally differs in shape from the
+    legacy path validator's platform-specific identity, so semantic callbacks
+    compare only the authenticated bundle state here.
+    """
+
+    return (
+        left.state,
+        left.manifest_digest,
+        left.members,
+        left.directory_modes,
+    ) == (
+        right.state,
+        right.manifest_digest,
+        right.members,
+        right.directory_modes,
+    )
+
+
+def _materialization_entry_policy(
+    *,
+    max_files: int,
+    max_bytes: int,
+    max_metadata_bytes: int,
+) -> Callable[[str, str, int, int], None]:
+    payload_files = 0
+    payload_bytes = 0
+    payload_directories = 0
+
+    def validate(path: str, kind: str, mode: int, size: int) -> None:
+        nonlocal payload_files, payload_bytes, payload_directories
+        if path == VIEW_BUNDLE_MANIFEST:
+            if kind != "file" or mode != 0o644 or size > max_metadata_bytes:
+                raise StorageValidationError(
+                    "refusing to replace a non-CodeNib directory"
+                )
+            return
+        if path == VIEW_BUNDLE_PAYLOAD:
+            if kind != "directory":
+                raise StorageValidationError(
+                    "refusing to replace a non-CodeNib directory"
+                )
+            payload_directories += 1
+            return
+        prefix = f"{VIEW_BUNDLE_PAYLOAD}/"
+        if not path.startswith(prefix):
+            raise StorageValidationError("refusing to replace a non-CodeNib directory")
+        relative = path[len(prefix) :]
+        _canonical_member_path(relative)
+        if kind == "directory":
+            payload_directories += 1
+            if payload_directories > max_files + 1:
+                raise StorageValidationError(
+                    f"view bundle exceeds {max_files + 1} directories"
+                )
+            return
+        if kind != "file" or mode not in {0o644, 0o755}:
+            raise StorageValidationError("refusing to replace a non-CodeNib directory")
+        payload_files += 1
+        payload_bytes += size
+        if payload_files > max_files or payload_bytes > max_bytes:
+            raise StorageValidationError("refusing to replace a non-CodeNib directory")
+
+    return validate
+
+
+def _validate_materialization_reader(
+    reader: PublicationDirectoryReader,
+    *,
+    max_files: int,
+    max_bytes: int,
+    max_metadata_bytes: int,
+) -> tuple[_MaterializationOwnership, object]:
+    """Validate materialized bundle semantics through one pinned authority."""
+
+    ownership = reader.capture_ownership(
+        allow_empty_root=True,
+        entry_policy=_materialization_entry_policy(
+            max_files=max_files,
+            max_bytes=max_bytes,
+            max_metadata_bytes=max_metadata_bytes,
+        ),
+    )
+    inventory = directory_ownership_inventory(ownership)
+    root_identity = directory_ownership_root_identity(ownership)
+    if not inventory:
+        return (
+            _MaterializationOwnership(
+                "empty",
+                root_identity,
+                None,
+                (),
+                (),
+            ),
+            ownership,
+        )
+
+    inventory_by_path = dict(inventory)
+    if (
+        inventory_by_path.get(VIEW_BUNDLE_MANIFEST) != "file"
+        or inventory_by_path.get(VIEW_BUNDLE_PAYLOAD) != "directory"
+        or any(
+            path not in {VIEW_BUNDLE_MANIFEST, VIEW_BUNDLE_PAYLOAD}
+            and not path.startswith(f"{VIEW_BUNDLE_PAYLOAD}/")
+            for path in inventory_by_path
+        )
+    ):
+        raise StorageValidationError("refusing to replace a non-CodeNib directory")
+
+    records = {
+        record.path: record for record in directory_ownership_file_records(ownership)
+    }
+    manifest_record = records.get(VIEW_BUNDLE_MANIFEST)
+    if (
+        manifest_record is None
+        or manifest_record.mode != 0o644
+        or manifest_record.size > max_metadata_bytes
+    ):
+        raise StorageValidationError("refusing to replace a non-CodeNib directory")
+    metadata_bytes = reader.read_bytes(
+        VIEW_BUNDLE_MANIFEST,
+        max_bytes=max_metadata_bytes,
+    )
+    _view_type, members = _manifest_from_bytes(
+        metadata_bytes,
+        max_files=max_files,
+        max_bytes=max_bytes,
+    )
+
+    prefix = f"{VIEW_BUNDLE_PAYLOAD}/"
+    observed_files = tuple(
+        (
+            record.path[len(prefix) :],
+            record.size,
+            record.mode,
+            record.sha256,
+        )
+        for record in directory_ownership_file_records(ownership)
+        if record.path.startswith(prefix)
+    )
+    expected_files = tuple(
+        (member.path, member.byte_size, member.mode, member.digest)
+        for member in members
+    )
+    if observed_files != expected_files:
+        raise StorageValidationError("refusing to replace a non-CodeNib directory")
+
+    path_trie = _validate_member_paths(members, max_files=max_files)
+    directory_modes: list[tuple[str, int]] = []
+    for path, kind, identity in directory_ownership_entry_identities(ownership):
+        if kind != "directory" or not (
+            path == VIEW_BUNDLE_PAYLOAD or path.startswith(prefix)
+        ):
+            continue
+        relative = "" if path == VIEW_BUNDLE_PAYLOAD else path[len(prefix) :]
+        parts = () if not relative else tuple(PurePosixPath(relative).parts)
+        if not _trie_contains_directory(path_trie, parts):
+            raise StorageValidationError("refusing to replace a non-CodeNib directory")
+        directory_modes.append((relative, stat.S_IMODE(identity[2])))
+    if len(directory_modes) != len(path_trie.directory_nodes):
+        raise StorageValidationError("refusing to replace a non-CodeNib directory")
+    return (
+        _MaterializationOwnership(
+            "bundle",
+            root_identity,
+            manifest_record.sha256,
+            members,
+            tuple(sorted(directory_modes)),
+        ),
+        ownership,
+    )
+
+
 def _validate_materialization_target(
     path: Path,
     *,
@@ -2776,7 +3004,7 @@ def _require_owned_stage_path(
 
 
 def _remove_owned_stage(stage: Path, expected_identity: tuple[int, ...]) -> None:
-    """Remove only the original temporary root, preserving path substitutions."""
+    """Isolate only the original temporary root for cooperative orphan GC."""
 
     try:
         metadata = stage.lstat()
@@ -2788,43 +3016,16 @@ def _remove_owned_stage(stage: Path, expected_identity: tuple[int, ...]) -> None
         or _directory_inode_identity(metadata) != expected_identity
     ):
         return
-    cleanup: Path | None = None
     try:
-        cleanup = Path(
-            tempfile.mkdtemp(
-                prefix=f".{stage.name}.cleanup-",
-                dir=str(stage.parent),
-            )
-        )
-        cleanup.rmdir()
-        os.replace(stage, cleanup)
-    except OSError:
-        if cleanup is not None:
-            try:
-                cleanup.rmdir()
-            except OSError:
-                pass
-        return
-    try:
-        moved_metadata = cleanup.lstat()
-    except FileNotFoundError:
-        return
-    if (
-        _is_link_or_reparse(moved_metadata)
-        or not stat.S_ISDIR(moved_metadata.st_mode)
-        or _directory_inode_identity(moved_metadata) != expected_identity
-    ):
-        try:
-            os.replace(cleanup, stage)
-        except OSError:
-            pass
-        return
-    try:
-        _remove_owned_directory(cleanup, _directory_inode_identity(moved_metadata))
+        ownership = capture_directory_ownership(stage)
     except (OSError, RuntimeError, ValueError):
-        # Cleanup is best effort.  The owned tree remains quarantined under a
-        # unique sibling name rather than following a changed path.
-        pass
+        return
+    if directory_ownership_root_identity(ownership) != expected_identity:
+        return
+    _record_publication_orphan(
+        discard_owned_directory(stage, ownership),
+        operation="discard",
+    )
 
 
 def _reject_forbidden_roots(
