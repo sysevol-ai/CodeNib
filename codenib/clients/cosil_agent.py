@@ -23,6 +23,7 @@ from codenib.eval.benchmarks.cosil import (
     parse_cosil_locations,
 )
 from codenib.integrations.cosil import CoSILRepositoryProvider, get_cosil_tool_schemas
+from codenib.source_fingerprint import lexical_repository_path
 
 _FALSE_OBSERVATION = (
     "I have already checked this function/class and it is not related to the bug. "
@@ -157,7 +158,7 @@ class CoSILAgent:
         repo_path: str,
         context: Optional[Mapping[str, Any]] = None,
     ) -> BaselineRunResult:
-        repo = Path(repo_path).expanduser().resolve()
+        repo = lexical_repository_path(repo_path)
         if not repo.is_dir():
             return BaselineRunResult(
                 success=False,

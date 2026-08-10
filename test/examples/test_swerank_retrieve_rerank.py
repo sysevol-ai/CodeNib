@@ -130,7 +130,7 @@ def test_default_index_cache_fingerprints_dirty_checkout(recipe, monkeypatch, tm
         source_fingerprint,
         "fingerprint_repository",
         lambda repo: source_fingerprint.SourceFingerprint(
-            value=f"sha256:{'b' * 64}", file_count=3
+            value=f"sha256-v2:{'b' * 64}", file_count=3
         ),
     )
 
@@ -141,7 +141,7 @@ def test_default_index_cache_fingerprints_dirty_checkout(recipe, monkeypatch, tm
         state
         / "recipes"
         / "swerank-embed-small"
-        / f"source-{'b' * 64}"
+        / f"source-sha256-v2-{'b' * 64}"
         / recipe._cache_profile_key(["python"], args.max_lines_per_chunk)
     )
 

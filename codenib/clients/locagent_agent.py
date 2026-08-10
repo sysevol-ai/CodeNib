@@ -19,6 +19,7 @@ from codenib.eval.baseline import BaselineLocation, BaselineRunResult
 from codenib.eval.benchmarks.locagent import LocAgentLocation, parse_locagent_locations
 from codenib.integrations._repository import RepositoryAdapter, RepositoryEntity
 from codenib.integrations.locagent import LocAgentToolProvider
+from codenib.source_fingerprint import lexical_repository_path
 from codenib.types import (
     NODE_TYPE_CLASS,
     NODE_TYPE_FUNCTION,
@@ -280,7 +281,7 @@ class LocAgentAgent:
     ) -> BaselineRunResult:
         """Localize one task through the shared external-agent interface."""
 
-        repo = Path(repo_path).expanduser().resolve()
+        repo = lexical_repository_path(repo_path)
         if not repo.is_dir():
             return BaselineRunResult(
                 success=False,

@@ -229,7 +229,7 @@ def resolve_index_dir(
     if commit and not repository_source_is_dirty(repo):
         source_key = f"git-{commit.lower()}"
     else:
-        fingerprint = fingerprint_repository(repo).value.removeprefix("sha256:")
+        fingerprint = fingerprint_repository(repo).value.replace(":", "-", 1)
         source_key = f"source-{fingerprint}"
 
     profile_key = _cache_profile_key(languages, args.max_lines_per_chunk)
@@ -370,7 +370,9 @@ def render_results(
 
 
 def run(args: argparse.Namespace) -> int:
-    repo = Path(args.repo).expanduser().resolve()
+    from codenib.source_fingerprint import lexical_repository_path
+
+    repo = lexical_repository_path(args.repo)
     if not repo.is_dir():
         raise ValueError(f"repository directory does not exist: {repo}")
 
