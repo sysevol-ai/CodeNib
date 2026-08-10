@@ -25,6 +25,7 @@ from codenib.eval.benchmarks.agentless import (
 )
 from codenib.integrations._repository import RepositoryEntity
 from codenib.integrations.agentless import AgentlessRepositoryProvider
+from codenib.source_fingerprint import lexical_repository_path
 from codenib.types import NODE_TYPE_CLASS, NODE_TYPE_FUNCTION, NODE_TYPE_METHOD
 
 
@@ -198,7 +199,7 @@ class AgentlessAgent:
     ) -> BaselineRunResult:
         """Localize one issue through the shared baseline interface."""
 
-        repo = Path(repo_path).expanduser().resolve()
+        repo = lexical_repository_path(repo_path)
         if not repo.is_dir():
             return BaselineRunResult(
                 success=False,

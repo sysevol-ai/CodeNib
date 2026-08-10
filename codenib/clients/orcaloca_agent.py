@@ -24,6 +24,7 @@ from codenib.clients._manifest import (
 )
 from codenib.eval.baseline import BaselineLocation, BaselineRunResult
 from codenib.eval.benchmarks.orcaloca import OrcaLocaLocation, parse_orcaloca_locations
+from codenib.source_fingerprint import lexical_repository_path
 
 OrcaLocaPayload = str | Mapping[str, Any] | Sequence[Mapping[str, Any]]
 
@@ -151,7 +152,7 @@ class OrcaLocaAgent:
     ) -> BaselineRunResult:
         """Localize one task using the shared external-agent interface."""
 
-        repo = Path(repo_path).expanduser().resolve()
+        repo = lexical_repository_path(repo_path)
         if not repo.is_dir():
             return BaselineRunResult(
                 success=False,
