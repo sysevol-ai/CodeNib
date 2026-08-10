@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import codenib.web.static_export as static_module
 from codenib.artifacts.security import assert_publishable_tree
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
@@ -337,7 +338,7 @@ def test_static_export_rejects_output_symlink(
     output = setup.output.parent / "output-link"
     output.symlink_to(victim, target_is_directory=True)
 
-    with pytest.raises(ValueError, match="symbolic link"):
+    with pytest.raises(ValueError, match="not a directory or is a link"):
         export_static_wiki(
             setup.repo,
             setup.manifest_path,
@@ -349,7 +350,7 @@ def test_static_export_rejects_output_symlink(
     assert _tree_bytes(victim) == previous
 
 
-def test_static_export_does_not_follow_swapped_stage_symlink(
+def test_static_export_never_overwrites_raced_runtime_config(
     export_setup,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -358,27 +359,23 @@ def test_static_export_does_not_follow_swapped_stage_symlink(
         "codenib.web.static_export._github_repository_url",
         lambda _repo: "https://github.com/owner/demo",
     )
-    victim = setup.output.parent / "victim"
-    victim.mkdir()
-    (victim / "keep.txt").write_text("keep", encoding="utf-8")
-    stolen = setup.output.parent / "stolen-stage"
+    real_write = static_module.OwnedDirectoryStage.write_file
+    raced = False
 
-    from codenib.web import static_export as static_export_module
+    def race_runtime_config(self, relative, chunks, **kwargs):
+        nonlocal raced
+        if str(relative) == "runtime-config.js" and not raced:
+            raced = True
+            (self.path / "runtime-config.js").write_bytes(b"foreign-config")
+        return real_write(self, relative, chunks, **kwargs)
 
-    real_mkdtemp = static_export_module.tempfile.mkdtemp
-    swapped: Path | None = None
+    monkeypatch.setattr(
+        static_module.OwnedDirectoryStage,
+        "write_file",
+        race_runtime_config,
+    )
 
-    def swap_stage(*args, **kwargs):
-        nonlocal swapped
-        created = Path(real_mkdtemp(*args, **kwargs))
-        created.rename(stolen)
-        created.symlink_to(victim, target_is_directory=True)
-        swapped = created
-        return str(created)
-
-    monkeypatch.setattr(static_export_module.tempfile, "mkdtemp", swap_stage)
-
-    with pytest.raises(ValueError, match="link"):
+    with pytest.raises((RuntimeError, ValueError)):
         export_static_wiki(
             setup.repo,
             setup.manifest_path,
@@ -386,9 +383,83 @@ def test_static_export_does_not_follow_swapped_stage_symlink(
             frontend_dir=setup.frontend,
         )
 
-    assert swapped is not None and swapped.is_symlink()
-    assert stolen.is_dir()
-    assert (victim / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert raced
+    assert not setup.output.exists()
+    assert any(
+        path.read_bytes() == b"foreign-config"
+        for path in setup.output.parent.rglob("runtime-config.js")
+    )
+
+
+def test_static_export_rejects_reversible_nested_directory_replacement(
+    export_setup,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup = export_setup
+    monkeypatch.setattr(
+        "codenib.web.static_export._github_repository_url",
+        lambda _repo: "https://github.com/owner/demo",
+    )
+    foreign = setup.output.parent / "foreign-data"
+    foreign.mkdir()
+    valuable = foreign / "valuable.txt"
+    valuable.write_text("keep", encoding="utf-8")
+    real_stat = static_module.os.stat
+    real_write_json = static_module._write_json
+    armed = False
+    swapped = False
+
+    def arm_nested_swap(stage, relative, value):
+        nonlocal armed
+        if relative.endswith("/wiki.json"):
+            armed = True
+        return real_write_json(stage, relative, value)
+
+    def reversible_stat(path, *, dir_fd=None, follow_symlinks=True):
+        nonlocal swapped
+        if armed and not swapped and path == "data" and dir_fd is not None:
+            swapped = True
+            static_module.os.rename(
+                "data",
+                ".saved-data",
+                src_dir_fd=dir_fd,
+                dst_dir_fd=dir_fd,
+            )
+            static_module.os.rename(foreign, "data", dst_dir_fd=dir_fd)
+            try:
+                return real_stat(
+                    path,
+                    dir_fd=dir_fd,
+                    follow_symlinks=follow_symlinks,
+                )
+            finally:
+                static_module.os.rename("data", foreign, src_dir_fd=dir_fd)
+                static_module.os.rename(
+                    ".saved-data",
+                    "data",
+                    src_dir_fd=dir_fd,
+                    dst_dir_fd=dir_fd,
+                )
+        return real_stat(
+            path,
+            dir_fd=dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    monkeypatch.setattr(static_module, "_write_json", arm_nested_swap)
+    monkeypatch.setattr(static_module.os, "stat", reversible_stat)
+
+    with pytest.raises(ValueError, match="component changed"):
+        export_static_wiki(
+            setup.repo,
+            setup.manifest_path,
+            setup.output,
+            frontend_dir=setup.frontend,
+        )
+
+    assert swapped
+    assert valuable.read_text(encoding="utf-8") == "keep"
+    assert not setup.output.exists()
 
 
 def test_publishability_rejects_json_escaped_windows_path(tmp_path: Path) -> None:
@@ -428,6 +499,34 @@ def test_static_export_rejects_a_configured_secret(
 
     monkeypatch.setattr("codenib.wiki.WikiBuilder", SecretBuilder)
 
+    with pytest.raises(ValueError, match="configured credential"):
+        export_static_wiki(
+            export_setup.repo,
+            export_setup.manifest_path,
+            export_setup.output,
+            frontend_dir=export_setup.frontend,
+            environ={"OPENAI_API_KEY": secret},
+        )
+    assert not export_setup.output.exists()
+
+
+def test_static_export_reader_rejects_late_decoded_secret(
+    export_setup,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "pässwörd-secret"
+    original_write_json = static_module._write_json
+
+    def write_decoded_secret(stage, relative, value):
+        if relative.endswith("/pages/overview.json"):
+            value = {"value": secret}
+        return original_write_json(stage, relative, value)
+
+    monkeypatch.setattr(
+        static_module,
+        "_write_json",
+        write_decoded_secret,
+    )
     with pytest.raises(ValueError, match="configured credential"):
         export_static_wiki(
             export_setup.repo,
