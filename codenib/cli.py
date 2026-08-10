@@ -13,6 +13,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -218,8 +219,9 @@ def _split_values(values: Iterable[str] | None) -> list[str]:
 def detect_languages(repo_path: str | os.PathLike[str]) -> list[str]:
     """Detect supported source languages, ordered by source-file count."""
     from .languages import extension_to_language_map
+    from .source_fingerprint import lexical_repository_path
 
-    root = Path(repo_path).expanduser().resolve()
+    root = lexical_repository_path(repo_path)
     extension_map = extension_to_language_map("chunker")
     counts: Counter[str] = Counter()
 
@@ -260,8 +262,18 @@ def normalize_languages(values: Iterable[str]) -> list[str]:
 
 
 def resolve_repo_path(value: str) -> Path:
-    path = Path(value).expanduser().resolve()
-    if not path.is_dir():
+    from .source_fingerprint import lexical_repository_path
+
+    path = lexical_repository_path(value)
+    try:
+        metadata = path.lstat()
+    except OSError:
+        metadata = None
+    if (
+        metadata is None
+        or stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISDIR(metadata.st_mode)
+    ):
         raise CLIError(f"repository directory does not exist: {path}")
     return path
 
@@ -271,22 +283,40 @@ def resolve_manifest_path(value: str) -> Path:
     from .compiler.manifest import MANIFEST_FILENAME
     from .paths import legacy_repo_index_dir, repo_index_dir
 
-    path = Path(value).expanduser().resolve()
-    if path.is_dir():
+    path = Path(os.path.abspath(os.fspath(Path(value).expanduser())))
+    try:
+        metadata = path.lstat()
+    except OSError:
+        metadata = None
+    if metadata is not None and stat.S_ISLNK(metadata.st_mode):
+        raise CLIError(f"manifest path must not be a symbolic link: {path}")
+    if metadata is not None and stat.S_ISDIR(metadata.st_mode):
         candidates = (
             repo_index_dir(path) / MANIFEST_FILENAME,
             legacy_repo_index_dir(path) / MANIFEST_FILENAME,
         )
         path = next(
-            (candidate for candidate in candidates if candidate.is_file()),
+            (
+                candidate
+                for candidate in candidates
+                if _is_regular_file_nofollow(candidate)
+            ),
             candidates[0],
         )
-    if not path.is_file():
+    if not _is_regular_file_nofollow(path):
         raise CLIError(
             f"manifest not found: {path}\n"
             "Run `codenib index <repo>` before starting this command."
         )
     return path
+
+
+def _is_regular_file_nofollow(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return False
+    return stat.S_ISREG(metadata.st_mode)
 
 
 def _selected_languages(repo_path: Path, explicit: Iterable[str]) -> list[str]:
@@ -484,15 +514,14 @@ def _run_mcp(args: argparse.Namespace) -> int:
     from .mcp.server import main as mcp_main
 
     if args.artifact:
-        repo_path = resolve_repo_path(args.repo)
         command = [
             "--artifact",
-            str(Path(args.artifact).expanduser().resolve()),
-            "--repo",
-            str(repo_path),
+            str(Path(os.path.abspath(os.fspath(Path(args.artifact).expanduser())))),
             "--log-level",
             args.log_level,
         ]
+        if args.repo is not None:
+            command.extend(("--repo", str(resolve_repo_path(args.repo))))
         if args.repository:
             command.extend(("--repository", args.repository))
         mcp_main(command)
@@ -506,7 +535,7 @@ def _run_export(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     manifest_path = resolve_manifest_path(str(repo_path))
     output_dir = (
-        Path(args.output).expanduser().resolve()
+        Path(os.path.abspath(os.fspath(Path(args.output).expanduser())))
         if args.output
         else manifest_path.parent / "static-wiki"
     )
@@ -580,7 +609,14 @@ def _validate_publish_outputs(
 
     protected = (
         (repo_path, "repository"),
-        (repo_index_dir(repo_path).expanduser().resolve(), "index state"),
+        (
+            Path(
+                os.path.abspath(
+                    os.fspath(repo_index_dir(repo_path).expanduser()),
+                )
+            ),
+            "index state",
+        ),
     )
     for output, output_name in (
         (site_output, "Wiki"),
@@ -605,7 +641,7 @@ def _run_artifact_pack(args: argparse.Namespace) -> int:
 
     manifest = RepoManifest.load(manifest_path)
     output_dir = (
-        Path(args.output).expanduser().resolve()
+        Path(os.path.abspath(os.fspath(Path(args.output).expanduser())))
         if args.output
         else _default_distribution_dir(
             manifest_path,
@@ -735,10 +771,12 @@ def _run_artifact_mcp_config(args: argparse.Namespace) -> int:
 def _run_publish(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     site_output = (
-        Path(args.site_output).expanduser().resolve() if args.site_output else None
+        Path(os.path.abspath(os.fspath(Path(args.site_output).expanduser())))
+        if args.site_output
+        else None
     )
     context_output = (
-        Path(args.context_output).expanduser().resolve()
+        Path(os.path.abspath(os.fspath(Path(args.context_output).expanduser())))
         if args.context_output
         else None
     )
@@ -1979,8 +2017,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mcp_parser.add_argument(
         "--repo",
-        default=".",
-        help="exact checkout bound to --artifact",
+        help="optional exact checkout bound to --artifact",
     )
     mcp_parser.add_argument(
         "--repository",

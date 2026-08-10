@@ -16,10 +16,14 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..compiler.checkout_identity import validate_checkout_identity
 from ..compiler.manifest import RepoManifest
 from ..compiler.snapshot_store import normalize_repo
 from ..llm.options import validate_model_options
+from ..source_fingerprint import (
+    capture_repository_source,
+    is_secure_source_fingerprint_v2,
+    lexical_repository_path,
+)
 from .config import RepoEntry, save_registry
 
 
@@ -73,14 +77,39 @@ def prepare_local_wiki(
     model_options: Mapping[str, Any] | None = None,
 ) -> LocalWiki:
     """Write the registry and config consumed by the existing Wiki service."""
-    repo_path = repo_path.expanduser().resolve()
-    manifest_path = manifest_path.expanduser().resolve()
+    repo_path = lexical_repository_path(repo_path)
+    manifest_path = Path(os.path.abspath(os.fspath(manifest_path.expanduser())))
     manifest = RepoManifest.load(str(manifest_path))
-    validate_checkout_identity(
-        repo_path,
-        manifest,
-        artifact_root=manifest_path.parent,
+    if not is_secure_source_fingerprint_v2(manifest.source_fingerprint):
+        raise ValueError("local wiki source reads require source fingerprint v2")
+    from ..artifacts.runtime import (
+        SourceBindingCleanupOwner,
+        _attach_source_cleanup_owner,
     )
+
+    cleanup_owner = SourceBindingCleanupOwner()
+    try:
+        source_binding = capture_repository_source(
+            repo_path,
+            exclude_roots=(manifest_path.parent,),
+            _source_owner=cleanup_owner.retain,
+        )
+        if (
+            source_binding.fingerprint != manifest.source_fingerprint
+            or source_binding.file_count != manifest.file_count
+        ):
+            raise ValueError("repository source content does not match the manifest")
+    except BaseException as primary:  # noqa: B036 - preserve validation fault
+        try:
+            cleanup_owner.close()
+        except BaseException:  # noqa: B036 - expose retry owner on primary
+            _attach_source_cleanup_owner(primary, cleanup_owner)
+        raise
+    try:
+        cleanup_owner.close()
+    except BaseException as cleanup_failure:  # noqa: B036 - retryable owner
+        _attach_source_cleanup_owner(cleanup_failure, cleanup_owner)
+        raise
 
     data_dir = manifest_path.parent / "wiki"
     data_dir.mkdir(parents=True, exist_ok=True)
