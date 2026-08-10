@@ -7,12 +7,15 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION
 from codenib.sandbox import (
     DockerSandboxProvider,
     ExecRequest,
@@ -25,10 +28,17 @@ from codenib.sandbox import (
     SandboxSpec,
     SandboxUnavailableError,
 )
-from codenib.sandbox.docker import _normalize_no_index_patch
+from codenib.sandbox.docker import _FINGERPRINT_SOURCE_SCRIPT, _normalize_no_index_patch
+from codenib.source_fingerprint import (
+    SOURCE_FINGERPRINT_VERSION,
+    RepositoryChangedError,
+    fingerprint_repository,
+)
 
 DIGEST = "sha256:" + "a" * 64
 IMAGE = f"registry.example/codenib-agent@{DIGEST}"
+SOURCE_FINGERPRINT = "sha256-v2:" + "e" * 64
+TEST_DOCKER_BINARY = str(Path(sys.executable).resolve(strict=True))
 
 
 class RecordingCLI:
@@ -72,7 +82,7 @@ class RecordingCLI:
             stdout = json.dumps(
                 {
                     "file_count": 2,
-                    "source_fingerprint": "sha256:" + "e" * 64,
+                    "source_fingerprint": SOURCE_FINGERPRINT,
                 }
             )
         else:
@@ -124,6 +134,115 @@ class HangingProcess(FinishedProcess):
             returncode=None,
             **kwargs,
         )
+
+
+def test_container_fingerprint_helper_matches_host_v2_framing(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    baseline = tmp_path / "baseline"
+    source.mkdir()
+    (source / "a").write_bytes(b"")
+    (source / "b").write_bytes(b"X\0F\0c\0Y")
+    (source / "package").mkdir()
+    (source / "package" / "module.py").write_bytes(b"VALUE = 1\n")
+    try:
+        (source / "relative-link").symlink_to("b")
+        (source / "absolute-link").symlink_to(source / "b")
+        (source / "relative-directory-link").symlink_to("package")
+        (source / "absolute-directory-link").symlink_to(source / "package")
+        (source / "relative-root-link").symlink_to(".", target_is_directory=True)
+        (source / "absolute-root-link").symlink_to(
+            source,
+            target_is_directory=True,
+        )
+        (source / "broken-link").symlink_to("missing")
+        (source / "loop-link").symlink_to("loop-link")
+        os.mkfifo(source / ".codenib-hidden-pipe")
+        (source / "fifo-link").symlink_to(".codenib-hidden-pipe")
+    except OSError as exc:  # pragma: no cover - platform capability
+        pytest.skip(f"source fingerprint parity needs symlink support: {exc}")
+
+    expected = fingerprint_repository(source)
+    baseline.mkdir()
+    for path in source.iterdir():
+        destination = baseline / path.name
+        if path.is_symlink():
+            destination.symlink_to(os.readlink(path))
+        elif path.name == ".codenib-hidden-pipe":
+            os.mkfifo(destination)
+        elif path.is_dir():
+            shutil.copytree(path, destination, symlinks=True)
+        else:
+            shutil.copy2(path, destination)
+    source_label = str(source)
+    source.rename(tmp_path / "source-unmounted")
+    script = _FINGERPRINT_SOURCE_SCRIPT.replace(
+        "pathlib.Path('/workspace')",
+        f"pathlib.Path({str(baseline)!r})",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            script,
+            "[]",
+            str(SOURCE_FINGERPRINT_VERSION),
+            str(REPOSITORY_FILTER_POLICY_VERSION),
+            source_label,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    observed = json.loads(completed.stdout)
+
+    assert observed == {
+        "file_count": expected.file_count,
+        "source_fingerprint": expected.value,
+    }
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_container_fingerprint_helper_rejects_outside_directory_symlink(
+    tmp_path: Path,
+    absolute: bool,
+) -> None:
+    baseline = tmp_path / "baseline"
+    outside = tmp_path / "outside"
+    baseline.mkdir()
+    outside.mkdir()
+    (baseline / "outside-link").symlink_to(
+        outside if absolute else "../outside",
+        target_is_directory=True,
+    )
+    with pytest.raises(RepositoryChangedError):
+        fingerprint_repository(baseline)
+
+    script = _FINGERPRINT_SOURCE_SCRIPT.replace(
+        "pathlib.Path('/workspace')",
+        f"pathlib.Path({str(baseline)!r})",
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            script,
+            "[]",
+            str(SOURCE_FINGERPRINT_VERSION),
+            str(REPOSITORY_FILTER_POLICY_VERSION),
+            str(baseline),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "outside the repository" in completed.stderr
 
 
 def _spec(tmp_path: Path, *, limits=None):
@@ -193,7 +312,7 @@ def _git_repo(tmp_path: Path) -> tuple[Path, str]:
 
 def test_create_replays_default_security_flags(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     cli = RecordingCLI()
     session = _provider(tmp_path, cli).create(_spec(tmp_path))
@@ -244,7 +363,7 @@ def test_create_rejects_symlinked_source_path(tmp_path):
 
 def test_agent_command_is_after_image_and_uses_non_root_user(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     cli = RecordingCLI()
     processes = []
@@ -276,7 +395,7 @@ def test_write_file_enables_interactive_stdin_and_isolates_helper(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     cli = RecordingCLI()
     processes = []
@@ -305,7 +424,7 @@ def test_write_file_enables_interactive_stdin_and_isolates_helper(
 
 def test_read_file_uses_isolated_python_and_read_only_mount(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     cli = RecordingCLI()
     processes = []
@@ -333,7 +452,7 @@ def test_read_file_uses_isolated_python_and_read_only_mount(monkeypatch, tmp_pat
 
 def test_file_byte_limit_zero_fails_instead_of_using_default(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     session = _provider(tmp_path, RecordingCLI()).create(_spec(tmp_path))
 
@@ -345,7 +464,7 @@ def test_file_byte_limit_zero_fails_instead_of_using_default(monkeypatch, tmp_pa
 
 def test_host_secrets_are_not_forwarded(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     monkeypatch.setenv("GITHUB_TOKEN", "do-not-forward")
     monkeypatch.setenv("OPENAI_API_KEY", "do-not-forward")
@@ -372,7 +491,7 @@ def test_host_secrets_are_not_forwarded(monkeypatch, tmp_path):
         "PATH": "/usr/bin:/bin",
     }
     assert processes[0][0][:3] == [
-        "/usr/bin/docker",
+        TEST_DOCKER_BINARY,
         "--host",
         f"unix:///run/user/{os.getuid()}/docker.sock",
     ]
@@ -381,7 +500,7 @@ def test_host_secrets_are_not_forwarded(monkeypatch, tmp_path):
 
 def test_revision_snapshot_archives_git_objects_not_worktree(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     source, revision = _git_repo(tmp_path)
     spec = SandboxSpec(
@@ -406,7 +525,7 @@ def test_revision_snapshot_archives_git_objects_not_worktree(monkeypatch, tmp_pa
     assert "dst=/repository.git,readonly" in rendered
     assert f"type=bind,src={source},dst=/source" not in rendered
     assert revision in archive_call
-    assert session.metadata.source_fingerprint == "sha256:" + "e" * 64
+    assert session.metadata.source_fingerprint == SOURCE_FINGERPRINT
     created = json.loads(
         (session.audit_dir / "events.jsonl").read_text().splitlines()[0]
     )
@@ -418,7 +537,7 @@ def test_revision_snapshot_archives_git_objects_not_worktree(monkeypatch, tmp_pa
 
 def test_revision_snapshot_rejects_submodules(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     source, first_revision = _git_repo(tmp_path)
     subprocess.run(
@@ -467,7 +586,7 @@ def test_revision_snapshot_rejects_submodules(monkeypatch, tmp_path):
 
 def test_revision_snapshot_rejects_tracked_symlinks(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     source, _ = _git_repo(tmp_path)
     os.symlink("tracked.txt", source / "tracked-link")
@@ -507,7 +626,7 @@ def test_revision_snapshot_rejects_tracked_symlinks(monkeypatch, tmp_path):
 
 def test_revision_snapshot_rejects_archive_mutating_attributes(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     source, _ = _git_repo(tmp_path)
     (source / ".gitattributes").write_text(
@@ -549,7 +668,7 @@ def test_revision_snapshot_rejects_archive_mutating_attributes(monkeypatch, tmp_
 
 def test_revision_snapshot_requires_repository_top_level(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     source, revision = _git_repo(tmp_path)
     subdirectory = source / "nested"
@@ -568,7 +687,7 @@ def test_revision_snapshot_requires_repository_top_level(monkeypatch, tmp_path):
 
 def test_non_rootless_daemon_fails_before_volume_creation(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     cli = RecordingCLI(rootless=False)
 
@@ -582,7 +701,7 @@ def test_non_rootless_daemon_fails_before_volume_creation(monkeypatch, tmp_path)
 
 def test_image_declared_volume_fails_closed(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     cli = RecordingCLI(
         image_overrides={"Config": {"Env": [], "Volumes": {"/data": {}}}}
@@ -594,7 +713,7 @@ def test_image_declared_volume_fails_closed(monkeypatch, tmp_path):
 
 def test_timeout_kills_and_removes_container(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     cli = RecordingCLI()
     process = None
@@ -625,7 +744,7 @@ def test_timeout_kills_and_removes_container(monkeypatch, tmp_path):
 
 def test_output_limit_is_hard_and_audited(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     cli = RecordingCLI()
 
@@ -646,7 +765,7 @@ def test_output_limit_is_hard_and_audited(monkeypatch, tmp_path):
 
 def test_model_preview_budget_is_shared_across_stdout_and_stderr(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
 
     def popen(argv, **kwargs):
@@ -671,7 +790,7 @@ def test_model_preview_budget_is_shared_across_stdout_and_stderr(monkeypatch, tm
 
 def test_diff_output_limit_fails_without_returning_partial_patch(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
 
     def popen(argv, **kwargs):
@@ -690,7 +809,7 @@ def test_diff_output_limit_fails_without_returning_partial_patch(monkeypatch, tm
 
 def test_timeout_cleanup_failure_poisons_session(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
 
     class FailingCleanupCLI(RecordingCLI):
@@ -727,7 +846,7 @@ def test_timeout_cleanup_failure_poisons_session(monkeypatch, tmp_path):
 
 def test_close_is_idempotent_and_removes_both_volumes(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     cli = RecordingCLI()
     session = _provider(tmp_path, cli).create(_spec(tmp_path))
@@ -745,7 +864,7 @@ def test_close_is_idempotent_and_removes_both_volumes(monkeypatch, tmp_path):
 
 def test_close_remains_closed_when_final_audit_write_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     session = _provider(tmp_path, RecordingCLI()).create(_spec(tmp_path))
     original_record = session._record_audit
@@ -765,7 +884,7 @@ def test_close_remains_closed_when_final_audit_write_fails(monkeypatch, tmp_path
 @pytest.mark.parametrize("failed_phase", ["command_started", "command_finished"])
 def test_command_audit_failure_poisons_session(monkeypatch, tmp_path, failed_phase):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     session = _provider(tmp_path, RecordingCLI()).create(_spec(tmp_path))
     original_record = session._record_audit
@@ -787,7 +906,7 @@ def test_artifact_bundle_size_is_bounded_and_partial_file_removed(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     provider = _provider(tmp_path, RecordingCLI())
     session = provider.create(_spec(tmp_path))
@@ -818,7 +937,7 @@ def test_artifact_bundle_size_is_bounded_and_partial_file_removed(
 
 def test_artifact_bundle_is_controller_private(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "codenib.sandbox.docker.shutil.which", lambda _: "/usr/bin/docker"
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
     )
     provider = _provider(tmp_path, RecordingCLI())
     session = provider.create(_spec(tmp_path))

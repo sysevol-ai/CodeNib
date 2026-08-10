@@ -108,50 +108,147 @@ root = pathlib.Path('/workspace')
 ignored = set(json.loads(sys.argv[1]))
 fingerprint_version = int(sys.argv[2])
 filter_version = int(sys.argv[3])
+source_root = pathlib.Path(sys.argv[4])
+if fingerprint_version != 2:
+    raise SystemExit('unsupported source fingerprint version')
 hasher = hashlib.sha256()
-hasher.update(
-    (
-        f'codenib-source-fingerprint:{fingerprint_version}:'
-        f'{filter_version}\0'
-    ).encode('ascii')
-)
+hasher.update(b'codenib-source-fingerprint\0\x02')
+def frame_header(domain, payload_size):
+    if not domain or len(domain) > 0xffff or not 0 <= payload_size < 1 << 64:
+        raise SystemExit('source fingerprint frame exceeds its limits')
+    hasher.update(len(domain).to_bytes(2, 'big'))
+    hasher.update(domain)
+    hasher.update(payload_size.to_bytes(8, 'big'))
+def frame(domain, payload):
+    frame_header(domain, len(payload))
+    hasher.update(payload)
+def hash_content(path, metadata, domain):
+    frame_header(domain, metadata.st_size)
+    with path.open('rb') as handle:
+        remaining = metadata.st_size
+        while remaining:
+            block = handle.read(min(remaining, 1024 * 1024))
+            if not block:
+                raise SystemExit('source file was truncated while hashing')
+            hasher.update(block)
+            remaining -= len(block)
+        if handle.read(1):
+            raise SystemExit('source file grew while hashing')
+def normalize_target(prefix, target):
+    if not target or '\0' in target or len(os.fsencode(target)) > 4096:
+        raise SystemExit('source symlink target is invalid')
+    if os.path.isabs(target):
+        try:
+            relative_target = pathlib.Path(os.path.normpath(target)).relative_to(
+                source_root
+            )
+        except ValueError:
+            raise SystemExit('source symlink resolves outside the repository')
+        target = relative_target.as_posix()
+        resolved = []
+    else:
+        resolved = list(prefix)
+    for part in target.split('/'):
+        if part in {'', '.'}:
+            continue
+        if part == '..':
+            if not resolved:
+                raise SystemExit('source symlink resolves outside the repository')
+            resolved.pop()
+        else:
+            resolved.append(part)
+        if len(resolved) > 256:
+            raise SystemExit('resolved source path is too deep')
+    return tuple(resolved)
+def resolve_link(relative_parts):
+    pending = list(relative_parts)
+    resolved = []
+    seen_links = set()
+    symlink_count = 0
+    while pending:
+        name = pending.pop(0)
+        candidate = root.joinpath(*resolved, name)
+        try:
+            metadata = candidate.lstat()
+        except FileNotFoundError:
+            return 'unresolved', None, None
+        if stat.S_ISLNK(metadata.st_mode):
+            symlink_count += 1
+            if symlink_count > 40:
+                return 'unresolved', None, None
+            identity = (metadata.st_dev, metadata.st_ino)
+            if identity in seen_links:
+                return 'unresolved', None, None
+            seen_links.add(identity)
+            target_parts = normalize_target(tuple(resolved), os.readlink(candidate))
+            pending = [*target_parts, *pending]
+            resolved = []
+            continue
+        if pending:
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise SystemExit('source path has a non-directory component')
+            resolved.append(name)
+            continue
+        if stat.S_ISREG(metadata.st_mode):
+            return 'regular', candidate, metadata
+        if stat.S_ISDIR(metadata.st_mode):
+            return 'directory', candidate, metadata
+        return 'unresolved', None, None
+    root_metadata = root.lstat()
+    if not stat.S_ISDIR(root_metadata.st_mode):
+        raise SystemExit('source root is not a directory')
+    return 'directory', root, root_metadata
+frame(b'filter-policy-version', str(filter_version).encode('ascii'))
 file_count = 0
-for current_root, directories, files in os.walk(root):
-    directories[:] = sorted(
-        name for name in directories
-        if name not in ignored and not name.startswith('.codenib')
-    )
-    current = pathlib.Path(current_root)
-    for filename in sorted(files):
-        path = current / filename
-        relative_path = path.relative_to(root)
-        if any(
-            part in ignored or part.startswith('.codenib')
-            for part in relative_path.parts
-        ):
+def scan_directory(current, prefix):
+    global file_count
+    with os.scandir(current) as iterator:
+        names = sorted(child.name for child in iterator)
+    child_directories = []
+    for name in names:
+        if name in ignored or name.startswith('.codenib'):
             continue
-        mode = path.lstat().st_mode
+        relative_parts = (*prefix, name)
+        path = current / name
+        metadata = path.lstat()
+        mode = metadata.st_mode
+        relative = os.fsencode('/'.join(relative_parts))
         if stat.S_ISLNK(mode):
-            raise SystemExit('source fingerprint does not permit symlinks')
-        if not stat.S_ISREG(mode):
+            target = os.readlink(path)
+            target_state, target_path, target_metadata = resolve_link(
+                relative_parts
+            )
+            if target_state == 'directory':
+                continue
+            frame(b'entry-kind', b'link')
+            frame(b'entry-path', relative)
+            frame(b'link-target', os.fsencode(target))
+            if target_state == 'unresolved':
+                frame(b'link-target-state', b'unresolved')
+            else:
+                frame(b'link-target-state', b'regular')
+                hash_content(
+                    target_path,
+                    target_metadata,
+                    b'link-target-content',
+                )
+        elif stat.S_ISREG(mode):
+            frame(b'entry-kind', b'file')
+            frame(b'entry-path', relative)
+            hash_content(path, metadata, b'file-content')
+        elif stat.S_ISDIR(mode):
+            child_directories.append((path, relative_parts))
             continue
-        relative = relative_path.as_posix().encode(
-            'utf-8', errors='surrogateescape'
-        )
-        hasher.update(b'F\0')
-        hasher.update(relative)
-        hasher.update(b'\0')
-        with path.open('rb') as handle:
-            while True:
-                block = handle.read(1024 * 1024)
-                if not block:
-                    break
-                hasher.update(block)
-        hasher.update(b'\0')
+        else:
+            continue
         file_count += 1
+    for child, child_parts in child_directories:
+        scan_directory(child, child_parts)
+scan_directory(root, ())
+frame(b'entry-count', file_count.to_bytes(8, 'big'))
 print(json.dumps({
     'file_count': file_count,
-    'source_fingerprint': 'sha256:' + hasher.hexdigest(),
+    'source_fingerprint': 'sha256-v2:' + hasher.hexdigest(),
 }, sort_keys=True, separators=(',', ':')))
 """.strip()
 
@@ -924,6 +1021,7 @@ class DockerSandboxProvider:
                 json.dumps(sorted(DEFAULT_IGNORED_DIRS), separators=(",", ":")),
                 str(SOURCE_FINGERPRINT_VERSION),
                 str(REPOSITORY_FILTER_POLICY_VERSION),
+                os.path.abspath(os.path.expanduser(os.fspath(spec.source_dir))),
             ]
         )
         completed = self._run_control_container(name, args)
@@ -935,7 +1033,7 @@ class DockerSandboxProvider:
             raise SandboxUnavailableError(
                 "sandbox source fingerprint helper returned invalid output"
             ) from exc
-        if not re.fullmatch(r"sha256:[0-9a-f]{64}", fingerprint) or file_count < 0:
+        if not re.fullmatch(r"sha256-v2:[0-9a-f]{64}", fingerprint) or file_count < 0:
             raise SandboxUnavailableError(
                 "sandbox source fingerprint helper returned invalid identity"
             )
