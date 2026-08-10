@@ -4,33 +4,1095 @@
 
 from __future__ import annotations
 
+import dis
+import errno
 import hashlib
+import inspect
 import os
 import subprocess
+import sys
+import threading
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import codenib._contained_source as contained_source_module
+import codenib._windows_fs_authority as windows_fs_module
+import codenib.source_fingerprint as source_fingerprint_module
+from codenib.artifacts.runtime import SourceBindingCleanupOwner
 from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION
 from codenib.source_fingerprint import (
     SOURCE_FINGERPRINT_VERSION,
     RepositoryChangedError,
+    RepositorySourceBinding,
+    capture_repository_source,
     fingerprint_repository,
+    fingerprint_repository_v1_for_diagnostics,
+    is_legacy_source_fingerprint_v1,
+    is_secure_source_fingerprint_v2,
     repository_source_is_dirty,
+    source_fingerprint_version,
 )
+
+
+class _InterruptAfterPopList(list[int]):
+    def __init__(self, values: list[int], interruption: BaseException) -> None:
+        super().__init__(values)
+        self._interruption = interruption
+        self._armed = True
+
+    def pop(self, *args):
+        value = super().pop(*args)
+        if self._armed:
+            self._armed = False
+            raise self._interruption
+        return value
+
+
+class _AcquireThenInterruptRLock:
+    def __init__(self) -> None:
+        self.runtime = threading.RLock()
+        self.acquire_calls = 0
+        self.acquire_interrupted = False
+        self.probe_interrupted = False
+        self.acquire_failure = KeyboardInterrupt("injected completed acquire")
+
+    def acquire(self, *args, **kwargs):
+        self.acquire_calls += 1
+        acquired = self.runtime.acquire(*args, **kwargs)
+        if not self.acquire_interrupted:
+            self.acquire_interrupted = True
+            raise self.acquire_failure
+        return acquired
+
+    def release(self) -> None:
+        self.runtime.release()
+
+    def _is_owned(self) -> bool:
+        if self.acquire_interrupted and not self.probe_interrupted:
+            self.probe_interrupted = True
+            raise SystemExit("injected acquisition recovery cancellation")
+        return self.runtime._is_owned()
+
+
+class _ReleaseThenInterruptRLock:
+    def __init__(self) -> None:
+        self.runtime = threading.RLock()
+        self.release_calls = 0
+        self.release_interrupted = False
+        self.probe_interrupted = False
+        self.release_failure = KeyboardInterrupt("injected completed release")
+
+    def acquire(self, *args, **kwargs):
+        return self.runtime.acquire(*args, **kwargs)
+
+    def release(self) -> None:
+        self.release_calls += 1
+        self.runtime.release()
+        if not self.release_interrupted:
+            self.release_interrupted = True
+            raise self.release_failure
+
+    def _is_owned(self) -> bool:
+        if self.release_interrupted and not self.probe_interrupted:
+            self.probe_interrupted = True
+            raise SystemExit("injected release recovery cancellation")
+        return self.runtime._is_owned()
+
+
+def test_source_lock_double_acquire_cancellation_does_not_add_native_recursion() -> (
+    None
+):
+    lock = source_fingerprint_module._SourceLifecycleRLock()
+    runtime = _AcquireThenInterruptRLock()
+    lock._lock = runtime
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        with source_fingerprint_module._SourceLockLease(lock) as failure:
+            assert failure is runtime.acquire_failure
+            raise failure
+
+    assert caught.value is runtime.acquire_failure
+    assert runtime.acquire_calls == 1
+    assert lock.depth() == 0
+    acquired_elsewhere = []
+
+    def acquire_elsewhere() -> None:
+        acquired = runtime.runtime.acquire(timeout=1)
+        acquired_elsewhere.append(acquired)
+        if acquired:
+            runtime.runtime.release()
+
+    thread = threading.Thread(target=acquire_elsewhere)
+    thread.start()
+    thread.join(timeout=2)
+    assert acquired_elsewhere == [True]
+
+
+def test_source_lock_double_release_cancellation_does_not_retry_native_release() -> (
+    None
+):
+    lock = source_fingerprint_module._SourceLifecycleRLock()
+    runtime = _ReleaseThenInterruptRLock()
+    lock._lock = runtime
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        with source_fingerprint_module._SourceLockLease(lock):
+            pass
+
+    assert caught.value is runtime.release_failure
+    assert runtime.release_calls == 1
+    assert lock.depth() == 0
+    assert runtime.runtime.acquire(timeout=1)
+    runtime.runtime.release()
+
+
+def test_source_lock_persistent_probe_failure_is_bounded() -> None:
+    class BrokenProbeRLock:
+        def acquire(self, *args, **kwargs):
+            raise AssertionError("native acquire must wait for a successful probe")
+
+        def release(self) -> None:
+            raise AssertionError("unacquired lock must not be released")
+
+        def _is_owned(self) -> bool:
+            raise RuntimeError("persistent ownership probe failure")
+
+    lock = source_fingerprint_module._SourceLifecycleRLock()
+    lock._lock = BrokenProbeRLock()
+
+    with pytest.raises(RuntimeError, match="persistent ownership probe failure"):
+        source_fingerprint_module._SourceLockLease(lock).__enter__()
+
+
+def test_repository_source_binding_reads_exact_captured_records(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"VALUE = 1\n")
+    hidden = repo / ".hidden"
+    hidden.mkdir()
+    (hidden / "target.py").write_bytes(b"TARGET = 2\n")
+    (repo / "link.py").symlink_to(".hidden/target.py")
+    expected = fingerprint_repository(repo)
+
+    with capture_repository_source(repo) as binding:
+        assert binding.fingerprint == expected.value
+        assert binding.file_count == expected.file_count
+        assert {record.path for record in binding.file_records} == {
+            ".hidden/target.py",
+            "a.py",
+            "link.py",
+        }
+        assert binding.read_bytes("a.py", max_bytes=1024) == b"VALUE = 1\n"
+        assert binding.read_bytes("link.py", max_bytes=1024) == b"TARGET = 2\n"
+
+
+def test_repository_source_binding_poisoned_by_touched_or_unrelated_change(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "a.py"
+    other = repo / "b.py"
+    source.write_bytes(b"VALUE = 1\n")
+    other.write_bytes(b"OTHER = 1\n")
+    binding = capture_repository_source(repo)
+    other.write_bytes(b"OTHER = 999\n")
+
+    with pytest.raises(RepositoryChangedError):
+        binding.read_bytes("a.py", max_bytes=1024)
+
+    other.write_bytes(b"OTHER = 1\n")
+    with pytest.raises(RepositoryChangedError, match="poisoned"):
+        binding.read_bytes("a.py", max_bytes=1024)
+    binding.close()
+
+
+def test_repository_source_binding_rejects_legal_replacement_root(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"VALUE = 1\n")
+    binding = capture_repository_source(repo)
+    pinned = tmp_path / "pinned"
+    repo.rename(pinned)
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"VALUE = 1\n")
+
+    with pytest.raises(RepositoryChangedError):
+        binding.verify_snapshot()
+    assert not binding.usable
+    binding.close()
+
+
+def test_source_authority_rejects_preexisting_ancestor_symlink(
+    tmp_path: Path,
+) -> None:
+    foreign = tmp_path / "foreign"
+    repo = foreign / "repo"
+    repo.mkdir(parents=True)
+    (repo / "a.py").write_bytes(b"VALUE = 1\n")
+    trusted = tmp_path / "trusted"
+    trusted.mkdir()
+    (trusted / "alias").symlink_to(foreign, target_is_directory=True)
+
+    with pytest.raises(RepositoryChangedError):
+        fingerprint_repository(trusted / "alias" / "repo")
+
+
+def test_repository_source_binding_rejects_replaced_ancestor(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent"
+    repo = parent / "repo"
+    repo.mkdir(parents=True)
+    (repo / "a.py").write_bytes(b"VALUE = 1\n")
+    binding = capture_repository_source(repo)
+    saved = tmp_path / "saved-parent"
+    parent.rename(saved)
+    repo.mkdir(parents=True)
+    (repo / "a.py").write_bytes(b"VALUE = 1\n")
+
+    with pytest.raises(RepositoryChangedError):
+        binding.verify_snapshot()
+    binding.close()
+
+
+def test_repository_source_read_session_scans_whole_tree_twice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"A\n")
+    (repo / "b.py").write_bytes(b"B\n")
+    binding = capture_repository_source(repo)
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    scans = 0
+
+    def counted_scan(*args, **kwargs):
+        nonlocal scans
+        scans += 1
+        return real_scan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        counted_scan,
+    )
+    with binding.read_session():
+        assert binding.read_bytes("a.py", max_bytes=16) == b"A\n"
+        assert binding.read_bytes("b.py", max_bytes=16) == b"B\n"
+
+    assert scans == 2
+    binding.close()
+
+
+def test_repository_source_read_session_trace_interrupt_releases_lock(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"A\n")
+    binding = capture_repository_source(repo)
+    wrapped = RepositorySourceBinding.read_session.__wrapped__
+    lines, first_line = inspect.getsourcelines(wrapped)
+    target_line = first_line + next(
+        index
+        for index, line in enumerate(lines)
+        if "if self._session_depth == 0:" in line
+    )
+    interrupted = False
+
+    def interrupt_after_acquire(frame, event, _arg):
+        nonlocal interrupted
+        if (
+            not interrupted
+            and frame.f_code is wrapped.__code__
+            and event == "line"
+            and frame.f_lineno == target_line
+        ):
+            interrupted = True
+            raise KeyboardInterrupt("injected after lock acquisition")
+        return interrupt_after_acquire
+
+    sys.settrace(interrupt_after_acquire)
+    try:
+        with pytest.raises(KeyboardInterrupt, match="after lock acquisition"):
+            with binding.read_session():
+                pytest.fail("interruption must happen before the session body")
+    finally:
+        sys.settrace(None)
+
+    completed = threading.Event()
+
+    def close_from_another_thread() -> None:
+        binding.close()
+        completed.set()
+
+    thread = threading.Thread(target=close_from_another_thread)
+    thread.start()
+    thread.join(timeout=2)
+    assert completed.is_set(), "interrupted acquisition stranded the source lock"
+    assert binding.closed
+
+
+def test_repository_source_read_session_exit_interrupt_poison_closes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"A\n")
+    binding = capture_repository_source(repo)
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    scans = 0
+    interruption = KeyboardInterrupt("injected exit inventory interruption")
+
+    def interrupt_exit(*args, **kwargs):
+        nonlocal scans
+        scans += 1
+        if scans == 2:
+            raise interruption
+        return real_scan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        interrupt_exit,
+    )
+    with pytest.raises(KeyboardInterrupt) as caught:
+        with binding.read_session():
+            assert binding.read_bytes("a.py", max_bytes=16) == b"A\n"
+
+    assert caught.value is interruption
+    assert binding.closed
+    assert not binding.usable
+
+
+def test_repository_source_read_session_preserves_body_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"A\n")
+    binding = capture_repository_source(repo)
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    scans = 0
+    primary = KeyboardInterrupt("primary session cancellation")
+
+    def interrupt_exit(*args, **kwargs):
+        nonlocal scans
+        scans += 1
+        if scans == 2:
+            raise SystemExit("secondary exit cancellation")
+        return real_scan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        interrupt_exit,
+    )
+    with pytest.raises(KeyboardInterrupt) as caught:
+        with binding.read_session():
+            raise primary
+
+    assert caught.value is primary
+    assert binding.closed
+
+
+@pytest.mark.parametrize(
+    ("timing", "interruption"),
+    [
+        pytest.param(
+            "before",
+            KeyboardInterrupt("injected before descriptor close"),
+            id="before-close",
+        ),
+        pytest.param(
+            "after",
+            SystemExit("injected after descriptor close"),
+            id="after-close",
+        ),
+    ],
+)
+def test_repository_source_close_finishes_descriptor_chain_before_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    timing: str,
+    interruption: BaseException,
+) -> None:
+    descriptor_root = Path("/proc/self/fd")
+    if not descriptor_root.is_dir():
+        pytest.skip("descriptor accounting needs /proc/self/fd")
+    repo = tmp_path / "one" / "two" / "repo"
+    repo.mkdir(parents=True)
+    (repo / "a.py").write_bytes(b"A\n")
+    before = len(tuple(descriptor_root.iterdir()))
+    binding = capture_repository_source(repo)
+    authority = binding._posix_authority
+    assert authority is not None
+    targets = set(authority._resources)
+    real_close = os.close
+    calls = 0
+    injected = False
+    seen: set[int] = set()
+
+    def interrupt_one_close(descriptor: int) -> None:
+        nonlocal calls, injected
+        if descriptor in targets:
+            seen.add(descriptor)
+            calls += 1
+            if calls == 2 and not injected:
+                injected = True
+                if timing == "before":
+                    raise interruption
+                real_close(descriptor)
+                raise interruption
+        real_close(descriptor)
+
+    monkeypatch.setattr(source_fingerprint_module.os, "close", interrupt_one_close)
+    with pytest.raises(type(interruption)) as caught:
+        binding.close()
+
+    assert caught.value is interruption
+    assert injected
+    assert binding.closed
+    assert targets <= seen
+    after = len(tuple(descriptor_root.iterdir()))
+    assert after <= before + 1
+
+
+def test_repository_source_close_commits_interrupted_owner_pop(
+    tmp_path: Path,
+) -> None:
+    descriptor_root = Path("/proc/self/fd")
+    if not descriptor_root.is_dir():
+        pytest.skip("descriptor accounting needs /proc/self/fd")
+    repo = tmp_path / "parent" / "repo"
+    repo.mkdir(parents=True)
+    (repo / "a.py").write_bytes(b"A\n")
+    before = len(tuple(descriptor_root.iterdir()))
+    binding = capture_repository_source(repo)
+    authority = binding._posix_authority
+    assert authority is not None
+    interruption = KeyboardInterrupt("injected after descriptor owner pop")
+    authority._resources = _InterruptAfterPopList(
+        authority._resources,
+        interruption,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        binding.close()
+
+    assert caught.value is interruption
+    assert binding.closed
+    assert len(tuple(descriptor_root.iterdir())) <= before + 1
+
+
+def test_repository_source_close_persistent_eio_keeps_owner_and_closes_rest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "one" / "two" / "repo"
+    repo.mkdir(parents=True)
+    (repo / "a.py").write_bytes(b"A\n")
+    binding = capture_repository_source(repo)
+    authority = binding._posix_authority
+    assert authority is not None
+    targets = tuple(authority._resources)
+    failed = targets[-1]
+    real_close = os.close
+
+    def fail_one_descriptor(descriptor: int) -> None:
+        if descriptor == failed:
+            raise OSError(errno.EIO, "injected persistent close EIO")
+        real_close(descriptor)
+
+    monkeypatch.setattr(source_fingerprint_module.os, "close", fail_one_descriptor)
+    with pytest.raises(OSError, match="persistent close EIO"):
+        binding.close()
+
+    assert not binding.closed
+    assert not binding.usable
+    assert authority._resources == [failed]
+    for descriptor in targets[:-1]:
+        with pytest.raises(OSError) as caught:
+            os.fstat(descriptor)
+        assert caught.value.errno == errno.EBADF
+
+    monkeypatch.setattr(source_fingerprint_module.os, "close", real_close)
+    binding.close()
+    assert binding.closed
+
+
+def test_repository_source_close_preflight_eio_keeps_owner_and_closes_rest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "one" / "two" / "repo"
+    repo.mkdir(parents=True)
+    (repo / "a.py").write_bytes(b"A\n")
+    binding = capture_repository_source(repo)
+    authority = binding._posix_authority
+    assert authority is not None
+    targets = tuple(authority._resources)
+    failed = targets[-1]
+    real_fstat = os.fstat
+
+    def fail_one_descriptor(descriptor: int):
+        if descriptor == failed:
+            raise OSError(errno.EIO, "injected persistent fstat EIO")
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(source_fingerprint_module.os, "fstat", fail_one_descriptor)
+    with pytest.raises(OSError, match="persistent fstat EIO"):
+        binding.close()
+
+    assert not binding.closed
+    assert not binding.usable
+    assert authority._resources == [failed]
+    for descriptor in targets[:-1]:
+        with pytest.raises(OSError) as caught:
+            real_fstat(descriptor)
+        assert caught.value.errno == errno.EBADF
+
+    monkeypatch.setattr(source_fingerprint_module.os, "fstat", real_fstat)
+    binding.close()
+    assert binding.closed
+
+
+@pytest.mark.parametrize(
+    "interruption",
+    [
+        pytest.param(KeyboardInterrupt("root open interrupted"), id="keyboard"),
+        pytest.param(SystemExit("root open exited"), id="system-exit"),
+    ],
+)
+def test_repository_root_open_failure_closes_owned_descriptors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: BaseException,
+) -> None:
+    descriptor_root = Path("/proc/self/fd")
+    if not descriptor_root.is_dir():
+        pytest.skip("descriptor accounting needs /proc/self/fd")
+    repo = tmp_path / "parent" / "repo"
+    repo.mkdir(parents=True)
+    (repo / "a.py").write_bytes(b"A\n")
+    before = len(tuple(descriptor_root.iterdir()))
+    real_fstat = os.fstat
+    calls = 0
+
+    def interrupt_after_child_open(descriptor: int):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise interruption
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(
+        source_fingerprint_module.os,
+        "fstat",
+        interrupt_after_child_open,
+    )
+    with pytest.raises(type(interruption)) as caught:
+        fingerprint_repository(repo)
+
+    assert caught.value is interruption
+    after = len(tuple(descriptor_root.iterdir()))
+    assert after <= before + 1
+
+
+def test_capture_root_construction_eio_keeps_preinstalled_retry_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "parent" / "repo"
+    repo.mkdir(parents=True)
+    (repo / "source.py").write_bytes(b"VALUE = 1\n")
+    owner = SourceBindingCleanupOwner()
+    interruption = KeyboardInterrupt("injected POSIX root construction failure")
+    real_open = os.open
+    real_fstat = os.fstat
+    real_close = os.close
+    opened: list[int] = []
+    fstat_calls = 0
+
+    def record_open(*args, **kwargs):
+        descriptor = real_open(*args, **kwargs)
+        opened.append(descriptor)
+        return descriptor
+
+    def interrupt_metadata(descriptor: int):
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if fstat_calls == 2:
+            raise interruption
+        return real_fstat(descriptor)
+
+    failed = -1
+
+    def persistent_close(descriptor: int) -> None:
+        nonlocal failed
+        if descriptor in opened and failed < 0:
+            failed = descriptor
+        if descriptor == failed:
+            raise OSError(errno.EIO, "injected POSIX construction close EIO")
+        real_close(descriptor)
+
+    monkeypatch.setattr(source_fingerprint_module.os, "open", record_open)
+    monkeypatch.setattr(source_fingerprint_module.os, "fstat", interrupt_metadata)
+    monkeypatch.setattr(source_fingerprint_module.os, "close", persistent_close)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        capture_repository_source(repo, _source_owner=owner.retain)
+
+    assert caught.value is interruption
+    assert not owner.closed
+    assert owner.pending_sources
+    assert failed >= 0
+    assert real_fstat(failed)
+
+    monkeypatch.setattr(source_fingerprint_module.os, "fstat", real_fstat)
+    monkeypatch.setattr(source_fingerprint_module.os, "close", real_close)
+    owner.close()
+    assert owner.closed
+
+
+def test_capture_scan_eio_keeps_primary_and_explicit_partial_fd_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "source.py").write_bytes(b"VALUE = 1\n")
+    interruption = SystemExit("injected POSIX scan failure")
+    real_close = os.close
+    scan_descriptor = -1
+
+    def interrupt_scan(descriptor: int):
+        nonlocal scan_descriptor
+        scan_descriptor = descriptor
+        raise interruption
+
+    def persistent_close(descriptor: int) -> None:
+        if descriptor == scan_descriptor:
+            raise OSError(errno.EIO, "injected POSIX scan close EIO")
+        real_close(descriptor)
+
+    monkeypatch.setattr(source_fingerprint_module.os, "scandir", interrupt_scan)
+    monkeypatch.setattr(
+        source_fingerprint_module.os,
+        "supports_fd",
+        {*os.supports_fd, interrupt_scan},
+    )
+    monkeypatch.setattr(source_fingerprint_module.os, "close", persistent_close)
+
+    with pytest.raises(SystemExit) as caught:
+        capture_repository_source(tmp_path)
+
+    assert caught.value is interruption
+    cleanup_owner = caught.value.source_cleanup_owner
+    assert not cleanup_owner.closed
+    assert scan_descriptor in cleanup_owner.descriptors
+    assert os.fstat(scan_descriptor)
+
+    monkeypatch.setattr(source_fingerprint_module.os, "close", real_close)
+    cleanup_owner.close()
+    assert cleanup_owner.closed
+
+
+def test_posix_resolution_construction_eio_keeps_primary_and_retry_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "source.py"
+    source.write_bytes(b"VALUE = 1\n")
+    authority = source_fingerprint_module._open_pinned_repository_root(repo)
+    expected = contained_source_module._version_identity(source.lstat())
+    interruption = KeyboardInterrupt("injected POSIX resolution failure")
+    real_open = os.open
+    real_fstat = os.fstat
+    real_close = os.close
+    failed = -1
+
+    def record_open(path, flags, *args, **kwargs):
+        nonlocal failed
+        descriptor = real_open(path, flags, *args, **kwargs)
+        if path == "source.py":
+            failed = descriptor
+        return descriptor
+
+    def interrupt_source_metadata(descriptor: int):
+        if descriptor == failed:
+            raise interruption
+        return real_fstat(descriptor)
+
+    def persistent_close(descriptor: int) -> None:
+        if descriptor == failed:
+            raise OSError(errno.EIO, "injected POSIX resolution close EIO")
+        real_close(descriptor)
+
+    monkeypatch.setattr(contained_source_module.os, "open", record_open)
+    monkeypatch.setattr(contained_source_module.os, "fstat", interrupt_source_metadata)
+    monkeypatch.setattr(contained_source_module.os, "close", persistent_close)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        with contained_source_module._resolved_repository_file_at(
+            repo,
+            authority.descriptor,
+            "source.py",
+            expected_root_identity=authority.root_identity,
+            expected_final_identity=expected,
+        ):
+            pytest.fail("resolution construction must not yield")
+
+    assert caught.value is interruption
+    cleanup_owner = caught.value.source_cleanup_owner
+    assert not cleanup_owner.closed
+    assert failed >= 0
+    assert real_fstat(failed)
+
+    monkeypatch.setattr(contained_source_module.os, "fstat", real_fstat)
+    monkeypatch.setattr(contained_source_module.os, "close", real_close)
+    cleanup_owner.close()
+    authority.close()
+    assert cleanup_owner.closed
 
 
 def _legacy_link_only_digest(path: bytes, target: bytes) -> str:
     digest = hashlib.sha256()
     digest.update(
         (
-            f"codenib-source-fingerprint:{SOURCE_FINGERPRINT_VERSION}:"
-            f"{REPOSITORY_FILTER_POLICY_VERSION}\0"
+            "codenib-source-fingerprint:1:" f"{REPOSITORY_FILTER_POLICY_VERSION}\0"
         ).encode("ascii")
     )
     digest.update(b"L\0" + path + b"\0" + target + b"\0")
     return f"sha256:{digest.hexdigest()}"
+
+
+class _FakeWindowsSourceApi:
+    """HANDLE-only Windows source model with exact 128-bit identities."""
+
+    def __init__(self) -> None:
+        self.nodes: dict[bytes, dict[str, object]] = {}
+        self.handles: dict[int, bytes] = {}
+        self.offsets: dict[int, int] = {}
+        self.next_id = 1
+        self.next_handle = 100
+        self.open_relative_hook = None
+        self.create_root_hook = None
+        self.query_reparse_hook = None
+        self.created_paths: list[str] = []
+        self.volume_id = self.add_directory()
+        self.root_id = self.add_directory(self.volume_id, "repo")
+
+    def _file_id(self) -> bytes:
+        value = self.next_id.to_bytes(16, "little")
+        self.next_id += 1
+        return value
+
+    def add_directory(
+        self,
+        parent: bytes | None = None,
+        name: str = "",
+    ) -> bytes:
+        file_id = self._file_id()
+        self.nodes[file_id] = {
+            "kind": "directory",
+            "children": {},
+            "data": b"",
+            "version": 1,
+            "file_id": file_id,
+            "reparse": None,
+        }
+        if parent is not None:
+            self._children(parent)[name] = file_id
+        return file_id
+
+    def add_file(self, parent: bytes, name: str, data: bytes) -> bytes:
+        file_id = self._file_id()
+        self.nodes[file_id] = {
+            "kind": "file",
+            "children": {},
+            "data": data,
+            "version": 1,
+            "file_id": file_id,
+            "reparse": None,
+        }
+        self._children(parent)[name] = file_id
+        return file_id
+
+    def add_symlink(
+        self,
+        parent: bytes,
+        name: str,
+        target: str,
+        *,
+        directory: bool = False,
+        absolute: bool = False,
+        substitute: str | None = None,
+    ) -> bytes:
+        file_id = self._file_id()
+        point = windows_fs_module.WindowsReparsePoint(
+            tag=windows_fs_module.IO_REPARSE_TAG_SYMLINK,
+            substitute_name=substitute or target,
+            print_name=target,
+            flags=0 if absolute else windows_fs_module.SYMLINK_FLAG_RELATIVE,
+        )
+        self.nodes[file_id] = {
+            "kind": "directory-link" if directory else "link",
+            "children": {},
+            "data": b"",
+            "version": 1,
+            "file_id": file_id,
+            "reparse": point,
+        }
+        self._children(parent)[name] = file_id
+        return file_id
+
+    def add_unknown_reparse(self, parent: bytes, name: str) -> bytes:
+        file_id = self._file_id()
+        self.nodes[file_id] = {
+            "kind": "link",
+            "children": {},
+            "data": b"",
+            "version": 1,
+            "file_id": file_id,
+            "reparse": windows_fs_module.WindowsReparsePoint(
+                tag=windows_fs_module.IO_REPARSE_TAG_MOUNT_POINT,
+                substitute_name=None,
+                print_name=None,
+            ),
+        }
+        self._children(parent)[name] = file_id
+        return file_id
+
+    def _children(self, file_id: bytes) -> dict[str, bytes]:
+        children = self.nodes[file_id]["children"]
+        assert isinstance(children, dict)
+        return children
+
+    def _new_handle(self, file_id: bytes) -> int:
+        handle = self.next_handle
+        self.next_handle += 1
+        self.handles[handle] = file_id
+        self.offsets[handle] = 0
+        return handle
+
+    def create_directory_handle(self, _path: Path) -> int:
+        self.created_paths.append(str(_path))
+        file_id = self.volume_id
+        if self.create_root_hook is not None:
+            file_id = self.create_root_hook(file_id)
+        return self._new_handle(file_id)
+
+    def duplicate_handle(self, handle: int) -> int:
+        return self._new_handle(self.handles[handle])
+
+    def close(self, handle: int) -> None:
+        self.handles.pop(handle, None)
+        self.offsets.pop(handle, None)
+
+    def metadata(self, handle: int) -> windows_fs_module.WindowsHandleMetadata:
+        file_id = self.handles[handle]
+        node = self.nodes[file_id]
+        kind = str(node["kind"])
+        directory = kind in {"directory", "directory-link"}
+        reparse = node["reparse"]
+        attributes = windows_fs_module.FILE_ATTRIBUTE_DIRECTORY if directory else 0
+        reparse_tag = 0
+        if isinstance(reparse, windows_fs_module.WindowsReparsePoint):
+            attributes |= windows_fs_module.FILE_ATTRIBUTE_REPARSE_POINT
+            reparse_tag = reparse.tag
+        data = node["data"]
+        assert isinstance(data, bytes)
+        version = int(node["version"])
+        return windows_fs_module.WindowsHandleMetadata(
+            st_dev=7,
+            st_ino=int.from_bytes(file_id[:8], "little"),
+            st_mode=windows_fs_module.windows_mode_from_attributes(attributes),
+            st_size=len(data),
+            st_mtime_ns=version,
+            st_ctime_ns=version,
+            st_nlink=1,
+            st_file_attributes=attributes,
+            file_id_128=file_id,
+            reparse_tag=reparse_tag,
+            delete_pending=False,
+        )
+
+    def iter_directory(self, handle: int):
+        parent_id = self.handles[handle]
+        for name, file_id in list(self._children(parent_id).items()):
+            child_handle = self._new_handle(file_id)
+            try:
+                metadata = self.metadata(child_handle)
+            finally:
+                self.close(child_handle)
+            yield windows_fs_module.WindowsDirectoryEntry(
+                name=name,
+                file_id=int.from_bytes(file_id[:8], "little"),
+                attributes=metadata.st_file_attributes,
+                file_id_128=file_id,
+                reparse_tag=metadata.reparse_tag,
+            )
+
+    def enumerate_directory(
+        self,
+        handle: int,
+    ) -> tuple[windows_fs_module.WindowsDirectoryEntry, ...]:
+        return tuple(self.iter_directory(handle))
+
+    def open_relative(
+        self,
+        parent_handle: int,
+        name: str,
+        *,
+        desired_access: int,
+        is_directory: bool,
+        allow_reparse: bool,
+    ) -> int:
+        del desired_access
+        parent_id = self.handles[parent_handle]
+        file_id = self._children(parent_id)[name]
+        if self.open_relative_hook is not None:
+            file_id = self.open_relative_hook(parent_id, name, file_id)
+        node = self.nodes[file_id]
+        directory = str(node["kind"]) in {"directory", "directory-link"}
+        assert directory is is_directory
+        if node["reparse"] is not None and not allow_reparse:
+            raise ValueError("fake no-follow open rejected a reparse point")
+        assert allow_reparse is (node["reparse"] is not None)
+        return self._new_handle(file_id)
+
+    def query_reparse_point(
+        self,
+        handle: int,
+    ) -> windows_fs_module.WindowsReparsePoint:
+        point = self.nodes[self.handles[handle]]["reparse"]
+        assert isinstance(point, windows_fs_module.WindowsReparsePoint)
+        if self.query_reparse_hook is not None:
+            return self.query_reparse_hook(point)
+        return point
+
+    def read(self, handle: int, size: int) -> bytes:
+        node = self.nodes[self.handles[handle]]
+        data = node["data"]
+        assert isinstance(data, bytes)
+        offset = self.offsets[handle]
+        block = data[offset : offset + size]
+        self.offsets[handle] += len(block)
+        return block
+
+
+def _open_fake_windows_resolution(
+    api: _FakeWindowsSourceApi,
+    relative: str,
+):
+    selected, authority, root_identity = (
+        contained_source_module._open_windows_pinned_repository_root(
+            Path(r"C:\repo"),
+            api=api,
+        )
+    )
+    scan = source_fingerprint_module._scan_pinned_windows_repository(
+        selected,
+        authority.handle,
+        excluded=(),
+        collect_entries=True,
+    )
+    record = next(entry for entry in scan.entries if entry.relative == relative)
+    binding = contained_source_module._open_windows_resolution_at(
+        Path(r"C:\repo"),
+        authority,
+        tuple(relative.split("/")),
+        expected_root_identity=root_identity,
+        expected_final_identity=source_fingerprint_module._entry_version_identity(
+            record.metadata
+        ),
+        allow_stable_unresolved=True,
+        api=selected,
+    )
+    return authority, binding
+
+
+def _fake_windows_resolution_handoff_case(
+    case: str,
+) -> tuple[
+    _FakeWindowsSourceApi,
+    object,
+    tuple[object, ...],
+    tuple[object, ...],
+]:
+    api = _FakeWindowsSourceApi()
+    if case == "regular":
+        api.add_file(api.root_id, "current.py", b"VALUE = 1\n")
+    elif case == "link-loop":
+        api.add_symlink(api.root_id, "current.py", "current.py")
+    elif case == "directory":
+        api.add_symlink(api.root_id, "current.py", ".", directory=True)
+    elif case == "missing":
+        api.add_symlink(api.root_id, "current.py", "missing.py")
+    else:  # pragma: no cover - test parameter invariant
+        raise AssertionError(case)
+    selected, authority, root_identity = (
+        contained_source_module._open_windows_pinned_repository_root(
+            Path(r"C:\repo"),
+            api=api,
+        )
+    )
+    scan = source_fingerprint_module._scan_pinned_windows_repository(
+        selected,
+        authority.handle,
+        excluded=(),
+        collect_entries=True,
+    )
+    record = scan.entries[0]
+    if case == "missing":
+        del api._children(api.root_id)["current.py"]
+    return (
+        api,
+        authority,
+        root_identity,
+        source_fingerprint_module._entry_version_identity(record.metadata),
+    )
+
+
+def _opcode_offset(
+    function,
+    *,
+    source_text: str,
+    opname: str,
+    argval: object | None = None,
+    occurrence: str = "last",
+) -> int:
+    lines, first_line = inspect.getsourcelines(function)
+    matching_lines = [
+        first_line + index for index, line in enumerate(lines) if source_text in line
+    ]
+    assert matching_lines
+    target_line = matching_lines[-1] if occurrence == "last" else matching_lines[0]
+    current_line = None
+    matches: list[int] = []
+    for instruction in dis.get_instructions(function):
+        if instruction.starts_line is not None:
+            current_line = instruction.starts_line
+        if (
+            current_line == target_line
+            and instruction.opname == opname
+            and (argval is None or instruction.argval == argval)
+        ):
+            matches.append(instruction.offset)
+    assert matches
+    return matches[-1] if occurrence == "last" else matches[0]
 
 
 def test_fingerprint_changes_with_source_content_and_path(tmp_path):
@@ -46,6 +1108,1422 @@ def test_fingerprint_changes_with_source_content_and_path(tmp_path):
     source.rename(tmp_path / "renamed.py")
     changed_path = fingerprint_repository(tmp_path)
     assert changed_path.value != changed_content.value
+
+
+def test_v2_fingerprint_is_canonical_and_deterministic(tmp_path: Path) -> None:
+    (tmp_path / "module.py").write_bytes(b"VALUE = 1\n")
+
+    first = fingerprint_repository(tmp_path)
+    second = fingerprint_repository(tmp_path)
+
+    assert SOURCE_FINGERPRINT_VERSION == 2
+    assert first == second
+    assert first.value.startswith("sha256-v2:")
+    assert is_secure_source_fingerprint_v2(first.value)
+    assert source_fingerprint_version(first.value) == 2
+
+
+def test_windows_fake_regular_tree_matches_posix_v1_and_v2(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "package"
+    package.mkdir()
+    (tmp_path / "module.py").write_bytes(b"VALUE = 1\n")
+    (package / "nested.py").write_bytes(b"NESTED = 1\n")
+    expected_v1 = fingerprint_repository_v1_for_diagnostics(tmp_path)
+    expected_v2 = fingerprint_repository(tmp_path)
+
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "module.py", b"VALUE = 1\n")
+    fake_package = api.add_directory(api.root_id, "package")
+    api.add_file(fake_package, "nested.py", b"NESTED = 1\n")
+
+    observed_v1 = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=1,
+        api=api,
+    )
+    observed_v2 = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+    )
+
+    assert observed_v1 == expected_v1
+    assert observed_v2 == expected_v2
+    assert api.handles == {}
+    assert set(api.created_paths) == {"C:\\"}
+
+
+def test_windows_reparse_parser_is_bounded_and_exact() -> None:
+    substitute = r"target.py".encode("utf-16-le")
+    printable = r"target.py".encode("utf-16-le")
+    path_buffer = substitute + printable
+    data_length = 12 + len(path_buffer)
+    payload = b"".join(
+        (
+            windows_fs_module.IO_REPARSE_TAG_SYMLINK.to_bytes(4, "little"),
+            data_length.to_bytes(2, "little"),
+            b"\0\0",
+            (0).to_bytes(2, "little"),
+            len(substitute).to_bytes(2, "little"),
+            len(substitute).to_bytes(2, "little"),
+            len(printable).to_bytes(2, "little"),
+            windows_fs_module.SYMLINK_FLAG_RELATIVE.to_bytes(4, "little"),
+            path_buffer,
+        )
+    )
+
+    assert windows_fs_module.parse_windows_reparse_data(payload) == (
+        windows_fs_module.WindowsReparsePoint(
+            tag=windows_fs_module.IO_REPARSE_TAG_SYMLINK,
+            substitute_name="target.py",
+            print_name="target.py",
+            flags=windows_fs_module.SYMLINK_FLAG_RELATIVE,
+        )
+    )
+    with pytest.raises(RuntimeError, match="out of bounds"):
+        windows_fs_module.parse_windows_reparse_data(
+            payload[:10] + (0xFFFE).to_bytes(2, "little") + payload[12:]
+        )
+
+
+def test_windows_fake_public_contained_read_and_hash_close_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "target.py", b"VALUE = 1\n")
+    api.add_symlink(api.root_id, "current.py", "target.py")
+    monkeypatch.setattr(contained_source_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        contained_source_module,
+        "_windows_kernel_api",
+        lambda: api,
+    )
+    monkeypatch.setattr(
+        contained_source_module,
+        "_shared_windows_require_source_api",
+        lambda _api: None,
+    )
+
+    contained_source_module.validate_repository_file(
+        r"C:\repo",
+        "current.py",
+    )
+    assert (
+        contained_source_module.read_repository_file(
+            r"C:\repo",
+            "current.py",
+            max_bytes=64,
+        )
+        == b"VALUE = 1\n"
+    )
+    digest = hashlib.sha256()
+    contained_source_module.update_repository_file_hash(
+        r"C:\repo",
+        "current.py",
+        digest,
+    )
+
+    assert digest.hexdigest() == hashlib.sha256(b"VALUE = 1\n").hexdigest()
+    assert api.handles == {}
+
+
+def test_windows_fake_relative_symlink_matches_posix_v1_and_v2(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "target.py").write_bytes(b"VALUE = 1\n")
+    try:
+        (tmp_path / "current.py").symlink_to("target.py")
+    except OSError as exc:  # pragma: no cover - platform capability
+        pytest.skip(f"symlink parity fixture is unavailable: {exc}")
+    expected_v1 = fingerprint_repository_v1_for_diagnostics(tmp_path)
+    expected_v2 = fingerprint_repository(tmp_path)
+
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "target.py", b"VALUE = 1\n")
+    api.add_symlink(api.root_id, "current.py", "target.py")
+
+    assert (
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=1,
+            api=api,
+        )
+        == expected_v1
+    )
+    assert (
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+        == expected_v2
+    )
+    assert api.handles == {}
+
+
+def test_windows_fake_excludes_contained_directory_and_root_links() -> None:
+    api = _FakeWindowsSourceApi()
+    package = api.add_directory(api.root_id, "package")
+    api.add_file(package, "module.py", b"VALUE = 1\n")
+    baseline_v1 = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=1,
+        api=api,
+    )
+    baseline_v2 = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+    )
+    api.add_symlink(
+        api.root_id,
+        "package-link",
+        "package",
+        directory=True,
+    )
+    api.add_symlink(api.root_id, "root-link", ".", directory=True)
+
+    assert (
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=1,
+            api=api,
+        )
+        == baseline_v1
+    )
+    assert (
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+        == baseline_v2
+    )
+    assert api.handles == {}
+
+
+def test_windows_fake_accepts_absolute_contained_symlink() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "target.py", b"VALUE = 1\n")
+    api.add_symlink(
+        api.root_id,
+        "current.py",
+        r"C:\repo\target.py",
+        absolute=True,
+        substitute=r"\??\C:\repo\target.py",
+    )
+
+    observed = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+    )
+
+    assert observed.file_count == 2
+    assert observed.value.startswith("sha256-v2:")
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize(
+    "target,absolute,substitute",
+    [
+        (r"..\outside.py", False, None),
+        (r"C:\outside.py", True, r"\??\C:\outside.py"),
+    ],
+)
+def test_windows_fake_rejects_outside_symlink_without_handle_leak(
+    target: str,
+    absolute: bool,
+    substitute: str | None,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_symlink(
+        api.root_id,
+        "current.py",
+        target,
+        absolute=absolute,
+        substitute=substitute,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert api.handles == {}
+
+
+def test_windows_fake_broken_link_preserves_v1_link_only_semantics() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_symlink(api.root_id, "link.py", "missing.py")
+
+    legacy = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=1,
+        api=api,
+    )
+    current = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+    )
+
+    assert legacy.value == _legacy_link_only_digest(b"link.py", b"missing.py")
+    assert legacy.file_count == current.file_count == 1
+    assert current.value != legacy.value
+    assert api.handles == {}
+
+
+def test_windows_fake_rejects_junction_or_unknown_reparse() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_unknown_reparse(api.root_id, "unsafe")
+
+    with pytest.raises(RepositoryChangedError, match="repository changed"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert api.handles == {}
+
+
+def test_windows_fake_rejects_zero_128_bit_entry_identity() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    iter_directory = api.iter_directory
+
+    def zero_identity(handle: int):
+        for entry in iter_directory(handle):
+            yield windows_fs_module.WindowsDirectoryEntry(
+                name=entry.name,
+                file_id=0,
+                attributes=entry.attributes,
+                file_id_128=b"\0" * 16,
+                reparse_tag=entry.reparse_tag,
+            )
+
+    api.iter_directory = zero_identity  # type: ignore[method-assign]
+
+    with pytest.raises(RepositoryChangedError, match="repository changed"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert api.handles == {}
+
+
+def test_windows_fake_rejects_root_a_to_b_to_a_rebind() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 'owned'\n")
+    foreign = api.add_directory()
+    api.add_file(foreign, "source.py", b"VALUE = 'foreign'\n")
+    injected = False
+
+    def reversible_swap(parent: bytes, name: str, original: bytes) -> bytes:
+        nonlocal injected
+        if parent == api.volume_id and name == "repo" and not injected:
+            injected = True
+            return foreign
+        return original
+
+    api.open_relative_hook = reversible_swap
+
+    with pytest.raises(RepositoryChangedError, match="repository changed"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert injected
+    assert api.handles == {}
+
+
+def test_windows_fake_authority_rejects_late_root_a_to_b_to_a_rebind() -> None:
+    api = _FakeWindowsSourceApi()
+    foreign = api.add_directory()
+    authority = windows_fs_module.open_lexical_directory_authority(
+        r"C:\repo",
+        api=api,
+    )
+    iter_directory = api.iter_directory
+    injected = False
+
+    def reversible_rebind(handle: int):
+        nonlocal injected
+        if api.handles[handle] == api.volume_id and not injected:
+            injected = True
+            yield windows_fs_module.WindowsDirectoryEntry(
+                name="repo",
+                file_id=int.from_bytes(foreign[:8], "little"),
+                attributes=windows_fs_module.FILE_ATTRIBUTE_DIRECTORY,
+                file_id_128=foreign,
+            )
+            return
+        yield from iter_directory(handle)
+
+    api.iter_directory = reversible_rebind  # type: ignore[method-assign]
+    try:
+        with pytest.raises(RuntimeError, match="binding changed"):
+            authority.verify()
+    finally:
+        authority.close()
+
+    assert injected
+    assert api.handles == {}
+
+
+def test_windows_fake_rejects_walker_to_open_foreign_replacement() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 'owned'\n")
+    foreign = api.add_file(api.root_id, ".foreign", b"VALUE = 'foreign'\n")
+    injected = False
+
+    def substitute_open(parent: bytes, name: str, original: bytes) -> bytes:
+        nonlocal injected
+        if parent == api.root_id and name == "source.py" and not injected:
+            injected = True
+            return foreign
+        return original
+
+    api.open_relative_hook = substitute_open
+
+    with pytest.raises(RepositoryChangedError, match="repository changed"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert injected
+    assert api.handles == {}
+
+
+def test_windows_fake_lexical_root_rejects_intermediate_reparse() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_symlink(
+        api.volume_id,
+        "alias",
+        "repo",
+        directory=True,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="repository changed"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\alias\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert api.handles == {}
+
+
+def test_windows_fake_baseexception_during_reparse_query_closes_handles() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_symlink(api.root_id, "current.py", "missing.py")
+
+    def interrupt(_point):
+        raise KeyboardInterrupt("injected reparse interruption")
+
+    api.query_reparse_hook = interrupt
+
+    with pytest.raises(KeyboardInterrupt, match="injected"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert api.handles == {}
+
+
+def test_windows_fake_scan_eio_keeps_primary_and_partial_handle_owner() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_symlink(api.root_id, "current.py", "missing.py")
+    interruption = SystemExit("injected Windows scan failure")
+    real_query = api.query_reparse_point
+    real_close = api.close
+    failed = 0
+
+    def interrupt_query(handle: int):
+        nonlocal failed
+        failed = handle
+        raise interruption
+
+    def persistent_close(handle: int) -> None:
+        if handle == failed:
+            raise OSError(errno.EIO, "injected Windows scan close EIO")
+        real_close(handle)
+
+    api.query_reparse_point = interrupt_query  # type: ignore[method-assign]
+    api.close = persistent_close  # type: ignore[method-assign]
+
+    with pytest.raises(SystemExit) as caught:
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert caught.value is interruption
+    cleanup_owner = caught.value.source_cleanup_owner
+    assert not cleanup_owner.closed
+    assert failed in api.handles
+
+    api.query_reparse_point = real_query  # type: ignore[method-assign]
+    api.close = real_close  # type: ignore[method-assign]
+    cleanup_owner.close()
+    assert cleanup_owner.closed
+    assert api.handles == {}
+
+
+def test_windows_resolution_construction_eio_keeps_primary_and_retry_owner() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_symlink(api.root_id, "current.py", "missing.py")
+    selected, authority, root_identity = (
+        contained_source_module._open_windows_pinned_repository_root(
+            Path(r"C:\repo"),
+            api=api,
+        )
+    )
+    scan = source_fingerprint_module._scan_pinned_windows_repository(
+        selected,
+        authority.handle,
+        excluded=(),
+        collect_entries=True,
+    )
+    record = scan.entries[0]
+    real_query = api.query_reparse_point
+    real_close = api.close
+    interruption = SystemExit("injected Windows resolution failure")
+    failed = 0
+
+    def interrupt_query(handle: int):
+        nonlocal failed
+        failed = handle
+        raise interruption
+
+    def persistent_close(handle: int) -> None:
+        if handle == failed:
+            raise OSError(errno.EIO, "injected Windows resolution close EIO")
+        real_close(handle)
+
+    api.query_reparse_point = interrupt_query  # type: ignore[method-assign]
+    api.close = persistent_close  # type: ignore[method-assign]
+
+    with pytest.raises(SystemExit) as caught:
+        contained_source_module._open_windows_resolution_at(
+            Path(r"C:\repo"),
+            authority,
+            ("current.py",),
+            expected_root_identity=root_identity,
+            expected_final_identity=(
+                source_fingerprint_module._entry_version_identity(record.metadata)
+            ),
+            allow_stable_unresolved=True,
+            api=selected,
+        )
+
+    assert caught.value is interruption
+    cleanup_owner = caught.value.source_cleanup_owner
+    assert not cleanup_owner.closed
+    assert failed in api.handles
+
+    api.query_reparse_point = real_query  # type: ignore[method-assign]
+    api.close = real_close  # type: ignore[method-assign]
+    cleanup_owner.close()
+    authority.close()
+    assert cleanup_owner.closed
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize(
+    ("timing", "interruption"),
+    [
+        pytest.param(
+            "before",
+            KeyboardInterrupt("injected before resolution HANDLE close"),
+            id="before-close",
+        ),
+        pytest.param(
+            "after",
+            SystemExit("injected after resolution HANDLE close"),
+            id="after-close",
+        ),
+    ],
+)
+def test_windows_fake_resolution_close_finishes_chain_before_cancellation(
+    timing: str,
+    interruption: BaseException,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    authority, binding = _open_fake_windows_resolution(api, "source.py")
+    targets = set(binding.handles)
+    real_close = api.close
+    injected = False
+    seen: set[int] = set()
+
+    def interrupt_one_close(handle: int) -> None:
+        nonlocal injected
+        if handle in targets:
+            seen.add(handle)
+            if not injected:
+                injected = True
+                if timing == "before":
+                    raise interruption
+                real_close(handle)
+                raise interruption
+        real_close(handle)
+
+    api.close = interrupt_one_close  # type: ignore[method-assign]
+    with pytest.raises(type(interruption)) as caught:
+        binding.close()
+
+    assert caught.value is interruption
+    assert injected
+    assert binding.closed
+    assert binding.handles == []
+    assert targets <= seen
+    assert targets.isdisjoint(api.handles)
+
+    api.close = real_close  # type: ignore[method-assign]
+    authority.close()
+    assert api.handles == {}
+
+
+def test_windows_fake_resolution_close_persistent_eio_retains_retry_owner() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    authority, binding = _open_fake_windows_resolution(api, "source.py")
+    targets = tuple(binding.handles)
+    failed = targets[-1]
+    real_close = api.close
+
+    def persistent_eio(handle: int) -> None:
+        if handle == failed:
+            raise OSError(errno.EIO, "injected resolution HANDLE EIO")
+        real_close(handle)
+
+    api.close = persistent_eio  # type: ignore[method-assign]
+    with pytest.raises(OSError, match="resolution HANDLE EIO"):
+        binding.close()
+
+    assert not binding.closed
+    assert binding.handles == [failed]
+    assert set(api.handles) == {failed, *authority.handles}
+    with pytest.raises(ValueError, match="closed"):
+        binding.verify()
+
+    api.close = real_close  # type: ignore[method-assign]
+    binding.close()
+    assert binding.closed
+    authority.close()
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize("case", ["regular", "link-loop", "directory", "missing"])
+@pytest.mark.parametrize("timing", ["before-store", "after-store"])
+def test_windows_resolution_binding_slot_store_cancellation_closes_every_branch(
+    case: str,
+    timing: str,
+) -> None:
+    api, authority, root_identity, expected_identity = (
+        _fake_windows_resolution_handoff_case(case)
+    )
+    interruption = KeyboardInterrupt(f"injected {case} {timing}")
+
+    class InterruptingSlot(contained_source_module._SourceCleanupSlot):
+        def own(self, resource: object) -> None:
+            is_binding = isinstance(
+                resource,
+                contained_source_module._WindowsResolutionBinding,
+            )
+            if is_binding and timing == "before-store":
+                raise interruption
+            super().own(resource)
+            if is_binding and timing == "after-store":
+                raise interruption
+
+    slot = InterruptingSlot()
+    with pytest.raises(KeyboardInterrupt) as caught:
+        contained_source_module._open_windows_resolution_at(
+            Path(r"C:\repo"),
+            authority,
+            ("current.py",),
+            expected_root_identity=root_identity,
+            expected_final_identity=expected_identity,
+            allow_stable_unresolved=True,
+            api=api,
+            cleanup_slot=slot,
+        )
+
+    assert caught.value is interruption
+    assert slot.closed
+    assert set(api.handles) == set(authority.handles)
+    authority.close()
+    assert api.handles == {}
+
+
+def test_windows_resolution_return_cancellation_closes_slot_owner() -> None:
+    api, authority, root_identity, expected_identity = (
+        _fake_windows_resolution_handoff_case("regular")
+    )
+    method = contained_source_module._open_windows_resolution_at
+    target_offset = _opcode_offset(
+        method,
+        source_text="return binding",
+        opname="LOAD_FAST",
+        argval="binding",
+    )
+    interruption = SystemExit("injected resolution RETURN_VALUE cancellation")
+    injected = False
+    slot = contained_source_module._SourceCleanupSlot()
+
+    def interrupt_return(frame, event, _arg):
+        nonlocal injected
+        if (
+            not injected
+            and frame.f_code is method.__code__
+            and event == "opcode"
+            and frame.f_lasti == target_offset
+        ):
+            injected = True
+            raise interruption
+        frame.f_trace_opcodes = True
+        return interrupt_return
+
+    sys.settrace(interrupt_return)
+    try:
+        with pytest.raises(SystemExit) as caught:
+            method(
+                Path(r"C:\repo"),
+                authority,
+                ("current.py",),
+                expected_root_identity=root_identity,
+                expected_final_identity=expected_identity,
+                allow_stable_unresolved=True,
+                api=api,
+                cleanup_slot=slot,
+            )
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is interruption
+    assert injected
+    assert slot.closed
+    assert set(api.handles) == set(authority.handles)
+    authority.close()
+    assert api.handles == {}
+
+
+def test_windows_resolution_return_eio_retains_owner_without_double_close() -> None:
+    api, authority, root_identity, expected_identity = (
+        _fake_windows_resolution_handoff_case("regular")
+    )
+    method = contained_source_module._open_windows_resolution_at
+    target_offset = _opcode_offset(
+        method,
+        source_text="return binding",
+        opname="LOAD_FAST",
+        argval="binding",
+    )
+    interruption = KeyboardInterrupt("injected resolution return cancellation")
+    real_close = api.close
+    failed = 0
+    close_calls: dict[int, int] = {}
+    injected = False
+    armed = False
+    slot = contained_source_module._SourceCleanupSlot()
+
+    def persistent_close(handle: int) -> None:
+        nonlocal failed
+        if not armed:
+            real_close(handle)
+            return
+        close_calls[handle] = close_calls.get(handle, 0) + 1
+        if handle not in authority.handles and not failed:
+            failed = handle
+        if handle == failed:
+            raise OSError(errno.EIO, "injected resolution return close EIO")
+        real_close(handle)
+
+    def interrupt_return(frame, event, _arg):
+        nonlocal armed, injected
+        if (
+            not injected
+            and frame.f_code is method.__code__
+            and event == "opcode"
+            and frame.f_lasti == target_offset
+        ):
+            injected = True
+            armed = True
+            raise interruption
+        frame.f_trace_opcodes = True
+        return interrupt_return
+
+    api.close = persistent_close  # type: ignore[method-assign]
+    sys.settrace(interrupt_return)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            method(
+                Path(r"C:\repo"),
+                authority,
+                ("current.py",),
+                expected_root_identity=root_identity,
+                expected_final_identity=expected_identity,
+                allow_stable_unresolved=True,
+                api=api,
+                cleanup_slot=slot,
+            )
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is interruption
+    assert caught.value.source_cleanup_owner is slot
+    assert failed in api.handles
+    closed_once = {
+        handle
+        for handle, calls in close_calls.items()
+        if handle != failed and calls == 1
+    }
+    assert closed_once
+
+    api.close = real_close  # type: ignore[method-assign]
+    slot.close()
+    assert slot.closed
+    assert set(api.handles) == set(authority.handles)
+    assert all(close_calls[handle] == 1 for handle in closed_once)
+    authority.close()
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize(
+    "interruption",
+    [
+        pytest.param(KeyboardInterrupt("after final resolution close"), id="keyboard"),
+        pytest.param(SystemExit("after final resolution close"), id="system-exit"),
+    ],
+)
+def test_windows_resolution_close_retry_publishes_closed_after_empty_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: BaseException,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    authority, binding = _open_fake_windows_resolution(api, "source.py")
+    real_close_handles = contained_source_module._close_windows_handles
+    injected = False
+
+    def close_then_interrupt(*args, **kwargs):
+        nonlocal injected
+        failure = real_close_handles(*args, **kwargs)
+        if not injected:
+            injected = True
+            raise interruption
+        return failure
+
+    monkeypatch.setattr(
+        contained_source_module,
+        "_close_windows_handles",
+        close_then_interrupt,
+    )
+    with pytest.raises(type(interruption)) as caught:
+        binding.close()
+
+    assert caught.value is interruption
+    assert binding.handles == []
+    assert not binding.closed
+
+    binding.close()
+    assert binding.closed
+    authority.close()
+    assert api.handles == {}
+
+
+def test_windows_fake_resolution_close_uses_stable_handle_cookie() -> None:
+    api = _FakeWindowsSourceApi()
+    file_id = api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    authority, binding = _open_fake_windows_resolution(api, "source.py")
+    api.nodes[file_id]["version"] = 2
+
+    binding.close()
+
+    assert binding.closed
+    authority.close()
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize(
+    ("timing", "interruption"),
+    [
+        pytest.param(
+            "before",
+            KeyboardInterrupt("injected before HANDLE close"),
+            id="before-close",
+        ),
+        pytest.param(
+            "after",
+            SystemExit("injected after HANDLE close"),
+            id="after-close",
+        ),
+    ],
+)
+def test_windows_fake_binding_close_finishes_handle_chain_before_cancellation(
+    timing: str,
+    interruption: BaseException,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    targets = set(api.handles)
+    real_close = api.close
+    calls = 0
+    injected = False
+    seen: set[int] = set()
+
+    def interrupt_one_close(handle: int) -> None:
+        nonlocal calls, injected
+        if handle in targets:
+            seen.add(handle)
+            calls += 1
+            if calls == 2 and not injected:
+                injected = True
+                if timing == "before":
+                    raise interruption
+                real_close(handle)
+                raise interruption
+        real_close(handle)
+
+    api.close = interrupt_one_close  # type: ignore[method-assign]
+    with pytest.raises(type(interruption)) as caught:
+        binding.close()
+
+    assert caught.value is interruption
+    assert injected
+    assert binding.closed
+    assert targets <= seen
+    assert api.handles == {}
+
+
+def test_windows_fake_binding_close_commits_interrupted_owner_pop() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    authority = binding._windows_authority
+    assert authority is not None
+    interruption = SystemExit("injected after HANDLE owner pop")
+    authority.handles = _InterruptAfterPopList(
+        authority.handles,
+        interruption,
+    )
+
+    with pytest.raises(SystemExit) as caught:
+        binding.close()
+
+    assert caught.value is interruption
+    assert binding.closed
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize("timing", ["before-root-store", "after-root-store", "return"])
+def test_windows_repository_binding_handoff_cancellation_closes_slot_owner(
+    timing: str,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    method = source_fingerprint_module._fingerprint_windows_repository
+    store_offset = _opcode_offset(
+        method,
+        source_text="root_authority = None",
+        opname="STORE_FAST",
+        argval="root_authority",
+    )
+    instructions = list(dis.get_instructions(method))
+    store_index = next(
+        index
+        for index, instruction in enumerate(instructions)
+        if instruction.offset == store_offset
+    )
+    offsets = {
+        "before-root-store": store_offset,
+        "after-root-store": instructions[store_index + 1].offset,
+        "return": _opcode_offset(
+            method,
+            source_text="return binding",
+            opname="LOAD_FAST",
+            argval="binding",
+        ),
+    }
+    target_offset = offsets[timing]
+    interruption = SystemExit(f"injected repository {timing} cancellation")
+    injected = False
+    owner = SourceBindingCleanupOwner()
+
+    def interrupt_handoff(frame, event, _arg):
+        nonlocal injected
+        if (
+            not injected
+            and frame.f_code is method.__code__
+            and event == "opcode"
+            and frame.f_lasti == target_offset
+        ):
+            injected = True
+            raise interruption
+        frame.f_trace_opcodes = True
+        return interrupt_handoff
+
+    sys.settrace(interrupt_handoff)
+    try:
+        with pytest.raises(SystemExit) as caught:
+            method(
+                r"C:\repo",
+                exclude_roots=(),
+                version=SOURCE_FINGERPRINT_VERSION,
+                api=api,
+                retain_binding=True,
+                source_owner=owner.retain,
+            )
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is interruption
+    assert injected
+    assert owner.pending_sources == ()
+    owner.close()
+    assert owner.closed
+    assert api.handles == {}
+
+
+def test_windows_repository_return_eio_attaches_retry_owner_without_double_close() -> (
+    None
+):
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    method = source_fingerprint_module._fingerprint_windows_repository
+    target_offset = _opcode_offset(
+        method,
+        source_text="return binding",
+        opname="LOAD_FAST",
+        argval="binding",
+    )
+    interruption = KeyboardInterrupt("injected repository return cancellation")
+    owner = SourceBindingCleanupOwner()
+    real_close = api.close
+    failed = 0
+    close_calls: dict[int, int] = {}
+    injected = False
+    armed = False
+
+    def persistent_close(handle: int) -> None:
+        nonlocal failed
+        if not armed:
+            real_close(handle)
+            return
+        close_calls[handle] = close_calls.get(handle, 0) + 1
+        if not failed:
+            failed = handle
+        if handle == failed:
+            raise OSError(errno.EIO, "injected repository return close EIO")
+        real_close(handle)
+
+    def interrupt_return(frame, event, _arg):
+        nonlocal armed, injected
+        if (
+            not injected
+            and frame.f_code is method.__code__
+            and event == "opcode"
+            and frame.f_lasti == target_offset
+        ):
+            injected = True
+            armed = True
+            raise interruption
+        frame.f_trace_opcodes = True
+        return interrupt_return
+
+    api.close = persistent_close  # type: ignore[method-assign]
+    sys.settrace(interrupt_return)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            method(
+                r"C:\repo",
+                exclude_roots=(),
+                version=SOURCE_FINGERPRINT_VERSION,
+                api=api,
+                retain_binding=True,
+                source_owner=owner.retain,
+            )
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is interruption
+    retry_owner = caught.value.source_cleanup_owner
+    assert not retry_owner.closed
+    assert failed in api.handles
+    closed_once = {
+        handle
+        for handle, calls in close_calls.items()
+        if handle != failed and calls == 1
+    }
+    assert closed_once
+
+    api.close = real_close  # type: ignore[method-assign]
+    owner.close()
+    assert owner.closed
+    assert api.handles == {}
+    assert all(close_calls[handle] == 1 for handle in closed_once)
+
+
+@pytest.mark.parametrize(
+    "interruption",
+    [
+        pytest.param(KeyboardInterrupt("after final authority close"), id="keyboard"),
+        pytest.param(SystemExit("after final authority close"), id="system-exit"),
+    ],
+)
+def test_windows_binding_close_retry_converges_after_empty_authority_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: BaseException,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    authority = binding._windows_authority
+    assert authority is not None
+    real_close_handles = windows_fs_module._close_windows_handles
+    injected = False
+
+    def close_then_interrupt(*args, **kwargs):
+        nonlocal injected
+        failure = real_close_handles(*args, **kwargs)
+        if not injected:
+            injected = True
+            raise interruption
+        return failure
+
+    monkeypatch.setattr(
+        windows_fs_module,
+        "_close_windows_handles",
+        close_then_interrupt,
+    )
+    with pytest.raises(type(interruption)) as caught:
+        binding.close()
+
+    assert caught.value is interruption
+    assert authority.handles == []
+    assert not authority.closed
+    assert not binding.closed
+
+    binding.close()
+    assert authority.closed
+    assert binding.closed
+    assert api.handles == {}
+
+
+def test_windows_fake_binding_close_persistent_eio_keeps_owner_and_closes_rest() -> (
+    None
+):
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    authority = binding._windows_authority
+    assert authority is not None
+    targets = tuple(authority.handles)
+    failed = targets[-1]
+    real_close = api.close
+
+    def fail_one_handle(handle: int) -> None:
+        if handle == failed:
+            raise OSError(errno.EIO, "injected persistent HANDLE EIO")
+        real_close(handle)
+
+    api.close = fail_one_handle  # type: ignore[method-assign]
+    with pytest.raises(OSError, match="persistent HANDLE EIO"):
+        binding.close()
+
+    assert not binding.closed
+    assert not binding.usable
+    assert authority.handles == [failed]
+    assert set(api.handles) == {failed}
+
+    api.close = real_close  # type: ignore[method-assign]
+    binding.close()
+    assert binding.closed
+    assert api.handles == {}
+
+
+def test_windows_fake_binding_close_preflight_eio_keeps_owner_and_closes_rest() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    authority = binding._windows_authority
+    assert authority is not None
+    targets = tuple(authority.handles)
+    failed = targets[-1]
+    real_metadata = api.metadata
+
+    def fail_one_handle(handle: int):
+        if handle == failed:
+            raise OSError(errno.EIO, "injected persistent HANDLE metadata EIO")
+        return real_metadata(handle)
+
+    api.metadata = fail_one_handle  # type: ignore[method-assign]
+    with pytest.raises(OSError, match="persistent HANDLE metadata EIO"):
+        binding.close()
+
+    assert not binding.closed
+    assert not binding.usable
+    assert authority.handles == [failed]
+    assert set(api.handles) == {failed}
+
+    api.metadata = real_metadata  # type: ignore[method-assign]
+    binding.close()
+    assert binding.closed
+    assert api.handles == {}
+
+
+def test_windows_fake_binding_close_uses_stable_handle_identity() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    api.nodes[api.root_id]["version"] = 2
+
+    binding.close()
+
+    assert binding.closed
+    assert api.handles == {}
+
+
+def test_windows_fake_binding_close_does_not_close_reused_handle() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    authority = binding._windows_authority
+    assert authority is not None
+    reused = authority.handles[-1]
+    replacement_id = api.add_directory()
+    api.close(reused)
+    api.handles[reused] = replacement_id
+    api.offsets[reused] = 0
+
+    with pytest.raises(RuntimeError, match="ownership changed"):
+        binding.close()
+
+    assert binding.closed
+    assert api.handles == {reused: replacement_id}
+    api.close(reused)
+
+
+def test_windows_kernel_close_checks_closehandle_result() -> None:
+    class CloseFailureApi(windows_fs_module.WindowsKernelApi):
+        def _raise_last_error(self, context: str) -> None:
+            raise OSError(errno.EIO, context)
+
+    api = object.__new__(CloseFailureApi)
+    api.kernel32 = SimpleNamespace(CloseHandle=lambda _handle: 0)
+    api.invalid_handle = -1
+
+    with pytest.raises(OSError, match="could not close"):
+        api.close(41)
+
+
+@pytest.mark.parametrize(
+    "interruption",
+    [
+        pytest.param(KeyboardInterrupt("Windows root interrupted"), id="keyboard"),
+        pytest.param(SystemExit("Windows root exited"), id="system-exit"),
+    ],
+)
+def test_windows_fake_root_open_failure_closes_owned_handles(
+    interruption: BaseException,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    real_metadata = api.metadata
+    calls = 0
+
+    def interrupt_after_child_open(handle: int):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise interruption
+        return real_metadata(handle)
+
+    api.metadata = interrupt_after_child_open  # type: ignore[method-assign]
+    with pytest.raises(type(interruption)) as caught:
+        windows_fs_module.open_lexical_directory_authority(
+            r"C:\repo",
+            api=api,
+        )
+
+    assert caught.value is interruption
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize(
+    "interruption",
+    [
+        pytest.param(KeyboardInterrupt("after direct authority close"), id="keyboard"),
+        pytest.param(SystemExit("after direct authority close"), id="system-exit"),
+    ],
+)
+def test_windows_authority_close_retry_converges_after_last_handle_removed(
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: BaseException,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    authority = windows_fs_module.open_lexical_directory_authority(
+        r"C:\repo",
+        api=api,
+    )
+    real_close_handles = windows_fs_module._close_windows_handles
+    injected = False
+
+    def close_then_interrupt(*args, **kwargs):
+        nonlocal injected
+        failure = real_close_handles(*args, **kwargs)
+        if not injected:
+            injected = True
+            raise interruption
+        return failure
+
+    monkeypatch.setattr(
+        windows_fs_module,
+        "_close_windows_handles",
+        close_then_interrupt,
+    )
+    with pytest.raises(type(interruption)) as caught:
+        authority.close()
+
+    assert caught.value is interruption
+    assert authority.handles == []
+    assert not authority.closed
+
+    authority.close()
+    assert authority.closed
+    assert api.handles == {}
+
+
+def test_windows_root_construction_eio_keeps_preinstalled_retry_owner() -> None:
+    api = _FakeWindowsSourceApi()
+    owner = SourceBindingCleanupOwner()
+    real_metadata = api.metadata
+    real_close = api.close
+    interruption = KeyboardInterrupt("injected Windows root construction failure")
+    metadata_calls = 0
+    failed = 0
+
+    def interrupt_metadata(handle: int):
+        nonlocal metadata_calls
+        metadata_calls += 1
+        if metadata_calls == 3:
+            raise interruption
+        return real_metadata(handle)
+
+    def persistent_close(handle: int) -> None:
+        nonlocal failed
+        if not failed:
+            failed = handle
+        if handle == failed:
+            raise OSError(errno.EIO, "injected Windows construction close EIO")
+        real_close(handle)
+
+    api.metadata = interrupt_metadata  # type: ignore[method-assign]
+    api.close = persistent_close  # type: ignore[method-assign]
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+            retain_binding=True,
+            source_owner=owner.retain,
+        )
+
+    assert caught.value is interruption
+    assert not owner.closed
+    assert failed in api.handles
+
+    api.metadata = real_metadata  # type: ignore[method-assign]
+    api.close = real_close  # type: ignore[method-assign]
+    owner.close()
+    assert owner.closed
+    assert api.handles == {}
 
 
 def test_fingerprint_ignores_generated_and_explicit_artifact_roots(tmp_path):
@@ -110,10 +2588,283 @@ def test_fingerprint_preserves_v1_link_only_terminal_digest(
         target = "link.py"
     link.symlink_to(target)
 
-    observed = fingerprint_repository(repo)
+    observed = fingerprint_repository_v1_for_diagnostics(repo)
+    current = fingerprint_repository(repo)
 
     assert observed.file_count == 1
     assert observed.value == _legacy_link_only_digest(b"link.py", os.fsencode(target))
+    assert is_legacy_source_fingerprint_v1(observed.value)
+    assert source_fingerprint_version(observed.value) == 1
+    assert current.value != observed.value
+
+
+def test_v2_framing_separates_a_v1_structural_collision(tmp_path: Path) -> None:
+    state_a = tmp_path / "state-a"
+    state_b = tmp_path / "state-b"
+    state_a.mkdir()
+    state_b.mkdir()
+    (state_a / "a").write_bytes(b"")
+    (state_a / "b").write_bytes(b"X\0F\0c\0Y")
+    (state_b / "a").write_bytes(b"\0F\0b\0X")
+    (state_b / "c").write_bytes(b"Y")
+
+    legacy_a = fingerprint_repository_v1_for_diagnostics(state_a)
+    legacy_b = fingerprint_repository_v1_for_diagnostics(state_b)
+    current_a = fingerprint_repository(state_a)
+    current_b = fingerprint_repository(state_b)
+
+    assert legacy_a.file_count == legacy_b.file_count == 2
+    assert legacy_a.value == legacy_b.value
+    assert current_a.file_count == current_b.file_count == 2
+    assert current_a.value != current_b.value
+
+
+def test_fingerprint_rejects_reversible_root_swap_after_enumeration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    replacement = tmp_path / "replacement"
+    parked = tmp_path / "parked"
+    repo.mkdir()
+    replacement.mkdir()
+    (repo / "source.py").write_text("VALUE = 'owned'\n", encoding="utf-8")
+    (replacement / "source.py").write_text("VALUE = 'foreign'\n", encoding="utf-8")
+    real_resolve = source_fingerprint_module._resolved_repository_file_at
+    swapped = False
+
+    @contextmanager
+    def swap_root(root, descriptor, relative, **kwargs):
+        nonlocal swapped
+        if swapped:
+            with real_resolve(root, descriptor, relative, **kwargs) as binding:
+                yield binding
+            return
+        swapped = True
+        repo.rename(parked)
+        replacement.rename(repo)
+        try:
+            with real_resolve(root, descriptor, relative, **kwargs) as binding:
+                yield binding
+        finally:
+            repo.rename(replacement)
+            parked.rename(repo)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_resolved_repository_file_at",
+        swap_root,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
+        fingerprint_repository(repo)
+    assert (repo / "source.py").read_text(encoding="utf-8") == "VALUE = 'owned'\n"
+    assert (replacement / "source.py").read_text(encoding="utf-8") == (
+        "VALUE = 'foreign'\n"
+    )
+
+
+def test_fingerprint_never_resolves_replaceable_root_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    replacement = tmp_path / "replacement"
+    parked = tmp_path / "parked"
+    repo.mkdir()
+    replacement.mkdir()
+    (repo / "source.py").write_text("VALUE = 'owned'\n", encoding="utf-8")
+    (replacement / "source.py").write_text("VALUE = 'foreign'\n", encoding="utf-8")
+    expected = fingerprint_repository(repo)
+    real_resolve = Path.resolve
+    resolve_calls = 0
+
+    def redirect_during_resolve(path, *args, **kwargs):
+        nonlocal resolve_calls
+        resolve_calls += 1
+        repo.rename(parked)
+        replacement.rename(repo)
+        try:
+            return real_resolve(replacement, *args, **kwargs)
+        finally:
+            repo.rename(replacement)
+            parked.rename(repo)
+
+    monkeypatch.setattr(Path, "resolve", redirect_during_resolve)
+
+    assert fingerprint_repository(repo) == expected
+    assert resolve_calls == 0
+
+
+def test_fingerprint_rejects_symlink_repository_root(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    alias = tmp_path / "alias"
+    repo.mkdir()
+    (repo / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
+    try:
+        alias.symlink_to(repo, target_is_directory=True)
+    except OSError as exc:  # pragma: no cover - platform capability
+        pytest.skip(f"source fingerprint root test needs symlink support: {exc}")
+
+    with pytest.raises(RepositoryChangedError, match="repository changed"):
+        fingerprint_repository(alias)
+
+
+def test_scan_charges_wide_directory_before_sorting_all_names(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = 0
+
+    class WideDirectory:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return None
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            nonlocal observed
+            observed += 1
+            if observed > 4:  # pragma: no cover - proves eager scan regression
+                raise AssertionError("scanner consumed entries beyond its budget")
+            return SimpleNamespace(name=f"source-{observed}.py")
+
+    descriptor = os.open(tmp_path, source_fingerprint_module._directory_flags())
+    try:
+        monkeypatch.setattr(source_fingerprint_module, "_MAX_SOURCE_ENTRIES", 3)
+        monkeypatch.setattr(
+            source_fingerprint_module.os,
+            "scandir",
+            lambda _descriptor: WideDirectory(),
+        )
+
+        with pytest.raises(ValueError, match="entry limit"):
+            source_fingerprint_module._scan_pinned_repository(
+                descriptor,
+                excluded=(),
+                collect_entries=True,
+            )
+    finally:
+        os.close(descriptor)
+
+    assert observed == 4
+
+
+def test_fingerprint_scan_failure_closes_pinned_root_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    descriptor_root = Path("/proc/self/fd")
+    if not descriptor_root.is_dir():  # pragma: no cover - non-Linux host
+        pytest.skip("descriptor accounting needs /proc/self/fd")
+    (tmp_path / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
+    before = len(tuple(descriptor_root.iterdir()))
+
+    def fail_scan(*_args, **_kwargs):
+        raise ValueError("injected scan failure")
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        fail_scan,
+    )
+    for _ in range(32):
+        with pytest.raises(RepositoryChangedError, match="repository changed"):
+            fingerprint_repository(tmp_path)
+
+    after = len(tuple(descriptor_root.iterdir()))
+    assert after <= before + 1
+
+
+def test_fingerprint_rejects_reversible_intermediate_swap_after_enumeration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    package = repo / "package"
+    replacement = tmp_path / "replacement"
+    parked = tmp_path / "parked"
+    package.mkdir(parents=True)
+    replacement.mkdir()
+    (package / "source.py").write_text("VALUE = 'owned'\n", encoding="utf-8")
+    (replacement / "source.py").write_text("VALUE = 'foreign'\n", encoding="utf-8")
+    real_resolve = source_fingerprint_module._resolved_repository_file_at
+    swapped = False
+
+    @contextmanager
+    def swap_intermediate(root, descriptor, relative, **kwargs):
+        nonlocal swapped
+        if swapped or relative != "package/source.py":
+            with real_resolve(root, descriptor, relative, **kwargs) as binding:
+                yield binding
+            return
+        swapped = True
+        package.rename(parked)
+        replacement.rename(package)
+        try:
+            with real_resolve(root, descriptor, relative, **kwargs) as binding:
+                yield binding
+        finally:
+            package.rename(replacement)
+            parked.rename(package)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_resolved_repository_file_at",
+        swap_intermediate,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
+        fingerprint_repository(repo)
+    assert (package / "source.py").read_text(encoding="utf-8") == ("VALUE = 'owned'\n")
+    assert (replacement / "source.py").read_text(encoding="utf-8") == (
+        "VALUE = 'foreign'\n"
+    )
+
+
+def test_fingerprint_rejects_file_swap_in_walker_to_open_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.py"
+    foreign = tmp_path / ".foreign"
+    parked = tmp_path / ".parked"
+    source.write_text("VALUE = 'owned'\n", encoding="utf-8")
+    foreign.write_text("VALUE = 'foreign'\n", encoding="utf-8")
+    real_resolve = source_fingerprint_module._resolved_repository_file_at
+    swapped = False
+
+    @contextmanager
+    def swap_file(root, descriptor, relative, **kwargs):
+        nonlocal swapped
+        if swapped or relative != "source.py":
+            with real_resolve(root, descriptor, relative, **kwargs) as binding:
+                yield binding
+            return
+        swapped = True
+        source.rename(parked)
+        foreign.rename(source)
+        try:
+            with real_resolve(root, descriptor, relative, **kwargs) as binding:
+                yield binding
+        finally:
+            source.rename(foreign)
+            parked.rename(source)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_resolved_repository_file_at",
+        swap_file,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
+        fingerprint_repository(tmp_path)
+    assert source.read_text(encoding="utf-8") == "VALUE = 'owned'\n"
+    assert foreign.read_text(encoding="utf-8") == "VALUE = 'foreign'\n"
 
 
 def test_fingerprint_accepts_absolute_contained_symlink(tmp_path: Path) -> None:
@@ -128,13 +2879,147 @@ def test_fingerprint_accepts_absolute_contained_symlink(tmp_path: Path) -> None:
     assert observed.file_count == 2
 
 
-def test_fingerprint_rejects_source_symlink_outside_repository(tmp_path) -> None:
+def test_fingerprint_excludes_contained_directory_symlink_in_v1_and_v2(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    package = repo / "package"
+    package.mkdir(parents=True)
+    (package / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    link = repo / "package-link"
+    link.symlink_to("package", target_is_directory=True)
+
+    current_with_link = fingerprint_repository(repo)
+    legacy_with_link = fingerprint_repository_v1_for_diagnostics(repo)
+    link.unlink()
+
+    assert fingerprint_repository(repo) == current_with_link
+    assert fingerprint_repository_v1_for_diagnostics(repo) == legacy_with_link
+    assert current_with_link.file_count == legacy_with_link.file_count == 1
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_fingerprint_excludes_repository_root_directory_symlink_in_v1_and_v2(
+    tmp_path: Path,
+    absolute: bool,
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    (tmp_path / "outside.py").write_text("SECRET = 1\n")
-    (repo / "current.py").symlink_to("../outside.py")
+    (repo / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    link = repo / "root-link"
+    link.symlink_to(repo if absolute else ".", target_is_directory=True)
+
+    current_with_link = fingerprint_repository(repo)
+    legacy_with_link = fingerprint_repository_v1_for_diagnostics(repo)
+    link.unlink()
+
+    assert fingerprint_repository(repo) == current_with_link
+    assert fingerprint_repository_v1_for_diagnostics(repo) == legacy_with_link
+    assert current_with_link.file_count == legacy_with_link.file_count == 1
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_fingerprint_rejects_source_symlink_outside_repository(
+    tmp_path: Path,
+    absolute: bool,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("SECRET = 1\n")
+    (repo / "current.py").symlink_to(outside if absolute else "../outside.py")
 
     with pytest.raises(RepositoryChangedError, match="could not be read consistently"):
+        fingerprint_repository(repo)
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_fingerprint_rejects_directory_symlink_outside_repository(
+    tmp_path: Path,
+    absolute: bool,
+) -> None:
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo.mkdir()
+    outside.mkdir()
+    (repo / "outside-link").symlink_to(
+        outside if absolute else "../outside",
+        target_is_directory=True,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="could not be read consistently"):
+        fingerprint_repository(repo)
+
+
+def test_inventory_scan_never_follows_source_symlinks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("SECRET = 1\n", encoding="utf-8")
+    (repo / "current.py").symlink_to(outside)
+    descriptor = os.open(repo, source_fingerprint_module._directory_flags())
+    real_stat = os.stat
+
+    def reject_follow(path, *args, **kwargs):
+        if kwargs.get("dir_fd") is not None and kwargs.get("follow_symlinks", True):
+            raise AssertionError("inventory scan followed a source symlink")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(source_fingerprint_module.os, "stat", reject_follow)
+    try:
+        scan = source_fingerprint_module._scan_pinned_repository(
+            descriptor,
+            excluded=(),
+            collect_entries=True,
+        )
+    finally:
+        os.close(descriptor)
+
+    assert [entry.relative for entry in scan.entries] == ["current.py"]
+
+
+def test_fingerprint_rejects_link_to_directory_swap_before_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    directory = repo / "package"
+    repo.mkdir()
+    directory.mkdir()
+    (directory / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+    (repo / "target.py").write_text("VALUE = 1\n", encoding="utf-8")
+    link = repo / "current.py"
+    link.symlink_to("target.py")
+    real_resolve = source_fingerprint_module._resolved_repository_file_at
+    swapped = False
+
+    @contextmanager
+    def swap_to_directory(root, descriptor, relative, **kwargs):
+        nonlocal swapped
+        if swapped or relative != "current.py":
+            with real_resolve(root, descriptor, relative, **kwargs) as binding:
+                yield binding
+            return
+        swapped = True
+        link.unlink()
+        link.symlink_to("package", target_is_directory=True)
+        try:
+            with real_resolve(root, descriptor, relative, **kwargs) as binding:
+                yield binding
+        finally:
+            link.unlink()
+            link.symlink_to("target.py")
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_resolved_repository_file_at",
+        swap_to_directory,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
         fingerprint_repository(repo)
 
 
@@ -201,3 +3086,172 @@ def test_dirty_check_ignores_generated_dirs_but_detects_source_changes(tmp_path)
 
     source.write_text("VALUE = 2\n")
     assert repository_source_is_dirty(tmp_path) is True
+
+
+def test_dirty_check_never_resolves_replaceable_root_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    observed_command: list[str] = []
+
+    def reject_resolve(*_args, **_kwargs):
+        raise AssertionError("dirty check must keep the lexical repository root")
+
+    def clean_status(command, **_kwargs):
+        observed_command.extend(command)
+        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(Path, "resolve", reject_resolve)
+    monkeypatch.setattr(source_fingerprint_module.subprocess, "run", clean_status)
+
+    assert repository_source_is_dirty(repo) is False
+    assert observed_command[0:3] == ["git", "-C", str(repo)]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires real Windows HANDLEs")
+def test_windows_real_source_authority_abi_layout_node(tmp_path: Path) -> None:
+    import ctypes
+
+    api = windows_fs_module.windows_kernel_api()
+    assert ctypes.sizeof(api.FILE_ID_128) == 16
+    assert ctypes.sizeof(api.FILE_ID_INFO) == 24
+    assert api.FILE_ID_EXTD_DIR_INFO.FileId.offset == 72
+    assert api.FILE_ID_EXTD_DIR_INFO.FileName.offset == 88
+
+    handle = api.create_directory_handle(tmp_path)
+    reopened = 0
+    try:
+        metadata = api.metadata(handle)
+        assert windows_fs_module.windows_file_id_is_reliable(metadata.file_id_128)
+        reopened = api.open_by_extended_id(
+            handle,
+            metadata.file_id_128,
+            desired_access=(
+                windows_fs_module.FILE_LIST_DIRECTORY
+                | windows_fs_module.FILE_READ_ATTRIBUTES
+                | windows_fs_module.SYNCHRONIZE
+            ),
+            is_directory=True,
+        )
+        assert api.metadata(reopened).file_identity == metadata.file_identity
+    finally:
+        if reopened:
+            api.close(reopened)
+        api.close(handle)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires real Windows HANDLEs")
+def test_windows_real_source_v2_regular_and_contained_symlink_node(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    target = repo / "target.py"
+    target.write_bytes(b"VALUE = 1\n")
+    try:
+        (repo / "relative.py").symlink_to("target.py")
+        (repo / "absolute.py").symlink_to(target)
+    except OSError as exc:  # pragma: no cover - Windows policy dependent
+        pytest.skip(f"Windows symlink creation is unavailable: {exc}")
+
+    first = fingerprint_repository(repo)
+    second = fingerprint_repository(repo)
+    legacy = fingerprint_repository_v1_for_diagnostics(repo)
+
+    assert first == second
+    assert first.file_count == legacy.file_count == 3
+    assert first.value.startswith("sha256-v2:")
+    assert legacy.value.startswith("sha256:")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires real Windows HANDLEs")
+def test_windows_real_source_v2_rejects_outside_symlink_node(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_bytes(b"SECRET = 1\n")
+    try:
+        (repo / "current.py").symlink_to(outside)
+    except OSError as exc:  # pragma: no cover - Windows policy dependent
+        pytest.skip(f"Windows symlink creation is unavailable: {exc}")
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
+        fingerprint_repository(repo)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires real Windows HANDLEs")
+def test_windows_real_source_root_handle_blocks_reversible_swap_node(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_bytes(b"VALUE = 1\n")
+    parked = tmp_path / "parked"
+    scan = source_fingerprint_module._scan_pinned_windows_repository
+    attempted = False
+
+    def attempt_swap(*args, **kwargs):
+        nonlocal attempted
+        if not attempted:
+            attempted = True
+            with pytest.raises(OSError):
+                repo.rename(parked)
+        return scan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_windows_repository",
+        attempt_swap,
+    )
+
+    assert fingerprint_repository(repo).file_count == 1
+    assert attempted
+    assert repo.is_dir()
+    assert not parked.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires real Windows HANDLEs")
+def test_windows_real_source_failure_closes_all_handles_node(
+    tmp_path: Path,
+) -> None:
+    import ctypes
+    import ctypes.wintypes as wintypes
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_bytes(b"SECRET = 1\n")
+    try:
+        (repo / "current.py").symlink_to(outside)
+    except OSError as exc:  # pragma: no cover - Windows policy dependent
+        pytest.skip(f"Windows symlink creation is unavailable: {exc}")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetCurrentProcess.argtypes = ()
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.GetProcessHandleCount.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.DWORD),
+    )
+    kernel32.GetProcessHandleCount.restype = wintypes.BOOL
+
+    def handle_count() -> int:
+        count = wintypes.DWORD()
+        if not kernel32.GetProcessHandleCount(
+            kernel32.GetCurrentProcess(),
+            ctypes.byref(count),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return int(count.value)
+
+    before = handle_count()
+    for _ in range(32):
+        with pytest.raises(RepositoryChangedError):
+            fingerprint_repository(repo)
+    after = handle_count()
+
+    assert after <= before + 2
