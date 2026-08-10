@@ -12,7 +12,7 @@ import pytest
 from codenib._atomic_directory import capture_directory_ownership
 from codenib.native_index_authorization import (
     NATIVE_INDEX_SUBJECT_SCHEMA,
-    mint_trusted_local_authorization,
+    _mint_trusted_local_admin_authorization,
     native_index_subject,
     require_native_index_authorization,
 )
@@ -42,7 +42,7 @@ def test_native_index_authorization_is_process_local_and_exact(tmp_path: Path) -
     payload.write_bytes(b"native")
     ownership = capture_directory_ownership(root)
     semantic = {"dimension": 3, "index_metric": "ip"}
-    authorization = mint_trusted_local_authorization(
+    authorization = _mint_trusted_local_admin_authorization(
         ownership,
         view_type="vector",
         semantic_contract=semantic,
@@ -66,6 +66,56 @@ def test_native_index_authorization_is_process_local_and_exact(tmp_path: Path) -
             changed,
             view_type="vector",
             semantic_contract=semantic,
+        )
+
+
+def test_native_index_authorization_is_immutable_and_pid_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.native_index_authorization as authorization_module
+
+    root = tmp_path / "vector"
+    root.mkdir()
+    (root / "index.faiss").write_bytes(b"native")
+    ownership = capture_directory_ownership(root)
+    semantic = {"dimension": 3}
+    authorization = _mint_trusted_local_admin_authorization(
+        ownership,
+        view_type="vector",
+        semantic_contract=semantic,
+        evidence=("verified-local-boundary",),
+    )
+
+    with pytest.raises(AttributeError, match="immutable"):
+        authorization.subject_digest = "0" * 64
+
+    monkeypatch.setattr(
+        authorization_module.os,
+        "getpid",
+        lambda: authorization.process_id + 1,
+    )
+    with pytest.raises(ValueError, match="another process"):
+        require_native_index_authorization(
+            authorization,
+            ownership,
+            view_type="vector",
+            semantic_contract=semantic,
+        )
+
+
+def test_trusted_local_issuer_requires_auditable_evidence(tmp_path: Path) -> None:
+    root = tmp_path / "vector"
+    root.mkdir()
+    (root / "index.faiss").write_bytes(b"native")
+    ownership = capture_directory_ownership(root)
+
+    with pytest.raises(ValueError, match="evidence"):
+        _mint_trusted_local_admin_authorization(
+            ownership,
+            view_type="vector",
+            semantic_contract={"dimension": 3},
+            evidence=(),
         )
 
 

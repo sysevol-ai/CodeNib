@@ -10,15 +10,251 @@ import hashlib
 import json
 import os
 import stat
-from pathlib import Path
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
+
+from ..._atomic_directory import (
+    TreeFileRecord,
+    capture_directory_ownership,
+    directory_ownership_file_records,
+    directory_ownership_inventory,
+    lexical_directory_path,
+)
+from ..._bounded_json import iter_bounded_json_array
+from ..._captured_directory import AuthenticatedFile, CapturedDirectoryReader
 
 VECTOR_PERSISTENCE_SCHEMA = 1
 VECTOR_VIEW_UPDATE_MARKER = ".vector-view.update-in-progress"
 _DIGEST_BYTES = 1024 * 1024
 _MAX_CONFIG_BYTES = 16 * 1024 * 1024
+_MAX_DOCUMENT_BYTES = 256 * 1024 * 1024
+_MAX_FAISS_BYTES = 8 * 1024 * 1024 * 1024
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _UPDATE_MARKER_PAYLOAD = b'{"schema":"codenib.vector-view-update.v1"}\n'
+_VECTOR_LEVELS = frozenset({"l0", "l2"})
+_MUTABLE_ROOT_FILES = frozenset(
+    {
+        "chunk_store.json",
+        "chunk_store.pkl",
+        "embeddings_cache.json",
+        "embeddings_cache.npz",
+        "embeddings_cache.pkl",
+        "incremental_state.json",
+    }
+)
+
+
+def _vector_entry_policy(relative: str, kind: str, mode: int, size: int) -> None:
+    del mode
+    path = PurePosixPath(relative)
+    if kind == "directory":
+        if len(path.parts) != 1 or path.name not in _VECTOR_LEVELS:
+            raise ValueError(f"vector view has an invalid directory: {relative}")
+        return
+    if len(path.parts) == 1:
+        name = path.name
+        if name.startswith("config_") and name.endswith(".json"):
+            limit = _MAX_CONFIG_BYTES
+        elif name == "config.json":
+            limit = _MAX_CONFIG_BYTES
+        elif name == VECTOR_VIEW_UPDATE_MARKER or (
+            name.startswith(".config_") and name.endswith(".save-in-progress")
+        ):
+            limit = _MAX_CONFIG_BYTES
+        elif name in _MUTABLE_ROOT_FILES:
+            limit = _MAX_DOCUMENT_BYTES
+        else:
+            raise ValueError(f"vector view has an invalid file: {relative}")
+    elif len(path.parts) == 2 and path.parts[0] in _VECTOR_LEVELS:
+        name = path.name
+        suffix = path.suffix.casefold()
+        if name.startswith("config_") and suffix == ".json":
+            limit = _MAX_CONFIG_BYTES
+        elif name.startswith("documents_") and suffix in {
+            ".json",
+            ".pkl",
+            ".pickle",
+        }:
+            limit = _MAX_DOCUMENT_BYTES
+        elif name.startswith("index_") and suffix == ".faiss":
+            limit = _MAX_FAISS_BYTES
+        elif name.startswith("index_") and suffix in {".pkl", ".pickle"}:
+            limit = _MAX_DOCUMENT_BYTES
+        else:
+            raise ValueError(f"vector view has an invalid file: {relative}")
+    else:
+        raise ValueError(f"vector view has an invalid entry: {relative}")
+    if size < 0 or size > limit:
+        raise ValueError(f"vector artifact exceeds its {limit}-byte limit: {relative}")
+
+
+class _WrappedValueReader:
+    """Expose one bytes payload as a synthetic one-item JSON array."""
+
+    def __init__(self, payload: bytes) -> None:
+        self._parts = iter((b"[", payload, b"]"))
+        self._pending = b""
+
+    def read(self, size: int = -1) -> bytes:
+        if not self._pending:
+            self._pending = next(self._parts, b"")
+        if size is None or size < 0 or len(self._pending) <= size:
+            block = self._pending
+            self._pending = b""
+            return block
+        block = self._pending[:size]
+        self._pending = self._pending[size:]
+        return block
+
+
+@dataclass(slots=True)
+class AuthenticatedVectorView:
+    """One captured vector tree whose consumers never reopen trusted paths."""
+
+    root: Path
+    ownership: object
+    reader: CapturedDirectoryReader
+    records: dict[str, TreeFileRecord]
+    inventory: tuple[tuple[str, str], ...]
+
+    @classmethod
+    def capture(cls, root: str | Path) -> AuthenticatedVectorView:
+        lexical = lexical_directory_path(Path(root))
+        ownership = capture_directory_ownership(
+            lexical,
+            entry_policy=_vector_entry_policy,
+        )
+        try:
+            reader = CapturedDirectoryReader(lexical, ownership)
+        except BaseException:
+            raise
+        return cls(
+            root=lexical,
+            ownership=ownership,
+            reader=reader,
+            records={
+                record.path: record
+                for record in directory_ownership_file_records(ownership)
+            },
+            inventory=directory_ownership_inventory(ownership),
+        )
+
+    def close(self) -> None:
+        self.reader.close()
+
+    def __enter__(self) -> AuthenticatedVectorView:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+    def has_file(self, relative: str | PurePosixPath) -> bool:
+        value = relative.as_posix() if isinstance(relative, PurePosixPath) else relative
+        return value in self.records
+
+    def record(self, relative: str | PurePosixPath) -> TreeFileRecord:
+        value = relative.as_posix() if isinstance(relative, PurePosixPath) else relative
+        try:
+            return self.records[value]
+        except KeyError as exc:
+            raise ValueError(f"vector artifact file is missing: {value}") from exc
+
+    def open_file(
+        self,
+        relative: str | PurePosixPath,
+        *,
+        max_bytes: int | None = None,
+    ) -> AuthenticatedFile:
+        return self.reader.open_file(relative, max_bytes=max_bytes)
+
+    def authenticated_descriptor(
+        self,
+        relative: str | PurePosixPath,
+        *,
+        max_bytes: int | None = None,
+    ):
+        """Return a context manager yielding an immutable authenticated fd."""
+
+        return self.reader.authenticated_descriptor(relative, max_bytes=max_bytes)
+
+    def authenticated_snapshot(
+        self,
+        relative: str | PurePosixPath,
+        *,
+        max_bytes: int | None = None,
+    ):
+        """Return a context manager yielding immutable authenticated bytes."""
+
+        return self.reader.authenticated_snapshot(relative, max_bytes=max_bytes)
+
+    def load_json_object(
+        self,
+        relative: str | PurePosixPath,
+        *,
+        label: str,
+        max_bytes: int = _MAX_CONFIG_BYTES,
+    ) -> dict[str, Any]:
+        payload = self.reader.read_bytes(relative, max_bytes=max_bytes)
+        values = iter_bounded_json_array(
+            _WrappedValueReader(payload),
+            label=label,
+            max_items=1,
+            max_element_bytes=max_bytes,
+        )
+        try:
+            value = next(values)
+        except StopIteration as exc:
+            raise ValueError(f"{label} is empty") from exc
+        try:
+            next(values)
+        except StopIteration:
+            pass
+        else:  # pragma: no cover - the synthetic wrapper has exactly one item
+            raise ValueError(f"{label} contains multiple JSON values")
+        if not isinstance(value, dict):
+            raise ValueError(f"{label} must be a JSON object")
+        return value
+
+    def require_record(
+        self,
+        relative: str | PurePosixPath,
+        expected: object,
+    ) -> TreeFileRecord:
+        record = self.record(relative)
+        if not isinstance(expected, Mapping) or set(expected) != {
+            "file",
+            "size",
+            "sha256",
+        }:
+            raise ValueError("invalid vector artifact fingerprint")
+        if dict(expected) != {
+            "file": PurePosixPath(record.path).name,
+            "size": record.size,
+            "sha256": record.sha256,
+        }:
+            raise ValueError(
+                f"vector artifact does not match its fingerprint: {record.path}"
+            )
+        return record
+
+    def verify_final(self) -> None:
+        self.reader.verify_root()
+        observed = capture_directory_ownership(
+            self.root,
+            entry_policy=_vector_entry_policy,
+        )
+        if observed != self.ownership:
+            raise ValueError("vector view changed during authenticated loading")
+
+
+def capture_authenticated_vector_view(root: str | Path) -> AuthenticatedVectorView:
+    """Capture a bounded no-follow vector tree before native authorization."""
+
+    try:
+        return AuthenticatedVectorView.capture(root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError(f"vector view could not be captured safely: {root}") from exc
 
 
 def _file_identity(metadata: os.stat_result) -> tuple[int, ...]:
@@ -335,9 +571,11 @@ def validate_vector_generation_artifacts(
 
 
 __all__ = [
+    "AuthenticatedVectorView",
     "VECTOR_PERSISTENCE_SCHEMA",
     "VECTOR_VIEW_UPDATE_MARKER",
     "begin_vector_view_update",
+    "capture_authenticated_vector_view",
     "finish_vector_view_update",
     "require_complete_vector_view",
     "validate_vector_config_artifact",
