@@ -6,19 +6,24 @@
 
 from __future__ import annotations
 
-import errno
 import hashlib
 import os
 import re
-import secrets
 import stat
 import tempfile
-import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO, Iterable, Iterator
 
+from .. import _atomic_directory as _atomic
+from .._owned_file_publication import (
+    OwnedFileConflictError,
+    PublishedFileReceipt,
+    PublishedFileRecord,
+    publish_owned_file,
+    require_owned_file_publication_support,
+)
 from .models import StorageIntegrityError, StorageValidationError
 
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
@@ -30,20 +35,10 @@ _SAFE_DIRECTORY_FDS = (
     and os.stat in os.supports_dir_fd
     and os.stat in os.supports_follow_symlinks
     and os.mkdir in os.supports_dir_fd
-    and os.unlink in os.supports_dir_fd
 )
-_LINK_UNSUPPORTED_ERRNOS = {
-    value
-    for value in (
-        getattr(errno, "ENOSYS", None),
-        getattr(errno, "ENOTSUP", None),
-        getattr(errno, "EOPNOTSUPP", None),
-        getattr(errno, "EPERM", None),
-        getattr(errno, "EXDEV", None),
-    )
-    if value is not None
-}
-_PUBLISH_LOCKS = tuple(threading.Lock() for _ in range(64))
+_CAS_OBJECT_MODE = 0o600
+_SHARD_NAMES = tuple(f"{value:02x}" for value in range(256))
+_DIRECTORY_CLOSE_RECOVERY_LIMIT = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,34 +56,162 @@ class LocalCAS:
     Objects are stored below ``sha256/<first two hex digits>/<remaining hex>``.
     A digest is always the bare, lowercase, 64-character hexadecimal value.
 
-    On platforms with ``dir_fd``, ``O_DIRECTORY``, and ``O_NOFOLLOW`` support,
-    every internal path component is opened relative to its verified parent.
-    Other platforms retain explicit lstat/fstat checks, but cannot eliminate a
-    concurrent directory-replacement race as completely as the anchored path.
+    ``provision()`` plus ``require_preprovisioned=True`` is the strict
+    publication mode. It opens every internal component relative to a held
+    directory descriptor and never creates a directory during ``put``. The
+    default lazy layout remains a cooperative compatibility mode because POSIX
+    cannot bind ``mkdir`` and the following ``open`` into one authority step.
     """
 
-    def __init__(self, root: str | Path) -> None:
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        require_preprovisioned: bool = False,
+    ) -> None:
+        if not isinstance(require_preprovisioned, bool):
+            raise TypeError("require_preprovisioned must be a boolean")
+        # This capability check is deliberately before lstat/mkdir.  In
+        # particular, unsupported Windows publication must not create even the
+        # legacy cooperative layout before it fails.
+        _require_local_cas_support()
         requested_root = Path(root).expanduser()
-        try:
-            requested_metadata = requested_root.lstat()
-        except FileNotFoundError:
-            pass
-        else:
-            if not stat.S_ISDIR(requested_metadata.st_mode):
+        self.root = Path(os.path.abspath(os.fspath(requested_root)))
+        self._require_preprovisioned = require_preprovisioned
+        strict_root_identity: tuple[int, ...] | None = None
+        strict_sha256_identity: tuple[int, ...] | None = None
+        strict_shard_identities: dict[str, tuple[int, ...]] = {}
+        if not require_preprovisioned:
+            try:
+                _ensure_cas_root(self.root)
+            except ValueError as exc:
                 raise StorageValidationError(
-                    f"path is not a real directory: {requested_root}"
-                )
-        self.root = requested_root.resolve()
-        _ensure_directory(self.root)
+                    f"path is not a real directory: {self.root}"
+                ) from exc
         self._sha256_root = self.root / "sha256"
-        with _open_directory_path(self.root, label="CAS root") as root_descriptor:
-            with _open_or_create_child_directory(
-                root_descriptor,
+        try:
+            with _open_directory_path(
                 self.root,
-                "sha256",
-                label="CAS SHA-256 root",
-            ):
-                pass
+                label="CAS root",
+            ) as root_descriptor:
+                if require_preprovisioned:
+                    strict_root_identity = _directory_resource_identity(
+                        root_descriptor,
+                        path=self.root,
+                        label="CAS root",
+                    )
+                open_sha256 = (
+                    _open_child_directory
+                    if require_preprovisioned
+                    else _open_or_create_child_directory
+                )
+                with open_sha256(
+                    root_descriptor,
+                    self.root,
+                    "sha256",
+                    label="CAS SHA-256 root",
+                ) as (sha256_descriptor, sha256_path):
+                    if require_preprovisioned:
+                        strict_sha256_identity = _directory_resource_identity(
+                            sha256_descriptor,
+                            path=sha256_path,
+                            label="CAS SHA-256 root",
+                        )
+                        for shard_name in _SHARD_NAMES:
+                            with _open_child_directory(
+                                sha256_descriptor,
+                                sha256_path,
+                                shard_name,
+                                label="CAS digest shard",
+                            ) as (shard_descriptor, shard_path):
+                                strict_shard_identities[shard_name] = (
+                                    _directory_resource_identity(
+                                        shard_descriptor,
+                                        path=shard_path,
+                                        label="CAS digest shard",
+                                    )
+                                )
+        except FileNotFoundError as exc:
+            if require_preprovisioned:
+                try:
+                    self.root.lstat()
+                except FileNotFoundError:
+                    raise StorageValidationError(
+                        f"preprovisioned CAS root does not exist: {self.root}"
+                    ) from exc
+                raise StorageValidationError(
+                    "preprovisioned CAS layout must contain sha256 and all 256 "
+                    "digest shards"
+                ) from exc
+            raise
+        except ValueError as exc:
+            raise StorageValidationError(
+                f"path is not a real directory: {self.root}"
+            ) from exc
+        self._strict_root_identity = strict_root_identity
+        self._strict_sha256_identity = strict_sha256_identity
+        self._strict_shard_identities = strict_shard_identities
+
+    @classmethod
+    def provision(cls, root: str | Path) -> LocalCAS:
+        """Create the complete layout inside a trusted, quiescent boundary.
+
+        POSIX ``mkdir`` followed by ``open`` cannot prove that a same-UID actor
+        did not replace the new directory in between.  Provisioning therefore
+        creates every shard before strict publication begins; it is not a safe
+        online operation in the adversarial replacement model.
+        """
+
+        _require_local_cas_support()
+        requested_root = Path(root).expanduser()
+        lexical_root = Path(os.path.abspath(os.fspath(requested_root)))
+        root_parent = lexical_root.parent
+        if root_parent == lexical_root or not lexical_root.name:
+            raise StorageValidationError("CAS root must have a lexical parent")
+        try:
+            with _open_directory_path(
+                root_parent,
+                label="CAS root parent",
+            ) as root_parent_descriptor:
+                # Only the final root leaf may be created.  Requiring its
+                # lexical parent to pre-exist makes the unconditional replay
+                # below a complete durability chain, including after an
+                # ambiguous parent-fsync failure on an earlier attempt.
+                with _open_or_create_child_directory(
+                    root_parent_descriptor,
+                    root_parent,
+                    lexical_root.name,
+                    label="CAS root",
+                ) as (root_descriptor, rebound_root):
+                    with _open_or_create_child_directory(
+                        root_descriptor,
+                        rebound_root,
+                        "sha256",
+                        label="CAS SHA-256 root",
+                    ) as (sha256_descriptor, sha256_path):
+                        for shard_name in _SHARD_NAMES:
+                            with _open_or_create_child_directory(
+                                sha256_descriptor,
+                                sha256_path,
+                                shard_name,
+                                label="CAS digest shard",
+                            ):
+                                pass
+                        # Replay the complete durability chain unconditionally.
+                        # A previous mkdir may have committed before its parent
+                        # fsync raised, so an existing entry is not a receipt.
+                        os.fsync(sha256_descriptor)
+                    os.fsync(root_descriptor)
+                os.fsync(root_parent_descriptor)
+        except FileNotFoundError as exc:
+            raise StorageValidationError(
+                f"CAS root parent must already exist: {root_parent}"
+            ) from exc
+        except ValueError as exc:
+            raise StorageValidationError(
+                f"CAS root parent must be a real directory: {root_parent}"
+            ) from exc
+        return cls(lexical_root, require_preprovisioned=True)
 
     def put_bytes(self, data: bytes) -> BlobInfo:
         """Store *data*, deduplicating an already-valid immutable object."""
@@ -96,86 +219,26 @@ class LocalCAS:
         if not isinstance(data, bytes):
             raise TypeError("CAS payload must be bytes")
         digest = hashlib.sha256(data).hexdigest()
-        info = self._blob_info(digest, len(data))
-        with self._open_shard(digest, create=True) as (
-            shard_descriptor,
-            shard_path,
-        ):
-            if self._verify_existing_at(shard_descriptor, shard_path, info) is not None:
-                # A concurrent publisher may have linked this entry but not
-                # yet flushed the shard.  A successful deduplicated put is a
-                # durability receipt too, so it must not return before the
-                # canonical directory entry is persistent.
-                _fsync_directory_handle(shard_descriptor, shard_path)
-                return info
-
-            descriptor, temporary_name = _create_temporary_file(
-                shard_descriptor,
-                shard_path,
-                digest[2:],
-            )
-            try:
-                with os.fdopen(descriptor, "wb") as handle:
-                    handle.write(data)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                self._publish_temporary_at(
-                    shard_descriptor,
-                    shard_path,
-                    temporary_name,
-                    info,
-                )
-                return info
-            finally:
-                _unlink_at(shard_descriptor, shard_path, temporary_name)
-                _fsync_directory_handle(shard_descriptor, shard_path)
+        return self._publish_object(digest, len(data), data)
 
     def put_file(self, source: str | Path) -> BlobInfo:
         """Store a stable snapshot of a regular file.
 
         The source is read twice.  The first pass establishes its digest and
-        destination; the second writes the destination-directory temporary.
+        destination; the second feeds an owned destination-directory stage.
         Identity and metadata checks around both passes reject a source that is
         replaced or modified while it is being stored.
         """
 
         source_path = Path(source)
         digest, byte_size, source_signature = _hash_stable_file(source_path)
-        info = self._blob_info(digest, byte_size)
-        with self._open_shard(digest, create=True) as (
-            shard_descriptor,
-            shard_path,
-        ):
-            if self._verify_existing_at(shard_descriptor, shard_path, info) is not None:
-                _fsync_directory_handle(shard_descriptor, shard_path)
-                return info
-
-            descriptor, temporary_name = _create_temporary_file(
-                shard_descriptor,
-                shard_path,
-                digest[2:],
-            )
-            try:
-                with os.fdopen(descriptor, "wb") as target:
-                    copied_digest, copied_size = _copy_stable_file(
-                        source_path,
-                        target,
-                        expected_signature=source_signature,
-                    )
-                    target.flush()
-                    os.fsync(target.fileno())
-                if copied_digest != digest or copied_size != byte_size:
-                    raise OSError(f"source changed while being stored: {source_path}")
-                self._publish_temporary_at(
-                    shard_descriptor,
-                    shard_path,
-                    temporary_name,
-                    info,
-                )
-                return info
-            finally:
-                _unlink_at(shard_descriptor, shard_path, temporary_name)
-                _fsync_directory_handle(shard_descriptor, shard_path)
+        chunks = _stable_file_chunks(
+            source_path,
+            expected_signature=source_signature,
+            expected_digest=digest,
+            expected_size=byte_size,
+        )
+        return self._publish_object(digest, byte_size, chunks)
 
     def has(self, digest: str) -> bool:
         """Return whether a regular object exists for *digest*.
@@ -288,12 +351,24 @@ class LocalCAS:
     ) -> Iterator[tuple[int | None, Path]]:
         digest = _validate_digest(digest)
         with _open_directory_path(self.root, label="CAS root") as root_descriptor:
+            _require_directory_generation(
+                root_descriptor,
+                self._strict_root_identity,
+                path=self.root,
+                label="CAS root",
+            )
             with _open_child_directory(
                 root_descriptor,
                 self.root,
                 "sha256",
                 label="CAS SHA-256 root",
             ) as (sha256_descriptor, sha256_path):
+                _require_directory_generation(
+                    sha256_descriptor,
+                    self._strict_sha256_identity,
+                    path=sha256_path,
+                    label="CAS SHA-256 root",
+                )
                 open_child = (
                     _open_or_create_child_directory if create else _open_child_directory
                 )
@@ -302,8 +377,14 @@ class LocalCAS:
                     sha256_path,
                     digest[:2],
                     label="CAS digest shard",
-                ) as shard:
-                    yield shard
+                ) as (shard_descriptor, shard_path):
+                    _require_directory_generation(
+                        shard_descriptor,
+                        self._strict_shard_identities.get(digest[:2]),
+                        path=shard_path,
+                        label="CAS digest shard",
+                    )
+                    yield shard_descriptor, shard_path
 
     @staticmethod
     def _blob_info(digest: str, byte_size: int) -> BlobInfo:
@@ -314,85 +395,58 @@ class LocalCAS:
             storage_key=f"sha256/{digest[:2]}/{digest[2:]}",
         )
 
-    def _verify_existing_at(
+    def _publish_object(
         self,
-        shard_descriptor: int | None,
-        shard_path: Path,
-        expected: BlobInfo,
-    ) -> BlobInfo | None:
-        path = shard_path / expected.digest[2:]
-        try:
-            with _open_regular_at(
-                shard_descriptor,
-                shard_path,
-                expected.digest[2:],
-                label="existing CAS object",
-            ) as handle:
-                signature = _object_signature(os.fstat(handle.fileno()))
-                observed = hashlib.sha256()
-                byte_size = 0
-                while block := handle.read(_COPY_BUFFER_SIZE):
-                    observed.update(block)
-                    byte_size += len(block)
-                if _object_signature(os.fstat(handle.fileno())) != signature:
+        digest: str,
+        byte_size: int,
+        chunks: Iterable[bytes] | bytes,
+    ) -> BlobInfo:
+        expected = PublishedFileRecord(
+            size=byte_size,
+            sha256=digest,
+            mode=_CAS_OBJECT_MODE,
+        )
+        with self._open_shard(
+            digest,
+            create=not self._require_preprovisioned,
+        ) as (shard_descriptor, shard_path):
+            if shard_descriptor is None:
+                raise RuntimeError(
+                    "strict CAS publication requires an anchored shard descriptor"
+                )
+            destination = shard_path / digest[2:]
+            expected_parent_identity = _atomic.publication_parent_identity(
+                shard_descriptor
+            )
+
+            def consume(receipt: PublishedFileReceipt) -> None:
+                if (
+                    receipt.path != destination
+                    or receipt.record != expected
+                    or receipt.parent_identity != expected_parent_identity
+                ):
                     raise StorageIntegrityError(
-                        f"existing CAS object changed while read: {path}"
+                        f"CAS publication receipt conflicts for {digest}"
                     )
-        except FileNotFoundError:
-            return None
 
-        if byte_size != expected.byte_size or observed.hexdigest() != expected.digest:
-            raise StorageIntegrityError(
-                f"existing CAS object failed integrity validation: {path}"
-            )
-        return expected
-
-    def _publish_temporary_at(
-        self,
-        shard_descriptor: int | None,
-        shard_path: Path,
-        temporary_name: str,
-        info: BlobInfo,
-    ) -> None:
-        destination_name = info.digest[2:]
-        # Another writer may have completed while this writer populated its
-        # temporary.  A valid winner is reused; an invalid one is never healed
-        # silently because that could hide corruption of a published object.
-        if self._verify_existing_at(shard_descriptor, shard_path, info) is not None:
-            return
-
-        try:
-            _link_at(
-                shard_descriptor,
-                shard_path,
-                temporary_name,
-                destination_name,
-            )
-            return
-        except FileExistsError:
-            # A concurrent publisher won the no-replace link operation.
-            if self._verify_existing_at(shard_descriptor, shard_path, info) is None:
+            try:
+                publish_owned_file(
+                    destination,
+                    chunks,
+                    max_bytes=byte_size,
+                    mode=_CAS_OBJECT_MODE,
+                    parent_resource=shard_descriptor,
+                    consume=consume,
+                )
+            except OwnedFileConflictError as exc:
                 raise StorageIntegrityError(
-                    f"CAS object disappeared during publication: {info.digest}"
-                ) from None
-            return
-        except OSError as exc:
-            if exc.errno not in _LINK_UNSUPPORTED_ERRNOS:
-                raise
+                    f"existing CAS object failed integrity validation: {destination}"
+                ) from exc
 
-        # Hard links may be unavailable on some filesystems.  Serialize local
-        # writers before the atomic-replace fallback; cross-process writers can
-        # still race here, but they can only publish identical verified bytes.
-        lock = _PUBLISH_LOCKS[int(info.digest[:2], 16) % len(_PUBLISH_LOCKS)]
-        with lock:
-            if self._verify_existing_at(shard_descriptor, shard_path, info) is not None:
-                return
-            _replace_at(
-                shard_descriptor,
-                shard_path,
-                temporary_name,
-                destination_name,
-            )
+        # BlobInfo is deliberately created only after the helper has installed,
+        # synchronously consumed, and terminally closed the post-directory-fsync
+        # receipt.  No descriptor-owning resource crosses this return boundary.
+        return self._blob_info(digest, byte_size)
 
     def _consume_object(
         self,
@@ -417,32 +471,134 @@ class LocalCAS:
         return observed.hexdigest(), byte_size
 
 
+def _directory_resource_identity(
+    descriptor: int | None,
+    *,
+    path: Path,
+    label: str,
+) -> tuple[int, ...]:
+    if descriptor is None:
+        raise RuntimeError(f"{label} has no anchored directory descriptor: {path}")
+    try:
+        return _atomic.publication_parent_identity(descriptor)
+    except OSError as exc:
+        raise StorageIntegrityError(
+            f"{label} authority could not be identified: {path}"
+        ) from exc
+
+
+def _require_directory_generation(
+    descriptor: int | None,
+    expected: tuple[int, ...] | None,
+    *,
+    path: Path,
+    label: str,
+) -> None:
+    if expected is None:
+        return
+    if _directory_resource_identity(descriptor, path=path, label=label) != expected:
+        raise StorageIntegrityError(f"{label} generation changed: {path}")
+
+
+def _close_posix_resources(
+    resources: _atomic._PosixResourceOwner,
+    *,
+    primary_error: BaseException | None = None,
+) -> None:
+    """Close every directory fd, retrying while retaining the first error."""
+
+    first_error = primary_error
+    for _attempt in range(_DIRECTORY_CLOSE_RECOVERY_LIMIT):
+        if resources.closed:
+            break
+        try:
+            resources.close_all()
+        except BaseException as close_error:  # noqa: B036 - converge ownership
+            if first_error is None:
+                first_error = close_error
+            else:
+                _atomic._annotate_secondary_error(
+                    first_error,
+                    "directory descriptor cleanup also failed",
+                    close_error,
+                )
+    if not resources.closed:
+        convergence_error = RuntimeError(
+            "directory descriptor cleanup did not converge"
+        )
+        if first_error is None:
+            first_error = convergence_error
+        else:
+            _atomic._annotate_secondary_error(
+                first_error,
+                "directory descriptor cleanup did not converge",
+                convergence_error,
+            )
+    if primary_error is None and first_error is not None:
+        raise first_error
+
+
+def _close_publication_authority_owner(
+    authority_owner: _atomic._PublicationAuthorityOwner,
+    *,
+    primary_error: BaseException | None = None,
+) -> None:
+    """Retry atomic authority cleanup without directory-offset cookies."""
+
+    first_error = primary_error
+    for _attempt in range(_DIRECTORY_CLOSE_RECOVERY_LIMIT):
+        if authority_owner.authority is None:
+            break
+        try:
+            authority_owner.close()
+        except BaseException as close_error:  # noqa: B036 - converge ownership
+            if first_error is None:
+                first_error = close_error
+            else:
+                _atomic._annotate_secondary_error(
+                    first_error,
+                    "directory authority cleanup also failed",
+                    close_error,
+                )
+    if authority_owner.authority is not None:
+        convergence_error = RuntimeError("directory authority cleanup did not converge")
+        if first_error is None:
+            first_error = convergence_error
+        else:
+            _atomic._annotate_secondary_error(
+                first_error,
+                "directory authority cleanup did not converge",
+                convergence_error,
+            )
+    if primary_error is None and first_error is not None:
+        raise first_error
+
+
 @contextmanager
 def _open_directory_path(path: Path, *, label: str) -> Iterator[int | None]:
-    metadata = path.lstat()
-    if not stat.S_ISDIR(metadata.st_mode):
-        raise StorageIntegrityError(f"{label} is not a real directory: {path}")
-
-    if not _SAFE_DIRECTORY_FDS:
-        # The visible component is still rejected when it is a link.  Without
-        # anchored directory descriptors, however, another process can replace
-        # it between this check and a later child operation.
-        yield None
-        return
-
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    descriptor = os.open(path, flags)
+    authority_owner = _atomic._PublicationAuthorityOwner()
     try:
-        opened = os.fstat(descriptor)
-        if not stat.S_ISDIR(opened.st_mode):
-            raise StorageIntegrityError(f"{label} is not a directory: {path}")
-        if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
-            raise StorageIntegrityError(f"{label} changed while opening: {path}")
-        yield descriptor
-    finally:
-        os.close(descriptor)
+        _atomic._open_publication_authority(
+            path,
+            parent_resource=None,
+            expected_parent_identity=None,
+            create_missing=False,
+            authority_owner=authority_owner,
+        )
+        authority = authority_owner.authority
+        if authority is None:
+            raise RuntimeError(f"{label} authority was not installed: {path}")
+        authority.verify_path_binding()
+        yield authority.resource
+        authority.verify_path_binding()
+    except BaseException as primary_error:
+        _close_publication_authority_owner(
+            authority_owner,
+            primary_error=primary_error,
+        )
+        raise
+    else:
+        _close_publication_authority_owner(authority_owner)
 
 
 @contextmanager
@@ -459,23 +615,29 @@ def _open_child_directory(
             yield descriptor, path
         return
 
-    metadata = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
-    if not stat.S_ISDIR(metadata.st_mode):
-        raise StorageIntegrityError(f"{label} is not a real directory: {path}")
-
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    descriptor = os.open(name, flags, dir_fd=parent_descriptor)
+    resources = _atomic._PosixResourceOwner()
     try:
+        metadata = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise StorageIntegrityError(f"{label} is not a real directory: {path}")
+
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+        descriptor = resources.open(name, flags, dir_fd=parent_descriptor)
         opened = os.fstat(descriptor)
         if not stat.S_ISDIR(opened.st_mode):
             raise StorageIntegrityError(f"{label} is not a directory: {path}")
         if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
             raise StorageIntegrityError(f"{label} changed while opening: {path}")
         yield descriptor, path
-    finally:
-        os.close(descriptor)
+        rebound = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+        if (rebound.st_dev, rebound.st_ino) != (opened.st_dev, opened.st_ino):
+            raise StorageIntegrityError(f"{label} binding changed: {path}")
+    except BaseException as primary_error:
+        _close_posix_resources(resources, primary_error=primary_error)
+        raise
+    else:
+        _close_posix_resources(resources)
 
 
 @contextmanager
@@ -548,94 +710,46 @@ def _open_regular_at(
         raise
 
 
-def _create_temporary_file(
-    directory_descriptor: int | None,
-    directory_path: Path,
-    object_name: str,
-) -> tuple[int, str]:
-    if directory_descriptor is None:
-        descriptor, temporary_path = tempfile.mkstemp(
-            dir=str(directory_path),
-            prefix=f".{object_name}.",
-            suffix=".tmp",
-        )
-        return descriptor, Path(temporary_path).name
-
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-    if hasattr(os, "O_BINARY"):
-        flags |= os.O_BINARY
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    for _attempt in range(100):
-        name = f".{object_name}.{secrets.token_hex(8)}.tmp"
-        try:
-            descriptor = os.open(
-                name,
-                flags,
-                0o600,
-                dir_fd=directory_descriptor,
-            )
-        except FileExistsError:
-            continue
-        return descriptor, name
-    raise FileExistsError(f"could not allocate CAS temporary in {directory_path}")
-
-
-def _link_at(
-    directory_descriptor: int | None,
-    directory_path: Path,
-    source_name: str,
-    destination_name: str,
-) -> None:
-    if directory_descriptor is not None and os.link in os.supports_dir_fd:
-        os.link(
-            source_name,
-            destination_name,
-            src_dir_fd=directory_descriptor,
-            dst_dir_fd=directory_descriptor,
-            follow_symlinks=False,
-        )
-        return
-    os.link(directory_path / source_name, directory_path / destination_name)
-
-
-def _replace_at(
-    directory_descriptor: int | None,
-    directory_path: Path,
-    source_name: str,
-    destination_name: str,
-) -> None:
-    if directory_descriptor is not None:
-        os.replace(
-            source_name,
-            destination_name,
-            src_dir_fd=directory_descriptor,
-            dst_dir_fd=directory_descriptor,
-        )
-        return
-    os.replace(directory_path / source_name, directory_path / destination_name)
-
-
-def _unlink_at(
-    directory_descriptor: int | None,
-    directory_path: Path,
-    name: str,
-) -> None:
-    try:
-        if directory_descriptor is None:
-            (directory_path / name).unlink()
-        else:
-            os.unlink(name, dir_fd=directory_descriptor)
-    except FileNotFoundError:
-        pass
-
-
 def _validate_digest(digest: str) -> str:
     if not isinstance(digest, str) or _DIGEST_RE.fullmatch(digest) is None:
         raise StorageValidationError(
             "digest must be 64 lowercase hexadecimal characters"
         )
     return digest
+
+
+def _require_local_cas_support() -> None:
+    """Fail before layout mutation unless anchored shard fds are available."""
+
+    require_owned_file_publication_support()
+    if not _SAFE_DIRECTORY_FDS:
+        raise RuntimeError("LocalCAS requires POSIX directory-fd support")
+
+
+def _ensure_cas_root(path: Path) -> None:
+    """Create a cooperative root through one lexical no-follow authority."""
+
+    authority_owner = _atomic._PublicationAuthorityOwner()
+    try:
+        _atomic._open_publication_authority(
+            path,
+            parent_resource=None,
+            expected_parent_identity=None,
+            create_missing=True,
+            authority_owner=authority_owner,
+        )
+        authority = authority_owner.authority
+        if authority is None:
+            raise RuntimeError("CAS root authority was not installed")
+        authority.verify_path_binding()
+    except BaseException as primary_error:
+        _close_publication_authority_owner(
+            authority_owner,
+            primary_error=primary_error,
+        )
+        raise
+    else:
+        _close_publication_authority_owner(authority_owner)
 
 
 def _ensure_directory(path: Path) -> None:
@@ -709,12 +823,15 @@ def _hash_stable_file(path: Path) -> tuple[str, int, tuple[int, ...]]:
     return observed.hexdigest(), byte_size, signature
 
 
-def _copy_stable_file(
+def _stable_file_chunks(
     path: Path,
-    target: BinaryIO,
     *,
     expected_signature: tuple[int, ...],
-) -> tuple[str, int]:
+    expected_digest: str,
+    expected_size: int,
+) -> Iterator[bytes]:
+    """Yield pass-two bytes and reject drift before normal iterator completion."""
+
     observed = hashlib.sha256()
     byte_size = 0
     with _open_regular_file(path, label="CAS source") as source:
@@ -724,11 +841,14 @@ def _copy_stable_file(
         while block := source.read(_COPY_BUFFER_SIZE):
             observed.update(block)
             byte_size += len(block)
-            target.write(block)
+            yield block
         if _file_signature(os.fstat(source.fileno())) != signature:
             raise OSError(f"source changed while being stored: {path}")
     _require_path_signature(path, signature, label="CAS source")
-    return observed.hexdigest(), byte_size
+    if observed.hexdigest() != expected_digest or byte_size != expected_size:
+        # This check runs before StopIteration reaches OwnedFile.write(), so a
+        # pass-two mismatch can leave only an owned stage and is never renamed.
+        raise OSError(f"source changed while being stored: {path}")
 
 
 def _file_signature(metadata: os.stat_result) -> tuple[int, ...]:
