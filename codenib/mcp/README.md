@@ -78,7 +78,7 @@ also remain available. All forms accept
 | `lsp_definition` | runtime LSP provider or `symbol_graph` | location | static graph analogue of go-to-definition |
 | `lsp_references` | runtime LSP provider or `symbol_graph` | locations | static graph analogue of find-references |
 | `lsp_route` | runtime LSP provider or `symbol_graph` | locations | compact route anchors for related symbols |
-| `read_source` | verified checkout | source window | bounded source inspection after retrieval/navigation |
+| `read_source` | content-authenticated source binding | source window | bounded source inspection after retrieval/navigation |
 | `get_manifest` | — | — | repo metadata: path, commit, languages, capabilities |
 
 All source locations returned by MCP use 1-based line numbers. Internal indexes
@@ -175,8 +175,10 @@ Static LSP-shaped navigation through the server's selected runtime provider.
 A source-verified local C/C++-only checkout can reuse an existing project-local
 clangd index for symbol definition and reference queries without generating a
 new index. Position and route calls lazily load the compatible complete graph
-once. Portable artifacts, mixed-language repositories, unverified checkouts,
-and disabled or unavailable native support use the persisted `symbol_graph`.
+once. Portable artifacts expose only their supported portable views and never
+attach a project-local native provider. Mixed-language repositories, unverified
+checkouts, and disabled or unavailable native support use the persisted
+`symbol_graph` when that view is eligible and loaded.
 Result rows expose provider backend, fallback, capability, and snapshot metadata
 when available; `get_manifest.runtime.lsp_provider` exposes the selection before
 the first result. These tools return compact locations only; clients should read
@@ -199,8 +201,9 @@ entry budget before normalization.
   matches and 512 expanded candidates, and stops after 100 milliseconds.
 
 ### `read_source`
-Reads source only when server startup verified the checkout against the direct
-manifest or a rebound portable artifact.
+Reads source only while a retained repository authority authenticates the live
+bytes against the v2 content fingerprint and per-file records from a direct
+manifest or rebound portable artifact.
 
 - `file_path` (str): canonical repository-relative POSIX path; absolute paths,
   traversal, symlinks, and special files are rejected.
@@ -211,8 +214,10 @@ manifest or a rebound portable artifact.
 The response includes at most 16,000 content characters plus the indexed
 commit/source fingerprint. `content_projection` reports whether the requested
 window was shortened and, when truncation ended on a complete line, the next
-`start_line`. Source identity is checked at startup under the server's
-quiescent-checkout assumption; restart or rebind after modifying the checkout.
+`start_line`. Each read session revalidates the retained whole-tree authority
+and exact file record. The commit is display provenance only: mutable Git HEAD
+is not attested by this content binding. Any source drift permanently disables
+the binding until the server is restarted or rebound.
 
 ### `get_manifest`
 Returns the manifest version; a nested `repo` object containing path, commit,

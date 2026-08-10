@@ -7,10 +7,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Any
 
-from ...web.repository_files import live_source_slice, safe_repo_relative_path
 from ..context import ServerContext
 from ._validation import (
     MAX_LSP_POSITION,
@@ -20,6 +19,8 @@ from ._validation import (
     bounded_integer,
     required_text,
 )
+
+_MAX_SOURCE_FILE_BYTES = 64 * 1024 * 1024
 
 
 def _repository_relative_source(ctx: ServerContext, value: str) -> str:
@@ -38,11 +39,7 @@ def _repository_relative_source(ctx: ServerContext, value: str) -> str:
     ):
         raise ValueError("file_path must be a repository-relative POSIX path.")
 
-    root = Path(ctx.manifest.repo_path).expanduser().resolve()
-    relative = safe_repo_relative_path(str(root), path_text)
-    if relative != path_text:
-        raise ValueError("file_path must resolve inside the repository checkout.")
-    return relative
+    return path_text
 
 
 def _bounded_source_content(payload: dict[str, Any]) -> dict[str, Any]:
@@ -99,7 +96,7 @@ def read_source_impl(
     start_line: int = 1,
     end_line: int | None = None,
 ) -> dict[str, Any]:
-    """Read one verified repository-relative source window."""
+    """Read one content-authenticated repository-relative source window."""
 
     if getattr(ctx, "source_verified", False) is not True:
         detail = getattr(ctx, "source_error", None) or "source binding is unverified"
@@ -126,14 +123,23 @@ def read_source_impl(
             f"source windows may contain at most {MAX_SOURCE_WINDOW_LINES} lines."
         )
 
-    payload = live_source_slice(
-        ctx.manifest.repo_path,
-        relative,
-        first,
-        last,
-    )
-    if payload is None:
-        raise ValueError("file_path is not a readable regular repository file.")
+    try:
+        source_bytes = ctx.read_source_bytes(
+            relative,
+            max_bytes=_MAX_SOURCE_FILE_BYTES,
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "file_path is not a readable regular repository file."
+        ) from exc
+    all_lines = source_bytes.decode("utf-8", errors="replace").splitlines(keepends=True)
+    selected = all_lines[first - 1 : last]
+    payload = {
+        "file": relative,
+        "start_line": first,
+        "end_line": first + len(selected) - 1,
+        "content": "".join(selected),
+    }
     if int(payload["end_line"]) < first:
         raise ValueError("start_line exceeds the source file length.")
     payload = _bounded_source_content(payload)
@@ -143,6 +149,9 @@ def read_source_impl(
         "commit": ctx.manifest.commit,
         "source_fingerprint": ctx.manifest.source_fingerprint,
         "verified": True,
+        "verification_scope": "content-bytes",
+        "commit_verified": False,
+        "checkout_state": "not-attested",
     }
     return payload
 

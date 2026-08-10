@@ -22,8 +22,9 @@ import argparse
 import asyncio
 import logging
 import sys
+from contextlib import nullcontext
 from pathlib import Path
-from typing import Annotated, Any, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional
 
 from mcp.server import MCPServer
 from pydantic import Field
@@ -51,6 +52,10 @@ from .tools.search import search_bm25_impl, search_context_impl, search_regex_im
 from .tools.search import search_semantic as _search_semantic_impl
 from .tools.search import search_zoekt_impl
 from .tools.source import read_source_impl
+
+if TYPE_CHECKING:
+    from ..artifacts.runtime import ContextArtifactBinding
+    from ..source_fingerprint import RepositorySourceBinding
 
 logger = logging.getLogger(__name__)
 
@@ -396,9 +401,10 @@ async def lsp_route(
 @mcp.tool(
     name="read_source",
     description=(
-        "Read up to 200 lines from the verified repository checkout using a "
+        "Read up to 200 lines authenticated by the retained source-content "
+        "binding using a "
         "repository-relative POSIX path and 1-based inclusive line range. "
-        "Responses are bounded and retain commit/source provenance."
+        "Responses are bounded; commit is display provenance, not attested."
     ),
 )
 async def read_source(
@@ -406,7 +412,7 @@ async def read_source(
     start_line: _PositiveLine = 1,
     end_line: _PositiveLine | None = None,
 ) -> dict[str, Any]:
-    """Return one bounded source window from the verified checkout."""
+    """Return one bounded window from content-authenticated source bytes."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
@@ -429,13 +435,17 @@ async def get_manifest() -> dict[str, Any]:
     """Return the repo manifest as a dict."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
+    source_verified = _ctx.verify_source_status()
     result = _ctx.manifest.to_dict()
     result["runtime"] = {
         "loaded_views": sorted(_ctx.loaded_views),
         "view_errors": dict(sorted(_ctx.errors.items())),
         "source_read": {
-            "verified": _ctx.source_verified,
+            "verified": source_verified,
             "error": _ctx.source_error,
+            "verification_scope": _ctx.source_verification_scope,
+            "commit_verified": False,
+            "checkout_state": "not-attested",
         },
         "lsp_provider": dict(_ctx.lsp_provider_selection),
     }
@@ -505,8 +515,11 @@ def server_status() -> str:
         else:
             lines.append("  ✗ zoekt: not_loaded")
 
+        source_verified = ctx.verify_source_status()
         source_status = (
-            "verified" if ctx.source_verified else (ctx.source_error or "unverified")
+            "verified(content-bytes; commit=not-attested)"
+            if source_verified
+            else (ctx.source_error or "unverified")
         )
         lines.append(f"  source_read: {source_status}")
 
@@ -580,7 +593,8 @@ def init_server(
     manifest_path: RepoManifest | str | Path,
     *,
     artifact: dict[str, Any] | None = None,
-    source_verified: bool = False,
+    artifact_binding: ContextArtifactBinding | None = None,
+    source_binding: RepositorySourceBinding | None = None,
 ) -> None:
     """Initialize the global ServerContext from a manifest file.
 
@@ -600,49 +614,186 @@ def init_server(
             manifest.repo_path,
             (manifest.commit or "")[:12],
         )
+        compiler_lock = nullcontext()
     else:
         resolved = Path(manifest_path).resolve()
         if not resolved.exists():
             raise FileNotFoundError(f"Manifest not found: {resolved}")
         logger.info("Loading manifest from %s", resolved)
-        manifest = RepoManifest.load(resolved)
         resolved_manifest_path = resolved
-    if _ctx is not None:
-        _ctx.close()
-    _ctx = ServerContext.load(manifest, artifact=artifact)
-    if source_verified:
-        _ctx.source_verified = True
-        _ctx.source_error = None
-    elif resolved_manifest_path is not None:
-        from ..compiler.checkout_identity import validate_checkout_identity
+        # A local manifest is an explicit administrator boundary. Serialize
+        # capture and native loading with the same cache lock as IndexCompiler.
+        # Artifact bindings intentionally skip this branch and remain inert.
+        from filelock import FileLock
 
-        repo_path = Path(manifest.repo_path).expanduser().resolve()
-        if not manifest.source_fingerprint:
-            _ctx.source_error = "manifest has no source fingerprint"
-        elif not repo_path.is_dir():
-            _ctx.source_error = "manifest repository checkout does not exist"
-        else:
+        compiler_lock = FileLock(str(resolved.parent / ".index-compiler.lock"))
+
+    from ..artifacts.runtime import (
+        SourceBindingCleanupOwner,
+        _raise_source_cleanup_failure,
+        _source_cleanup_owner_is_pending,
+    )
+
+    capture_cleanup_owner: SourceBindingCleanupOwner | None = None
+    new_context: ServerContext | None = None
+
+    def close_capture_owner(
+        primary: BaseException,
+    ) -> tuple[BaseException | None, object | None]:
+        """Close the preinstalled owner and identify any retry authority."""
+
+        cleanup_failure: BaseException | None = None
+        if capture_cleanup_owner is not None:
             try:
-                validate_checkout_identity(
-                    repo_path,
-                    manifest,
-                    artifact_root=resolved_manifest_path.parent,
-                )
-            except (OSError, ValueError) as exc:
-                _ctx.source_error = str(exc)
-            else:
-                _ctx.source_verified = True
-                _ctx.source_error = None
+                capture_cleanup_owner.close()
+            except BaseException as exc:  # noqa: B036 - caller selects priority
+                cleanup_failure = exc
+        pending_owner: object | None = None
+        if _source_cleanup_owner_is_pending(capture_cleanup_owner):
+            pending_owner = capture_cleanup_owner
+        nested_owner = getattr(primary, "source_cleanup_owner", None)
+        if pending_owner is None and _source_cleanup_owner_is_pending(nested_owner):
+            pending_owner = nested_owner
+        return cleanup_failure, pending_owner
+
+    try:
+        with compiler_lock:
+            if resolved_manifest_path is not None:
+                manifest = RepoManifest.load(resolved_manifest_path)
+
+            from ..source_fingerprint import (
+                capture_repository_source,
+                is_secure_source_fingerprint_v2,
+            )
+
+            source_error: str | None = "source binding has not been verified"
+            retained_source = (
+                artifact_binding.source_binding
+                if artifact_binding is not None
+                else source_binding
+            )
+            verified = retained_source is not None and is_secure_source_fingerprint_v2(
+                manifest.source_fingerprint
+            )
+            native_authorization = None
+            if verified:
+                source_error = None
+            elif resolved_manifest_path is not None:
+                from ..source_fingerprint import lexical_repository_path
+
+                repo_path = lexical_repository_path(manifest.repo_path)
+                if not is_secure_source_fingerprint_v2(manifest.source_fingerprint):
+                    source_error = (
+                        "manifest has no trust-eligible source fingerprint v2"
+                    )
+                else:
+                    capture_cleanup_owner = SourceBindingCleanupOwner()
+                    try:
+                        retained_source = capture_repository_source(
+                            repo_path,
+                            exclude_roots=(resolved_manifest_path.parent,),
+                            _source_owner=capture_cleanup_owner.retain,
+                        )
+                        if (
+                            retained_source.fingerprint != manifest.source_fingerprint
+                            or retained_source.file_count != manifest.file_count
+                        ):
+                            raise ValueError(
+                                "repository source bytes do not match the indexed "
+                                "content"
+                            )
+                    except BaseException as exc:  # noqa: B036 - preserve primary
+                        cleanup_failure, pending_owner = close_capture_owner(exc)
+                        retained_source = None
+                        if (
+                            not isinstance(exc, Exception)
+                            or cleanup_failure is not None
+                            or pending_owner is not None
+                        ):
+                            _raise_source_cleanup_failure(
+                                exc,
+                                cleanup_failure,
+                                pending_owner,
+                            )
+                        source_error = str(exc)
+                    else:
+                        verified = True
+                        source_error = None
+
+                if verified and manifest.index_is_current("vector"):
+                    from ..index.embedding.artifact_integrity import (
+                        capture_authenticated_vector_view,
+                    )
+                    from ..native_index_authorization import (
+                        _mint_trusted_local_admin_authorization,
+                    )
+
+                    entry = manifest.indexes["vector"]
+                    with capture_authenticated_vector_view(entry.path) as vector_view:
+                        native_authorization = _mint_trusted_local_admin_authorization(
+                            vector_view.ownership,
+                            view_type="vector",
+                            semantic_contract=entry.config,
+                            evidence=(
+                                "local-admin-cli-intent",
+                                "source-content-fingerprint-v2-bound",
+                                "captured-vector-tree-subject",
+                            ),
+                        )
+
+            new_context = ServerContext.load(
+                manifest,
+                artifact=artifact,
+                artifact_binding=artifact_binding,
+                native_index_authorization=native_authorization,
+                source_binding=retained_source,
+            )
+            new_context.source_error = source_error
+            portable_artifact = artifact is not None or artifact_binding is not None
+            new_context.configure_lsp_provider(
+                allow_native=new_context.source_verified and not portable_artifact,
+                native_disabled_reason=(
+                    "portable_artifact_uses_persisted_graph"
+                    if portable_artifact
+                    else "local_source_not_verified"
+                ),
+            )
+
+        if _ctx is not None:
+            _ctx.close()
+        _ctx = new_context
         if not _ctx.source_verified:
             logger.warning("Source reads disabled: %s", _ctx.source_error)
-    _ctx.configure_lsp_provider(
-        allow_native=_ctx.source_verified and _ctx.artifact is None,
-        native_disabled_reason=(
-            "portable_artifact_uses_persisted_graph"
-            if _ctx.artifact is not None
-            else "local_source_not_verified"
-        ),
-    )
+    except BaseException as primary:  # noqa: B036 - retain capture owner
+        # Once the new context is globally reachable it is the stable owner.
+        # Before that point, the preinstalled capture owner must close or retain
+        # the source across any return-handoff or startup cancellation.
+        if not (new_context is not None and _ctx is new_context):
+            cleanup_failure: BaseException | None = None
+            pending_owner: object | None = None
+            context_source = (
+                new_context._source_binding if new_context is not None else None
+            )
+            if new_context is not None:
+                try:
+                    new_context.close()
+                except BaseException as exc:  # noqa: B036 - apply shared priority
+                    cleanup_failure = exc
+            if _source_cleanup_owner_is_pending(context_source):
+                pending_owner = context_source
+            if capture_cleanup_owner is not None:
+                owner_failure, owner_pending = close_capture_owner(primary)
+                if cleanup_failure is None:
+                    cleanup_failure = owner_failure
+                if pending_owner is None:
+                    pending_owner = owner_pending
+            if cleanup_failure is not None or pending_owner is not None:
+                _raise_source_cleanup_failure(
+                    primary,
+                    cleanup_failure,
+                    pending_owner,
+                )
+        raise
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -654,37 +805,51 @@ def main(argv: list[str] | None = None) -> None:
     if args.artifact and manifest_path:
         logger.error("Choose either a manifest or --artifact, not both")
         sys.exit(1)
-    if args.artifact and not args.repo:
-        logger.error("--artifact requires --repo with the exact checkout")
-        sys.exit(1)
     if not args.artifact and not manifest_path:
         logger.error(
-            "No context provided. Use: %s <manifest> or --artifact <dir> --repo <dir>",
+            "No context provided. Use: %s <manifest> or --artifact <dir> "
+            "[--repo <dir>]",
             program_name,
         )
         sys.exit(1)
 
     try:
         if args.artifact:
-            from ..artifacts import bind_context_artifact
+            if args.repo:
+                from ..artifacts import bind_context_artifact
 
-            binding = bind_context_artifact(
-                args.artifact,
-                args.repo,
-                expected_repository=args.repository,
-            )
+                binding = bind_context_artifact(
+                    args.artifact,
+                    args.repo,
+                    expected_repository=args.repository,
+                )
+            else:
+                from ..artifacts import query_context_artifact
+
+                binding = query_context_artifact(
+                    args.artifact,
+                    expected_repository=args.repository,
+                )
             artifact = binding.artifact
-            init_server(
-                binding.manifest,
-                artifact={
-                    "verified": True,
-                    "schema": artifact.metadata["schema"],
-                    "repository": artifact.repository,
-                    "commit": artifact.commit,
-                    "views": list(artifact.views),
-                },
-                source_verified=True,
-            )
+            try:
+                init_server(
+                    binding.manifest,
+                    artifact={
+                        "verified": True,
+                        "schema": artifact.metadata["schema"],
+                        "repository": artifact.repository,
+                        "commit": artifact.commit,
+                        "views": list(artifact.views),
+                    },
+                    artifact_binding=binding,
+                )
+            except BaseException:  # noqa: B036 - preserve startup failure
+                try:
+                    binding.close()
+                except BaseException:  # noqa: B036 - preserve primary failure
+                    pass
+                raise
+            binding.close()
         else:
             init_server(manifest_path)
         logger.info("Starting MCP server on stdio...")

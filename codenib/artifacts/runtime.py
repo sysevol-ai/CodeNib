@@ -7,26 +7,45 @@
 from __future__ import annotations
 
 import json
+import math
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping
+from typing import Any, Callable, Iterator, Mapping, NoReturn
 
-from .._contained_source import validate_repository_file
+from .._atomic_directory import (
+    PublicationAuthenticatedFile,
+    PublicationDirectoryReader,
+    TreeFileRecord,
+    capture_directory_ownership,
+    directory_ownership_file_records,
+    lexical_directory_path,
+    reopen_authenticated_directory,
+)
+from .._bounded_json import iter_bounded_json_array
+from .._contained_source import _attach_source_cleanup_owner
 from ..compiler.checkout_identity import checkout_commit
 from ..compiler.manifest import MANIFEST_FILENAME, MANIFEST_VERSION, RepoManifest
 from ..compiler.snapshot_store import normalize_repo
-from ..source_fingerprint import fingerprint_repository
+from ..source_fingerprint import (
+    RepositorySourceBinding,
+    _SourceLifecycleRLock,
+    _SourceLockLease,
+    capture_repository_source,
+    is_secure_source_fingerprint_v2,
+    lexical_repository_path,
+)
 from .context import (
     CONTEXT_ARTIFACT_MANIFEST,
     CONTEXT_ARTIFACT_SCHEMA,
     PORTABLE_CONTEXT_VIEWS,
 )
-from .security import file_sha256
 
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
-_SOURCE_FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SOURCE_FINGERPRINT_RE = re.compile(r"^(?:sha256|sha256-v2):[0-9a-f]{64}$")
 _REPOSITORY_RE = re.compile(r"^[a-z0-9_.-]+(?:/[a-z0-9_.-]+)*$")
 _DEFAULT_MAX_FILES = 100_000
 _DEFAULT_MAX_BYTES = 64 * 1024 * 1024 * 1024
@@ -34,11 +53,40 @@ _MAX_METADATA_BYTES = 16 * 1024 * 1024
 _MAX_DOCUMENTS_BYTES = 256 * 1024 * 1024
 
 
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate context artifact JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _bounded_json_int(value: str) -> int:
+    if len(value) > 1_024:
+        raise ValueError("context artifact JSON integer is too large")
+    return int(value)
+
+
+def _bounded_json_float(value: str) -> float:
+    if len(value) > 1_024:
+        raise ValueError("context artifact JSON number is too large")
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("context artifact JSON number is not finite")
+    return parsed
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"context artifact JSON constant is not finite: {value}")
+
+
 @dataclass(frozen=True, slots=True)
 class VerifiedContextArtifact:
     """Integrity-checked, still-unbound portable context artifact."""
 
     root: Path
+    ownership: object = dataclass_field(repr=False, compare=False)
     metadata_path: Path
     manifest_path: Path
     metadata: Mapping[str, Any]
@@ -52,28 +100,356 @@ class VerifiedContextArtifact:
     byte_count: int
 
 
-@dataclass(frozen=True, slots=True)
+class SourceBindingCleanupOwner:
+    """Explicit, retryable owner for source bindings awaiting cleanup."""
+
+    def __init__(self) -> None:
+        self._sources: list[object] = []
+
+    def retain(self, source: object) -> None:
+        close = getattr(source, "close", None)
+        if not callable(close):
+            raise TypeError("source cleanup resource must provide close()")
+        if not any(candidate is source for candidate in self._sources):
+            self._sources.append(source)
+
+    @property
+    def pending_sources(self) -> tuple[RepositorySourceBinding, ...]:
+        pending: list[RepositorySourceBinding] = []
+        for source in self._sources:
+            nested = getattr(source, "pending_sources", None)
+            if nested is None:
+                pending.append(source)  # type: ignore[arg-type]
+            else:
+                pending.extend(nested)
+        return tuple(pending)
+
+    @property
+    def closed(self) -> bool:
+        return not self._sources
+
+    def close(self) -> None:
+        """Visit every source and retain only authorities that remain open."""
+
+        first_failure: BaseException | None = None
+        pending: list[object] = []
+        for source in tuple(self._sources):
+            try:
+                source.close()  # type: ignore[attr-defined]
+            except BaseException as exc:  # noqa: B036 - cleanup all sources
+                if first_failure is None:
+                    first_failure = exc
+            try:
+                fully_closed = bool(source.closed)  # type: ignore[attr-defined]
+            except BaseException as exc:  # noqa: B036 - retain uncertain owner
+                fully_closed = False
+                if first_failure is None:
+                    first_failure = exc
+            if not fully_closed:
+                pending.append(source)
+        self._sources[:] = pending
+        if first_failure is not None:
+            raise first_failure
+
+
+def _source_cleanup_owner_is_pending(owner: object | None) -> bool:
+    """Treat uncertain cleanup ownership as pending and therefore non-degradable."""
+
+    if owner is None:
+        return False
+    try:
+        return not bool(owner.closed)  # type: ignore[attr-defined]
+    except BaseException:  # noqa: B036 - uncertain ownership is pending
+        return True
+
+
+def _raise_source_cleanup_failure(
+    primary: BaseException,
+    cleanup_failure: BaseException | None,
+    pending_owner: object | None,
+) -> NoReturn:
+    """Apply source cleanup priority and retain every still-pending owner."""
+
+    actual = primary
+    if (
+        cleanup_failure is not None
+        and isinstance(primary, Exception)
+        and not isinstance(cleanup_failure, Exception)
+    ):
+        actual = cleanup_failure
+
+    prior_owner = getattr(primary, "source_cleanup_owner", None)
+    if _source_cleanup_owner_is_pending(prior_owner):
+        _attach_source_cleanup_owner(actual, prior_owner)
+    if _source_cleanup_owner_is_pending(pending_owner):
+        _attach_source_cleanup_owner(actual, pending_owner)
+
+    if actual is cleanup_failure:
+        raise actual from primary
+    if cleanup_failure is not None:
+        raise actual from cleanup_failure
+    raise actual
+
+
+_SOURCE_BINDING_AVAILABLE = object()
+_SOURCE_BINDING_CLEANUP_PENDING = object()
+_SOURCE_BINDING_CONSUMED = object()
+
+
+@dataclass(slots=True)
 class ContextArtifactBinding:
-    """Verified artifact rebound in memory to one exact source checkout."""
+    """Verified artifact rebound to exact source bytes, not mutable Git state."""
 
     artifact: VerifiedContextArtifact
-    repo_path: Path
+    repo_path: Path | None
     manifest: RepoManifest
+    checkout_commit_observed: str | None = None
+    _source_binding: RepositorySourceBinding | None = dataclass_field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    _transfer_lock: _SourceLifecycleRLock = dataclass_field(
+        default_factory=_SourceLifecycleRLock,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _source_state: tuple[object, RepositorySourceBinding | None] = dataclass_field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        self._source_state = (_SOURCE_BINDING_AVAILABLE, self._source_binding)
+        self._source_binding = None
+
+    @property
+    def source_binding(self) -> RepositorySourceBinding | None:
+        """Return a non-owning snapshot for diagnostics only."""
+
+        with self._transfer_lease():
+            state, source = self._source_state
+            return source if state is _SOURCE_BINDING_AVAILABLE else None
+
+    @property
+    def source_bound(self) -> bool:
+        with self._transfer_lease():
+            state, source = self._source_state
+            return state is _SOURCE_BINDING_AVAILABLE and source is not None
+
+    @contextmanager
+    def _transfer_lease(self) -> Iterator[None]:
+        with _SourceLockLease(self._transfer_lock) as acquisition_failure:
+            if acquisition_failure is not None:
+                raise acquisition_failure
+            yield
+
+    @property
+    def source_verification_scope(self) -> str | None:
+        """Describe the authority retained for later source reads."""
+
+        return "content-bytes" if self.source_bound else None
+
+    @property
+    def commit_verified(self) -> bool:
+        """Mutable Git HEAD is not attested by an M1 content binding."""
+
+        return False
+
+    def install_source_binding(
+        self,
+        install: Callable[[RepositorySourceBinding | None], None],
+        *,
+        expected: RepositorySourceBinding | None = None,
+        require_expected: bool = False,
+    ) -> None:
+        """Install the one-shot source into an already-stable runtime owner.
+
+        The callback must publish its argument in the destination owner before
+        returning.  Unlike returning the capability, this keeps the destination
+        reachable if cancellation lands between this method's return and the
+        caller's next bytecode.
+        """
+
+        source: RepositorySourceBinding | None = None
+        try:
+            with self._transfer_lease():
+                state, candidate = self._source_state
+                if state is not _SOURCE_BINDING_AVAILABLE:
+                    raise RuntimeError(
+                        "context artifact source authority was already transferred"
+                    )
+                if require_expected and candidate is not expected:
+                    raise ValueError(
+                        "artifact source authority does not match its binding"
+                    )
+                source = candidate
+                # Retain an explicit cleanup owner while the callback installs
+                # the source. A failed or interrupted installation remains
+                # retryable through close().
+                self._source_state = (_SOURCE_BINDING_CLEANUP_PENDING, source)
+                install(source)
+                self._source_state = (_SOURCE_BINDING_CONSUMED, None)
+        except BaseException:  # noqa: B036 - close unreturned capability
+            self._recover_source_install(source)
+            raise
+
+    def _recover_source_install(
+        self,
+        source: RepositorySourceBinding | None,
+    ) -> None:
+        """Close or retain a source whose destination install did not finish."""
+
+        try:
+            with _SourceLockLease(self._transfer_lock):
+                state, owned = self._source_state
+                if state is not _SOURCE_BINDING_CLEANUP_PENDING or owned is not source:
+                    return
+                if source is not None:
+                    try:
+                        source.close()
+                    except BaseException:  # noqa: B036 - preserve primary
+                        pass
+                self._source_state = (
+                    (_SOURCE_BINDING_CONSUMED, None)
+                    if source is None or source.closed
+                    else (_SOURCE_BINDING_CLEANUP_PENDING, source)
+                )
+        except BaseException:  # noqa: B036 - binding still retains pending owner
+            return
+
+    def close(self) -> None:
+        """Close an unconsumed live-source authority; query bindings are no-op."""
+
+        deferred: BaseException | None = None
+        try:
+            with _SourceLockLease(self._transfer_lock) as acquisition_failure:
+                if acquisition_failure is not None:
+                    deferred = acquisition_failure
+                state, source = self._source_state
+                if state in {
+                    _SOURCE_BINDING_AVAILABLE,
+                    _SOURCE_BINDING_CLEANUP_PENDING,
+                }:
+                    if source is None:
+                        self._source_state = (_SOURCE_BINDING_CONSUMED, None)
+                    else:
+                        try:
+                            source.close()
+                        except BaseException as exc:  # noqa: B036 - retain owner
+                            if deferred is None:
+                                deferred = exc
+                        self._source_state = (
+                            (_SOURCE_BINDING_CONSUMED, None)
+                            if source.closed
+                            else (_SOURCE_BINDING_CLEANUP_PENDING, source)
+                        )
+        except BaseException as exc:  # noqa: B036 - state retains retry owner
+            if deferred is None:
+                deferred = exc
+        if deferred is not None:
+            raise deferred
+
+    def __enter__(self) -> ContextArtifactBinding:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
 
 
-def _load_json_object(path: Path, *, label: str, max_bytes: int) -> dict[str, Any]:
+class _PublicationContextReader:
+    """Context-artifact facade over an authority-bound publication reader."""
+
+    def __init__(
+        self,
+        publication: PublicationDirectoryReader,
+        ownership: object,
+        *,
+        entry_policy_factory: Callable[[], Callable[[str, str, int, int], None]],
+    ) -> None:
+        self._publication = publication
+        self._ownership = ownership
+        self._entry_policy_factory = entry_policy_factory
+        self._records = {
+            record.path: record
+            for record in directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+        }
+
+    def _record(self, relative: str | PurePosixPath) -> TreeFileRecord:
+        normalized = PurePosixPath(relative) if isinstance(relative, str) else relative
+        try:
+            return self._records[normalized.as_posix()]
+        except KeyError as exc:
+            raise ValueError(
+                f"context artifact has no initial file record: {normalized}"
+            ) from exc
+
+    @contextmanager
+    def open_file(
+        self,
+        relative: str | PurePosixPath,
+        *,
+        max_bytes: int,
+    ) -> Iterator[PublicationAuthenticatedFile]:
+        normalized = PurePosixPath(relative) if isinstance(relative, str) else relative
+        expected = self._record(normalized)
+        with self._publication.open_authenticated_file(
+            normalized,
+            max_bytes=max_bytes,
+        ) as source:
+            yield source
+        if source.record != expected:
+            raise ValueError(
+                f"context artifact file differs from its initial record: {normalized}"
+            )
+
+    def read_bytes(
+        self,
+        relative: str | PurePosixPath,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        payload = bytearray()
+        with self.open_file(relative, max_bytes=max_bytes) as source:
+            for chunk in source.iter_bytes():
+                payload.extend(chunk)
+        return bytes(payload)
+
+    def verify_root(self) -> None:
+        observed = self._publication.capture_ownership(
+            entry_policy=self._entry_policy_factory(),
+        )
+        if observed != self._ownership:
+            raise ValueError("context artifact changed during verification")
+
+    def close(self) -> None:
+        return None
+
+
+_ContextReader = _PublicationContextReader
+
+
+def _load_json_object(
+    reader: _ContextReader,
+    relative: str | PurePosixPath,
+    *,
+    label: str,
+    max_bytes: int,
+) -> dict[str, Any]:
     try:
-        size = path.stat().st_size
-    except OSError as exc:
-        raise ValueError(f"{label} is not readable: {path}") from exc
-    if size > max_bytes:
-        raise ValueError(f"{label} exceeds {max_bytes} bytes: {path}")
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{label} is not valid UTF-8 JSON: {path}") from exc
+        value = json.loads(
+            reader.read_bytes(relative, max_bytes=max_bytes),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_json_constant,
+            parse_int=_bounded_json_int,
+            parse_float=_bounded_json_float,
+        )
+    except ValueError as exc:
+        raise ValueError(f"{label} is not valid UTF-8 JSON: {relative}") from exc
     if not isinstance(value, dict):
-        raise ValueError(f"{label} must be a JSON object: {path}")
+        raise ValueError(f"{label} must be a JSON object: {relative}")
     return value
 
 
@@ -92,29 +468,7 @@ def _relative_path(value: object, *, label: str) -> PurePosixPath:
 
 def _artifact_path(root: Path, value: object, *, label: str) -> Path:
     relative = _relative_path(value, label=label)
-    path = root.joinpath(*relative.parts)
-    resolved = path.resolve()
-    if root != resolved and root not in resolved.parents:
-        raise ValueError(f"{label} escapes the context artifact")
-    return resolved
-
-
-def _actual_files(root: Path, *, max_files: int) -> set[str]:
-    files: set[str] = set()
-    for path in sorted(root.rglob("*")):
-        relative = path.relative_to(root).as_posix()
-        if path.is_symlink():
-            raise ValueError(f"context artifact contains a symbolic link: {relative}")
-        if path.is_file():
-            files.add(relative)
-            # The metadata file is intentionally outside its own inventory.
-            if len(files) > max_files + 1:
-                raise ValueError(
-                    f"context artifact contains more than {max_files} inventoried files"
-                )
-        elif not path.is_dir():
-            raise ValueError(f"context artifact contains a special file: {relative}")
-    return files
+    return root.joinpath(*relative.parts)
 
 
 def _inventory(
@@ -204,64 +558,60 @@ def _artifact_views(metadata: Mapping[str, Any]) -> tuple[str, ...]:
 def _source_path(value: object, *, label: str) -> str:
     if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
         raise ValueError(f"{label} must be a repository-relative POSIX path")
+    try:
+        encoded = value.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"{label} must be a repository-relative POSIX path") from exc
     path = PurePosixPath(value)
     if (
         path.is_absolute()
         or value != path.as_posix()
         or any(part in {"", ".", ".."} for part in path.parts)
+        or len(path.parts) > 256
+        or len(encoded) > 4_096
     ):
         raise ValueError(f"{label} must be a repository-relative POSIX path")
     return path.as_posix()
 
 
 def _document_source_paths(
-    path: Path,
+    reader: _ContextReader,
+    relative: str | PurePosixPath,
     *,
     label: str,
     max_bytes: int,
 ) -> set[str]:
-    try:
-        size = path.stat().st_size
-    except OSError as exc:
-        raise ValueError(f"{label} is not readable: {path}") from exc
-    if size > max_bytes:
-        raise ValueError(f"{label} exceeds {max_bytes} bytes: {path}")
-    try:
-        documents = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{label} is not valid UTF-8 JSON: {path}") from exc
-    if not isinstance(documents, list):
-        raise ValueError(f"{label} must be a JSON list: {path}")
-
     result: set[str] = set()
-    for index, document in enumerate(documents):
-        if not isinstance(document, dict):
-            raise ValueError(f"{label} document {index} must be an object")
-        page_content = document.get("page_content")
-        metadata = document.get("metadata")
-        if not isinstance(page_content, str) or not isinstance(metadata, dict):
-            raise ValueError(
-                f"{label} document {index} has invalid content or metadata"
-            )
-        raw_file = metadata.get("file")
-        if raw_file is not None and raw_file != "":
-            result.add(
-                _source_path(
-                    raw_file,
-                    label=f"{label} document {index} file",
+    with reader.open_file(relative, max_bytes=max_bytes) as source:
+        for index, document in enumerate(iter_bounded_json_array(source, label=label)):
+            if not isinstance(document, dict):
+                raise ValueError(f"{label} document {index} must be an object")
+            page_content = document.get("page_content")
+            metadata = document.get("metadata")
+            if not isinstance(page_content, str) or not isinstance(metadata, dict):
+                raise ValueError(
+                    f"{label} document {index} has invalid content or metadata"
                 )
-            )
-        for field in ("start_line", "end_line"):
-            value = metadata.get(field)
-            if value is not None and (
-                not isinstance(value, int) or isinstance(value, bool) or value < 0
-            ):
-                raise ValueError(f"{label} document {index} has invalid {field}")
+            raw_file = metadata.get("file")
+            if raw_file is not None and raw_file != "":
+                result.add(
+                    _source_path(
+                        raw_file,
+                        label=f"{label} document {index} file",
+                    )
+                )
+            for field in ("start_line", "end_line"):
+                value = metadata.get(field)
+                if value is not None and (
+                    not isinstance(value, int) or isinstance(value, bool) or value < 0
+                ):
+                    raise ValueError(f"{label} document {index} has invalid {field}")
     return result
 
 
 def _validate_view_payloads(
     root: Path,
+    reader: _ContextReader,
     inventory: Mapping[str, tuple[int, str]],
     *,
     views: tuple[str, ...],
@@ -276,7 +626,8 @@ def _validate_view_payloads(
         if not required <= inventory_paths:
             raise ValueError("portable BM25 view is missing its serving files")
         metadata = _load_json_object(
-            root / metadata_relative,
+            reader,
+            metadata_relative,
             label="portable BM25 metadata",
             max_bytes=_MAX_METADATA_BYTES,
         )
@@ -284,7 +635,8 @@ def _validate_view_payloads(
             raise ValueError("portable BM25 project root must be 'source'")
         source_paths.update(
             _document_source_paths(
-                root / documents_relative,
+                reader,
+                documents_relative,
                 label="portable BM25 documents",
                 max_bytes=_MAX_DOCUMENTS_BYTES,
             )
@@ -311,7 +663,8 @@ def _validate_view_payloads(
                 )
             source_paths.update(
                 _document_source_paths(
-                    root.joinpath(*path.parts),
+                    reader,
+                    path,
                     label=f"portable vector documents {relative}",
                     max_bytes=_MAX_DOCUMENTS_BYTES,
                 )
@@ -321,6 +674,7 @@ def _validate_view_payloads(
 
 def _validate_manifest(
     root: Path,
+    reader: _ContextReader,
     metadata: Mapping[str, Any],
     *,
     commit: str,
@@ -346,8 +700,14 @@ def _validate_manifest(
     if manifest_relative not in inventoried_paths:
         raise ValueError("context artifact manifest is absent from its inventory")
     try:
-        manifest = RepoManifest.load(manifest_path)
-    except (KeyError, OSError, TypeError, ValueError) as exc:
+        manifest_payload = _load_json_object(
+            reader,
+            manifest_relative,
+            label="context artifact repository manifest",
+            max_bytes=_MAX_METADATA_BYTES,
+        )
+        manifest = RepoManifest.from_dict(manifest_payload)
+    except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("context artifact repository manifest is invalid") from exc
     if manifest.version != MANIFEST_VERSION:
         raise ValueError(
@@ -418,8 +778,6 @@ def _validate_manifest(
             entry.path,
             label=f"context artifact {view} view path",
         )
-        if not view_path.is_dir():
-            raise ValueError(f"context artifact view is missing: {view}")
         view_relative = view_path.relative_to(root).as_posix()
         if not any(
             relative == view_relative or relative.startswith(f"{view_relative}/")
@@ -433,96 +791,146 @@ def _validate_manifest(
     return manifest_path, manifest
 
 
-def verify_context_artifact(
-    root: str | Path,
+def _validate_context_limits(max_files: int, max_bytes: int) -> None:
+    if (
+        isinstance(max_files, bool)
+        or not isinstance(max_files, int)
+        or max_files <= 0
+        or isinstance(max_bytes, bool)
+        or not isinstance(max_bytes, int)
+        or max_bytes <= 0
+    ):
+        raise ValueError("context artifact limits must be positive integers")
+
+
+def _context_entry_policy(
     *,
-    expected_repository: str | None = None,
-    expected_commit: str | None = None,
-    max_files: int = _DEFAULT_MAX_FILES,
-    max_bytes: int = _DEFAULT_MAX_BYTES,
+    max_files: int,
+    max_bytes: int,
+) -> Callable[[str, str, int, int], None]:
+    file_count = [0]
+    captured_bytes = [0]
+
+    def policy(relative: str, kind: str, mode: int, size: int) -> None:
+        del mode
+        if kind != "file":
+            return
+        file_count[0] += 1
+        if file_count[0] > max_files + 1:
+            raise ValueError(
+                f"context artifact contains more than {max_files} inventoried files"
+            )
+        name = PurePosixPath(relative).name
+        if name.startswith("documents") and name.endswith(".json"):
+            per_file_limit = _MAX_DOCUMENTS_BYTES
+        elif relative == CONTEXT_ARTIFACT_MANIFEST or name.endswith(".json"):
+            per_file_limit = _MAX_METADATA_BYTES
+        else:
+            per_file_limit = max_bytes
+        if size < 0 or size > per_file_limit:
+            raise ValueError(
+                f"context artifact file exceeds its {per_file_limit}-byte limit: "
+                f"{relative}"
+            )
+        captured_bytes[0] += size
+        if captured_bytes[0] > max_bytes + _MAX_METADATA_BYTES:
+            raise ValueError("context artifact exceeds its captured byte limit")
+
+    return policy
+
+
+def _verify_context_artifact_reader(
+    root: Path,
+    ownership: object,
+    reader: _ContextReader,
+    *,
+    expected_repository: str | None,
+    expected_commit: str | None,
+    max_files: int,
+    max_bytes: int,
+    capture_final: Callable[[], object],
 ) -> VerifiedContextArtifact:
-    """Verify an artifact completely without opening any persisted index."""
-
-    candidate = Path(root).expanduser()
-    if candidate.is_symlink():
-        raise ValueError(
-            f"context artifact root must not be a symbolic link: {candidate}"
+    metadata_path = root / CONTEXT_ARTIFACT_MANIFEST
+    try:
+        metadata = _load_json_object(
+            reader,
+            CONTEXT_ARTIFACT_MANIFEST,
+            label="context artifact metadata",
+            max_bytes=_MAX_METADATA_BYTES,
         )
-    resolved = candidate.resolve()
-    if not resolved.is_dir():
-        raise ValueError(f"context artifact directory does not exist: {resolved}")
-    metadata_path = resolved / CONTEXT_ARTIFACT_MANIFEST
-    if metadata_path.is_symlink() or not metadata_path.is_file():
-        raise ValueError(f"context artifact metadata is missing: {metadata_path}")
-    metadata = _load_json_object(
-        metadata_path,
-        label="context artifact metadata",
-        max_bytes=_MAX_METADATA_BYTES,
-    )
-    if metadata.get("schema") != CONTEXT_ARTIFACT_SCHEMA:
-        raise ValueError(
-            "context artifact schema is incompatible: "
-            f"expected {CONTEXT_ARTIFACT_SCHEMA}, found {metadata.get('schema')!r}"
-        )
-    repository, commit, source_fingerprint = _repository_identity(metadata)
-    views = _artifact_views(metadata)
-    inventory, byte_count = _inventory(
-        metadata,
-        max_files=max_files,
-        max_bytes=max_bytes,
-    )
-
-    expected_files = set(inventory) | {CONTEXT_ARTIFACT_MANIFEST}
-    actual_files = _actual_files(resolved, max_files=max_files)
-    if actual_files != expected_files:
-        missing = sorted(expected_files - actual_files)
-        extra = sorted(actual_files - expected_files)
-        raise ValueError(
-            "context artifact file set differs from its inventory: "
-            f"missing={missing}, extra={extra}"
-        )
-    for relative, (expected_size, expected_digest) in inventory.items():
-        path = _artifact_path(
-            resolved,
-            relative,
-            label=f"context artifact inventory path {relative!r}",
-        )
-        size, digest = file_sha256(path)
-        if size != expected_size or digest != expected_digest:
-            raise ValueError(f"context artifact file digest mismatch: {relative}")
-
-    manifest_path, manifest = _validate_manifest(
-        resolved,
-        metadata,
-        commit=commit,
-        source_fingerprint=source_fingerprint,
-        views=views,
-        inventoried_paths=set(inventory),
-    )
-    source_paths = _validate_view_payloads(
-        resolved,
-        inventory,
-        views=views,
-    )
-    if expected_repository is not None:
-        expected = normalize_repo(expected_repository)
-        if repository != expected:
+        if metadata.get("schema") != CONTEXT_ARTIFACT_SCHEMA:
             raise ValueError(
-                "context artifact repository mismatch: "
-                f"expected {expected}, found {repository}"
+                "context artifact schema is incompatible: "
+                f"expected {CONTEXT_ARTIFACT_SCHEMA}, "
+                f"found {metadata.get('schema')!r}"
             )
-    if expected_commit is not None:
-        expected = expected_commit.strip().lower()
-        if not _COMMIT_RE.fullmatch(expected):
-            raise ValueError("expected context artifact commit must be a full Git SHA")
-        if commit != expected:
+        repository, commit, source_fingerprint = _repository_identity(metadata)
+        views = _artifact_views(metadata)
+        inventory, byte_count = _inventory(
+            metadata,
+            max_files=max_files,
+            max_bytes=max_bytes,
+        )
+        records = {
+            record.path: record
+            for record in directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+        }
+        expected_files = set(inventory) | {CONTEXT_ARTIFACT_MANIFEST}
+        actual_files = set(records)
+        if actual_files != expected_files:
+            missing = sorted(expected_files - actual_files)
+            extra = sorted(actual_files - expected_files)
             raise ValueError(
-                "context artifact commit mismatch: "
-                f"expected {expected[:12]}, found {commit[:12]}"
+                "context artifact file set differs from its inventory: "
+                f"missing={missing}, extra={extra}"
             )
+        for relative, (expected_size, expected_digest) in inventory.items():
+            record = records[relative]
+            if record.size != expected_size or record.sha256 != expected_digest:
+                raise ValueError(f"context artifact file digest mismatch: {relative}")
+
+        manifest_path, manifest = _validate_manifest(
+            root,
+            reader,
+            metadata,
+            commit=commit,
+            source_fingerprint=source_fingerprint,
+            views=views,
+            inventoried_paths=set(inventory),
+        )
+        source_paths = _validate_view_payloads(
+            root,
+            reader,
+            inventory,
+            views=views,
+        )
+        if expected_repository is not None:
+            expected = normalize_repo(expected_repository)
+            if repository != expected:
+                raise ValueError(
+                    "context artifact repository mismatch: "
+                    f"expected {expected}, found {repository}"
+                )
+        if expected_commit is not None:
+            expected = expected_commit.strip().lower()
+            if not _COMMIT_RE.fullmatch(expected):
+                raise ValueError(
+                    "expected context artifact commit must be a full Git SHA"
+                )
+            if commit != expected:
+                raise ValueError(
+                    "context artifact commit mismatch: "
+                    f"expected {expected[:12]}, found {commit[:12]}"
+                )
+        reader.verify_root()
+        if capture_final() != ownership:
+            raise ValueError("context artifact changed during verification")
+    finally:
+        reader.close()
 
     return VerifiedContextArtifact(
-        root=resolved,
+        root=root,
+        ownership=ownership,
         metadata_path=metadata_path,
         manifest_path=manifest_path,
         metadata=metadata,
@@ -537,6 +945,101 @@ def verify_context_artifact(
     )
 
 
+def verify_context_artifact_reader(
+    publication: PublicationDirectoryReader,
+    *,
+    expected_repository: str | None = None,
+    expected_commit: str | None = None,
+    max_files: int = _DEFAULT_MAX_FILES,
+    max_bytes: int = _DEFAULT_MAX_BYTES,
+) -> VerifiedContextArtifact:
+    """Verify an artifact through a publication authority without a path reopen."""
+
+    _validate_context_limits(max_files, max_bytes)
+    policy_factory = lambda: _context_entry_policy(  # noqa: E731
+        max_files=max_files,
+        max_bytes=max_bytes,
+    )
+    ownership = publication.capture_ownership(entry_policy=policy_factory())
+    reader = _PublicationContextReader(
+        publication,
+        ownership,
+        entry_policy_factory=policy_factory,
+    )
+    return _verify_context_artifact_reader(
+        Path("/__codenib_context_artifact__"),
+        ownership,
+        reader,
+        expected_repository=expected_repository,
+        expected_commit=expected_commit,
+        max_files=max_files,
+        max_bytes=max_bytes,
+        capture_final=lambda: publication.capture_ownership(
+            entry_policy=policy_factory(),
+        ),
+    )
+
+
+def verify_context_artifact(
+    root: str | Path,
+    *,
+    expected_repository: str | None = None,
+    expected_commit: str | None = None,
+    max_files: int = _DEFAULT_MAX_FILES,
+    max_bytes: int = _DEFAULT_MAX_BYTES,
+) -> VerifiedContextArtifact:
+    """Verify an artifact completely without opening any persisted index."""
+
+    _validate_context_limits(max_files, max_bytes)
+    resolved = lexical_directory_path(Path(root))
+    policy_factory = lambda: _context_entry_policy(  # noqa: E731
+        max_files=max_files,
+        max_bytes=max_bytes,
+    )
+
+    try:
+        ownership = capture_directory_ownership(
+            resolved,
+            entry_policy=policy_factory(),
+        )
+    except ValueError:
+        raise
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(
+            "context artifact directory could not be captured safely; it may "
+            f"contain a symbolic link or unstable content: {resolved}"
+        ) from exc
+
+    def verify(publication: PublicationDirectoryReader) -> VerifiedContextArtifact:
+        reader = _PublicationContextReader(
+            publication,
+            ownership,
+            entry_policy_factory=policy_factory,
+        )
+        return _verify_context_artifact_reader(
+            resolved,
+            ownership,
+            reader,
+            expected_repository=expected_repository,
+            expected_commit=expected_commit,
+            max_files=max_files,
+            max_bytes=max_bytes,
+            capture_final=lambda: publication.capture_ownership(
+                entry_policy=policy_factory(),
+            ),
+        )
+
+    try:
+        return reopen_authenticated_directory(resolved, ownership, verify)
+    except ValueError:
+        raise
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(
+            "context artifact directory could not be reopened safely; it may "
+            f"contain a symbolic link or unstable content: {resolved}"
+        ) from exc
+
+
 def bind_context_artifact(
     root: str | Path,
     repo_path: str | Path,
@@ -544,65 +1047,117 @@ def bind_context_artifact(
     expected_repository: str | None = None,
     expected_commit: str | None = None,
 ) -> ContextArtifactBinding:
-    """Verify an artifact and bind it to an exact, unchanged checkout."""
+    """Bind an artifact to retained, v2-authenticated repository content."""
 
     artifact = verify_context_artifact(
         root,
         expected_repository=expected_repository,
         expected_commit=expected_commit,
     )
-    repo = Path(repo_path).expanduser().resolve()
-    if not repo.is_dir():
-        raise ValueError(f"repository checkout does not exist: {repo}")
-    actual_commit = checkout_commit(repo)
-    if actual_commit != artifact.commit:
-        actual_label = actual_commit[:12] if actual_commit else "not-a-git-checkout"
-        raise ValueError(
-            "repository checkout commit does not match the context artifact: "
-            f"checkout={actual_label}, artifact={artifact.commit[:12]}"
-        )
-    source = fingerprint_repository(
-        repo,
-        exclude_roots=(artifact.root,),
-    )
-    if source.value != artifact.source_fingerprint:
-        raise ValueError(
-            "repository source files do not match the context artifact fingerprint"
-        )
-    if source.file_count != artifact.manifest.file_count:
-        raise ValueError(
-            "repository file count does not match the context artifact manifest"
-        )
-    for relative in artifact.source_paths:
-        try:
-            validate_repository_file(repo, relative)
-        except ValueError as exc:
-            raise ValueError(
-                "context artifact source path is not a stable file inside "
-                f"the repository checkout: {relative}"
-            ) from exc
+    cleanup_owner = SourceBindingCleanupOwner()
 
-    manifest_data = artifact.manifest.to_dict()
-    manifest_data["repo"]["path"] = str(repo)
-    for view, entry in manifest_data["indexes"].items():
-        entry["path"] = str(
-            _artifact_path(
-                artifact.root,
-                entry["path"],
-                label=f"context artifact {view} view path",
+    def bind(_publication: PublicationDirectoryReader) -> ContextArtifactBinding:
+        if not is_secure_source_fingerprint_v2(artifact.source_fingerprint):
+            raise ValueError(
+                "legacy context artifact source fingerprints are query-only; "
+                "rebuild with source fingerprint v2 before binding a live checkout"
             )
+        repo = lexical_repository_path(repo_path)
+        source = capture_repository_source(
+            repo,
+            exclude_roots=(artifact.root,),
+            _source_owner=cleanup_owner.retain,
         )
-    manifest = RepoManifest.from_dict(manifest_data)
+        # This is diagnostic provenance only. A mutable Git HEAD cannot be
+        # attested by any finite sequence of path reads, so it never gates the
+        # retained content authority or native trust.
+        actual_commit = checkout_commit(repo)
+        source.verify_snapshot()
+        if source.fingerprint != artifact.source_fingerprint:
+            raise ValueError(
+                "repository source files do not match the context artifact fingerprint"
+            )
+        if source.file_count != artifact.manifest.file_count:
+            raise ValueError(
+                "repository file count does not match the context artifact manifest"
+            )
+        source_records = {record.path for record in source.file_records}
+        missing_source_paths = sorted(set(artifact.source_paths) - source_records)
+        if missing_source_paths:
+            raise ValueError(
+                "context artifact source paths are absent from the authenticated "
+                "repository: " + ", ".join(missing_source_paths)
+            )
+
+        manifest_data = artifact.manifest.to_dict()
+        manifest_data["repo"]["path"] = str(repo)
+        for view, entry in manifest_data["indexes"].items():
+            entry["path"] = str(
+                _artifact_path(
+                    artifact.root,
+                    entry["path"],
+                    label=f"context artifact {view} view path",
+                )
+            )
+        manifest = RepoManifest.from_dict(manifest_data)
+        return ContextArtifactBinding(
+            artifact=artifact,
+            repo_path=repo,
+            manifest=manifest,
+            checkout_commit_observed=actual_commit or None,
+            _source_binding=source,
+        )
+
+    try:
+        return reopen_authenticated_directory(
+            artifact.root,
+            artifact.ownership,  # type: ignore[arg-type]
+            bind,
+        )
+    except BaseException as exc:  # noqa: B036 - cleanup before propagation
+        try:
+            cleanup_owner.close()
+        except BaseException:  # noqa: B036 - preserve primary, retain owner
+            _attach_source_cleanup_owner(exc, cleanup_owner)
+        if isinstance(exc, ValueError):
+            raise
+        if not isinstance(exc, (OSError, RuntimeError)):
+            raise
+        translated = ValueError(
+            "context artifact changed between verification and source binding"
+        )
+        _attach_source_cleanup_owner(translated, cleanup_owner)
+        raise translated from exc
+
+
+def query_context_artifact(
+    root: str | Path,
+    *,
+    expected_repository: str | None = None,
+    expected_commit: str | None = None,
+) -> ContextArtifactBinding:
+    """Create an authority-bound, source-disabled portable query binding."""
+
+    artifact = verify_context_artifact(
+        root,
+        expected_repository=expected_repository,
+        expected_commit=expected_commit,
+    )
     return ContextArtifactBinding(
         artifact=artifact,
-        repo_path=repo,
-        manifest=manifest,
+        repo_path=None,
+        manifest=artifact.manifest,
+        checkout_commit_observed=None,
+        _source_binding=None,
     )
 
 
 __all__ = [
     "ContextArtifactBinding",
+    "SourceBindingCleanupOwner",
     "VerifiedContextArtifact",
     "bind_context_artifact",
+    "query_context_artifact",
     "verify_context_artifact",
+    "verify_context_artifact_reader",
 ]
