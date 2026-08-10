@@ -43,6 +43,16 @@ def _source(root: Path) -> Path:
     return source
 
 
+def _moved_publication_root(destination: Path) -> Path:
+    matches = tuple(
+        path
+        for path in destination.parent.iterdir()
+        if path.name.startswith(f".{destination.name}.previous-")
+    )
+    assert len(matches) == 1
+    return matches[0]
+
+
 def _canonical_info(
     name: str,
     mode: int = 0o644,
@@ -164,6 +174,10 @@ def test_build_verify_and_materialize_round_trip(tmp_path: Path) -> None:
     ]
     assert [member.mode for member in built.members] == [0o644, 0o755]
     assert materialized.payload_dir == materialized.output_dir / "payload"
+    assert (
+        atomic_module.capture_directory_ownership(materialized.output_dir)
+        == materialized.ownership
+    )
     assert _tree(materialized.payload_dir) == {
         "documents.json": (b"[]\n", 0o644),
         "index/shard": (b"immutable shard", 0o755),
@@ -1517,13 +1531,16 @@ def test_materialization_rolls_back_late_payload_mode_change(
         validate = kwargs["validate_moved_destination"]
         calls = 0
 
-        def validate_then_mutate(moved: Path) -> None:
+        def validate_then_mutate(
+            moved: atomic_module.PublicationDirectoryReader,
+        ) -> None:
             nonlocal calls
             assert callable(validate)
             validate(moved)
             calls += 1
             if calls == 1:
-                (moved / "payload" / "documents.json").chmod(0o600)
+                moved_root = _moved_publication_root(destination)
+                (moved_root / "payload" / "documents.json").chmod(0o600)
 
         kwargs["validate_moved_destination"] = validate_then_mutate
         original_publish(stage, destination, **kwargs)
@@ -1534,7 +1551,7 @@ def test_materialization_rolls_back_late_payload_mode_change(
         publish_with_late_chmod,
     )
 
-    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+    with pytest.raises(RuntimeError, match="moved destination changed"):
         materialize_view_bundle(archive, output)
 
     assert stat.S_IMODE((output / "payload" / "documents.json").stat().st_mode) == 0o600
@@ -1560,13 +1577,16 @@ def test_materialization_rolls_back_write_after_first_boundary_validation(
         validate = kwargs["validate_moved_destination"]
         calls = 0
 
-        def validate_then_write(moved: Path) -> None:
+        def validate_then_write(
+            moved: atomic_module.PublicationDirectoryReader,
+        ) -> None:
             nonlocal calls
             assert callable(validate)
             validate(moved)
             calls += 1
             if calls == 1:
-                (moved / "payload" / "index" / "late.txt").write_text(
+                moved_root = _moved_publication_root(destination)
+                (moved_root / "payload" / "index" / "late.txt").write_text(
                     "preserve",
                     encoding="utf-8",
                 )
@@ -1580,7 +1600,7 @@ def test_materialization_rolls_back_write_after_first_boundary_validation(
         publish_with_late_write,
     )
 
-    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+    with pytest.raises(RuntimeError, match="moved destination changed"):
         materialize_view_bundle(archive, output)
 
     assert (output / "payload" / "index" / "late.txt").read_text(
@@ -1685,17 +1705,30 @@ def test_materialization_revalidates_published_stage_before_old_cleanup(
     (source / "documents.json").write_bytes(b"new")
     second_archive = tmp_path / "second.zip"
     build_view_bundle(source, second_archive, view_type="bm25")
-    real_replace = atomic_module.os.replace
+    real_rename = atomic_module._rename_noreplace_at
 
-    def mutate_after_stage_publish(source_path, destination_path):
-        result = real_replace(source_path, destination_path)
-        if Path(destination_path) == output and Path(source_path).name.startswith(
+    def mutate_after_stage_publish(
+        source_name: str,
+        destination_name: str,
+        source_descriptor: int,
+        destination_descriptor: int,
+    ) -> None:
+        real_rename(
+            source_name,
+            destination_name,
+            source_descriptor,
+            destination_descriptor,
+        )
+        if destination_name == output.name and source_name.startswith(
             ".runtime.materialize-"
         ):
             (output / "payload" / "documents.json").write_bytes(b"bad")
-        return result
 
-    monkeypatch.setattr(atomic_module.os, "replace", mutate_after_stage_publish)
+    monkeypatch.setattr(
+        atomic_module,
+        "_rename_noreplace_at",
+        mutate_after_stage_publish,
+    )
 
     with pytest.raises(RuntimeError, match="published directory identity"):
         materialize_view_bundle(second_archive, output)
@@ -1732,7 +1765,7 @@ def test_materialization_rejects_owned_payload_mount_without_deleting_it(
     output = tmp_path / "runtime"
     materialize_view_bundle(archive, output)
     mounted = output / "payload" / "index"
-    original_mount_check = bundle_module._path_is_mount_point
+    original_mount_check = atomic_module._path_is_mount_point
 
     def fake_mount_check(path: Path, **kwargs: object) -> bool:
         return Path(path) == mounted or original_mount_check(path, **kwargs)
@@ -1777,7 +1810,9 @@ def test_materialization_rolls_back_mount_detected_after_linearization(
         validate = kwargs["validate_moved_destination"]
         calls = 0
 
-        def validate_then_mount(moved: Path) -> None:
+        def validate_then_mount(
+            moved: atomic_module.PublicationDirectoryReader,
+        ) -> None:
             nonlocal calls, mounted
             assert callable(validate)
             validate(moved)
@@ -1788,14 +1823,14 @@ def test_materialization_rolls_back_mount_detected_after_linearization(
         kwargs["validate_moved_destination"] = validate_then_mount
         original_publish(stage, destination, **kwargs)
 
-    monkeypatch.setattr(bundle_module, "_path_is_mount_point", fake_mount_check)
+    monkeypatch.setattr(atomic_module, "_path_is_mount_point", fake_mount_check)
     monkeypatch.setattr(
         bundle_module,
         "publish_staged_directory",
         publish_with_late_mount,
     )
 
-    with pytest.raises(RuntimeError, match="safe cleanup validation"):
+    with pytest.raises(RuntimeError, match="moved destination changed"):
         materialize_view_bundle(archive, output)
 
     assert (output / "payload" / "index" / "shard").read_bytes() == b"immutable shard"
