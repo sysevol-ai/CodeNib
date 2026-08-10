@@ -6,35 +6,59 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 import re
-import shutil
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 
 from .._atomic_directory import (
+    DirectoryOrphan,
     PublicationDirectoryReader,
-    _annotate_secondary_error,
     capture_directory_ownership,
-    directory_ownership_root_identity,
-    discard_owned_directory,
+    directory_ownership_file_records,
     lexical_directory_path,
-    publish_staged_directory,
+    reopen_authenticated_directory,
 )
+from .._captured_directory import OwnedDirectoryStage
 from .._version import package_version
-from ..artifacts.security import assert_publishable_tree, file_sha256
+from ..artifacts.security import (
+    assert_publishable_tree_reader,
+)
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import RepoManifest
+from ..source_fingerprint import lexical_repository_path
 from .launcher import find_frontend_dir
 from .local import prepare_local_wiki
 
 STATIC_EXPORT_SCHEMA_VERSION = "1.0"
 STATIC_EXPORT_MANIFEST = "codenib-static.json"
+logger = logging.getLogger(__name__)
+
+
+def _record_publication_orphan(
+    orphan: DirectoryOrphan | None,
+    *,
+    operation: str,
+) -> None:
+    if orphan is None:
+        return
+    logger.warning(
+        "Static export %s retained an orphan for quiescent GC: "
+        "path=%s digest=%s entries=%d bytes=%d verified=%s",
+        operation,
+        orphan.path,
+        orphan.ownership_digest,
+        orphan.entries,
+        orphan.byte_count,
+        orphan.verified_at_isolation,
+    )
+
 
 _DOCUMENT_BASE_RE = re.compile(r"<base\s+[^>]*href=(['\"])[^'\"]*\1[^>]*>", re.I)
 _DOCUMENT_REFERENCE_RE = re.compile(
@@ -53,6 +77,10 @@ _GRAPH_SOURCE_PAGE_MAX_BYTES = 1024 * 1024
 _GRAPH_SOURCE_MAX_ANCHORS = 64
 _GRAPH_NODE_CONTEXT_LINES = 3
 _GRAPH_ANCHOR_CONTEXT_LINES = 6
+_MAX_FRONTEND_FILES = 100_000
+_MAX_FRONTEND_BYTES = 2 * 1024 * 1024 * 1024
+_MAX_FRONTEND_FILE_BYTES = 256 * 1024 * 1024
+_MAX_FRONTEND_INDEX_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,17 +130,27 @@ def _json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
-def _write_bytes(root: Path, relative: str, content: bytes) -> Path:
-    target = root.joinpath(*PurePosixPath(relative).parts).resolve()
-    if root != target and root not in target.parents:
-        raise ValueError(f"export path escapes the output directory: {relative}")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(content)
-    return target
+def _write_bytes(
+    stage: OwnedDirectoryStage,
+    relative: str,
+    content: bytes,
+) -> PurePosixPath:
+    normalized = PurePosixPath(relative)
+    stage.write_file(
+        normalized,
+        (content,),
+        mode=0o644,
+        max_bytes=len(content),
+    )
+    return normalized
 
 
-def _write_json(root: Path, relative: str, value: Any) -> Path:
-    return _write_bytes(root, relative, _json_bytes(value))
+def _write_json(
+    stage: OwnedDirectoryStage,
+    relative: str,
+    value: Any,
+) -> PurePosixPath:
+    return _write_bytes(stage, relative, _json_bytes(value))
 
 
 def _model_dict(value: Any) -> dict[str, Any]:
@@ -508,14 +546,11 @@ def _prebuilt_frontend(explicit: str | os.PathLike[str] | None) -> Path:
     return frontend
 
 
-def _copy_frontend(source: Path, target: Path, *, base_path: str) -> None:
-    for candidate in source.rglob("*"):
-        if candidate.is_symlink():
-            raise ValueError(f"frontend contains a symbolic link: {candidate}")
-    shutil.copytree(source, target, dirs_exist_ok=True)
-
-    index = target / "index.html"
-    index_text = index.read_text(encoding="utf-8")
+def _mounted_frontend_index(payload: bytes, *, base_path: str) -> bytes:
+    try:
+        index_text = payload.decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise ValueError("prebuilt frontend index.html must be UTF-8") from exc
     index_text = _DOCUMENT_BASE_RE.sub("", index_text)
 
     def mount_reference(match: re.Match[str]) -> str:
@@ -553,7 +588,73 @@ def _copy_frontend(source: Path, target: Path, *, base_path: str) -> None:
         )
 
     index_text = _DOCUMENT_REFERENCE_RE.sub(mount_reference, index_text)
-    index.write_text(index_text, encoding="utf-8")
+    return index_text.encode("utf-8")
+
+
+def _copy_frontend(
+    source: Path,
+    stage: OwnedDirectoryStage,
+    *,
+    base_path: str,
+) -> None:
+    file_count = 0
+    byte_count = 0
+
+    def entry_policy(path: str, kind: str, mode: int, size: int) -> None:
+        nonlocal file_count, byte_count
+        del mode
+        if kind != "file":
+            return
+        file_count += 1
+        byte_count += size
+        if file_count > _MAX_FRONTEND_FILES:
+            raise ValueError(f"prebuilt frontend exceeds {_MAX_FRONTEND_FILES} files")
+        if size > _MAX_FRONTEND_FILE_BYTES or byte_count > _MAX_FRONTEND_BYTES:
+            raise ValueError("prebuilt frontend exceeds its bounded byte budget")
+        if path == "index.html" and size > _MAX_FRONTEND_INDEX_BYTES:
+            raise ValueError("prebuilt frontend index.html exceeds its byte limit")
+
+    ownership = capture_directory_ownership(
+        source,
+        required_root_file="index.html",
+        entry_policy=entry_policy,
+    )
+
+    def copy(reader: PublicationDirectoryReader) -> None:
+        for record in reader.file_records():
+            if record.path in {"runtime-config.js", "404.html"}:
+                continue
+            if record.path == STATIC_EXPORT_MANIFEST or record.path.startswith("data/"):
+                raise ValueError(
+                    f"prebuilt frontend collides with generated export data: "
+                    f"{record.path}"
+                )
+            mode = 0o755 if record.mode & 0o111 else 0o644
+            if record.path == "index.html":
+                payload = reader.read_bytes(
+                    record.path,
+                    max_bytes=_MAX_FRONTEND_INDEX_BYTES,
+                )
+                mounted = _mounted_frontend_index(payload, base_path=base_path)
+                stage.write_file(
+                    record.path,
+                    (mounted,),
+                    mode=mode,
+                    max_bytes=_MAX_FRONTEND_INDEX_BYTES,
+                )
+                continue
+            with reader.open_authenticated_file(
+                record.path,
+                max_bytes=_MAX_FRONTEND_FILE_BYTES,
+            ) as source_file:
+                stage.write_file(
+                    record.path,
+                    source_file.iter_bytes(chunk_size=1024 * 1024),
+                    mode=mode,
+                    max_bytes=record.size,
+                )
+
+    reopen_authenticated_directory(source, ownership, copy)
 
 
 def _runtime_config(base_path: str) -> bytes:
@@ -696,34 +797,29 @@ def _generation_summary(pages: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _file_inventory(root: Path) -> list[dict[str, Any]]:
-    files = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path == root / STATIC_EXPORT_MANIFEST:
-            continue
-        size, digest = file_sha256(path)
-        files.append(
-            {
-                "path": path.relative_to(root).as_posix(),
-                "bytes": size,
-                "sha256": digest,
-            }
+def _file_inventory(ownership: object) -> list[dict[str, Any]]:
+    return [
+        {
+            "path": record.path,
+            "bytes": record.size,
+            "sha256": record.sha256,
+        }
+        for record in sorted(
+            directory_ownership_file_records(ownership),  # type: ignore[arg-type]
+            key=lambda item: PurePosixPath(item.path),
         )
-    return files
+        if record.path != STATIC_EXPORT_MANIFEST
+    ]
 
 
 def _validated_output(
     repo_path: Path,
     manifest_root: Path,
     output_dir: Path,
-) -> tuple[Path, object | None]:
-    repo_path = repo_path.resolve()
-    manifest_root = manifest_root.resolve()
+) -> Path:
+    repo_path = lexical_repository_path(repo_path)
+    manifest_root = lexical_directory_path(manifest_root)
     output_dir = lexical_directory_path(output_dir)
-    if output_dir.is_symlink():
-        raise ValueError(
-            f"static export output must not be a symbolic link: {output_dir}"
-        )
     for source, label in (
         (repo_path, "target repository"),
         (manifest_root, "index root"),
@@ -732,24 +828,7 @@ def _validated_output(
             raise ValueError(f"static export output must be outside the {label}")
         if output_dir in source.parents:
             raise ValueError(f"static export output must not contain the {label}")
-    if output_dir.exists() and not output_dir.is_dir():
-        raise ValueError(f"static export output is not a directory: {output_dir}")
-    try:
-        expected_ownership = (
-            capture_directory_ownership(
-                output_dir,
-                required_root_file=STATIC_EXPORT_MANIFEST,
-                allow_empty_root=True,
-            )
-            if output_dir.exists()
-            else None
-        )
-    except RuntimeError as exc:
-        raise ValueError(
-            "refusing to replace a non-empty directory that is not a CodeNib "
-            f"static export: {output_dir}"
-        ) from exc
-    return output_dir, expected_ownership
+    return output_dir
 
 
 def export_static_wiki(
@@ -763,9 +842,10 @@ def export_static_wiki(
 ) -> StaticExportResult:
     """Build a deterministic static Wiki from an existing repository manifest."""
 
-    repo_path = repo_path.expanduser().resolve()
-    manifest_path = manifest_path.expanduser().resolve()
-    output_dir, expected_output_ownership = _validated_output(
+    repo_path = lexical_repository_path(repo_path)
+    manifest_path = Path(os.path.abspath(os.fspath(manifest_path.expanduser())))
+    output_dir = lexical_directory_path(output_dir)
+    output_dir = _validated_output(
         repo_path,
         manifest_path.parent,
         output_dir,
@@ -818,19 +898,17 @@ def export_static_wiki(
     repo_info["incremental"] = None
     repo_info["source_url"] = _github_repository_url(repo_path)
 
-    output_dir.parent.mkdir(parents=True, exist_ok=True)
-    stage = lexical_directory_path(
-        Path(
-            tempfile.mkdtemp(
-                prefix=f".{output_dir.name}.tmp-",
-                dir=str(output_dir.parent),
-            )
+    try:
+        stage = OwnedDirectoryStage.prepare(
+            output_dir,
+            required_destination_file=STATIC_EXPORT_MANIFEST,
+            allow_empty_destination=True,
         )
-    )
-    stage_root_ownership = capture_directory_ownership(stage)
-    initial_stage_root_identity = directory_ownership_root_identity(
-        stage_root_ownership
-    )
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(
+            "refusing to replace a non-empty directory that is not a CodeNib "
+            f"static export: {output_dir}"
+        ) from exc
     try:
         _copy_frontend(frontend, stage, base_path=base_path)
         _write_bytes(stage, "runtime-config.js", _runtime_config(base_path))
@@ -858,13 +936,8 @@ def export_static_wiki(
                 graphs[page_id],
             )
 
-        assert_publishable_tree(
-            stage,
-            forbidden_paths=(repo_path, manifest_path.parent),
-            environ=environment,
-            label="static export",
-        )
         source_manifest = bundle.manifest
+        staged_payload_ownership = stage.capture_ownership()
         export_manifest = {
             "schema_version": STATIC_EXPORT_SCHEMA_VERSION,
             "repository": {
@@ -894,55 +967,27 @@ def export_static_wiki(
             "capabilities": capabilities,
             "generation": _generation_summary(pages),
             "base_path": base_path,
-            "files": _file_inventory(stage),
+            "files": _file_inventory(staged_payload_ownership),
         }
         manifest_file = _write_json(stage, STATIC_EXPORT_MANIFEST, export_manifest)
-        assert_publishable_tree(
-            stage,
-            forbidden_paths=(repo_path, manifest_path.parent),
-            environ=environment,
-            label="static export",
-        )
 
         expected_manifest_bytes = _json_bytes(export_manifest)
 
-        def validate_export_path(candidate: Path) -> None:
-            assert_publishable_tree(
+        expected_manifest_digest = hashlib.sha256(expected_manifest_bytes).hexdigest()
+
+        def validate_export(candidate: PublicationDirectoryReader) -> None:
+            assert_publishable_tree_reader(
                 candidate,
                 forbidden_paths=(repo_path, manifest_path.parent),
                 environ=environment,
                 label="static export",
             )
-            candidate_manifest = candidate / STATIC_EXPORT_MANIFEST
-            if (
-                not candidate_manifest.is_file()
-                or candidate_manifest.read_bytes() != expected_manifest_bytes
-                or _file_inventory(candidate) != export_manifest["files"]
-            ):
-                raise ValueError(
-                    "published static export differs from its staged identity"
-                )
-
-        # Carry the path validators' result across publication with one exact
-        # full-tree token. Publication callbacks receive a retained reader and
-        # must never reopen the staged or published path.
-        validate_export_path(stage)
-        publication_ownership = capture_directory_ownership(stage)
-        if (
-            directory_ownership_root_identity(publication_ownership)
-            != initial_stage_root_identity
-        ):
-            raise RuntimeError("static export stage root changed during build")
-        stage_root_ownership = publication_ownership
-        expected_manifest_size, expected_manifest_digest = file_sha256(manifest_file)
-
-        def validate_export(candidate: PublicationDirectoryReader) -> None:
             records = candidate.file_records()
             candidate_manifest = next(
                 (record for record in records if record.path == STATIC_EXPORT_MANIFEST),
                 None,
             )
-            actual_files = [
+            candidate_files = [
                 {
                     "path": record.path,
                     "bytes": record.size,
@@ -956,50 +1001,22 @@ def export_static_wiki(
             ]
             if (
                 candidate_manifest is None
-                or candidate_manifest.size != expected_manifest_size
+                or candidate_manifest.size != len(expected_manifest_bytes)
                 or candidate_manifest.sha256 != expected_manifest_digest
-                or candidate.read_bytes(
-                    STATIC_EXPORT_MANIFEST,
-                    max_bytes=expected_manifest_size,
-                )
-                != expected_manifest_bytes
-                or actual_files != export_manifest["files"]
+                or candidate_files != export_manifest["files"]
             ):
                 raise ValueError(
                     "published static export differs from its staged identity"
                 )
 
-        publish_staged_directory(
-            stage,
-            output_dir,
-            expected_stage_root_ownership=stage_root_ownership,
-            expected_destination_ownership=expected_output_ownership,
+        publication_orphan = stage.publish(
             validate_staged_directory=validate_export,
             validate_published_destination=validate_export,
         )
-        manifest_file = output_dir / manifest_file.relative_to(stage)
-    except BaseException as primary_error:
-        try:
-            observed_stage_ownership = capture_directory_ownership(stage)
-            if (
-                directory_ownership_root_identity(observed_stage_ownership)
-                == initial_stage_root_identity
-            ):
-                stage_root_ownership = observed_stage_ownership
-        except BaseException as capture_error:  # noqa: B036 - preserve primary
-            _annotate_secondary_error(
-                primary_error,
-                "static export stage cleanup capture also failed",
-                capture_error,
-            )
-        try:
-            discard_owned_directory(stage, stage_root_ownership)
-        except BaseException as discard_error:  # noqa: B036 - preserve primary
-            _annotate_secondary_error(
-                primary_error,
-                "static export stage discard also failed",
-                discard_error,
-            )
+        _record_publication_orphan(publication_orphan, operation="publication")
+        manifest_file = output_dir.joinpath(*manifest_file.parts)
+    except BaseException:
+        _record_publication_orphan(stage.discard(), operation="discard")
         raise
 
     return StaticExportResult(
