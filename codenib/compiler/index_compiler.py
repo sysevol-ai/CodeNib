@@ -33,7 +33,7 @@ from ..paths import REPO_INDEX_DIRNAME
 from ..source_fingerprint import (
     SourceFingerprint,
     fingerprint_repository,
-    repository_source_is_dirty,
+    is_secure_source_fingerprint_v2,
 )
 from .cache_lock import compiler_cache_lock
 from .index_builders import IndexBuilderRegistry
@@ -124,9 +124,12 @@ class IndexCompiler:
         """
         Advance an existing manifest to the repo's current HEAD.
 
-        Each builder is asked for an incremental update rather than a full
-        build. Builders without a real delta path fall back to a rebuild
-        internally, so the result is always correct -- only the cost differs.
+        Requested views are rebuilt from the captured source generation.  An
+        incremental delta is unsafe until the Git cleanliness/HEAD observation
+        can be bound to the same pinned repository authority as the source
+        fingerprint; a path-based status check can otherwise observe a
+        temporary replacement repository and authorize reuse for different
+        bytes.
 
         Falls back to a full :meth:`compile_repo` when there is no existing
         manifest, or when the previously indexed commit cannot be determined.
@@ -256,10 +259,6 @@ class IndexCompiler:
 
         head_commit = self._get_head_commit(repo_path)
         source = source or fingerprint_repository(repo_path, exclude_roots=(cache,))
-        source_is_dirty = repository_source_is_dirty(
-            repo_path,
-            exclude_roots=(cache,),
-        )
         existing = existing_manifest
         languages = list(self._config.languages)
         if existing is not None:
@@ -327,23 +326,23 @@ class IndexCompiler:
             previous_entry_compatible = (
                 previous_entry is not None
                 and previous_entry.status in {"fresh", "stale"}
+                and existing is not None
+                and is_secure_source_fingerprint_v2(existing.source_fingerprint)
+                and is_secure_source_fingerprint_v2(previous_entry.source_fingerprint)
                 and self._entry_matches_builder(previous_entry, builder)
             )
             if previous_entry_compatible:
                 previous_commit = previous_entry.commit
                 if not previous_commit and existing is not None:
                     previous_commit = existing.last_indexed_commit
-            incremental_from = (
-                previous_commit
-                if (
-                    not force_rebuild
-                    and previous_commit
-                    and head_commit
-                    and previous_commit != head_commit
-                    and not source_is_dirty
-                )
-                else None
-            )
+            # Do not seed an incremental builder from a Git status/HEAD check
+            # performed through a separately resolved path.  A repository can
+            # be A for both source fingerprints, B (clean) only for that check,
+            # and A again before the build.  Until Git observations share the
+            # pinned source authority, a full rebuild is the only safe reuse
+            # policy.  ``previous_commit`` is still retained below so a failed
+            # rebuild can preserve the last known generation in the manifest.
+            incremental_from = None
 
             output_dir = os.path.join(cache, idx_type)
             result = self._build_one(
@@ -485,7 +484,8 @@ class IndexCompiler:
         if commit and entry.commit != commit:
             return False
         return (
-            bool(source_fingerprint) and entry.source_fingerprint == source_fingerprint
+            is_secure_source_fingerprint_v2(source_fingerprint)
+            and entry.source_fingerprint == source_fingerprint
         )
 
     @staticmethod

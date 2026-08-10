@@ -25,6 +25,11 @@ from codenib.compiler.resources import (
     IndexStatus,
     ResourceResolver,
 )
+from codenib.source_fingerprint import is_secure_source_fingerprint_v2
+
+_SOURCE_V2 = f"sha256-v2:{'a' * 64}"
+_OTHER_SOURCE_V2 = f"sha256-v2:{'b' * 64}"
+_LEGACY_SOURCE_V1 = f"sha256:{'c' * 64}"
 
 # ---------------------------------------------------------------------------
 # IndexEntry
@@ -287,7 +292,7 @@ class TestRepoManifest:
 
     def test_derive_capabilities_stale_source_excluded(self):
         m = RepoManifest(
-            source_fingerprint="sha256:current",
+            source_fingerprint=_SOURCE_V2,
             indexes={
                 "bm25": IndexEntry(
                     index_type="bm25",
@@ -295,7 +300,7 @@ class TestRepoManifest:
                     built_at="2024-01-15T10:30:00+00:00",
                     built_at_epoch=time.time(),
                     status="fresh",
-                    source_fingerprint="sha256:old",
+                    source_fingerprint=_OTHER_SOURCE_V2,
                 ),
             },
         )
@@ -304,8 +309,8 @@ class TestRepoManifest:
 
     def test_source_identity_roundtrip(self):
         m = RepoManifest(
-            source_fingerprint="sha256:current",
-            last_indexed_source_fingerprint="sha256:complete",
+            source_fingerprint=_SOURCE_V2,
+            last_indexed_source_fingerprint=_OTHER_SOURCE_V2,
             indexes={
                 "bm25": IndexEntry(
                     index_type="bm25",
@@ -313,16 +318,41 @@ class TestRepoManifest:
                     built_at="2024-01-15T10:30:00+00:00",
                     built_at_epoch=time.time(),
                     status="fresh",
-                    source_fingerprint="sha256:current",
+                    source_fingerprint=_SOURCE_V2,
                 )
             },
         )
 
         restored = RepoManifest.from_dict(m.to_dict())
 
-        assert restored.source_fingerprint == "sha256:current"
-        assert restored.last_indexed_source_fingerprint == "sha256:complete"
+        assert restored.source_fingerprint == _SOURCE_V2
+        assert restored.last_indexed_source_fingerprint == _OTHER_SOURCE_V2
         assert restored.index_is_current("bm25") is True
+
+    def test_v1_source_identity_loads_for_inert_query_compatibility(self):
+        restored = RepoManifest.from_dict(
+            RepoManifest(
+                source_fingerprint=_LEGACY_SOURCE_V1,
+                last_indexed_source_fingerprint=_LEGACY_SOURCE_V1,
+                indexes={
+                    "bm25": IndexEntry(
+                        index_type="bm25",
+                        path="/tmp/bm25",
+                        built_at="2024-01-15T10:30:00+00:00",
+                        built_at_epoch=time.time(),
+                        status="fresh",
+                        source_fingerprint=_LEGACY_SOURCE_V1,
+                    )
+                },
+            ).to_dict()
+        )
+
+        assert restored.source_fingerprint == _LEGACY_SOURCE_V1
+        assert restored.last_indexed_source_fingerprint == _LEGACY_SOURCE_V1
+        assert restored.index_is_current("bm25") is True
+        assert not is_secure_source_fingerprint_v2(restored.source_fingerprint)
+        restored.derive_capabilities()
+        assert restored.capabilities["sparse_search"] is True
 
     def test_empty_manifest(self):
         m = RepoManifest()
