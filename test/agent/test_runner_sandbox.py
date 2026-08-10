@@ -8,6 +8,7 @@ import base64
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from unittest.mock import MagicMock
@@ -50,7 +51,7 @@ class FakeSandbox:
             source_revision="c" * 40,
             network="none",
             rootless_runtime=True,
-            source_fingerprint="sha256:" + "e" * 64,
+            source_fingerprint="sha256-v2:" + "e" * 64,
         )
 
     def execute(self, request):
@@ -326,7 +327,10 @@ def test_sandbox_prompt_hides_host_path_and_uses_workspace_root(tmp_path):
 
 
 def test_sandbox_manifest_revision_must_match():
-    manifest = RepoManifest(commit="d" * 40, source_fingerprint="sha256:" + "e" * 64)
+    manifest = RepoManifest(
+        commit="d" * 40,
+        source_fingerprint="sha256-v2:" + "e" * 64,
+    )
     with pytest.raises(ValueError, match="does not match"):
         AgentRunner(
             MagicMock(spec=LiteLLMChat),
@@ -347,13 +351,48 @@ def test_sandbox_manifest_requires_revision():
 
 
 def test_sandbox_manifest_fingerprint_must_match():
-    manifest = RepoManifest(commit="c" * 40, source_fingerprint="sha256:" + "f" * 64)
+    manifest = RepoManifest(
+        commit="c" * 40,
+        source_fingerprint="sha256-v2:" + "f" * 64,
+    )
     with pytest.raises(ValueError, match="fingerprint does not match"):
         AgentRunner(
             MagicMock(spec=LiteLLMChat),
             SkillRegistry(),
             sandbox=FakeSandbox(),
             manifest=manifest,
+        )
+
+
+def test_sandbox_matching_legacy_fingerprint_cannot_authorize_runner():
+    sandbox = FakeSandbox()
+    legacy = "sha256:" + "e" * 64
+    sandbox.metadata = replace(sandbox.metadata, source_fingerprint=legacy)
+    manifest = RepoManifest(commit="c" * 40, source_fingerprint=legacy)
+
+    with pytest.raises(ValueError, match="secure source fingerprint v2"):
+        AgentRunner(
+            MagicMock(spec=LiteLLMChat),
+            SkillRegistry(),
+            sandbox=sandbox,
+            manifest=manifest,
+        )
+
+
+def test_query_matching_legacy_fingerprint_cannot_authorize_context_loading():
+    sandbox = FakeSandbox()
+    legacy = "sha256:" + "e" * 64
+    sandbox.metadata = replace(sandbox.metadata, source_fingerprint=legacy)
+    manifest = RepoManifest(commit="c" * 40, source_fingerprint=legacy)
+
+    with pytest.raises(ValueError, match="secure source fingerprint v2"):
+        query(
+            "noop",
+            options=CodeNibAgentOptions(
+                manifest=manifest,
+                llm=MagicMock(spec=LiteLLMChat),
+                sandbox=sandbox,
+            ),
         )
 
 

@@ -37,6 +37,7 @@ from ..llm.litellm_chat import LiteLLMChat, RetryConfig
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
 from ..paths import repo_index_dir
+from ..source_fingerprint import is_secure_source_fingerprint_v2
 from .agent_types import AgentResult, ToolCallRecord
 from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
 from .history import PlainChatHistory, TokenBudgetedChatHistory
@@ -250,6 +251,14 @@ class AgentRunner:
                 raise ValueError(
                     "sandbox execution requires matching source fingerprints in "
                     "the manifest and sandbox metadata"
+                )
+            if not (
+                is_secure_source_fingerprint_v2(manifest_fingerprint)
+                and is_secure_source_fingerprint_v2(sandbox_fingerprint)
+            ):
+                raise ValueError(
+                    "sandbox execution requires matching secure source "
+                    "fingerprint v2 identities"
                 )
             if manifest_fingerprint != sandbox_fingerprint:
                 raise ValueError(
@@ -1721,6 +1730,14 @@ def query(
             raise ValueError(
                 "sandbox execution requires matching source fingerprints in the "
                 "manifest and sandbox metadata"
+            )
+        if not (
+            is_secure_source_fingerprint_v2(manifest_fingerprint)
+            and is_secure_source_fingerprint_v2(sandbox_fingerprint)
+        ):
+            raise ValueError(
+                "sandbox execution requires matching secure source fingerprint "
+                "v2 identities"
             )
         if manifest_fingerprint != sandbox_fingerprint:
             raise ValueError(
