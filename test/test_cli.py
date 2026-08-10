@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -12,7 +13,9 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+import codenib.web.local as local_module
 from codenib import cli
+from codenib.source_fingerprint import RepositorySourceBinding
 from codenib.web import launcher
 from codenib.web.local import prepare_local_wiki
 
@@ -34,6 +37,18 @@ def test_parser_exposes_release_commands() -> None:
 
     publish = parser.parse_args(["publish", "."])
     assert publish.preset == "auto"
+
+
+def test_mcp_artifact_repo_is_explicit() -> None:
+    parser = cli.build_parser()
+
+    query_only = parser.parse_args(["mcp", "--artifact", "/tmp/context"])
+    bound = parser.parse_args(
+        ["mcp", "--artifact", "/tmp/context", "--repo", "/tmp/repo"]
+    )
+
+    assert query_only.repo is None
+    assert bound.repo == "/tmp/repo"
 
 
 @pytest.mark.parametrize(
@@ -941,6 +956,12 @@ def test_mcp_portable_artifact_forwards_full_tool_surface(
     ]
 
 
+def _test_source_fingerprint(repo: Path, cache: Path) -> str:
+    from codenib.source_fingerprint import fingerprint_repository
+
+    return fingerprint_repository(repo, exclude_roots=(cache,)).value
+
+
 def test_prepare_local_wiki_writes_single_repo_registry(
     tmp_path: Path,
 ) -> None:
@@ -948,9 +969,11 @@ def test_prepare_local_wiki_writes_single_repo_registry(
 
     manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
     manifest_path.parent.mkdir()
+    source = _test_source_fingerprint(tmp_path, manifest_path.parent)
     manifest = RepoManifest(
         repo_path=str(tmp_path),
         commit="abc123",
+        source_fingerprint=source,
         languages=["python"],
         indexes={
             "bm25": IndexEntry(
@@ -959,6 +982,8 @@ def test_prepare_local_wiki_writes_single_repo_registry(
                 built_at="2026-07-25T00:00:00+00:00",
                 built_at_epoch=0.0,
                 status="fresh",
+                commit="abc123",
+                source_fingerprint=source,
             )
         },
     )
@@ -975,7 +1000,7 @@ def test_prepare_local_wiki_writes_single_repo_registry(
     assert local.repo_id == tmp_path.name.lower()
 
 
-def test_prepare_local_wiki_rejects_mismatched_checkout(
+def test_prepare_local_wiki_capture_return_cancellation_closes_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -983,25 +1008,107 @@ def test_prepare_local_wiki_rejects_mismatched_checkout(
 
     manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
     manifest_path.parent.mkdir()
+    source = _test_source_fingerprint(tmp_path, manifest_path.parent)
+    RepoManifest(
+        repo_path=str(tmp_path),
+        source_fingerprint=source,
+        languages=["python"],
+    ).save(str(manifest_path))
+    captured: list[RepositorySourceBinding] = []
+    real_capture = local_module.capture_repository_source
+    interruption = SystemExit("injected after local wiki capture returned")
+
+    def capture(*args, **kwargs):
+        binding = real_capture(*args, **kwargs)
+        captured.append(binding)
+        raise interruption
+
+    monkeypatch.setattr(local_module, "capture_repository_source", capture)
+    with pytest.raises(SystemExit) as caught:
+        prepare_local_wiki(tmp_path, manifest_path, frontend_port=3000)
+
+    assert caught.value is interruption
+    assert len(captured) == 1
+    assert captured[0].closed
+
+
+def test_prepare_local_wiki_persistent_close_preserves_primary_and_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler.manifest import RepoManifest
+
+    source_path = tmp_path / "module.py"
+    source_path.write_text("VALUE = 1\n")
+    manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
+    manifest_path.parent.mkdir()
+    source = _test_source_fingerprint(tmp_path, manifest_path.parent)
+    RepoManifest(
+        repo_path=str(tmp_path),
+        source_fingerprint=source,
+        languages=["python"],
+    ).save(str(manifest_path))
+    source_path.write_text("VALUE = 2\n")
+    captured: list[RepositorySourceBinding] = []
+    real_capture = local_module.capture_repository_source
+    real_close = RepositorySourceBinding.close
+
+    def capture(*args, **kwargs):
+        binding = real_capture(*args, **kwargs)
+        captured.append(binding)
+        return binding
+
+    def persistent_eio(binding: RepositorySourceBinding) -> None:
+        if binding in captured:
+            raise OSError(errno.EIO, "injected local wiki source close EIO")
+        real_close(binding)
+
+    monkeypatch.setattr(local_module, "capture_repository_source", capture)
+    monkeypatch.setattr(RepositorySourceBinding, "close", persistent_eio)
+    with pytest.raises(ValueError, match="does not match the manifest") as caught:
+        prepare_local_wiki(tmp_path, manifest_path, frontend_port=3000)
+
+    assert len(captured) == 1
+    owner = caught.value.source_cleanup_owner
+    assert owner.pending_sources == (captured[0],)
+    assert not captured[0].closed
+
+    monkeypatch.setattr(RepositorySourceBinding, "close", real_close)
+    owner.close()
+    assert owner.closed
+    assert captured[0].closed
+
+
+def test_prepare_local_wiki_treats_manifest_commit_as_indexed_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler.manifest import RepoManifest
+
+    manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
+    manifest_path.parent.mkdir()
+    source = _test_source_fingerprint(tmp_path, manifest_path.parent)
     RepoManifest(
         repo_path=str(tmp_path),
         commit="a" * 40,
+        source_fingerprint=source,
         languages=["python"],
     ).save(str(manifest_path))
     monkeypatch.setattr(
         "codenib.compiler.checkout_identity.checkout_commit",
-        lambda _repo_path: "b" * 40,
+        lambda _repo_path: pytest.fail(
+            "local content authentication must not claim a Git HEAD attestation"
+        ),
     )
 
-    with pytest.raises(
-        ValueError,
-        match="repository checkout does not match the indexed snapshot",
-    ):
-        prepare_local_wiki(
-            tmp_path,
-            manifest_path,
-            frontend_port=3000,
-        )
+    local = prepare_local_wiki(
+        tmp_path,
+        manifest_path,
+        frontend_port=3000,
+    )
+
+    registry = json.loads((local.data_dir / "qa_registry.json").read_text())
+    assert registry[0]["base_commit"] == "a" * 40
 
 
 def test_prepare_local_wiki_rejects_changed_source_at_same_commit(
@@ -1027,7 +1134,7 @@ def test_prepare_local_wiki_rejects_changed_source_at_same_commit(
 
     with pytest.raises(
         ValueError,
-        match="repository source files do not match the indexed content",
+        match="repository source content does not match the manifest",
     ):
         prepare_local_wiki(
             tmp_path,
@@ -1044,9 +1151,11 @@ def test_prepare_local_wiki_uses_github_origin_identity(
 
     manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
     manifest_path.parent.mkdir()
+    source = _test_source_fingerprint(tmp_path, manifest_path.parent)
     RepoManifest(
         repo_path=str(tmp_path),
         commit="abc123",
+        source_fingerprint=source,
         languages=["python"],
     ).save(str(manifest_path))
     monkeypatch.setattr(
@@ -1073,9 +1182,11 @@ def test_prepare_generated_wiki_keeps_secret_out_of_config(
 
     manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
     manifest_path.parent.mkdir()
+    source = _test_source_fingerprint(tmp_path, manifest_path.parent)
     RepoManifest(
         repo_path=str(tmp_path),
         commit="abc123",
+        source_fingerprint=source,
         languages=["python"],
         indexes={
             "bm25": IndexEntry(
@@ -1084,6 +1195,8 @@ def test_prepare_generated_wiki_keeps_secret_out_of_config(
                 built_at="2026-07-25T00:00:00+00:00",
                 built_at_epoch=0.0,
                 status="fresh",
+                commit="abc123",
+                source_fingerprint=source,
             )
         },
     ).save(str(manifest_path))
@@ -1131,7 +1244,12 @@ def test_prepare_local_wiki_keeps_embedding_secret_process_local(
 
     manifest_path = tmp_path / ".codenib_cache" / "repo_manifest.json"
     manifest_path.parent.mkdir()
-    RepoManifest(repo_path=str(tmp_path), languages=["python"]).save(str(manifest_path))
+    source = _test_source_fingerprint(tmp_path, manifest_path.parent)
+    RepoManifest(
+        repo_path=str(tmp_path),
+        source_fingerprint=source,
+        languages=["python"],
+    ).save(str(manifest_path))
     monkeypatch.setenv("EMBEDDING_KEY", "embedding-secret")
 
     local = prepare_local_wiki(
