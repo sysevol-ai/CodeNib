@@ -6,29 +6,233 @@
 
 from __future__ import annotations
 
-import json
+import os
 import stat
-import tempfile
 import zipfile
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO, Iterator
 
-from .._atomic_directory import (
-    PublicationDirectoryReader,
-    _annotate_secondary_error,
-    capture_directory_ownership,
-    directory_ownership_root_identity,
-    discard_owned_directory,
-    lexical_directory_path,
-    publish_staged_directory,
+from .._atomic_directory import PublicationDirectoryReader, lexical_directory_path
+from .._captured_directory import (
+    OwnedDirectoryStage,
+    _create_sealable_memfd,
+    _seal_snapshot_descriptor,
+    _SnapshotUnavailable,
+    _write_all,
 )
 from .context import CONTEXT_ARTIFACT_MANIFEST
-from .runtime import VerifiedContextArtifact, verify_context_artifact
+from .runtime import VerifiedContextArtifact, verify_context_artifact_reader
 
 DEFAULT_MAX_ARCHIVE_FILES = 100_000
 DEFAULT_MAX_EXPANDED_BYTES = 64 * 1024 * 1024 * 1024
 _COPY_CHUNK_BYTES = 1024 * 1024
-_MAX_CONTEXT_METADATA_BYTES = 16 * 1024 * 1024
+_MAX_ARCHIVE_PATH_BYTES = 4_096
+_MAX_ARCHIVE_PATH_COMPONENTS = 256
+_MAX_ARCHIVE_ENVELOPE_BYTES = 16 * 1024 * 1024
+_MAX_ARCHIVE_MEMBER_OVERHEAD = 4_096
+
+
+def _read_archive(descriptor: int, size: int) -> bytes:
+    return os.read(descriptor, size)
+
+
+def _create_archive_snapshot() -> int:
+    try:
+        return _create_sealable_memfd()
+    except _SnapshotUnavailable as exc:
+        raise ValueError(
+            "secure context archive parsing requires immutable sealed snapshots"
+        ) from exc
+
+
+def _write_snapshot(descriptor: int, block: bytes) -> None:
+    _write_all(descriptor, block)
+
+
+def _seal_archive_snapshot(descriptor: int) -> None:
+    try:
+        _seal_snapshot_descriptor(descriptor)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(
+            "context artifact archive snapshot could not be sealed"
+        ) from exc
+
+
+def _stable_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+        metadata.st_nlink,
+        getattr(metadata, "st_file_attributes", 0),
+    )
+
+
+def _directory_binding_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    """Identify one retained lexical ancestor without mutable directory times."""
+
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        getattr(metadata, "st_file_attributes", 0) & 0x400,
+    )
+
+
+@contextmanager
+def _authenticated_archive_snapshot(
+    value: str | Path,
+    *,
+    max_files: int,
+    max_bytes: int,
+) -> Iterator[tuple[Path, BinaryIO]]:
+    """Copy one lexical no-follow regular file into a verified snapshot."""
+
+    if os.name != "posix" or not (
+        hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.stat in os.supports_follow_symlinks
+    ):
+        raise ValueError(
+            "secure context archive reads require no-follow directory handles"
+        )
+    candidate = Path(value).expanduser()
+    lexical = Path(os.path.abspath(os.fspath(candidate)))
+    encoded = os.fsencode(lexical)
+    if (
+        lexical.name in {"", ".", ".."}
+        or len(encoded) > _MAX_ARCHIVE_PATH_BYTES
+        or len(lexical.parts) > _MAX_ARCHIVE_PATH_COMPONENTS
+    ):
+        raise ValueError("context artifact archive path is invalid or too long")
+    physical_limit = (
+        max_bytes
+        + max_files * _MAX_ARCHIVE_MEMBER_OVERHEAD
+        + _MAX_ARCHIVE_ENVELOPE_BYTES
+    )
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    directory_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    file_flags |= getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+    descriptors: list[int] = []
+    bindings: list[tuple[int, str, int, tuple[int, ...]]] = []
+    source = -1
+    snapshot_descriptor = -1
+    snapshot: BinaryIO | None = None
+    try:
+        descriptor = os.open(lexical.anchor, directory_flags)
+        descriptors.append(descriptor)
+        root = os.fstat(descriptor)
+        if not root.st_dev or not root.st_ino or not stat.S_ISDIR(root.st_mode):
+            raise ValueError("context artifact archive root has no stable identity")
+        for part in lexical.parts[1:-1]:
+            before = os.stat(part, dir_fd=descriptor, follow_symlinks=False)
+            if (
+                not stat.S_ISDIR(before.st_mode)
+                or stat.S_ISLNK(before.st_mode)
+                or not before.st_dev
+                or not before.st_ino
+            ):
+                raise ValueError(
+                    "context artifact archive parent is not a real directory"
+                )
+            child = os.open(part, directory_flags, dir_fd=descriptor)
+            opened = os.fstat(child)
+            if _directory_binding_identity(opened) != _directory_binding_identity(
+                before
+            ):
+                os.close(child)
+                raise ValueError("context artifact archive parent changed")
+            bindings.append(
+                (descriptor, part, child, _directory_binding_identity(opened))
+            )
+            descriptors.append(child)
+            descriptor = child
+
+        before = os.stat(
+            lexical.name,
+            dir_fd=descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or not before.st_dev
+            or not before.st_ino
+            or before.st_size < 0
+            or before.st_size > physical_limit
+        ):
+            raise ValueError(
+                f"context artifact archive is not a bounded regular file: {lexical}"
+            )
+        source = os.open(lexical.name, file_flags, dir_fd=descriptor)
+        opened = os.fstat(source)
+        expected = _stable_identity(before)
+        if _stable_identity(opened) != expected:
+            raise ValueError("context artifact archive changed while opening")
+
+        snapshot_descriptor = _create_archive_snapshot()
+        remaining = opened.st_size
+        while remaining:
+            block = _read_archive(source, min(remaining, _COPY_CHUNK_BYTES))
+            if not block:
+                raise ValueError("context artifact archive was truncated")
+            _write_snapshot(snapshot_descriptor, block)
+            remaining -= len(block)
+        if _read_archive(source, 1):
+            raise ValueError("context artifact archive grew while reading")
+
+        def verify_binding() -> None:
+            if (
+                _stable_identity(os.fstat(source)) != expected
+                or _stable_identity(
+                    os.stat(
+                        lexical.name,
+                        dir_fd=descriptor,
+                        follow_symlinks=False,
+                    )
+                )
+                != expected
+            ):
+                raise ValueError("context artifact archive changed while reading")
+            for parent, name, child, identity in bindings:
+                if (
+                    _directory_binding_identity(os.fstat(child)) != identity
+                    or _directory_binding_identity(
+                        os.stat(name, dir_fd=parent, follow_symlinks=False)
+                    )
+                    != identity
+                ):
+                    raise ValueError("context artifact archive parent changed")
+
+        verify_binding()
+        _seal_archive_snapshot(snapshot_descriptor)
+        snapshot = os.fdopen(snapshot_descriptor, "rb")
+        snapshot_descriptor = -1
+        yield lexical, snapshot
+        verify_binding()
+    except FileNotFoundError as exc:
+        raise ValueError(f"context artifact archive does not exist: {lexical}") from exc
+    except OSError as exc:
+        raise ValueError(
+            f"context artifact archive could not be opened safely: {lexical}"
+        ) from exc
+    finally:
+        if snapshot is not None:
+            snapshot.close()
+        if snapshot_descriptor >= 0:
+            os.close(snapshot_descriptor)
+        if source >= 0:
+            os.close(source)
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
 
 
 def _member_path(value: str) -> PurePosixPath:
@@ -121,24 +325,28 @@ def _extract_member(
     archive: zipfile.ZipFile,
     info: zipfile.ZipInfo,
     relative: PurePosixPath,
-    root: Path,
+    stage: OwnedDirectoryStage,
 ) -> None:
-    output = root.joinpath(*relative.parts)
     if info.is_dir():
-        output.mkdir(parents=True, exist_ok=True)
         return
-    output.parent.mkdir(parents=True, exist_ok=True)
-    written = 0
-    with archive.open(info, "r") as source, output.open("xb") as destination:
-        while chunk := source.read(_COPY_CHUNK_BYTES):
-            written += len(chunk)
-            if written > info.file_size:
-                raise ValueError(
-                    f"context artifact archive member exceeded declared size: {relative}"
-                )
-            destination.write(chunk)
-    if written != info.file_size:
-        raise ValueError(f"context artifact archive member size mismatch: {relative}")
+
+    def chunks():
+        written = 0
+        with archive.open(info, "r") as source:
+            while chunk := source.read(_COPY_CHUNK_BYTES):
+                written += len(chunk)
+                if written > info.file_size:
+                    raise ValueError(
+                        "context artifact archive member exceeded declared size: "
+                        f"{relative}"
+                    )
+                yield chunk
+        if written != info.file_size:
+            raise ValueError(
+                f"context artifact archive member size mismatch: {relative}"
+            )
+
+    stage.write_file(relative, chunks(), max_bytes=info.file_size)
 
 
 def extract_context_artifact_archive(
@@ -152,174 +360,88 @@ def extract_context_artifact_archive(
 ) -> VerifiedContextArtifact:
     """Extract and verify an artifact ZIP before publishing it."""
 
-    archive_candidate = Path(archive_path).expanduser()
-    if archive_candidate.is_symlink():
-        raise ValueError(
-            f"context artifact archive must not be a symbolic link: {archive_candidate}"
-        )
-    archive_path = archive_candidate.resolve()
-    if not archive_path.is_file():
-        raise ValueError(f"context artifact archive does not exist: {archive_path}")
+    if (
+        isinstance(max_files, bool)
+        or not isinstance(max_files, int)
+        or max_files <= 0
+        or isinstance(max_bytes, bool)
+        or not isinstance(max_bytes, int)
+        or max_bytes <= 0
+    ):
+        raise ValueError("context artifact archive limits must be positive integers")
     output = lexical_directory_path(Path(output_dir))
-    if output.is_symlink():
-        raise ValueError(
-            f"context artifact output must not be a symbolic link: {output}"
-        )
-    if output.exists() and not output.is_dir():
-        raise ValueError(f"context artifact output is not a directory: {output}")
     try:
-        expected_output_ownership = (
-            capture_directory_ownership(
-                output,
-                required_root_file=CONTEXT_ARTIFACT_MANIFEST,
-                allow_empty_root=True,
-            )
-            if output.exists()
-            else None
+        stage = OwnedDirectoryStage.prepare(
+            output,
+            required_destination_file=CONTEXT_ARTIFACT_MANIFEST,
+            allow_empty_destination=True,
         )
-    except RuntimeError as exc:
+    except (OSError, RuntimeError) as exc:
         raise ValueError(
             "refusing to replace a non-empty directory that is not a "
             f"CodeNib context artifact: {output}"
         ) from exc
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    stage = lexical_directory_path(
-        Path(
-            tempfile.mkdtemp(
-                prefix=f".{output.name}.extract-",
-                dir=str(output.parent),
-            )
-        )
-    )
-    stage_root_ownership = capture_directory_ownership(stage)
-    initial_stage_root_identity = directory_ownership_root_identity(
-        stage_root_ownership
-    )
+    published: list[VerifiedContextArtifact] = []
     try:
-        with zipfile.ZipFile(archive_path) as archive:
-            members = _validated_members(
-                archive,
+        with _authenticated_archive_snapshot(
+            archive_path,
+            max_files=max_files,
+            max_bytes=max_bytes,
+        ) as (archive_display, snapshot):
+            with zipfile.ZipFile(snapshot) as archive:
+                members = _validated_members(
+                    archive,
+                    max_files=max_files,
+                    max_bytes=max_bytes,
+                )
+                for info, relative in members:
+                    _extract_member(archive, info, relative, stage)
+
+        def validate_staged_artifact(candidate: PublicationDirectoryReader) -> None:
+            verify_context_artifact_reader(
+                candidate,
+                expected_repository=expected_repository,
+                expected_commit=expected_commit,
                 max_files=max_files,
                 max_bytes=max_bytes,
             )
-            for info, relative in members:
-                _extract_member(archive, info, relative, stage)
 
-        verified = verify_context_artifact(
-            stage,
-            expected_repository=expected_repository,
-            expected_commit=expected_commit,
-            max_files=max_files,
-            max_bytes=max_bytes,
-        )
-        publication_ownership = capture_directory_ownership(stage)
-        if (
-            directory_ownership_root_identity(publication_ownership)
-            != initial_stage_root_identity
-        ):
-            raise RuntimeError("context artifact stage root changed during extraction")
-        stage_root_ownership = publication_ownership
-        expected_files = {
-            item["path"]: (item["bytes"], item["sha256"])
-            for item in verified.metadata["files"]
-        }
+        def validate_published_artifact(
+            candidate: PublicationDirectoryReader,
+        ) -> None:
+            verified = verify_context_artifact_reader(
+                candidate,
+                expected_repository=expected_repository,
+                expected_commit=expected_commit,
+                max_files=max_files,
+                max_bytes=max_bytes,
+            )
+            published.append(
+                replace(
+                    verified,
+                    root=output,
+                    metadata_path=output / CONTEXT_ARTIFACT_MANIFEST,
+                    manifest_path=output / verified.manifest_path.name,
+                )
+            )
 
-        def validate_artifact(candidate: PublicationDirectoryReader) -> None:
-            records = {record.path: record for record in candidate.file_records()}
-            metadata_record = records.pop(CONTEXT_ARTIFACT_MANIFEST, None)
-            if (
-                metadata_record is None
-                or metadata_record.size > _MAX_CONTEXT_METADATA_BYTES
-                or set(records) != set(expected_files)
-                or any(
-                    (record.size, record.sha256) != expected_files[path]
-                    for path, record in records.items()
-                )
-            ):
-                raise ValueError(
-                    "published context artifact differs from its verified identity"
-                )
-            try:
-                metadata = json.loads(
-                    candidate.read_bytes(
-                        CONTEXT_ARTIFACT_MANIFEST,
-                        max_bytes=_MAX_CONTEXT_METADATA_BYTES,
-                    ).decode("utf-8", errors="strict")
-                )
-            except (UnicodeError, json.JSONDecodeError) as exc:
-                raise ValueError(
-                    "published context artifact metadata is invalid"
-                ) from exc
-            if metadata != verified.metadata:
-                raise ValueError(
-                    "published context artifact metadata changed after verification"
-                )
-
-        publish_staged_directory(
-            stage,
-            output,
-            expected_stage_root_ownership=stage_root_ownership,
-            expected_destination_ownership=expected_output_ownership,
-            validate_staged_directory=validate_artifact,
-            validate_published_destination=validate_artifact,
+        stage.publish(
+            validate_staged_directory=validate_staged_artifact,
+            validate_published_destination=validate_published_artifact,
         )
     except zipfile.BadZipFile as exc:
-        primary_error = ValueError(
-            f"context artifact archive is not a valid ZIP: {archive_path}"
-        )
-        try:
-            observed_stage_ownership = capture_directory_ownership(stage)
-            if (
-                directory_ownership_root_identity(observed_stage_ownership)
-                == initial_stage_root_identity
-            ):
-                stage_root_ownership = observed_stage_ownership
-        except BaseException as capture_error:  # noqa: B036 - preserve primary
-            _annotate_secondary_error(
-                primary_error,
-                "context archive stage cleanup capture also failed",
-                capture_error,
-            )
-        try:
-            discard_owned_directory(stage, stage_root_ownership)
-        except BaseException as discard_error:  # noqa: B036 - preserve primary
-            _annotate_secondary_error(
-                primary_error,
-                "context archive stage discard also failed",
-                discard_error,
-            )
-        raise primary_error from exc
-    except BaseException as primary_error:
-        try:
-            observed_stage_ownership = capture_directory_ownership(stage)
-            if (
-                directory_ownership_root_identity(observed_stage_ownership)
-                == initial_stage_root_identity
-            ):
-                stage_root_ownership = observed_stage_ownership
-        except BaseException as capture_error:  # noqa: B036 - preserve primary
-            _annotate_secondary_error(
-                primary_error,
-                "context archive stage cleanup capture also failed",
-                capture_error,
-            )
-        try:
-            discard_owned_directory(stage, stage_root_ownership)
-        except BaseException as discard_error:  # noqa: B036 - preserve primary
-            _annotate_secondary_error(
-                primary_error,
-                "context archive stage discard also failed",
-                discard_error,
-            )
+        stage.discard()
+        raise ValueError(
+            f"context artifact archive is not a valid ZIP: {archive_display}"
+        ) from exc
+    except BaseException:
+        stage.discard()
         raise
 
-    return replace(
-        verified,
-        root=output,
-        metadata_path=output / CONTEXT_ARTIFACT_MANIFEST,
-        manifest_path=output / verified.manifest_path.relative_to(stage),
-    )
+    if len(published) != 1:
+        raise RuntimeError("published context artifact was not authority-verified")
+    return published[0]
 
 
 __all__ = [

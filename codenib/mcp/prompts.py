@@ -45,7 +45,8 @@ response. Use the lower-level tools when you need to force one operation.
 Search responses keep every ranked location but may project large source bodies
 under a shared content budget. A truncated hit includes ``content_projection``
 metadata; use ``read_source`` with its file and 1-based line range to inspect
-the exact checkout before finalizing an answer.
+content authenticated against the indexed v2 source fingerprint before
+finalizing an answer. The displayed commit is not a mutable-HEAD attestation.
 
 ## When to use each tool
 
@@ -106,9 +107,11 @@ Examples:
 ### read_source
 Use after search or static navigation identifies a source location. It accepts
 only a repository-relative POSIX path and at most 200 lines per call. The
-server enables reads only when the checkout matched the manifest or a verified
-portable-artifact binding at startup, and each response carries that commit and
-source fingerprint.
+server enables reads only while a retained source authority matches the v2
+content fingerprint and per-file records from a manifest or portable-artifact
+binding. Each response carries the indexed commit as display provenance and the
+content fingerprint used by that authority; it does not claim that mutable Git
+HEAD is attested.
 
 ### Choosing between them
 | Scenario | Tool |

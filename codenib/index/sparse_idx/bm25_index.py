@@ -9,7 +9,7 @@ import os
 import re
 import stat
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, Iterable, List, Mapping, Optional
 
 from rank_bm25 import BM25Okapi
 
@@ -21,11 +21,20 @@ from ...utils import is_test_file, wrap_code_snippet
 
 if TYPE_CHECKING:
     from ...graph.code_graph import CodeGraph
+    from ...source_fingerprint import RepositorySourceBinding
 
 logger = get_logger(__name__)
 
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _MAX_RUNTIME_SOURCE_BYTES = 64 * 1024 * 1024
+SOURCE_MODE_LEGACY_DIRECT = "legacy-direct"
+SOURCE_MODE_BOUND_REPOSITORY = "bound-repository"
+SOURCE_MODE_PERSISTED_ONLY = "persisted-only"
+_SOURCE_MODES = {
+    SOURCE_MODE_LEGACY_DIRECT,
+    SOURCE_MODE_BOUND_REPOSITORY,
+    SOURCE_MODE_PERSISTED_ONLY,
+}
 _SECURE_SOURCE_DIRECTORY_FDS = (
     os.name == "posix"
     and hasattr(os, "O_DIRECTORY")
@@ -427,6 +436,8 @@ class BM25CodeIndexer:
         self.retriever = None
         self.code_graph: CodeGraph = None
         self.project_root = project_root
+        self.source_mode = SOURCE_MODE_LEGACY_DIRECT
+        self._source_binding: RepositorySourceBinding | None = None
         self.nodes: List[str] = []
 
         # Build the index immediately if a code_graph is provided
@@ -447,6 +458,8 @@ class BM25CodeIndexer:
         self.nodes = []
         self.code_graph = code_graph
         self.project_root = code_graph.project_root
+        self.source_mode = SOURCE_MODE_LEGACY_DIRECT
+        self._source_binding = None
 
         # Convert graph nodes to documents
         for vertex in code_graph.graph.vs:
@@ -483,6 +496,8 @@ class BM25CodeIndexer:
         self.nodes = []
         self.code_graph = None
         self.project_root = project_root
+        self.source_mode = SOURCE_MODE_LEGACY_DIRECT
+        self._source_binding = None
 
         # Keep each bounded source span independently searchable. Overloads and
         # split large definitions can share a node_id, but merging them widens
@@ -715,6 +730,33 @@ class BM25CodeIndexer:
         wrap_with_ln: bool = True,
         filter_test: bool = False,
     ) -> List[NodeInfo]:
+        if self.source_mode == SOURCE_MODE_BOUND_REPOSITORY:
+            if self._source_binding is None:  # pragma: no cover - invariant
+                raise RuntimeError("BM25 bound source mode has no source authority")
+            with self._source_binding.read_session():
+                return self._search(
+                    query,
+                    top_k=top_k,
+                    return_code_content=return_code_content,
+                    wrap_with_ln=wrap_with_ln,
+                    filter_test=filter_test,
+                )
+        return self._search(
+            query,
+            top_k=top_k,
+            return_code_content=return_code_content,
+            wrap_with_ln=wrap_with_ln,
+            filter_test=filter_test,
+        )
+
+    def _search(
+        self,
+        query: str,
+        top_k: Optional[int] = None,
+        return_code_content: bool = False,
+        wrap_with_ln: bool = True,
+        filter_test: bool = False,
+    ) -> List[NodeInfo]:
         """
         Search the index for nodes matching the query.
 
@@ -747,6 +789,7 @@ class BM25CodeIndexer:
 
         # Convert results to NodeInfo objects and apply filtering
         processed_results = []
+        source_cache: dict[str, Optional[str]] = {}
         for doc in results:
             # Extract all metadata directly from the document
             metadata = doc.metadata
@@ -765,7 +808,18 @@ class BM25CodeIndexer:
             # Handle code content if requested
             content = None
             if return_code_content and file_path:
-                source_text = _read_source_text(self.project_root, file_path)
+                source_text = None
+                if self.source_mode != SOURCE_MODE_PERSISTED_ONLY:
+                    try:
+                        source_key = os.fspath(file_path)
+                    except TypeError:
+                        source_key = None
+                    if isinstance(source_key, str):
+                        if source_key not in source_cache:
+                            source_cache[source_key] = self._read_result_source(
+                                source_key
+                            )
+                        source_text = source_cache[source_key]
                 if source_text is not None:
                     if node_type == NODE_TYPE_FILE:
                         # For file nodes, return entire file content.
@@ -823,6 +877,34 @@ class BM25CodeIndexer:
         return processed_results
 
     def search_identifier_occurrences(
+        self,
+        identifier: str,
+        *,
+        context_query: Optional[str] = None,
+        top_k: int = 20,
+        wrap_with_ln: bool = True,
+        filter_test: bool = False,
+    ) -> List[NodeInfo]:
+        if self.source_mode == SOURCE_MODE_BOUND_REPOSITORY:
+            if self._source_binding is None:  # pragma: no cover - invariant
+                raise RuntimeError("BM25 bound source mode has no source authority")
+            with self._source_binding.read_session():
+                return self._search_identifier_occurrences(
+                    identifier,
+                    context_query=context_query,
+                    top_k=top_k,
+                    wrap_with_ln=wrap_with_ln,
+                    filter_test=filter_test,
+                )
+        return self._search_identifier_occurrences(
+            identifier,
+            context_query=context_query,
+            top_k=top_k,
+            wrap_with_ln=wrap_with_ln,
+            filter_test=filter_test,
+        )
+
+    def _search_identifier_occurrences(
         self,
         identifier: str,
         *,
@@ -891,18 +973,23 @@ class BM25CodeIndexer:
                 continue
             if not isinstance(source_key, str):
                 continue
-            if source_key not in files:
-                source_text = _read_source_text(self.project_root, source_key)
-                files[source_key] = (
-                    _split_source_lines(source_text) if source_text is not None else []
-                )
-            lines = files[source_key]
-            if not lines:
-                continue
-
-            start_idx = max(0, start_line)
-            end_idx = min(len(lines), end_line + 1)
-            selected = lines[start_idx:end_idx]
+            if self.source_mode == SOURCE_MODE_PERSISTED_ONLY:
+                selected = _split_source_lines(doc.page_content)
+                start_idx = max(0, start_line)
+            else:
+                if source_key not in files:
+                    source_text = self._read_result_source(source_key)
+                    files[source_key] = (
+                        _split_source_lines(source_text)
+                        if source_text is not None
+                        else []
+                    )
+                lines = files[source_key]
+                if not lines:
+                    continue
+                start_idx = max(0, start_line)
+                end_idx = min(len(lines), end_line + 1)
+                selected = lines[start_idx:end_idx]
             code_content = "".join(selected)
             if not occurrence.search(code_content):
                 continue
@@ -941,6 +1028,40 @@ class BM25CodeIndexer:
 
         matches.sort(key=lambda item: (item[0], item[1], item[2]))
         return [node for _, _, _, node in matches[:top_k]]
+
+    def bind_repository_source(self, binding: RepositorySourceBinding) -> None:
+        """Attach a retained source authority chosen by the runtime caller."""
+
+        if binding.fingerprint is None:  # pragma: no cover - structural contract
+            raise TypeError("repository source binding is invalid")
+        binding.verify_snapshot()
+        self._source_binding = binding
+        self.project_root = str(binding.root)
+        self.source_mode = SOURCE_MODE_BOUND_REPOSITORY
+
+    def _read_result_source(self, file_path: object) -> Optional[str]:
+        if self.source_mode == SOURCE_MODE_BOUND_REPOSITORY:
+            if self._source_binding is None:  # pragma: no cover - invariant
+                raise RuntimeError("BM25 bound source mode has no source authority")
+            try:
+                relative = os.fspath(file_path)
+            except TypeError:
+                return None
+            if not isinstance(relative, str):
+                return None
+            try:
+                payload = self._source_binding.read_bytes(
+                    relative,
+                    max_bytes=_MAX_RUNTIME_SOURCE_BYTES,
+                )
+            except ValueError:
+                return None
+            return (
+                payload.decode("utf-8", errors="replace")
+                .replace("\r\n", "\n")
+                .replace("\r", "\n")
+            )
+        return _read_source_text(self.project_root, file_path)
 
     def save_index(self, directory_path: str):
         """
@@ -998,13 +1119,70 @@ class BM25CodeIndexer:
         with open(documents_file, "r", encoding="utf-8") as f:
             documents_data = json.load(f)
 
-        # Reconstruct Document objects
+        metadata_file = os.path.join(directory_path, "bm25_metadata.json")
+        if os.path.exists(metadata_file):
+            with open(metadata_file, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        else:
+            metadata = {
+                "project_root": None,
+                "max_k": self.max_k,
+                "language": self.language,
+            }
+        self.load_index_values(documents_data, metadata)
+
+    def load_index_values(
+        self,
+        documents_data: Iterable[object],
+        metadata: Mapping[str, Any] | None,
+        *,
+        source_mode: str = SOURCE_MODE_LEGACY_DIRECT,
+    ) -> None:
+        """Load already-decoded BM25 values from an authenticated reader.
+
+        Artifact runtimes use this entry point so persisted bytes can be read
+        through a pinned directory authority instead of being reopened by path.
+        """
+
+        if metadata is not None and not isinstance(metadata, Mapping):
+            raise ValueError("BM25 metadata must be an object")
+        metadata = {} if metadata is None else metadata
+        max_k = metadata.get("max_k", 10)
+        language = metadata.get("language", "english")
+        project_root = metadata.get("project_root")
+        if isinstance(max_k, bool) or not isinstance(max_k, int) or max_k <= 0:
+            raise ValueError("BM25 max_k must be a positive integer")
+        if not isinstance(language, str) or not language:
+            raise ValueError("BM25 language must be a non-empty string")
+        if project_root is not None and not isinstance(project_root, str):
+            raise ValueError("BM25 project_root must be a string or null")
+        if source_mode not in _SOURCE_MODES:
+            raise ValueError(f"unsupported BM25 source mode: {source_mode!r}")
+
+        # Restore serving configuration before creating the retriever.  Its k
+        # value is fixed at construction time.
+        self.project_root = project_root
+        self.source_mode = source_mode
+        self._source_binding = None
+        self.max_k = max_k
+        self.language = language
+
+        # Reconstruct Document objects one decoded element at a time.
         self.documents = []
         self.nodes = []
         seen_nodes = set()
         for doc_data in documents_data:
+            if not isinstance(doc_data, Mapping):
+                raise ValueError("BM25 document must be an object")
+            page_content = doc_data.get("page_content")
+            document_metadata = doc_data.get("metadata")
+            if not isinstance(page_content, str) or not isinstance(
+                document_metadata, Mapping
+            ):
+                raise ValueError("BM25 document content or metadata is invalid")
             doc = Document(
-                page_content=doc_data["page_content"], metadata=doc_data["metadata"]
+                page_content=page_content,
+                metadata=dict(document_metadata),
             )
             self.documents.append(doc)
             node_name = doc.metadata.get("node_id") or doc.metadata.get("name")
@@ -1012,19 +1190,4 @@ class BM25CodeIndexer:
                 self.nodes.append(node_name)
                 seen_nodes.add(node_name)
 
-        # Load additional metadata including project_root
-        metadata_file = os.path.join(directory_path, "bm25_metadata.json")
-        if os.path.exists(metadata_file):
-            with open(metadata_file, "r", encoding="utf-8") as f:
-                metadata = json.load(f)
-                self.project_root = metadata.get("project_root")
-                self.max_k = metadata.get("max_k", 10)
-                self.language = metadata.get("language", "english")
-        else:
-            # For backward compatibility with indices saved without metadata
-            self.project_root = None
-
-        # Recreate only after restoring ``max_k``. Reversing this order silently
-        # capped loaded artifacts at the constructor default (15), even when
-        # the persisted compiler contract requested 128 candidates.
         self.retriever = BM25Retriever.from_documents(self.documents, k=self.max_k)

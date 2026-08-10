@@ -11,9 +11,14 @@ from pathlib import Path
 import pytest
 
 import codenib._contained_source as contained_source_module
+import codenib.source_fingerprint as source_fingerprint_module
 from codenib.code_chunking.base import CodeChunk
 from codenib.index.sparse_idx import bm25_index as bm25_module
 from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+from codenib.source_fingerprint import (
+    RepositorySourceBinding,
+    capture_repository_source,
+)
 from codenib.types import NODE_TYPE_FILE
 
 
@@ -152,6 +157,81 @@ def test_regular_file_node_still_returns_the_entire_source(tmp_path: Path) -> No
     assert _content(indexer) == "first\nsecond\n"
 
 
+def test_bound_search_reads_each_source_file_once_per_query(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    source = repo / "pkg" / "source.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("shared_marker_one()\nshared_marker_two()\n", encoding="utf-8")
+    indexer = BM25CodeIndexer(
+        chunks=[
+            CodeChunk(
+                content="shared_marker first",
+                start_line=0,
+                end_line=0,
+                chunk_type="function",
+                name="shared_marker_one",
+                file="pkg/source.py",
+                node_id="pkg/source.py:shared_marker_one()",
+            ),
+            CodeChunk(
+                content="shared_marker second",
+                start_line=1,
+                end_line=1,
+                chunk_type="function",
+                name="shared_marker_two",
+                file="pkg/source.py",
+                node_id="pkg/source.py:shared_marker_two()",
+            ),
+        ],
+        project_root=str(repo),
+    )
+    binding = capture_repository_source(repo)
+    indexer.bind_repository_source(binding)
+
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    real_read = RepositorySourceBinding._read_record
+    scans = 0
+    reads = 0
+
+    def counted_scan(*args, **kwargs):
+        nonlocal scans
+        scans += 1
+        return real_scan(*args, **kwargs)
+
+    def counted_read(self, *args, **kwargs):
+        nonlocal reads
+        reads += 1
+        return real_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        counted_scan,
+    )
+    monkeypatch.setattr(RepositorySourceBinding, "_read_record", counted_read)
+
+    try:
+        results = indexer.search(
+            "shared_marker",
+            top_k=2,
+            return_code_content=True,
+            wrap_with_ln=False,
+        )
+
+        assert len(results) == 2
+        assert {result.content for result in results} == {
+            "shared_marker_one()\n",
+            "shared_marker_two()\n",
+        }
+        assert reads == 1
+        assert scans == 2
+    finally:
+        binding.close()
+
+
 def test_absolute_source_beneath_root_is_accepted(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     source = repo / "pkg" / "source.py"
@@ -222,7 +302,7 @@ def test_source_on_a_different_windows_drive_is_rejected(tmp_path: Path) -> None
     )
 
 
-def test_absolute_final_source_symlink_is_rejected(tmp_path: Path) -> None:
+def test_absolute_contained_final_source_symlink_is_accepted(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     target = repo / "real.py"
@@ -231,7 +311,7 @@ def test_absolute_final_source_symlink_is_rejected(tmp_path: Path) -> None:
 
     indexer = _indexer(repo, "source.py", node_type=NODE_TYPE_FILE)
 
-    assert _content(indexer) is None
+    assert _content(indexer) == "contained alias target\n"
 
 
 def test_relative_final_source_symlink_inside_root_is_accepted(tmp_path: Path) -> None:

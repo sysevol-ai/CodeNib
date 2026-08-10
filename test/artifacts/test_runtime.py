@@ -5,29 +5,42 @@
 from __future__ import annotations
 
 import asyncio
+import dis
 import hashlib
+import inspect
 import io
 import json
 import math
+import os
 import shlex
 import shutil
 import stat
 import subprocess
+import sys
+import threading
 import urllib.error
 import urllib.request
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 import codenib.artifacts.github as github_artifacts
+import codenib.artifacts.runtime as runtime_module
+import codenib.index.sparse_idx.bm25_index as bm25_module
 import codenib.mcp.server as server_module
+from codenib._atomic_directory import (
+    PublicationDirectoryReader,
+    reopen_authenticated_directory,
+)
 from codenib.artifacts import (
     CONTEXT_ARTIFACT_MANIFEST,
     bind_context_artifact,
     extract_context_artifact_archive,
     fetch_github_context_artifact,
+    query_context_artifact,
     render_artifact_mcp_config,
     resolve_github_context_artifact,
     stage_context_artifact,
@@ -39,7 +52,11 @@ from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.source import read_source_impl
-from codenib.source_fingerprint import RepositoryChangedError, fingerprint_repository
+from codenib.source_fingerprint import (
+    RepositoryChangedError,
+    capture_repository_source,
+    fingerprint_repository,
+)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -271,6 +288,21 @@ def _refresh_inventory_file(artifact: Path, metadata: dict, relative: str) -> No
     record["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _rewrite_artifact_source_fingerprint(artifact: Path, fingerprint: str) -> None:
+    metadata = _metadata(artifact)
+    metadata["repository"]["source_fingerprint"] = fingerprint
+    manifest_relative = metadata["manifest"]["path"]
+    manifest_path = artifact / manifest_relative
+    manifest = RepoManifest.load(manifest_path)
+    manifest.source_fingerprint = fingerprint
+    manifest.last_indexed_source_fingerprint = fingerprint
+    for entry in manifest.indexes.values():
+        entry.source_fingerprint = fingerprint
+    manifest.save(manifest_path)
+    _refresh_inventory_file(artifact, metadata, manifest_relative)
+    _write_metadata(artifact, metadata)
+
+
 def _zip_tree(source: Path, output: Path, *, prefix: str = "") -> None:
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(source.rglob("*")):
@@ -297,12 +329,547 @@ def test_verify_and_bind_artifact_before_loading_bm25(tmp_path: Path) -> None:
     assert verified.views == ("bm25",)
     assert binding.manifest.repo_path == str(repo)
     assert binding.manifest.indexes["bm25"].path == str(artifact / "views" / "bm25")
-    context = ServerContext.load(binding.manifest, views=["bm25"])
+    context = ServerContext.load(
+        binding.manifest,
+        views=["bm25"],
+        artifact_binding=binding,
+    )
     assert context.bm25 is not None
     assert context.bm25.project_root == str(repo)
     results = context.bm25.search("value", return_code_content=True)
     assert results[0].file == "sample.py"
     assert "VALUE = 1" in (results[0].content or "")
+
+
+def test_bound_source_reads_poison_after_checkout_changes(tmp_path: Path) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(
+        artifact,
+        repo,
+        expected_repository="example/project",
+        expected_commit=commit,
+    )
+    context = ServerContext.load(
+        binding.manifest,
+        views=["bm25"],
+        artifact_binding=binding,
+    )
+    assert context.source_verified is True
+    (repo / "sample.py").write_text("VALUE = 999\n", encoding="utf-8")
+
+    with pytest.raises(RepositoryChangedError):
+        read_source_impl(context, "sample.py", 1, 1)
+    assert context.source_verified is False
+    with pytest.raises(RepositoryChangedError, match="poisoned"):
+        context.bm25.search("value", return_code_content=True)
+
+
+def test_artifact_binding_close_releases_unconsumed_source_authority(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    source = binding.source_binding
+    assert source is not None and source.usable
+
+    binding.close()
+    binding.close()
+
+    assert binding.source_bound is False
+    assert not source.usable
+
+
+@pytest.mark.parametrize(
+    ("timing", "interruption"),
+    [
+        pytest.param(
+            "before",
+            KeyboardInterrupt("context binding close interrupted before source close"),
+            id="before-close",
+        ),
+        pytest.param(
+            "after",
+            SystemExit("context binding close interrupted after source close"),
+            id="after-close",
+        ),
+    ],
+)
+def test_artifact_binding_close_retains_cleanup_owner_through_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    timing: str,
+    interruption: BaseException,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    source = binding.source_binding
+    assert source is not None
+    source_type = type(source)
+    real_close = source_type.close
+    injected = False
+
+    def interrupt_source_close(instance) -> None:
+        nonlocal injected
+        if instance is source and not injected:
+            injected = True
+            if timing == "before":
+                raise interruption
+            real_close(instance)
+            raise interruption
+        real_close(instance)
+
+    monkeypatch.setattr(source_type, "close", interrupt_source_close)
+    with pytest.raises(type(interruption)) as caught:
+        binding.close()
+
+    assert caught.value is interruption
+    assert injected
+    assert binding.source_bound is False
+    monkeypatch.setattr(source_type, "close", real_close)
+    binding.close()
+    assert source.closed
+
+
+def test_artifact_binding_source_authority_install_is_linear_one_shot(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    barrier = threading.Barrier(3)
+    installed = []
+    failures: list[BaseException] = []
+
+    def install() -> None:
+        target = []
+        barrier.wait()
+        try:
+            binding.install_source_binding(target.append)
+            installed.extend(target)
+        except BaseException as exc:  # noqa: B036 - record thread result
+            failures.append(exc)
+
+    threads = [threading.Thread(target=install) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(installed) == 1
+    assert installed[0] is not None
+    assert len(failures) == 1
+    assert isinstance(failures[0], RuntimeError)
+    assert "already transferred" in str(failures[0])
+    installed[0].close()
+
+
+def test_artifact_binding_rejected_expected_source_retains_original_owner(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    source = binding.source_binding
+    assert source is not None
+    other = capture_repository_source(repo, exclude_roots=(artifact,))
+
+    with pytest.raises(ValueError, match="does not match"):
+        binding.install_source_binding(
+            lambda _source: pytest.fail("mismatched source must not be installed"),
+            expected=other,
+            require_expected=True,
+        )
+
+    assert binding.source_binding is source
+    assert source.usable
+    installed = []
+    binding.install_source_binding(installed.append)
+    assert installed == [source]
+    source.close()
+    other.close()
+
+
+def test_server_context_losing_install_does_not_close_winners_source(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    winner = []
+    binding.install_source_binding(winner.append)
+    source = winner[0]
+    assert source is not None and source.usable
+
+    with pytest.raises(RuntimeError, match="already transferred"):
+        ServerContext.load(
+            binding.manifest,
+            views=[],
+            artifact_binding=binding,
+            source_binding=source,
+        )
+
+    assert source.usable
+    source.close()
+
+
+def test_server_context_expected_witness_mismatch_does_not_close_witness(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = query_context_artifact(artifact, expected_commit=commit)
+    witness = capture_repository_source(repo, exclude_roots=(artifact,))
+
+    with pytest.raises(ValueError, match="does not match"):
+        ServerContext.load(
+            binding.manifest,
+            views=[],
+            artifact_binding=binding,
+            source_binding=witness,
+        )
+
+    assert witness.usable
+    witness.close()
+    binding.close()
+
+
+def test_artifact_binding_install_cancellation_closes_claimed_authority(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    source = binding.source_binding
+    assert source is not None
+    method = type(binding).install_source_binding
+    lines, first_line = inspect.getsourcelines(method)
+    target_line = first_line + next(
+        index for index, line in enumerate(lines) if "install(source)" in line
+    )
+    interruption = KeyboardInterrupt("injected after source authority claim")
+    injected = False
+
+    def interrupt_after_claim(frame, event, _arg):
+        nonlocal injected
+        if (
+            not injected
+            and frame.f_code is method.__code__
+            and event == "line"
+            and frame.f_lineno == target_line
+        ):
+            injected = True
+            raise interruption
+        return interrupt_after_claim
+
+    sys.settrace(interrupt_after_claim)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            binding.install_source_binding(lambda _source: None)
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is interruption
+    assert injected
+    assert source.closed
+    assert binding.source_bound is False
+
+
+def test_server_context_install_handoff_cancellation_closes_source(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    source = binding.source_binding
+    assert source is not None
+    method = ServerContext.load.__func__
+    source_lines, first_line = inspect.getsourcelines(method)
+    call_line = first_line + next(
+        index
+        for index, line in enumerate(source_lines)
+        if "artifact_binding.install_source_binding(" in line
+    )
+    current_line = None
+    target_offset = None
+    for instruction in dis.get_instructions(method):
+        if instruction.starts_line is not None:
+            current_line = instruction.starts_line
+        if instruction.opname == "POP_TOP" and current_line in range(
+            call_line, call_line + 5
+        ):
+            target_offset = instruction.offset
+            break
+    assert target_offset is not None
+    interruption = KeyboardInterrupt("injected after destination install")
+    injected = False
+
+    def interrupt_after_install(frame, event, _arg):
+        nonlocal injected
+        if (
+            not injected
+            and frame.f_code is method.__code__
+            and event == "opcode"
+            and frame.f_lasti == target_offset
+        ):
+            injected = True
+            raise interruption
+        frame.f_trace_opcodes = True
+        return interrupt_after_install
+
+    sys.settrace(interrupt_after_install)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            ServerContext.load(
+                binding.manifest,
+                views=[],
+                artifact_binding=binding,
+            )
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is interruption
+    assert injected
+    assert source.closed
+    assert binding.source_bound is False
+
+
+def test_bind_checkout_cancellation_closes_captured_source_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    captured = []
+    real_capture = runtime_module.capture_repository_source
+    interruption = KeyboardInterrupt("injected checkout cancellation")
+    descriptor_root = Path("/proc/self/fd")
+    before = len(tuple(descriptor_root.iterdir())) if descriptor_root.is_dir() else None
+
+    def capture(*args, **kwargs):
+        source = real_capture(*args, **kwargs)
+        captured.append(source)
+        return source
+
+    def interrupt_checkout(_repo: Path) -> str:
+        raise interruption
+
+    monkeypatch.setattr(runtime_module, "capture_repository_source", capture)
+    monkeypatch.setattr(runtime_module, "checkout_commit", interrupt_checkout)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        bind_context_artifact(artifact, repo, expected_commit=commit)
+
+    assert caught.value is interruption
+    assert len(captured) == 1
+    assert captured[0].closed
+    if before is not None:
+        assert len(tuple(descriptor_root.iterdir())) <= before + 1
+
+
+def test_bind_capture_return_cancellation_uses_preinstalled_cleanup_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    captured = []
+    real_capture = runtime_module.capture_repository_source
+    interruption = KeyboardInterrupt("injected after capture returned")
+
+    def capture(*args, **kwargs):
+        source = real_capture(*args, **kwargs)
+        captured.append(source)
+        raise interruption
+
+    monkeypatch.setattr(runtime_module, "capture_repository_source", capture)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        bind_context_artifact(artifact, repo, expected_commit=commit)
+
+    assert caught.value is interruption
+    assert len(captured) == 1
+    assert captured[0].closed
+
+
+def test_bind_persistent_close_failure_exposes_retryable_source_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    captured = []
+    real_capture = runtime_module.capture_repository_source
+    interruption = KeyboardInterrupt("injected bind cancellation")
+
+    def capture(*args, **kwargs):
+        source = real_capture(*args, **kwargs)
+        captured.append(source)
+        return source
+
+    def interrupt_checkout(_repo: Path) -> str:
+        raise interruption
+
+    monkeypatch.setattr(runtime_module, "capture_repository_source", capture)
+    monkeypatch.setattr(runtime_module, "checkout_commit", interrupt_checkout)
+    probe = capture_repository_source(repo, exclude_roots=(artifact,))
+    source_type = type(probe)
+    probe.close()
+    real_close = source_type.close
+
+    def persistent_close(source) -> None:
+        if source in captured:
+            raise OSError("injected persistent source close failure")
+        real_close(source)
+
+    monkeypatch.setattr(source_type, "close", persistent_close)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        bind_context_artifact(artifact, repo, expected_commit=commit)
+
+    assert caught.value is interruption
+    assert len(captured) == 1
+    owner = caught.value.source_cleanup_owner
+    assert owner.pending_sources == (captured[0],)
+    assert not captured[0].closed
+
+    monkeypatch.setattr(source_type, "close", real_close)
+    owner.close()
+    assert owner.closed
+    assert captured[0].closed
+
+
+def test_bind_rejects_artifact_root_replaced_after_internal_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    saved = tmp_path / "verified-root"
+    real_verify = runtime_module.verify_context_artifact
+
+    def verify_then_replace(*args: object, **kwargs: object):
+        verified = real_verify(*args, **kwargs)
+        artifact.rename(saved)
+        shutil.copytree(saved, artifact)
+        return verified
+
+    monkeypatch.setattr(
+        runtime_module,
+        "verify_context_artifact",
+        verify_then_replace,
+    )
+    with pytest.raises(ValueError, match="changed between verification"):
+        bind_context_artifact(
+            artifact,
+            repo,
+            expected_commit=commit,
+        )
+
+
+def test_bind_rejects_checkout_replaced_after_source_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    foreign = tmp_path / "foreign-repo"
+    shutil.copytree(repo, foreign, symlinks=True)
+    captured = tmp_path / "captured-repo"
+    real_checkout_commit = runtime_module.checkout_commit
+
+    def replace_before_commit(path: Path) -> str:
+        repo.rename(captured)
+        foreign.rename(repo)
+        return real_checkout_commit(path)
+
+    monkeypatch.setattr(runtime_module, "checkout_commit", replace_before_commit)
+    with pytest.raises(ValueError, match="changed between verification"):
+        bind_context_artifact(
+            artifact,
+            repo,
+            expected_repository="example/project",
+            expected_commit=commit,
+        )
+
+    assert repo.is_dir()
+    assert captured.is_dir()
+
+
+def test_artifact_binding_rejects_root_replaced_before_runtime_load(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    saved = tmp_path / "bound-root"
+    artifact.rename(saved)
+    shutil.copytree(saved, artifact)
+    documents = artifact / "views/bm25/documents.json"
+    documents.write_text(
+        '[{"page_content":"FOREIGN","metadata":{"file":"sample.py"}}]',
+        encoding="utf-8",
+    )
+
+    context = ServerContext.load(
+        binding.manifest,
+        views=["bm25"],
+        artifact_binding=binding,
+    )
+
+    assert context.bm25 is None
+    assert "captured ownership" in context.errors["bm25"]
+
+
+def test_artifact_bm25_reader_never_reads_path_swapped_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    foreign = tmp_path / "foreign-artifact"
+    shutil.copytree(artifact, foreign)
+    (foreign / "views/bm25/documents.json").write_text(
+        '[{"page_content":"FOREIGN","metadata":{"file":"sample.py"}}]',
+        encoding="utf-8",
+    )
+    saved = tmp_path / "authorized-artifact"
+    real_open = PublicationDirectoryReader.open_authenticated_file
+    swapped = False
+    from codenib.index.sparse_idx import BM25CodeIndexer
+
+    real_load_values = BM25CodeIndexer.load_index_values
+    loaded_page_content: list[str] = []
+
+    def record_loaded_values(self, documents, metadata, **kwargs):
+        result = real_load_values(self, documents, metadata, **kwargs)
+        loaded_page_content.extend(document.page_content for document in self.documents)
+        return result
+
+    @contextmanager
+    def open_during_root_aba(self, relative, *, max_bytes=None):
+        nonlocal swapped
+        normalized = Path(relative).as_posix()
+        if normalized != "views/bm25/documents.json":
+            with real_open(self, relative, max_bytes=max_bytes) as source:
+                yield source
+            return
+        swapped = True
+        artifact.rename(saved)
+        foreign.rename(artifact)
+        try:
+            with real_open(self, relative, max_bytes=max_bytes) as source:
+                yield source
+        finally:
+            artifact.rename(foreign)
+            saved.rename(artifact)
+
+    monkeypatch.setattr(
+        PublicationDirectoryReader,
+        "open_authenticated_file",
+        open_during_root_aba,
+    )
+    monkeypatch.setattr(
+        BM25CodeIndexer,
+        "load_index_values",
+        record_loaded_values,
+    )
+    context = ServerContext.load(
+        binding.manifest,
+        views=["bm25"],
+        artifact_binding=binding,
+    )
+
+    assert swapped
+    assert context.bm25 is None
+    assert context.errors["bm25"]
+    assert loaded_page_content == ["sample py value 1"]
 
 
 def test_stage_bind_query_and_mcp_accept_contained_source_symlink(
@@ -322,9 +889,8 @@ def test_stage_bind_query_and_mcp_accept_contained_source_symlink(
         binding.manifest,
         views=["bm25"],
         artifact={"repository": "example/project"},
+        artifact_binding=binding,
     )
-    context.source_verified = True
-    context.source_error = None
 
     assert context.bm25 is not None
     results = context.bm25.search("value", return_code_content=True)
@@ -333,7 +899,7 @@ def test_stage_bind_query_and_mcp_accept_contained_source_symlink(
     assert source["content"] == "VALUE = 1\n"
 
 
-def test_bind_and_query_portable_semantic_artifact_without_pickle(
+def test_bound_portable_semantic_artifact_remains_native_inert_by_default(
     tmp_path: Path,
 ) -> None:
     repo, artifact, commit = _vector_artifact(tmp_path)
@@ -349,13 +915,16 @@ def test_bind_and_query_portable_semantic_artifact_without_pickle(
         CodeVectorStore,
         "_initialize_embedding_model",
         return_value=_PortableEmbedding(),
-    ):
-        context = ServerContext.load(binding.manifest, views=["vector"])
-        assert context.vector is not None
-        results = context.vector.search("locate a symbol", top_k=1)
+    ) as initialize_embedding:
+        context = ServerContext.load(
+            binding.manifest,
+            views=["vector"],
+            artifact_binding=binding,
+        )
+        assert context.vector is None
 
-    assert results[0].node_name == "locate_symbol"
-    assert results[0].file == "search.py"
+    initialize_embedding.assert_not_called()
+    assert "external authorization" in context.errors["vector"]
 
 
 def test_verify_rejects_digest_mismatch(tmp_path: Path) -> None:
@@ -420,6 +989,33 @@ def test_verify_rejects_repository_and_commit_mismatch(tmp_path: Path) -> None:
         )
 
 
+def test_v1_artifact_supports_inert_bm25_query_but_cannot_bind(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, _commit = _bm25_artifact(tmp_path)
+    legacy = f"sha256:{'a' * 64}"
+    _rewrite_artifact_source_fingerprint(artifact, legacy)
+
+    query_binding = query_context_artifact(artifact)
+    verified = query_binding.artifact
+    context = ServerContext.load(
+        query_binding.manifest,
+        views=["bm25"],
+        artifact_binding=query_binding,
+    )
+    try:
+        assert verified.source_fingerprint == legacy
+        assert context.source_verified is False
+        assert context.bm25 is not None
+        assert context.bm25.project_root is None
+        assert context.bm25.search("value", return_code_content=False)
+    finally:
+        context.close()
+
+    with pytest.raises(ValueError, match="query-only"):
+        bind_context_artifact(artifact, repo)
+
+
 def test_verify_rejects_unsafe_bm25_source_contract(tmp_path: Path) -> None:
     _repo, artifact, _commit = _bm25_artifact(tmp_path)
     metadata_path = artifact / "views" / "bm25" / "bm25_metadata.json"
@@ -455,6 +1051,24 @@ def test_verify_rejects_unsafe_bm25_source_contract(tmp_path: Path) -> None:
         verify_context_artifact(artifact)
 
 
+def test_runtime_source_path_budget_has_exact_utf8_and_component_boundaries() -> None:
+    exact_bytes = "a" * 4_096
+    exact_components = "/".join("a" for _ in range(256))
+
+    assert runtime_module._source_path(exact_bytes, label="source") == exact_bytes
+    assert (
+        runtime_module._source_path(exact_components, label="source")
+        == exact_components
+    )
+    for invalid in (
+        "a" * 4_097,
+        "/".join("a" for _ in range(257)),
+        "\ud800.py",
+    ):
+        with pytest.raises(ValueError, match="repository-relative POSIX path"):
+            runtime_module._source_path(invalid, label="source")
+
+
 def test_stage_rejects_source_symlink_outside_checkout(tmp_path: Path) -> None:
     with pytest.raises(
         (ValueError, RepositoryChangedError),
@@ -463,14 +1077,64 @@ def test_stage_rejects_source_symlink_outside_checkout(tmp_path: Path) -> None:
         _bm25_artifact(tmp_path, source_symlink=True)
 
 
-def test_bind_rejects_checkout_commit_drift(tmp_path: Path) -> None:
+def test_bind_rejects_checkout_content_drift_even_after_commit(tmp_path: Path) -> None:
     repo, artifact, _commit = _bm25_artifact(tmp_path)
     (repo / "second.py").write_text("SECOND = 2\n", encoding="utf-8")
     _git(repo, "add", "second.py")
     _git(repo, "commit", "--quiet", "-m", "second")
 
-    with pytest.raises(ValueError, match="checkout commit does not match"):
+    with pytest.raises(ValueError, match="source files do not match"):
         bind_context_artifact(artifact, repo)
+
+
+def test_bind_treats_same_content_new_head_as_unattested_display_provenance(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, indexed_commit = _bm25_artifact(tmp_path)
+    _git(repo, "commit", "--quiet", "--allow-empty", "-m", "same tree, new head")
+    current_commit = _git(repo, "rev-parse", "HEAD")
+    assert current_commit != indexed_commit
+
+    binding = bind_context_artifact(artifact, repo)
+    try:
+        assert binding.source_bound
+        assert binding.source_verification_scope == "content-bytes"
+        assert binding.commit_verified is False
+        assert binding.checkout_commit_observed == current_commit
+        assert binding.manifest.commit == indexed_commit
+    finally:
+        binding.close()
+
+
+def test_bind_never_attests_head_changed_after_diagnostic_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, indexed_commit = _bm25_artifact(tmp_path)
+    _git(repo, "commit", "--quiet", "--allow-empty", "-m", "same tree c2")
+    second_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "reset", "--quiet", "--hard", indexed_commit)
+    real_checkout_commit = runtime_module.checkout_commit
+
+    def observe_then_change_head(path: Path) -> str:
+        observed = real_checkout_commit(path)
+        _git(repo, "reset", "--quiet", "--hard", second_commit)
+        return observed
+
+    monkeypatch.setattr(
+        runtime_module,
+        "checkout_commit",
+        observe_then_change_head,
+    )
+    binding = bind_context_artifact(artifact, repo)
+    try:
+        assert binding.source_bound
+        assert binding.checkout_commit_observed == indexed_commit
+        assert _git(repo, "rev-parse", "HEAD") == second_commit
+        assert binding.commit_verified is False
+        assert binding.source_verification_scope == "content-bytes"
+    finally:
+        binding.close()
 
 
 def test_bind_rejects_checkout_source_drift(tmp_path: Path) -> None:
@@ -501,6 +1165,197 @@ def test_extract_archive_verifies_and_removes_single_root_prefix(
     )
 
 
+def test_extract_archive_rejects_final_symlink_and_fifo(tmp_path: Path) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    archive = tmp_path / "artifact.zip"
+    _zip_tree(artifact, archive)
+    linked = tmp_path / "linked.zip"
+    linked.symlink_to(archive)
+    with pytest.raises(ValueError, match="bounded regular file"):
+        extract_context_artifact_archive(linked, tmp_path / "linked-output")
+
+    if not hasattr(os, "mkfifo"):
+        return
+    fifo = tmp_path / "archive.fifo"
+    os.mkfifo(fifo)
+    with pytest.raises(ValueError, match="bounded regular file"):
+        extract_context_artifact_archive(fifo, tmp_path / "fifo-output")
+
+
+def test_archive_snapshot_allows_sibling_mutation_but_rejects_parent_rebind(
+    tmp_path: Path,
+) -> None:
+    from codenib.artifacts import archive as archive_module
+
+    anchor = tmp_path / "anchor"
+    anchor.mkdir()
+    archive = anchor / "artifact.zip"
+    archive.write_bytes(b"snapshot")
+
+    with archive_module._authenticated_archive_snapshot(
+        archive,
+        max_files=1,
+        max_bytes=1024,
+    ):
+        (anchor / "legitimate-sibling").mkdir()
+
+    held = tmp_path / "held-anchor"
+    foreign = tmp_path / "foreign-anchor"
+    foreign.mkdir()
+    try:
+        with pytest.raises(ValueError, match="archive parent changed"):
+            with archive_module._authenticated_archive_snapshot(
+                archive,
+                max_files=1,
+                max_bytes=1024,
+            ):
+                anchor.rename(held)
+                foreign.rename(anchor)
+    finally:
+        if anchor.exists():
+            anchor.rename(foreign)
+        if held.exists():
+            held.rename(anchor)
+
+
+def test_extract_archive_reads_one_pinned_generation_during_path_aba(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    archive = tmp_path / "artifact.zip"
+    _zip_tree(artifact, archive)
+    foreign = tmp_path / "foreign.zip"
+    foreign.write_bytes(b"not the authorized archive")
+    saved = tmp_path / "saved.zip"
+    from codenib.artifacts import archive as archive_module
+
+    real_read = archive_module._read_archive
+    swapped = False
+
+    def read_during_aba(descriptor: int, size: int) -> bytes:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            archive.rename(saved)
+            foreign.rename(archive)
+            try:
+                return real_read(descriptor, size)
+            finally:
+                archive.rename(foreign)
+                saved.rename(archive)
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr(archive_module, "_read_archive", read_during_aba)
+    with pytest.raises(ValueError, match="changed while reading"):
+        extract_context_artifact_archive(
+            archive,
+            tmp_path / "output",
+        )
+
+    assert swapped
+    assert foreign.read_bytes() == b"not the authorized archive"
+    assert not (tmp_path / "output").exists()
+
+
+def test_extract_archive_native_parser_consumes_only_sealed_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    _repo, artifact, _commit = _bm25_artifact(fixture)
+    archive_a = tmp_path / "artifact-a.zip"
+    _zip_tree(artifact, archive_a)
+
+    artifact_b = tmp_path / "artifact-b"
+    shutil.copytree(artifact, artifact_b)
+    documents = artifact_b / "views" / "bm25" / "documents.json"
+    documents.write_text(
+        documents.read_text(encoding="utf-8").replace("value 1", "value 9"),
+        encoding="utf-8",
+    )
+    metadata = _metadata(artifact_b)
+    _refresh_inventory_file(
+        artifact_b,
+        metadata,
+        "views/bm25/documents.json",
+    )
+    _write_metadata(artifact_b, metadata)
+    archive_b = tmp_path / "artifact-b.zip"
+    _zip_tree(artifact_b, archive_b)
+    replacement = archive_b.read_bytes()
+
+    from codenib.artifacts import archive as archive_module
+
+    real_zip_file = archive_module.zipfile.ZipFile
+    attempted = False
+    replaced = False
+
+    def tamper_before_parse(snapshot, *args, **kwargs):
+        nonlocal attempted, replaced
+        attempted = True
+        descriptor = snapshot.fileno()
+        try:
+            os.ftruncate(descriptor, 0)
+            os.write(descriptor, replacement)
+            os.lseek(descriptor, 0, os.SEEK_SET)
+        except OSError:
+            pass
+        else:  # pragma: no cover - vulnerable writable snapshot implementation
+            replaced = True
+        return real_zip_file(snapshot, *args, **kwargs)
+
+    monkeypatch.setattr(archive_module.zipfile, "ZipFile", tamper_before_parse)
+    output = tmp_path / "output"
+    extract_context_artifact_archive(archive_a, output)
+
+    assert attempted
+    assert not replaced
+    assert b"value 1" in (output / "views/bm25/documents.json").read_bytes()
+    assert b"value 9" not in (output / "views/bm25/documents.json").read_bytes()
+
+
+def test_extract_archive_returns_published_authority_not_refreshed_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture_a = tmp_path / "a"
+    fixture_b = tmp_path / "b"
+    fixture_a.mkdir()
+    fixture_b.mkdir()
+    _repo, artifact, commit = _bm25_artifact(fixture_a)
+    _other_repo, foreign_artifact, _other_commit = _bm25_artifact(fixture_b)
+    archive = tmp_path / "artifact.zip"
+    _zip_tree(artifact, archive)
+    output = tmp_path / "output"
+    saved = tmp_path / "published-a"
+    from codenib.artifacts import archive as archive_module
+
+    real_publish = archive_module.OwnedDirectoryStage.publish
+
+    def publish_then_replace(self, **kwargs: object):
+        result = real_publish(self, **kwargs)
+        output.rename(saved)
+        shutil.copytree(foreign_artifact, output)
+        return result
+
+    monkeypatch.setattr(
+        archive_module.OwnedDirectoryStage,
+        "publish",
+        publish_then_replace,
+    )
+    verified = extract_context_artifact_archive(archive, output)
+
+    assert verified.commit == commit
+    with pytest.raises((RuntimeError, ValueError), match="captured ownership"):
+        reopen_authenticated_directory(
+            output,
+            verified.ownership,
+            lambda _reader: None,
+        )
+
+
 def test_extract_archive_restores_previous_output_on_publish_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -517,7 +1372,7 @@ def test_extract_archive_restores_previous_output_on_publish_failure(
     real_rename = atomic_directory._rename_noreplace_at
 
     def fail_final_publish(source, target, source_dir_fd, target_dir_fd):
-        if source.startswith(".extracted.extract-") and target == output.name:
+        if source.startswith(".extracted.normalize-") and target == output.name:
             raise OSError("injected archive publish failure")
         return real_rename(source, target, source_dir_fd, target_dir_fd)
 
@@ -530,8 +1385,7 @@ def test_extract_archive_restores_previous_output_on_publish_failure(
         extract_context_artifact_archive(archive, output)
 
     assert marker.read_text(encoding="utf-8") == "preserve"
-    assert not list(output.parent.glob(".extracted.extract-*"))
-    assert not list(output.parent.glob(".extracted.previous-*"))
+    assert not list(output.parent.glob(".extracted.normalize-*"))
 
 
 def test_extract_archive_preserves_output_changed_during_build(
@@ -580,7 +1434,7 @@ def test_extract_archive_rejects_output_symlink(tmp_path: Path) -> None:
     output = tmp_path / "output"
     output.symlink_to(victim, target_is_directory=True)
 
-    with pytest.raises(ValueError, match="symbolic link"):
+    with pytest.raises(ValueError, match="not a directory or is a link"):
         extract_context_artifact_archive(archive, output)
 
     assert output.is_symlink()
@@ -601,20 +1455,21 @@ def test_extract_archive_does_not_follow_swapped_stage_symlink(
 
     from codenib.artifacts import archive as archive_module
 
-    real_mkdtemp = archive_module.tempfile.mkdtemp
+    real_stage = archive_module.OwnedDirectoryStage
     swapped: Path | None = None
 
-    def swap_stage(*args, **kwargs):
-        nonlocal swapped
-        created = Path(real_mkdtemp(*args, **kwargs))
-        created.rename(stolen)
-        created.symlink_to(victim, target_is_directory=True)
-        swapped = created
-        return str(created)
+    class SwappedStage(real_stage):
+        def __init__(self, destination, **kwargs):
+            nonlocal swapped
+            super().__init__(destination, **kwargs)
+            if Path(destination).name == "output" and swapped is None:
+                self.path.rename(stolen)
+                self.path.symlink_to(victim, target_is_directory=True)
+                swapped = self.path
 
-    monkeypatch.setattr(archive_module.tempfile, "mkdtemp", swap_stage)
+    monkeypatch.setattr(archive_module, "OwnedDirectoryStage", SwappedStage)
 
-    with pytest.raises(ValueError, match="link"):
+    with pytest.raises(RuntimeError, match="owned stage root changed"):
         extract_context_artifact_archive(archive, tmp_path / "output")
 
     assert swapped is not None and swapped.is_symlink()
@@ -785,7 +1640,10 @@ def test_fetch_github_artifact_verifies_archive_digest_and_reuses_cache(
     assert second.downloaded is False
     assert second.record is None
     assert calls == {"list": 1, "download": 1}
-    with pytest.raises(ValueError, match="inventory exceeds 2 files"):
+    with pytest.raises(
+        ValueError,
+        match="inventory exceeds 2 files|contains more than 2 inventoried files",
+    ):
         fetch_github_context_artifact(
             "example/project",
             commit,
@@ -1046,3 +1904,94 @@ def test_mcp_server_starts_from_verified_artifact(tmp_path: Path) -> None:
         "views": ["bm25"],
     }
     assert manifest["runtime"]["loaded_views"] == ["bm25"]
+
+
+def test_mcp_server_query_only_v1_artifact_loads_bm25_without_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    _rewrite_artifact_source_fingerprint(artifact, f"sha256:{'a' * 64}")
+
+    with patch.object(server_module.mcp, "run") as run_server:
+        server_module.main(
+            [
+                "--artifact",
+                str(artifact),
+                "--repository",
+                "example/project",
+                "--log-level",
+                "ERROR",
+            ]
+        )
+
+    run_server.assert_called_once_with(transport="stdio")
+    context = server_module.get_context()
+    assert context.source_verified is False
+    assert context.bm25 is not None
+    assert context.bm25.source_mode == bm25_module.SOURCE_MODE_PERSISTED_ONLY
+    cwd_source = tmp_path / "sample.py"
+    cwd_source.write_text("API_KEY = 'QUERY_ONLY_CWD_SECRET'\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        bm25_module,
+        "_read_source_text",
+        lambda *_args: pytest.fail("query-only artifact must not read source paths"),
+    )
+
+    relative = context.bm25.search("value", return_code_content=True)
+    assert relative
+    assert all(result.content is None for result in relative)
+    assert "QUERY_ONLY_CWD_SECRET" not in repr(relative)
+    assert context.bm25.search_identifier_occurrences("value")
+
+    context.bm25.documents[0].metadata["file"] = str(cwd_source)
+    absolute = context.bm25.search("value", return_code_content=True)
+    assert absolute
+    assert all(result.content is None for result in absolute)
+    assert "QUERY_ONLY_CWD_SECRET" not in repr(absolute)
+    assert context.bm25.search_identifier_occurrences("value")
+    with pytest.raises(RuntimeError, match="source binding has not been verified"):
+        read_source_impl(context, "sample.py", 1, 1)
+
+
+def test_mcp_server_query_only_v1_vector_artifact_never_parses_native_bytes(
+    tmp_path: Path,
+) -> None:
+    _repo, artifact, _commit = _vector_artifact(tmp_path)
+    _rewrite_artifact_source_fingerprint(artifact, f"sha256:{'a' * 64}")
+
+    with (
+        patch.object(server_module.mcp, "run") as run_server,
+        patch(
+            "codenib.index.embedding.artifact_integrity."
+            "capture_authenticated_vector_view"
+        ) as capture_vector,
+        patch(
+            "codenib.native_index_authorization."
+            "_mint_trusted_local_admin_authorization"
+        ) as mint_authorization,
+        patch.object(
+            CodeVectorStore,
+            "_initialize_embedding_model",
+        ) as initialize_embedding,
+    ):
+        server_module.main(
+            [
+                "--artifact",
+                str(artifact),
+                "--repository",
+                "example/semantic-project",
+                "--log-level",
+                "ERROR",
+            ]
+        )
+
+    run_server.assert_called_once_with(transport="stdio")
+    capture_vector.assert_not_called()
+    mint_authorization.assert_not_called()
+    initialize_embedding.assert_not_called()
+    context = server_module.get_context()
+    assert context.source_verified is False
+    assert context.vector is None
+    assert "external authorization" in context.errors["vector"]
