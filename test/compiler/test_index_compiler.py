@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -18,6 +19,7 @@ from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
+import codenib.compiler.index_compiler as index_compiler_module
 from codenib.compiler.index_builders import (
     BM25IndexBuilder,
     IndexBuilderRegistry,
@@ -1185,7 +1187,7 @@ class TestIndexCompiler:
             data = json.load(f)
         assert data["version"] == MANIFEST_VERSION
         assert "bm25" in data["indexes"]
-        assert data["repo"]["source_fingerprint"].startswith("sha256:")
+        assert data["repo"]["source_fingerprint"].startswith("sha256-v2:")
         assert data["indexes"]["bm25"]["source_fingerprint"] == (
             data["repo"]["source_fingerprint"]
         )
@@ -1565,7 +1567,7 @@ class TestUpdateRepo:
         assert calls == [("build", 1, None), ("build", 2, None)]
         assert manifest.indexes["rec"].config["builder_schema"] == 2
 
-    def test_uses_incremental_path_when_head_moved(self, tmp_path):
+    def test_clean_new_head_uses_authority_safe_full_rebuild(self, tmp_path):
         first = _git_repo(tmp_path)
         calls: list = []
         compiler = self._compiler(calls)
@@ -1574,9 +1576,72 @@ class TestUpdateRepo:
         assert first != second
 
         compiler.update_repo(str(tmp_path))
-        assert calls[-2] == ("incremental_update", first)
+        assert calls == [("build", None), ("build", None)]
 
-    def test_incremental_builder_receives_previous_manifest_config(self, tmp_path):
+    def test_path_status_a_b_a_cannot_authorize_incremental_reuse(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git_repo(repo)
+        calls: list = []
+        compiler = self._compiler(calls)
+        compiler.compile_repo(str(repo))
+        _commit(repo, "b.py")
+
+        clean_replacement = tmp_path / "clean-replacement"
+        shutil.copytree(repo, clean_replacement, symlinks=True)
+        (repo / "a.py").write_text("def dirty_a():\n    return 9\n")
+        parked = tmp_path / "parked-a"
+        status_calls = []
+
+        def observe_temporary_clean_replacement(*args, **kwargs):
+            status_calls.append((args, kwargs))
+            os.rename(repo, parked)
+            os.rename(clean_replacement, repo)
+            try:
+                return False
+            finally:
+                os.rename(repo, clean_replacement)
+                os.rename(parked, repo)
+
+        monkeypatch.setattr(
+            index_compiler_module,
+            "repository_source_is_dirty",
+            observe_temporary_clean_replacement,
+            raising=False,
+        )
+
+        compiler.update_repo(str(repo))
+
+        assert status_calls == []
+        assert calls == [("build", None), ("build", None)]
+
+    def test_v1_manifest_forces_full_rebuild_instead_of_incremental_update(
+        self,
+        tmp_path,
+    ):
+        _git_repo(tmp_path)
+        calls: list = []
+        compiler = self._compiler(calls)
+        manifest = compiler.compile_repo(str(tmp_path))
+        legacy = f"sha256:{'a' * 64}"
+        manifest.source_fingerprint = legacy
+        manifest.last_indexed_source_fingerprint = legacy
+        manifest.indexes["rec"].source_fingerprint = legacy
+        manifest.save(tmp_path / ".codenib_cache" / MANIFEST_FILENAME)
+        _commit(tmp_path, "b.py")
+        calls.clear()
+
+        rebuilt = compiler.update_repo(str(tmp_path))
+
+        assert calls == [("build", None)]
+        assert rebuilt.source_fingerprint.startswith("sha256-v2:")
+        assert rebuilt.indexes["rec"].source_fingerprint == (rebuilt.source_fingerprint)
+
+    def test_full_rebuild_does_not_receive_previous_manifest_config(self, tmp_path):
         _git_repo(tmp_path)
         observed = []
 
@@ -1609,15 +1674,15 @@ class TestUpdateRepo:
             registry,
             IndexCompilerConfig(index_types=["rec"], languages=["python"]),
         )
-        first_manifest = compiler.compile_repo(str(tmp_path))
+        compiler.compile_repo(str(tmp_path))
         _commit(tmp_path, "b.py")
 
         compiler.update_repo(str(tmp_path))
 
-        assert observed == [first_manifest.indexes["rec"].config]
+        assert observed == []
 
-    def test_incremental_graph_preserves_partial_language_coverage(self, tmp_path):
-        first = _git_repo(tmp_path)
+    def test_full_graph_rebuild_recomputes_partial_language_coverage(self, tmp_path):
+        _git_repo(tmp_path)
         calls = []
 
         class PartialGraphBuilder:
@@ -1670,7 +1735,7 @@ class TestUpdateRepo:
         manifest = compiler.update_repo(str(tmp_path))
         metadata = manifest.indexes["symbol_graph"].metadata
 
-        assert calls == [("build", None), ("incremental_update", first)]
+        assert calls == [("build", None), ("build", None)]
         assert metadata["available_languages"] == ["python"]
         assert metadata["failed_languages"] == {"cpp": "compile database unavailable"}
         assert metadata["partial"] is True
@@ -1716,7 +1781,7 @@ class TestUpdateRepo:
         def boom(scope, **kwargs):
             raise RuntimeError("builder exploded")
 
-        builder.incremental_update = boom
+        builder.build = boom
 
         manifest = compiler.update_repo(str(tmp_path))
         assert manifest.commit == second
@@ -1733,15 +1798,15 @@ class TestUpdateRepo:
         _commit(tmp_path, "b.py")
 
         builder = compiler._builders.get("rec")
-        healthy = builder.incremental_update
+        healthy = builder.build
 
         def boom(scope, **kwargs):
             raise RuntimeError("builder exploded")
 
-        builder.incremental_update = boom
+        builder.build = boom
         compiler.update_repo(str(tmp_path))
 
-        builder.incremental_update = healthy
+        builder.build = healthy
         calls.clear()
         compiler.update_repo(str(tmp_path))
         # Not a no-op: the failure left work to do.
