@@ -497,6 +497,87 @@ def _retain_first_error(
     return primary_error
 
 
+def _run_callback_with_post_validations(
+    callback: Callable[[], _T],
+    post_validations: tuple[tuple[str, Callable[[], None]], ...],
+) -> _T:
+    """Run one callback and ordered postconditions without losing first-primary.
+
+    Postconditions live in ``finally`` around the callback result store, so
+    cancellation after a callback has returned cannot turn an unchecked result
+    into success.  Every postcondition is attempted in order.  A callback
+    failure remains primary and receives each postcondition failure as a direct
+    note; without an earlier failure, the first postcondition failure is
+    primary and later failures become its notes.
+    """
+
+    if not callable(callback) or not isinstance(post_validations, tuple):
+        raise TypeError("callback validation requires callable inputs")
+    for label, validation in post_validations:
+        if not isinstance(label, str) or not label or not callable(validation):
+            raise TypeError("callback post-validations must be labeled callables")
+    # ``sys.exc_info()`` is inherited from an active ``except`` in a caller.
+    # Snapshot that ambient exception so it is never mistaken for a failure
+    # raised by this callback or its result/return cancellation window.
+    ambient_error = sys.exc_info()[1]
+    callback_error: BaseException | None = None
+    try:
+        result = callback()
+        return result
+    except BaseException as error:  # noqa: B036 - preserve exact local primary
+        callback_error = error
+        raise
+    finally:
+        # The explicit callback state normally identifies the locally active
+        # exception.  The active-vs-ambient comparison also covers a new
+        # BaseException injected in the result/return seam before the handler
+        # can store it.  Let locally active failures keep unwinding via the
+        # original bare raise so their traceback is unchanged.
+        active_error = sys.exc_info()[1]
+        locally_unwinding = callback_error is not None or (
+            active_error is not None and active_error is not ambient_error
+        )
+        primary_error = callback_error
+        if primary_error is None and locally_unwinding:
+            primary_error = active_error
+        for label, validation in post_validations:
+            try:
+                validation()
+            except BaseException as validation_error:  # noqa: B036 - keep first
+                if primary_error is None:
+                    primary_error = validation_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        label,
+                        validation_error,
+                    )
+        if not locally_unwinding and primary_error is not None:
+            raise primary_error
+
+
+def _run_publication_reader_callback(
+    reader: PublicationDirectoryReader,
+    callback: Callable[[PublicationDirectoryReader], _T],
+    validate_child_binding: Callable[[], None],
+) -> _T:
+    """Run a reader callback and always recheck validity plus child binding."""
+
+    return _run_callback_with_post_validations(
+        lambda: callback(reader),
+        (
+            (
+                "publication reader validity validation also failed",
+                reader._require_valid,
+            ),
+            (
+                "publication reader child namespace validation also failed",
+                validate_child_binding,
+            ),
+        ),
+    )
+
+
 @dataclass(slots=True)
 class _PosixDescriptorRecord:
     descriptor: int
@@ -1224,25 +1305,55 @@ class DirectoryOrphan:
                 raise RuntimeError("directory orphan platform authority changed")
 
             def use_verified(reader: _PublicationTreeReader) -> _T:
-                before = reader.capture_ownership()
-                _require_matching_ownership(
-                    before,
-                    self.locator.ownership,
-                    label="directory orphan",
-                    allow_root_rename=True,
-                )
-                result = callback(reader)
-                after = reader.capture_ownership()
-                if after != before:
-                    raise RuntimeError("directory orphan changed while reopened")
-                return result
+                before: _TreeOwnership | None = None
 
-            return authority.read_child(
-                self.locator.child_name,
-                path=self.path,
-                label="directory orphan",
-                expected_ownership=self.locator.ownership,
-                callback=use_verified,
+                def consume() -> _T:
+                    nonlocal before
+                    before = reader.capture_ownership()
+                    _require_matching_ownership(
+                        before,
+                        self.locator.ownership,
+                        label="directory orphan",
+                        allow_root_rename=True,
+                    )
+                    return callback(reader)
+
+                def validate_after_ownership() -> None:
+                    after = reader.capture_ownership()
+                    _require_matching_ownership(
+                        after,
+                        self.locator.ownership,
+                        label="directory orphan",
+                        allow_root_rename=True,
+                    )
+                    if before is not None and after != before:
+                        raise RuntimeError("directory orphan changed while reopened")
+
+                return _run_callback_with_post_validations(
+                    consume,
+                    (
+                        (
+                            "directory orphan post-callback ownership validation "
+                            "also failed",
+                            validate_after_ownership,
+                        ),
+                    ),
+                )
+
+            return _run_callback_with_post_validations(
+                lambda: authority.read_child(
+                    self.locator.child_name,
+                    path=self.path,
+                    label="directory orphan",
+                    expected_ownership=self.locator.ownership,
+                    callback=use_verified,
+                ),
+                (
+                    (
+                        "directory orphan authority path validation also failed",
+                        authority.verify_path_binding,
+                    ),
+                ),
             )
 
     def rebind(self) -> _TreeOwnership:
@@ -1432,16 +1543,21 @@ def _open_posix_publication_authority(
                     ),
                     expected_ownership,
                 )
-                result = callback(reader)
-                reader._require_valid()
-                after = os.stat(
-                    name,
-                    dir_fd=owned_descriptor,
-                    follow_symlinks=False,
+
+                def validate_child_binding() -> None:
+                    after = os.stat(
+                        name,
+                        dir_fd=owned_descriptor,
+                        follow_symlinks=False,
+                    )
+                    if _directory_inode_identity(after) != root_identity:
+                        raise RuntimeError(f"{label} namespace binding changed")
+
+                return _run_publication_reader_callback(
+                    reader,
+                    callback,
+                    validate_child_binding,
                 )
-                if _directory_inode_identity(after) != root_identity:
-                    raise RuntimeError(f"{label} namespace binding changed")
-                return result
             except BaseException as exc:
                 primary_error = exc
                 raise
@@ -2491,12 +2607,17 @@ def _open_windows_publication_authority(
                     ),
                     expected_ownership,
                 )
-                result = callback(reader)
-                reader._require_valid()
-                rebound = _windows_find_child(api, owned_parent_handle, name)
-                if rebound is None or rebound.file_id != metadata.st_ino:
-                    raise RuntimeError(f"{label} namespace binding changed")
-                return result
+
+                def validate_child_binding() -> None:
+                    rebound = _windows_find_child(api, owned_parent_handle, name)
+                    if rebound is None or rebound.file_id != metadata.st_ino:
+                        raise RuntimeError(f"{label} namespace binding changed")
+
+                return _run_publication_reader_callback(
+                    reader,
+                    callback,
+                    validate_child_binding,
+                )
             except BaseException as exc:
                 primary_error = exc
                 raise
@@ -3414,6 +3535,43 @@ def _require_tree_ownership(
     )
 
 
+def _run_authenticated_directory_callback(
+    reader: PublicationDirectoryReader,
+    expected_ownership: _TreeOwnership,
+    callback: Callable[[PublicationDirectoryReader], _T],
+) -> _T:
+    """Run one authenticated callback inside an exact ownership sandwich."""
+
+    def consume() -> _T:
+        before = reader.capture_ownership()
+        if before != expected_ownership:
+            raise RuntimeError(
+                "authenticated directory differs from expected ownership"
+            )
+        return callback(reader)
+
+    def validate_after_ownership() -> None:
+        after = reader.capture_ownership()
+        if after != expected_ownership:
+            raise RuntimeError("authenticated directory changed while it was consumed")
+
+    return _run_callback_with_post_validations(
+        consume,
+        (
+            (
+                "authenticated directory post-callback reader validity "
+                "validation also failed",
+                reader._require_valid,
+            ),
+            (
+                "authenticated directory post-callback ownership validation "
+                "also failed",
+                validate_after_ownership,
+            ),
+        ),
+    )
+
+
 def reopen_authenticated_directory(
     path: Path,
     expected_ownership: _TreeOwnership,
@@ -3444,32 +3602,25 @@ def reopen_authenticated_directory(
             authority_owner=authority_owner,
         )
 
-        def consume(reader: PublicationDirectoryReader) -> _T:
-            before = reader.capture_ownership()
-            if before != expected_ownership:
-                raise RuntimeError(
-                    "authenticated directory differs from expected ownership"
-                )
-            result = callback(reader)
-            # A validator may deliberately catch a stream/snapshot failure.
-            # Reject before another namespace observation can hide that failure.
-            reader._require_valid()
-            after = reader.capture_ownership()
-            if after != expected_ownership:
-                raise RuntimeError(
-                    "authenticated directory changed while it was consumed"
-                )
-            return result
-
-        result = authority.read_child(
-            lexical.name,
-            path=lexical,
-            label="authenticated directory",
-            expected_ownership=expected_ownership,
-            callback=consume,
+        return _run_callback_with_post_validations(
+            lambda: authority.read_child(
+                lexical.name,
+                path=lexical,
+                label="authenticated directory",
+                expected_ownership=expected_ownership,
+                callback=lambda reader: _run_authenticated_directory_callback(
+                    reader,
+                    expected_ownership,
+                    callback,
+                ),
+            ),
+            (
+                (
+                    "authenticated directory authority path validation also failed",
+                    authority.verify_path_binding,
+                ),
+            ),
         )
-        authority.verify_path_binding()
-        return result
 
 
 def discard_owned_directory(

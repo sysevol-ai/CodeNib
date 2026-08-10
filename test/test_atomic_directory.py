@@ -33,6 +33,13 @@ def _write_tree(root: Path, name: str, value: str) -> None:
     (root / name).write_text(value, encoding="utf-8")
 
 
+def _exception_notes(error: BaseException) -> tuple[str, ...]:
+    return (
+        *tuple(getattr(error, "__notes__", ())),
+        *tuple(getattr(error, "_codenib_cleanup_notes", ())),
+    )
+
+
 class _FakeWindowsApi:
     """In-memory HANDLE/FILE_ID model; it intentionally has no path reads."""
 
@@ -2813,6 +2820,39 @@ def test_directory_orphan_reopens_through_parent_authority(tmp_path: Path) -> No
         saved_reader[0].capture_ownership()
 
 
+def test_directory_orphan_callback_primary_survives_post_content_drift(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "authority"
+    parent.mkdir()
+    destination = parent / "published"
+    _write_tree(destination, "old.txt", "old")
+    stage = parent / "stage"
+    _write_tree(stage, "new.txt", "new")
+    orphan = publish_staged_directory(stage, destination)
+    assert orphan is not None
+    primary = ValueError("callback failed")
+    saved_reader: list[atomic_module.PublicationDirectoryReader] = []
+
+    def mutate_then_fail(reader: atomic_module.PublicationDirectoryReader) -> None:
+        saved_reader.append(reader)
+        (orphan.path / "old.txt").write_text("mutated", encoding="utf-8")
+        raise primary
+
+    with pytest.raises(ValueError) as caught:
+        orphan.reopen(mutate_then_fail)
+
+    assert caught.value is primary
+    notes = _exception_notes(primary)
+    assert any(
+        "directory orphan post-callback ownership validation also failed" in note
+        and ("changed" in note or "differs" in note)
+        for note in notes
+    )
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_reader[0].capture_ownership()
+
+
 def test_publication_reader_streams_and_authenticates_on_context_exit(
     tmp_path: Path,
 ) -> None:
@@ -3166,6 +3206,392 @@ def test_reopen_authenticated_directory_rejects_reversible_root_swap(
     assert (foreign / "payload.txt").read_text(encoding="utf-8") == "foreign"
 
 
+@pytest.mark.parametrize(
+    "primary",
+    [
+        pytest.param(ValueError("callback failed"), id="value-error"),
+        pytest.param(KeyboardInterrupt("callback interrupted"), id="keyboard"),
+        pytest.param(SystemExit("callback exited"), id="system-exit"),
+    ],
+)
+def test_reopen_callback_primary_survives_post_content_drift_detection(
+    tmp_path: Path,
+    primary: BaseException,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    saved_readers: list[object] = []
+
+    def mutate_then_fail(reader: object) -> None:
+        assert isinstance(reader, atomic_module.PublicationDirectoryReader)
+        saved_readers.append(reader)
+        (directory / "payload.txt").write_text("mutated", encoding="utf-8")
+        raise primary
+
+    with pytest.raises(type(primary)) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            mutate_then_fail,
+        )
+
+    assert caught.value is primary
+    traceback_names: list[str] = []
+    traceback = caught.value.__traceback__
+    while traceback is not None:
+        traceback_names.append(traceback.tb_frame.f_code.co_name)
+        traceback = traceback.tb_next
+    assert "mutate_then_fail" in traceback_names
+    assert any(
+        "post-callback ownership validation also failed" in note
+        and ("changed" in note or "differs" in note)
+        for note in _exception_notes(primary)
+    )
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
+def test_reopen_active_outer_exception_raises_exact_postflight_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    outer_error = ValueError("ambient outer failure")
+    post_error = OSError(errno.EIO, "injected tree post-capture failure")
+    real_capture = atomic_module.PublicationDirectoryReader.capture_ownership
+    capture_calls = 0
+    saved_readers: list[atomic_module.PublicationDirectoryReader] = []
+
+    def fail_post_capture(reader: object, **kwargs: object) -> object:
+        nonlocal capture_calls
+        capture_calls += 1
+        if capture_calls == 2:
+            raise post_error
+        return real_capture(reader, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "capture_ownership",
+        fail_post_capture,
+    )
+
+    def mutate_then_return(reader: atomic_module.PublicationDirectoryReader) -> int:
+        saved_readers.append(reader)
+        (directory / "payload.txt").write_text("mutated", encoding="utf-8")
+        return 7
+
+    try:
+        raise outer_error
+    except ValueError as active_outer:
+        assert active_outer is outer_error
+        with pytest.raises(OSError) as caught:
+            atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                mutate_then_return,
+            )
+
+    assert caught.value is post_error
+    assert capture_calls == 2
+    assert _exception_notes(outer_error) == ()
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
+def test_reopen_active_outer_exception_all_green_returns_result(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    outer_error = ValueError("ambient outer failure")
+    saved_readers: list[atomic_module.PublicationDirectoryReader] = []
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> int:
+        saved_readers.append(reader)
+        return 7
+
+    try:
+        raise outer_error
+    except ValueError as active_outer:
+        assert active_outer is outer_error
+        result = atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            consume,
+        )
+
+    assert result == 7
+    assert _exception_notes(outer_error) == ()
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
+def test_reopen_callback_primary_inside_active_outer_exception_is_local(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    outer_error = ValueError("ambient outer failure")
+    callback_error = OSError(errno.EIO, "local callback failure")
+    saved_readers: list[atomic_module.PublicationDirectoryReader] = []
+
+    def mutate_then_fail(reader: atomic_module.PublicationDirectoryReader) -> None:
+        saved_readers.append(reader)
+        (directory / "payload.txt").write_text("mutated", encoding="utf-8")
+        raise callback_error
+
+    try:
+        raise outer_error
+    except ValueError as active_outer:
+        assert active_outer is outer_error
+        with pytest.raises(OSError) as caught:
+            atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                mutate_then_fail,
+            )
+
+    assert caught.value is callback_error
+    traceback_names: list[str] = []
+    traceback = callback_error.__traceback__
+    while traceback is not None:
+        traceback_names.append(traceback.tb_frame.f_code.co_name)
+        traceback = traceback.tb_next
+    assert "mutate_then_fail" in traceback_names
+    assert any(
+        "post-callback ownership validation also failed" in note
+        and ("changed" in note or "differs" in note)
+        for note in _exception_notes(callback_error)
+    )
+    assert _exception_notes(outer_error) == ()
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
+def test_reopen_callback_primary_survives_child_namespace_drift_detection(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    held = tmp_path / "held"
+    primary = ValueError("callback failed after namespace drift")
+
+    def replace_root_then_fail(_reader: object) -> None:
+        directory.rename(held)
+        _write_tree(directory, "payload.txt", "foreign")
+        raise primary
+
+    with pytest.raises(ValueError) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            replace_root_then_fail,
+        )
+
+    assert caught.value is primary
+    assert any(
+        "child namespace validation also failed" in note
+        and "namespace binding changed" in note
+        for note in _exception_notes(primary)
+    )
+
+
+def test_reopen_callback_primary_survives_authority_path_binding_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    primary = ValueError("callback failed before authority verification")
+    path_error = OSError(errno.EIO, "injected authority path verification failure")
+    verification_calls = 0
+
+    def fail_path_binding(_authority: object) -> None:
+        nonlocal verification_calls
+        verification_calls += 1
+        raise path_error
+
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "verify_path_binding",
+        fail_path_binding,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            lambda _reader: (_ for _ in ()).throw(primary),
+        )
+
+    assert caught.value is primary
+    assert verification_calls == 1
+    assert any(
+        "authority path validation also failed" in note
+        and "injected authority path verification failure" in note
+        for note in _exception_notes(primary)
+    )
+
+
+def test_reopen_callback_primary_survives_post_capture_eio(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    primary = ValueError("callback failed before post capture")
+    post_error = OSError(errno.EIO, "injected authenticated post-capture failure")
+    real_capture = atomic_module.PublicationDirectoryReader.capture_ownership
+    capture_calls = 0
+
+    def fail_post_capture(reader: object, **kwargs: object) -> object:
+        nonlocal capture_calls
+        capture_calls += 1
+        if capture_calls == 2:
+            raise post_error
+        return real_capture(reader, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "capture_ownership",
+        fail_post_capture,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            lambda _reader: (_ for _ in ()).throw(primary),
+        )
+
+    assert caught.value is primary
+    assert capture_calls == 2
+    assert any(
+        "post-callback ownership validation also failed" in note
+        and "authenticated post-capture failure" in note
+        for note in _exception_notes(primary)
+    )
+
+
+@pytest.mark.parametrize("callback_fails", [True, False], ids=["callback", "return"])
+def test_reopen_postflight_faults_are_best_effort_and_ordered(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    callback_fails: bool,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    held = tmp_path / "held"
+    callback_error = ValueError("callback failed after replacing the child")
+    tree_error = OSError(errno.EIO, "injected tree post-capture failure")
+    validity_error = RuntimeError("injected reader validity failure")
+    parent_error = RuntimeError("injected parent binding failure")
+    cleanup_error = RuntimeError("injected authority cleanup failure")
+    real_capture = atomic_module.PublicationDirectoryReader.capture_ownership
+    real_close = atomic_module._PublicationAuthority.close
+    capture_calls = 0
+    validity_calls = 0
+    saved_readers: list[atomic_module.PublicationDirectoryReader] = []
+
+    def fail_tree_post_capture(reader: object, **kwargs: object) -> object:
+        nonlocal capture_calls
+        capture_calls += 1
+        if capture_calls == 2:
+            raise tree_error
+        return real_capture(reader, **kwargs)
+
+    def fail_reader_validity(_reader: object) -> None:
+        nonlocal validity_calls
+        validity_calls += 1
+        if validity_calls == 2:
+            raise validity_error
+
+    def fail_parent_binding(_authority: object) -> None:
+        raise parent_error
+
+    def close_then_fail(authority: object) -> None:
+        real_close(authority)
+        raise cleanup_error
+
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "capture_ownership",
+        fail_tree_post_capture,
+    )
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "_require_valid",
+        fail_reader_validity,
+    )
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "verify_path_binding",
+        fail_parent_binding,
+    )
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "close",
+        close_then_fail,
+    )
+
+    def replace_child_then_finish(
+        reader: atomic_module.PublicationDirectoryReader,
+    ) -> int:
+        saved_readers.append(reader)
+        directory.rename(held)
+        _write_tree(directory, "payload.txt", "foreign")
+        if callback_fails:
+            raise callback_error
+        return 7
+
+    with pytest.raises(BaseException) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            replace_child_then_finish,
+        )
+
+    expected_primary = callback_error if callback_fails else tree_error
+    assert caught.value is expected_primary
+    assert capture_calls == 2
+    assert validity_calls == 2
+    notes = _exception_notes(expected_primary)
+    expected_note_fragments = (
+        *(
+            ("post-callback ownership validation also failed",)
+            if callback_fails
+            else ()
+        ),
+        "publication reader validity validation also failed",
+        "publication reader child namespace validation also failed",
+        "authenticated directory authority path validation also failed",
+        "publication authority owner cleanup also failed",
+    )
+    note_positions = [
+        next(index for index, note in enumerate(notes) if fragment in note)
+        for fragment in expected_note_fragments
+    ]
+    assert note_positions == sorted(note_positions)
+    if callback_fails:
+        traceback_names: list[str] = []
+        traceback = caught.value.__traceback__
+        while traceback is not None:
+            traceback_names.append(traceback.tb_frame.f_code.co_name)
+            traceback = traceback.tb_next
+        assert "replace_child_then_finish" in traceback_names
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"),
     reason="requires Linux fd accounting",
@@ -3308,6 +3734,61 @@ def test_reopen_authenticated_directory_fake_windows_rejects_suppressed_error(
     assert isinstance(children, dict)
     assert children["payload.txt"] == original_id
     assert children["foreign.txt"] == foreign_id
+
+
+def test_reopen_authenticated_directory_fake_windows_checks_child_after_primary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    directory_id = api.add_directory(api.root_id, "existing")
+    api.add_file(directory_id, "payload.txt", b"payload")
+    foreign_id = api.add_directory()
+    api.add_file(foreign_id, "payload.txt", b"foreign")
+    monkeypatch.setattr(atomic_module.sys, "platform", "win32")
+    monkeypatch.setattr(atomic_module, "_windows_require_publication_api", lambda: None)
+    monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
+    path = Path("C:/authority/existing")
+    authority = atomic_module._open_windows_publication_authority(
+        path.parent,
+        parent_resource=None,
+        expected_parent_identity=None,
+    )
+    try:
+        ownership = authority.capture_child(
+            path.name,
+            path=path,
+            label="existing",
+        )
+    finally:
+        authority.close()
+    assert api.handles == {}
+    primary = KeyboardInterrupt("callback interrupted after child replacement")
+    saved_readers: list[object] = []
+
+    def replace_child_then_fail(reader: object) -> None:
+        saved_readers.append(reader)
+        children = api.nodes[api.root_id]["children"]
+        assert isinstance(children, dict)
+        children["held"] = children.pop("existing")
+        children["existing"] = foreign_id
+        raise primary
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        atomic_module.reopen_authenticated_directory(
+            path,
+            ownership,
+            replace_child_then_fail,
+        )
+
+    assert caught.value is primary
+    assert any(
+        "child namespace validation also failed" in note
+        and "namespace binding changed" in note
+        for note in _exception_notes(primary)
+    )
+    assert api.handles == {}
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="requires real Windows HANDLEs")
@@ -3668,6 +4149,51 @@ def _assert_descriptor_closed(descriptor: int) -> None:
     with pytest.raises(OSError) as caught:
         os.fstat(descriptor)
     assert caught.value.errno == errno.EBADF
+
+
+def test_reopen_interrupt_after_callback_result_store_runs_post_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    real_capture = atomic_module.PublicationDirectoryReader.capture_ownership
+    capture_calls = 0
+    saved_readers: list[object] = []
+    interruption = KeyboardInterrupt("after callback result store")
+
+    def count_capture(reader: object, **kwargs: object) -> object:
+        nonlocal capture_calls
+        capture_calls += 1
+        return real_capture(reader, **kwargs)
+
+    def consume(reader: object) -> int:
+        saved_readers.append(reader)
+        return 7
+
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "capture_ownership",
+        count_capture,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_after_store(
+            atomic_module._run_callback_with_post_validations,
+            "result",
+            lambda: atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                consume,
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert capture_calls == 2
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
 
 
 @pytest.mark.skipif(
