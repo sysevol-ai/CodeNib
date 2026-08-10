@@ -79,13 +79,22 @@ def _trim_bounds(value: str) -> tuple[int, int]:
     return start, end
 
 
-def _authority_contains_userinfo(value: str, start: int, end: int) -> bool:
+def _authority_contains_userinfo(
+    value: str,
+    start: int,
+    end: int,
+    *,
+    allow_whitespace: bool,
+) -> bool:
     """Check a URL authority without copying a potentially huge document."""
 
     position = start
     while position < end:
         char = value[position]
-        if char in "/?#" or char.isspace():
+        # urllib.parse treats whitespace inside a standalone URL netloc as
+        # part of the authority. Embedded URLs still stop at prose whitespace
+        # so a later email address is not misclassified as URL userinfo.
+        if char in "/?#" or (not allow_whitespace and char.isspace()):
             break
         if char == "@":
             return True
@@ -93,9 +102,33 @@ def _authority_contains_userinfo(value: str, start: int, end: int) -> bool:
     return False
 
 
+def _urlsplit_start(value: str, start: int, end: int) -> int:
+    """Skip the leading WHATWG C0 controls and space stripped by urlsplit."""
+
+    while start < end and ord(value[start]) <= 0x20:
+        start += 1
+    return start
+
+
+def _is_standalone_url_scheme(value: str, start: int, separator: int) -> bool:
+    """Return whether the first ``://`` follows a scheme at the trim boundary."""
+
+    if separator <= start:
+        return False
+    first = value[start]
+    if not (first.isascii() and first.isalpha()):
+        return False
+    for position in range(start + 1, separator):
+        char = value[position]
+        if not (char.isascii() and (char.isalnum() or char in "+-.")):
+            return False
+    return True
+
+
 def _string_contains_url_credentials(value: str, start: int, end: int) -> bool:
+    url_start = _urlsplit_start(value, start, end)
     if end - start <= 8_192:
-        candidate = value[start:end]
+        candidate = value[url_start:end]
         if "://" not in candidate and not candidate.startswith("//"):
             return False
         try:
@@ -104,15 +137,29 @@ def _string_contains_url_credentials(value: str, start: int, end: int) -> bool:
             raise SecretFieldError("value contains an invalid URL") from exc
         return parsed.username is not None or parsed.password is not None
 
-    if value.startswith("//", start) and _authority_contains_userinfo(
-        value, start + 2, end
+    if value.startswith("//", url_start) and _authority_contains_userinfo(
+        value,
+        url_start + 2,
+        end,
+        allow_whitespace=True,
     ):
         return True
-    search_from = start
-    while (separator := value.find("://", search_from, end)) >= 0:
-        if _authority_contains_userinfo(value, separator + 3, end):
+    separator = value.find("://", url_start, end)
+    standalone_url = separator >= 0 and _is_standalone_url_scheme(
+        value,
+        url_start,
+        separator,
+    )
+    while separator >= 0:
+        if _authority_contains_userinfo(
+            value,
+            separator + 3,
+            end,
+            allow_whitespace=standalone_url,
+        ):
             return True
-        search_from = separator + 3
+        standalone_url = False
+        separator = value.find("://", separator + 3, end)
     return False
 
 

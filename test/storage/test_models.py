@@ -64,6 +64,65 @@ def test_shared_secret_classifier_rejects_credential_values(value: str) -> None:
         assert_no_secret_fields({"endpoint": value}, source="profile")
 
 
+def test_shared_secret_classifier_rejects_userinfo_after_authority_whitespace() -> None:
+    value = "http://user pass@host/" + ("x" * 9_000)
+    with pytest.raises(StorageValidationError, match="credentials"):
+        assert_no_secret_fields({"endpoint": value}, source="profile")
+
+
+def test_shared_secret_classifier_stops_embedded_url_at_prose_whitespace() -> None:
+    value = "Visit https://example.test then email user@example.test " + ("x" * 9_000)
+    assert_no_secret_fields({"description": value}, source="profile")
+
+
+@pytest.mark.parametrize("length", [8_192, 8_193])
+@pytest.mark.parametrize("prefix", ["\x00", "\x01", " ", "\t"])
+def test_shared_secret_classifier_matches_urlsplit_leading_c0_boundaries(
+    prefix: str,
+    length: int,
+) -> None:
+    stem = prefix + "http://user pass@host/"
+    value = stem + ("x" * (length - len(stem)))
+    assert len(value) == length
+    with pytest.raises(StorageValidationError, match="credentials"):
+        assert_no_secret_fields({"endpoint": value}, source="profile")
+
+
+@pytest.mark.parametrize("length", [8_192, 8_193])
+@pytest.mark.parametrize("control", ["\x00", "\x01", " ", "\t"])
+def test_shared_secret_classifier_does_not_skip_c0_inside_prose(
+    control: str,
+    length: int,
+) -> None:
+    stem = "Visit " + control + "http://example.test then email user@example.test "
+    value = stem + ("x" * (length - len(stem)))
+    assert len(value) == length
+    assert_no_secret_fields({"description": value}, source="profile")
+
+
+def test_shared_secret_classifier_checks_long_scheme_prefix_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib._secret_fields as secret_fields
+
+    real_validator = secret_fields._is_standalone_url_scheme
+    calls = 0
+
+    def track_validator(value: str, start: int, separator: int) -> bool:
+        nonlocal calls
+        calls += 1
+        return real_validator(value, start, separator)
+
+    monkeypatch.setattr(
+        secret_fields,
+        "_is_standalone_url_scheme",
+        track_validator,
+    )
+    value = ("a" * 9_000) + " prose " + ("x://example.test " * 10)
+    assert_no_secret_fields({"description": value}, source="profile")
+    assert calls == 1
+
+
 def test_shared_secret_classifier_does_not_reject_noncredential_token_words() -> None:
     assert_no_secret_fields(
         {
