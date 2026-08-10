@@ -64,6 +64,12 @@ def test_shared_secret_classifier_rejects_credential_values(value: str) -> None:
         assert_no_secret_fields({"endpoint": value}, source="profile")
 
 
+def test_shared_secret_classifier_rejects_userinfo_after_authority_whitespace() -> None:
+    value = "http://user pass@host/" + ("x" * 9_000)
+    with pytest.raises(StorageValidationError, match="credentials"):
+        assert_no_secret_fields({"endpoint": value}, source="profile")
+
+
 def test_shared_secret_classifier_does_not_reject_noncredential_token_words() -> None:
     assert_no_secret_fields(
         {

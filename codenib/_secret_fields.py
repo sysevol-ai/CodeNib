@@ -85,7 +85,9 @@ def _authority_contains_userinfo(value: str, start: int, end: int) -> bool:
     position = start
     while position < end:
         char = value[position]
-        if char in "/?#" or char.isspace():
+        # urllib.parse treats whitespace inside the netloc as part of the
+        # authority. Do not stop early and miss a later userinfo delimiter.
+        if char in "/?#":
             break
         if char == "@":
             return True
