@@ -33,6 +33,7 @@ from ..log_utils import get_logger
 from ..wiki import WikiBuilder
 from ..wiki.narrator import Narrator
 from .config import load_config
+from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
 from .repo_registry import RepoRegistry
 from .repository_files import live_source_slice
@@ -77,7 +78,15 @@ def _wiki_narrator(config):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config = load_config()
-    registry = RepoRegistry(config)
+    # The production service is the local administrator boundary: it verifies
+    # source fingerprint v2 and the exact captured vector tree through this
+    # injected resolver. RepoRegistry itself remains unable to mint authority.
+    # Sparse mode never invokes the resolver and therefore performs no extra
+    # source capture.
+    registry = RepoRegistry(
+        config,
+        native_index_authorization_resolver=authorize_local_manifest_vector,
+    )
     logger.info("Loading QA repos from %s ...", config.registry_path)
     registry.load_all()
     app.state.registry = registry

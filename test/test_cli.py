@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import errno
 import json
+import sys
 from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
@@ -1170,6 +1171,78 @@ def test_prepare_local_wiki_keeps_embedding_secret_process_local(
 
     assert "embedding-secret" not in local.config_path.read_text()
     assert local.runtime_env["CODENIB_EMBEDDING_API_KEY"] == "embedding-secret"
+
+
+def test_wiki_audit_injects_local_native_authority_resolver(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = {}
+    config = SimpleNamespace(
+        model="model",
+        model_api_base=None,
+        model_api_key=None,
+        embedding_api_key=None,
+        wiki_generation_model="model",
+        wiki_generation_api_base=None,
+        wiki_generation_api_key=None,
+        wiki_generation_options={},
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo="owner/sample", base_commit="abc123")
+    )
+
+    def resolver(_repo_entry, _manifest, _vector_entry):
+        return object()
+
+    class Registry:
+        def __init__(self, supplied_config, **kwargs):
+            captured["config"] = supplied_config
+            captured.update(kwargs)
+
+        def load_all(self):
+            captured["loaded"] = True
+
+        def get(self, repo_id):
+            assert repo_id == "sample"
+            return bundle
+
+    monkeypatch.setattr("codenib.web.config.load_config", lambda _path: config)
+    monkeypatch.setattr(
+        "codenib.web.native_authority.authorize_local_manifest_vector",
+        resolver,
+    )
+    monkeypatch.setattr("codenib.web.repo_registry.RepoRegistry", Registry)
+    monkeypatch.setitem(
+        sys.modules,
+        "codenib.llm.litellm_chat",
+        SimpleNamespace(LiteLLMChat=lambda **_kwargs: object()),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "codenib.wiki.agent_wiki",
+        SimpleNamespace(AgentWiki=lambda *_args, **_kwargs: object()),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "codenib.wiki.quality",
+        SimpleNamespace(audit_wiki=lambda _builder: {"passed": True}),
+    )
+    local = SimpleNamespace(
+        config_path=tmp_path / "config.yaml",
+        runtime_env={},
+        repo_id="sample",
+        data_dir=tmp_path,
+    )
+
+    report = cli._audit_local_wiki(local)
+
+    assert report["passed"] is True
+    assert captured == {
+        "config": config,
+        "native_index_authorization_resolver": resolver,
+        "loaded": True,
+    }
 
 
 def test_wiki_audit_exits_without_starting_frontend(

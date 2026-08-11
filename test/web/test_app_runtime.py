@@ -14,6 +14,53 @@ from fastapi.testclient import TestClient
 import codenib.web.app as web_app
 
 
+def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
+    captured = {}
+    config = SimpleNamespace(
+        registry_path="/tmp/qa_registry.json",
+        data_dir="/tmp/data",
+        wiki_generation_model="model",
+        wiki_agent=False,
+        wiki_generation_api_base=None,
+        wiki_generation_api_key=None,
+        wiki_generation_options={},
+    )
+    resolver = object()
+
+    class Registry:
+        def __init__(self, supplied_config, **kwargs):
+            captured["config"] = supplied_config
+            captured.update(kwargs)
+
+        def load_all(self):
+            captured["loaded"] = True
+
+        def list_infos(self):
+            return []
+
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "RepoRegistry", Registry)
+    monkeypatch.setattr(web_app, "authorize_local_manifest_vector", resolver)
+    monkeypatch.setattr(
+        web_app,
+        "_wiki_narrator",
+        lambda _config: SimpleNamespace(model="model", enabled=False, cache_dir=None),
+    )
+    application = SimpleNamespace(state=SimpleNamespace())
+
+    async def run_lifespan():
+        async with web_app.lifespan(application):
+            assert application.state.registry is not None
+
+    asyncio.run(run_lifespan())
+
+    assert captured == {
+        "config": config,
+        "native_index_authorization_resolver": resolver,
+        "loaded": True,
+    }
+
+
 def test_oversized_chat_request_is_rejected_before_runtime_lookup(monkeypatch):
     def unexpected_registry_lookup():
         raise AssertionError("invalid chat payload reached the repository runtime")

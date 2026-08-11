@@ -11,6 +11,11 @@ import pytest
 from codenib.agent.skills.registry import SkillRegistry
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.native_index_authorization import (
+    InvalidNativeIndexAuthorizationError,
+    MissingNativeIndexAuthorizationError,
+    _mint_trusted_local_admin_authorization,
+)
 from codenib.web.config import (
     QAConfig,
     RepoEntry,
@@ -30,13 +35,14 @@ from codenib.web.repo_registry import (
 def native_authorization(monkeypatch):
     token = object()
 
-    def preflight(authorization, *, view_type):
+    def require_view(root, authorization, semantic_contract):
+        assert root
         assert authorization is token
-        assert view_type == "vector"
+        assert isinstance(semantic_contract, dict)
 
     monkeypatch.setattr(
-        "codenib.native_index_authorization.require_native_index_authorization_preflight",
-        preflight,
+        "codenib.index.embedding.artifact_integrity.require_authorized_vector_view",
+        require_view,
     )
     return token
 
@@ -245,10 +251,17 @@ def test_repo_views_respect_configured_index_mode(
         indexes={"vector": vector_entry},
         index_is_current=lambda index_type: index_type == "vector",
     )
-    bundle = SimpleNamespace(manifest=manifest)
+    repo_entry = SimpleNamespace(instance_id="repo")
+    bundle = SimpleNamespace(entry=repo_entry, manifest=manifest)
+    resolved = []
+
+    def resolve(entry, resolved_manifest, resolved_vector):
+        resolved.append((entry, resolved_manifest, resolved_vector))
+        return native_authorization
+
     registry = RepoRegistry(
         QAConfig(mode=mode),
-        native_index_authorization_resolver=lambda _entry: native_authorization,
+        native_index_authorization_resolver=resolve,
     )
     loaded = []
     monkeypatch.setattr(
@@ -261,10 +274,13 @@ def test_repo_views_respect_configured_index_mode(
 
     assert loaded == [vector_entry] * expected_vector_loads
     assert bundle.vector_store == ("vector-store" if expected_vector_loads else None)
+    assert resolved == (
+        [(repo_entry, manifest, vector_entry)] if expected_vector_loads else []
+    )
 
 
-@pytest.mark.parametrize("resolver_kind", ["missing", "raises", "invalid"])
-def test_repo_views_keep_bm25_when_vector_authority_is_unusable(
+@pytest.mark.parametrize("resolver_kind", ["missing", "declines"])
+def test_repo_views_keep_bm25_only_for_explicit_optional_authority_policy(
     monkeypatch,
     resolver_kind,
 ):
@@ -288,15 +304,10 @@ def test_repo_views_keep_bm25_when_vector_authority_is_unusable(
     )
     if resolver_kind == "missing":
         resolver = None
-    elif resolver_kind == "raises":
-
-        def resolver(_entry):
-            raise ValueError("denied")
-
     else:
 
-        def resolver(_entry):
-            return object()
+        def resolver(_repo_entry, _manifest, _vector_entry):
+            return None
 
     bm25_entry = SimpleNamespace(path="/idx/bm25", config={})
     vector_entry = SimpleNamespace(path="/idx/vector", config={})
@@ -304,15 +315,139 @@ def test_repo_views_keep_bm25_when_vector_authority_is_unusable(
         indexes={"bm25": bm25_entry, "vector": vector_entry},
         index_is_current=lambda _index_type: True,
     )
-    bundle = SimpleNamespace(manifest=manifest)
+    bundle = SimpleNamespace(entry=SimpleNamespace(), manifest=manifest)
     registry = RepoRegistry(
         QAConfig(mode="hybrid"),
         native_index_authorization_resolver=resolver,
+        allow_missing_native_index_authorization=True,
     )
 
     registry._load_repo_views(bundle)
 
     assert bundle.bm25.path == "/idx/bm25"
+    assert bundle.vector_store is None
+
+
+@pytest.mark.parametrize("resolver_kind", ["missing", "declines"])
+def test_repo_views_fail_closed_when_required_authority_is_missing(
+    monkeypatch,
+    resolver_kind,
+):
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: pytest.fail(
+            "missing authority must fail before vector model initialization"
+        ),
+    )
+    if resolver_kind == "missing":
+        resolver = None
+    else:
+
+        def decline(_repo, _manifest, _entry):
+            return None
+
+        resolver = decline
+
+    vector_entry = SimpleNamespace(path="/idx/vector", config={})
+    manifest = SimpleNamespace(
+        indexes={"vector": vector_entry},
+        index_is_current=lambda _index_type: True,
+    )
+    bundle = SimpleNamespace(entry=SimpleNamespace(), manifest=manifest)
+    if resolver is None:
+        with pytest.raises(
+            MissingNativeIndexAuthorizationError,
+            match="requires an external",
+        ):
+            RepoRegistry(QAConfig(mode="hybrid"))
+        return
+
+    registry = RepoRegistry(
+        QAConfig(mode="hybrid"),
+        native_index_authorization_resolver=resolver,
+    )
+    with pytest.raises(MissingNativeIndexAuthorizationError, match="returned no"):
+        registry._load_repo_views(bundle)
+
+
+def test_repo_views_propagate_resolver_rejection_before_model_initialization(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: pytest.fail(
+            "resolver rejection must fail before vector model initialization"
+        ),
+    )
+
+    def reject(_repo, _manifest, _entry):
+        raise ValueError("operator denied vector authority")
+
+    vector_entry = SimpleNamespace(path="/idx/vector", config={})
+    manifest = SimpleNamespace(
+        indexes={"vector": vector_entry},
+        index_is_current=lambda _index_type: True,
+    )
+    registry = RepoRegistry(
+        QAConfig(mode="hybrid"),
+        native_index_authorization_resolver=reject,
+        allow_missing_native_index_authorization=True,
+    )
+
+    with pytest.raises(ValueError, match="operator denied"):
+        registry._load_repo_views(
+            SimpleNamespace(entry=SimpleNamespace(), manifest=manifest)
+        )
+
+
+def test_repo_views_propagate_vector_integrity_failures(
+    native_authorization, monkeypatch
+):
+    vector_entry = SimpleNamespace(path="/idx/vector", config={})
+    manifest = SimpleNamespace(
+        indexes={"vector": vector_entry},
+        index_is_current=lambda _index_type: True,
+    )
+    registry = RepoRegistry(
+        QAConfig(mode="hybrid"),
+        native_index_authorization_resolver=(
+            lambda _repo, _manifest, _entry: native_authorization
+        ),
+        allow_missing_native_index_authorization=True,
+    )
+    monkeypatch.setattr(
+        registry,
+        "_load_vector_store",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("authenticated vector bytes changed")
+        ),
+    )
+
+    with pytest.raises(ValueError, match="vector bytes changed"):
+        registry._load_repo_views(
+            SimpleNamespace(entry=SimpleNamespace(), manifest=manifest)
+        )
+
+
+def test_hybrid_requires_a_current_vector_unless_explicitly_optional(monkeypatch):
+    manifest = SimpleNamespace(
+        indexes={},
+        index_is_current=lambda _index_type: False,
+    )
+    bundle = SimpleNamespace(entry=SimpleNamespace(), manifest=manifest)
+    required = RepoRegistry(
+        QAConfig(mode="hybrid"),
+        native_index_authorization_resolver=(lambda _repo, _manifest, _entry: object()),
+    )
+
+    with pytest.raises(ValueError, match="requires a current vector"):
+        required._load_repo_views(bundle)
+
+    optional = RepoRegistry(
+        QAConfig(mode="hybrid"),
+        allow_missing_native_index_authorization=True,
+    )
+    optional._load_repo_views(bundle)
     assert bundle.vector_store is None
 
 
@@ -325,10 +460,57 @@ def test_vector_authority_is_preflighted_before_model_initialization(monkeypatch
     )
     registry = RepoRegistry(QAConfig())
 
-    with pytest.raises(ValueError, match="requires external authorization"):
+    with pytest.raises(ValueError, match="malformed"):
         registry._load_vector_store(
             SimpleNamespace(path="/idx/vector", config={}),
             native_index_authorization=object(),
+        )
+
+
+@pytest.mark.parametrize("mismatch", ["tree", "semantic"])
+def test_exact_vector_authority_is_checked_before_model_initialization(
+    tmp_path,
+    monkeypatch,
+    mismatch,
+):
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
+
+    authorized_root = tmp_path / "authorized"
+    loaded_root = tmp_path / "loaded"
+    authorized_root.mkdir()
+    loaded_root.mkdir()
+    (authorized_root / "config.json").write_text('{"tree":"authorized"}')
+    (loaded_root / "config.json").write_text('{"tree":"loaded"}')
+    manifest_config = {"embedding_model": "vendor/model"}
+    token_config = (
+        {"embedding_model": "different/model"}
+        if mismatch == "semantic"
+        else manifest_config
+    )
+    with capture_authenticated_vector_view(authorized_root) as view:
+        authorization = _mint_trusted_local_admin_authorization(
+            view.ownership,
+            view_type="vector",
+            semantic_contract=token_config,
+            evidence=("test-local-admin",),
+        )
+    target = authorized_root if mismatch == "semantic" else loaded_root
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: pytest.fail(
+            "wrong-tree or wrong-semantic authority must fail before model init"
+        ),
+    )
+
+    with pytest.raises(
+        InvalidNativeIndexAuthorizationError,
+        match="does not match captured bytes",
+    ):
+        RepoRegistry(QAConfig())._load_vector_store(
+            SimpleNamespace(path=str(target), config=manifest_config),
+            native_index_authorization=authorization,
         )
 
 
@@ -608,6 +790,7 @@ def test_vector_store_supports_legacy_prebuilt_route_fallback(
     assert created[0].kwargs["embedding_provider"] == "huggingface"
     assert created[0].kwargs["embedding_model"] == "nomic-ai/CodeRankEmbed"
     assert created[0].kwargs["dimension"] == 768
+    assert created[0].kwargs["artifact_metadata"] == entry.config
 
 
 def test_vector_store_fills_legacy_dimension_with_persisted_provider(
