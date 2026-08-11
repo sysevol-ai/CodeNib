@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Set
 
 from ..code_chunker import CodeChunker, RepoChunkingConfig
 from ..graph.code_graph import CodeGraph
@@ -38,6 +38,9 @@ from .retrieval_planner import (
 )
 
 logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from ..native_index_authorization import NativeIndexAuthorization
 
 SUPPORTED_ENGINES = {"dense", "sparse"}
 RETRIEVAL_TOP_K = 100
@@ -185,6 +188,7 @@ class RetrieveRerankPipeline:
         enable_rerank: bool = True,
         vector_masks: Optional[Dict[str, Set[str]]] = None,
         rerank_candidate_top_k: Optional[int] = None,
+        native_index_authorization: NativeIndexAuthorization | None = None,
     ) -> None:
         self.repo_path = self._validate_repo(repo_path)
         self.index_path = Path(index_path)
@@ -195,6 +199,7 @@ class RetrieveRerankPipeline:
         self.enable_rerank = enable_rerank
         self.index_metric = "ip"
         self.profiler = None
+        self._native_index_authorization = native_index_authorization
         self.retrieval_mode = (retrieval_mode or "dense").strip().lower()
         self.retrieval_planner = retrieval_planner
         if self.retrieval_planner is None and self.retrieval_mode == "auto":
@@ -817,12 +822,17 @@ class RetrieveRerankPipeline:
         l2_path = self.index_path / "l2"
 
         cache_exists = config_file.exists() or (l0_path.exists() and l2_path.exists())
-        if cache_exists:
+        force_rebuild = False
+        authorization = getattr(self, "_native_index_authorization", None)
+        if cache_exists and authorization is not None:
             logger.info(
                 "Loading hierarchical vector store from cache.",
                 extra={"index_path": str(self.index_path)},
             )
-            vector_store.load(str(self.index_path))
+            vector_store.load(
+                str(self.index_path),
+                native_index_authorization=authorization,
+            )
             missing_levels = []
             if not vector_store.l0_documents:
                 missing_levels.append("l0")
@@ -838,6 +848,14 @@ class RetrieveRerankPipeline:
                 extra={"index_path": str(self.index_path)},
             )
             vector_store.clear()
+            force_rebuild = True
+        elif cache_exists:
+            logger.warning(
+                "Cached vector store at %s has no external native-index "
+                "authorization; rebuilding from repository source.",
+                self.index_path,
+            )
+            force_rebuild = True
 
         logger.info("Building hierarchical vector store index.")
         vector_store = build_hierarchical_vector_store(
@@ -854,6 +872,8 @@ class RetrieveRerankPipeline:
             embedding=vector_store.embedding,
             index_metric=self.index_metric,
             profiler=self.profiler,
+            force_rebuild=force_rebuild,
+            native_index_authorization=authorization,
         )
         return vector_store
 

@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from ..index.embedding.vector_store import CodeVectorStore
     from ..index.sparse_idx.bm25_index import BM25CodeIndexer
     from ..llm.litellm_chat import LiteLLMChat
+    from ..native_index_authorization import NativeIndexAuthorization
 
 logger = get_logger(__name__)
 
@@ -352,8 +353,16 @@ class RepoBundle:
 class RepoRegistry:
     """Holds the loaded :class:`RepoBundle` objects, keyed by instance id."""
 
-    def __init__(self, config: QAConfig) -> None:
+    def __init__(
+        self,
+        config: QAConfig,
+        *,
+        native_index_authorization_resolver: (
+            Callable[[Any], NativeIndexAuthorization | None] | None
+        ) = None,
+    ) -> None:
         self._config = config
+        self._native_index_authorization_resolver = native_index_authorization_resolver
         self._bundles: Dict[str, RepoBundle] = {}
         # One embedding model per model name, shared across repos: the GPU model
         # is loaded once instead of once per CodeVectorStore (one per repo).
@@ -394,8 +403,21 @@ class RepoRegistry:
             runtime_loader=self._load_repo_runtime,
         )
 
-    def _load_vector_store(self, vec_entry: Any) -> "CodeVectorStore":
+    def _load_vector_store(
+        self,
+        vec_entry: Any,
+        *,
+        native_index_authorization: NativeIndexAuthorization,
+    ) -> "CodeVectorStore":
         """Load a manifest vector view with the configured embedding backend."""
+        from ..native_index_authorization import (
+            require_native_index_authorization_preflight,
+        )
+
+        require_native_index_authorization_preflight(
+            native_index_authorization,
+            view_type="vector",
+        )
         artifact_config = dict(vec_entry.config or {})
         legacy_route = not artifact_config.get("embedding_route")
         legacy_fallbacks = []
@@ -459,7 +481,10 @@ class RepoRegistry:
             **embedding_kwargs,
         )
         self._embeddings[cache_key] = vector_store.embedding
-        vector_store.load(vec_entry.path)
+        vector_store.load(
+            vec_entry.path,
+            native_index_authorization=native_index_authorization,
+        )
         return vector_store
 
     def _create_ask_llm(self) -> "LiteLLMChat":
@@ -499,7 +524,35 @@ class RepoRegistry:
             and vec_entry is not None
             and manifest.index_is_current("vector")
         ):
-            vector_store = self._load_vector_store(vec_entry)
+            authorization = None
+            if self._native_index_authorization_resolver is not None:
+                try:
+                    authorization = self._native_index_authorization_resolver(vec_entry)
+                except Exception as exc:  # noqa: BLE001 - BM25 remains usable
+                    logger.warning(
+                        "Native vector authorization failed for %s: %s",
+                        vec_entry.path,
+                        exc,
+                    )
+            if authorization is None:
+                logger.warning(
+                    "Skipping native vector view at %s without external "
+                    "authorization; BM25 remains available",
+                    vec_entry.path,
+                )
+            else:
+                try:
+                    vector_store = self._load_vector_store(
+                        vec_entry,
+                        native_index_authorization=authorization,
+                    )
+                except Exception as exc:  # noqa: BLE001 - BM25 remains usable
+                    logger.warning(
+                        "Skipping unusable native vector view at %s: %s; "
+                        "BM25 remains available",
+                        vec_entry.path,
+                        exc,
+                    )
 
         bundle.vector_store = vector_store
         bundle.bm25 = bm25_index

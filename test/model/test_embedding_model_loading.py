@@ -73,6 +73,54 @@ def test_embedding_pipeline_rejects_huggingface_options_for_remote_provider(
         raise AssertionError("expected provider-specific options to be rejected")
 
 
+def test_embedding_pipeline_forwards_authority_to_cache_builder(
+    monkeypatch,
+    tmp_path,
+):
+    from codenib.model import embedding_retrieve_pipeline as module
+
+    calls = []
+    store = object()
+    authorization = object()
+    monkeypatch.setattr(
+        module,
+        "build_hierarchical_vector_store",
+        lambda **kwargs: calls.append(kwargs) or store,
+    )
+
+    pipeline = module.EmbeddingRetrievePipeline(
+        repo_path=str(tmp_path),
+        index_path=str(tmp_path / "index"),
+        native_index_authorization=authorization,
+    )
+
+    assert pipeline.vector_store is store
+    assert calls[0]["native_index_authorization"] is authorization
+
+
+def test_embedding_pipeline_hot_swap_forwards_exact_authority():
+    from codenib.model import embedding_retrieve_pipeline as module
+
+    calls = []
+    authorization = object()
+    pipeline = object.__new__(module.EmbeddingRetrievePipeline)
+    pipeline.vector_store = SimpleNamespace(
+        swap_index=lambda path, **kwargs: calls.append((path, kwargs))
+    )
+
+    pipeline.load_index(
+        "/idx/vector",
+        native_index_authorization=authorization,
+    )
+
+    assert calls == [
+        (
+            "/idx/vector",
+            {"native_index_authorization": authorization},
+        )
+    ]
+
+
 def test_retrieve_rerank_pipeline_preserves_embedding_model_policy():
     from codenib.model.retrieve_rerank_pipeline import RetrieveRerankPipeline
 

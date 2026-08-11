@@ -26,6 +26,21 @@ from codenib.web.repo_registry import (
 )
 
 
+@pytest.fixture
+def native_authorization(monkeypatch):
+    token = object()
+
+    def preflight(authorization, *, view_type):
+        assert authorization is token
+        assert view_type == "vector"
+
+    monkeypatch.setattr(
+        "codenib.native_index_authorization.require_native_index_authorization_preflight",
+        preflight,
+    )
+    return token
+
+
 def test_fresh_registry_is_isolated_from_singleton():
     singleton = SkillRegistry()
     reg_a = _fresh_registry()
@@ -221,6 +236,7 @@ def test_config_index_types_for_mode():
 )
 def test_repo_views_respect_configured_index_mode(
     monkeypatch,
+    native_authorization,
     mode,
     expected_vector_loads,
 ):
@@ -230,18 +246,90 @@ def test_repo_views_respect_configured_index_mode(
         index_is_current=lambda index_type: index_type == "vector",
     )
     bundle = SimpleNamespace(manifest=manifest)
-    registry = RepoRegistry(QAConfig(mode=mode))
+    registry = RepoRegistry(
+        QAConfig(mode=mode),
+        native_index_authorization_resolver=lambda _entry: native_authorization,
+    )
     loaded = []
     monkeypatch.setattr(
         registry,
         "_load_vector_store",
-        lambda entry: loaded.append(entry) or "vector-store",
+        lambda entry, **_kwargs: loaded.append(entry) or "vector-store",
     )
 
     registry._load_repo_views(bundle)
 
     assert loaded == [vector_entry] * expected_vector_loads
     assert bundle.vector_store == ("vector-store" if expected_vector_loads else None)
+
+
+@pytest.mark.parametrize("resolver_kind", ["missing", "raises", "invalid"])
+def test_repo_views_keep_bm25_when_vector_authority_is_unusable(
+    monkeypatch,
+    resolver_kind,
+):
+    class FakeBM25:
+        def load_index(self, path):
+            self.path = path
+
+    monkeypatch.setattr(
+        "codenib.index.sparse_idx.bm25_index.BM25CodeIndexer",
+        FakeBM25,
+    )
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.require_bm25_manifest_artifact",
+        lambda _entry: None,
+    )
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: pytest.fail(
+            "unusable authority must fail before vector model initialization"
+        ),
+    )
+    if resolver_kind == "missing":
+        resolver = None
+    elif resolver_kind == "raises":
+
+        def resolver(_entry):
+            raise ValueError("denied")
+
+    else:
+
+        def resolver(_entry):
+            return object()
+
+    bm25_entry = SimpleNamespace(path="/idx/bm25", config={})
+    vector_entry = SimpleNamespace(path="/idx/vector", config={})
+    manifest = SimpleNamespace(
+        indexes={"bm25": bm25_entry, "vector": vector_entry},
+        index_is_current=lambda _index_type: True,
+    )
+    bundle = SimpleNamespace(manifest=manifest)
+    registry = RepoRegistry(
+        QAConfig(mode="hybrid"),
+        native_index_authorization_resolver=resolver,
+    )
+
+    registry._load_repo_views(bundle)
+
+    assert bundle.bm25.path == "/idx/bm25"
+    assert bundle.vector_store is None
+
+
+def test_vector_authority_is_preflighted_before_model_initialization(monkeypatch):
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: pytest.fail(
+            "invalid authority must fail before vector model initialization"
+        ),
+    )
+    registry = RepoRegistry(QAConfig())
+
+    with pytest.raises(ValueError, match="requires external authorization"):
+        registry._load_vector_store(
+            SimpleNamespace(path="/idx/vector", config={}),
+            native_index_authorization=object(),
+        )
 
 
 def test_config_paths(tmp_path):
@@ -378,7 +466,10 @@ def test_rejects_unknown_embedding_provider(tmp_path):
         load_config(str(cfg_file))
 
 
-def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
+def test_vector_store_uses_provider_config_and_reuses_client(
+    monkeypatch,
+    native_authorization,
+):
     created = []
 
     class FakeVectorStore:
@@ -388,8 +479,9 @@ def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
             self.loaded = None
             created.append(self)
 
-        def load(self, path):
+        def load(self, path, **kwargs):
             self.loaded = path
+            assert kwargs["native_index_authorization"] is native_authorization
 
     monkeypatch.setattr(
         "codenib.web.repo_registry._vector_store_type",
@@ -413,8 +505,14 @@ def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
         },
     )
 
-    first = registry._load_vector_store(entry)
-    second = registry._load_vector_store(entry)
+    first = registry._load_vector_store(
+        entry,
+        native_index_authorization=native_authorization,
+    )
+    second = registry._load_vector_store(
+        entry,
+        native_index_authorization=native_authorization,
+    )
 
     assert first.loaded == "/tmp/vector"
     assert first.kwargs["embedding_provider"] == "openai"
@@ -424,7 +522,10 @@ def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
     assert second.kwargs["embedding"] is first.embedding
 
 
-def test_vector_store_restores_manifest_embedding_identity(monkeypatch):
+def test_vector_store_restores_manifest_embedding_identity(
+    monkeypatch,
+    native_authorization,
+):
     created = []
 
     class FakeVectorStore:
@@ -433,7 +534,7 @@ def test_vector_store_restores_manifest_embedding_identity(monkeypatch):
             self.embedding = kwargs.get("embedding") or object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(
@@ -455,7 +556,10 @@ def test_vector_store_restores_manifest_embedding_identity(monkeypatch):
         },
     )
 
-    registry._load_vector_store(entry)
+    registry._load_vector_store(
+        entry,
+        native_index_authorization=native_authorization,
+    )
 
     assert created[0].kwargs["embedding_model"] == "nomic-ai/CodeRankEmbed"
     assert created[0].kwargs["dimension"] == 768
@@ -464,7 +568,10 @@ def test_vector_store_restores_manifest_embedding_identity(monkeypatch):
     assert created[0].kwargs["revision"] == "immutable-model-revision"
 
 
-def test_vector_store_supports_legacy_prebuilt_route_fallback(monkeypatch):
+def test_vector_store_supports_legacy_prebuilt_route_fallback(
+    monkeypatch,
+    native_authorization,
+):
     created = []
 
     class FakeVectorStore:
@@ -473,7 +580,7 @@ def test_vector_store_supports_legacy_prebuilt_route_fallback(monkeypatch):
             self.embedding = object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(
@@ -493,14 +600,20 @@ def test_vector_store_supports_legacy_prebuilt_route_fallback(monkeypatch):
         },
     )
 
-    registry._load_vector_store(entry)
+    registry._load_vector_store(
+        entry,
+        native_index_authorization=native_authorization,
+    )
 
     assert created[0].kwargs["embedding_provider"] == "huggingface"
     assert created[0].kwargs["embedding_model"] == "nomic-ai/CodeRankEmbed"
     assert created[0].kwargs["dimension"] == 768
 
 
-def test_vector_store_fills_legacy_dimension_with_persisted_provider(monkeypatch):
+def test_vector_store_fills_legacy_dimension_with_persisted_provider(
+    monkeypatch,
+    native_authorization,
+):
     created = []
 
     class FakeVectorStore:
@@ -509,7 +622,7 @@ def test_vector_store_fills_legacy_dimension_with_persisted_provider(monkeypatch
             self.embedding = object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(
@@ -530,12 +643,18 @@ def test_vector_store_fills_legacy_dimension_with_persisted_provider(monkeypatch
         },
     )
 
-    registry._load_vector_store(entry)
+    registry._load_vector_store(
+        entry,
+        native_index_authorization=native_authorization,
+    )
 
     assert created[0].kwargs["dimension"] == 768
 
 
-def test_vector_store_rejects_invalid_persisted_legacy_dimension(monkeypatch):
+def test_vector_store_rejects_invalid_persisted_legacy_dimension(
+    monkeypatch,
+    native_authorization,
+):
     monkeypatch.setattr(
         "codenib.web.repo_registry._vector_store_type",
         lambda: pytest.fail("invalid route must fail before loading the store"),
@@ -555,10 +674,16 @@ def test_vector_store_rejects_invalid_persisted_legacy_dimension(monkeypatch):
     )
 
     with pytest.raises(ValueError, match="dimension must be a positive integer"):
-        registry._load_vector_store(entry)
+        registry._load_vector_store(
+            entry,
+            native_index_authorization=native_authorization,
+        )
 
 
-def test_vector_store_cache_separates_model_revisions(monkeypatch):
+def test_vector_store_cache_separates_model_revisions(
+    monkeypatch,
+    native_authorization,
+):
     created = []
 
     class FakeVectorStore:
@@ -567,7 +692,7 @@ def test_vector_store_cache_separates_model_revisions(monkeypatch):
             self.embedding = kwargs.get("embedding") or object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(
@@ -587,8 +712,14 @@ def test_vector_store_cache_separates_model_revisions(monkeypatch):
             },
         )
 
-    first = registry._load_vector_store(entry("revision-a"))
-    second = registry._load_vector_store(entry("revision-b"))
+    first = registry._load_vector_store(
+        entry("revision-a"),
+        native_index_authorization=native_authorization,
+    )
+    second = registry._load_vector_store(
+        entry("revision-b"),
+        native_index_authorization=native_authorization,
+    )
 
     assert first.embedding is not second.embedding
     assert second.kwargs["embedding"] is None
@@ -596,6 +727,7 @@ def test_vector_store_cache_separates_model_revisions(monkeypatch):
 
 def test_remote_embedding_override_cannot_replace_artifact_route(
     monkeypatch,
+    native_authorization,
 ):
     created = []
 
@@ -605,7 +737,7 @@ def test_remote_embedding_override_cannot_replace_artifact_route(
             self.embedding = object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(
@@ -633,7 +765,10 @@ def test_remote_embedding_override_cannot_replace_artifact_route(
     )
 
     with pytest.raises(ValueError, match="endpoint does not match"):
-        registry._load_vector_store(entry)
+        registry._load_vector_store(
+            entry,
+            native_index_authorization=native_authorization,
+        )
 
     assert created == []
 

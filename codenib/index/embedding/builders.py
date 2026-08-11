@@ -6,14 +6,19 @@
 
 """Reusable embedding builders for hierarchical pipelines."""
 
+from __future__ import annotations
+
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ...code_chunker import CodeChunker, RepoChunkingConfig
 from ...log_utils import get_logger
 from ...profiler import Profiler
 from .vector_store import CodeVectorStore
+
+if TYPE_CHECKING:
+    from ...native_index_authorization import NativeIndexAuthorization
 
 logger = get_logger(__name__)
 
@@ -70,6 +75,7 @@ def build_hierarchical_vector_store(
     force_rebuild: bool = False,
     strict_chunking: bool = False,
     artifact_metadata: Optional[Dict[str, Any]] = None,
+    native_index_authorization: NativeIndexAuthorization | None = None,
 ) -> CodeVectorStore:
     """Build (or load) a hierarchical vector store (L0/L2) for a repository.
 
@@ -83,16 +89,27 @@ def build_hierarchical_vector_store(
         store_path = store_path / plan_name
 
     normalized_levels = [level.lower() for level in (build_levels or ["l0", "l2"])]
-    if force_rebuild:
+    model_suffix = embedding_model.replace("/", "__")
+    config_path = store_path / f"config_{model_suffix}.json"
+    cache_without_authority = (
+        not force_rebuild
+        and config_path.exists()
+        and native_index_authorization is None
+    )
+    effective_force_rebuild = force_rebuild or cache_without_authority
+    if effective_force_rebuild and not repo_path:
+        raise ValueError(
+            "repo_path is required to rebuild a vector index when no authorized "
+            "cache can be loaded"
+        )
+    if effective_force_rebuild:
         _remove_unrequested_model_levels(
             store_path,
             embedding_model,
             normalized_levels,
         )
 
-    if not force_rebuild:
-        model_suffix = embedding_model.replace("/", "__")
-        config_path = store_path / f"config_{model_suffix}.json"
+    if not effective_force_rebuild:
         if config_path.exists():
             logger.info(
                 "Pre-built index found at %s — loading instead of rebuilding "
@@ -113,8 +130,23 @@ def build_hierarchical_vector_store(
                 artifact_metadata=artifact_metadata,
                 **(embedding_kwargs or {}),
             )
-            vector_store.load(str(store_path))
+            vector_store.load(
+                str(store_path),
+                native_index_authorization=native_index_authorization,
+            )
             return vector_store
+    elif cache_without_authority:
+        logger.warning(
+            "Pre-built index found at %s but no external native-index "
+            "authorization was supplied; rebuilding from repository source.",
+            store_path,
+        )
+
+    if not repo_path:
+        raise ValueError(
+            "repo_path is required to build a vector index when no authorized "
+            "cache can be loaded"
+        )
 
     languages = languages or ["python"]
     build_levels = normalized_levels

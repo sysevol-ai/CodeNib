@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from ..agent.skills.core import SkillType
 from ..agent.skills.registry import SkillRegistry
@@ -46,7 +46,10 @@ from ..provider_routes import resolve_embedding_artifact_route
 from .artifact_fingerprints import require_bm25_manifest_artifact
 from .index_builders import IndexBuilderRegistry, register_default_builders
 from .index_compiler import IndexCompiler, IndexCompilerConfig
-from .manifest import RepoManifest
+from .manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
+
+if TYPE_CHECKING:
+    from ..native_index_authorization import NativeIndexAuthorization
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +283,34 @@ def _looks_built(cache_dir: str, index_type: str) -> bool:
     return any(p.iterdir())
 
 
+def _current_cached_vector_entry(
+    cache_dir: str,
+    vector_path: str,
+) -> IndexEntry | None:
+    """Return trusted caller metadata for a current conventional cache entry."""
+
+    manifest_path = Path(cache_dir) / MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        manifest = RepoManifest.load(manifest_path)
+    except Exception as exc:  # noqa: BLE001 - unusable metadata cannot bind a token
+        logger.warning("Ignoring unusable cache manifest %s: %s", manifest_path, exc)
+        return None
+    entry = manifest.indexes.get("vector")
+    if entry is None or not manifest.index_is_current("vector"):
+        return None
+    expected = os.path.abspath(os.path.expanduser(vector_path))
+    recorded = os.path.abspath(os.path.expanduser(entry.path))
+    if recorded != expected:
+        logger.warning(
+            "Ignoring vector metadata for a different cache path: %s",
+            entry.path,
+        )
+        return None
+    return entry
+
+
 def _load_bm25(index_path: str):
     """Load a BM25 index from an arbitrary directory path.
 
@@ -306,9 +337,21 @@ def _load_vector(
     artifact_metadata: Optional[Dict[str, Any]] = None,
     trust_remote_code: bool = False,
     default_batch_size: Optional[int] = None,
+    native_index_authorization: NativeIndexAuthorization | None = None,
 ):
     """Load a FAISS vector store from an arbitrary directory path."""
     from ..index.embedding.vector_store import CodeVectorStore
+    from ..native_index_authorization import (
+        require_native_index_authorization_preflight,
+    )
+
+    # Reject absent or malformed authority before initializing an embedding
+    # model or client. The exact tree and semantic contract are checked again
+    # by ``CodeVectorStore.load`` after it captures the view.
+    require_native_index_authorization_preflight(
+        native_index_authorization,
+        view_type="vector",
+    )
 
     kwargs = dict(embedding_kwargs or {})
     if embedding_revision is not None:
@@ -325,7 +368,10 @@ def _load_vector(
         trust_remote_code=trust_remote_code,
         **kwargs,
     )
-    store.load(index_path)
+    store.load(
+        index_path,
+        native_index_authorization=native_index_authorization,
+    )
     return store
 
 
@@ -344,16 +390,16 @@ def _run_compiler(
     *,
     languages: Sequence[str],
     builder_registry: IndexBuilderRegistry,
-) -> None:
+) -> RepoManifest | None:
     if not index_types:
-        return
+        return None
     cfg = IndexCompilerConfig(
         cache_dir_name=Path(cache_dir).name,
         index_types=list(index_types),
         languages=list(languages),
     )
     compiler = IndexCompiler(builder_registry, cfg)
-    compiler.compile_repo(
+    return compiler.compile_repo(
         repo_path,
         index_types=list(index_types),
         cache_dir=cache_dir,
@@ -378,6 +424,7 @@ def build_skill_contexts(
     trust_remote_code: Optional[bool] = None,
     embedding_batch_size: Optional[int] = None,
     embedding_max_seq_length: Optional[int] = None,
+    native_index_authorization: NativeIndexAuthorization | None = None,
 ) -> Dict[str, Any]:
     """Build the union of indexes required by *skill_ids* and package them.
 
@@ -428,8 +475,15 @@ def build_skill_contexts(
         trust_remote_code=trust_remote_code,
     )
 
+    compiled_manifest: RepoManifest | None = None
+    compiled_types: Set[str] = set()
     if needed:
         missing = _missing_index_types(needed, cache_dir, rebuild=rebuild)
+        # An existing native vector cache is not self-authorizing. Without a
+        # caller-issued capability, rebuild it from the repository source so
+        # this compiler invocation owns the bytes it will authorize below.
+        if "vector" in needed and native_index_authorization is None:
+            missing = sorted(set(missing) | {"vector"})
         if missing:
             registry = builder_registry
             if registry is None:
@@ -445,27 +499,67 @@ def build_skill_contexts(
                     embedding_max_seq_length=embedding_max_seq_length,
                 )
             logger.info("Building missing indexes %s under %s", missing, cache_dir)
-            _run_compiler(
+            compiled_manifest = _run_compiler(
                 repo_path,
                 missing,
                 cache_dir,
                 languages=languages,
                 builder_registry=registry,
             )
+            compiled_types.update(missing)
 
     # Load required types plus any optional type already present on disk
     # (optional types are never built here — used-if-present only).
     loadable: Set[str] = set(needed)
     for t in optional:
         if _looks_built(cache_dir, t):
+            if t == "vector" and native_index_authorization is None:
+                logger.warning(
+                    "Skipping optional native vector cache without external "
+                    "authorization"
+                )
+                continue
             loadable.add(t)
 
     loaded: Dict[str, Any] = {}
     if "bm25" in loadable:
         loaded["bm25"] = _load_bm25(_index_dir(cache_dir, "bm25"))
     if "vector" in loadable:
+        vector_path = _index_dir(cache_dir, "vector")
+        vector_artifact_metadata: Dict[str, Any] | None = None
+        vector_authorization = native_index_authorization
+        if "vector" in compiled_types and compiled_manifest is not None:
+            vector_entry = compiled_manifest.indexes.get("vector")
+            if (
+                vector_entry is not None
+                and vector_entry.status == "fresh"
+                and compiled_manifest.index_is_current("vector")
+            ):
+                from ..index.embedding.artifact_integrity import (
+                    capture_authenticated_vector_view,
+                )
+                from ..native_index_authorization import (
+                    _mint_trusted_local_admin_authorization,
+                )
+
+                vector_path = vector_entry.path
+                vector_artifact_metadata = dict(vector_entry.config)
+                with capture_authenticated_vector_view(vector_path) as vector_view:
+                    vector_authorization = _mint_trusted_local_admin_authorization(
+                        vector_view.ownership,
+                        view_type="vector",
+                        semantic_contract=vector_artifact_metadata,
+                        evidence=(
+                            "skill-context-compiler-owned-build",
+                            "captured-vector-tree-subject",
+                        ),
+                    )
+        elif vector_authorization is not None:
+            cached_entry = _current_cached_vector_entry(cache_dir, vector_path)
+            if cached_entry is not None:
+                vector_artifact_metadata = dict(cached_entry.config)
         loaded["vector"] = _load_vector(
-            _index_dir(cache_dir, "vector"),
+            vector_path,
             embedding_model=embedding_model,
             embedding_provider="huggingface",
             embedding_dimension=embedding_dimension,
@@ -477,6 +571,8 @@ def build_skill_contexts(
             ),
             trust_remote_code=load_policy.trust_remote_code,
             default_batch_size=embedding_batch_size,
+            artifact_metadata=vector_artifact_metadata,
+            native_index_authorization=vector_authorization,
         )
     if "symbol_graph" in loadable:
         try:
@@ -519,6 +615,7 @@ def load_contexts_from_manifest(
     skill_registry: Optional[SkillRegistry] = None,
     default_top_k: int = 10,
     default_level: str = "l2",
+    native_index_authorization: NativeIndexAuthorization | None = None,
 ) -> Dict[str, Any]:
     """Load index artifacts directly from a pre-built ``RepoManifest``.
 
@@ -556,6 +653,16 @@ def load_contexts_from_manifest(
             entry = manifest.indexes.get(req.index_type)
             fresh = entry is not None and manifest.index_is_current(req.index_type)
             if fresh:
+                if (
+                    req.index_type == "vector"
+                    and not getattr(req, "required", True)
+                    and native_index_authorization is None
+                ):
+                    logger.warning(
+                        "Skipping optional manifest vector view without external "
+                        "native-index authorization"
+                    )
+                    continue
                 needed.add(req.index_type)
             elif getattr(req, "required", True):
                 raise ValueError(
@@ -585,6 +692,7 @@ def load_contexts_from_manifest(
             index_metric=vec_entry.config.get("index_metric", "ip"),
             embedding_kwargs=embedding_kwargs,
             artifact_metadata=vec_entry.config,
+            native_index_authorization=native_index_authorization,
         )
     if "symbol_graph" in needed:
         loaded["symbol_graph"] = _load_symbol_graph(
