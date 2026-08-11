@@ -82,6 +82,8 @@ _NATIVE_QUERY_REQUIRED = frozenset({"required", "strict"})
 _NATIVE_QUERY_PROMOTED = True
 _NATIVE_QUERY_ABI_VERSION = 1
 _NATIVE_QUERY_FORMAT = "clangd-riff-fact-query-v1"
+_NATIVE_QUERY_NORMALIZATION_PROFILE = "clangd-native-normalization-v1"
+_NATIVE_QUERY_SNAPSHOT_SCHEMA = "clangd-fact-query-snapshot-v1"
 _NATIVE_QUERY_CAPABILITIES = {
     "definition_by_symbol": True,
     "references_by_symbol": True,
@@ -123,6 +125,12 @@ def _validate_native_query_contract(contract: Mapping[str, Any]) -> None:
             "compiled clangd FactQueryIndex contract mismatch: "
             f"expected format {_NATIVE_QUERY_FORMAT!r}"
         )
+    if contract.get("normalization_profile") != (_NATIVE_QUERY_NORMALIZATION_PROFILE):
+        raise RuntimeError("compiled clangd normalization profile mismatch")
+    if contract.get("snapshot_schema") != _NATIVE_QUERY_SNAPSHOT_SCHEMA:
+        raise RuntimeError("compiled clangd snapshot schema mismatch")
+    if contract.get("snapshot_digest") != "sha256":
+        raise RuntimeError("compiled clangd snapshot digest mismatch")
     if contract.get("stable_filename_order") is not True:
         raise RuntimeError("compiled clangd reader does not guarantee stable order")
     if contract.get("preserves_unanchored_relations") is not True:
@@ -420,7 +428,9 @@ class ClangdHybridQueryProvider:
         self.decoder = decoder
         self.graph = query_index
         self.provider_backend = decoder.query_backend
-        self._symbol_provider = StaticLSPProvider(query_index)
+        self._symbol_provider = StaticLSPProvider(
+            query_index, snapshot_id=decoder.query_snapshot_id
+        )
         self._graph_provider = None
         self.graph_materialization_count = 0
         self.last_fallback_reason = None
@@ -433,7 +443,9 @@ class ClangdHybridQueryProvider:
         self.last_fallback_reason = reason
         if self._graph_provider is None:
             graph = self.decoder.materialize_code_graph()
-            self._graph_provider = StaticLSPProvider(graph)
+            self._graph_provider = StaticLSPProvider(
+                graph, snapshot_id=self.snapshot_id
+            )
             self.graph_materialization_count += 1
         return self._graph_provider
 
@@ -506,10 +518,13 @@ class ClangdGraphDecoder:
         self._chunks_cache = {}
         self._graph_materialized = False
         self._range_indexes_built = False
+        self._records_collected = False
         self.query_index = None
         self.query_backend = "not-decoded"
         self.query_fallback_error = None
-        self.query_profile: dict[str, float | int] = {}
+        self.query_profile: dict[str, Any] = {}
+        self.query_snapshot_id: Optional[str] = None
+        self._native_snapshot_error: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -522,7 +537,12 @@ class ClangdGraphDecoder:
         logger.info(f"Starting clangd idx decode from {self.idx_directory}")
 
         # Pass 1: collect all data
+        if self.query_snapshot_id:
+            self._verify_native_snapshot("before legacy record collection")
         self._collect_all_idx()
+        if self.query_snapshot_id:
+            self._verify_native_snapshot("after legacy record collection")
+        self._records_collected = True
 
         # Build name mapping
         self._build_id_to_display()
@@ -530,6 +550,8 @@ class ClangdGraphDecoder:
         # Pass 2: build the graph
         self.code_graph.add_root_node(ROOT_NODE)
         self._build_graph()
+        if self.query_snapshot_id:
+            self.code_graph.snapshot_id = self.query_snapshot_id
         self._graph_materialized = True
 
         return self.code_graph
@@ -543,7 +565,65 @@ class ClangdGraphDecoder:
             self._range_indexes_built = True
         return graph
 
+    def _current_native_snapshot(self) -> Mapping[str, Any]:
+        try:
+            import codenib_core
+        except ImportError as exc:
+            raise RuntimeError(
+                "compiled codenib_core extension is unavailable"
+            ) from exc
+        snapshot = getattr(codenib_core, "clangd_fact_query_snapshot", None)
+        if not callable(snapshot):
+            raise RuntimeError(
+                "compiled core does not expose clangd snapshot verification"
+            )
+        receipt = snapshot(
+            idx_directory=str(self.idx_directory),
+            project_root=str(self.project_root),
+        )
+        if not isinstance(receipt, Mapping):
+            raise RuntimeError(
+                "compiled clangd snapshot verifier returned non-mapping data"
+            )
+        return receipt
+
+    def _verify_native_snapshot(self, stage: str) -> Mapping[str, Any] | None:
+        if self._native_snapshot_error is not None:
+            raise RuntimeError(self._native_snapshot_error)
+        if not self.query_snapshot_id:
+            return None
+        started = time.perf_counter()
+        try:
+            receipt = self._current_native_snapshot()
+        except MemoryError:
+            raise
+        except Exception as exc:
+            self._native_snapshot_error = (
+                f"clangd index snapshot verification failed {stage}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            raise RuntimeError(self._native_snapshot_error) from exc
+        finally:
+            self.query_profile["lazy_snapshot_verify"] = (
+                float(self.query_profile.get("lazy_snapshot_verify", 0.0))
+                + time.perf_counter()
+                - started
+            )
+        observed = receipt.get("snapshot_id")
+        if observed != self.query_snapshot_id:
+            self._native_snapshot_error = (
+                f"clangd index snapshot changed {stage}: expected "
+                f"{self.query_snapshot_id}, observed {observed}"
+            )
+            raise RuntimeError(self._native_snapshot_error)
+        return receipt
+
     def _decode_native_query_index(self):
+        if self._records_collected or self._graph_materialized:
+            raise RuntimeError(
+                "native clangd snapshot cannot bind records collected before "
+                "the receipt"
+            )
         try:
             import codenib_core
         except ImportError as exc:
@@ -583,10 +663,17 @@ class ClangdGraphDecoder:
             raise RuntimeError(
                 "native clangd query index cannot preserve relation references"
             )
+        snapshot_id = payload.get("snapshot_id")
+        if not isinstance(snapshot_id, str) or not snapshot_id.startswith(
+            "clangd_fact_query:sha256:"
+        ):
+            raise RuntimeError("native clangd decoder returned an invalid snapshot")
+        if getattr(index, "snapshot_id", None) != snapshot_id:
+            raise RuntimeError("native clangd index and receipt snapshots disagree")
 
         native_decode = int(payload.get("native_decode_ns") or 0) / 1_000_000_000
         native_index = int(payload.get("native_index_ns") or 0) / 1_000_000_000
-        profile: dict[str, float | int] = {
+        profile: dict[str, Any] = {
             "binding": binding_seconds,
             "native_decode": native_decode,
             "native_index": native_index,
@@ -596,6 +683,9 @@ class ClangdGraphDecoder:
             "record_count": int(getattr(index, "record_count", 0)),
             "definition_count": int(getattr(index, "symbol_count", 0)),
             "reference_count": int(getattr(index, "reference_count", 0)),
+            "snapshot_id": snapshot_id,
+            "snapshot_file_count": int(payload.get("snapshot_file_count") or 0),
+            "snapshot_index_bytes": int(payload.get("snapshot_index_bytes") or 0),
         }
         count_fields = {
             "file_count",
@@ -610,6 +700,7 @@ class ClangdGraphDecoder:
             profile[f"native_{name}"] = (
                 int(value) if name in count_fields else int(value) / 1_000_000_000
             )
+        self.query_snapshot_id = snapshot_id
         return index, profile
 
     def decode_query_index(self):

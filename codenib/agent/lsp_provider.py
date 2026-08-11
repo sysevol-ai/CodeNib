@@ -413,6 +413,9 @@ def _normalize_capability(capability: str) -> str:
 def _graph_snapshot_id(graph: Any) -> Optional[str]:
     if graph is None:
         return None
+    content_snapshot = getattr(graph, "snapshot_id", None)
+    if content_snapshot:
+        return str(content_snapshot)
     igraph_obj = getattr(graph, "graph", None)
     node_count = _call_int(igraph_obj, "vcount")
     edge_count = _call_int(igraph_obj, "ecount")

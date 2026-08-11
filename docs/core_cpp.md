@@ -75,10 +75,11 @@ and returns no graph. Non-SCIP backends such as C/C++ ignore
 The pybind module also exposes lower-level `decode_scip(...)`,
 `decode_scip_fact_buffer(...)`, `fact_batch_buffer_contract(...)`,
 `decode_clangd_fact_query_index(...)`, `clangd_fact_query_contract()`,
-`classify_edge_layers(...)`, and decoder-registry inspection functions. These
-are primarily integration surfaces; application code should normally use
-`LSIndexer` so filtering, occurrence indexes, range indexes, and persistence
-remain consistent with the serial path.
+`clangd_fact_query_snapshot(...)`, `classify_edge_layers(...)`, and
+decoder-registry inspection functions. These are primarily integration
+surfaces; application code should normally use `LSIndexer` so filtering,
+occurrence indexes, range indexes, and persistence remain consistent with the
+serial path.
 
 ## Pre-Graph Decode Boundary
 
@@ -180,8 +181,30 @@ make clangd-fact-query-profile \
 
 This result measures an already generated `.idx` directory through identical
 definition/reference work. It does not claim faster clangd generation. Native
-position/route lookup, serving integration, and content receipts remain
-independent follow-up gates.
+position/route lookup and serving integration remain independent follow-up
+gates.
+
+### Content-bound snapshot receipt
+
+The native decoder hashes the exact shard bytes it already read, so the first
+receipt pass adds no second read. Its canonical length-delimited input binds the
+snapshot schema, query ABI and format, normalization profile, normalized
+project root, exact supported RIFF versions, sorted direct shard names, lengths,
+and bytes. The resulting
+`clangd_fact_query:sha256:<digest>` is exposed on `FactQueryIndex`, in the decode
+payload, through `clangd_fact_query_snapshot(...)`, and as `index_snapshot` in
+LSP provider metadata.
+
+After record construction, the decoder re-reads the current canonical stream
+before publishing. This second pass is required to detect file-list or byte
+mutation during decode; both `hash_index` and `verify_snapshot` are included in
+native startup timing and reported by `make clangd-fact-query-profile`. Before
+the hybrid provider lazily parses the complete graph, it verifies the same
+receipt before and after Python record collection. A mismatch fails that
+provider session permanently instead of mixing generations. Restart the
+provider to adopt a new index. If the native candidate fails before it is
+published, `auto` may fall back to one graph from the current generation while
+`required` propagates the failure.
 
 ### RIFF compatibility and resource safety
 
@@ -230,14 +253,15 @@ fails closed, while `off` never invokes the native reader.
 make core-test
 ```
 
-This runs the C++ smoke tests, graph-layer checks, registry consistency checks,
-Fact transport/query tests, native clangd result/error and fallback tests, and
-the serial/core parity fixtures available in the checkout. Before pytest it
-also requires the built extension to export the native clangd decode and
-contract bindings, so an absent or stale extension cannot turn that gate into
-a skip. Some integration-cache parity cases are skipped when their generated
-SCIP fixtures are not present, so a successful local run should be read
-together with its skip report.
+This runs the C++ smoke tests (including SHA-256 vectors), graph-layer checks,
+registry consistency checks, Fact transport/query tests, native clangd
+receipt/result/error/fallback tests, and the serial/core parity fixtures
+available in the checkout. Before pytest it also requires the built extension
+to export the native clangd decode, contract, and snapshot bindings, so an
+absent or stale extension cannot turn that gate into a skip. Some
+integration-cache parity cases are skipped when their generated SCIP fixtures
+are not present, so a successful local run should be read together with its
+skip report.
 
 ## Components
 
@@ -248,6 +272,8 @@ together with its skip report.
   postings.
 - `clangd_fact_query.{h,cpp}` decodes clangd RIFF shards into provider-neutral
   records for the query-specific path.
+- `content_digest.{h,cpp}` provides the dependency-free streaming SHA-256 used
+  by native content receipts.
 - `graph_layers.{h,cpp}` classifies normalized edge types into reusable graph
   layers.
 - `scip_decode_base.{h,cpp}` and `scip_decode_common.{h,cpp}` provide shared

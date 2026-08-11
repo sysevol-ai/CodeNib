@@ -37,8 +37,9 @@ bool has_suffix(const std::string &value, const std::string &suffix) {
 } // namespace
 
 FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
-                               bool require_anchored_references)
-    : records_(std::move(records)),
+                               bool require_anchored_references,
+                               std::string snapshot_id)
+    : records_(std::move(records)), snapshot_id_(std::move(snapshot_id)),
       require_anchored_references_(require_anchored_references) {
   if (!records_)
     throw std::invalid_argument("FactQueryIndex records must not be null");

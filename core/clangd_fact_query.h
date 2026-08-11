@@ -18,6 +18,10 @@ namespace codenib::core {
 
 inline constexpr std::uint32_t CLANGD_FACT_QUERY_ABI_VERSION = 1;
 inline constexpr char CLANGD_FACT_QUERY_FORMAT[] = "clangd-riff-fact-query-v1";
+inline constexpr char CLANGD_FACT_QUERY_NORMALIZATION_PROFILE[] =
+    "clangd-native-normalization-v1";
+inline constexpr char CLANGD_FACT_QUERY_SNAPSHOT_SCHEMA[] =
+    "clangd-fact-query-snapshot-v1";
 
 // clangd itself rejects non-current RIFF versions. CodeNib deliberately uses
 // an exact allowlist backed by checked fixtures and parity tests instead of
@@ -51,6 +55,8 @@ struct ClangdFactDecodeLimits {
 struct ClangdFactDecodeProfile {
   std::uint64_t discover_files_ns{0};
   std::uint64_t read_files_ns{0};
+  std::uint64_t hash_index_ns{0};
+  std::uint64_t verify_snapshot_ns{0};
   std::uint64_t parse_files_ns{0};
   std::uint64_t merge_records_ns{0};
   std::uint64_t build_query_records_ns{0};
@@ -67,15 +73,28 @@ struct ClangdFactDecodeProfile {
   std::size_t string_entry_count{0};
 };
 
+struct ClangdIndexReceipt {
+  std::string snapshot_id;
+  std::size_t file_count{0};
+  std::uint64_t index_bytes{0};
+};
+
 struct ClangdQueryRecords {
   std::shared_ptr<DecodedRecords> records;
   ClangdFactDecodeProfile profile;
+  ClangdIndexReceipt receipt;
 };
 
 // Decode every direct *.idx child in stable filename order. Any read or parse
 // failure rejects the complete native candidate so Python auto mode can use
 // the established ClangdGraphDecoder without publishing partial rows.
 ClangdQueryRecords decode_clangd_query_records(
+    const std::string &idx_directory, const std::string &project_root,
+    const ClangdFactDecodeLimits &limits = ClangdFactDecodeLimits{});
+
+// Re-read the canonical filename/byte stream and return its content identity.
+// Lazy graph consumers compare this receipt with the one published by decode.
+ClangdIndexReceipt compute_clangd_index_receipt(
     const std::string &idx_directory, const std::string &project_root,
     const ClangdFactDecodeLimits &limits = ClangdFactDecodeLimits{});
 

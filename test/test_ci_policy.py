@@ -309,10 +309,12 @@ def test_full_ci_enforces_the_maintained_native_core_gate() -> None:
     assert "pytest test/scip/test_scip_core.py" not in gate_run
     assert "LD_PRELOAD" in gate_run
     assert "decode_clangd_fact_query_index" in core_target
+    assert "clangd_fact_query_snapshot" in core_target
     for command in (
         "./build/core/scip_decode_test",
         "./build/core/graph_layers_test",
         "./build/core/fact_batch_buffer_test",
+        "./build/core/content_digest_test",
         "./build/core/fact_query_index_test",
         "test/ls_index/test_clangd_fact_query.py",
     ):

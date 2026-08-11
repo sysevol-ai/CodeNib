@@ -5,6 +5,7 @@
  */
 
 #include "clangd_fact_query.h"
+#include "content_digest.h"
 
 #include <zlib.h>
 
@@ -668,6 +669,66 @@ discover_index_files(const std::filesystem::path &directory,
   return files;
 }
 
+void update_u64_le(Sha256 &digest, std::uint64_t value) {
+  std::array<std::uint8_t, 8> encoded{};
+  for (std::size_t index = 0; index < encoded.size(); ++index)
+    encoded[index] = static_cast<std::uint8_t>(value >> (index * 8U));
+  digest.update(encoded.data(), encoded.size());
+}
+
+void update_field(Sha256 &digest, std::string_view value) {
+  update_u64_le(digest, static_cast<std::uint64_t>(value.size()));
+  digest.update(value);
+}
+
+class IndexReceiptBuilder {
+public:
+  IndexReceiptBuilder(const std::filesystem::path &project_root,
+                      std::size_t file_count) {
+    update_field(digest_, "CodeNib clangd fact query snapshot");
+    update_field(digest_, CLANGD_FACT_QUERY_SNAPSHOT_SCHEMA);
+    update_field(digest_, CLANGD_FACT_QUERY_FORMAT);
+    update_u64_le(digest_, CLANGD_FACT_QUERY_ABI_VERSION);
+    update_field(digest_, CLANGD_FACT_QUERY_NORMALIZATION_PROFILE);
+    update_field(digest_, project_root.generic_string());
+    update_u64_le(digest_, CLANGD_SUPPORTED_RIFF_VERSIONS.size());
+    for (const auto version : CLANGD_SUPPORTED_RIFF_VERSIONS)
+      update_u64_le(digest_, version);
+    update_u64_le(digest_, file_count);
+  }
+
+  void add_file(const IndexFile &file, const std::vector<std::uint8_t> &data) {
+    update_field(digest_, file.name);
+    update_u64_le(digest_, static_cast<std::uint64_t>(data.size()));
+    digest_.update(data.data(), data.size());
+    index_bytes_ += static_cast<std::uint64_t>(data.size());
+  }
+
+  ClangdIndexReceipt finish(std::size_t file_count) const {
+    return ClangdIndexReceipt{"clangd_fact_query:sha256:" +
+                                  digest_.hex_digest(),
+                              file_count, index_bytes_};
+  }
+
+private:
+  Sha256 digest_;
+  std::uint64_t index_bytes_{0};
+};
+
+ClangdIndexReceipt receipt_from_files(const std::vector<IndexFile> &files,
+                                      const std::filesystem::path &project_root,
+                                      const ClangdFactDecodeLimits &limits) {
+  IndexReceiptBuilder builder(project_root, files.size());
+  std::uint64_t read_bytes = 0;
+  for (const auto &file : files) {
+    const auto data = read_file(file.path, limits);
+    consume_budget(static_cast<std::uint64_t>(data.size()), read_bytes,
+                   limits.max_aggregate_index_bytes, "aggregate index bytes");
+    builder.add_file(file, data);
+  }
+  return builder.finish(files.size());
+}
+
 bool path_has_prefix(const std::filesystem::path &path,
                      const std::filesystem::path &prefix) {
   auto path_part = path.begin();
@@ -970,6 +1031,7 @@ decode_clangd_query_records(const std::string &idx_directory,
 
   CollectedRecords collected;
   DecodeBudget budget(limits);
+  IndexReceiptBuilder receipt_builder(root, files.size());
   std::uint64_t read_bytes = 0;
   for (const auto &file : files) {
     const auto read_started = Clock::now();
@@ -977,6 +1039,10 @@ decode_clangd_query_records(const std::string &idx_directory,
     consume_budget(static_cast<std::uint64_t>(data.size()), read_bytes,
                    limits.max_aggregate_index_bytes, "aggregate index bytes");
     profile.read_files_ns += elapsed_ns(read_started, Clock::now());
+
+    const auto hash_started = Clock::now();
+    receipt_builder.add_file(file, data);
+    profile.hash_index_ns += elapsed_ns(hash_started, Clock::now());
 
     const auto parse_started = Clock::now();
     ParsedFile parsed;
@@ -1014,8 +1080,26 @@ decode_clangd_query_records(const std::string &idx_directory,
   profile.decompressed_string_bytes = budget.string_table_bytes;
   profile.materialized_string_bytes = budget.materialized_string_bytes;
   profile.string_entry_count = budget.string_entries;
+  auto receipt = receipt_builder.finish(files.size());
+  const auto verify_started = Clock::now();
+  const auto verified =
+      compute_clangd_index_receipt(idx_directory, project_root, limits);
+  profile.verify_snapshot_ns = elapsed_ns(verify_started, Clock::now());
+  if (verified.snapshot_id != receipt.snapshot_id) {
+    throw std::runtime_error(
+        "clangd index snapshot changed while native records were decoded");
+  }
   profile.total_ns = elapsed_ns(total_started, Clock::now());
-  return ClangdQueryRecords{std::move(records), profile};
+  return ClangdQueryRecords{std::move(records), profile, std::move(receipt)};
+}
+
+ClangdIndexReceipt
+compute_clangd_index_receipt(const std::string &idx_directory,
+                             const std::string &project_root,
+                             const ClangdFactDecodeLimits &limits) {
+  const auto files =
+      discover_index_files(normalized_absolute(idx_directory), limits);
+  return receipt_from_files(files, normalized_absolute(project_root), limits);
 }
 
 } // namespace codenib::core

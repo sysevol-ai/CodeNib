@@ -96,6 +96,15 @@ def test_static_lsp_provider_returns_list_with_metadata():
     assert metadata["index_snapshot"] == "graph:demo"
 
 
+def test_static_lsp_provider_prefers_a_content_bound_graph_snapshot():
+    graph = _range_graph()
+    legacy_snapshot = StaticLSPProvider(graph).snapshot_id
+    graph.snapshot_id = "clangd_fact_query:sha256:content"
+
+    assert legacy_snapshot.startswith("symbol_graph:")
+    assert StaticLSPProvider(graph).snapshot_id == graph.snapshot_id
+
+
 def test_static_lsp_provider_uses_exact_scip_occurrences_for_native_positions():
     index = SCIPOccurrenceIndex(
         [

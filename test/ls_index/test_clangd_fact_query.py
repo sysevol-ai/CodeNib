@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import os
 import struct
 import zlib
 from pathlib import Path
@@ -135,12 +137,44 @@ def _minimal_chunks(version: int = 18) -> list[tuple[bytes, bytes]]:
 
 
 def _set_meta_version(idx_directory: Path, before: int, after: int) -> None:
-    path = next(idx_directory.glob("*.idx"))
+    path = (
+        idx_directory if idx_directory.is_file() else next(idx_directory.glob("*.idx"))
+    )
     data = path.read_bytes()
     old = b"meta" + struct.pack("<I", 4) + struct.pack("<I", before)
     new = b"meta" + struct.pack("<I", 4) + struct.pack("<I", after)
     assert data.count(old) == 1
     path.write_bytes(data.replace(old, new, 1))
+
+
+def _expected_snapshot_id(idx_directory: Path, project_root: Path) -> str:
+    digest = hashlib.sha256()
+
+    def field(value: str) -> None:
+        encoded = value.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "little"))
+        digest.update(encoded)
+
+    def uint64(value: int) -> None:
+        digest.update(value.to_bytes(8, "little"))
+
+    field("CodeNib clangd fact query snapshot")
+    field("clangd-fact-query-snapshot-v1")
+    field("clangd-riff-fact-query-v1")
+    uint64(1)
+    field("clangd-native-normalization-v1")
+    field(project_root.absolute().as_posix())
+    uint64(3)
+    for version in (18, 19, 20):
+        uint64(version)
+    files = sorted(idx_directory.glob("*.idx"), key=lambda path: path.name)
+    uint64(len(files))
+    for path in files:
+        data = path.read_bytes()
+        field(path.name)
+        uint64(len(data))
+        digest.update(data)
+    return f"clangd_fact_query:sha256:{digest.hexdigest()}"
 
 
 @pytest.fixture()
@@ -329,6 +363,9 @@ def test_contract_and_graph_free_payload_are_explicit(clangd_fixture) -> None:
     assert contract == {
         "abi_version": 1,
         "format": "clangd-riff-fact-query-v1",
+        "normalization_profile": "clangd-native-normalization-v1",
+        "snapshot_schema": "clangd-fact-query-snapshot-v1",
+        "snapshot_digest": "sha256",
         "supported_versions": [18, 19, 20],
         "resource_limits": {
             "max_index_files": 200_000,
@@ -359,6 +396,95 @@ def test_contract_and_graph_free_payload_are_explicit(clangd_fixture) -> None:
     assert index.materializes_graph is False
     assert index.requires_anchored_references is False
     assert not hasattr(index, "graph")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("normalization_profile", "changed", "normalization profile mismatch"),
+        ("snapshot_schema", "changed", "snapshot schema mismatch"),
+        ("snapshot_digest", "sha1", "snapshot digest mismatch"),
+    ],
+)
+def test_native_snapshot_contract_fails_closed(
+    field: str, value: str, message: str
+) -> None:
+    contract = dict(codenib_core.clangd_fact_query_contract())
+    contract[field] = value
+
+    with pytest.raises(RuntimeError, match=message):
+        _validate_native_query_contract(contract)
+
+
+def test_native_snapshot_receipt_matches_canonical_recipe(clangd_fixture) -> None:
+    root, idx_directory = clangd_fixture
+
+    payload = codenib_core.decode_clangd_fact_query_index(
+        idx_directory=str(idx_directory), project_root=str(root)
+    )
+    receipt = codenib_core.clangd_fact_query_snapshot(
+        idx_directory=str(idx_directory), project_root=str(root)
+    )
+    expected = _expected_snapshot_id(idx_directory, root)
+
+    assert payload["snapshot_id"] == expected
+    assert payload["index"].snapshot_id == expected
+    assert receipt == {
+        "snapshot_id": expected,
+        "file_count": 1,
+        "index_bytes": next(idx_directory.glob("*.idx")).stat().st_size,
+    }
+    assert payload["decode_profile_ns"]["hash_index"] > 0
+    assert payload["decode_profile_ns"]["verify_snapshot"] > 0
+
+
+def test_native_snapshot_is_order_independent_and_content_bound(
+    clangd_fixture, tmp_path: Path
+) -> None:
+    root, idx_directory = clangd_fixture
+    original = next(idx_directory.glob("*.idx")).read_bytes()
+    extra = _riff_bytes(_minimal_chunks(19))
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "a.idx").write_bytes(original)
+    (first / "b.idx").write_bytes(extra)
+    (second / "b.idx").write_bytes(extra)
+    (second / "a.idx").write_bytes(original)
+
+    def snapshot(directory: Path, project: Path = root) -> str:
+        return codenib_core.clangd_fact_query_snapshot(
+            idx_directory=str(directory), project_root=str(project)
+        )["snapshot_id"]
+
+    baseline = snapshot(first)
+    assert snapshot(second) == baseline
+
+    (second / "a.idx").rename(second / "renamed.idx")
+    assert snapshot(second) != baseline
+    (second / "renamed.idx").rename(second / "a.idx")
+    assert snapshot(second) == baseline
+
+    content_path = second / "a.idx"
+    content = bytearray(content_path.read_bytes())
+    timestamps = content_path.stat()
+    content[-1] ^= 1
+    content_path.write_bytes(content)
+    os.utime(
+        content_path,
+        ns=(timestamps.st_atime_ns, timestamps.st_mtime_ns),
+    )
+    assert snapshot(second) != baseline
+    content_path.write_bytes(original)
+    assert snapshot(second) == baseline
+
+    _set_meta_version(second / "a.idx", 18, 20)
+    assert snapshot(second) != baseline
+
+    other_root = tmp_path / "other-root"
+    other_root.mkdir()
+    assert snapshot(first, other_root) != baseline
 
 
 @pytest.mark.parametrize("version", [18, 19, 20])
@@ -749,9 +875,14 @@ def test_hybrid_uses_native_symbols_then_materializes_graph_once(
     target = bytes.fromhex("1112131415161718").hex()
 
     assert isinstance(provider, ClangdHybridQueryProvider)
-    assert [node.model_dump() for node in provider.definition(symbol=target)] == [
+    native_result = provider.definition(symbol=target)
+    assert [node.model_dump() for node in native_result] == [
         node.model_dump() for node in legacy.definition(symbol=target)
     ]
+    assert provider.snapshot_id.startswith("clangd_fact_query:sha256:")
+    assert native_result.provider_metadata_dict()["index_snapshot"] == (
+        provider.snapshot_id
+    )
     assert decoder._graph_materialized is False
 
     position_arguments = {
@@ -760,9 +891,13 @@ def test_hybrid_uses_native_symbols_then_materializes_graph_once(
         "character": 22,
         "top_k": 100,
     }
-    assert [
-        node.model_dump() for node in provider.definition(**position_arguments)
-    ] == [node.model_dump() for node in legacy.definition(**position_arguments)]
+    position_result = provider.definition(**position_arguments)
+    assert [node.model_dump() for node in position_result] == [
+        node.model_dump() for node in legacy.definition(**position_arguments)
+    ]
+    assert position_result.provider_metadata_dict()["index_snapshot"] == (
+        provider.snapshot_id
+    )
     assert decoder._graph_materialized is True
     assert provider.graph_materialization_count == 1
 
@@ -776,6 +911,74 @@ def test_hybrid_uses_native_symbols_then_materializes_graph_once(
         node.model_dump() for node in legacy.route(**route_arguments)
     ]
     assert provider.graph_materialization_count == 1
+
+
+def test_lazy_graph_fails_closed_when_snapshot_changes(
+    clangd_fixture, monkeypatch
+) -> None:
+    root, idx_directory = clangd_fixture
+    monkeypatch.delenv("CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX", raising=False)
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    provider = decoder.decode_query_provider()
+    original_snapshot = provider.snapshot_id
+
+    _set_meta_version(idx_directory, 18, 19)
+
+    with pytest.raises(
+        RuntimeError, match="snapshot changed before legacy record collection"
+    ):
+        provider.route(symbols=["1112131415161718"], top_k=10)
+    assert decoder._graph_materialized is False
+    assert provider.snapshot_id == original_snapshot
+
+
+def test_lazy_graph_detects_mutation_during_record_collection(
+    clangd_fixture, monkeypatch
+) -> None:
+    root, idx_directory = clangd_fixture
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    provider = decoder.decode_query_provider()
+    collect = decoder._collect_all_idx
+
+    def collect_then_mutate() -> None:
+        collect()
+        _set_meta_version(idx_directory, 18, 19)
+
+    monkeypatch.setattr(decoder, "_collect_all_idx", collect_then_mutate)
+
+    with pytest.raises(
+        RuntimeError, match="snapshot changed after legacy record collection"
+    ):
+        provider.route(symbols=["1112131415161718"], top_k=10)
+    assert decoder._graph_materialized is False
+
+
+def test_lazy_graph_detects_index_file_list_changes(clangd_fixture) -> None:
+    root, idx_directory = clangd_fixture
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    provider = decoder.decode_query_provider()
+    (idx_directory / "new.idx").write_bytes(_empty_idx())
+
+    with pytest.raises(RuntimeError, match="snapshot changed"):
+        provider.route(symbols=["1112131415161718"], top_k=10)
+    assert decoder._graph_materialized is False
+
+
+def test_native_snapshot_cannot_bind_a_preexisting_graph(
+    clangd_fixture, monkeypatch
+) -> None:
+    root, idx_directory = clangd_fixture
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    graph = decoder.materialize_code_graph()
+    monkeypatch.setenv("CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX", "required")
+
+    with pytest.raises(RuntimeError, match="records collected before the receipt"):
+        decoder.decode_query_index()
+    assert decoder.query_snapshot_id is None
+
+    monkeypatch.setenv("CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX", "auto")
+    assert decoder.decode_query_index() is graph
+    assert decoder.query_backend == "legacy-query-fallback"
 
 
 def test_ls_indexer_exposes_query_index_and_provider(
@@ -819,6 +1022,10 @@ def test_profiler_records_parity_samples_order_and_contract(
     )
     assert len(report["raw_samples"]["legacy_clangd_graph"]["total"]) == 2
     assert len(report["raw_samples"]["native_clangd_fact_query_index"]["total"]) == 2
+    assert report["snapshot_receipt"]["snapshot_id"].startswith(
+        "clangd_fact_query:sha256:"
+    )
+    assert 0 <= report["snapshot_receipt"]["fraction_of_native_startup"] <= 1
     assert report["decision"]["parity"] is True
 
 

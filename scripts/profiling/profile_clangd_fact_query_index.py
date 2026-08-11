@@ -97,9 +97,16 @@ def profile_clangd_fact_query_index(
 
     from codenib.ls_index.clangd_decode import ClangdGraphDecoder
 
-    if not hasattr(codenib_core, "decode_clangd_fact_query_index"):
+    if not hasattr(codenib_core, "decode_clangd_fact_query_index") or not hasattr(
+        codenib_core, "clangd_fact_query_snapshot"
+    ):
         raise RuntimeError("compiled core does not expose clangd FactQueryIndex v1")
     contract = codenib_core.clangd_fact_query_contract()
+    initial_receipt = dict(
+        codenib_core.clangd_fact_query_snapshot(
+            idx_directory=str(idx_directory), project_root=str(project_root)
+        )
+    )
     initial_digest = _idx_digest(idx_directory)
 
     def legacy_arm() -> tuple[Any, dict[str, float]]:
@@ -133,6 +140,8 @@ def profile_clangd_fact_query_index(
         )
         if payload.get("graph_materialized") is not False:
             raise AssertionError("candidate payload reports graph materialization")
+        if payload.get("snapshot_id") != initial_receipt.get("snapshot_id"):
+            raise RuntimeError("clangd index changed during native startup")
         index = payload["index"]
         _, query = _timed(lambda: _query_workload(index, workload_symbols))
         native_decode = payload["native_decode_ns"] / 1_000_000_000
@@ -202,6 +211,13 @@ def profile_clangd_fact_query_index(
     final_digest = _idx_digest(idx_directory)
     if final_digest != initial_digest:
         raise RuntimeError("clangd index changed during benchmark")
+    final_receipt = dict(
+        codenib_core.clangd_fact_query_snapshot(
+            idx_directory=str(idx_directory), project_root=str(project_root)
+        )
+    )
+    if final_receipt != initial_receipt:
+        raise RuntimeError("clangd content receipt changed during benchmark")
     legacy_summary = {
         name: summarize_samples(values) for name, values in legacy_samples.items()
     }
@@ -216,6 +232,10 @@ def profile_clangd_fact_query_index(
         parity=parity,
         candidate_name="native-clangd-fact-query-index",
     )
+    hash_seconds = native_summary["native_stage_hash_index"]["median_seconds"]
+    verify_seconds = native_summary["native_stage_verify_snapshot"]["median_seconds"]
+    native_startup_seconds = native_summary["startup"]["median_seconds"]
+    receipt_seconds = hash_seconds + verify_seconds
     idx_sha256, idx_bytes, idx_files = initial_digest
     return {
         "schema_version": 1,
@@ -253,6 +273,17 @@ def profile_clangd_fact_query_index(
         },
         "legacy_clangd_graph": legacy_summary,
         "native_clangd_fact_query_index": native_summary,
+        "snapshot_receipt": {
+            **initial_receipt,
+            "hash_index_median_seconds": hash_seconds,
+            "verify_snapshot_median_seconds": verify_seconds,
+            "total_median_seconds": receipt_seconds,
+            "fraction_of_native_startup": (
+                receipt_seconds / native_startup_seconds
+                if native_startup_seconds > 0
+                else 0.0
+            ),
+        },
         "decision": decision,
     }
 

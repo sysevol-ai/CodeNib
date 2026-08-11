@@ -50,6 +50,7 @@ find_package(ZLIB REQUIRED)
 add_library(codenib_core STATIC
     clangd_fact_query.cpp
     code_graph.cpp
+    content_digest.cpp
     fact_batch_buffer.cpp
     fact_query_index.cpp
     graph_layers.cpp
@@ -97,6 +98,12 @@ add_executable(fact_batch_buffer_test
 
 target_link_libraries(fact_batch_buffer_test PRIVATE codenib_core)
 
+add_executable(content_digest_test
+    tests/content_digest_test.cpp
+)
+
+target_link_libraries(content_digest_test PRIVATE codenib_core)
+
 add_executable(fact_query_index_test
     tests/fact_query_index_test.cpp
 )
@@ -122,6 +129,9 @@ if(CODENIB_ENABLE_O3)
     endif()
     if(TARGET fact_batch_buffer_test)
         target_compile_options(fact_batch_buffer_test PRIVATE -O3)
+    endif()
+    if(TARGET content_digest_test)
+        target_compile_options(content_digest_test PRIVATE -O3)
     endif()
     if(TARGET fact_query_index_test)
         target_compile_options(fact_query_index_test PRIVATE -O3)
@@ -201,6 +211,11 @@ if(CODENIB_ENABLE_DEBUG)
     if(TARGET fact_batch_buffer_test)
         target_compile_definitions(fact_batch_buffer_test PRIVATE CODENIB_DEBUG=1)
         target_compile_options(fact_batch_buffer_test PRIVATE ${_codenib_debug_flags})
+    endif()
+
+    if(TARGET content_digest_test)
+        target_compile_definitions(content_digest_test PRIVATE CODENIB_DEBUG=1)
+        target_compile_options(content_digest_test PRIVATE ${_codenib_debug_flags})
     endif()
 
     if(TARGET fact_query_index_test)

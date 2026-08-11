@@ -271,10 +271,12 @@ steps:
   make core-test
   ```
 
-  This incrementally reuses the configured build, runs all C++ executables,
-  verifies the required clangd bindings are present, and executes the SCIP,
-  Fact, clangd, and profiler-contract Python tests with `build/core` first on
-  `PYTHONPATH`. The same `make core-test` command is the local reproduction.
+  This incrementally reuses the configured build, runs all C++ executables
+  (including the content-digest vectors), verifies the required clangd decode,
+  contract, and snapshot bindings are present, and executes the SCIP, Fact,
+  clangd receipt/parity/fallback, and profiler-contract Python tests with
+  `build/core` first on `PYTHONPATH`. The same `make core-test` command is the
+  local reproduction.
 
 ### graph-consumer
 

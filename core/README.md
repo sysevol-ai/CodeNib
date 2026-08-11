@@ -19,6 +19,8 @@ core decoder continue to use the serial Python path.
   tables for the native/Python boundary.
 - `clangd_fact_query.{h,cpp}` — deterministic clangd RIFF shard decoding into
   provider-neutral records for graph-free symbol queries.
+- `content_digest.{h,cpp}` — dependency-free streaming SHA-256 for native
+  content receipts.
 - `graph_layers.{h,cpp}` — shared normalized edge-layer classification.
 - `scip_decode_base.{h,cpp}` — common loading, document scheduling, merge, and
   post-processing behavior.
@@ -27,7 +29,8 @@ core decoder continue to use the serial Python path.
 - `scip_decode_<language>.{h,cpp}` — language-specific decoder policy.
 - `scip_decoder_registry.{h,cpp}` — canonical decoder names and aliases.
 - `bindings/pybind_module.cpp` — Python bindings for `decode_scip(...)`,
-  `decode_scip_fact_buffer(...)`, `classify_edge_layers(...)`, and registry
+  `decode_scip_fact_buffer(...)`, clangd decode/receipt APIs,
+  `classify_edge_layers(...)`, and registry
   inspection.
 
 `codenib_core.decode_scip(...)` is a low-level flat transport API. It does not
@@ -128,8 +131,11 @@ For C and C++ projects with an existing project-local clangd index,
 stable filename order, decodes them into `DecodedRecords`, and builds the same
 `FactQueryIndex` without constructing `CodeGraph`, igraph, or Python record
 dictionaries. The v1 slice covers definition and reference lookup by symbol.
-clangd relation rows may be unanchored, so this provider explicitly opts into
-that record policy while still rejecting partial or invalid anchors.
+Each decode also exposes a content-bound snapshot over the query contract,
+normalized project root, exact supported RIFF versions, sorted shard names,
+and the exact bytes consumed by the decoder. clangd relation rows may be
+unanchored, so this provider explicitly opts into that record policy while
+still rejecting partial or invalid anchors.
 
 Use `LSIndexer.process_query_index()` for the capability-specific index or
 `process_query_provider()` for hybrid behavior. The provider keeps successful
@@ -150,10 +156,16 @@ make clangd-fact-query-profile \
   CLANGD_FACT_QUERY_PROFILE_EXTRA_ARGS='--iterations 15 --warmups 5'
 ```
 
+The first receipt hash shares the decoder's existing byte buffers. A second
+canonical read before publication detects mutation during decode, and the
+hybrid provider verifies the same receipt before and after lazy graph record
+collection. A mismatch fails the provider session rather than combining index
+generations; restart it to adopt new shards. Both receipt stages are included
+in the existing 20% profiling gate.
+
 This baseline makes no claim about clangd index generation time. Native
-position and route queries, serving integration, content receipts, and a
-hardened clangd artifact compatibility/resource contract remain separate
-promotion gates.
+position and route queries and serving integration remain separate promotion
+gates.
 
 ## Use Through Python
 

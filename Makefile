@@ -412,8 +412,9 @@ core-test: core-build
 	./build/core/scip_decode_test
 	./build/core/graph_layers_test
 	./build/core/fact_batch_buffer_test
+	./build/core/content_digest_test
 	./build/core/fact_query_index_test
-	PYTHONPATH="build/core:$$PYTHONPATH" python -c 'import sys; import codenib_core as core; required = ("decode_clangd_fact_query_index", "clangd_fact_query_contract"); missing = [name for name in required if not hasattr(core, name)]; missing and sys.exit(f"codenib_core missing required bindings: {missing}")'
+	PYTHONPATH="build/core:$$PYTHONPATH" python -c 'import sys; import codenib_core as core; required = ("decode_clangd_fact_query_index", "clangd_fact_query_contract", "clangd_fact_query_snapshot"); missing = [name for name in required if not hasattr(core, name)]; missing and sys.exit(f"codenib_core missing required bindings: {missing}")'
 	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
 		test/scip/test_scip_core.py \
 		test/scip/test_scip_core_registry.py \

@@ -241,6 +241,8 @@ py::dict clangd_decode_profile_to_dict(
   py::dict result;
   result["discover_files"] = profile.discover_files_ns;
   result["read_files"] = profile.read_files_ns;
+  result["hash_index"] = profile.hash_index_ns;
+  result["verify_snapshot"] = profile.verify_snapshot_ns;
   result["parse_files"] = profile.parse_files_ns;
   result["merge_records"] = profile.merge_records_ns;
   result["build_query_records"] = profile.build_query_records_ns;
@@ -391,8 +393,8 @@ py::dict decode_clangd_fact_query_index(const std::string &idx_directory,
     decoded =
         codenib::core::decode_clangd_query_records(idx_directory, project_root);
     decode_finished = clock::now();
-    index =
-        std::make_shared<codenib::core::FactQueryIndex>(decoded.records, false);
+    index = std::make_shared<codenib::core::FactQueryIndex>(
+        decoded.records, false, decoded.receipt.snapshot_id);
     index_finished = clock::now();
   }
 
@@ -407,6 +409,9 @@ py::dict decode_clangd_fact_query_index(const std::string &idx_directory,
   result["native_index_ns"] = elapsed_ns(decode_finished, index_finished);
   result["decode_profile_ns"] = clangd_decode_profile_to_dict(decoded.profile);
   result["graph_materialized"] = false;
+  result["snapshot_id"] = decoded.receipt.snapshot_id;
+  result["snapshot_file_count"] = decoded.receipt.file_count;
+  result["snapshot_index_bytes"] = decoded.receipt.index_bytes;
   return result;
 }
 
@@ -435,11 +440,30 @@ py::dict clangd_fact_query_contract() {
   py::dict result;
   result["abi_version"] = codenib::core::CLANGD_FACT_QUERY_ABI_VERSION;
   result["format"] = codenib::core::CLANGD_FACT_QUERY_FORMAT;
+  result["normalization_profile"] =
+      codenib::core::CLANGD_FACT_QUERY_NORMALIZATION_PROFILE;
+  result["snapshot_schema"] = codenib::core::CLANGD_FACT_QUERY_SNAPSHOT_SCHEMA;
+  result["snapshot_digest"] = "sha256";
   result["supported_versions"] = codenib::core::CLANGD_SUPPORTED_RIFF_VERSIONS;
   result["resource_limits"] = std::move(resource_limits);
   result["stable_filename_order"] = true;
   result["preserves_unanchored_relations"] = true;
   result["capabilities"] = fact_query_capabilities();
+  return result;
+}
+
+py::dict clangd_fact_query_snapshot(const std::string &idx_directory,
+                                    const std::string &project_root) {
+  codenib::core::ClangdIndexReceipt receipt;
+  {
+    py::gil_scoped_release release;
+    receipt = codenib::core::compute_clangd_index_receipt(
+        idx_directory, project_root, codenib::core::ClangdFactDecodeLimits{});
+  }
+  py::dict result;
+  result["snapshot_id"] = receipt.snapshot_id;
+  result["file_count"] = receipt.file_count;
+  result["index_bytes"] = receipt.index_bytes;
   return result;
 }
 
@@ -492,6 +516,8 @@ PYBIND11_MODULE(codenib_core, m) {
       .def_property_readonly(
           "requires_anchored_references",
           &codenib::core::FactQueryIndex::requires_anchored_references)
+      .def_property_readonly("snapshot_id",
+                             &codenib::core::FactQueryIndex::snapshot_id)
       .def("has_symbol", &codenib::core::FactQueryIndex::has_symbol)
       .def("get_node_info_by_name",
            [](const codenib::core::FactQueryIndex &index,
@@ -604,6 +630,10 @@ queries remain outside this baseline capability.
 
   m.def("clangd_fact_query_contract", &clangd_fact_query_contract,
         R"pbdoc(Return the baseline native clangd query ABI contract.)pbdoc");
+
+  m.def("clangd_fact_query_snapshot", &clangd_fact_query_snapshot,
+        py::arg("idx_directory"), py::arg("project_root"),
+        R"pbdoc(Return the current content-bound clangd index receipt.)pbdoc");
 
   m.def("canonical_scip_decoder_languages",
         &codenib::core::canonical_scip_decoder_languages,

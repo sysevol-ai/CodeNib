@@ -34,7 +34,8 @@ public:
   };
 
   explicit FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
-                          bool require_anchored_references = true);
+                          bool require_anchored_references = true,
+                          std::string snapshot_id = {});
 
   bool has_symbol(const std::string &name) const;
   std::optional<CodeGraph::VertexData>
@@ -55,6 +56,7 @@ public:
   bool requires_anchored_references() const {
     return require_anchored_references_;
   }
+  const std::string &snapshot_id() const { return snapshot_id_; }
 
 private:
   static std::string trim_symbol(std::string value);
@@ -65,6 +67,7 @@ private:
                         CodeGraph::VertexId id, std::size_t limit) const;
 
   std::shared_ptr<const DecodedRecords> records_;
+  std::string snapshot_id_;
   std::unordered_map<std::string, CodeGraph::VertexId> record_by_name_;
   std::unordered_map<std::string, CodeGraph::VertexId> definition_by_name_;
   std::unordered_map<std::string, std::vector<CodeGraph::VertexId>> aliases_;

@@ -752,11 +752,11 @@ stable shard-set SHA-256 values were
 Reproduce the report with `make clangd-fact-query-profile`.
 
 This promotion does not include or accelerate clangd index generation. RIFF
-version/resource hardening (#546) and zlib CI enforcement (#547) are now
-implemented as independent production gates. Content receipts (#548), serving
-integration (#549), mixed/RSS/concurrency matrices (#550), native position
-(#553), native route (#552), and durable FactBatch storage (#551) remain
-separate review and promotion gates.
+version/resource hardening (#546), zlib CI enforcement (#547), and
+content-bound generation receipts (#548) are independent production gates.
+Serving integration (#549), mixed/RSS/concurrency matrices (#550), native
+position (#553), native route (#552), and durable FactBatch storage (#551)
+remain separate review and promotion gates.
 
 Native clangd RIFF compatibility and resource-safety status
 ([#546](https://github.com/sysevol-ai/CodeNib/issues/546)): the v1 reader now
@@ -781,16 +781,47 @@ oversized declarations, invalid counts, and sparse per-file/aggregate limits.
 preserves the established graph path. The same v18/v19/v20 fixture executes
 the exact public definition/reference parity assertions.
 
+Native clangd content-bound snapshot status
+([#548](https://github.com/sysevol-ai/CodeNib/issues/548)): every native decode
+now publishes a deterministic SHA-256 receipt over a length-delimited domain,
+snapshot schema, query ABI/format, normalization profile, normalized project
+root, exact RIFF allowlist, sorted direct shard names, shard lengths, and the
+exact bytes already read for decoding. Directory enumeration order therefore
+does not affect identity, while any filename, byte, supported-version set,
+query schema, normalization profile, or root identity does. The first hash is
+fused with the decoder's existing read buffers; a post-decode re-read proves
+the directory did not change before the native index is published.
+
+The receipt is exposed by the pybind index, decode payload, and
+`clangd_fact_query_snapshot(...)`. Provider metadata uses that identity instead
+of the old root/vertex/edge-count fallback. Before Python lazily collects the
+complete graph, it verifies the receipt both before and after collection. A
+changed file list or content permanently fails that provider session so symbol
+results from one generation cannot be combined with a graph from another.
+Native candidate failures before publication still follow the existing mode
+policy: `auto` may build one compatible graph from the then-current generation,
+while `required` fails closed. Callers restart the provider to adopt a later
+generation.
+
+The 2026-08-10 snapshot-enabled `cpp_simple` recheck used 223 shards and five
+alternating rounds with exact result parity. Median complete-graph startup was
+157.7 ms versus 23.9 ms for the native path, an 84.8% improvement after both
+receipt passes were included. The fused first-pass hash took 2.94 ms (12.6% of
+native startup); hashing plus publication verification took 7.09 ms. The
+maintained profiler now reports both stages and their fraction of startup, and
+the existing 20% acceleration decision includes their cost.
+
 Native core CI enforcement status
 ([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted
 `scip-core` job now declares zlib development headers alongside RE2 and CMake,
 preserves the vendored-igraph and system-libstdc++ loader contracts, and calls
 the maintained `make core-test` gate instead of one SCIP-only pytest file. The
-gate runs all four C++ executables plus SCIP, Fact, native clangd, fallback, and
+gate runs all five C++ executables plus SCIP, Fact, native clangd, fallback, and
 profiler-contract Python tests. It first asserts that the built extension
-exports `decode_clangd_fact_query_index` and `clangd_fact_query_contract`, so a
-missing or stale extension cannot silently skip the clangd module. CI-policy
-tests pin the dependency probe, Make target, binding guard, and test inventory.
+exports `decode_clangd_fact_query_index`, `clangd_fact_query_contract`, and
+`clangd_fact_query_snapshot`, so a missing or stale extension cannot silently
+skip the clangd module. CI-policy tests pin the dependency probe, Make target,
+binding guard, and test inventory.
 The same `make core-test` command is the documented local reproduction; slow,
 billed, and external clangd-generation benchmarks remain outside this
 deterministic job.
