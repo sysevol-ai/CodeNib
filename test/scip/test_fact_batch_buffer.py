@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Native FactBatchBuffer ABI, parity, and ownership tests."""
+"""Native FactBatchBuffer ABI, parity, ownership, and fallback tests."""
 
 from __future__ import annotations
 
@@ -27,7 +27,13 @@ from codenib.scip_interface.fact_batch_buffer import (  # noqa: E402
     FactBatchBufferView,
     validate_compiled_contract,
 )
-from codenib.scip_interface.scip_decode_core import _build_code_graph  # noqa: E402
+from codenib.scip_interface.scip_decode_core import (  # noqa: E402
+    SCIPDecoderCore,
+    _build_code_graph,
+)
+from scripts.profiling.profile_fact_batch_buffer import (  # noqa: E402
+    profile_fact_batch_buffer,
+)
 
 _FIXTURE = (
     Path(__file__).resolve().parent / "fixtures/typescript_schema_v5/index.decoded"
@@ -41,7 +47,9 @@ def _legacy_graph():
         project_root=None,
         language="typescript",
     )
-    return _build_code_graph(result["vertices"], result["edges"])
+    return _build_code_graph(
+        result["vertices"], result["edges"], project_root=result["project_root"]
+    )
 
 
 def _content_digests(graph) -> dict[str, str]:
@@ -116,6 +124,7 @@ def test_compiled_contract_and_graph_projection_are_exact() -> None:
     assert _edge_rows(actual) == _edge_rows(expected)
     assert actual.name_to_vertex == expected.name_to_vertex
     assert actual.symbol_ranges == expected.symbol_ranges
+    assert actual.project_root == expected.project_root
 
 
 def test_compiled_contract_rejects_boolean_version() -> None:
@@ -188,6 +197,29 @@ def test_writable_buffers_are_rejected_before_validation() -> None:
 
     with pytest.raises(FactBatchBufferError, match="arena must be read-only"):
         FactBatchBufferView(payload)
+
+
+def test_fact_buffer_profiler_can_gate_logical_fact_consumer() -> None:
+    report = profile_fact_batch_buffer(
+        index_path=_FIXTURE,
+        language="typescript",
+        iterations=1,
+        warmups=0,
+        include_semantic_consumer=True,
+    )
+
+    semantic = report["semantic_fact_consumer"]
+    assert report["schema_version"] == 1
+    assert report["configuration"]["copy_buffers"] is False
+    assert report["configuration"]["fact_batch_buffer_contract"] == (
+        codenib_core.fact_batch_buffer_contract()
+    )
+    assert report["configuration"]["first_arm_by_iteration"] == ["legacy"]
+    assert len(report["raw_samples"]["legacy"]["total"]) == 1
+    assert len(semantic["raw_samples"]["native_fact_buffer"]["total"]) == 1
+    assert semantic["parity"] == {"passed": True, "error": None}
+    assert semantic["batch_count"] > 0
+    assert semantic["native_fact_buffer"]["fact_materialize"]["samples"] == 1
 
 
 def test_missing_content_digest_blocks_logical_fact_materialization() -> None:
@@ -281,3 +313,73 @@ def test_graph_corruption_is_rejected_before_a_graph_is_returned(
     view = FactBatchBufferView(payload)
     with pytest.raises(FactBatchBufferError, match=message):
         view.materialize_code_graph()
+
+
+def test_decoder_kill_switch_preserves_legacy_compatibility(monkeypatch) -> None:
+    monkeypatch.setenv("CODENIB_CORE_FACT_BUFFER", "auto")
+    native = SCIPDecoderCore(str(_FIXTURE), language="typescript")
+    native_graph = native.decode()
+    assert native.transport_backend == "fact-buffer-v1"
+    assert native.fact_buffer_view is not None
+
+    monkeypatch.setenv("CODENIB_CORE_FACT_BUFFER", "off")
+    legacy = SCIPDecoderCore(str(_FIXTURE), language="typescript")
+    legacy_graph = legacy.decode()
+    assert legacy.transport_backend == "legacy-disabled"
+    assert legacy.fact_buffer_view is None
+    assert _vertex_rows(native_graph) == _vertex_rows(legacy_graph)
+    assert _edge_rows(native_graph) == _edge_rows(legacy_graph)
+    assert native_graph.project_root == legacy_graph.project_root
+
+
+def test_decoder_defaults_to_legacy_until_promotion_gate_passes(monkeypatch) -> None:
+    monkeypatch.delenv("CODENIB_CORE_FACT_BUFFER", raising=False)
+
+    decoder = SCIPDecoderCore(str(_FIXTURE), language="typescript")
+    graph = decoder.decode()
+
+    assert graph.graph.vcount() > 0
+    assert decoder.transport_backend == "legacy-disabled"
+    assert decoder.fact_buffer_view is None
+    assert decoder.timings["fact_buffer_enabled"] == 0
+
+
+def test_decoder_auto_falls_back_but_required_mode_fails(monkeypatch) -> None:
+    def fail_buffer(**_kwargs):
+        raise RuntimeError("injected native buffer failure")
+
+    monkeypatch.setattr(codenib_core, "decode_scip_fact_buffer", fail_buffer)
+    monkeypatch.setenv("CODENIB_CORE_FACT_BUFFER", "auto")
+    decoder = SCIPDecoderCore(str(_FIXTURE), language="typescript")
+    fallback_graph = decoder.decode()
+    assert fallback_graph.graph.vcount() > 0
+    assert decoder.transport_backend == "legacy-fallback"
+    assert "injected native buffer failure" in decoder.transport_fallback_error
+
+    monkeypatch.setenv("CODENIB_CORE_FACT_BUFFER", "off")
+    legacy_graph = SCIPDecoderCore(str(_FIXTURE), language="typescript").decode()
+    assert _vertex_rows(fallback_graph) == _vertex_rows(legacy_graph)
+    assert _edge_rows(fallback_graph) == _edge_rows(legacy_graph)
+    assert fallback_graph.project_root == legacy_graph.project_root
+
+    monkeypatch.setenv("CODENIB_CORE_FACT_BUFFER", "required")
+    with pytest.raises(RuntimeError, match="injected native buffer failure"):
+        SCIPDecoderCore(str(_FIXTURE), language="typescript").decode()
+
+
+def test_decoder_rejects_unknown_transport_mode(monkeypatch) -> None:
+    monkeypatch.setenv("CODENIB_CORE_FACT_BUFFER", "sometimes")
+
+    with pytest.raises(ValueError, match="CODENIB_CORE_FACT_BUFFER must be"):
+        SCIPDecoderCore(str(_FIXTURE), language="typescript").decode()
+
+
+def test_decoder_auto_does_not_mask_memory_exhaustion(monkeypatch) -> None:
+    def exhaust_memory(**_kwargs):
+        raise MemoryError("injected allocation failure")
+
+    monkeypatch.setattr(codenib_core, "decode_scip_fact_buffer", exhaust_memory)
+    monkeypatch.setenv("CODENIB_CORE_FACT_BUFFER", "auto")
+
+    with pytest.raises(MemoryError, match="injected allocation failure"):
+        SCIPDecoderCore(str(_FIXTURE), language="typescript").decode()

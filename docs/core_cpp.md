@@ -98,6 +98,23 @@ envelope immediately, then checks the selected projection's flags, string
 references, identities, ranges, and graph endpoints before constructing its
 consumer result. Zero-copy exports are read-only and retain their native owner.
 
+The established decode path still defaults to the legacy transport. Set
+`CODENIB_CORE_FACT_BUFFER=auto` to try the ownership-safe zero-copy buffer path
+with compatible fallback, or `required` to fail closed when its ABI or
+materialization fails. Neither the graph-compatible arm nor the eager logical
+`FactBatch` arm passed the 20% end-to-end promotion gate recorded in the
+internal multi-language roadmap, so this setting is not promoted by default.
+Reproduce the alternating-arm measurement with:
+
+```bash
+make fact-buffer-profile \
+  FACT_BUFFER_PROFILE_INDEX=/path/to/index.decoded \
+  FACT_BUFFER_PROFILE_LANGUAGE=python \
+  FACT_BUFFER_PROFILE_PROJECT_ROOT=/path/to/repository \
+  FACT_BUFFER_PROFILE_OUTPUT=/tmp/fact-buffer-report.json \
+  FACT_BUFFER_PROFILE_EXTRA_ARGS='--iterations 7 --warmups 2 --include-semantic-consumer'
+```
+
 ## Verify
 
 ```bash

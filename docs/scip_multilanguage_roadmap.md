@@ -651,12 +651,42 @@ decode/build gate before recommending any new C++ decoder work. This is the
 preferred path for proving that a serial-only active language has outgrown its
 current Python decoder.
 
-Provider-neutral native boundary status ([#559](https://github.com/sysevol-ai/CodeNib/issues/559)):
-the core decodes SCIP into flat `DecodedRecords` before igraph or Python object
+Provider-neutral native boundary status: issue
+[#559](https://github.com/sysevol-ai/CodeNib/issues/559) landed through PR #562.
+The core decodes SCIP into flat `DecodedRecords` before igraph or Python object
 materialization. The established `decode()` path materializes those rows into
 the same graph, while capability-specific consumers can stop at
-`decode_records()`. FactBatch encoding (#560), FactQuery indexing (#561), and
-clangd parsing (#555) remain separate promotion and review decisions.
+`decode_records()`. The immutable `FactBatch v1` model landed through #563/PR
+#566, and the versioned native `FactBatchBuffer v1` ABI, exact graph projection,
+validation, and read-only ownership contract landed through #564/PR #567.
+
+FactBatchBuffer runtime promotion status
+([#565](https://github.com/sysevol-ai/CodeNib/issues/565)): the candidate uses
+ownership-safe zero-copy buffers but remains opt-in. The 2026-08-10 local gate
+alternated arm order, required graph and semantic parity, and compared median
+end-to-end time against a 20% threshold:
+
+| SCIP subject | Consumer | Legacy | FactBatchBuffer | Improvement | Result |
+| --- | --- | ---: | ---: | ---: | --- |
+| CodeNib Python, 41.6 MB | graph-compatible | 0.3775s | 0.3937s | -4.3% | keep experimental |
+| CodeNib Python, 41.6 MB | logical FactBatch | 0.6271s | 0.6772s | -8.0% | keep experimental |
+| Ruff Rust, 130.5 MB | graph-compatible | 1.9756s | 2.0352s | -3.0% | keep experimental |
+| Ruff Rust, 130.5 MB | logical FactBatch | 3.2654s | 3.2031s | +1.9% | below gate |
+
+All four parity gates passed. Cyclic garbage collection was disabled inside
+timed regions and collected before each arm; each generated JSON retains every
+raw sample and the alternating arm order. The CodeNib report used 11 iterations
+after two warmups; Ruff used seven after two warmups. Their index SHA-256 values
+were `96e2c407c421d7eb72b2fd834c812c6b688b3634973f2fcdc865cb78bfe87227`
+and `ab55627fb2f379bff19b3fe8123cb94b4d019732711b16c0ddaf5179898c8778`.
+Adding unchanged external SCIP generation time can only dilute the sole 1.9%
+local improvement, so neither cold-start gate can reach 20%. Keep
+`CODENIB_CORE_FACT_BUFFER` at its default `off`; use `auto` for compatible
+fallback experiments and `required` for fail-closed ABI/parity gates. Reproduce
+the report with `make fact-buffer-profile` and add
+`FACT_BUFFER_PROFILE_EXTRA_ARGS='--include-semantic-consumer'` for logical
+facts. FactQuery indexing (#561) and clangd parsing (#555) remain separate
+promotion and review decisions.
 
 ### Phase 6: Multi-Graph Python Surface
 

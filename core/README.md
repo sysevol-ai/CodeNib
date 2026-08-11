@@ -77,6 +77,19 @@ fixed envelope immediately and the complete selected projection before
 returning a materialized consumer result. The zero-copy mode keeps native
 storage alive through read-only buffer owners.
 
+The graph-compatible runtime remains experimental and defaults to the legacy
+transport because the candidate did not clear the 20% end-to-end promotion
+gate. `CODENIB_CORE_FACT_BUFFER=auto` enables the ownership-safe zero-copy
+candidate with compatible fallback; `required` fails closed for ABI and parity
+testing. Reproduce both graph and eager logical-fact arms with:
+
+```bash
+make fact-buffer-profile \
+  FACT_BUFFER_PROFILE_INDEX=/path/to/index.decoded \
+  FACT_BUFFER_PROFILE_LANGUAGE=python \
+  FACT_BUFFER_PROFILE_EXTRA_ARGS='--include-semantic-consumer'
+```
+
 ## Use Through Python
 
 Application code should select the core decoder through `LSIndexer`, which

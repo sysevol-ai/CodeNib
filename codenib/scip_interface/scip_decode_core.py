@@ -17,6 +17,8 @@ and fall back to the serial decoder).
 """
 from __future__ import annotations
 
+import hashlib
+import os
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -24,6 +26,7 @@ from typing import Dict, List, Optional
 from ..graph.code_graph import CodeGraph
 from ..languages import core_decoder_languages
 from ..log_utils import get_logger
+from .fact_batch_buffer import FactBatchBufferView, validate_compiled_contract
 
 logger = get_logger(__name__)
 
@@ -46,6 +49,11 @@ else:
 # "js" are configured in LanguageSpec.core_decoder_aliases.
 SUPPORTED_LANGUAGES = core_decoder_languages(include_aliases=False)
 ACCEPTED_LANGUAGES = core_decoder_languages(include_aliases=True)
+
+_FACT_BUFFER_ENV = "CODENIB_CORE_FACT_BUFFER"
+_FACT_BUFFER_OFF = frozenset({"0", "false", "no", "off", "disabled"})
+_FACT_BUFFER_ON = frozenset({"", "1", "true", "yes", "on", "auto"})
+_FACT_BUFFER_REQUIRED = frozenset({"required", "strict"})
 
 
 def _ensure_available() -> None:
@@ -134,6 +142,28 @@ def _build_code_graph(
     return code_graph
 
 
+def _fact_buffer_mode() -> str:
+    # The v1 transport remains opt-in until a measured end-to-end benchmark
+    # clears the acceleration gate. It is useful as a semantic batch boundary,
+    # but graph-compatible and eager logical-object consumers remain slower
+    # than legacy transport on representative repositories.
+    value = os.environ.get(_FACT_BUFFER_ENV, "off").strip().lower()
+    if value in _FACT_BUFFER_OFF:
+        return "off"
+    if value in _FACT_BUFFER_ON:
+        return "auto"
+    if value in _FACT_BUFFER_REQUIRED:
+        return "required"
+    raise ValueError(
+        f"{_FACT_BUFFER_ENV} must be auto, required, or 0/off; got {value!r}"
+    )
+
+
+def _fact_buffer_profile_digest(language: str) -> str:
+    payload = f"codenib-core-fact-buffer-v1:{language}".encode("utf-8")
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
 class SCIPDecoderCore:
     """Decoder facade that runs the C++ core/ pipeline and returns a CodeGraph.
 
@@ -157,45 +187,129 @@ class SCIPDecoderCore:
                 f"Unknown language {language!r}. " f"Supported: {SUPPORTED_LANGUAGES}."
             )
         _ensure_available()
-        self.timings: Dict[str, float] = {}
+        self.timings: Dict[str, float | int] = {}
         self.code_graph: Optional[CodeGraph] = None
+        self.fact_buffer_view: FactBatchBufferView | None = None
+        self.transport_backend = "uninitialized"
+        self.transport_fallback_error: str | None = None
 
-    def decode(self) -> CodeGraph:
-        t_total = time.perf_counter()
+    def _decode_fact_buffer(self) -> tuple[CodeGraph, dict[str, float | int]]:
+        if not hasattr(_cpp, "decode_scip_fact_buffer") or not hasattr(
+            _cpp, "fact_batch_buffer_contract"
+        ):
+            raise RuntimeError("compiled core does not expose FactBatchBuffer v1")
+        validate_compiled_contract(_cpp.fact_batch_buffer_contract())
+        started = time.perf_counter()
+        payload = _cpp.decode_scip_fact_buffer(
+            index_file=self.index_file_path,
+            profile_digest=_fact_buffer_profile_digest(self.language),
+            project_root=self.project_root,
+            language=self.language,
+            copy_buffers=False,
+        )
+        binding_seconds = time.perf_counter() - started
+        view = FactBatchBufferView(payload)
+        started = time.perf_counter()
+        graph = view.materialize_code_graph(project_root=self.project_root)
+        # Preserve the established facade contract: an omitted project root is
+        # represented as None even when the native envelope stores an empty
+        # effective root string.
+        graph.project_root = self.project_root
+        materialize_seconds = time.perf_counter() - started
+        native_decode = (view.meta.native_decode_ns or 0) / 1_000_000_000
+        native_encode = (view.meta.native_encode_ns or 0) / 1_000_000_000
+        self.fact_buffer_view = view
+        timings: dict[str, float | int] = {
+            "core_decode": binding_seconds,
+            "native_decode": native_decode,
+            "native_fact_buffer_encode": native_encode,
+            "boundary_transport_residual": max(
+                0.0, binding_seconds - native_decode - native_encode
+            ),
+            "build_code_graph": materialize_seconds,
+            "node_count": view.meta.graph_vertex_count,
+            "edge_count": view.meta.graph_edge_count,
+            "fact_batch_count": view.meta.batch_count,
+            "fact_symbol_count": view.meta.symbol_count,
+            "fact_edge_count": view.meta.edge_count,
+        }
+        for name, nanoseconds in (view.meta.decode_profile_ns or {}).items():
+            if name in {"worker_count", "document_count"}:
+                timings[f"native_{name}"] = nanoseconds
+            else:
+                timings[f"native_{name}"] = nanoseconds / 1_000_000_000
+        return graph, timings
 
-        t0 = time.perf_counter()
-        # This binding intentionally returns the low-level flat transport.
-        # Build and enrich through this facade before exposing a CodeGraph.
+    def _decode_legacy(self) -> tuple[CodeGraph, dict[str, float | int]]:
+        started = time.perf_counter()
         result = _cpp.decode_scip(
             index_file=self.index_file_path,
             project_root=self.project_root,
             language=self.language,
         )
-        t_core = time.perf_counter() - t0
-
-        t0 = time.perf_counter()
+        binding_seconds = time.perf_counter() - started
+        started = time.perf_counter()
         graph = _build_code_graph(
             result["vertices"],
             result["edges"],
             project_root=self.project_root,
         )
-        if self.language in {"ts", "typescript", "js", "javascript"}:
-            from .typescript_semantics import enrich_typescript_import_edges
-
-            decoded_content = Path(self.index_file_path).read_text(encoding="utf-8")
-            enrich_typescript_import_edges(
-                graph, decoded_content, project_root=self.project_root
-            )
-        t_build = time.perf_counter() - t0
-
-        self.code_graph = graph
-        self.timings = {
-            "core_decode": t_core,
-            "build_code_graph": t_build,
+        materialize_seconds = time.perf_counter() - started
+        return graph, {
+            "core_decode": binding_seconds,
+            "build_code_graph": materialize_seconds,
             "node_count": len(result["vertices"]),
             "edge_count": len(result["edges"]),
-            "total": time.perf_counter() - t_total,
         }
+
+    def _enrich_graph(self, graph: CodeGraph) -> None:
+        if self.language not in {"ts", "typescript", "js", "javascript"}:
+            return
+        from .typescript_semantics import enrich_typescript_import_edges
+
+        decoded_content = Path(self.index_file_path).read_text(encoding="utf-8")
+        enrich_typescript_import_edges(
+            graph, decoded_content, project_root=self.project_root
+        )
+
+    def decode(self) -> CodeGraph:
+        t_total = time.perf_counter()
+        self.fact_buffer_view = None
+        self.transport_backend = "uninitialized"
+        self.transport_fallback_error = None
+        mode = _fact_buffer_mode()
+        if mode == "off":
+            graph, timings = self._decode_legacy()
+            self.transport_backend = "legacy-disabled"
+        else:
+            try:
+                graph, timings = self._decode_fact_buffer()
+                self.transport_backend = "fact-buffer-v1"
+            except MemoryError:
+                raise
+            except Exception as exc:
+                if mode == "required":
+                    raise
+                self.transport_fallback_error = f"{type(exc).__name__}: {exc}"
+                logger.warning(
+                    "FactBatchBuffer transport unavailable; falling back to the "
+                    f"legacy core transport: {self.transport_fallback_error}"
+                )
+                graph, timings = self._decode_legacy()
+                self.transport_backend = "legacy-fallback"
+
+        enrichment_started = time.perf_counter()
+        self._enrich_graph(graph)
+        enrichment_seconds = time.perf_counter() - enrichment_started
+        timings["source_enrichment"] = enrichment_seconds
+        # build_code_graph historically included TypeScript source enrichment.
+        # Keep that aggregate timing stable while exposing the new substage.
+        timings["build_code_graph"] += enrichment_seconds
+
+        self.code_graph = graph
+        timings["fact_buffer_enabled"] = int(self.transport_backend == "fact-buffer-v1")
+        timings["total"] = time.perf_counter() - t_total
+        self.timings = timings
         return graph
 
     def save_graph(self, output_path: str) -> None:

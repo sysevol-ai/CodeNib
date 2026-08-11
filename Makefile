@@ -82,6 +82,11 @@ LARGE_SCIP_PROFILE_CACHE_ROOT ?= $(CODENIB_TEMP_DIR)/large-scip-repos
 LARGE_SCIP_PROFILE_OUTPUT_DIR ?= $(CODENIB_TEMP_DIR)/large-scip-profile
 LARGE_SCIP_PROFILE_TIMEOUT ?= 1800
 LARGE_SCIP_PROFILE_EXTRA_ARGS ?=
+FACT_BUFFER_PROFILE_INDEX ?=
+FACT_BUFFER_PROFILE_LANGUAGE ?=
+FACT_BUFFER_PROFILE_PROJECT_ROOT ?=
+FACT_BUFFER_PROFILE_OUTPUT ?=
+FACT_BUFFER_PROFILE_EXTRA_ARGS ?=
 PROJECT_LANGUAGE ?=
 PROJECT_ROOT ?=
 hash := \#
@@ -184,7 +189,7 @@ endef
 .PHONY: active-scip-tools active-lsp-tools active-scip-env active-system-deps-ubuntu
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
-.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test
+.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
 .PHONY: scip-jvm-compat-system-deps-ubuntu
@@ -412,7 +417,18 @@ core-test: core-build
 		test/scip/test_scip_core_registry.py \
 		test/scip/test_fact_batch_buffer.py \
 		test/facts/test_model.py \
-		test/facts/test_adapters.py
+		test/facts/test_adapters.py \
+		test/scripts/test_profile_fact_batch_buffer.py
+
+fact-buffer-profile: core-build
+	@test -n "$(FACT_BUFFER_PROFILE_INDEX)" || { echo "Set FACT_BUFFER_PROFILE_INDEX=/path/to/index.decoded" >&2; exit 1; }
+	@test -n "$(FACT_BUFFER_PROFILE_LANGUAGE)" || { echo "Set FACT_BUFFER_PROFILE_LANGUAGE=<language>" >&2; exit 1; }
+	PYTHONPATH="build/core:$$PYTHONPATH" python scripts/profiling/profile_fact_batch_buffer.py \
+		--index "$(FACT_BUFFER_PROFILE_INDEX)" \
+		--language "$(FACT_BUFFER_PROFILE_LANGUAGE)" \
+		$(if $(FACT_BUFFER_PROFILE_PROJECT_ROOT),--project-root "$(FACT_BUFFER_PROFILE_PROJECT_ROOT)",) \
+		$(if $(FACT_BUFFER_PROFILE_OUTPUT),--output-json "$(FACT_BUFFER_PROFILE_OUTPUT)",) \
+		$(FACT_BUFFER_PROFILE_EXTRA_ARGS)
 
 scip-cold-start-tools: scip-java-tool gradle-tool sbt-tool scip-dotnet-tool scip-ruby-tool scip-php-info
 	@$(MAKE) --no-print-directory scip-cold-start-env
