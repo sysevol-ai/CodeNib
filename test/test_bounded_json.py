@@ -15,7 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from codenib._bounded_json import canonical_json_array_chunks, iter_bounded_json_array
+from codenib._bounded_json import (
+    canonical_json_array_chunks,
+    iter_bounded_json_array,
+    validate_bounded_json_stream,
+)
 
 
 class _ChunkReader:
@@ -28,6 +32,98 @@ class _ChunkReader:
         block = self.payload[self.offset : self.offset + self.chunk_size]
         self.offset += len(block)
         return block
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b'{"object":0}', b"[0,1]", b'"scalar"', b"7", b"true", b"null"],
+)
+def test_bounded_json_stream_accepts_arbitrary_top_level_values(
+    payload: bytes,
+) -> None:
+    validate_bounded_json_stream(io.BytesIO(payload), label="publication JSON")
+
+
+@pytest.mark.parametrize("block", [bytearray(b"{}"), "{}", None])
+def test_bounded_json_stream_rejects_non_bytes_reader_blocks(block: object) -> None:
+    class InvalidReader:
+        def read(self, _size: int = -1) -> object:
+            return block
+
+    with pytest.raises(ValueError, match="invalid or oversized block"):
+        validate_bounded_json_stream(InvalidReader(), label="publication JSON")
+
+
+def test_bounded_json_stream_rejects_oversized_reader_blocks() -> None:
+    class OversizedReader:
+        def read(self, size: int = -1) -> bytes:
+            assert size > 0
+            return b" " * (size + 1)
+
+    with pytest.raises(ValueError, match="invalid or oversized block"):
+        validate_bounded_json_stream(OversizedReader(), label="publication JSON")
+
+
+def test_bounded_json_stream_enforces_total_byte_limit() -> None:
+    with pytest.raises(ValueError, match="4-byte limit"):
+        validate_bounded_json_stream(
+            io.BytesIO(b'"1234"'),
+            label="publication JSON",
+            max_bytes=4,
+        )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b'{"value":[', "truncated JSON"),
+        (b'{"value":[]]', "object value without a delimiter"),
+        (b"{} {}", "trailing data"),
+    ],
+)
+def test_bounded_json_stream_rejects_invalid_framing(
+    payload: bytes,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        validate_bounded_json_stream(io.BytesIO(payload), label="publication JSON")
+
+
+def test_bounded_json_stream_handles_strings_escapes_and_keys_across_blocks() -> None:
+    block_bytes = 1024 * 1024
+    long_string = b'"' + (b"s" * (block_bytes + 17)) + b'"'
+    escaped_string = b'"' + (b"e" * (block_bytes - 2)) + b"\\" + b'n-tail"'
+    long_key = b'{"' + (b"k" * (block_bytes + 17)) + b'":0}'
+    payloads = [
+        (long_string, {"max_key_bytes": 16}),
+        (escaped_string, {"max_key_bytes": 16}),
+        (long_key, {"max_key_bytes": block_bytes + 17}),
+    ]
+
+    for payload, limits in payloads:
+        validate_bounded_json_stream(
+            io.BytesIO(payload),
+            label="publication JSON",
+            max_bytes=len(payload),
+            max_string_bytes=len(payload),
+            **limits,
+        )
+
+    with pytest.raises(ValueError, match="string exceeds"):
+        validate_bounded_json_stream(
+            io.BytesIO(long_string),
+            label="publication JSON",
+            max_bytes=len(long_string),
+            max_string_bytes=block_bytes + 16,
+        )
+    with pytest.raises(ValueError, match="key exceeding"):
+        validate_bounded_json_stream(
+            io.BytesIO(long_key),
+            label="publication JSON",
+            max_bytes=len(long_key),
+            max_string_bytes=len(long_key),
+            max_key_bytes=block_bytes + 16,
+        )
 
 
 def test_bounded_array_handles_every_chunk_boundary() -> None:
