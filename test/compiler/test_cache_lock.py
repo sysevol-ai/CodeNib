@@ -362,6 +362,19 @@ class _AbortLockBody(BaseException):
     pass
 
 
+def _assert_secondary_cleanup_diagnostic(
+    primary: BaseException,
+    cleanup: BaseException,
+) -> None:
+    notes = tuple(getattr(primary, "__notes__", ())) + tuple(
+        getattr(primary, "_codenib_cleanup_notes", ())
+    )
+    diagnostic = "\n".join(notes)
+    assert "compiler cache lock" in diagnostic
+    assert "cleanup also failed" in diagnostic
+    assert repr(cleanup) in diagnostic
+
+
 def test_base_exception_releases_lock_for_reacquisition(tmp_path: Path) -> None:
     cache = tmp_path / "cache"
 
@@ -369,6 +382,131 @@ def test_base_exception_releases_lock_for_reacquisition(tmp_path: Path) -> None:
         with compiler_cache_lock(cache):
             raise _AbortLockBody
 
+    with compiler_cache_lock(cache):
+        pass
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/proc/self/fd").is_dir(),
+    reason="requires POSIX procfs descriptor accounting",
+)
+@pytest.mark.parametrize("failure_stage", ["entry", "body"])
+@pytest.mark.parametrize("close_phase", ["before", "after"])
+@pytest.mark.parametrize(
+    "primary_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_posix_lock_cleanup_never_masks_first_base_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+    close_phase: str,
+    primary_type: type[BaseException],
+) -> None:
+    cache = tmp_path / "cache"
+    primary = primary_type(f"{failure_stage} primary")
+    cleanup = SystemExit(f"close {close_phase} cleanup")
+    real_validate = lock_module._validate_posix_lock_entry
+    real_close = lock_module.os.close
+    lock_descriptor: int | None = None
+    interrupted = False
+    before = len(list(Path("/proc/self/fd").iterdir()))
+
+    def validate(descriptor, *args, **kwargs):
+        nonlocal lock_descriptor
+        lock_descriptor = descriptor
+        if failure_stage == "entry":
+            raise primary
+        return real_validate(descriptor, *args, **kwargs)
+
+    def interrupt_lock_close(descriptor: int) -> None:
+        nonlocal interrupted
+        if descriptor == lock_descriptor and not interrupted:
+            interrupted = True
+            if close_phase == "after":
+                real_close(descriptor)
+            raise cleanup
+        real_close(descriptor)
+
+    monkeypatch.setattr(lock_module, "_validate_posix_lock_entry", validate)
+    monkeypatch.setattr(lock_module.os, "close", interrupt_lock_close)
+
+    with pytest.raises(primary_type) as caught:
+        with compiler_cache_lock(cache):
+            if failure_stage == "body":
+                raise primary
+            raise AssertionError("entry failure must prevent the lock body")
+
+    assert caught.value is primary
+    assert interrupted is True
+    _assert_secondary_cleanup_diagnostic(primary, cleanup)
+    assert len(list(Path("/proc/self/fd").iterdir())) == before
+    assert lock_module._ACTIVE_POSIX_LOCK_DESCRIPTORS == set()
+
+    monkeypatch.setattr(lock_module.os, "close", real_close)
+    monkeypatch.setattr(
+        lock_module,
+        "_validate_posix_lock_entry",
+        real_validate,
+    )
+    with compiler_cache_lock(cache):
+        pass
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/proc/self/fd").is_dir(),
+    reason="requires POSIX procfs descriptor accounting",
+)
+@pytest.mark.parametrize("close_phase", ["before", "after"])
+def test_posix_lock_cleanup_is_primary_without_a_body_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    close_phase: str,
+) -> None:
+    cache = tmp_path / "cache"
+    cleanup = SystemExit(f"close {close_phase} cleanup")
+    real_validate = lock_module._validate_posix_lock_entry
+    real_close = lock_module.os.close
+    lock_descriptor: int | None = None
+    interrupted = False
+    before = len(list(Path("/proc/self/fd").iterdir()))
+
+    def capture_descriptor(descriptor, *args, **kwargs):
+        nonlocal lock_descriptor
+        lock_descriptor = descriptor
+        return real_validate(descriptor, *args, **kwargs)
+
+    def interrupt_lock_close(descriptor: int) -> None:
+        nonlocal interrupted
+        if descriptor == lock_descriptor and not interrupted:
+            interrupted = True
+            if close_phase == "after":
+                real_close(descriptor)
+            raise cleanup
+        real_close(descriptor)
+
+    monkeypatch.setattr(
+        lock_module,
+        "_validate_posix_lock_entry",
+        capture_descriptor,
+    )
+    monkeypatch.setattr(lock_module.os, "close", interrupt_lock_close)
+
+    with pytest.raises(SystemExit) as caught:
+        with compiler_cache_lock(cache):
+            pass
+
+    assert caught.value is cleanup
+    assert interrupted is True
+    assert len(list(Path("/proc/self/fd").iterdir())) == before
+    assert lock_module._ACTIVE_POSIX_LOCK_DESCRIPTORS == set()
+
+    monkeypatch.setattr(lock_module.os, "close", real_close)
+    monkeypatch.setattr(
+        lock_module,
+        "_validate_posix_lock_entry",
+        real_validate,
+    )
     with compiler_cache_lock(cache):
         pass
 
@@ -1415,6 +1553,143 @@ def test_windows_lock_retries_contention_and_unlocks(
         lock_module._WINDOWS_LOCK_RETRY_SECONDS,
     ]
     assert lock_path.read_bytes() == b""
+
+
+@pytest.mark.skipif(
+    not Path("/proc/self/fd").is_dir(),
+    reason="requires procfs descriptor accounting",
+)
+@pytest.mark.parametrize("failure_stage", ["entry", "body"])
+@pytest.mark.parametrize("close_phase", ["before", "after"])
+@pytest.mark.parametrize(
+    "primary_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_windows_lock_cleanup_never_masks_first_base_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+    close_phase: str,
+    primary_type: type[BaseException],
+) -> None:
+    cache = tmp_path / "cache"
+    primary = primary_type(f"{failure_stage} primary")
+    cleanup = SystemExit(f"close {close_phase} cleanup")
+    real_validate = lock_module._validate_windows_lock_entry
+    real_close = lock_module.os.close
+    lock_descriptor: int | None = None
+    interrupted = False
+    before = len(list(Path("/proc/self/fd").iterdir()))
+
+    def validate(descriptor, *args, **kwargs):
+        nonlocal lock_descriptor
+        lock_descriptor = descriptor
+        if failure_stage == "entry":
+            raise primary
+        return real_validate(descriptor, *args, **kwargs)
+
+    def acquire(descriptor: int) -> None:
+        nonlocal lock_descriptor
+        lock_descriptor = descriptor
+
+    def interrupt_lock_close(descriptor: int) -> None:
+        nonlocal interrupted
+        if descriptor == lock_descriptor and not interrupted:
+            interrupted = True
+            if close_phase == "after":
+                real_close(descriptor)
+            raise cleanup
+        real_close(descriptor)
+
+    monkeypatch.setattr(lock_module, "msvcrt", object())
+    monkeypatch.setattr(lock_module, "_validate_windows_lock_entry", validate)
+    monkeypatch.setattr(lock_module, "_acquire_windows_lock", acquire)
+    monkeypatch.setattr(lock_module, "_release_windows_lock", lambda _fd: None)
+    monkeypatch.setattr(lock_module.os, "close", interrupt_lock_close)
+
+    with pytest.raises(primary_type) as caught:
+        with lock_module._windows_compiler_cache_lock(cache):
+            if failure_stage == "body":
+                raise primary
+            raise AssertionError("entry failure must prevent the lock body")
+
+    assert caught.value is primary
+    assert interrupted is True
+    _assert_secondary_cleanup_diagnostic(primary, cleanup)
+    assert len(list(Path("/proc/self/fd").iterdir())) == before
+
+    monkeypatch.setattr(lock_module.os, "close", real_close)
+    monkeypatch.setattr(
+        lock_module,
+        "_validate_windows_lock_entry",
+        real_validate,
+    )
+    with lock_module._windows_compiler_cache_lock(cache):
+        pass
+
+
+@pytest.mark.skipif(
+    not Path("/proc/self/fd").is_dir(),
+    reason="requires procfs descriptor accounting",
+)
+@pytest.mark.parametrize("close_phase", ["before", "after"])
+def test_windows_lock_cleanup_is_primary_without_a_body_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    close_phase: str,
+) -> None:
+    cache = tmp_path / "cache"
+    cleanup = SystemExit(f"close {close_phase} cleanup")
+    real_validate = lock_module._validate_windows_lock_entry
+    real_close = lock_module.os.close
+    lock_descriptor: int | None = None
+    interrupted = False
+    before = len(list(Path("/proc/self/fd").iterdir()))
+
+    def capture_descriptor(descriptor, *args, **kwargs):
+        nonlocal lock_descriptor
+        lock_descriptor = descriptor
+        return real_validate(descriptor, *args, **kwargs)
+
+    def acquire(descriptor: int) -> None:
+        nonlocal lock_descriptor
+        lock_descriptor = descriptor
+
+    def interrupt_lock_close(descriptor: int) -> None:
+        nonlocal interrupted
+        if descriptor == lock_descriptor and not interrupted:
+            interrupted = True
+            if close_phase == "after":
+                real_close(descriptor)
+            raise cleanup
+        real_close(descriptor)
+
+    monkeypatch.setattr(lock_module, "msvcrt", object())
+    monkeypatch.setattr(
+        lock_module,
+        "_validate_windows_lock_entry",
+        capture_descriptor,
+    )
+    monkeypatch.setattr(lock_module, "_acquire_windows_lock", acquire)
+    monkeypatch.setattr(lock_module, "_release_windows_lock", lambda _fd: None)
+    monkeypatch.setattr(lock_module.os, "close", interrupt_lock_close)
+
+    with pytest.raises(SystemExit) as caught:
+        with lock_module._windows_compiler_cache_lock(cache):
+            pass
+
+    assert caught.value is cleanup
+    assert interrupted is True
+    assert len(list(Path("/proc/self/fd").iterdir())) == before
+
+    monkeypatch.setattr(lock_module.os, "close", real_close)
+    monkeypatch.setattr(
+        lock_module,
+        "_validate_windows_lock_entry",
+        real_validate,
+    )
+    with lock_module._windows_compiler_cache_lock(cache):
+        pass
 
 
 @pytest.mark.skipif(
