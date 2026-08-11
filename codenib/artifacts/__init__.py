@@ -31,6 +31,12 @@ from .runtime import (
     query_context_artifact,
     verify_context_artifact,
 )
+from .strict_bm25 import (
+    PlannedBm25View,
+    normalize_owned_query_view_strict,
+    plan_bm25_view_strict,
+    publish_planned_bm25_view_strict,
+)
 
 __all__ = [
     "CONTEXT_ARTIFACT_MANIFEST",
@@ -41,12 +47,16 @@ __all__ = [
     "GitHubArtifactFetchResult",
     "GitHubArtifactRecord",
     "MCP_CONFIG_HOSTS",
+    "PlannedBm25View",
     "SourceTrust",
     "VerifiedContextArtifact",
     "bind_context_artifact",
     "extract_context_artifact_archive",
     "fetch_github_context_artifact",
     "normalize_owned_query_view",
+    "normalize_owned_query_view_strict",
+    "plan_bm25_view_strict",
+    "publish_planned_bm25_view_strict",
     "query_context_artifact",
     "validate_portable_query_view",
     "resolve_github_context_artifact",
