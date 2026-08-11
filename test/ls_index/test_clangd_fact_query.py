@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import struct
 import zlib
@@ -57,6 +58,7 @@ from scripts.profiling.profile_clangd_fact_query_index import (  # noqa: E402
     profile_clangd_fact_query_index,
 )
 from scripts.profiling.profile_clangd_workload_gate import (  # noqa: E402
+    _query_ready_gate,
     profile_clangd_workload_gate,
 )
 
@@ -1499,6 +1501,42 @@ def test_server_context_selects_native_and_portable_graph_fallback(
     assert context.lsp_provider.graph is graph
 
 
+@pytest.mark.parametrize(
+    ("native", "parity", "graph_free", "expected"),
+    [
+        (0.8, True, None, True),
+        (0.8, True, True, True),
+        (math.nextafter(0.8, math.inf), True, True, False),
+        (0.5, False, True, False),
+        (0.5, True, False, False),
+    ],
+)
+def test_query_ready_gate_has_exact_threshold_and_structural_requirements(
+    native: float,
+    parity: bool,
+    graph_free: bool | None,
+    expected: bool,
+) -> None:
+    gate = _query_ready_gate(
+        legacy=1.0,
+        native=native,
+        threshold=0.2,
+        parity=parity,
+        graph_free=graph_free,
+    )
+
+    assert gate["threshold"] == 0.2
+    assert gate["improvement_fraction"] == pytest.approx(1.0 - native)
+    assert ("graph_free" in gate) is (graph_free is not None)
+    if graph_free is not None:
+        assert gate["graph_free"] is graph_free
+    assert gate["passed"] is expected
+    if expected:
+        # The quotient is fractionally below 0.2 in binary floating point;
+        # the multiplicative cutoff must still accept the exact boundary.
+        assert gate["improvement_fraction"] < gate["threshold"]
+
+
 def test_process_isolated_workload_gate_reports_rss_parity_and_concurrency(
     clangd_fixture,
 ) -> None:
@@ -1572,15 +1610,30 @@ def test_process_isolated_workload_gate_reports_rss_parity_and_concurrency(
     assert report["configuration"]["alternating_arm_order"] is True
     assert 1 <= report["configuration"]["position_query_workload_size"] <= 2
     assert report["configuration"]["position_encoding"] == "UTF16"
+    assert report["gates"]["parity"]["passed"] is True
+    assert report["gates"]["lazy_graph_materialization"]["passed"] is True
+    assert report["gates"]["concurrent_graph_free_route"]["passed"] is True
+    assert report["gates"]["version_matrix"]["passed"] is True
     assert report["gates"]["position_first"]["graph_free"] is True
-    assert report["gates"]["position_first"]["passed"] is True
     assert report["gates"]["route_first"]["graph_free"] is True
-    assert report["gates"]["route_first"]["passed"] is True
+    for workload in ("symbol_only", "position_first", "route_first"):
+        gate = report["gates"][workload]
+        legacy_wall = report["workloads"][workload]["legacy"]["wall_seconds"]["median"]
+        native_wall = report["workloads"][workload]["native"]["wall_seconds"]["median"]
+        assert gate["threshold"] == 0.0
+        assert math.isfinite(legacy_wall) and legacy_wall > 0
+        assert math.isfinite(native_wall) and native_wall > 0
+        assert math.isfinite(gate["improvement_fraction"])
+        assert gate["improvement_fraction"] == pytest.approx(
+            (legacy_wall - native_wall) / legacy_wall
+        )
+        assert isinstance(gate["passed"], bool)
+        assert report["workloads"][workload]["native"]["observed_fallbacks"] == []
     assert report["repository_preparation"]["included_in_query_ready_gate"] is False
     assert report["content_receipt"]["before"] == report["content_receipt"]["after"]
     assert report["version_matrix"]["generated_fixture_versions"] == [18, 19, 20]
     assert report["subject_manifest"]["subject_count"] == 3
-    assert report["gates"]["passed"] is True
+    assert isinstance(report["gates"]["passed"], bool)
 
 
 def test_profiler_records_parity_samples_order_and_contract(

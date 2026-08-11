@@ -858,6 +858,29 @@ def _improvement(legacy: float, native: float) -> float:
     return (legacy - native) / legacy
 
 
+def _query_ready_gate(
+    *,
+    legacy: float,
+    native: float,
+    threshold: float,
+    parity: bool,
+    graph_free: bool | None = None,
+) -> dict[str, Any]:
+    """Apply a query-ready gate without a floating-point boundary miss."""
+
+    improvement = _improvement(legacy, native)
+    passed = parity and native <= legacy * (1.0 - threshold)
+    gate: dict[str, Any] = {
+        "threshold": threshold,
+        "improvement_fraction": improvement,
+    }
+    if graph_free is not None:
+        gate["graph_free"] = graph_free
+        passed = passed and graph_free
+    gate["passed"] = passed
+    return gate
+
+
 def _regression(legacy: float, native: float) -> float:
     return -_improvement(legacy, native)
 
@@ -1075,31 +1098,27 @@ def profile_clangd_workload_gate(
         legacy_wall = float(legacy_summary["wall_seconds"]["median"])
         native_wall = float(native_summary["wall_seconds"]["median"])
         if workload == "symbol_only":
-            improvement = _improvement(legacy_wall, native_wall)
-            symbol_gate = {
-                "threshold": symbol_threshold,
-                "improvement_fraction": improvement,
-                "passed": parity and improvement >= symbol_threshold,
-            }
+            symbol_gate = _query_ready_gate(
+                legacy=legacy_wall,
+                native=native_wall,
+                threshold=symbol_threshold,
+                parity=parity,
+            )
         elif workload == "position_first":
-            improvement = _improvement(legacy_wall, native_wall)
-            position_gate = {
-                "threshold": position_threshold,
-                "improvement_fraction": improvement,
-                "graph_free": all(
-                    run.get("graph_materialization_count") == 0
-                    and run.get("graph_materialized") is False
-                    and run.get("observed_backends") == ["native-clangd-fact-query-v1"]
-                    for run in native_runs
-                ),
-            }
-            position_gate["passed"] = (
-                parity
-                and position_gate["graph_free"]
-                and improvement >= position_threshold
+            graph_free = all(
+                run.get("graph_materialization_count") == 0
+                and run.get("graph_materialized") is False
+                and run.get("observed_backends") == ["native-clangd-fact-query-v1"]
+                for run in native_runs
+            )
+            position_gate = _query_ready_gate(
+                legacy=legacy_wall,
+                native=native_wall,
+                threshold=position_threshold,
+                parity=parity,
+                graph_free=graph_free,
             )
         elif workload == "route_first":
-            improvement = _improvement(legacy_wall, native_wall)
             graph_free = all(
                 run.get("graph_materialization_count") == 0
                 and run.get("graph_materialized") is False
@@ -1111,12 +1130,13 @@ def profile_clangd_workload_gate(
                 and not run.get("observed_fallbacks")
                 for run in native_runs
             )
-            route_gate = {
-                "threshold": route_threshold,
-                "improvement_fraction": improvement,
-                "graph_free": graph_free,
-                "passed": parity and graph_free and improvement >= route_threshold,
-            }
+            route_gate = _query_ready_gate(
+                legacy=legacy_wall,
+                native=native_wall,
+                threshold=route_threshold,
+                parity=parity,
+                graph_free=graph_free,
+            )
         else:
             regression = _regression(legacy_wall, native_wall)
             graph_gates[workload] = {

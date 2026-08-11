@@ -863,6 +863,14 @@ parity, and exactly-once concurrent materialization. Filesystem page cache is
 explicitly uncontrolled and clangd generation is separately labeled and
 excluded from query-ready decisions.
 
+The threshold decision is evaluated as `native <= legacy * (1 - threshold)`
+rather than by comparing a derived improvement quotient. This preserves the
+same default budgets while accepting an exact floating-point boundary. The
+maintained one-round process-isolation smoke verifies parity, backend/fallback
+selection, graph-free routing, concurrency, versions, receipts, and finite
+timing telemetry without making a promotion claim. Promotion decisions remain
+multi-round runs ([#594](https://github.com/sysevol-ai/CodeNib/issues/594)).
+
 The subject manifest pins fmt 11.2.0, GoogleTest 1.17.0, and protobuf 31.1 at
 full commits, covering template-, macro-, header-heavy, and multi-target C++.
 Selecting a subject requires that exact clean revision. The same Make target
