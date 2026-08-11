@@ -253,6 +253,9 @@ py::dict clangd_decode_profile_to_dict(
   result["reference_count"] = profile.reference_count;
   result["decoded_record_count"] = profile.decoded_record_count;
   result["index_bytes"] = profile.index_bytes;
+  result["decompressed_string_bytes"] = profile.decompressed_string_bytes;
+  result["materialized_string_bytes"] = profile.materialized_string_bytes;
+  result["string_entry_count"] = profile.string_entry_count;
   return result;
 }
 
@@ -408,9 +411,32 @@ py::dict decode_clangd_fact_query_index(const std::string &idx_directory,
 }
 
 py::dict clangd_fact_query_contract() {
+  const codenib::core::ClangdFactDecodeLimits limits;
+  py::dict resource_limits;
+  resource_limits["max_index_files"] = limits.max_index_files;
+  resource_limits["max_chunks_per_file"] = limits.max_chunks_per_file;
+  resource_limits["max_index_file_bytes"] = limits.max_index_file_bytes;
+  resource_limits["max_aggregate_index_bytes"] =
+      limits.max_aggregate_index_bytes;
+  resource_limits["max_string_table_bytes"] = limits.max_string_table_bytes;
+  resource_limits["max_aggregate_string_table_bytes"] =
+      limits.max_aggregate_string_table_bytes;
+  resource_limits["max_string_entries_per_file"] =
+      limits.max_string_entries_per_file;
+  resource_limits["max_aggregate_string_entries"] =
+      limits.max_aggregate_string_entries;
+  resource_limits["max_materialized_string_bytes_per_file"] =
+      limits.max_materialized_string_bytes_per_file;
+  resource_limits["max_aggregate_materialized_string_bytes"] =
+      limits.max_aggregate_materialized_string_bytes;
+  resource_limits["max_records_per_file"] = limits.max_records_per_file;
+  resource_limits["max_aggregate_records"] = limits.max_aggregate_records;
+
   py::dict result;
   result["abi_version"] = codenib::core::CLANGD_FACT_QUERY_ABI_VERSION;
   result["format"] = codenib::core::CLANGD_FACT_QUERY_FORMAT;
+  result["supported_versions"] = codenib::core::CLANGD_SUPPORTED_RIFF_VERSIONS;
+  result["resource_limits"] = std::move(resource_limits);
   result["stable_filename_order"] = true;
   result["preserves_unanchored_relations"] = true;
   result["capabilities"] = fact_query_capabilities();

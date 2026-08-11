@@ -16,9 +16,11 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <new>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -47,6 +49,97 @@ constexpr std::uint8_t KIND_DESTRUCTOR = 23;
 constexpr std::uint8_t RELATION_BASE_OF = 0;
 constexpr std::uint8_t RELATION_OVERRIDDEN_BY = 1;
 
+bool is_supported_version(std::uint32_t version) {
+  return std::find(CLANGD_SUPPORTED_RIFF_VERSIONS.begin(),
+                   CLANGD_SUPPORTED_RIFF_VERSIONS.end(),
+                   version) != CLANGD_SUPPORTED_RIFF_VERSIONS.end();
+}
+
+bool is_known_chunk(std::string_view id) {
+  return id == "meta" || id == "srcs" || id == "stri" || id == "symb" ||
+         id == "refs" || id == "rela" || id == "cmdl";
+}
+
+template <typename Value>
+void consume_budget(Value amount, Value &used, Value limit,
+                    std::string_view label) {
+  if (used > limit || amount > limit - used) {
+    throw std::runtime_error("clangd " + std::string(label) +
+                             " exceeds safety limit " + std::to_string(limit));
+  }
+  used += amount;
+}
+
+struct DecodeBudget {
+  explicit DecodeBudget(const ClangdFactDecodeLimits &limits)
+      : limits(limits) {}
+
+  const ClangdFactDecodeLimits &limits;
+  std::uint64_t string_table_bytes{0};
+  std::uint64_t materialized_string_bytes{0};
+  std::size_t string_entries{0};
+  std::size_t records{0};
+};
+
+struct FileBudget {
+  explicit FileBudget(DecodeBudget &aggregate) : aggregate(aggregate) {}
+
+  void consume_string_bytes(std::uint64_t amount) {
+    if (amount > aggregate.limits.max_string_table_bytes) {
+      throw std::runtime_error(
+          "clangd string table exceeds per-file safety limit " +
+          std::to_string(aggregate.limits.max_string_table_bytes));
+    }
+    consume_budget(amount, aggregate.string_table_bytes,
+                   aggregate.limits.max_aggregate_string_table_bytes,
+                   "aggregate decompressed string bytes");
+  }
+
+  void consume_string_entries(std::size_t amount) {
+    if (amount > aggregate.limits.max_string_entries_per_file) {
+      throw std::runtime_error(
+          "clangd string table exceeds per-file entry limit " +
+          std::to_string(aggregate.limits.max_string_entries_per_file));
+    }
+    consume_budget(amount, aggregate.string_entries,
+                   aggregate.limits.max_aggregate_string_entries,
+                   "aggregate string entries");
+  }
+
+  void consume_materialized_string_bytes(std::uint64_t amount) {
+    if (file_materialized_string_bytes >
+            aggregate.limits.max_materialized_string_bytes_per_file ||
+        amount > aggregate.limits.max_materialized_string_bytes_per_file -
+                     file_materialized_string_bytes) {
+      throw std::runtime_error(
+          "clangd copied strings exceed per-file safety limit " +
+          std::to_string(
+              aggregate.limits.max_materialized_string_bytes_per_file));
+    }
+    file_materialized_string_bytes += amount;
+    consume_budget(amount, aggregate.materialized_string_bytes,
+                   aggregate.limits.max_aggregate_materialized_string_bytes,
+                   "aggregate copied string bytes");
+  }
+
+  void consume_records(std::size_t amount, std::string_view kind) {
+    if (file_records > aggregate.limits.max_records_per_file ||
+        amount > aggregate.limits.max_records_per_file - file_records) {
+      throw std::runtime_error(
+          "clangd " + std::string(kind) + " exceeds per-file record limit " +
+          std::to_string(aggregate.limits.max_records_per_file));
+    }
+    file_records += amount;
+    consume_budget(amount, aggregate.records,
+                   aggregate.limits.max_aggregate_records,
+                   "aggregate decoded records");
+  }
+
+  DecodeBudget &aggregate;
+  std::size_t file_records{0};
+  std::uint64_t file_materialized_string_bytes{0};
+};
+
 std::uint64_t elapsed_ns(Clock::time_point start, Clock::time_point end) {
   return static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
@@ -60,52 +153,47 @@ struct ByteView {
 
 class Reader {
 public:
-  explicit Reader(ByteView view)
-      : current_(view.data), end_(view.data + view.size) {}
+  explicit Reader(ByteView view) : view_(view) {}
 
-  bool empty() const { return current_ == end_; }
-  std::size_t remaining() const {
-    return static_cast<std::size_t>(end_ - current_);
-  }
+  bool empty() const { return offset_ >= view_.size; }
+  std::size_t remaining() const { return view_.size - offset_; }
 
   std::uint8_t read_u8() {
-    require(1, "truncated clangd byte");
-    return *current_++;
+    require(1, "uint8");
+    return view_.data[offset_++];
   }
 
   std::uint64_t read_varint() {
-    std::uint64_t result = 0;
-    unsigned shift = 0;
-    for (unsigned count = 0; count < 10; ++count) {
+    std::uint64_t value = 0;
+    unsigned int shift = 0;
+    for (unsigned int count = 0; count < 10; ++count) {
       const auto byte = read_u8();
-      const auto payload = static_cast<std::uint64_t>(byte & 0x7fU);
-      if (shift >= 64 ||
-          payload > (std::numeric_limits<std::uint64_t>::max() >> shift)) {
+      if (shift == 63 && (byte & 0x7eU) != 0)
         throw std::runtime_error("clangd varint overflows uint64");
-      }
-      result |= payload << shift;
+      value |= static_cast<std::uint64_t>(byte & 0x7fU) << shift;
       if ((byte & 0x80U) == 0)
-        return result;
+        return value;
       shift += 7;
     }
     throw std::runtime_error("clangd varint exceeds 10 bytes");
   }
 
   std::string read_symbol_id() {
-    require(8, "truncated clangd SymbolID");
-    std::string result(reinterpret_cast<const char *>(current_), 8);
-    current_ += 8;
+    require(8, "SymbolID");
+    std::string result(reinterpret_cast<const char *>(view_.data + offset_), 8);
+    offset_ += 8;
     return result;
   }
 
 private:
-  void require(std::size_t count, const char *message) const {
-    if (count > remaining())
-      throw std::runtime_error(message);
+  void require(std::size_t count, const char *what) const {
+    if (count > remaining()) {
+      throw std::runtime_error(std::string("truncated clangd ") + what);
+    }
   }
 
-  const std::uint8_t *current_;
-  const std::uint8_t *end_;
+  ByteView view_;
+  std::size_t offset_{0};
 };
 
 std::uint32_t read_u32_le(const std::uint8_t *data) {
@@ -115,61 +203,77 @@ std::uint32_t read_u32_le(const std::uint8_t *data) {
          (static_cast<std::uint32_t>(data[3]) << 24U);
 }
 
-std::vector<std::uint8_t> read_file(const std::filesystem::path &path) {
-  std::ifstream stream(path, std::ios::binary | std::ios::ate);
-  if (!stream)
+std::vector<std::uint8_t> read_file(const std::filesystem::path &path,
+                                    const ClangdFactDecodeLimits &limits) {
+  std::ifstream input(path, std::ios::binary | std::ios::ate);
+  if (!input)
     throw std::runtime_error("cannot open clangd index: " + path.string());
-  const auto end = stream.tellg();
+  const auto end = input.tellg();
   if (end < 0)
     throw std::runtime_error("cannot size clangd index: " + path.string());
   const auto size = static_cast<std::uint64_t>(end);
+  if (size > limits.max_index_file_bytes) {
+    throw std::runtime_error("clangd index exceeds per-file safety limit " +
+                             std::to_string(limits.max_index_file_bytes) +
+                             ": " + path.string());
+  }
   if (size > std::numeric_limits<std::size_t>::max() ||
       size > static_cast<std::uint64_t>(
                  std::numeric_limits<std::streamsize>::max())) {
-    throw std::runtime_error("clangd index is too large for this platform: " +
-                             path.string());
+    throw std::runtime_error("clangd index is too large: " + path.string());
   }
   std::vector<std::uint8_t> data(static_cast<std::size_t>(size));
-  stream.seekg(0, std::ios::beg);
-  if (!data.empty() &&
-      !stream.read(reinterpret_cast<char *>(data.data()),
-                   static_cast<std::streamsize>(data.size()))) {
+  input.seekg(0, std::ios::beg);
+  if (!data.empty() && !input.read(reinterpret_cast<char *>(data.data()),
+                                   static_cast<std::streamsize>(data.size()))) {
     throw std::runtime_error("cannot read clangd index: " + path.string());
   }
   return data;
 }
 
 std::unordered_map<std::string, ByteView>
-read_riff(const std::vector<std::uint8_t> &data) {
-  if (data.size() < 12)
-    throw std::runtime_error("truncated clangd RIFF header");
-  if (!std::equal(data.begin(), data.begin() + 4, "RIFF"))
+read_riff(const std::vector<std::uint8_t> &data,
+          const ClangdFactDecodeLimits &limits) {
+  if (data.size() < 12 ||
+      std::string(reinterpret_cast<const char *>(data.data()), 4) != "RIFF") {
     throw std::runtime_error("not a RIFF file");
-  if (!std::equal(data.begin() + 8, data.begin() + 12, "CdIx"))
+  }
+  const auto total_len = static_cast<std::size_t>(read_u32_le(data.data() + 4));
+  if (total_len < 4)
+    throw std::runtime_error("invalid RIFF length");
+  if (total_len != data.size() - 8)
+    throw std::runtime_error("RIFF length does not match file size");
+  if (std::string(reinterpret_cast<const char *>(data.data() + 8), 4) !=
+      "CdIx") {
     throw std::runtime_error("not a clangd CdIx index");
+  }
 
-  const auto declared =
-      static_cast<std::uint64_t>(read_u32_le(data.data() + 4));
-  const auto end64 = declared + 8ULL;
-  if (declared < 4 || end64 > data.size())
-    throw std::runtime_error("invalid clangd RIFF length");
-  const auto end = static_cast<std::size_t>(end64);
-
+  const std::size_t end = 8 + total_len;
+  std::size_t chunk_count = 0;
   std::unordered_map<std::string, ByteView> chunks;
   std::size_t offset = 12;
   while (offset < end) {
+    if (chunk_count >= limits.max_chunks_per_file) {
+      throw std::runtime_error("clangd RIFF chunk count exceeds safety limit " +
+                               std::to_string(limits.max_chunks_per_file));
+    }
+    ++chunk_count;
     if (end - offset < 8)
       throw std::runtime_error("truncated RIFF chunk header");
     const std::string id(reinterpret_cast<const char *>(data.data() + offset),
                          4);
     const auto length =
-        static_cast<std::uint64_t>(read_u32_le(data.data() + offset + 4));
+        static_cast<std::size_t>(read_u32_le(data.data() + offset + 4));
     offset += 8;
     if (length > end - offset)
       throw std::runtime_error("truncated RIFF chunk payload");
-    chunks[id] =
-        ByteView{data.data() + offset, static_cast<std::size_t>(length)};
-    offset += static_cast<std::size_t>(length);
+    if (is_known_chunk(id)) {
+      const auto inserted =
+          chunks.emplace(id, ByteView{data.data() + offset, length}).second;
+      if (!inserted)
+        throw std::runtime_error("duplicate clangd RIFF chunk: " + id);
+    }
+    offset += length;
     if ((length & 1U) != 0) {
       if (offset >= end)
         throw std::runtime_error("missing RIFF padding byte");
@@ -177,37 +281,54 @@ read_riff(const std::vector<std::uint8_t> &data) {
     }
   }
   if (offset != end)
-    throw std::runtime_error("invalid RIFF chunk alignment");
+    throw std::runtime_error("RIFF chunk alignment exceeds declared length");
   return chunks;
 }
 
-std::vector<std::string> decode_string_table(ByteView view) {
+std::vector<std::string> decode_string_table(ByteView view,
+                                             FileBudget &budget) {
   if (view.size < 4)
     throw std::runtime_error("truncated clangd string table");
-  const auto expected = static_cast<std::uint64_t>(read_u32_le(view.data));
+  const auto expected = static_cast<std::size_t>(read_u32_le(view.data));
   const auto *payload = view.data + 4;
   const auto payload_size = view.size - 4;
+  const auto decoded_size = expected == 0 ? payload_size : expected;
+  budget.consume_string_bytes(static_cast<std::uint64_t>(decoded_size));
 
   std::vector<std::uint8_t> raw;
   if (expected == 0) {
     raw.assign(payload, payload + payload_size);
   } else {
-    if (expected > std::numeric_limits<std::size_t>::max() ||
-        expected > std::numeric_limits<uLongf>::max() ||
-        payload_size > std::numeric_limits<uLong>::max()) {
-      throw std::runtime_error("clangd string table exceeds platform limits");
+    raw.resize(expected);
+    if (payload_size > std::numeric_limits<uInt>::max() ||
+        raw.size() > std::numeric_limits<uInt>::max()) {
+      throw std::runtime_error("clangd zlib input exceeds platform limit");
     }
-    raw.resize(static_cast<std::size_t>(expected));
-    uLongf output_size = static_cast<uLongf>(raw.size());
-    const int status =
-        uncompress(reinterpret_cast<Bytef *>(raw.data()), &output_size,
-                   reinterpret_cast<const Bytef *>(payload),
-                   static_cast<uLong>(payload_size));
-    if (status != Z_OK || output_size != raw.size())
+    z_stream stream{};
+    stream.next_in =
+        const_cast<Bytef *>(reinterpret_cast<const Bytef *>(payload));
+    stream.avail_in = static_cast<uInt>(payload_size);
+    stream.next_out = reinterpret_cast<Bytef *>(raw.data());
+    stream.avail_out = static_cast<uInt>(raw.size());
+    const int init_status = inflateInit(&stream);
+    if (init_status != Z_OK)
+      throw std::runtime_error("cannot initialize clangd string decompressor");
+    const int status = inflate(&stream, Z_FINISH);
+    const bool complete = status == Z_STREAM_END && stream.avail_in == 0 &&
+                          stream.total_out == raw.size();
+    (void)inflateEnd(&stream);
+    if (!complete)
       throw std::runtime_error("cannot decompress clangd string table");
   }
 
+  std::size_t string_count = static_cast<std::size_t>(
+      std::count(raw.begin(), raw.end(), static_cast<std::uint8_t>(0)));
+  if (!raw.empty() && raw.back() != 0)
+    ++string_count;
+  budget.consume_string_entries(string_count);
+
   std::vector<std::string> strings;
+  strings.reserve(string_count);
   std::size_t start = 0;
   for (std::size_t index = 0; index < raw.size(); ++index) {
     if (raw[index] != 0)
@@ -230,6 +351,14 @@ const std::string &string_at(const std::vector<std::string> &strings,
   return strings[static_cast<std::size_t>(index)];
 }
 
+std::string copy_string_at(const std::vector<std::string> &strings,
+                           std::uint64_t index, FileBudget &budget) {
+  const auto &value = string_at(strings, index);
+  budget.consume_materialized_string_bytes(
+      static_cast<std::uint64_t>(value.size()));
+  return value;
+}
+
 int checked_line(std::uint64_t value) {
   if (value > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
     throw std::runtime_error("clangd source line exceeds int range");
@@ -245,9 +374,11 @@ struct Location {
 };
 
 Location decode_location(Reader &reader,
-                         const std::vector<std::string> &strings) {
+                         const std::vector<std::string> &strings,
+                         FileBudget &budget) {
+  const auto file_index = reader.read_varint();
   Location location;
-  location.file = string_at(strings, reader.read_varint());
+  location.file = copy_string_at(strings, file_index, budget);
   location.start_line = checked_line(reader.read_varint());
   location.start_col = checked_line(reader.read_varint());
   location.end_line = checked_line(reader.read_varint());
@@ -288,21 +419,25 @@ struct ParsedFile {
 };
 
 std::vector<SymbolRecord>
-decode_symbols(ByteView view, const std::vector<std::string> &strings) {
+decode_symbols(ByteView view, const std::vector<std::string> &strings,
+               FileBudget &budget) {
   Reader reader(view);
   std::vector<SymbolRecord> symbols;
   while (!reader.empty()) {
+    if (reader.remaining() < 8)
+      throw std::runtime_error("truncated clangd symbol record");
+    budget.consume_records(1, "symbol records");
     SymbolRecord symbol;
     symbol.id = reader.read_symbol_id();
     symbol.kind = reader.read_u8();
     (void)reader.read_u8(); // SymbolLanguage
-    symbol.name = string_at(strings, reader.read_varint());
-    symbol.scope = string_at(strings, reader.read_varint());
+    symbol.name = copy_string_at(strings, reader.read_varint(), budget);
+    symbol.scope = copy_string_at(strings, reader.read_varint(), budget);
     (void)string_at(strings,
                     reader.read_varint()); // TemplateSpecializationArgs
-    symbol.definition = decode_location(reader, strings);
+    symbol.definition = decode_location(reader, strings, budget);
     symbol.canonical_declaration =
-        decode_location(reader, strings);           // CanonicalDeclaration
+        decode_location(reader, strings, budget);   // CanonicalDeclaration
     (void)reader.read_varint();                     // References count
     (void)reader.read_u8();                         // Flags
     (void)string_at(strings, reader.read_varint()); // Signature
@@ -312,6 +447,12 @@ decode_symbols(ByteView view, const std::vector<std::string> &strings) {
     (void)string_at(strings, reader.read_varint()); // ReturnType
     (void)string_at(strings, reader.read_varint()); // Type
     const auto headers = reader.read_varint();
+    if (headers > reader.remaining() / 2)
+      throw std::runtime_error("invalid clangd include-header count");
+    if (headers > std::numeric_limits<std::size_t>::max())
+      throw std::runtime_error("clangd include-header count exceeds size_t");
+    budget.consume_records(static_cast<std::size_t>(headers),
+                           "include-header records");
     for (std::uint64_t index = 0; index < headers; ++index) {
       (void)string_at(strings, reader.read_varint());
       (void)reader.read_varint();
@@ -321,21 +462,29 @@ decode_symbols(ByteView view, const std::vector<std::string> &strings) {
   return symbols;
 }
 
-std::vector<ReferenceGroup>
-decode_refs(ByteView view, const std::vector<std::string> &strings) {
+std::vector<ReferenceGroup> decode_refs(ByteView view,
+                                        const std::vector<std::string> &strings,
+                                        FileBudget &budget) {
   Reader reader(view);
   std::vector<ReferenceGroup> groups;
   while (!reader.empty()) {
+    if (reader.remaining() < 8)
+      throw std::runtime_error("truncated clangd reference group");
+    budget.consume_records(1, "reference groups");
     ReferenceGroup group;
     group.symbol_id = reader.read_symbol_id();
     const auto count = reader.read_varint();
+    if (count > reader.remaining() / 14)
+      throw std::runtime_error("invalid clangd reference count");
     if (count > std::numeric_limits<std::size_t>::max())
       throw std::runtime_error("clangd reference count exceeds size_t");
+    budget.consume_records(static_cast<std::size_t>(count),
+                           "reference records");
     group.refs.reserve(static_cast<std::size_t>(count));
     for (std::uint64_t index = 0; index < count; ++index) {
       ReferenceRecord reference;
       reference.kind = reader.read_u8();
-      reference.location = decode_location(reader, strings);
+      reference.location = decode_location(reader, strings, budget);
       reference.container = reader.read_symbol_id();
       group.refs.push_back(std::move(reference));
     }
@@ -344,10 +493,14 @@ decode_refs(ByteView view, const std::vector<std::string> &strings) {
   return groups;
 }
 
-std::vector<RelationRecord> decode_relations(ByteView view) {
+std::vector<RelationRecord> decode_relations(ByteView view,
+                                             FileBudget &budget) {
   Reader reader(view);
   std::vector<RelationRecord> relations;
   while (!reader.empty()) {
+    if (reader.remaining() < 17)
+      throw std::runtime_error("truncated clangd relation record");
+    budget.consume_records(1, "relation records");
     RelationRecord relation;
     relation.subject = reader.read_symbol_id();
     relation.predicate = reader.read_u8();
@@ -357,20 +510,34 @@ std::vector<RelationRecord> decode_relations(ByteView view) {
   return relations;
 }
 
-ParsedFile parse_idx(const std::vector<std::uint8_t> &data) {
-  const auto chunks = read_riff(data);
+ParsedFile parse_idx(const std::vector<std::uint8_t> &data,
+                     DecodeBudget &aggregate_budget) {
+  const auto chunks = read_riff(data, aggregate_budget.limits);
+  const auto metadata = chunks.find("meta");
+  if (metadata == chunks.end())
+    throw std::runtime_error("missing required clangd RIFF chunk: meta");
+  if (metadata->second.size != sizeof(std::uint32_t))
+    throw std::runtime_error("invalid clangd meta chunk length");
+  const auto version = read_u32_le(metadata->second.data);
+  if (!is_supported_version(version)) {
+    throw std::runtime_error("unsupported clangd RIFF version " +
+                             std::to_string(version) +
+                             "; supported versions are 18, 19, 20");
+  }
+
   const auto string_chunk = chunks.find("stri");
   if (string_chunk == chunks.end())
     throw std::runtime_error("missing required clangd RIFF chunk: stri");
-  const auto strings = decode_string_table(string_chunk->second);
+  FileBudget file_budget(aggregate_budget);
+  const auto strings = decode_string_table(string_chunk->second, file_budget);
 
   ParsedFile parsed;
   if (const auto symbols = chunks.find("symb"); symbols != chunks.end())
-    parsed.symbols = decode_symbols(symbols->second, strings);
+    parsed.symbols = decode_symbols(symbols->second, strings, file_budget);
   if (const auto refs = chunks.find("refs"); refs != chunks.end())
-    parsed.refs = decode_refs(refs->second, strings);
+    parsed.refs = decode_refs(refs->second, strings, file_budget);
   if (const auto relations = chunks.find("rela"); relations != chunks.end())
-    parsed.relations = decode_relations(relations->second);
+    parsed.relations = decode_relations(relations->second, file_budget);
   return parsed;
 }
 
@@ -461,19 +628,32 @@ struct IndexFile {
 };
 
 std::vector<IndexFile>
-discover_index_files(const std::filesystem::path &directory) {
+discover_index_files(const std::filesystem::path &directory,
+                     const ClangdFactDecodeLimits &limits) {
   if (!std::filesystem::is_directory(directory))
     throw std::runtime_error("clangd index directory does not exist: " +
                              directory.string());
   std::vector<IndexFile> files;
+  std::uint64_t aggregate_bytes = 0;
   for (const auto &entry : std::filesystem::directory_iterator(directory)) {
     if (!entry.is_regular_file() || entry.path().extension() != ".idx")
       continue;
+    if (files.size() >= limits.max_index_files) {
+      throw std::runtime_error("clangd index file count exceeds safety limit " +
+                               std::to_string(limits.max_index_files));
+    }
     std::error_code size_error;
     const auto bytes = entry.file_size(size_error);
     if (size_error)
       throw std::runtime_error("cannot size clangd index: " +
                                entry.path().string());
+    if (bytes > limits.max_index_file_bytes) {
+      throw std::runtime_error("clangd index exceeds per-file safety limit " +
+                               std::to_string(limits.max_index_file_bytes) +
+                               ": " + entry.path().string());
+    }
+    consume_budget(static_cast<std::uint64_t>(bytes), aggregate_bytes,
+                   limits.max_aggregate_index_bytes, "aggregate index bytes");
     files.push_back(IndexFile{entry.path(),
                               entry.path().filename().generic_string(),
                               static_cast<std::uint64_t>(bytes)});
@@ -774,12 +954,14 @@ build_query_records(const CollectedRecords &collected,
 
 ClangdQueryRecords
 decode_clangd_query_records(const std::string &idx_directory,
-                            const std::string &project_root) {
+                            const std::string &project_root,
+                            const ClangdFactDecodeLimits &limits) {
   const auto total_started = Clock::now();
   ClangdFactDecodeProfile profile;
 
   const auto discover_started = Clock::now();
-  const auto files = discover_index_files(normalized_absolute(idx_directory));
+  const auto files =
+      discover_index_files(normalized_absolute(idx_directory), limits);
   const auto root = normalized_absolute(project_root);
   profile.file_count = files.size();
   for (const auto &file : files)
@@ -787,13 +969,25 @@ decode_clangd_query_records(const std::string &idx_directory,
   profile.discover_files_ns = elapsed_ns(discover_started, Clock::now());
 
   CollectedRecords collected;
+  DecodeBudget budget(limits);
+  std::uint64_t read_bytes = 0;
   for (const auto &file : files) {
     const auto read_started = Clock::now();
-    auto data = read_file(file.path);
+    auto data = read_file(file.path, limits);
+    consume_budget(static_cast<std::uint64_t>(data.size()), read_bytes,
+                   limits.max_aggregate_index_bytes, "aggregate index bytes");
     profile.read_files_ns += elapsed_ns(read_started, Clock::now());
 
     const auto parse_started = Clock::now();
-    auto parsed = parse_idx(data);
+    ParsedFile parsed;
+    try {
+      parsed = parse_idx(data, budget);
+    } catch (const std::bad_alloc &) {
+      throw;
+    } catch (const std::exception &error) {
+      throw std::runtime_error("cannot parse clangd index " +
+                               file.path.string() + ": " + error.what());
+    }
     profile.parse_files_ns += elapsed_ns(parse_started, Clock::now());
     profile.raw_symbol_count += parsed.symbols.size();
     for (const auto &group : parsed.refs)
@@ -816,6 +1010,10 @@ decode_clangd_query_records(const std::string &idx_directory,
     if (edge.type == EDGE_TYPE_REFERENCE)
       ++profile.reference_count;
   }
+  profile.index_bytes = read_bytes;
+  profile.decompressed_string_bytes = budget.string_table_bytes;
+  profile.materialized_string_bytes = budget.materialized_string_bytes;
+  profile.string_entry_count = budget.string_entries;
   profile.total_ns = elapsed_ns(total_started, Clock::now());
   return ClangdQueryRecords{std::move(records), profile};
 }

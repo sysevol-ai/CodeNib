@@ -752,10 +752,34 @@ stable shard-set SHA-256 values were
 Reproduce the report with `make clangd-fact-query-profile`.
 
 This promotion does not include or accelerate clangd index generation. RIFF
-version/resource hardening (#546), zlib CI enforcement (#547), content
-receipts (#548), serving integration (#549), mixed/RSS/concurrency matrices
-(#550), native position (#553), native route (#552), and durable FactBatch
-storage (#551) remain separate review and promotion gates.
+version/resource hardening (#546) and zlib CI enforcement (#547) are now
+implemented as independent production gates. Content receipts (#548), serving
+integration (#549), mixed/RSS/concurrency matrices (#550), native position
+(#553), native route (#552), and durable FactBatch storage (#551) remain
+separate review and promotion gates.
+
+Native clangd RIFF compatibility and resource-safety status
+([#546](https://github.com/sysevol-ai/CodeNib/issues/546)): the v1 reader now
+requires one 4-byte `meta` chunk, accepts only parity-tested versions 18, 19,
+and 20, and rejects duplicate known chunks before semantic decoding. Outer
+RIFF lengths/padding, record truncation, varint overflow, string indexes,
+header/reference counts, and exact zlib input/output completion are validated
+deterministically. Upstream clangd's current-version-only policy is documented
+from LLVM `Serialization.cpp` and `RIFF.h`; future versions remain fail-closed
+until their layout clears the same parity gate.
+
+The compiled contract publishes finite limits for direct file count, chunks,
+per-file and aggregate bytes, decompressed strings, string entries, copied
+string bytes, and decoded records. Discovery rejects impossible file sets
+before reading; decompression, object expansion, copies, `reserve()`, and row
+insertion consume their respective budgets before allocation. All parse
+failures include the shard filename and cannot return a partial native index.
+The deterministic matrix covers truncated headers/payloads, missing padding,
+duplicate chunks, unsupported versions, zlib mismatch/trailing input,
+oversized declarations, invalid counts, and sparse per-file/aggregate limits.
+`auto` falls back with the error recorded, `required` fails closed, and `off`
+preserves the established graph path. The same v18/v19/v20 fixture executes
+the exact public definition/reference parity assertions.
 
 Native core CI enforcement status
 ([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted

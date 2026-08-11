@@ -124,12 +124,23 @@ def _riff_bytes(chunks: list[tuple[bytes, bytes]]) -> bytes:
 
 
 def _empty_idx() -> bytes:
-    return _riff_bytes(
-        [
-            (b"meta", struct.pack("<I", 18)),
-            (b"stri", struct.pack("<I", 0) + b"\x00"),
-        ]
-    )
+    return _riff_bytes(_minimal_chunks())
+
+
+def _minimal_chunks(version: int = 18) -> list[tuple[bytes, bytes]]:
+    return [
+        (b"meta", struct.pack("<I", version)),
+        (b"stri", struct.pack("<I", 0) + b"\x00"),
+    ]
+
+
+def _set_meta_version(idx_directory: Path, before: int, after: int) -> None:
+    path = next(idx_directory.glob("*.idx"))
+    data = path.read_bytes()
+    old = b"meta" + struct.pack("<I", 4) + struct.pack("<I", before)
+    new = b"meta" + struct.pack("<I", 4) + struct.pack("<I", after)
+    assert data.count(old) == 1
+    path.write_bytes(data.replace(old, new, 1))
 
 
 @pytest.fixture()
@@ -318,6 +329,21 @@ def test_contract_and_graph_free_payload_are_explicit(clangd_fixture) -> None:
     assert contract == {
         "abi_version": 1,
         "format": "clangd-riff-fact-query-v1",
+        "supported_versions": [18, 19, 20],
+        "resource_limits": {
+            "max_index_files": 200_000,
+            "max_chunks_per_file": 128,
+            "max_index_file_bytes": 512 * 1024 * 1024,
+            "max_aggregate_index_bytes": 8 * 1024 * 1024 * 1024,
+            "max_string_table_bytes": 256 * 1024 * 1024,
+            "max_aggregate_string_table_bytes": 2 * 1024 * 1024 * 1024,
+            "max_string_entries_per_file": 1_000_000,
+            "max_aggregate_string_entries": 20_000_000,
+            "max_materialized_string_bytes_per_file": 512 * 1024 * 1024,
+            "max_aggregate_materialized_string_bytes": 4 * 1024 * 1024 * 1024,
+            "max_records_per_file": 2_000_000,
+            "max_aggregate_records": 25_000_000,
+        },
         "stable_filename_order": True,
         "preserves_unanchored_relations": True,
         "capabilities": {
@@ -335,10 +361,13 @@ def test_contract_and_graph_free_payload_are_explicit(clangd_fixture) -> None:
     assert not hasattr(index, "graph")
 
 
+@pytest.mark.parametrize("version", [18, 19, 20])
 def test_symbol_results_errors_counts_and_relations_match_graph(
-    clangd_fixture,
+    clangd_fixture, version: int
 ) -> None:
     root, idx_directory = clangd_fixture
+    if version != 18:
+        _set_meta_version(idx_directory, 18, version)
     graph = ClangdGraphDecoder(str(idx_directory), str(root)).materialize_code_graph()
     payload = codenib_core.decode_clangd_fact_query_index(
         idx_directory=str(idx_directory), project_root=str(root)
@@ -414,6 +443,242 @@ def test_native_file_discovery_is_stable_by_filename(
         assert _outcome(
             lambda seed=seed: lsp_references(left, symbol=seed, top_k=100)
         ) == _outcome(lambda seed=seed: lsp_references(right, symbol=seed, top_k=100))
+
+
+def test_native_reader_rejects_malformed_matrix(clangd_fixture) -> None:
+    root, idx_directory = clangd_fixture
+    path = next(idx_directory.glob("*.idx"))
+    limits = codenib_core.clangd_fact_query_contract()["resource_limits"]
+    minimal = _minimal_chunks()
+    valid = _riff_bytes(minimal)
+    symbol_id = bytes.fromhex("1112131415161718")
+    valid_symbol = _symbol(
+        symbol_id,
+        kind=12,
+        name_index=0,
+        scope_index=0,
+        file_index=0,
+        line=0,
+    )
+    oversized_strings = limits["max_string_table_bytes"] + 1
+    truncated_payload_body = b"CdIx" + b"meta" + struct.pack("<I", 4) + b"\x12\x00"
+    cases = [
+        ("short RIFF", b"RIFF", "not a RIFF file"),
+        (
+            "invalid outer length",
+            b"RIFF" + struct.pack("<I", 3) + b"CdIx",
+            "invalid RIFF length",
+        ),
+        ("trailing bytes", valid + b"x", "RIFF length does not match file size"),
+        (
+            "wrong form",
+            b"RIFF" + struct.pack("<I", 4) + b"NOPE",
+            "not a clangd CdIx index",
+        ),
+        (
+            "truncated chunk header",
+            b"RIFF" + struct.pack("<I", 8) + b"CdIxmeta",
+            "truncated RIFF chunk header",
+        ),
+        (
+            "truncated chunk payload",
+            b"RIFF"
+            + struct.pack("<I", len(truncated_payload_body))
+            + truncated_payload_body,
+            "truncated RIFF chunk payload",
+        ),
+        (
+            "missing padding",
+            b"RIFF" + struct.pack("<I", 13) + b"CdIxjunk" + struct.pack("<I", 1) + b"x",
+            "missing RIFF padding byte",
+        ),
+        (
+            "too many chunks",
+            _riff_bytes(
+                minimal + [(b"junk", b"")] * (limits["max_chunks_per_file"] - 1)
+            ),
+            "RIFF chunk count exceeds safety limit",
+        ),
+        ("missing meta", _riff_bytes([minimal[1]]), "missing required.*meta"),
+        (
+            "short meta",
+            _riff_bytes([(b"meta", b"\x12\x00\x00"), minimal[1]]),
+            "meta chunk length",
+        ),
+        (
+            "unsupported version",
+            _riff_bytes(_minimal_chunks(21)),
+            "unsupported clangd RIFF version 21",
+        ),
+        ("missing strings", _riff_bytes([minimal[0]]), "missing required.*stri"),
+        (
+            "bad zlib stream",
+            _riff_bytes([minimal[0], (b"stri", struct.pack("<I", 16) + b"bad")]),
+            "cannot decompress",
+        ),
+        (
+            "zlib trailing data",
+            _riff_bytes(
+                [
+                    minimal[0],
+                    (b"stri", struct.pack("<I", 1) + zlib.compress(b"\x00") + b"x"),
+                ]
+            ),
+            "cannot decompress",
+        ),
+        (
+            "oversized string declaration",
+            _riff_bytes([minimal[0], (b"stri", struct.pack("<I", oversized_strings))]),
+            "string table exceeds per-file safety limit",
+        ),
+        (
+            "varint overflow",
+            _riff_bytes(
+                minimal + [(b"symb", symbol_id + bytes((12, 2)) + (b"\x80" * 10))]
+            ),
+            "varint exceeds 10 bytes",
+        ),
+        (
+            "string index",
+            _riff_bytes(
+                minimal
+                + [
+                    (
+                        b"symb",
+                        _symbol(
+                            symbol_id,
+                            kind=12,
+                            name_index=9,
+                            scope_index=0,
+                            file_index=0,
+                            line=0,
+                        ),
+                    )
+                ]
+            ),
+            "string index is out of range",
+        ),
+        (
+            "include header count",
+            _riff_bytes(minimal + [(b"symb", valid_symbol[:-1] + _varint(100))]),
+            "invalid clangd include-header count",
+        ),
+        (
+            "reference count",
+            _riff_bytes(minimal + [(b"refs", symbol_id + _varint(2))]),
+            "invalid clangd reference count",
+        ),
+        (
+            "relation record",
+            _riff_bytes(minimal + [(b"rela", b"x" * 16)]),
+            "truncated clangd relation record",
+        ),
+    ]
+
+    for name, payload, message in cases:
+        path.write_bytes(payload)
+        errors = []
+        for _attempt in range(2):
+            with pytest.raises(RuntimeError, match=message) as raised:
+                codenib_core.decode_clangd_fact_query_index(
+                    idx_directory=str(idx_directory), project_root=str(root)
+                )
+            errors.append(str(raised.value))
+        assert errors[0] == errors[1], name
+        assert path.name in errors[0], name
+
+
+@pytest.mark.parametrize(
+    "chunk_id", [b"meta", b"srcs", b"stri", b"symb", b"refs", b"rela", b"cmdl"]
+)
+def test_native_reader_rejects_duplicate_known_chunks(
+    clangd_fixture, chunk_id: bytes
+) -> None:
+    root, idx_directory = clangd_fixture
+    path = next(idx_directory.glob("*.idx"))
+    payload = struct.pack("<I", 18) if chunk_id == b"meta" else b""
+    if chunk_id == b"stri":
+        payload = struct.pack("<I", 0) + b"\x00"
+    chunks = _minimal_chunks()
+    chunks.extend(((chunk_id, payload), (chunk_id, payload)))
+    path.write_bytes(_riff_bytes(chunks))
+
+    with pytest.raises(RuntimeError, match="duplicate clangd RIFF chunk"):
+        codenib_core.decode_clangd_fact_query_index(
+            idx_directory=str(idx_directory), project_root=str(root)
+        )
+
+
+def test_native_reader_rejects_resource_sizes_before_reading(
+    clangd_fixture, tmp_path: Path
+) -> None:
+    root, idx_directory = clangd_fixture
+    limits = codenib_core.clangd_fact_query_contract()["resource_limits"]
+    path = next(idx_directory.glob("*.idx"))
+    with path.open("wb") as stream:
+        stream.truncate(limits["max_index_file_bytes"] + 1)
+
+    with pytest.raises(RuntimeError, match="per-file safety limit"):
+        codenib_core.decode_clangd_fact_query_index(
+            idx_directory=str(idx_directory), project_root=str(root)
+        )
+
+    aggregate_directory = tmp_path / "aggregate-index"
+    aggregate_directory.mkdir()
+    file_size = limits["max_index_file_bytes"]
+    file_count = limits["max_aggregate_index_bytes"] // file_size + 1
+    for index in range(file_count):
+        with (aggregate_directory / f"{index}.idx").open("wb") as stream:
+            stream.truncate(file_size)
+
+    with pytest.raises(RuntimeError, match="aggregate index bytes"):
+        codenib_core.decode_clangd_fact_query_index(
+            idx_directory=str(aggregate_directory), project_root=str(root)
+        )
+
+
+def test_native_reader_caps_string_object_expansion(clangd_fixture) -> None:
+    root, idx_directory = clangd_fixture
+    limits = codenib_core.clangd_fact_query_contract()["resource_limits"]
+    path = next(idx_directory.glob("*.idx"))
+    too_many_strings = b"\x00" * (limits["max_string_entries_per_file"] + 1)
+    path.write_bytes(
+        _riff_bytes(
+            [
+                (b"meta", struct.pack("<I", 18)),
+                (b"stri", struct.pack("<I", 0) + too_many_strings),
+            ]
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="per-file entry limit"):
+        codenib_core.decode_clangd_fact_query_index(
+            idx_directory=str(idx_directory), project_root=str(root)
+        )
+
+
+def test_unsupported_version_auto_required_and_off_modes(
+    clangd_fixture, monkeypatch
+) -> None:
+    root, idx_directory = clangd_fixture
+    _set_meta_version(idx_directory, 18, 21)
+    monkeypatch.setattr(clangd_decode, "_NATIVE_QUERY_PROMOTED", True)
+
+    monkeypatch.setenv("CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX", "auto")
+    fallback = ClangdGraphDecoder(str(idx_directory), str(root))
+    graph = fallback.decode_query_index()
+    assert isinstance(graph, CodeGraph)
+    assert fallback.query_backend == "legacy-query-fallback"
+    assert "unsupported clangd RIFF version 21" in fallback.query_fallback_error
+
+    monkeypatch.setenv("CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX", "required")
+    with pytest.raises(RuntimeError, match="unsupported clangd RIFF version 21"):
+        ClangdGraphDecoder(str(idx_directory), str(root)).decode_query_index()
+
+    monkeypatch.setenv("CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX", "off")
+    disabled = ClangdGraphDecoder(str(idx_directory), str(root))
+    assert isinstance(disabled.decode_query_index(), CodeGraph)
+    assert disabled.query_backend == "legacy-query-disabled"
 
 
 def test_selector_auto_off_required_and_failure_modes(

@@ -180,8 +180,49 @@ make clangd-fact-query-profile \
 
 This result measures an already generated `.idx` directory through identical
 definition/reference work. It does not claim faster clangd generation. Native
-position/route lookup, serving integration, content receipts, and systematic
-format-version/resource hardening remain independent follow-up gates.
+position/route lookup, serving integration, and content receipts remain
+independent follow-up gates.
+
+### RIFF compatibility and resource safety
+
+Upstream clangd deliberately rejects every RIFF version except the one its
+binary currently writes and increments the version for breaking layouts.
+CodeNib therefore uses an exact allowlist, not a numeric range. Versions 18,
+19, and 20 are accepted because checked fixtures or real artifacts for all
+three preserve exact definition/reference parity. An unknown version fails
+native decoding until its layout passes the same gate. LLVM's
+[`Serialization.cpp`](https://github.com/llvm/llvm-project/blob/main/clang-tools-extra/clangd/index/Serialization.cpp)
+and [`RIFF.h`](https://github.com/llvm/llvm-project/blob/main/clang-tools-extra/clangd/index/RIFF.h)
+are the authoritative format sources.
+
+Every shard must contain exactly one 4-byte `meta` chunk and one `stri` chunk.
+The reader rejects duplicate known chunks, mismatched outer lengths, missing
+padding, truncated records, invalid string indexes/counts, overflowing
+varints, and zlib streams that do not consume exactly the declared input and
+output. No native index is returned until every shard has parsed, so a failure
+cannot publish partial records.
+
+`codenib_core.clangd_fact_query_contract()` exposes the compiled limits:
+
+| Dimension | Limit |
+| --- | ---: |
+| Direct `.idx` files | 200,000 |
+| RIFF chunks per file | 128 |
+| One `.idx` file | 512 MiB |
+| Aggregate `.idx` bytes | 8 GiB |
+| One decompressed string table | 256 MiB |
+| Aggregate decompressed string bytes | 2 GiB |
+| String entries per file / aggregate | 1,000,000 / 20,000,000 |
+| Copied string bytes per file / aggregate | 512 MiB / 4 GiB |
+| Decoded records per file / aggregate | 2,000,000 / 25,000,000 |
+
+File size/count declarations are checked during discovery and again before
+reading. Decompressed bytes are charged before the output buffer is allocated;
+string entries are charged before `std::string` construction; copied strings
+and decoded row counts are charged before assignment, `reserve()`, or row
+insertion. In `auto` mode a deterministic rejection is recorded in
+`query_fallback_error` and the established graph decoder is used. `required`
+fails closed, while `off` never invokes the native reader.
 
 ## Verify
 
