@@ -838,6 +838,44 @@ requests never imported or materialized igraph, and the first graph-requiring
 request materialized the compatible graph once. Native position and route
 indexes remain the independent #553 and #552 promotion gates.
 
+Native clangd mixed-workload promotion status
+([#550](https://github.com/sysevol-ai/CodeNib/issues/550)): first lazy graph
+materialization is serialized with double-checked publication. The provider is
+visible to waiting position/route callers only after the complete graph and its
+range indexes are ready, and it records the successful materialization count
+and duration. A concurrent first-route gate requires all callers to return the
+same public result while exactly one graph is built.
+
+`make clangd-workload-gate` runs symbol-only, position-first, route-first, and
+mixed legacy/native sessions in fresh processes with alternating arm order. Its
+versioned JSON includes inner and outer wall time, process CPU, start/peak/growth
+RSS, shard/graph counts, provider and fallback selection, native and lazy-graph
+stages, exact result/public-error digests, and pre/post snapshot receipts. The
+default promotion budgets are at least 20% symbol-only acceleration, at most
+20% regression for graph-requiring workloads, at most 1.25x legacy peak RSS,
+at most 10% repeated-process peak spread, a 4 GiB absolute native cap, exact
+parity, and exactly-once concurrent materialization. Filesystem page cache is
+explicitly uncontrolled and clangd generation is separately labeled and
+excluded from query-ready decisions.
+
+The subject manifest pins fmt 11.2.0, GoogleTest 1.17.0, and protobuf 31.1 at
+full commits, covering template-, macro-, header-heavy, and multi-target C++.
+Selecting a subject requires that exact clean revision. The same Make target
+first exercises generated RIFF 18/19/20 public parity fixtures. This milestone
+deliberately keeps position-first, route-first, and mixed native arms on one
+lazy complete graph; graph-free position and route changes remain isolated in
+#553 and #552.
+
+The recorded `cpp_simple` evidence used 223 shards and five measured rounds
+plus one warmup. Symbol-only improved from 177.96 ms to 37.28 ms (79.0%);
+position-first, route-first, and mixed regressed 16.8%, 16.9%, and 13.9%, all
+within budget. Native peak RSS stayed at or below 135.5 MiB and about 1.05x
+legacy, repeated spread stayed below 1.4%, and every concurrent run built once.
+On the existing 51-shard fmt checkout, three isolated rounds improved
+symbol-only from 2.330 s to 0.137 s (94.1%); graph-workload regressions stayed
+within 2.3%, native peak stayed below 246 MiB and 1.14x legacy, and all three
+concurrent runs built once.
+
 Native core CI enforcement status
 ([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted
 `scip-core` job now declares zlib development headers alongside RE2 and CMake,

@@ -194,6 +194,9 @@ def profile_clangd_fact_query_index(
             "reference_count",
             "decoded_record_count",
             "index_bytes",
+            "decompressed_string_bytes",
+            "materialized_string_bytes",
+            "string_entry_count",
         }
         stages = {
             name: value / 1_000_000_000

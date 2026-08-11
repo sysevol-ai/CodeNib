@@ -25,6 +25,7 @@ Two-pass approach for graph building:
 import logging
 import os
 import struct
+import threading
 import time
 import zlib
 from pathlib import Path
@@ -418,8 +419,8 @@ class ClangdHybridQueryProvider:
 
     The baseline native index advertises no position or route capability.
     Those requests therefore materialize the established Python CodeGraph
-    exactly once. Production MCP injection and content-bound generation
-    receipts remain separate follow-up decisions.
+    exactly once, including when first requests arrive concurrently. Native
+    position, route, and persisted-fact capabilities remain separate gates.
     """
 
     def __init__(self, decoder: "ClangdGraphDecoder", query_index: Any):
@@ -434,7 +435,9 @@ class ClangdHybridQueryProvider:
             backend=self.provider_backend,
         )
         self._graph_provider = None
+        self._graph_provider_lock = threading.Lock()
         self.graph_materialization_count = 0
+        self.graph_materialization_seconds = 0.0
         self.last_fallback_reason = None
         self.provider = self._symbol_provider.provider
         self.snapshot_id = self._symbol_provider.snapshot_id
@@ -443,13 +446,21 @@ class ClangdHybridQueryProvider:
         from ..agent.lsp_provider import StaticLSPProvider
 
         if self._graph_provider is None:
-            graph = self.decoder.materialize_code_graph()
-            self._graph_provider = StaticLSPProvider(
-                graph,
-                snapshot_id=self.snapshot_id,
-                backend="lazy-clangd-code-graph-v1",
-            )
-            self.graph_materialization_count += 1
+            with self._graph_provider_lock:
+                if self._graph_provider is None:
+                    started = time.perf_counter()
+                    graph = self.decoder.materialize_code_graph()
+                    # materialize_code_graph() completes range indexing before
+                    # returning. Publish the provider only after that complete
+                    # graph is safe for every waiting position/route caller.
+                    graph_provider = StaticLSPProvider(
+                        graph,
+                        snapshot_id=self.snapshot_id,
+                        backend="lazy-clangd-code-graph-v1",
+                    )
+                    self.graph_materialization_seconds += time.perf_counter() - started
+                    self.graph_materialization_count += 1
+                    self._graph_provider = graph_provider
         return self._graph_provider
 
     def _graph_fallback(self, capability: str, reason: str, arguments: Mapping):
@@ -728,6 +739,9 @@ class ClangdGraphDecoder:
             "reference_count",
             "decoded_record_count",
             "index_bytes",
+            "decompressed_string_bytes",
+            "materialized_string_bytes",
+            "string_entry_count",
         }
         for name, value in (payload.get("decode_profile_ns") or {}).items():
             profile[f"native_{name}"] = (

@@ -87,6 +87,13 @@ FACT_BUFFER_PROFILE_LANGUAGE ?=
 FACT_BUFFER_PROFILE_PROJECT_ROOT ?=
 FACT_BUFFER_PROFILE_OUTPUT ?=
 FACT_BUFFER_PROFILE_EXTRA_ARGS ?=
+CLANGD_WORKLOAD_GATE_INDEX_DIR ?=
+CLANGD_WORKLOAD_GATE_PROJECT_ROOT ?=
+CLANGD_WORKLOAD_GATE_OUTPUT ?= $(CODENIB_RESULTS_DIR)/clangd-workload-gate.json
+CLANGD_WORKLOAD_GATE_SUBJECT_MANIFEST ?= scripts/profiling/clangd_workload_subjects.json
+CLANGD_WORKLOAD_GATE_SUBJECT_ID ?=
+CLANGD_WORKLOAD_GATE_GENERATION_SECONDS ?=
+CLANGD_WORKLOAD_GATE_EXTRA_ARGS ?=
 PROJECT_LANGUAGE ?=
 PROJECT_ROOT ?=
 hash := \#
@@ -189,7 +196,7 @@ endef
 .PHONY: active-scip-tools active-lsp-tools active-scip-env active-system-deps-ubuntu
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
-.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile
+.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
 .PHONY: scip-jvm-compat-system-deps-ubuntu
@@ -454,6 +461,20 @@ clangd-fact-query-profile: core-build
 		--project-root "$(CLANGD_FACT_QUERY_PROFILE_PROJECT_ROOT)" \
 		$(if $(CLANGD_FACT_QUERY_PROFILE_OUTPUT),--output-json "$(CLANGD_FACT_QUERY_PROFILE_OUTPUT)",) \
 		$(CLANGD_FACT_QUERY_PROFILE_EXTRA_ARGS)
+
+clangd-workload-gate: core-build
+	@test -n "$(CLANGD_WORKLOAD_GATE_INDEX_DIR)" || { echo "Set CLANGD_WORKLOAD_GATE_INDEX_DIR=/path/to/.cache/clangd/index" >&2; exit 1; }
+	@test -n "$(CLANGD_WORKLOAD_GATE_PROJECT_ROOT)" || { echo "Set CLANGD_WORKLOAD_GATE_PROJECT_ROOT=/path/to/repository" >&2; exit 1; }
+	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
+		test/ls_index/test_clangd_fact_query.py::test_symbol_results_errors_counts_and_relations_match_graph
+	PYTHONPATH="build/core:$$PYTHONPATH" python scripts/profiling/profile_clangd_workload_gate.py \
+		--idx-directory "$(CLANGD_WORKLOAD_GATE_INDEX_DIR)" \
+		--project-root "$(CLANGD_WORKLOAD_GATE_PROJECT_ROOT)" \
+		--subject-manifest "$(CLANGD_WORKLOAD_GATE_SUBJECT_MANIFEST)" \
+		$(if $(CLANGD_WORKLOAD_GATE_SUBJECT_ID),--subject-id "$(CLANGD_WORKLOAD_GATE_SUBJECT_ID)",) \
+		$(if $(CLANGD_WORKLOAD_GATE_GENERATION_SECONDS),--clangd-generation-seconds "$(CLANGD_WORKLOAD_GATE_GENERATION_SECONDS)",) \
+		--output-json "$(CLANGD_WORKLOAD_GATE_OUTPUT)" \
+		$(CLANGD_WORKLOAD_GATE_EXTRA_ARGS)
 
 scip-cold-start-tools: scip-java-tool gradle-tool sbt-tool scip-dotnet-tool scip-ruby-tool scip-php-info
 	@$(MAKE) --no-print-directory scip-cold-start-env

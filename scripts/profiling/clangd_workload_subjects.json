@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "description": "Pinned C++ subjects for the process-isolated clangd query-ready workload gate. Repository preparation and clangd generation are measured separately.",
+  "subjects": [
+    {
+      "id": "fmt-11.2.0",
+      "repository": "https://github.com/fmtlib/fmt.git",
+      "tag": "11.2.0",
+      "revision": "40626af88bd7df9a5fb80be7b25ac85b122d6c21",
+      "build_system": "CMake",
+      "categories": [
+        "template-heavy",
+        "header-heavy",
+        "multi-target"
+      ]
+    },
+    {
+      "id": "googletest-1.17.0",
+      "repository": "https://github.com/google/googletest.git",
+      "tag": "v1.17.0",
+      "revision": "52eb8108c5bdec04579160ae17225d66034bd723",
+      "build_system": "CMake",
+      "categories": [
+        "macro-heavy",
+        "header-heavy",
+        "multi-target"
+      ]
+    },
+    {
+      "id": "protobuf-31.1",
+      "repository": "https://github.com/protocolbuffers/protobuf.git",
+      "tag": "v31.1",
+      "revision": "74211c0dfc2777318ab53c2cd2c317a2ef9012de",
+      "build_system": "CMake/Bazel",
+      "categories": [
+        "template-heavy",
+        "macro-heavy",
+        "header-heavy",
+        "multi-target"
+      ]
+    }
+  ]
+}

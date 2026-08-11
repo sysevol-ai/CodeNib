@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -319,6 +320,38 @@ def test_full_ci_enforces_the_maintained_native_core_gate() -> None:
         "test/ls_index/test_clangd_fact_query.py",
     ):
         assert command in core_target
+
+
+def test_clangd_workload_gate_pins_matrix_subjects_and_json_artifact() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    target = makefile.split("\nclangd-workload-gate:", 1)[1].split("\n\n", 1)[0]
+    manifest = json.loads(
+        (ROOT / "scripts/profiling/clangd_workload_subjects.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert "test_symbol_results_errors_counts_and_relations_match_graph" in target
+    assert "profile_clangd_workload_gate.py" in target
+    assert '--output-json "$(CLANGD_WORKLOAD_GATE_OUTPUT)"' in target
+    assert '--subject-manifest "$(CLANGD_WORKLOAD_GATE_SUBJECT_MANIFEST)"' in target
+    assert manifest["schema_version"] == 1
+    assert len(manifest["subjects"]) == 3
+    assert all(
+        re.fullmatch(r"[0-9a-f]{40}", subject["revision"])
+        for subject in manifest["subjects"]
+    )
+    categories = {
+        category
+        for subject in manifest["subjects"]
+        for category in subject["categories"]
+    }
+    assert {
+        "template-heavy",
+        "macro-heavy",
+        "header-heavy",
+        "multi-target",
+    } <= categories
 
 
 def test_draft_ci_defers_hosted_unit_tests_until_review() -> None:

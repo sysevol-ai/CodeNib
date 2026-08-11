@@ -201,6 +201,39 @@ fallback, and snapshot. The profiling report's `mcp_consumer_decision` applies
 the acceleration gate to startup plus real MCP validation and serialization,
 in addition to checking raw-query parity.
 
+### Mixed workload and resource gate
+
+The consumer promotion is also guarded by process-isolated symbol-only,
+position-first, route-first, and mixed sessions. Every measured arm starts in a
+fresh process, alternates legacy/native order, and verifies the same content
+receipt before and after execution. The JSON artifact records inner query-ready
+wall time, outer process wall time, process CPU time, start/peak/growth RSS,
+index and graph counts, provider/fallback decisions, native and lazy-graph
+stages, and exact MCP result/public-error digests.
+
+```bash
+make clangd-workload-gate \
+  CLANGD_WORKLOAD_GATE_INDEX_DIR=/path/to/.cache/clangd/index \
+  CLANGD_WORKLOAD_GATE_PROJECT_ROOT=/path/to/repository \
+  CLANGD_WORKLOAD_GATE_SUBJECT_ID=fmt-11.2.0
+```
+
+The default gate requires at least 20% symbol-only acceleration, no more than
+20% regression for graph-requiring workloads, native peak RSS no higher than
+1.25x legacy or 4 GiB, no more than 10% repeated-process peak spread, exact
+parity, and exactly one successful graph materialization when concurrent first
+route calls race. Symbol-only runs must materialize zero graphs; position,
+route, and mixed runs still intentionally materialize one complete graph in
+this milestone. Native position and graph-free route promotion remain #553 and
+#552 respectively.
+
+The maintained subject manifest pins fmt 11.2.0, GoogleTest 1.17.0, and
+protobuf 31.1 by full commit, covering template-, macro-, header-heavy, and
+multi-target projects. Supplying `CLANGD_WORKLOAD_GATE_SUBJECT_ID` requires the
+checkout to be clean and at that exact revision. The Make target first executes
+the generated RIFF 18/19/20 parity matrix. clangd generation can be recorded as
+separate preparation time, but is explicitly excluded from query-ready gates.
+
 ### Content-bound snapshot receipt
 
 The native decoder hashes the exact shard bytes it already read, so the first

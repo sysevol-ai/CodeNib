@@ -38,17 +38,17 @@ from codenib.ls_index.clangd_decode import (
 )
 from codenib.ls_router import LSIndexer  # noqa: E402
 from codenib.mcp.context import ServerContext  # noqa: E402
-from codenib.mcp.tools.lsp import (  # noqa: E402
-    lsp_definition_impl,
-    lsp_references_impl,
-    lsp_route_impl,
-)
+from codenib.mcp.tools.lsp import lsp_definition_impl  # noqa: E402
+from codenib.mcp.tools.lsp import lsp_references_impl, lsp_route_impl
 from codenib.types import EDGE_TYPE_REFERENCE, node_has_definition  # noqa: E402
 from scripts.profiling.profile_clangd_fact_query_index import (  # noqa: E402
     main as profile_main,
 )
 from scripts.profiling.profile_clangd_fact_query_index import (  # noqa: E402
     profile_clangd_fact_query_index,
+)
+from scripts.profiling.profile_clangd_workload_gate import (  # noqa: E402
+    profile_clangd_workload_gate,
 )
 
 
@@ -921,6 +921,62 @@ def test_hybrid_uses_native_symbols_then_materializes_graph_once(
     assert provider.graph_materialization_count == 1
 
 
+def test_concurrent_first_graph_fallback_materializes_exactly_once(
+    clangd_fixture, monkeypatch
+) -> None:
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    root, idx_directory = clangd_fixture
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    provider = decoder.decode_native_query_provider()
+    materialize = decoder.materialize_code_graph
+    calls = 0
+    calls_lock = threading.Lock()
+    start = threading.Barrier(8)
+
+    def counted_materialize():
+        nonlocal calls
+        # Widen the publication race: without the provider lock all callers
+        # enter graph construction before the first provider is visible.
+        time.sleep(0.02)
+        with calls_lock:
+            calls += 1
+        graph = materialize()
+        assert decoder._range_indexes_built is True
+        return graph
+
+    monkeypatch.setattr(decoder, "materialize_code_graph", counted_materialize)
+    target = bytes.fromhex("1112131415161718").hex()
+
+    def route_once(_index: int):
+        start.wait()
+        result = provider.route(
+            symbols=[target],
+            query="concurrent first route",
+            top_k=100,
+            include_neighbors=True,
+        )
+        return (
+            [node.model_dump() for node in result],
+            result.provider_metadata_dict(),
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(route_once, range(8)))
+
+    assert calls == 1
+    assert provider.graph_materialization_count == 1
+    assert decoder._graph_materialized is True
+    assert decoder._range_indexes_built is True
+    assert all(result == results[0] for result in results)
+    assert results[0][1]["backend"] == "lazy-clangd-code-graph-v1"
+    assert results[0][1]["fallback_reason"] == (
+        "native_clangd_route_query_requires_complete_graph"
+    )
+
+
 def test_lazy_graph_fails_closed_when_snapshot_changes(
     clangd_fixture, monkeypatch
 ) -> None:
@@ -1101,6 +1157,70 @@ def test_server_context_selects_native_and_portable_graph_fallback(
     assert context.lsp_provider.graph is graph
 
 
+def test_process_isolated_workload_gate_reports_rss_parity_and_concurrency(
+    clangd_fixture,
+) -> None:
+    root, idx_directory = clangd_fixture
+
+    report = profile_clangd_workload_gate(
+        idx_directory=idx_directory,
+        project_root=root,
+        iterations=1,
+        warmups=0,
+        query_workload_size=2,
+        symbol_threshold=0.0,
+        graph_non_regression_budget=10.0,
+        peak_rss_ratio_budget=10.0,
+        repeat_rss_spread_budget=10.0,
+        max_native_peak_rss_mb=4096.0,
+        concurrency_workers=4,
+        worker_timeout_seconds=120.0,
+    )
+
+    assert report["schema_version"] == 1
+    assert report["benchmark"] == "clangd_mixed_workload_gate_v1"
+    assert set(report["workloads"]) == {
+        "symbol_only",
+        "position_first",
+        "route_first",
+        "mixed",
+    }
+    assert all(
+        workload["parity"]["passed"] for workload in report["workloads"].values()
+    )
+    assert report["workloads"]["symbol_only"]["native"]["observed_backends"] == [
+        "native-clangd-fact-query-v1"
+    ]
+    native_counts = report["workloads"]["symbol_only"]["native"]["index_counts"][0]
+    assert native_counts["definition_count"] == 7
+    assert native_counts["snapshot_file_count"] == 1
+    native_stages = report["workloads"]["symbol_only"]["native"]["stages_seconds"]
+    assert "native_decompressed_string_bytes" not in native_stages
+    assert "native_materialized_string_bytes" not in native_stages
+    assert "native_string_entry_count" not in native_stages
+    for workload in ("position_first", "route_first", "mixed"):
+        assert report["workloads"][workload]["native"]["observed_backends"] == [
+            "lazy-clangd-code-graph-v1",
+            "native-clangd-fact-query-v1",
+        ]
+        assert report["gates"]["lazy_graph_materialization"]["workloads"][workload][
+            "observed_native_counts"
+        ] == [1]
+    assert report["gates"]["lazy_graph_materialization"]["workloads"]["symbol_only"][
+        "observed_native_counts"
+    ] == [0]
+    assert report["concurrency"]["graph_materialization_counts"] == [1]
+    assert report["concurrency"]["passed"] is True
+    assert report["configuration"]["process_isolated_arms"] is True
+    assert report["configuration"]["alternating_arm_order"] is True
+    assert report["configuration"]["position_query_workload_size"] == 2
+    assert report["repository_preparation"]["included_in_query_ready_gate"] is False
+    assert report["content_receipt"]["before"] == report["content_receipt"]["after"]
+    assert report["version_matrix"]["generated_fixture_versions"] == [18, 19, 20]
+    assert report["subject_manifest"]["subject_count"] == 3
+    assert report["gates"]["passed"] is True
+
+
 def test_profiler_records_parity_samples_order_and_contract(
     clangd_fixture,
 ) -> None:
@@ -1138,6 +1258,15 @@ def test_profiler_records_parity_samples_order_and_contract(
         len(report["raw_samples"]["native_clangd_fact_query_index"]["consumer_total"])
         == 2
     )
+    for count_name in (
+        "decompressed_string_bytes",
+        "materialized_string_bytes",
+        "string_entry_count",
+    ):
+        assert (
+            f"native_stage_{count_name}"
+            not in report["raw_samples"]["native_clangd_fact_query_index"]
+        )
 
 
 def test_profiler_cli_writes_json(clangd_fixture, tmp_path: Path, capsys) -> None:
