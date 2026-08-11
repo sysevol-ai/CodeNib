@@ -190,6 +190,42 @@ chunker = create_chunker("rust", chunk_depth=0, skeleton_mode=True)
 chunker = create_chunker("cpp", chunk_depth=2, l2_level_exclusive=False)
 ```
 
+## Experimental Native Python Span Extraction
+
+[#558](https://github.com/sysevol-ai/CodeNib/issues/558) retains an optional
+C++ proof of concept for Python parsing and L1/L2 definition-span traversal.
+Python decodes its compact 20-byte rows and name arena, then performs the
+normal line splitting, node-ID generation, and final `CodeChunk` assembly.
+The POC supports non-skeleton Python depths 1 and 2.
+
+Both build and runtime selection are off by default. The POC builds separately
+under `build/core-chunk-poc`, and `auto` falls back to the established Python
+chunker per file. `required` fails closed for parity and benchmark runs.
+
+The final gate passed exact `CodeChunk` parity for decorators, async
+definitions, Unicode and PEP 695 syntax, L1/L2 selection, optional containers,
+headers, error recovery, and line splitting. Balanced clean-checkout profiles
+on CodeNib and HTTPie both missed the requirement for at least 20% end-to-end
+acceleration; the candidate was slower in both final reports. Exact subject
+revisions and medians are retained in the
+[multi-language roadmap](../../docs/scip_multilanguage_roadmap.md).
+
+```bash
+make core-chunk-poc-test
+make core-chunk-poc-profile \
+  PYTHON_CHUNK_PROFILE_REPO=/path/to/python/repository
+
+# Explicit experiment with compatible per-file fallback
+export CODENIB_NATIVE_PYTHON_CHUNKER=auto
+
+# Parity/profile mode: surface unsupported cases and native failures
+export CODENIB_NATIVE_PYTHON_CHUNKER=required
+```
+
+This target remains local/manual only and is not part of required CI. The next
+candidate should test incremental parse-tree reuse or repository-level batching
+instead of another per-file language-boundary crossing.
+
 ## File Extension Mapping
 
 Used by `gt_locate.py` to select the correct chunker:

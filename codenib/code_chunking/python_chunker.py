@@ -8,9 +8,137 @@
 Python-specific code chunker implementation.
 """
 
-from typing import List, Optional, Tuple
+import os
+import time
+from collections import namedtuple
+from struct import Struct
+from typing import Any, List, Optional, Tuple
 
 from .base import BaseCodeChunker
+
+_NATIVE_CHUNK_ENV = "CODENIB_NATIVE_PYTHON_CHUNKER"
+_NATIVE_CHUNK_OFF = frozenset({"", "0", "false", "no", "off", "disabled"})
+_NATIVE_CHUNK_AUTO = frozenset({"1", "true", "yes", "on", "auto"})
+_NATIVE_CHUNK_REQUIRED = frozenset({"required", "strict"})
+_NATIVE_CHUNK_ABI_VERSION = 1
+_NATIVE_CHUNK_ROW = Struct("<IIB3xII")
+_NATIVE_CHUNK_GRAMMAR = "tree-sitter-python@v0.25.0"
+_NATIVE_CHUNK_RUNTIME = "tree-sitter@v0.25.2"
+_NATIVE_CHUNK_SEMANTIC_PROFILE = "python-definition-spans-v1"
+_NATIVE_CHUNK_KINDS = {1: "function", 2: "class", 3: "method"}
+_NativeNodeSpan = namedtuple("_NativeNodeSpan", ["start_point", "end_point"])
+
+
+def _native_chunk_mode() -> str:
+    value = os.environ.get(_NATIVE_CHUNK_ENV, "off").strip().lower()
+    if value in _NATIVE_CHUNK_OFF:
+        return "off"
+    if value in _NATIVE_CHUNK_AUTO:
+        return "auto"
+    if value in _NATIVE_CHUNK_REQUIRED:
+        return "required"
+    raise ValueError(
+        f"{_NATIVE_CHUNK_ENV} must be auto, required, or 0/off; got {value!r}"
+    )
+
+
+def _load_native_core():
+    try:
+        import codenib_core
+    except ImportError:
+        return None
+    return codenib_core
+
+
+def _validate_native_contract(core: Any) -> dict[str, Any]:
+    contract_function = getattr(core, "python_chunk_poc_contract", None)
+    if not callable(contract_function):
+        raise RuntimeError("compiled core does not expose Python chunk POC contract")
+    contract = contract_function()
+    if not isinstance(contract, dict):
+        raise TypeError("native Python chunk contract must be a dict")
+
+    expected = {
+        "abi_version": _NATIVE_CHUNK_ABI_VERSION,
+        "row_size": _NATIVE_CHUNK_ROW.size,
+        "grammar": _NATIVE_CHUNK_GRAMMAR,
+        "runtime": _NATIVE_CHUNK_RUNTIME,
+        "semantic_profile": _NATIVE_CHUNK_SEMANTIC_PROFILE,
+    }
+    for name, value in expected.items():
+        compiled = contract.get(name)
+        if type(compiled) is not type(value) or compiled != value:
+            raise RuntimeError(
+                f"native Python chunk {name} mismatch: "
+                f"compiled={compiled!r}, python={value!r}"
+            )
+    return contract
+
+
+def _decode_native_chunk_payload(
+    payload: Any, *, source_line_count: int
+) -> tuple[List[Tuple], dict[str, float]]:
+    if not isinstance(payload, dict):
+        raise TypeError("native Python chunk payload must be a dict")
+    abi_version = payload.get("abi_version")
+    if type(abi_version) is not int or abi_version != _NATIVE_CHUNK_ABI_VERSION:
+        raise ValueError("native Python chunk payload ABI mismatch")
+    if type(source_line_count) is not int or source_line_count < 1:
+        raise ValueError("native Python chunk source_line_count must be positive")
+
+    rows = payload.get("rows")
+    arena = payload.get("arena")
+    row_count = payload.get("row_count")
+    if not isinstance(rows, bytes) or not isinstance(arena, bytes):
+        raise TypeError("native Python chunk rows and arena must be bytes")
+    if type(row_count) is not int or row_count < 0:
+        raise ValueError("native Python chunk row_count must be a non-negative integer")
+    if len(rows) != row_count * _NATIVE_CHUNK_ROW.size:
+        raise ValueError("native Python chunk row table has an invalid size")
+
+    definitions: List[Tuple] = []
+    previous_start_line: Optional[int] = None
+    for offset in range(0, len(rows), _NATIVE_CHUNK_ROW.size):
+        (
+            start_line,
+            end_line,
+            kind_id,
+            name_offset,
+            name_length,
+        ) = _NATIVE_CHUNK_ROW.unpack_from(rows, offset)
+        if start_line > end_line:
+            raise ValueError("native Python chunk span is reversed")
+        if end_line >= source_line_count:
+            raise ValueError("native Python chunk span exceeds source line bounds")
+        if previous_start_line is not None and start_line < previous_start_line:
+            raise ValueError("native Python chunk spans are not sorted")
+        previous_start_line = start_line
+
+        kind = _NATIVE_CHUNK_KINDS.get(kind_id)
+        if kind is None:
+            raise ValueError(f"native Python chunk kind is invalid: {kind_id}")
+        name_end = name_offset + name_length
+        if name_offset > len(arena) or name_end > len(arena):
+            raise ValueError("native Python chunk name exceeds arena bounds")
+        try:
+            name = arena[name_offset:name_end].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("native Python chunk name is not valid UTF-8") from exc
+        if not name:
+            raise ValueError("native Python chunk name must not be empty")
+        node = _NativeNodeSpan((start_line, 0), (end_line, 0))
+        definitions.append((node, name, kind))
+
+    timing_fields = {
+        "native_parse": payload.get("parse_ns"),
+        "native_extract_encode": payload.get("extract_ns"),
+    }
+    timings: dict[str, float] = {}
+    for name, value in timing_fields.items():
+        if type(value) is not int or value < 0:
+            raise ValueError(f"native Python chunk timing {name} is invalid")
+        timings[name] = value / 1_000_000_000
+    return definitions, timings
 
 
 class PythonCodeChunker(BaseCodeChunker):
@@ -38,6 +166,106 @@ class PythonCodeChunker(BaseCodeChunker):
             l2_level_exclusive=l2_level_exclusive,
             **kwargs,
         )
+        self.native_chunk_backend = "python"
+        self.native_chunk_fallback_error: Optional[str] = None
+        self.native_chunk_timings: dict[str, float] = {}
+        self._native_contract_validated = False
+        self._native_fallback_warned = False
+
+    def chunk_file(
+        self,
+        file_path: str,
+        relative_path: Optional[str] = None,
+        skeleton_mode: Optional[bool] = None,
+    ):
+        """Use the opt-in native span extractor with per-file fallback."""
+
+        self.native_chunk_backend = "python"
+        self.native_chunk_fallback_error = None
+        self.native_chunk_timings = {}
+        mode = _native_chunk_mode()
+        if mode == "off":
+            return super().chunk_file(file_path, relative_path, skeleton_mode)
+
+        use_skeleton = self.skeleton_mode if skeleton_mode is None else skeleton_mode
+        if self.chunk_depth not in {1, 2} or use_skeleton:
+            message = (
+                "native Python chunk extraction supports non-skeleton "
+                "chunk_depth 1 or 2"
+            )
+            if mode == "required":
+                raise RuntimeError(message)
+            self.native_chunk_backend = "python-unsupported"
+            return super().chunk_file(file_path, relative_path, skeleton_mode)
+
+        if not os.path.exists(file_path):
+            return super().chunk_file(file_path, relative_path, skeleton_mode)
+
+        try:
+            core = _load_native_core()
+            if core is None or not callable(
+                getattr(core, "extract_python_chunk_spans", None)
+            ):
+                raise RuntimeError(
+                    "compiled core does not include the native Python chunk POC"
+                )
+            if not self._native_contract_validated:
+                _validate_native_contract(core)
+                self._native_contract_validated = True
+
+            total_started = time.perf_counter()
+            read_started = time.perf_counter()
+            code_content = self._read_source(file_path)
+            file_read = time.perf_counter() - read_started
+            binding_started = time.perf_counter()
+            payload = core.extract_python_chunk_spans(
+                code_content,
+                chunk_depth=self.chunk_depth,
+                l2_level_exclusive=self.l2_level_exclusive,
+            )
+            binding = time.perf_counter() - binding_started
+            lines = code_content.split("\n")
+            decode_started = time.perf_counter()
+            definitions, timings = _decode_native_chunk_payload(
+                payload, source_line_count=len(lines)
+            )
+            buffer_decode = time.perf_counter() - decode_started
+
+            path_for_node_id = relative_path if relative_path else file_path
+            materialize_started = time.perf_counter()
+            chunks = self._generate_chunks(
+                lines=lines,
+                definitions=definitions,
+                file_path=file_path,
+                path_for_node_id=path_for_node_id,
+                code_content=code_content,
+                skeleton_mode=False,
+            )
+            materialize = time.perf_counter() - materialize_started
+            self.native_chunk_backend = "native-tree-sitter-poc"
+            self.native_chunk_timings = {
+                "file_read": file_read,
+                "binding": binding,
+                "buffer_decode": buffer_decode,
+                "chunk_materialize": materialize,
+                "total": time.perf_counter() - total_started,
+                **timings,
+            }
+            return chunks
+        except Exception as exc:
+            if mode == "required":
+                raise
+            self.native_chunk_fallback_error = f"{type(exc).__name__}: {exc}"
+            self.native_chunk_backend = "python-fallback"
+            if not self._native_fallback_warned:
+                from ..log_utils import get_logger
+
+                get_logger(__name__).warning(
+                    "Native Python chunk extraction failed; falling back per file: %s",
+                    self.native_chunk_fallback_error,
+                )
+                self._native_fallback_warned = True
+            return super().chunk_file(file_path, relative_path, skeleton_mode)
 
     def _find_top_level_definitions(
         self, root_node, include_l2_in_file_skeleton: bool = False

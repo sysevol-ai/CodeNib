@@ -342,6 +342,39 @@ insertion. In `auto` mode a deterministic rejection is recorded in
 `query_fallback_error` and the established graph decoder is used. `required`
 fails closed, while `off` never invokes the native reader.
 
+## Native Python Chunk Span POC
+
+The [#558](https://github.com/sysevol-ai/CodeNib/issues/558) proof of concept
+moves Python parsing and definition-span traversal behind an optional native
+buffer while leaving final `CodeChunk` assembly in Python. It supports
+non-skeleton Python L1/L2 chunking. The build option
+`CODENIB_BUILD_TREE_SITTER_POC` and runtime option
+`CODENIB_NATIVE_PYTHON_CHUNKER` both default to `off`.
+
+The POC uses the independent `build/core-chunk-poc` directory so enabling it
+cannot change the cached configuration or exported API of the maintained
+`build/core` extension. `auto` falls back per file, while `required` fails
+closed on unsupported configurations, contract mismatches, or native errors.
+
+The final gate passed exact `CodeChunk` parity across decorators, async
+definitions, Unicode and PEP 695 syntax, L1/L2 selection, optional containers,
+headers, error recovery, and line splitting. Balanced clean-checkout profiles
+on CodeNib and HTTPie both missed the requirement for at least 20% end-to-end
+acceleration and reported a slower candidate. Exact revisions, configurations,
+and medians are retained in the multi-language roadmap. The POC is therefore a
+local/manual experiment and is intentionally excluded from `make core-test`
+and required CI. Run its isolated gates explicitly:
+
+```bash
+make core-chunk-poc-test
+make core-chunk-poc-profile \
+  PYTHON_CHUNK_PROFILE_REPO=/path/to/python/repository
+```
+
+Python tree-sitter already performs parsing in native code, so the next
+experiment should amortize work through incremental parse-tree reuse or
+repository-level batching rather than repeat the same per-file boundary.
+
 ## Verify
 
 ```bash
@@ -371,6 +404,8 @@ skip report.
   by native content receipts.
 - `graph_layers.{h,cpp}` classifies normalized edge types into reusable graph
   layers.
+- `python_chunk_poc.{h,cpp}` implements the opt-in native Python
+  definition-span experiment.
 - `scip_decode_base.{h,cpp}` and `scip_decode_common.{h,cpp}` provide shared
   decoder mechanics.
 - `scip_decode_<language>.{h,cpp}` owns language-specific symbol and metadata
@@ -390,5 +425,11 @@ bottleneck. A new decoder must:
 4. update the C++ registry and Python language registry together;
 5. pass serial/core node, attribute, and edge-multiset parity checks.
 
-Performance measurements and promotion decisions belong in versioned benchmark
-artifacts or internal engineering records, not in this user-facing reference.
+Compact transport and native chunk experiments require exact semantic parity,
+but parity alone does not justify promotion. Keep them opt-in until an
+alternating-arm repository profile demonstrates at least 20% end-to-end
+acceleration.
+
+Detailed performance measurements and promotion decisions belong in versioned
+benchmark artifacts or the durable acceleration roadmap, not in general
+user-facing claims.

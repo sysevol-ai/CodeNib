@@ -120,6 +120,13 @@ class BaseCodeChunker(ABC):
                 parser.language = language
             return parser
 
+    @staticmethod
+    def _read_source(file_path: str) -> str:
+        """Read source text through the shared chunker decoding contract."""
+
+        with open(file_path, "r", encoding="utf-8", errors="replace") as source:
+            return source.read()
+
     def chunk_file(
         self,
         file_path: str,
@@ -144,9 +151,9 @@ class BaseCodeChunker(ABC):
 
         # logger.debug(f"Chunking file: {file_path}")
 
-        # Read the file
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            code_content = f.read()
+        # Read the file through one helper so experimental and established
+        # parser routes measure and decode the exact same source boundary.
+        code_content = self._read_source(file_path)
 
         # Parse the code
         code_bytes = code_content.encode("utf-8")

@@ -27,6 +27,9 @@
 #include "fact_query_index.h"
 #include "graph_layers.h"
 #include "scip_decode.h"
+#ifdef CODENIB_TREE_SITTER_POC
+#include "python_chunk_poc.h"
+#endif
 
 #include <chrono>
 #include <cstdint>
@@ -513,6 +516,36 @@ py::dict clangd_fact_query_snapshot(const std::string &idx_directory,
   return result;
 }
 
+#ifdef CODENIB_TREE_SITTER_POC
+py::dict extract_python_chunk_spans(const std::string &source, int chunk_depth,
+                                    bool l2_level_exclusive) {
+  codenib::core::PythonChunkBuffer buffer;
+  {
+    py::gil_scoped_release release;
+    buffer = codenib::core::extract_python_chunk_buffer(source, chunk_depth,
+                                                        l2_level_exclusive);
+  }
+  py::dict result;
+  result["abi_version"] = codenib::core::PYTHON_CHUNK_BUFFER_ABI_VERSION;
+  result["row_count"] = buffer.row_count;
+  result["rows"] = bytes_from_vector(buffer.rows);
+  result["arena"] = bytes_from_vector(buffer.arena);
+  result["parse_ns"] = buffer.parse_ns;
+  result["extract_ns"] = buffer.extract_ns;
+  return result;
+}
+
+py::dict python_chunk_poc_contract() {
+  py::dict result;
+  result["abi_version"] = codenib::core::PYTHON_CHUNK_BUFFER_ABI_VERSION;
+  result["row_size"] = codenib::core::PYTHON_CHUNK_BUFFER_ROW_SIZE;
+  result["grammar"] = codenib::core::PYTHON_CHUNK_GRAMMAR;
+  result["runtime"] = codenib::core::PYTHON_CHUNK_RUNTIME;
+  result["semantic_profile"] = codenib::core::PYTHON_CHUNK_SEMANTIC_PROFILE;
+  return result;
+}
+#endif
+
 codenib::core::LayerBuckets
 classify_edge_layers_py(const std::vector<std::string> &edge_types) {
   py::gil_scoped_release release;
@@ -765,6 +798,21 @@ capability.
         py::arg("position_encoding") =
             codenib::core::CLANGD_DEFAULT_POSITION_ENCODING,
         R"pbdoc(Return the current content-bound clangd index receipt.)pbdoc");
+
+#ifdef CODENIB_TREE_SITTER_POC
+  m.def("extract_python_chunk_spans", &extract_python_chunk_spans,
+        py::arg("source"), py::arg("chunk_depth") = 2,
+        py::arg("l2_level_exclusive") = true,
+        R"pbdoc(
+Parse Python source and return compact L1/L2 definition span buffers.
+
+This is an opt-in proof of concept. Content assembly and CodeChunk creation
+remain in Python so the current public schema and splitting semantics are
+preserved exactly.
+)pbdoc");
+  m.def("python_chunk_poc_contract", &python_chunk_poc_contract,
+        R"pbdoc(Return the experimental Python chunk buffer contract.)pbdoc");
+#endif
 
   m.def("canonical_scip_decoder_languages",
         &codenib::core::canonical_scip_decoder_languages,

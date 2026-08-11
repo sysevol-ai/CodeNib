@@ -87,6 +87,10 @@ FACT_BUFFER_PROFILE_LANGUAGE ?=
 FACT_BUFFER_PROFILE_PROJECT_ROOT ?=
 FACT_BUFFER_PROFILE_OUTPUT ?=
 FACT_BUFFER_PROFILE_EXTRA_ARGS ?=
+PYTHON_CHUNK_POC_BUILD_DIR ?= build/core-chunk-poc
+PYTHON_CHUNK_PROFILE_REPO ?=
+PYTHON_CHUNK_PROFILE_OUTPUT ?=
+PYTHON_CHUNK_PROFILE_EXTRA_ARGS ?=
 CLANGD_WORKLOAD_GATE_INDEX_DIR ?=
 CLANGD_WORKLOAD_GATE_PROJECT_ROOT ?=
 CLANGD_WORKLOAD_GATE_OUTPUT ?= $(CODENIB_RESULTS_DIR)/clangd-workload-gate.json
@@ -204,6 +208,7 @@ endef
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
 .PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate clangd-fact-generation-profile
+.PHONY: core-chunk-poc-build core-chunk-poc-test core-chunk-poc-profile
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
 .PHONY: scip-jvm-compat-system-deps-ubuntu
@@ -419,7 +424,7 @@ core-python-deps:
 	python -m pip install "pybind11==$(PYBIND11_VERSION)"
 
 core-build: core-python-deps
-	cmake -S core -B build/core
+	cmake -S core -B build/core -DCODENIB_BUILD_TREE_SITTER_POC=OFF
 	cmake --build build/core
 
 core-test: core-build
@@ -429,6 +434,7 @@ core-test: core-build
 	./build/core/content_digest_test
 	./build/core/fact_query_index_test
 	PYTHONPATH="build/core:$$PYTHONPATH" python -c 'import sys; import codenib_core as core; required = ("decode_clangd_fact_query_index", "clangd_fact_query_contract", "clangd_fact_query_snapshot"); missing = [name for name in required if not hasattr(core, name)]; missing and sys.exit(f"codenib_core missing required bindings: {missing}")'
+	PYTHONPATH="build/core:$$PYTHONPATH" python -c 'import sys; import codenib_core as core; forbidden = ("extract_python_chunk_spans", "python_chunk_poc_contract"); present = [name for name in forbidden if hasattr(core, name)]; present and sys.exit(f"default codenib_core unexpectedly exposes experimental APIs: {present}")'
 	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
 		test/scip/test_scip_core.py \
 		test/scip/test_scip_core_registry.py \
@@ -499,6 +505,33 @@ clangd-fact-generation-profile: core-build
 		--build-context-digest "$(CLANGD_FACT_GENERATION_PROFILE_BUILD_CONTEXT_DIGEST)" \
 		$(if $(CLANGD_FACT_GENERATION_PROFILE_OUTPUT),--output-json "$(CLANGD_FACT_GENERATION_PROFILE_OUTPUT)",) \
 		$(CLANGD_FACT_GENERATION_PROFILE_EXTRA_ARGS)
+
+core-chunk-poc-build: core-python-deps
+	CODENIB_PYTHON_CHUNK_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_POC_BUILD_DIR))" \
+		python -c 'import os, sys; from pathlib import Path; poc = Path(os.environ["CODENIB_PYTHON_CHUNK_POC_BUILD_DIR"]).resolve(); maintained = Path("build/core").resolve(); poc == maintained and sys.exit("PYTHON_CHUNK_POC_BUILD_DIR must not resolve to build/core")'
+	cmake -S core -B "$(PYTHON_CHUNK_POC_BUILD_DIR)" \
+		-DCODENIB_BUILD_TREE_SITTER_POC=ON \
+		-DCODENIB_BUILD_PYBIND=ON
+	cmake --build "$(PYTHON_CHUNK_POC_BUILD_DIR)" --target codenib_core_py
+
+core-chunk-poc-test: core-chunk-poc-build
+	CODENIB_PYTHON_CHUNK_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_POC_BUILD_DIR))" \
+		PYTHONPATH="$(PYTHON_CHUNK_POC_BUILD_DIR):$$PYTHONPATH" \
+		python -c 'import sys; import codenib_core as core; required = ("extract_python_chunk_spans", "python_chunk_poc_contract"); missing = [name for name in required if not hasattr(core, name)]; missing and sys.exit(f"POC codenib_core missing required bindings: {missing}")'
+	CODENIB_PYTHON_CHUNK_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_POC_BUILD_DIR))" \
+		PYTHONPATH="$(PYTHON_CHUNK_POC_BUILD_DIR):$$PYTHONPATH" \
+		python -m pytest -q \
+			test/chunker/test_python_native_chunk_poc.py \
+			test/scripts/test_profile_python_native_chunker.py
+
+core-chunk-poc-profile: core-chunk-poc-build
+	@test -n "$(PYTHON_CHUNK_PROFILE_REPO)" || { echo "Set PYTHON_CHUNK_PROFILE_REPO=/path/to/repo" >&2; exit 1; }
+	CODENIB_PYTHON_CHUNK_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_POC_BUILD_DIR))" \
+		PYTHONPATH="$(PYTHON_CHUNK_POC_BUILD_DIR):$$PYTHONPATH" \
+		python scripts/profiling/profile_python_native_chunker.py \
+			--repo "$(PYTHON_CHUNK_PROFILE_REPO)" \
+			$(if $(PYTHON_CHUNK_PROFILE_OUTPUT),--output-json "$(PYTHON_CHUNK_PROFILE_OUTPUT)",) \
+			$(PYTHON_CHUNK_PROFILE_EXTRA_ARGS)
 
 scip-cold-start-tools: scip-java-tool gradle-tool sbt-tool scip-dotnet-tool scip-ruby-tool scip-php-info
 	@$(MAKE) --no-print-directory scip-cold-start-env

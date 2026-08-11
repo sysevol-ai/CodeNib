@@ -582,6 +582,9 @@ containment `ref=8 cand=8 missing=0 extra=0`, and references `ref=1 cand=0`.
 - [x] Keep a manifest-driven large-repository profiling harness for active
   SCIP languages whose C++ acceleration status is still serial-only or needs
   revalidation.
+- [x] Retain the [#558](https://github.com/sysevol-ai/CodeNib/issues/558)
+  native Python chunk-span POC in an isolated, default-off local/manual tier
+  after exact parity passed but the 20% end-to-end promotion gate failed.
 
 Exit condition: acceleration claims are backed by parity tests and profile
 numbers, and `core/` remains maintainable.
@@ -1011,6 +1014,36 @@ The same `make core-test` command is the documented local reproduction; slow,
 billed, and external clangd-generation benchmarks remain outside this
 deterministic job.
 
+Native Python chunk-span POC status
+([#558](https://github.com/sysevol-ai/CodeNib/issues/558)): the experiment
+builds separately under `build/core-chunk-poc`; both its build switch and
+`CODENIB_NATIVE_PYTHON_CHUNKER` runtime selection default to `off`. `auto`
+falls back per file and `required` fails closed. The maintained `build/core`
+extension, `make core-test`, and required CI do not enable the POC.
+
+The final gate passed exact `CodeChunk` parity for decorators, async
+definitions, Unicode and PEP 695 syntax, nested and conditional definitions,
+L1/L2 selection, optional containers, headers, error recovery, and line
+splitting. The balanced harness collects before and disables cyclic GC for
+each arm, keeps candidate-only validation outside the stopwatch, retains every
+raw sample and AB/BA order, rejects a Git identity change during measurement,
+and promotes only at an exact 20% improvement.
+Both recorded runs used `chunk_depth=2`, `l2_level_exclusive=true`,
+`include_header_epilogue=false`, no line cap, and excluded test files.
+
+The 2026-08-11 clean-checkout reports were both negative:
+
+| Subject | Scope | Rounds / warmups | Existing median | Native POC median | Change | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| CodeNib `a33bb13118e3a04f8d3d76eabcfb2602f785477a` | 520 files / 6,630,346 bytes / 5,620 chunks | 6 / 1 | 0.6430s | 0.8088s | 25.8% slower | keep experimental |
+| HTTPie `2105caa49bae87c5809c274e407619a0de2639d1` | 89 files / 338,976 bytes / 498 chunks | 20 / 4 | 0.03588s | 0.04294s | 19.7% slower | keep experimental |
+
+Both reports had `git_dirty=false`, exact parity, and `promoted=false`. The
+candidate missed the requirement for at least 20% acceleration and was slower
+on both subjects. Per-file native boundary work is therefore not the next
+promotion path; follow-up experiments should measure incremental parse-tree
+reuse or repository-level batching.
+
 ### Phase 6: Multi-Graph Python Surface
 
 Mixed-language repositories need a Python-side graph aggregation path before a
@@ -1125,6 +1158,9 @@ make graph-route-alignment \
   GRAPH_ALIGNMENT_CANDIDATE_ROUTE=lsp \
   GRAPH_ALIGNMENT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/csharp-active-route-alignment \
   GRAPH_ALIGNMENT_EXTRA_ARGS=--candidate-include-references
+make core-chunk-poc-test
+make core-chunk-poc-profile \
+  PYTHON_CHUNK_PROFILE_REPO=/path/to/python/repository
 python -m mkdocs build --strict
 ```
 

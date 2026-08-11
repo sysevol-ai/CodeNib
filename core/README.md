@@ -22,6 +22,8 @@ core decoder continue to use the serial Python path.
 - `content_digest.{h,cpp}` — dependency-free streaming SHA-256 for native
   content receipts.
 - `graph_layers.{h,cpp}` — shared normalized edge-layer classification.
+- `python_chunk_poc.{h,cpp}` — opt-in Python tree-sitter definition-span
+  experiment.
 - `scip_decode_base.{h,cpp}` — common loading, document scheduling, merge, and
   post-processing behavior.
 - `scip_decode_common.{h,cpp}` — language-neutral SCIP parsing and subgraph
@@ -190,6 +192,34 @@ position-first, and route-first sessions, exact public-result parity, and zero
 native graph materializations in every workload. Mixed sessions retain the 20%
 non-regression budget. Concurrent native routes must also remain deterministic
 and graph-free. This result makes no claim about clangd index generation time.
+
+## Native Python Chunk Span POC
+
+[#558](https://github.com/sysevol-ai/CodeNib/issues/558) retains a native
+Python definition-span extractor as a reproducible experiment, not as a
+production acceleration claim. Its build switch and runtime switch both
+default to `off`. The experiment builds in the isolated
+`build/core-chunk-poc` directory; the normal `build/core` output remains the
+maintained extension without the POC bindings.
+
+The final gate passed exact `CodeChunk` parity across the maintained semantic
+matrix. Balanced clean-checkout profiles on CodeNib and HTTPie both missed the
+requirement for at least 20% end-to-end acceleration and reported a slower
+candidate. Exact receipts and medians live in the durable multi-language
+roadmap rather than being treated as a promoted user-facing claim. The POC
+therefore remains local/manual only and is not part of `make core-test` or
+required CI. Reproduce its parity and profile gates explicitly with:
+
+```bash
+make core-chunk-poc-test
+make core-chunk-poc-profile \
+  PYTHON_CHUNK_PROFILE_REPO=/path/to/python/repository
+```
+
+`CODENIB_NATIVE_PYTHON_CHUNKER=auto` enables per-file compatible fallback;
+`required` fails closed for parity and profiling. Future work should test
+incremental parse-tree reuse or repository-level batching instead of another
+per-file language-boundary crossing.
 
 ## Use Through Python
 
