@@ -26,6 +26,9 @@ from pathlib import Path
 
 import pytest
 
+from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
+
 
 def _cuda_available() -> bool:
     try:
@@ -48,6 +51,26 @@ DEFAULT_EMBEDDING_DIM = 768
 DEFAULT_EMBEDDING_PROVIDER = "huggingface"
 
 EMBEDDING_INDEX_PATH = "/tmp/embedding_e2e_index"
+
+
+def _load_test_owned_vector(store, path):
+    """Authorize the session-owned local E2E cache, never artifact input."""
+
+    semantic_contract = dict(store.artifact_metadata)
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                "embedding-search-e2e-local-cache",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
 
 
 @pytest.fixture(scope="session")
@@ -77,7 +100,7 @@ def vector_store(httpie_cli_repo):
                 "normalize_embeddings": True,
             },
         )
-        vs.load(EMBEDDING_INDEX_PATH)
+        _load_test_owned_vector(vs, EMBEDDING_INDEX_PATH)
     else:
         print(f"\n[e2e] Building index for {repo_path} into {EMBEDDING_INDEX_PATH}")
         store_root.mkdir(parents=True, exist_ok=True)

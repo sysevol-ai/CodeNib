@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     List,
     Mapping,
@@ -66,6 +67,8 @@ from .tools.defaults import (
 from .tools.spec import ToolRegistry
 
 if TYPE_CHECKING:
+    from ..compiler.manifest import IndexEntry
+    from ..native_index_authorization import NativeIndexAuthorization
     from ..sandbox.protocol import SandboxSession
 
 logger = get_logger(__name__)
@@ -1623,6 +1626,12 @@ class CodeNibAgentOptions:
     bm25-only, even when ``embedding_search`` is in ``allowed_skills`` —
     CAR couldn't route to it at runtime anyway. (In ``manifest`` mode
     this rule is moot — the manifest dictates what exists.)
+
+    Native vector parsers are fail-closed. Pass either an already-bound
+    ``native_index_authorization`` or a
+    ``native_index_authorization_resolver`` that receives the exact manifest
+    ``IndexEntry`` about to be loaded. The two options are mutually exclusive;
+    neither can be derived from manifest fields by the agent runtime.
     """
 
     # --- index source: exactly one of these three must be set ---
@@ -1641,6 +1650,10 @@ class CodeNibAgentOptions:
     default_level: str = "l2"
     rebuild_indexes: bool = False
     skills_dir: Optional[str] = None
+    native_index_authorization: Optional["NativeIndexAuthorization"] = None
+    native_index_authorization_resolver: Optional[
+        Callable[["IndexEntry"], Optional["NativeIndexAuthorization"]]
+    ] = None
 
     # --- skill gating ---
     allowed_skills: Optional[List[str]] = None
@@ -1692,6 +1705,22 @@ def query(
     opts = options or CodeNibAgentOptions()
 
     _check_exactly_one_mode(opts)
+    if opts.contexts is not None and (
+        opts.native_index_authorization is not None
+        or opts.native_index_authorization_resolver is not None
+    ):
+        raise ValueError(
+            "native-index authorization options are not accepted in contexts "
+            "mode because its pre-built objects are not loaded by query()"
+        )
+    if (
+        opts.native_index_authorization is not None
+        and opts.native_index_authorization_resolver is not None
+    ):
+        raise ValueError(
+            "provide either native_index_authorization or "
+            "native_index_authorization_resolver, not both"
+        )
     if opts.sandbox is not None and opts.manifest is None:
         raise ValueError(
             "query() sandbox execution requires a trusted, revision-matched "
@@ -1788,6 +1817,10 @@ def query(
             skill_registry=registry,
             default_top_k=opts.default_top_k,
             default_level=opts.default_level,
+            native_index_authorization=opts.native_index_authorization,
+            native_index_authorization_resolver=(
+                opts.native_index_authorization_resolver
+            ),
         )
         SkillRegistry.reset()
         registry = SkillRegistry()
@@ -2041,6 +2074,8 @@ def _build_contexts(
         default_top_k=opts.default_top_k,
         default_level=opts.default_level,
         rebuild=opts.rebuild_indexes,
+        native_index_authorization=opts.native_index_authorization,
+        native_index_authorization_resolver=(opts.native_index_authorization_resolver),
     )
 
 

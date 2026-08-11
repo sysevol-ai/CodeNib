@@ -34,7 +34,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping
 
 # ---------------------------------------------------------------------------
 # Ensure the project root is on sys.path when running as a script
@@ -52,6 +52,41 @@ from codenib.ops.rerank import RerankContext
 from codenib.ops.retrieve import RetrieveContext
 from codenib.paths import repo_index_dir
 from codenib.types import QueriedNode
+
+
+def _load_vector_from_local_admin_boundary(
+    store: Any,
+    path: str | Path,
+    *,
+    semantic_contract: Mapping[str, Any],
+    evidence: str,
+) -> None:
+    """Authorize one lexical local cache owned by this example invocation."""
+
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
+
+    if not evidence:
+        raise ValueError("local vector authorization evidence must be non-empty")
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                evidence,
+                "skill-agent-example-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -142,7 +177,12 @@ def build_vector_store(
             dimension=embedding_dimension,
             store_path=str(store_path),
         )
-        vs.load(str(store_path))
+        _load_vector_from_local_admin_boundary(
+            vs,
+            store_path,
+            semantic_contract={},
+            evidence="skill-agent-standalone-local-cache",
+        )
         if vs.l0_documents and vs.l2_documents:
             return vs
         print("  Embedding: cache incomplete, rebuilding")
@@ -374,20 +414,24 @@ def run_agent(args: argparse.Namespace) -> None:
         print(f"  Loaded BM25 from {manifest.indexes['bm25'].path}")
 
     if "vector" in manifest.indexes and manifest.indexes["vector"].status == "fresh":
-        emb_model = manifest.indexes["vector"].config.get(
-            "embedding_model", args.embedding_model
-        )
-        emb_dim = manifest.indexes["vector"].config.get(
-            "embedding_dimension", args.embedding_dimension
-        )
+        vector_entry = manifest.indexes["vector"]
+        vector_contract = dict(vector_entry.config)
+        emb_model = vector_contract.get("embedding_model", args.embedding_model)
+        emb_dim = vector_contract.get("embedding_dimension", args.embedding_dimension)
         vector_store = CodeVectorStore(
             embedding_model=emb_model,
             embedding_provider="huggingface",
             dimension=emb_dim,
-            store_path=manifest.indexes["vector"].path,
+            store_path=vector_entry.path,
+            artifact_metadata=vector_contract,
         )
-        vector_store.load(manifest.indexes["vector"].path)
-        print(f"  Loaded vector store from {manifest.indexes['vector'].path}")
+        _load_vector_from_local_admin_boundary(
+            vector_store,
+            vector_entry.path,
+            semantic_contract=vector_contract,
+            evidence="skill-agent-compiled-local-manifest",
+        )
+        print(f"  Loaded vector store from {vector_entry.path}")
 
     # Create contexts and load skills
     retrieve_ctx = RetrieveContext(

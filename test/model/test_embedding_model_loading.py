@@ -180,14 +180,17 @@ def test_hybrid_pipeline_forwards_model_policy(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "build_skill_contexts", fake_build_skill_contexts)
     monkeypatch.setattr(SkillLoader, "load_all", lambda *args, **kwargs: [])
     revision = "e" * 40
+    authorization = object()
 
     module.HybridRetrievePipeline(
         repo_path=str(tmp_path),
         embedding_model="vendor/custom-model",
         embedding_revision=revision,
         trust_remote_code=True,
+        native_index_authorization=authorization,
     )
 
     [kwargs] = calls
     assert kwargs["embedding_revision"] == revision
     assert kwargs["trust_remote_code"] is True
+    assert kwargs["native_index_authorization"] is authorization

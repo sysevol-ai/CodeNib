@@ -13,14 +13,35 @@ import asyncio
 import pytest
 
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.search import search_semantic
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.paths import prebuilt_data_dir
 
 # Test data directory
 CODENIB_DATA = prebuilt_data_dir()
 TEST_REPO = "astropy__astropy-12907"
 TEST_REPO_PATH = CODENIB_DATA / TEST_REPO
+
+
+def _load_test_owned_vector(store, path, semantic_contract):
+    """Authorize the explicitly configured local slow-test fixture."""
+
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                "semantic-integration-local-fixture",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
 
 
 @pytest.mark.slow
@@ -36,6 +57,12 @@ class TestSearchSemanticIntegration:
         """Create ServerContext with real embedding index."""
         # Create manifest for test repo
         # Note: No actual manifest file exists, we construct it programmatically
+        vector_contract = {
+            "embedding_model": "jinaai/jina-code-embeddings-1.5b",
+            "embedding_provider": "huggingface",
+            "dimension": 1536,
+            "index_metric": "ip",
+        }
         manifest = RepoManifest(
             repo_path=str(TEST_REPO_PATH),
             commit="test",
@@ -46,12 +73,7 @@ class TestSearchSemanticIntegration:
                     built_at="2024-04-12T20:57:00Z",
                     built_at_epoch=1712957820.0,
                     status="fresh",
-                    config={
-                        "embedding_model": "jinaai/jina-code-embeddings-1.5b",
-                        "embedding_provider": "huggingface",
-                        "dimension": 1536,
-                        "index_metric": "ip",
-                    },
+                    config=vector_contract,
                 )
             },
         )
@@ -67,8 +89,13 @@ class TestSearchSemanticIntegration:
             dimension=1536,
             index_metric="ip",
             store_path=str(TEST_REPO_PATH),  # Parent directory
+            artifact_metadata=vector_contract,
         )
-        ctx.vector.load()
+        _load_test_owned_vector(
+            ctx.vector,
+            TEST_REPO_PATH,
+            vector_contract,
+        )
 
         return ctx
 

@@ -45,12 +45,18 @@ from codenib.compiler.snapshot_store import ArtifactProfile  # noqa: E402
 from codenib.compiler.snapshot_store import SnapshotArtifactStore, SourceSnapshot
 from codenib.git_snapshot import GitSourceSurface  # noqa: E402
 from codenib.index.embedding import build_hierarchical_vector_store  # noqa: E402
+from codenib.index.embedding.artifact_integrity import (  # noqa: E402
+    capture_authenticated_vector_view,
+)
 from codenib.index.embedding.model_policy import (  # noqa: E402
     DEFAULT_EMBEDDING_MODEL,
     resolve_embedding_load_policy,
 )
 from codenib.languages import extensions_for_language  # noqa: E402
 from codenib.log_utils import get_logger  # noqa: E402
+from codenib.native_index_authorization import (  # noqa: E402
+    _mint_trusted_local_admin_authorization,
+)
 from codenib.paths import prebuilt_data_dir  # noqa: E402
 from codenib.profiler import Profiler  # noqa: E402
 from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION  # noqa: E402
@@ -410,6 +416,35 @@ def _vector_quality_path(root: Path, embedding_model: str) -> Path:
     return root / f"artifact_quality_{model_suffix}.json"
 
 
+def _assess_vector_artifact_as_local_admin(
+    root: Path,
+    *,
+    artifact_metadata: Mapping[str, Any],
+    evidence: str,
+    **assessment_kwargs: Any,
+) -> dict[str, Any]:
+    """Assess bytes owned by this local build command's lexical boundary."""
+
+    with capture_authenticated_vector_view(root) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=artifact_metadata,
+            evidence=(
+                evidence,
+                "embedding-build-command-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
+        return assess_vector_artifact(
+            root,
+            expected_artifact=artifact_metadata,
+            authenticated_view=vector_view,
+            native_index_authorization=authorization,
+            **assessment_kwargs,
+        )
+
+
 def _artifact_metadata(
     *,
     instance: dict[str, Any],
@@ -653,14 +688,21 @@ def build_embeddings(args):
             # Reuse only artifacts that pass identity, file, and coverage checks.
             model_suffix = args.embedding_model.replace("/", "__")
             config_file = artifact_root / f"config_{model_suffix}.json"
-            existing_quality = assess_vector_artifact(
-                artifact_root,
-                embedding_model=args.embedding_model,
-                build_levels=build_levels,
-                surface=surface,
-                expected_artifact=artifact_metadata,
-                required_l0_files=required_l0,
-            )
+            if artifact_root.is_dir():
+                existing_quality = _assess_vector_artifact_as_local_admin(
+                    artifact_root,
+                    artifact_metadata=artifact_metadata,
+                    evidence="embedding-build-existing-local-cache",
+                    embedding_model=args.embedding_model,
+                    build_levels=build_levels,
+                    surface=surface,
+                    required_l0_files=required_l0,
+                )
+            else:
+                existing_quality = {
+                    "passed": False,
+                    "failure_names": ["missing_artifact_root"],
+                }
             if existing_quality["passed"] and not args.force_rebuild:
                 logger.info(
                     "Embedding already exists and passed quality gates at %s; skipping",
@@ -720,12 +762,13 @@ def build_embeddings(args):
                     artifact_metadata=artifact_metadata,
                 )
 
-            artifact_quality = assess_vector_artifact(
+            artifact_quality = _assess_vector_artifact_as_local_admin(
                 artifact_root,
+                artifact_metadata=artifact_metadata,
+                evidence="embedding-build-finished-local-output",
                 embedding_model=args.embedding_model,
                 build_levels=build_levels,
                 surface=surface,
-                expected_artifact=artifact_metadata,
                 required_l0_files=required_l0,
             )
             quality_path = _vector_quality_path(artifact_root, args.embedding_model)

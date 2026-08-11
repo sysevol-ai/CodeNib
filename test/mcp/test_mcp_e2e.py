@@ -17,13 +17,35 @@ import pytest
 
 import codenib.mcp.server as server_module
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.mcp.context import ServerContext
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.paths import prebuilt_data_dir
 
 # Test data from codenib-base-dataset
 CODENIB_DATA = prebuilt_data_dir()
 TEST_REPO = "astropy__astropy-12907"
 TEST_REPO_PATH = CODENIB_DATA / TEST_REPO
+
+
+def _load_test_owned_vector(store, path):
+    """Authorize one explicitly selected local E2E fixture tree."""
+
+    semantic_contract = dict(store.artifact_metadata)
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                "mcp-e2e-direct-local-fixture",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
 
 
 @pytest.mark.slow
@@ -156,7 +178,7 @@ class TestMCPServerE2E:
             index_metric="ip",
             store_path=str(TEST_REPO_PATH),
         )
-        vector_store.load()
+        _load_test_owned_vector(vector_store, TEST_REPO_PATH)
 
         query = "coordinate transformation"
         top_k = 5

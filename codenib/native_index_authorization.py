@@ -31,6 +31,18 @@ _DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 _TOKEN_SEAL = object()
 
 
+class NativeIndexAuthorizationError(ValueError):
+    """Base error for a supplied native-index capability that cannot be used."""
+
+
+class MissingNativeIndexAuthorizationError(NativeIndexAuthorizationError):
+    """Raised when a native parser was invoked without an external capability."""
+
+
+class InvalidNativeIndexAuthorizationError(NativeIndexAuthorizationError):
+    """Raised when an explicitly supplied capability is malformed or mismatched."""
+
+
 def _canonical_json(value: Any) -> bytes:
     return json.dumps(
         value,
@@ -221,13 +233,21 @@ def require_native_index_authorization(
     view_type: str,
     semantic_contract: Mapping[str, Any],
 ) -> NativeIndexSubject:
+    if authorization is None:
+        raise MissingNativeIndexAuthorizationError(
+            "native index parsing requires external authorization"
+        )
     if (
         not isinstance(authorization, NativeIndexAuthorization)
         or authorization._seal is not _TOKEN_SEAL
     ):
-        raise ValueError("native index parsing requires external authorization")
+        raise InvalidNativeIndexAuthorizationError(
+            "native index authorization is malformed"
+        )
     if authorization.process_id != os.getpid():
-        raise ValueError("native index authorization belongs to another process")
+        raise InvalidNativeIndexAuthorizationError(
+            "native index authorization belongs to another process"
+        )
     subject = native_index_subject(
         ownership,
         view_type=view_type,
@@ -238,15 +258,21 @@ def require_native_index_authorization(
         or authorization.subject_digest != subject.digest
         or not _DIGEST_RE.fullmatch(authorization.subject_digest)
     ):
-        raise ValueError("native index authorization does not match captured bytes")
+        raise InvalidNativeIndexAuthorizationError(
+            "native index authorization does not match captured bytes"
+        )
     if (
         authorization.trust_class == "trusted-local"
         and authorization.root_identity
         != (directory_ownership_root_identity(ownership))  # type: ignore[arg-type]
     ):
-        raise ValueError("trusted-local authorization does not match the root identity")
+        raise InvalidNativeIndexAuthorizationError(
+            "trusted-local authorization does not match the root identity"
+        )
     if authorization.trust_class != "trusted-local":
-        raise ValueError("native index authorization has an unsupported trust class")
+        raise InvalidNativeIndexAuthorizationError(
+            "native index authorization has an unsupported trust class"
+        )
     return subject
 
 
@@ -257,26 +283,39 @@ def require_native_index_authorization_preflight(
 ) -> None:
     """Reject malformed or foreign-process tokens before expensive capture."""
 
+    if authorization is None:
+        raise MissingNativeIndexAuthorizationError(
+            "native index parsing requires external authorization"
+        )
     if (
         not isinstance(authorization, NativeIndexAuthorization)
         or authorization._seal is not _TOKEN_SEAL
     ):
-        raise ValueError("native index parsing requires external authorization")
+        raise InvalidNativeIndexAuthorizationError(
+            "native index authorization is malformed"
+        )
     if authorization.process_id != os.getpid():
-        raise ValueError("native index authorization belongs to another process")
+        raise InvalidNativeIndexAuthorizationError(
+            "native index authorization belongs to another process"
+        )
     if (
         authorization.trust_class != "trusted-local"
         or authorization.view_type != view_type
         or not _DIGEST_RE.fullmatch(authorization.subject_digest)
         or authorization.root_identity is None
     ):
-        raise ValueError("native index authorization has an invalid preliminary scope")
+        raise InvalidNativeIndexAuthorizationError(
+            "native index authorization has an invalid preliminary scope"
+        )
 
 
 __all__ = [
     "FAISS_PARSER_CONTRACT",
+    "InvalidNativeIndexAuthorizationError",
+    "MissingNativeIndexAuthorizationError",
     "NATIVE_INDEX_SUBJECT_SCHEMA",
     "NativeIndexAuthorization",
+    "NativeIndexAuthorizationError",
     "NativeIndexSubject",
     "native_index_subject",
     "require_native_index_authorization",

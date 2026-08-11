@@ -32,10 +32,21 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Sequence, Set
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Set,
+)
 
 from ..agent.skills.core import SkillType
 from ..agent.skills.registry import SkillRegistry
+from ..index.embedding.artifact_integrity import require_authorized_vector_view
 from ..index.embedding.model_policy import (
     DEFAULT_EMBEDDING_DIMENSION,
     DEFAULT_EMBEDDING_MODEL,
@@ -50,6 +61,10 @@ from .manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
 
 if TYPE_CHECKING:
     from ..native_index_authorization import NativeIndexAuthorization
+
+NativeIndexAuthorizationResolver = Callable[
+    [IndexEntry], "NativeIndexAuthorization | None"
+]
 
 logger = logging.getLogger(__name__)
 
@@ -311,6 +326,21 @@ def _current_cached_vector_entry(
     return entry
 
 
+def _resolve_native_vector_authorization(
+    entry: IndexEntry,
+    resolver: NativeIndexAuthorizationResolver,
+):
+    """Resolve external authority from the exact entry about to be loaded."""
+
+    authorization = resolver(entry)
+    if authorization is None:
+        raise ValueError(
+            "native-index authorization resolver returned no authorization "
+            "for a required vector view"
+        )
+    return authorization
+
+
 def _load_bm25(index_path: str):
     """Load a BM25 index from an arbitrary directory path.
 
@@ -341,16 +371,14 @@ def _load_vector(
 ):
     """Load a FAISS vector store from an arbitrary directory path."""
     from ..index.embedding.vector_store import CodeVectorStore
-    from ..native_index_authorization import (
-        require_native_index_authorization_preflight,
-    )
 
-    # Reject absent or malformed authority before initializing an embedding
-    # model or client. The exact tree and semantic contract are checked again
-    # by ``CodeVectorStore.load`` after it captures the view.
-    require_native_index_authorization_preflight(
+    # Bind the capability to the exact tree and semantic contract before the
+    # constructor can initialize an embedding model or remote client. The
+    # store repeats the exact check around its native parser load.
+    require_authorized_vector_view(
+        index_path,
         native_index_authorization,
-        view_type="vector",
+        artifact_metadata or {},
     )
 
     kwargs = dict(embedding_kwargs or {})
@@ -425,6 +453,7 @@ def build_skill_contexts(
     embedding_batch_size: Optional[int] = None,
     embedding_max_seq_length: Optional[int] = None,
     native_index_authorization: NativeIndexAuthorization | None = None,
+    native_index_authorization_resolver: NativeIndexAuthorizationResolver | None = None,
 ) -> Dict[str, Any]:
     """Build the union of indexes required by *skill_ids* and package them.
 
@@ -451,8 +480,21 @@ def build_skill_contexts(
     ``config.yaml`` on disk, so callers no longer have to pre-populate the
     ``SkillRegistry`` before calling this (see #154). The registry is only
     consulted for skills that are not present on disk.
+
+    Existing native vector views require either a capability already bound to
+    the intended cache or a resolver that receives its current manifest entry.
+    When this function itself compiles new bytes, it may mint only for that
+    compiler-owned captured output.
     """
     skill_ids = list(skill_ids)
+    if (
+        native_index_authorization is not None
+        and native_index_authorization_resolver is not None
+    ):
+        raise ValueError(
+            "provide either native_index_authorization or "
+            "native_index_authorization_resolver, not both"
+        )
     skill_registry = skill_registry or SkillRegistry()
 
     cache_dir = cache_dir or os.path.join(
@@ -482,7 +524,11 @@ def build_skill_contexts(
         # An existing native vector cache is not self-authorizing. Without a
         # caller-issued capability, rebuild it from the repository source so
         # this compiler invocation owns the bytes it will authorize below.
-        if "vector" in needed and native_index_authorization is None:
+        if (
+            "vector" in needed
+            and native_index_authorization is None
+            and native_index_authorization_resolver is None
+        ):
             missing = sorted(set(missing) | {"vector"})
         if missing:
             registry = builder_registry
@@ -513,7 +559,11 @@ def build_skill_contexts(
     loadable: Set[str] = set(needed)
     for t in optional:
         if _looks_built(cache_dir, t):
-            if t == "vector" and native_index_authorization is None:
+            if (
+                t == "vector"
+                and native_index_authorization is None
+                and native_index_authorization_resolver is None
+            ):
                 logger.warning(
                     "Skipping optional native vector cache without external "
                     "authorization"
@@ -544,36 +594,58 @@ def build_skill_contexts(
 
                 vector_path = vector_entry.path
                 vector_artifact_metadata = dict(vector_entry.config)
-                with capture_authenticated_vector_view(vector_path) as vector_view:
-                    vector_authorization = _mint_trusted_local_admin_authorization(
-                        vector_view.ownership,
-                        view_type="vector",
-                        semantic_contract=vector_artifact_metadata,
-                        evidence=(
-                            "skill-context-compiler-owned-build",
-                            "captured-vector-tree-subject",
-                        ),
+                if native_index_authorization_resolver is not None:
+                    vector_authorization = _resolve_native_vector_authorization(
+                        vector_entry,
+                        native_index_authorization_resolver,
                     )
+                else:
+                    with capture_authenticated_vector_view(vector_path) as vector_view:
+                        vector_authorization = _mint_trusted_local_admin_authorization(
+                            vector_view.ownership,
+                            view_type="vector",
+                            semantic_contract=vector_artifact_metadata,
+                            evidence=(
+                                "skill-context-compiler-owned-build",
+                                "captured-vector-tree-subject",
+                            ),
+                        )
         elif vector_authorization is not None:
             cached_entry = _current_cached_vector_entry(cache_dir, vector_path)
             if cached_entry is not None:
                 vector_artifact_metadata = dict(cached_entry.config)
-        loaded["vector"] = _load_vector(
-            vector_path,
-            embedding_model=embedding_model,
-            embedding_provider="huggingface",
-            embedding_dimension=embedding_dimension,
-            embedding_revision=load_policy.revision,
-            embedding_kwargs=(
-                {"max_seq_length": embedding_max_seq_length}
-                if embedding_max_seq_length is not None
-                else None
-            ),
-            trust_remote_code=load_policy.trust_remote_code,
-            default_batch_size=embedding_batch_size,
-            artifact_metadata=vector_artifact_metadata,
-            native_index_authorization=vector_authorization,
-        )
+        elif native_index_authorization_resolver is not None:
+            cached_entry = _current_cached_vector_entry(cache_dir, vector_path)
+            if cached_entry is None:
+                raise ValueError(
+                    "cannot resolve native-index authorization without a current "
+                    "vector manifest entry"
+                )
+            vector_artifact_metadata = dict(cached_entry.config)
+            vector_authorization = _resolve_native_vector_authorization(
+                cached_entry,
+                native_index_authorization_resolver,
+            )
+        # Required vectors always reach the fail-closed loader, even when a
+        # broken compiler result omitted its authority. Optional vectors may
+        # still degrade when no external capability was supplied.
+        if vector_authorization is not None or "vector" in needed:
+            loaded["vector"] = _load_vector(
+                vector_path,
+                embedding_model=embedding_model,
+                embedding_provider="huggingface",
+                embedding_dimension=embedding_dimension,
+                embedding_revision=load_policy.revision,
+                embedding_kwargs=(
+                    {"max_seq_length": embedding_max_seq_length}
+                    if embedding_max_seq_length is not None
+                    else None
+                ),
+                trust_remote_code=load_policy.trust_remote_code,
+                default_batch_size=embedding_batch_size,
+                artifact_metadata=vector_artifact_metadata,
+                native_index_authorization=vector_authorization,
+            )
     if "symbol_graph" in loadable:
         try:
             loaded["symbol_graph"] = _load_symbol_graph(
@@ -616,6 +688,7 @@ def load_contexts_from_manifest(
     default_top_k: int = 10,
     default_level: str = "l2",
     native_index_authorization: NativeIndexAuthorization | None = None,
+    native_index_authorization_resolver: NativeIndexAuthorizationResolver | None = None,
 ) -> Dict[str, Any]:
     """Load index artifacts directly from a pre-built ``RepoManifest``.
 
@@ -633,6 +706,10 @@ def load_contexts_from_manifest(
     model/dimension are read from ``manifest.indexes["vector"].config``
     when present.
 
+    ``native_index_authorization_resolver``, when supplied, is invoked with
+    that exact vector ``IndexEntry`` and must return an out-of-band capability
+    bound to the same tree and config. Manifest data never mints authority.
+
     Raises:
         ValueError: if any ``skill_ids`` *requires* an ``index_type`` that
             isn't present in the manifest or whose ``status != "fresh"``.
@@ -641,6 +718,14 @@ def load_contexts_from_manifest(
             beats the deferred "Skill not available" at tool-call time.
     """
     skill_ids = list(skill_ids)
+    if (
+        native_index_authorization is not None
+        and native_index_authorization_resolver is not None
+    ):
+        raise ValueError(
+            "provide either native_index_authorization or "
+            "native_index_authorization_resolver, not both"
+        )
     registry = skill_registry or SkillRegistry()
 
     # Map skill_id → list of index_types to load, validating required ones.
@@ -657,6 +742,7 @@ def load_contexts_from_manifest(
                     req.index_type == "vector"
                     and not getattr(req, "required", True)
                     and native_index_authorization is None
+                    and native_index_authorization_resolver is None
                 ):
                     logger.warning(
                         "Skipping optional manifest vector view without external "
@@ -681,6 +767,12 @@ def load_contexts_from_manifest(
         loaded["bm25"] = _load_bm25(bm25_entry.path)
     if "vector" in needed:
         vec_entry = manifest.indexes["vector"]
+        vector_authorization = native_index_authorization
+        if native_index_authorization_resolver is not None:
+            vector_authorization = _resolve_native_vector_authorization(
+                vec_entry,
+                native_index_authorization_resolver,
+            )
         route = resolve_embedding_artifact_route(vec_entry.config)
         embedding_kwargs = route.embedding_backend_kwargs()
         embedding_kwargs.update(route.client_kwargs())
@@ -692,7 +784,7 @@ def load_contexts_from_manifest(
             index_metric=vec_entry.config.get("index_metric", "ip"),
             embedding_kwargs=embedding_kwargs,
             artifact_metadata=vec_entry.config,
-            native_index_authorization=native_index_authorization,
+            native_index_authorization=vector_authorization,
         )
     if "symbol_graph" in needed:
         loaded["symbol_graph"] = _load_symbol_graph(

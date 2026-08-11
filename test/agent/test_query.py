@@ -156,6 +156,34 @@ class TestPreconditions:
         assert result.answer == "ok"
         assert called["n"] == 0
 
+    def test_repo_mode_threads_native_authorization_resolver(self, monkeypatch):
+        from codenib import compiler as compiler_mod
+
+        captured = {}
+
+        def resolver(_entry):
+            return object()
+
+        def fake_build(**kwargs):
+            captured.update(kwargs)
+            return {}
+
+        monkeypatch.setattr(compiler_mod, "build_skill_contexts", fake_build)
+
+        result = query(
+            "hello",
+            options=CodeNibAgentOptions(
+                repo_path="/tmp/repo",
+                llm=_mock_llm_final_answer(answer="ok"),
+                allowed_skills=["bm25_search"],
+                native_index_authorization_resolver=resolver,
+            ),
+        )
+
+        assert result.answer == "ok"
+        assert captured["native_index_authorization"] is None
+        assert captured["native_index_authorization_resolver"] is resolver
+
 
 # ---------------------------------------------------------------------------
 # Compile-table threading

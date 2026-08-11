@@ -12,9 +12,13 @@ import pytest
 from codenib._atomic_directory import capture_directory_ownership
 from codenib.native_index_authorization import (
     NATIVE_INDEX_SUBJECT_SCHEMA,
+    InvalidNativeIndexAuthorizationError,
+    MissingNativeIndexAuthorizationError,
+    NativeIndexAuthorizationError,
     _mint_trusted_local_admin_authorization,
     native_index_subject,
     require_native_index_authorization,
+    require_native_index_authorization_preflight,
 )
 
 
@@ -60,7 +64,10 @@ def test_native_index_authorization_is_process_local_and_exact(tmp_path: Path) -
 
     payload.write_bytes(b"changed")
     changed = capture_directory_ownership(root)
-    with pytest.raises(ValueError, match="does not match captured bytes"):
+    with pytest.raises(
+        InvalidNativeIndexAuthorizationError,
+        match="does not match captured bytes",
+    ):
         require_native_index_authorization(
             authorization,
             changed,
@@ -95,7 +102,7 @@ def test_native_index_authorization_is_immutable_and_pid_bound(
         "getpid",
         lambda: authorization.process_id + 1,
     )
-    with pytest.raises(ValueError, match="another process"):
+    with pytest.raises(InvalidNativeIndexAuthorizationError, match="another process"):
         require_native_index_authorization(
             authorization,
             ownership,
@@ -125,10 +132,59 @@ def test_native_index_authorization_defaults_to_deny(tmp_path: Path) -> None:
     (root / "index.faiss").write_bytes(b"native")
     ownership = capture_directory_ownership(root)
 
-    with pytest.raises(ValueError, match="requires external authorization"):
+    with pytest.raises(
+        MissingNativeIndexAuthorizationError,
+        match="requires external authorization",
+    ):
         require_native_index_authorization(
             None,
             ownership,
             view_type="vector",
             semantic_contract={"dimension": 3},
+        )
+
+
+def test_native_index_authorization_errors_remain_value_errors() -> None:
+    assert issubclass(NativeIndexAuthorizationError, ValueError)
+    assert issubclass(MissingNativeIndexAuthorizationError, ValueError)
+    assert issubclass(InvalidNativeIndexAuthorizationError, ValueError)
+
+    import codenib.native_index_authorization as authorization_module
+
+    assert {
+        "NativeIndexAuthorizationError",
+        "MissingNativeIndexAuthorizationError",
+        "InvalidNativeIndexAuthorizationError",
+    } <= set(authorization_module.__all__)
+
+
+def test_explicit_malformed_authorization_is_not_missing() -> None:
+    with pytest.raises(
+        InvalidNativeIndexAuthorizationError,
+        match="malformed",
+    ):
+        require_native_index_authorization_preflight(object(), view_type="vector")
+
+
+def test_wrong_semantic_authorization_is_invalid(tmp_path: Path) -> None:
+    root = tmp_path / "vector"
+    root.mkdir()
+    (root / "index.faiss").write_bytes(b"native")
+    ownership = capture_directory_ownership(root)
+    authorization = _mint_trusted_local_admin_authorization(
+        ownership,
+        view_type="vector",
+        semantic_contract={"dimension": 3},
+        evidence=("verified-local-boundary",),
+    )
+
+    with pytest.raises(
+        InvalidNativeIndexAuthorizationError,
+        match="does not match captured bytes",
+    ):
+        require_native_index_authorization(
+            authorization,
+            ownership,
+            view_type="vector",
+            semantic_contract={"dimension": 4},
         )

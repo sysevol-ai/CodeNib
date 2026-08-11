@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from codenib._atomic_directory import capture_directory_ownership
+from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.index.embedding.vector_store import (
     CodeVectorStore,
     _OpenAIEmbeddingWrapper,
@@ -95,12 +95,16 @@ def _store(
 
 
 def _authorization(path, store):
-    return _mint_trusted_local_admin_authorization(
-        capture_directory_ownership(path),
-        view_type="vector",
-        semantic_contract=store.artifact_metadata,
-        evidence=("vector-artifact-test-local-admin",),
-    )
+    with capture_authenticated_vector_view(path) as view:
+        return _mint_trusted_local_admin_authorization(
+            view.ownership,
+            view_type="vector",
+            semantic_contract=store.artifact_metadata,
+            evidence=(
+                "vector-artifact-test-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
 
 
 def test_load_denies_missing_authorization_before_tree_capture(

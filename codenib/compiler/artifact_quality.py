@@ -12,8 +12,15 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .. import compat_pickle
+from .._captured_directory import AuthenticatedSnapshotReader
 from ..git_snapshot import GitSourceSurface, normalize_repository_path
 from ..graph.code_graph import CodeGraph
+from ..index.embedding.artifact_integrity import AuthenticatedVectorView
+from ..native_index_authorization import (
+    NativeIndexAuthorization,
+    require_native_index_authorization,
+    require_native_index_authorization_preflight,
+)
 from ..types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, ROOT_NODE, is_symbol_node
 
 ARTIFACT_QUALITY_SCHEMA_VERSION = 1
@@ -242,32 +249,37 @@ def constrain_and_assess_graph_artifact(
 
 
 def _load_vector_level(
-    root: Path,
+    view: AuthenticatedVectorView,
     level: str,
     model_suffix: str,
 ) -> tuple[list[Any], int, list[str], bool]:
     import faiss
 
     failures = []
-    level_root = root / level
-    config_path = level_root / f"config_{model_suffix}.json"
-    index_path = level_root / f"index_{model_suffix}.faiss"
-    documents_path = level_root / f"documents_{model_suffix}.pkl"
-    for path in (config_path, index_path, documents_path):
-        if not path.is_file():
-            failures.append(f"missing:{path.name}")
+    config_relative = f"{level}/config_{model_suffix}.json"
+    index_relative = f"{level}/index_{model_suffix}.faiss"
+    documents_relative = f"{level}/documents_{model_suffix}.pkl"
+    for relative in (config_relative, index_relative, documents_relative):
+        if not view.has_file(relative):
+            failures.append(f"missing:{Path(relative).name}")
     if failures:
         return [], 0, failures, False
 
     try:
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        with documents_path.open("rb") as handle:
-            documents = list(compat_pickle.load(handle))
-        index = faiss.read_index(str(index_path))
+        config = view.load_json_object(
+            config_relative,
+            label=f"vector {level} quality config",
+        )
+        with view.authenticated_snapshot(documents_relative) as (snapshot, _record):
+            documents = list(compat_pickle.load(AuthenticatedSnapshotReader(snapshot)))
+        with view.authenticated_snapshot(index_relative) as (snapshot, _record):
+            source = AuthenticatedSnapshotReader(snapshot)
+            callback_reader = faiss.PyCallbackIOReader(  # type: ignore[attr-defined]
+                source.read
+            )
+            index = faiss.read_index(callback_reader)
     except Exception as exc:
         return [], 0, [f"unreadable_level:{type(exc).__name__}"], False
-    if not isinstance(config, Mapping):
-        return [], 0, ["invalid_level_config"], False
     expected = config.get("num_documents")
     if not isinstance(expected, int) or isinstance(expected, bool) or expected < 0:
         failures.append("invalid_document_config_count")
@@ -350,38 +362,55 @@ def vector_artifact_files_match(
     ) == dict(expected_fingerprints)
 
 
-def assess_vector_artifact(
-    root: str | Path,
+def _captured_vector_artifact_file_fingerprints(
+    view: AuthenticatedVectorView,
+    *,
+    model_suffix: str,
+    build_levels: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    """Return fingerprints from the exact tree authorized for assessment."""
+
+    fingerprints: dict[str, dict[str, Any]] = {}
+    for relative_path in _vector_artifact_relative_paths(model_suffix, build_levels):
+        relative = relative_path.as_posix()
+        if not view.has_file(relative):
+            continue
+        record = view.record(relative)
+        fingerprints[relative] = {
+            "size": record.size,
+            "sha256": record.sha256,
+        }
+    return fingerprints
+
+
+def _assess_captured_vector_artifact(
     *,
     embedding_model: str,
     build_levels: Sequence[str],
     surface: GitSourceSurface,
     expected_artifact: Mapping[str, Any],
     required_l0_files: Sequence[str] = (),
+    authenticated_view: AuthenticatedVectorView,
 ) -> dict[str, Any]:
-    """Validate vector files, provenance, commit paths, and L0 GT coverage."""
-
-    artifact_root = Path(root)
     model_suffix = embedding_model.replace("/", "__")
-    top_config_path = artifact_root / f"config_{model_suffix}.json"
+    top_config_relative = f"config_{model_suffix}.json"
     failures: list[str] = []
     top_config: Mapping[str, Any] = {}
-    if not top_config_path.is_file():
+    if not authenticated_view.has_file(top_config_relative):
         failures.append("missing_top_config")
     else:
         try:
-            top_config = json.loads(top_config_path.read_text(encoding="utf-8"))
+            top_config = authenticated_view.load_json_object(
+                top_config_relative,
+                label="vector quality top-level config",
+            )
         except Exception as exc:
             failures.append(f"unreadable_top_config:{type(exc).__name__}")
         else:
-            if not isinstance(top_config, Mapping):
-                failures.append("invalid_top_config")
-                top_config = {}
-            else:
-                if top_config.get("embedding_model") != embedding_model:
-                    failures.append("embedding_model_mismatch")
-                if top_config.get("artifact") != dict(expected_artifact):
-                    failures.append("artifact_identity_mismatch")
+            if top_config.get("embedding_model") != embedding_model:
+                failures.append("embedding_model_mismatch")
+            if top_config.get("artifact") != dict(expected_artifact):
+                failures.append("artifact_identity_mismatch")
 
     levels: dict[str, Any] = {}
     all_paths: set[str] = set()
@@ -391,9 +420,8 @@ def assess_vector_artifact(
     normalized_levels = tuple(dict.fromkeys(level.lower() for level in build_levels))
     unexpected_levels = []
     for level in sorted({"l0", "l2"} - set(normalized_levels)):
-        level_root = artifact_root / level
         if any(
-            (level_root / name).exists()
+            authenticated_view.has_file(f"{level}/{name}")
             for name in (
                 f"config_{model_suffix}.json",
                 f"index_{model_suffix}.faiss",
@@ -405,7 +433,7 @@ def assess_vector_artifact(
             failures.append(f"unexpected_level:{level}")
     for level in normalized_levels:
         documents, vector_count, level_failures, loaded = _load_vector_level(
-            artifact_root, level, model_suffix
+            authenticated_view, level, model_suffix
         )
         paths = set()
         for document_index, document in enumerate(documents):
@@ -447,9 +475,9 @@ def assess_vector_artifact(
     missing = tuple(path for path in required if path not in l0_paths)
     if missing:
         failures.append("missing_required_l0_files")
-    file_fingerprints = vector_artifact_file_fingerprints(
-        artifact_root,
-        embedding_model=embedding_model,
+    file_fingerprints = _captured_vector_artifact_file_fingerprints(
+        authenticated_view,
+        model_suffix=model_suffix,
         build_levels=normalized_levels,
     )
     expected_file_count = len(
@@ -479,6 +507,68 @@ def assess_vector_artifact(
         "failure_names": sorted(set(failures)),
         "passed": not failures,
     }
+
+
+def assess_vector_artifact(
+    root: str | Path,
+    *,
+    embedding_model: str,
+    build_levels: Sequence[str],
+    surface: GitSourceSurface,
+    expected_artifact: Mapping[str, Any],
+    required_l0_files: Sequence[str] = (),
+    authenticated_view: AuthenticatedVectorView,
+    native_index_authorization: NativeIndexAuthorization | None,
+) -> dict[str, Any]:
+    """Validate one externally authorized, already-captured vector artifact.
+
+    The assessor is a generic artifact consumer, not an administrative trust
+    boundary: callers must supply both the exact captured view and an
+    out-of-band capability bound to that view and ``expected_artifact``.  No
+    artifact field can authorize the pickle or FAISS parsers used below.
+    """
+
+    from .._atomic_directory import lexical_directory_path
+
+    require_native_index_authorization_preflight(
+        native_index_authorization,
+        view_type="vector",
+    )
+    artifact_root = lexical_directory_path(Path(root))
+    if authenticated_view.root != artifact_root:
+        raise ValueError("authenticated vector view does not match assessment root")
+    require_native_index_authorization(
+        native_index_authorization,
+        authenticated_view.ownership,
+        view_type="vector",
+        semantic_contract=expected_artifact,
+    )
+
+    primary_error: BaseException | None = None
+    try:
+        return _assess_captured_vector_artifact(
+            embedding_model=embedding_model,
+            build_levels=build_levels,
+            surface=surface,
+            expected_artifact=expected_artifact,
+            required_l0_files=required_l0_files,
+            authenticated_view=authenticated_view,
+        )
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        try:
+            authenticated_view.verify_final()
+        except BaseException as verification_error:
+            if primary_error is None:
+                raise
+            add_note = getattr(primary_error, "add_note", None)
+            if callable(add_note):
+                add_note(
+                    "secondary authenticated-vector final verification failure: "
+                    f"{type(verification_error).__name__}: {verification_error}"
+                )
 
 
 def write_artifact_quality(path: str | Path, report: Mapping[str, Any]) -> None:

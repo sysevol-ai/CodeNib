@@ -18,7 +18,7 @@ import json
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Mapping
 
 import datasets
 
@@ -48,6 +48,41 @@ LANGUAGE_GROUP_MAP: Dict[str, List[str]] = {
     "Rust": ["rust"],
     "TypeScript/JavaScript": ["typescript", "javascript"],
 }
+
+
+def _load_vector_from_local_admin_boundary(
+    store: CodeVectorStore,
+    path: str | Path,
+    *,
+    semantic_contract: Mapping[str, Any],
+    evidence: str,
+) -> None:
+    """Authorize one prebuilt local benchmark view at the CLI boundary."""
+
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
+
+    if not evidence:
+        raise ValueError("local vector authorization evidence must be non-empty")
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                evidence,
+                "mcp-benchmark-cli-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
 
 
 def _normalize_symbol(s: str) -> str:
@@ -145,6 +180,8 @@ async def benchmark_instance(
 
     ctx = ServerContext(manifest=manifest)
     try:
+        vector_entry = manifest.indexes["vector"]
+        vector_contract = dict(vector_entry.config)
         ctx.vector = CodeVectorStore(
             embedding_model=embedding_model,
             embedding_provider="huggingface",
@@ -157,8 +194,14 @@ async def benchmark_instance(
                 else None
             ),
             trust_remote_code=(embedding_model == DEFAULT_EMBEDDING_MODEL),
+            artifact_metadata=vector_contract,
         )
-        ctx.vector.load()
+        _load_vector_from_local_admin_boundary(
+            ctx.vector,
+            vector_entry.path,
+            semantic_contract=vector_contract,
+            evidence="mcp-benchmark-prebuilt-local-index",
+        )
     except Exception as e:
         return {
             "instance_id": instance_id,

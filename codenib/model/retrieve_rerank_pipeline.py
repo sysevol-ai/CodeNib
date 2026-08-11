@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Set
 from ..code_chunker import CodeChunker, RepoChunkingConfig
 from ..graph.code_graph import CodeGraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
+from ..index.embedding.artifact_integrity import require_authorized_vector_view
 from ..index.embedding.model_policy import resolve_embedding_load_policy_from_options
 from ..index.rerank.cross_encoder import build_reranker
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
@@ -809,13 +810,6 @@ class RetrieveRerankPipeline:
         embedding_dimension: int,
         embedding_kwargs: Dict[str, object],
     ) -> CodeVectorStore:
-        vector_store = CodeVectorStore(
-            embedding_model=embedding_model,
-            embedding_provider=embedding_provider,
-            dimension=embedding_dimension,
-            store_path=str(self.index_path),
-            **embedding_kwargs,
-        )
         model_suffix = embedding_model.replace("/", "__")
         config_file = self.index_path / f"config_{model_suffix}.json"
         l0_path = self.index_path / "l0"
@@ -824,6 +818,20 @@ class RetrieveRerankPipeline:
         cache_exists = config_file.exists() or (l0_path.exists() and l2_path.exists())
         force_rebuild = False
         authorization = getattr(self, "_native_index_authorization", None)
+        if cache_exists and authorization is not None:
+            require_authorized_vector_view(
+                self.index_path,
+                authorization,
+                {},
+            )
+
+        vector_store = CodeVectorStore(
+            embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
+            dimension=embedding_dimension,
+            store_path=str(self.index_path),
+            **embedding_kwargs,
+        )
         if cache_exists and authorization is not None:
             logger.info(
                 "Loading hierarchical vector store from cache.",

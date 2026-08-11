@@ -44,6 +44,7 @@ Usage:
         --queries-dir synthesized_queries/ \
         --filter-instance "astral-sh__ruff-15309"
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,7 +56,7 @@ import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
@@ -74,6 +75,42 @@ from codenib.paths import prebuilt_data_dir, repo_index_dir, user_state_dir
 from codenib.types import QueriedNode
 
 logger = get_logger(__name__)
+
+
+def _load_vector_from_local_admin_boundary(
+    store: Any,
+    path: str | Path,
+    *,
+    semantic_contract: Mapping[str, Any],
+    evidence: str,
+) -> None:
+    """Authorize one compiler-produced local view for this eval process."""
+
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
+
+    if not evidence:
+        raise ValueError("local vector authorization evidence must be non-empty")
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                evidence,
+                "synthesized-query-eval-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Language detection
@@ -414,14 +451,21 @@ def _make_agent(
         bm25_index.load_index(manifest.indexes["bm25"].path)
 
     if "vector" in manifest.indexes and manifest.indexes["vector"].status == "fresh":
-        cfg = manifest.indexes["vector"].config
+        vector_entry = manifest.indexes["vector"]
+        cfg = dict(vector_entry.config)
         vector_store = CodeVectorStore(
             embedding_model=cfg.get("embedding_model", args.embedding_model),
             embedding_provider="huggingface",
             dimension=cfg.get("embedding_dimension", args.embedding_dimension),
-            store_path=manifest.indexes["vector"].path,
+            store_path=vector_entry.path,
+            artifact_metadata=cfg,
         )
-        vector_store.load(manifest.indexes["vector"].path)
+        _load_vector_from_local_admin_boundary(
+            vector_store,
+            vector_entry.path,
+            semantic_contract=cfg,
+            evidence="synthesized-query-eval-compiled-local-manifest",
+        )
 
     ctx: Dict[str, Any] = {
         "retrieve": RetrieveContext(
