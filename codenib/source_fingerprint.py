@@ -17,7 +17,7 @@ import sys
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Iterator
 
 from ._contained_source import (
@@ -317,6 +317,71 @@ class _HashFanout:
             target.update(payload)
 
 
+class _AuthenticatedPrefix:
+    """Hash a complete source payload while retaining one bounded prefix."""
+
+    __slots__ = ("byte_count", "digest", "prefix", "_limit")
+
+    def __init__(self, limit: int) -> None:
+        self.byte_count = 0
+        self.digest = hashlib.sha256()
+        self.prefix = bytearray()
+        self._limit = limit
+
+    def update(self, payload: bytes) -> None:
+        self.byte_count += len(payload)
+        self.digest.update(payload)
+        remaining = self._limit - len(self.prefix)
+        if remaining > 0:
+            self.prefix.extend(payload[:remaining])
+
+
+class _AuthenticatedLineRange:
+    """Hash a complete source payload while retaining selected whole lines."""
+
+    __slots__ = (
+        "byte_count",
+        "digest",
+        "payload",
+        "overflow",
+        "_end_line",
+        "_limit",
+        "_line_number",
+        "_start_line",
+    )
+
+    def __init__(self, start_line: int, end_line: int, limit: int) -> None:
+        self.byte_count = 0
+        self.digest = hashlib.sha256()
+        self.payload = bytearray()
+        self.overflow = False
+        self._start_line = start_line
+        self._end_line = end_line
+        self._limit = limit
+        self._line_number = 1
+
+    def update(self, payload: bytes) -> None:
+        self.byte_count += len(payload)
+        self.digest.update(payload)
+
+        offset = 0
+        while offset < len(payload):
+            newline = payload.find(b"\n", offset)
+            stop = len(payload) if newline < 0 else newline + 1
+            if self._start_line <= self._line_number <= self._end_line:
+                segment = payload[offset:stop]
+                remaining = self._limit - len(self.payload)
+                if len(segment) > remaining:
+                    if remaining > 0:
+                        self.payload.extend(segment[:remaining])
+                    self.overflow = True
+                elif remaining > 0:
+                    self.payload.extend(segment)
+            if newline >= 0:
+                self._line_number += 1
+            offset = stop
+
+
 class RepositorySourceBinding:
     """Retained root authority and exact records for verified live reads."""
 
@@ -336,6 +401,7 @@ class RepositorySourceBinding:
         "_windows_authority",
         "_pid",
         "_lock",
+        "_process_locks",
         "_closed",
         "_poisoned",
         "_session_depth",
@@ -375,6 +441,7 @@ class RepositorySourceBinding:
         self._windows_authority = windows_authority
         self._pid = os.getpid()
         self._lock = _SourceLifecycleRLock()
+        self._process_locks = {self._pid: self._lock}
         self._closed = False
         self._poisoned = False
         self._session_depth = 0
@@ -391,13 +458,19 @@ class RepositorySourceBinding:
     def usable(self) -> bool:
         """Return whether this process may still attempt authenticated reads."""
 
+        if self._pid != os.getpid():
+            return False
         with self._state_lease():
-            return not self._closed and not self._poisoned and self._pid == os.getpid()
+            return not self._closed and not self._poisoned
 
     @property
     def closed(self) -> bool:
         """Return whether every retained filesystem authority is closed."""
 
+        if self._pid != os.getpid():
+            # A forked child owns an independent copy of these flags. Avoid an
+            # inherited parent-thread RLock while its cleanup reconciles fds.
+            return self._closed
         with self._state_lease():
             return self._closed
 
@@ -410,12 +483,14 @@ class RepositorySourceBinding:
 
     @contextmanager
     def _state_lease(self) -> Iterator[None]:
+        self._require_owner_pid()
         with _SourceLockLease(self._lock) as acquisition_failure:
             if acquisition_failure is not None:
                 raise acquisition_failure
             yield
 
     def _poison(self, reason: object) -> None:
+        self._require_owner_pid()
         try:
             with _SourceLockLease(self._lock) as deferred:
                 if self._failure_reason is None:
@@ -433,10 +508,13 @@ class RepositorySourceBinding:
             pass
 
     def _require_open(self) -> None:
+        self._require_owner_pid()
         if self._poisoned:
             raise RepositoryChangedError("repository source binding is poisoned")
         if self._closed:
             raise RuntimeError("repository source binding is closed")
+
+    def _require_owner_pid(self) -> None:
         if self._pid != os.getpid():
             raise RuntimeError("repository source binding cannot cross processes")
 
@@ -444,6 +522,7 @@ class RepositorySourceBinding:
     def _authentication_lease(self) -> Iterator[None]:
         """Hold the reentrant lock and poison on every interrupted operation."""
 
+        self._require_owner_pid()
         try:
             with _SourceLockLease(self._lock) as acquisition_failure:
                 if acquisition_failure is not None:
@@ -606,6 +685,126 @@ class RepositorySourceBinding:
             )
         return payload
 
+    def _read_record_prefix(
+        self,
+        relative: str,
+        record: RepositorySourceFileRecord,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        if self._windows_authority is not None:
+            api = self._windows_api
+            if api is None:  # pragma: no cover - constructor invariant
+                raise AssertionError("Windows repository binding has no API")
+            resolver = _resolved_windows_repository_file_at(
+                self.root,
+                self._windows_authority,
+                relative,
+                expected_root_identity=self._root_identity,
+                expected_final_identity=record.lexical_identity,
+                api=api,
+            )
+        else:
+            resolver = _resolved_repository_file_at(
+                self.root,
+                self._root_descriptor,
+                relative,
+                expected_root_identity=self._root_identity,  # type: ignore[arg-type]
+                expected_final_identity=record.lexical_identity,  # type: ignore[arg-type]
+            )
+        authenticated = _AuthenticatedPrefix(max_bytes)
+        with resolver as source:
+            if not source.is_regular:
+                raise ValueError("source path is no longer a regular file")
+            source.update_hash(authenticated)
+        if (
+            authenticated.byte_count != record.size
+            or authenticated.digest.hexdigest() != record.sha256
+        ):
+            raise RepositoryChangedError(
+                "repository source file differs from its authenticated record"
+            )
+        return bytes(authenticated.prefix)
+
+    def _read_record_line_range(
+        self,
+        relative: str,
+        record: RepositorySourceFileRecord,
+        *,
+        start_line: int,
+        end_line: int,
+        max_bytes: int,
+    ) -> tuple[bytes, bool]:
+        if self._windows_authority is not None:
+            api = self._windows_api
+            if api is None:  # pragma: no cover - constructor invariant
+                raise AssertionError("Windows repository binding has no API")
+            resolver = _resolved_windows_repository_file_at(
+                self.root,
+                self._windows_authority,
+                relative,
+                expected_root_identity=self._root_identity,
+                expected_final_identity=record.lexical_identity,
+                api=api,
+            )
+        else:
+            resolver = _resolved_repository_file_at(
+                self.root,
+                self._root_descriptor,
+                relative,
+                expected_root_identity=self._root_identity,  # type: ignore[arg-type]
+                expected_final_identity=record.lexical_identity,  # type: ignore[arg-type]
+            )
+        authenticated = _AuthenticatedLineRange(start_line, end_line, max_bytes)
+        with resolver as source:
+            if not source.is_regular:
+                raise ValueError("source path is no longer a regular file")
+            source.update_hash(authenticated)
+        if (
+            authenticated.byte_count != record.size
+            or authenticated.digest.hexdigest() != record.sha256
+        ):
+            raise RepositoryChangedError(
+                "repository source file differs from its authenticated record"
+            )
+        return bytes(authenticated.payload), authenticated.overflow
+
+    def captured_relative_path(self, path: str) -> str | None:
+        """Return the exact captured POSIX path without consulting the filesystem."""
+
+        with self._state_lease():
+            self._require_open()
+            if not isinstance(path, str):
+                raise TypeError("repository source path must be text")
+            if not path or "\x00" in path:
+                return None
+            candidate = path.replace("\\", os.sep).replace("/", os.sep)
+            if os.path.isabs(candidate):
+                lexical = Path(os.path.abspath(candidate))
+                try:
+                    relative_path = lexical.relative_to(self.root)
+                except ValueError:
+                    return None
+                parts = relative_path.parts
+            else:
+                parts = Path(candidate).parts
+            if not parts or any(part in {"", ".", ".."} for part in parts):
+                return None
+            relative = PurePosixPath(*parts).as_posix()
+            return relative if relative in self._records else None
+
+    def borrow_reader(self) -> RepositorySourceReader:
+        """Return a non-owning reader that becomes unusable when this closes."""
+
+        with self._state_lease():
+            self._require_open()
+            return RepositorySourceReader(self)
+
+    def _borrowed_file_paths(self) -> frozenset[str]:
+        with self._state_lease():
+            self._require_open()
+            return frozenset(self._records)
+
     def read_bytes(self, relative: str, *, max_bytes: int) -> bytes:
         """Read one exact captured regular file and rebind the whole inventory."""
 
@@ -645,8 +844,99 @@ class RepositorySourceBinding:
                     "repository source changed while it was being read"
                 ) from exc
 
-    def close(self) -> None:
-        with _SourceLockLease(self._lock) as first_failure:
+    def read_prefix(self, relative: str, *, max_bytes: int) -> bytes:
+        """Authenticate a complete captured file while retaining a bounded prefix."""
+
+        if (
+            isinstance(max_bytes, bool)
+            or not isinstance(max_bytes, int)
+            or max_bytes <= 0
+        ):
+            raise ValueError("source byte limit must be positive")
+        if not isinstance(relative, str):
+            raise TypeError("repository source path must be text")
+        record = self._records.get(relative)
+        if record is None:
+            raise ValueError("source path is not in the authenticated repository")
+
+        with self._authentication_lease():
+            try:
+                if self._session_depth == 0:
+                    self._verify_inventory()
+                payload = self._read_record_prefix(
+                    relative,
+                    record,
+                    max_bytes=max_bytes,
+                )
+                if self._session_depth == 0:
+                    self._verify_inventory()
+                return payload
+            except BaseException as exc:
+                self._poison(exc)
+                if isinstance(exc, RepositoryChangedError):
+                    raise
+                if not isinstance(exc, (OSError, RuntimeError, ValueError)):
+                    raise
+                raise RepositoryChangedError(
+                    "repository source changed while it was being read"
+                ) from exc
+
+    def read_line_range(
+        self,
+        relative: str,
+        *,
+        start_line: int,
+        end_line: int,
+        max_bytes: int,
+    ) -> bytes:
+        """Authenticate a whole file while retaining a bounded 1-based range."""
+
+        for name, value in (("start", start_line), ("end", end_line)):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"source {name} line must be a positive integer")
+        if end_line < start_line:
+            raise ValueError("source end line must not precede the start line")
+        if (
+            isinstance(max_bytes, bool)
+            or not isinstance(max_bytes, int)
+            or max_bytes <= 0
+        ):
+            raise ValueError("source byte limit must be positive")
+        if not isinstance(relative, str):
+            raise TypeError("repository source path must be text")
+        record = self._records.get(relative)
+        if record is None:
+            raise ValueError("source path is not in the authenticated repository")
+
+        overflow = False
+        with self._authentication_lease():
+            try:
+                if self._session_depth == 0:
+                    self._verify_inventory()
+                payload, overflow = self._read_record_line_range(
+                    relative,
+                    record,
+                    start_line=start_line,
+                    end_line=end_line,
+                    max_bytes=max_bytes,
+                )
+                if self._session_depth == 0:
+                    self._verify_inventory()
+            except BaseException as exc:
+                self._poison(exc)
+                if isinstance(exc, RepositoryChangedError):
+                    raise
+                if not isinstance(exc, (OSError, RuntimeError, ValueError)):
+                    raise
+                raise RepositoryChangedError(
+                    "repository source changed while it was being read"
+                ) from exc
+        if overflow:
+            raise ValueError("source line range exceeds its bounded read limit")
+        return payload
+
+    def _close_with_lock(self, lock: _SourceLifecycleRLock) -> None:
+        with _SourceLockLease(lock) as first_failure:
             if not self._closed:
                 # Closing may finish only part of an authority chain before an
                 # operational error. Never permit reads through that partially
@@ -675,6 +965,64 @@ class RepositorySourceBinding:
                 )
             if first_failure is not None:
                 raise first_failure
+
+    def close(self) -> None:
+        current_pid = os.getpid()
+        if current_pid == self._pid:
+            self._close_with_lock(self._lock)
+            return
+
+        # A lock held by another thread at fork can never be released in the
+        # child. Serialize child-only fd cleanup on a process-local lock, then
+        # report the ownership boundary after every inherited authority has
+        # been visited. The parent's object and descriptor table are unchanged.
+        child_lock = self._process_locks.setdefault(
+            current_pid,
+            _SourceLifecycleRLock(),
+        )
+        cleanup_failure: BaseException | None = None
+        try:
+            self._close_with_lock(child_lock)
+        except BaseException as exc:  # noqa: B036 - report PID boundary
+            cleanup_failure = exc
+        boundary = RuntimeError("repository source binding cannot cross processes")
+        if cleanup_failure is not None:
+            raise boundary from cleanup_failure
+        raise boundary
+
+
+class RepositorySourceReader:
+    """Borrowed authenticated source reader without ownership operations."""
+
+    __slots__ = ("_binding",)
+
+    def __init__(self, binding: RepositorySourceBinding) -> None:
+        self._binding = binding
+
+    @property
+    def file_paths(self) -> frozenset[str]:
+        return self._binding._borrowed_file_paths()
+
+    def captured_relative_path(self, path: str) -> str | None:
+        return self._binding.captured_relative_path(path)
+
+    def read_prefix(self, relative: str, *, max_bytes: int) -> bytes:
+        return self._binding.read_prefix(relative, max_bytes=max_bytes)
+
+    def read_line_range(
+        self,
+        relative: str,
+        *,
+        start_line: int,
+        end_line: int,
+        max_bytes: int,
+    ) -> bytes:
+        return self._binding.read_line_range(
+            relative,
+            start_line=start_line,
+            end_line=end_line,
+            max_bytes=max_bytes,
+        )
 
 
 def source_fingerprint_version(value: object) -> int | None:
@@ -2276,6 +2624,7 @@ __all__ = [
     "RepositoryChangedError",
     "RepositorySourceBinding",
     "RepositorySourceFileRecord",
+    "RepositorySourceReader",
     "SOURCE_FINGERPRINT_VERSION",
     "SourceFingerprint",
     "capture_repository_source",

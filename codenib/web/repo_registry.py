@@ -23,7 +23,7 @@ from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import IndexEntry, RepoManifest
 from ..log_utils import get_logger
 from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_route
-from ..repository_summary import read_repository_summary
+from ..repository_summary import read_bound_repository_summary, read_repository_summary
 from .config import QAConfig, RepoEntry, load_registry
 from .schemas import GraphCoverage, RepoInfo
 
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from ..index.sparse_idx.bm25_index import BM25CodeIndexer
     from ..llm.litellm_chat import LiteLLMChat
     from ..native_index_authorization import NativeIndexAuthorization
+    from ..source_fingerprint import RepositorySourceReader
 
 logger = get_logger(__name__)
 
@@ -109,6 +110,9 @@ class RepoBundle:
     chat_available: bool = False
     view_loader: Optional[Callable[["RepoBundle"], None]] = None
     runtime_loader: Optional[Callable[["RepoBundle"], None]] = None
+    # Borrowed exact source reader. Its creator retains and closes the owning
+    # binding; escaped readers become unusable when that owner closes it.
+    source_reader: Optional["RepositorySourceReader"] = None
 
     def __post_init__(self) -> None:
         self._views_lock = Lock()
@@ -304,7 +308,13 @@ class RepoBundle:
             from ..graph.hierarchy import build_hierarchical_code_graph
 
             self._hierarchical_graph = build_hierarchical_code_graph(
-                graph, repo_dir=self.entry.repo_dir
+                graph,
+                repo_dir=self.entry.repo_dir,
+                source_paths=(
+                    self.source_reader.file_paths
+                    if self.source_reader is not None
+                    else None
+                ),
             )
             logger.info(
                 "codemap: built hierarchical graph for %r "
@@ -345,7 +355,11 @@ class RepoBundle:
         cached = getattr(self, "_description_cache", None)
         if cached is not None:
             return cached
-        desc = read_repository_summary(self.entry.repo_dir)
+        desc = (
+            read_bound_repository_summary(self.source_reader)
+            if self.source_reader is not None
+            else read_repository_summary(self.entry.repo_dir)
+        )
         self._description_cache = desc
         return desc
 
@@ -431,9 +445,7 @@ class RepoRegistry:
         native_index_authorization: NativeIndexAuthorization,
     ) -> "CodeVectorStore":
         """Load a manifest vector view with the configured embedding backend."""
-        from ..index.embedding.artifact_integrity import (
-            require_authorized_vector_view,
-        )
+        from ..index.embedding.artifact_integrity import require_authorized_vector_view
 
         # The manifest's exact config is part of the native capability subject.
         # Legacy route defaults are query-time compatibility inputs only: adding

@@ -8,8 +8,13 @@ from __future__ import annotations
 
 import os
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .source_fingerprint import RepositorySourceReader
 
 README_NAMES = ("README.md", "README.rst", "README.txt", "README", "readme.md")
+_MAX_BOUND_README_BYTES = 8 * 1024 * 1024
 
 _README_SKIP = re.compile(
     r"\b(install|download|getting started|to get started|usage|build from source"
@@ -158,4 +163,19 @@ def read_repository_summary(repo_dir: str, limit: int = 160) -> str:
                 return readme_summary(handle.read(), limit=limit)
         except OSError:
             return ""
+    return ""
+
+
+def read_bound_repository_summary(
+    source: RepositorySourceReader,
+    limit: int = 160,
+) -> str:
+    """Extract a summary only from exact descriptor-authenticated source bytes."""
+
+    for name in README_NAMES:
+        relative = source.captured_relative_path(name)
+        if relative is None:
+            continue
+        payload = source.read_prefix(relative, max_bytes=_MAX_BOUND_README_BYTES)
+        return readme_summary(payload.decode("utf-8", errors="replace"), limit=limit)
     return ""

@@ -9,6 +9,7 @@ import errno
 import hashlib
 import inspect
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -189,6 +190,200 @@ def test_repository_source_binding_reads_exact_captured_records(
         }
         assert binding.read_bytes("a.py", max_bytes=1024) == b"VALUE = 1\n"
         assert binding.read_bytes("link.py", max_bytes=1024) == b"TARGET = 2\n"
+
+
+def test_repository_source_binding_maps_only_captured_paths_and_reads_prefix(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    source = repo / "pkg" / "source.py"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"prefix-data-that-continues\n")
+
+    with capture_repository_source(repo) as binding:
+        assert binding.captured_relative_path("pkg/source.py") == "pkg/source.py"
+        assert binding.captured_relative_path(str(source)) == "pkg/source.py"
+        assert binding.captured_relative_path("../source.py") is None
+        assert binding.captured_relative_path(str(tmp_path / "outside.py")) is None
+        assert binding.read_prefix("pkg/source.py", max_bytes=6) == b"prefix"
+
+
+def test_repository_source_prefix_authenticates_bytes_beyond_returned_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "source.py"
+    source.write_bytes(b"same-prefix: trusted tail\n")
+    binding = capture_repository_source(repo)
+    source.write_bytes(b"same-prefix: altered tail\n")
+    monkeypatch.setattr(
+        RepositorySourceBinding,
+        "_verify_inventory",
+        lambda _binding: None,
+    )
+
+    with pytest.raises(RepositoryChangedError):
+        binding.read_prefix("source.py", max_bytes=len(b"same-prefix"))
+
+    binding.close()
+
+
+def test_repository_source_reader_streams_far_line_range_and_is_borrowed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "source.py"
+    filler = (b"x" * 512) + b"\n"
+    source.write_bytes((filler * 20_000) + b"TARGET = 'far-offset'\nTAIL = 1\n")
+    binding = capture_repository_source(repo)
+    reader = binding.borrow_reader()
+
+    assert reader.file_paths == frozenset({"source.py"})
+    assert not hasattr(reader, "close")
+    assert (
+        reader.read_line_range(
+            "source.py",
+            start_line=20_001,
+            end_line=20_001,
+            max_bytes=1024,
+        )
+        == b"TARGET = 'far-offset'\n"
+    )
+
+    current_pid = os.getpid()
+    with monkeypatch.context() as process:
+        process.setattr(
+            source_fingerprint_module.os,
+            "getpid",
+            lambda: current_pid + 1,
+        )
+        with pytest.raises(RuntimeError, match="cross processes"):
+            reader.captured_relative_path("source.py")
+
+    binding.close()
+    with pytest.raises(RuntimeError, match="closed|poisoned"):
+        reader.captured_relative_path("source.py")
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_repository_source_reader_fork_rejects_before_inherited_lock(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_bytes(b"VALUE = 1\n")
+    binding = capture_repository_source(repo)
+    reader = binding.borrow_reader()
+    locked = threading.Event()
+    release = threading.Event()
+
+    def hold_parent_lock() -> None:
+        with binding._state_lease():
+            locked.set()
+            release.wait(timeout=10)
+
+    holder = threading.Thread(target=hold_parent_lock)
+    holder.start()
+    assert locked.wait(timeout=2)
+    read_fd, write_fd = os.pipe()
+    child = os.fork()
+    if child == 0:  # pragma: no cover - assertions are reported over the pipe
+        os.close(read_fd)
+        signal.alarm(2)
+        outcomes = []
+        try:
+            reader.captured_relative_path("source.py")
+        except BaseException as exc:  # noqa: B036 - report exact boundary
+            outcomes.append(f"read:{type(exc).__name__}:{exc}")
+        try:
+            binding.close()
+        except BaseException as exc:  # noqa: B036 - cleanup then report boundary
+            outcomes.append(f"close:{type(exc).__name__}:{exc}")
+        outcomes.append(f"closed:{binding.closed}")
+        os.write(write_fd, "\n".join(outcomes).encode("utf-8"))
+        os.close(write_fd)
+        os._exit(0)
+
+    os.close(write_fd)
+    try:
+        outcome = os.read(read_fd, 4096).decode("utf-8")
+        waited, status = os.waitpid(child, 0)
+    finally:
+        os.close(read_fd)
+        release.set()
+        holder.join(timeout=2)
+        binding.close()
+
+    assert waited == child
+    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+    assert (
+        "read:RuntimeError:repository source binding cannot cross processes" in outcome
+    )
+    assert (
+        "close:RuntimeError:repository source binding cannot cross processes" in outcome
+    )
+    assert "closed:True" in outcome
+    assert not holder.is_alive()
+
+
+def test_repository_source_line_range_authenticates_unreturned_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "source.py"
+    source.write_bytes(b"TARGET = 1\ntrusted tail\n")
+    binding = capture_repository_source(repo)
+    source.write_bytes(b"TARGET = 1\naltered tail\n")
+    monkeypatch.setattr(
+        RepositorySourceBinding,
+        "_verify_inventory",
+        lambda _binding: None,
+    )
+
+    with pytest.raises(RepositoryChangedError):
+        binding.read_line_range(
+            "source.py",
+            start_line=1,
+            end_line=1,
+            max_bytes=1024,
+        )
+
+    binding.close()
+
+
+def test_repository_source_line_range_limit_does_not_poison_binding(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_bytes((b"x" * 128) + b"\nNEXT = 1\n")
+    binding = capture_repository_source(repo)
+
+    with pytest.raises(ValueError, match="bounded read limit"):
+        binding.read_line_range(
+            "source.py",
+            start_line=1,
+            end_line=1,
+            max_bytes=16,
+        )
+
+    assert binding.usable
+    assert (
+        binding.read_line_range(
+            "source.py",
+            start_line=2,
+            end_line=2,
+            max_bytes=32,
+        )
+        == b"NEXT = 1\n"
+    )
+    binding.close()
 
 
 def test_repository_source_binding_poisoned_by_touched_or_unrelated_change(

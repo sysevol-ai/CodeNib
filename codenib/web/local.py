@@ -69,6 +69,7 @@ def prepare_local_wiki(
     manifest_path: Path,
     *,
     frontend_port: int,
+    repository_slug: str | None = None,
     agent_wiki: bool = False,
     model: str | None = None,
     api_base: str | None = None,
@@ -79,6 +80,21 @@ def prepare_local_wiki(
     """Write the registry and config consumed by the existing Wiki service."""
     repo_path = lexical_repository_path(repo_path)
     manifest_path = Path(os.path.abspath(os.fspath(manifest_path.expanduser())))
+    if repository_slug is not None:
+        if (
+            not isinstance(repository_slug, str)
+            or not repository_slug
+            or "\x00" in repository_slug
+        ):
+            raise ValueError("explicit repository slug must be bounded non-empty text")
+        try:
+            slug_bytes = repository_slug.encode("utf-8", errors="strict")
+        except UnicodeEncodeError as exc:
+            raise ValueError(
+                "explicit repository slug must be valid UTF-8 text"
+            ) from exc
+        if len(slug_bytes) > 4_096:
+            raise ValueError("explicit repository slug must be bounded non-empty text")
     manifest = RepoManifest.load(str(manifest_path))
     if not is_secure_source_fingerprint_v2(manifest.source_fingerprint):
         raise ValueError("local wiki source reads require source fingerprint v2")
@@ -113,7 +129,10 @@ def prepare_local_wiki(
 
     data_dir = manifest_path.parent / "wiki"
     data_dir.mkdir(parents=True, exist_ok=True)
-    repo_name = _repository_slug(repo_path)
+    # Interactive callers retain the historical Git-origin display identity.
+    # Security-sensitive exporters pass an explicit provenance-safe label so
+    # ambient .git/config never becomes part of an authenticated publication.
+    repo_name = repository_slug or _repository_slug(repo_path)
     repo_id = _repo_id(repo_name.rsplit("/", 1)[-1])
     language = manifest.languages[0] if manifest.languages else "unknown"
     save_registry(

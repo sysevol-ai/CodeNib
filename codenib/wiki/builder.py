@@ -15,10 +15,13 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from ..repository_summary import read_repository_summary
+from ..repository_summary import read_bound_repository_summary, read_repository_summary
 from .narrator import Narrator
+
+if TYPE_CHECKING:
+    from ..source_fingerprint import RepositorySourceReader
 
 # Symbol chunk types worth surfacing as "components" (mirrors SYMBOL_CHUNK_TYPES).
 _CONTAINER_TYPES = {
@@ -48,6 +51,7 @@ _LANG_FENCE = {
 _MAX_MODULES = 12
 _MAX_SYMBOLS_PER_PAGE = 12
 _MAX_SNIPPET_LINES = 28
+_MAX_BOUND_SOURCE_BYTES = 8 * 1024 * 1024
 _SUPPORTING_AREA_SEGMENTS = {
     "benchmark",
     "benchmarks",
@@ -154,12 +158,19 @@ def _representative_symbol(symbols: List[Symbol]) -> Symbol:
 class WikiBuilder:
     """Build wiki structure + content for one loaded repo bundle."""
 
-    def __init__(self, bundle, narrator: Optional[Narrator] = None) -> None:
+    def __init__(
+        self,
+        bundle,
+        narrator: Optional[Narrator] = None,
+        *,
+        source_reader: Optional[RepositorySourceReader] = None,
+    ) -> None:
         # bundle: codenib.web.repo_registry.RepoBundle
         self._bundle = bundle
         self._entry = bundle.entry
         self._language = bundle.entry.language
         self._narrator = narrator or Narrator(enabled=False)
+        self._source_reader = source_reader
         self._symbols_cache: Optional[tuple] = None
         self._project_summary_cache: Optional[str] = None
 
@@ -239,17 +250,55 @@ class WikiBuilder:
         start_line: int,
         end_line: int,
         fallback: str,
-        cache: Dict[str, Optional[tuple[str, ...]]],
+        cache: Dict[object, Optional[tuple[str, ...]]],
     ) -> str:
         """Read a bounded indexed span from the current repository checkout."""
 
-        repo_root = os.path.realpath(self._entry.repo_dir)
-        source_path = os.path.realpath(os.path.join(repo_root, file))
-        try:
-            if os.path.commonpath((repo_root, source_path)) != repo_root:
+        if self._source_reader is not None:
+            relative = self._source_reader.captured_relative_path(file)
+            if relative is None:
+                raise ValueError(
+                    "indexed source path is absent from the authenticated repository"
+                )
+            source_path = relative
+        else:
+            repo_root = os.path.realpath(self._entry.repo_dir)
+            source_path = os.path.realpath(os.path.join(repo_root, file))
+            try:
+                if os.path.commonpath((repo_root, source_path)) != repo_root:
+                    return fallback
+            except ValueError:
                 return fallback
-        except ValueError:
-            return fallback
+
+        if self._source_reader is not None:
+            if start_line < 0:
+                raise ValueError("indexed source range has a negative start line")
+            stop_line = min(
+                max(start_line + 1, end_line + 1),
+                start_line + _MAX_SNIPPET_LINES,
+            )
+            cache_key = (source_path, start_line, stop_line)
+            if cache_key not in cache:
+                payload = self._source_reader.read_line_range(
+                    source_path,
+                    start_line=start_line + 1,
+                    end_line=stop_line,
+                    max_bytes=_MAX_BOUND_SOURCE_BYTES,
+                )
+                cache[cache_key] = tuple(
+                    payload.decode("utf-8", errors="replace").splitlines()
+                )
+            lines = cache[cache_key]
+            if not lines:
+                raise ValueError(
+                    "indexed source range is absent from the authenticated file"
+                )
+            excerpt = "\n".join(lines)
+            if not excerpt.strip():
+                raise ValueError(
+                    "indexed source range has no authenticated source content"
+                )
+            return excerpt
 
         if source_path not in cache:
             try:
@@ -306,14 +355,23 @@ class WikiBuilder:
             )
         if not raw:
             return tuple()
-        root = self._index_root(raw[0][0])
+        root = self._index_root(raw[0][0]) if self._source_reader is None else ""
         prefix = (root + "/") if root else ""
-        source_cache: Dict[str, Optional[tuple[str, ...]]] = {}
+        source_cache: Dict[object, Optional[tuple[str, ...]]] = {}
         syms = []
         for f, name, symbol_type, start, end, content in raw:
-            relative_file = (
-                f[len(prefix) :] if prefix and f.startswith(prefix) else f.lstrip("/")
-            )
+            if self._source_reader is not None:
+                relative_file = self._source_reader.captured_relative_path(f)
+                if relative_file is None:
+                    raise ValueError(
+                        "indexed source path is absent from the authenticated repository"
+                    )
+            else:
+                relative_file = (
+                    f[len(prefix) :]
+                    if prefix and f.startswith(prefix)
+                    else f.lstrip("/")
+                )
             syms.append(
                 Symbol(
                     file=relative_file,
@@ -375,20 +433,25 @@ class WikiBuilder:
         if self._project_summary_cache is not None:
             return self._project_summary_cache
 
-        description = getattr(self._bundle, "_description", None)
-        if callable(description):
-            try:
-                summary = str(description() or "").strip()
-            except OSError:
-                summary = ""
-            if summary:
-                self._project_summary_cache = summary
-                return summary
+        if self._source_reader is None:
+            description = getattr(self._bundle, "_description", None)
+            if callable(description):
+                try:
+                    summary = str(description() or "").strip()
+                except OSError:
+                    summary = ""
+                if summary:
+                    self._project_summary_cache = summary
+                    return summary
 
         # Keep the index-derived builder useful with lightweight bundle objects
         # as well as RepoBundle. The parser rejects badges, headings, and
         # installation boilerplate rather than treating them as project purpose.
-        summary = read_repository_summary(self._entry.repo_dir)
+        summary = (
+            read_bound_repository_summary(self._source_reader)
+            if self._source_reader is not None
+            else read_repository_summary(self._entry.repo_dir)
+        )
         self._project_summary_cache = summary
         return summary
 
@@ -825,6 +888,36 @@ class WikiBuilder:
     def source(
         self, file: str, start: Optional[int] = None, end: Optional[int] = None
     ) -> Optional[dict]:
+        if self._source_reader is not None:
+            relative = self._source_reader.captured_relative_path(file)
+            if relative is None:
+                return None
+            if start is not None and end is not None:
+                first = max(1, start)
+                last = max(first - 1, end)
+            else:
+                first = 1
+                last = 400
+            if last < first:
+                content = b""
+            else:
+                try:
+                    content = self._source_reader.read_line_range(
+                        relative,
+                        start_line=first,
+                        end_line=last,
+                        max_bytes=_MAX_BOUND_SOURCE_BYTES,
+                    )
+                except ValueError:
+                    return None
+            chunk = content.decode("utf-8", errors="replace").splitlines(keepends=True)
+            return {
+                "file": relative,
+                "start_line": first,
+                "end_line": first + len(chunk) - 1,
+                "content": "".join(chunk),
+            }
+
         repo_dir = self._entry.repo_dir
         root = os.path.realpath(repo_dir)
         if os.path.isabs(file):
