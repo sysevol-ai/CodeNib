@@ -240,6 +240,26 @@ not depend on the catalog implementation.  These gates close the current
 portable context publication surface; they are a prerequisite for, but do not
 complete, the remaining legacy manifest import/export adapter or a future
 streaming payload revision.
+
+Native vector parsing is now a separate local-authority boundary. Portable
+validation and normalization remain inert: they authenticate the declared
+FAISS bytes and canonical JSON inventory without importing FAISS or
+deserializing pickle, and a descriptive `trusted-local` string cannot grant
+native access. Native consumers must present a process-local authorization
+bound to the exact captured vector tree and semantic configuration before any
+embedding model, remote client, pickle decoder, or FAISS parser is created.
+Compiler rebuilds write the vector files, incremental state, caches, and update
+marker into one descriptor-anchored private generation, then publish the whole
+directory through the owned-directory transaction. The live git-diff vector
+delta is disabled until it can satisfy the same publication boundary; an
+incremental request therefore validates its existing authority and state, then
+performs a complete private-generation rebuild. The Web runtime mints local
+authorization outside the registry only while holding the hardened compiler
+cache lock and revalidating the source-fingerprint-v2 repository, manifest, and
+captured vector tree. These compatibility and publication gates preserve the
+previous complete vector generation on interruption, but they do not complete
+the catalog-backed M2 generation coordinator or durable worker wiring.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
