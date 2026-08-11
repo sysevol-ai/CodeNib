@@ -917,7 +917,47 @@ first-route runs passed; every concurrent run built exactly one graph. The
 receipt remained
 `clangd_fact_query:sha256:a88c9933461a2573a2c928eeeac8b734fcd5245d29f9d41e61d60f9c3d0b6693`.
 This is a query-ready result over existing shards, not a clangd-generation
-claim. Native route remains the independent #552 gate.
+claim. At that v2 milestone, native route remained the independent #552 gate.
+
+Native clangd route-query promotion status
+([#552](https://github.com/sysevol-ai/CodeNib/issues/552)): the query contract is
+now `clangd-riff-fact-query-v3`. Native normalization emits complete structural
+containment, reference/relation adjacency, and the legacy vertex traversal
+order. `FactQueryIndex` validates that the order covers every vertex exactly
+once, builds compact incoming/outgoing postings, and preserves repeated
+neighbors for exact igraph multi-edge parity. The raw index reports graph-route
+support unavailable because it lacks source spans; the clangd hybrid adapter
+adds lazy touched-node range enrichment and truthfully advertises
+`native-clangd-route-adjacency-v1`.
+
+Direct-symbol and query-only routes preserve legacy ordering, scoring, `top_k`,
+and result snapshots without constructing `CodeGraph`. Query-only preparation
+retains the established 10,000-row scan, 256-match, and 512-candidate bounds.
+The provider verifies the content receipt before every route. Incomplete
+adjacency or a native preparation/execution failure recomputes the entire route
+on one complete graph with a stable reason; no partial route is returned, and a
+snapshot mismatch fails closed.
+
+The versioned `clangd_mixed_workload_gate_v3` promotion run on 2026-08-11 used
+the clean manifest-pinned fmt 11.2.0 revision
+`40626af88bd7df9a5fb80be7b25ac85b122d6c21`, 492 shards / 4,820,850 bytes,
+20 deterministic query entries, one query-only route, and three isolated rounds
+after one warmup:
+
+| Workload | Legacy | Native | Improvement | Native graphs | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| symbol-only | 2.9039s | 0.1950s | 93.3% | 0 | pass |
+| position-first | 3.0069s | 0.4308s | 85.7% | 0 | pass |
+| route-first | 2.7913s | 0.7221s | 74.1% | 0 | pass |
+| mixed | 2.8408s | 0.9655s | 66.0% | 0 | pass |
+
+Exact public result/error parity, pre/post snapshot receipts, pinned revision,
+RSS, RIFF 18/19/20, and source-cleanliness gates passed. Three eight-thread
+concurrent native route rounds were deterministic and materialized zero graphs.
+The route-first improvement exceeds the 20% promotion threshold, so `auto`
+promotes compact native route adjacency and retains the full graph only as its
+atomic compatibility fallback. This remains a query-ready result over existing
+shards and does not claim faster clangd index generation.
 
 Native core CI enforcement status
 ([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted

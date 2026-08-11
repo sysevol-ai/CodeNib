@@ -87,15 +87,15 @@ _NATIVE_QUERY_OFF = frozenset({"0", "false", "no", "off", "disabled"})
 _NATIVE_QUERY_AUTO = frozenset({"", "1", "true", "yes", "on", "auto"})
 _NATIVE_QUERY_REQUIRED = frozenset({"required", "strict"})
 _NATIVE_QUERY_PROMOTED = True
-_NATIVE_QUERY_ABI_VERSION = 2
-_NATIVE_QUERY_FORMAT = "clangd-riff-fact-query-v2"
-_NATIVE_QUERY_NORMALIZATION_PROFILE = "clangd-native-normalization-v2"
+_NATIVE_QUERY_ABI_VERSION = 3
+_NATIVE_QUERY_FORMAT = "clangd-riff-fact-query-v3"
+_NATIVE_QUERY_NORMALIZATION_PROFILE = "clangd-native-normalization-v3"
 _NATIVE_QUERY_SNAPSHOT_SCHEMA = "clangd-fact-query-snapshot-v1"
 _NATIVE_QUERY_CAPABILITIES = {
     "definition_by_symbol": True,
     "references_by_symbol": True,
     "position_queries": True,
-    "route_queries": False,
+    "route_queries": True,
 }
 
 
@@ -163,7 +163,7 @@ def _validate_native_query_contract(contract: Mapping[str, Any]) -> None:
         raise RuntimeError("compiled clangd supported position encodings mismatch")
     if contract.get("capabilities") != _NATIVE_QUERY_CAPABILITIES:
         raise RuntimeError(
-            "compiled clangd FactQueryIndex capabilities do not match v2"
+            "compiled clangd FactQueryIndex capabilities do not match v3"
         )
 
 
@@ -439,12 +439,181 @@ def parse_idx_file(filepath: str) -> dict:
 # ===================================================================
 
 
-class ClangdHybridQueryProvider:
-    """Serve symbol/position queries natively and lazily fall back for routes.
+class _NativeClangdRouteView:
+    """CodeGraph-shaped view over compact native adjacency and lazy spans."""
 
-    Exact supported occurrence queries stay graph-free. Unsupported or
-    ambiguous positions and every route request materialize the established
-    Python CodeGraph exactly once, including concurrent first fallbacks.
+    fact_query_index = True
+
+    def __init__(self, decoder: "ClangdGraphDecoder", query_index: Any):
+        self.decoder = decoder
+        self.index = query_index
+        self.supports_graph_routes = bool(
+            getattr(query_index, "supports_route_adjacency", False)
+        )
+        self._span_cache: dict[str, tuple[int | None, int | None]] = {}
+        self._span_lock = threading.Lock()
+
+    def __getattr__(self, name: str):
+        return getattr(self.index, name)
+
+    def get_route_span(self, name: str) -> tuple[int | None, int | None]:
+        cached = self._span_cache.get(name)
+        if cached is not None:
+            return cached
+        info = self.index.get_node_info_by_name(name) or {}
+        start = info.get("selection_line")
+        if start is None:
+            start = info.get("start_line")
+        file_path = info.get("file")
+        if start is None or not file_path:
+            return (info.get("start_line"), info.get("end_line"))
+        with self._span_lock:
+            cached = self._span_cache.get(name)
+            if cached is None:
+                started = time.perf_counter()
+                cached = self.decoder._find_range(str(file_path), int(start))
+                self.decoder.query_profile["native_route_range_enrichment"] = (
+                    float(
+                        self.decoder.query_profile.get(
+                            "native_route_range_enrichment", 0.0
+                        )
+                    )
+                    + time.perf_counter()
+                    - started
+                )
+                self._span_cache[name] = cached
+        return cached
+
+    def prepare_query_route(self, query: str, top_k: int):
+        return _PreparedNativeClangdRouteView(self, query=query, top_k=top_k)
+
+
+class _PreparedNativeClangdRouteView:
+    """Per-call bounded cache for deterministic query-seeded routing."""
+
+    fact_query_index = True
+    supports_graph_routes = True
+
+    def __init__(self, base: _NativeClangdRouteView, *, query: str, top_k: int) -> None:
+        from ..agent.lsp_graph import (
+            _QUERY_SEED_CANDIDATE_BUDGET,
+            _QUERY_SEED_MATCH_BUDGET,
+            _QUERY_SEED_MIN_OVERLAP,
+            _QUERY_SEED_SCAN_BUDGET,
+            _ROUTE_SEED_NODE_TYPES,
+            _candidate_score,
+            _include_neighbor,
+            _query_terms,
+            _role,
+            _route_neighbors,
+            _terms,
+        )
+
+        self.base = base
+        self.index = base.index
+        self._node_by_name: dict[str, Optional[dict[str, Any]]] = {}
+        self._node_by_id: dict[int, Optional[dict[str, Any]]] = {}
+        self._successors: dict[str, list[int]] = {}
+        self._predecessors: dict[str, list[int]] = {}
+        query_terms = _query_terms(query)
+        self._query_terms = frozenset(query_terms)
+        candidates = []
+        rows = self.index.route_scan_records(_QUERY_SEED_SCAN_BUDGET)
+        for name, node_type, display in rows:
+            if node_type and node_type not in _ROUTE_SEED_NODE_TYPES:
+                continue
+            overlap = _terms(f"{display} {name}") & query_terms
+            if len(overlap) < _QUERY_SEED_MIN_OVERLAP:
+                continue
+            self.get_route_span(name)
+            role = _role(self, name, query_terms=query_terms)
+            candidate = {
+                "name": name,
+                "role": role,
+                "source": "query_seed",
+                "seed": ", ".join(sorted(overlap)[:4]),
+                "direct_rank": len(candidates),
+            }
+            candidate["score"] = _candidate_score(
+                self, candidate, query_terms=query_terms
+            ) + 6.0 * len(overlap)
+            candidates.append(candidate)
+            if len(candidates) >= _QUERY_SEED_MATCH_BUDGET:
+                break
+
+        candidates.sort(
+            key=lambda item: (
+                -float(item.get("score") or 0.0),
+                str(
+                    (self.get_node_info_by_name(item["name"]) or {}).get("unified_name")
+                    or item["name"]
+                ),
+            )
+        )
+        self._candidates = candidates[: max(1, int(top_k or 12))]
+
+        # Warm exactly the bounded neighborhood that lsp_route may inspect so
+        # its deadline covers scoring rather than repeated Python/C++ crossings.
+        expanded = 0
+        for candidate in self._candidates:
+            if expanded >= _QUERY_SEED_CANDIDATE_BUDGET:
+                break
+            expanded += 1
+            for neighbor, _direction in _route_neighbors(self, candidate["name"]):
+                if expanded >= _QUERY_SEED_CANDIDATE_BUDGET:
+                    break
+                neighbor_role = _role(self, neighbor, query_terms=query_terms)
+                if not _include_neighbor(
+                    self,
+                    neighbor,
+                    role=neighbor_role,
+                    query_terms=query_terms,
+                ):
+                    continue
+                expanded += 1
+
+    def __getattr__(self, name: str):
+        return getattr(self.base, name)
+
+    def get_node_info_by_name(self, name: str):
+        if name not in self._node_by_name:
+            info = self.index.get_node_info_by_name(name)
+            self._node_by_name[name] = dict(info) if info is not None else None
+        return self._node_by_name[name]
+
+    def get_node_info_by_id(self, vertex_id: int):
+        if vertex_id not in self._node_by_id:
+            info = self.index.get_node_info_by_id(vertex_id)
+            cached = dict(info) if info is not None else None
+            self._node_by_id[vertex_id] = cached
+            if cached is not None and cached.get("name"):
+                self._node_by_name.setdefault(str(cached["name"]), cached)
+        return self._node_by_id[vertex_id]
+
+    def get_successors(self, name: str):
+        if name not in self._successors:
+            self._successors[name] = list(self.index.get_successors(name))
+        return self._successors[name]
+
+    def get_predecessors(self, name: str):
+        if name not in self._predecessors:
+            self._predecessors[name] = list(self.index.get_predecessors(name))
+        return self._predecessors[name]
+
+    def get_route_span(self, name: str):
+        return self.base.get_route_span(name)
+
+    def prepared_route_seed_candidates(self, *, query_terms, limit: int):
+        if frozenset(query_terms) != self._query_terms:
+            raise ValueError("prepared native route query terms changed")
+        return self._candidates[:limit]
+
+
+class ClangdHybridQueryProvider:
+    """Serve supported symbol, position, and route queries graph-free.
+
+    Unsupported or ambiguous positions and failed/incomplete route adjacency
+    materialize the established Python CodeGraph exactly once.
     """
 
     def __init__(self, decoder: "ClangdGraphDecoder", query_index: Any):
@@ -457,6 +626,16 @@ class ClangdHybridQueryProvider:
             query_index,
             snapshot_id=decoder.query_snapshot_id,
             backend=self.provider_backend,
+        )
+        self._route_view = _NativeClangdRouteView(decoder, query_index)
+        self._route_provider = (
+            StaticLSPProvider(
+                self._route_view,
+                snapshot_id=decoder.query_snapshot_id,
+                backend="native-clangd-route-adjacency-v1",
+            )
+            if self._route_view.supports_graph_routes
+            else None
         )
         self.occurrence_index = None
         self.position_query_index = None
@@ -550,10 +729,13 @@ class ClangdHybridQueryProvider:
         if str(capability) in {"route", "codenib/lspRoute"}:
             from dataclasses import replace
 
+            if self._route_provider is not None:
+                return self._route_provider.can_serve(capability)
             return replace(
                 decision,
+                status="ok",
                 backend="lazy-clangd-code-graph-v1",
-                fallback_reason="native_clangd_route_query_requires_complete_graph",
+                fallback_reason=None,
             )
         if str(capability) in {
             "definition",
@@ -622,11 +804,52 @@ class ClangdHybridQueryProvider:
         )
 
     def route(self, **arguments):
-        return self._graph_fallback(
-            "route",
-            "native_clangd_route_query_requires_complete_graph",
-            arguments,
-        )
+        if self._route_provider is None:
+            return self._graph_fallback(
+                "route",
+                "native_clangd_route_adjacency_unavailable",
+                arguments,
+            )
+        self.decoder._verify_native_snapshot("before native route")
+        try:
+            route_provider = self._route_provider
+            if not (arguments.get("symbols") or []) and arguments.get("query"):
+                from ..agent.lsp_provider import StaticLSPProvider
+
+                prepare_started = time.perf_counter()
+                prepared = self._route_view.prepare_query_route(
+                    query=str(arguments["query"]),
+                    top_k=int(arguments.get("top_k") or 12),
+                )
+                self.decoder.query_profile["native_route_query_preparation"] = (
+                    float(
+                        self.decoder.query_profile.get(
+                            "native_route_query_preparation", 0.0
+                        )
+                    )
+                    + time.perf_counter()
+                    - prepare_started
+                )
+                route_provider = StaticLSPProvider(
+                    prepared,
+                    snapshot_id=self.snapshot_id,
+                    backend="native-clangd-route-adjacency-v1",
+                )
+            result = route_provider.route(**arguments)
+            self.last_fallback_reason = None
+            return result
+        except MemoryError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Native clangd route adjacency failed; falling back to CodeGraph: %s",
+                exc,
+            )
+            return self._graph_fallback(
+                "route",
+                "native_clangd_route_adjacency_failed",
+                arguments,
+            )
 
     def position_samples(self, limit: int = 100):
         """Return deterministic exact positions without materializing CodeGraph."""
@@ -871,7 +1094,7 @@ class ClangdGraphDecoder:
         decode = getattr(codenib_core, "decode_clangd_fact_query_index", None)
         contract_reader = getattr(codenib_core, "clangd_fact_query_contract", None)
         if not callable(decode) or not callable(contract_reader):
-            raise RuntimeError("compiled core does not expose clangd FactQueryIndex v2")
+            raise RuntimeError("compiled core does not expose clangd FactQueryIndex v3")
         _validate_native_query_contract(contract_reader())
 
         started = time.perf_counter()
@@ -898,12 +1121,16 @@ class ClangdGraphDecoder:
             raise RuntimeError(
                 "native clangd query index does not guarantee graph-free use"
             )
+        if getattr(index, "supports_route_adjacency", None) is not True:
+            raise RuntimeError(
+                "native clangd query index does not provide complete route adjacency"
+            )
         expected_capabilities = {
             **_NATIVE_QUERY_CAPABILITIES,
             "position_queries": include_occurrences,
         }
         if getattr(index, "capabilities", None) != expected_capabilities:
-            raise RuntimeError("native clangd query index capabilities do not match v2")
+            raise RuntimeError("native clangd query index capabilities do not match v3")
         if getattr(index, "requires_anchored_references", None) is not False:
             raise RuntimeError(
                 "native clangd query index cannot preserve relation references"

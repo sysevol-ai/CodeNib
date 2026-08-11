@@ -321,6 +321,17 @@ class StaticLSPProvider:
                 position_granularity="character",
                 position_encoding=self.position_encoding,
             )
+        if (
+            normalized == CAPABILITY_ROUTE
+            and getattr(self.graph, "supports_graph_routes", True) is False
+        ):
+            return _metadata(
+                normalized,
+                status="unavailable",
+                snapshot_id=self.snapshot_id,
+                backend=self.backend,
+                fallback_reason="fact_index_does_not_support_routes",
+            )
         if self.graph is None:
             return _metadata(
                 normalized,

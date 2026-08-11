@@ -49,6 +49,7 @@ from scripts.profiling.profile_fact_query_index import (  # noqa: E402
 WORKLOADS = ("symbol_only", "position_first", "route_first", "mixed")
 DEFAULT_SYMBOL_THRESHOLD = 0.20
 DEFAULT_POSITION_THRESHOLD = 0.20
+DEFAULT_ROUTE_THRESHOLD = 0.20
 DEFAULT_GRAPH_NON_REGRESSION_BUDGET = 0.20
 DEFAULT_PEAK_RSS_RATIO_BUDGET = 1.25
 DEFAULT_REPEAT_RSS_SPREAD_BUDGET = 0.10
@@ -155,6 +156,7 @@ def _run_mcp_workload(
     symbols: Sequence[str],
     positions: Sequence[Mapping[str, Any]],
     route_symbols: Sequence[str],
+    route_queries: Sequence[str],
 ) -> dict[str, Any]:
     from codenib.mcp.tools.lsp import (
         lsp_definition_impl,
@@ -236,6 +238,17 @@ def _run_mcp_workload(
                 include_neighbors=True,
             ),
         )
+        for route_query in route_queries:
+            record(
+                "route_by_query",
+                lsp_route_impl(
+                    context,
+                    symbols=[],
+                    query=route_query,
+                    top_k=100,
+                    include_neighbors=True,
+                ),
+            )
 
     if workload == "symbol_only":
         symbol_calls(symbols)
@@ -398,6 +411,7 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
             symbols=config["symbols"],
             positions=config["positions"],
             route_symbols=config["route_symbols"],
+            route_queries=config["route_queries"],
         )
     workload_wall = time.perf_counter() - workload_started
     wall_seconds = time.perf_counter() - wall_started
@@ -658,6 +672,7 @@ def _workload_inputs(
     *,
     query_workload_size: int,
 ) -> dict[str, Any]:
+    from codenib.agent.lsp_graph import _terms
     from codenib.agent.lsp_provider import StaticLSPProvider
     from codenib.ls_index.clangd_decode import ClangdGraphDecoder
     from codenib.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
@@ -734,12 +749,24 @@ def _workload_inputs(
     route_symbols = symbols[: min(4, len(symbols))]
     if not route_symbols:
         raise ValueError("benchmark index has no route seed")
+    route_queries: list[str] = []
+    for symbol in route_symbols:
+        info = graph.get_node_info_by_name(symbol) or {}
+        display = str(info.get("unified_name") or symbol)
+        semantic_name = display.rsplit(":", 1)[-1]
+        terms = sorted(_terms(semantic_name))
+        if len(terms) >= 2:
+            route_queries.append(" ".join(terms[:4]))
+            break
+    if not route_queries:
+        raise ValueError("benchmark index has no query-only route seed")
     return {
         "symbols": symbols,
         "positions": positions,
         "position_candidate_count": len(candidate_positions),
         "position_encoding": native_provider.position_encoding,
         "route_symbols": route_symbols,
+        "route_queries": route_queries,
         "definition_symbol_count": len(all_symbols),
         "graph_vertex_count": graph.graph.vcount(),
         "graph_edge_count": graph.graph.ecount(),
@@ -853,6 +880,7 @@ def profile_clangd_workload_gate(
     query_workload_size: int = DEFAULT_QUERY_WORKLOAD_SIZE,
     symbol_threshold: float = DEFAULT_SYMBOL_THRESHOLD,
     position_threshold: float = DEFAULT_POSITION_THRESHOLD,
+    route_threshold: float = DEFAULT_ROUTE_THRESHOLD,
     graph_non_regression_budget: float = DEFAULT_GRAPH_NON_REGRESSION_BUDGET,
     peak_rss_ratio_budget: float = DEFAULT_PEAK_RSS_RATIO_BUDGET,
     repeat_rss_spread_budget: float = DEFAULT_REPEAT_RSS_SPREAD_BUDGET,
@@ -873,6 +901,8 @@ def profile_clangd_workload_gate(
         raise ValueError("symbol_threshold must be between 0 (inclusive) and 1")
     if not 0 <= position_threshold < 1:
         raise ValueError("position_threshold must be between 0 (inclusive) and 1")
+    if not 0 <= route_threshold < 1:
+        raise ValueError("route_threshold must be between 0 (inclusive) and 1")
     if graph_non_regression_budget < 0:
         raise ValueError("graph_non_regression_budget must be non-negative")
     if peak_rss_ratio_budget < 1:
@@ -939,6 +969,7 @@ def profile_clangd_workload_gate(
         "symbols": inputs["symbols"],
         "positions": inputs["positions"],
         "route_symbols": inputs["route_symbols"],
+        "route_queries": inputs["route_queries"],
         "position_encoding": inputs["position_encoding"],
         "concurrency_workers": concurrency_workers,
     }
@@ -1018,6 +1049,7 @@ def profile_clangd_workload_gate(
     rss_gates: dict[str, Any] = {}
     symbol_gate: dict[str, Any] | None = None
     position_gate: dict[str, Any] | None = None
+    route_gate: dict[str, Any] | None = None
     max_native_peak_rss_bytes = int(max_native_peak_rss_mb * 1024 * 1024)
 
     for workload in WORKLOADS:
@@ -1066,6 +1098,25 @@ def profile_clangd_workload_gate(
                 and position_gate["graph_free"]
                 and improvement >= position_threshold
             )
+        elif workload == "route_first":
+            improvement = _improvement(legacy_wall, native_wall)
+            graph_free = all(
+                run.get("graph_materialization_count") == 0
+                and run.get("graph_materialized") is False
+                and set(run.get("observed_backends") or ())
+                == {
+                    "native-clangd-fact-query-v1",
+                    "native-clangd-route-adjacency-v1",
+                }
+                and not run.get("observed_fallbacks")
+                for run in native_runs
+            )
+            route_gate = {
+                "threshold": route_threshold,
+                "improvement_fraction": improvement,
+                "graph_free": graph_free,
+                "passed": parity and graph_free and improvement >= route_threshold,
+            }
         else:
             regression = _regression(legacy_wall, native_wall)
             graph_gates[workload] = {
@@ -1074,12 +1125,11 @@ def profile_clangd_workload_gate(
                 "passed": parity and regression <= graph_non_regression_budget,
             }
 
-        graph_free_workload = workload in {"symbol_only", "position_first"}
-        expected_materializations = 0 if graph_free_workload else 1
+        expected_materializations = 0
         materialization_passed = all(
             run.get("graph_materialization_count") == expected_materializations
-            and run.get("graph_materialized") is (not graph_free_workload)
-            and (graph_free_workload or run.get("range_indexes_built") is True)
+            and run.get("graph_materialized") is False
+            and run.get("range_indexes_built") is False
             for run in native_runs
         )
         materialization_gates[workload] = {
@@ -1137,18 +1187,20 @@ def profile_clangd_workload_gate(
         raise RuntimeError("symbol-only gate was not evaluated")
     if position_gate is None:
         raise RuntimeError("position-first gate was not evaluated")
+    if route_gate is None:
+        raise RuntimeError("route-first gate was not evaluated")
     concurrency_thread_digests = {
         str(digest)
         for run in concurrency_runs
         for digest in run.get("thread_result_digests", [])
     }
     concurrency_passed = len(concurrency_thread_digests) == 1 and all(
-        run.get("graph_materialization_count") == 1
-        and run.get("graph_materialized") is True
-        and run.get("range_indexes_built") is True
+        run.get("graph_materialization_count") == 0
+        and run.get("graph_materialized") is False
+        and run.get("range_indexes_built") is False
         and run.get("thread_results_identical") is True
         and run.get("public_errors") == 0
-        and run.get("observed_backends") == ["lazy-clangd-code-graph-v1"]
+        and run.get("observed_backends") == ["native-clangd-route-adjacency-v1"]
         for run in concurrency_runs
     )
     concurrency = {
@@ -1176,6 +1228,7 @@ def profile_clangd_workload_gate(
         parity_passed
         and symbol_gate["passed"]
         and position_gate["passed"]
+        and route_gate["passed"]
         and graph_passed
         and materialization_passed
         and rss_passed
@@ -1186,7 +1239,7 @@ def profile_clangd_workload_gate(
 
     return {
         "schema_version": 1,
-        "benchmark": "clangd_mixed_workload_gate_v1",
+        "benchmark": "clangd_mixed_workload_gate_v3",
         "timer": {
             "wall": "time.perf_counter",
             "cpu": "time.process_time; scheduler-sensitive",
@@ -1223,6 +1276,7 @@ def profile_clangd_workload_gate(
             "query_workload_size": len(inputs["symbols"]),
             "position_query_workload_size": len(inputs["positions"]),
             "position_candidate_count": inputs["position_candidate_count"],
+            "query_only_route_count": len(inputs["route_queries"]),
             "alternating_arm_order": True,
             "warmup_arm_order": warmup_arm_order,
             "measured_arm_order": measured_arm_order,
@@ -1234,6 +1288,7 @@ def profile_clangd_workload_gate(
             "worker_timeout_seconds": worker_timeout_seconds,
             "symbol_threshold": symbol_threshold,
             "position_threshold": position_threshold,
+            "route_threshold": route_threshold,
             "position_encoding": inputs["position_encoding"],
             "graph_non_regression_budget": graph_non_regression_budget,
             "peak_rss_ratio_budget": peak_rss_ratio_budget,
@@ -1262,6 +1317,7 @@ def profile_clangd_workload_gate(
             "parity": {"passed": parity_passed},
             "symbol_only": symbol_gate,
             "position_first": position_gate,
+            "route_first": route_gate,
             "graph_non_regression": {
                 "passed": graph_passed,
                 "workloads": graph_gates,
@@ -1271,8 +1327,8 @@ def profile_clangd_workload_gate(
                 "workloads": materialization_gates,
             },
             "peak_rss": {"passed": rss_passed, "workloads": rss_gates},
-            "concurrent_first_materialization": {
-                "expected_count": 1,
+            "concurrent_graph_free_route": {
+                "expected_count": 0,
                 "passed": concurrency_passed,
             },
             "version_matrix": {"passed": version_gate},
@@ -1304,6 +1360,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--position-threshold", type=float, default=DEFAULT_POSITION_THRESHOLD
+    )
+    parser.add_argument(
+        "--route-threshold", type=float, default=DEFAULT_ROUTE_THRESHOLD
     )
     parser.add_argument(
         "--graph-non-regression-budget",
@@ -1357,6 +1416,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         query_workload_size=args.query_workload_size,
         symbol_threshold=args.symbol_threshold,
         position_threshold=args.position_threshold,
+        route_threshold=args.route_threshold,
         graph_non_regression_budget=args.graph_non_regression_budget,
         peak_rss_ratio_budget=args.peak_rss_ratio_budget,
         repeat_rss_spread_budget=args.repeat_rss_spread_budget,

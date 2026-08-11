@@ -859,6 +859,7 @@ build_query_records(const CollectedRecords &collected,
   upsert_structural(ROOT_NODE, "root");
   std::unordered_set<std::string> observed_files;
   std::unordered_set<std::string> observed_directories;
+  std::unordered_set<std::string> created_structural{ROOT_NODE};
   std::vector<std::pair<std::string, std::string>> structural_edge_names;
   std::unordered_map<std::string, CodeGraph::VertexId> vertex_by_symbol;
   vertex_by_symbol.reserve(collected.symbols.size());
@@ -888,8 +889,13 @@ build_query_records(const CollectedRecords &collected,
           auto parent = directory.parent_path().generic_string();
           if (parent.empty() || parent == ".")
             parent = ROOT_NODE;
+          // Match CodeGraph._add_edge during _ensure_file_hierarchy: an
+          // inner directory inserted before its parent does not gain a
+          // retroactive edge once that parent is created later.
+          if (created_structural.find(parent) != created_structural.end())
+            structural_edge_names.emplace_back(parent, name);
           ensure_placeholder(parent);
-          structural_edge_names.emplace_back(parent, name);
+          created_structural.insert(name);
         }
         directory = directory.parent_path();
       }
@@ -897,8 +903,10 @@ build_query_records(const CollectedRecords &collected,
       auto parent = std::filesystem::path(file).parent_path().generic_string();
       if (parent.empty() || parent == ".")
         parent = ROOT_NODE;
+      if (created_structural.find(parent) != created_structural.end())
+        structural_edge_names.emplace_back(parent, file);
       ensure_placeholder(parent);
-      structural_edge_names.emplace_back(parent, file);
+      created_structural.insert(file);
     }
 
     CodeGraph::VertexData vertex;
@@ -955,6 +963,10 @@ build_query_records(const CollectedRecords &collected,
           static_cast<CodeGraph::VertexId>(index));
     }
   }
+  records->route_vertex_order.reserve(records->vertices.size());
+  for (std::size_t index = 0; index < records->vertices.size(); ++index)
+    records->route_vertex_order.push_back(
+        static_cast<CodeGraph::VertexId>(index));
 
   if (include_occurrences) {
     std::size_t occurrence_capacity = collected.symbols.size() * 2;
@@ -1137,6 +1149,7 @@ build_query_records(const CollectedRecords &collected,
         CodeGraph::EdgeData{object->second, subject->second,
                             EDGE_TYPE_REFERENCE, std::nullopt, std::nullopt});
   }
+  records->route_adjacency_complete = true;
   return records;
 }
 

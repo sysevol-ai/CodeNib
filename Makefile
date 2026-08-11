@@ -467,7 +467,8 @@ clangd-workload-gate: core-build
 	@test -n "$(CLANGD_WORKLOAD_GATE_PROJECT_ROOT)" || { echo "Set CLANGD_WORKLOAD_GATE_PROJECT_ROOT=/path/to/repository" >&2; exit 1; }
 	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
 		test/ls_index/test_clangd_fact_query.py::test_symbol_results_errors_counts_and_relations_match_graph \
-		test/ls_index/test_clangd_fact_query.py::test_native_position_queries_match_legacy_without_materializing_graph
+		test/ls_index/test_clangd_fact_query.py::test_native_position_queries_match_legacy_without_materializing_graph \
+		test/ls_index/test_clangd_fact_query.py::test_native_route_view_matches_legacy_order_adjacency_and_results
 	PYTHONPATH="build/core:$$PYTHONPATH" python scripts/profiling/profile_clangd_workload_gate.py \
 		--idx-directory "$(CLANGD_WORKLOAD_GATE_INDEX_DIR)" \
 		--project-root "$(CLANGD_WORKLOAD_GATE_PROJECT_ROOT)" \

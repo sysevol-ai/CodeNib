@@ -50,6 +50,13 @@ struct DecodedRecords {
   // ordering without changing vertex ids or reference adjacency semantics.
   // Empty means natural vertex order.
   std::vector<CodeGraph::VertexId> query_resolution_order;
+  // Canonical traversal order for graph-free route queries. This remains
+  // separate from query resolution because providers may group display-name
+  // aliases differently from the legacy graph's vertex insertion order.
+  std::vector<CodeGraph::VertexId> route_vertex_order;
+  // True only when ``edges`` contains every route-visible structural,
+  // reference, and relation edge and route_vertex_order covers each vertex.
+  bool route_adjacency_complete{false};
   std::string project_root;
   std::string position_encoding{"UTF8"};
 };

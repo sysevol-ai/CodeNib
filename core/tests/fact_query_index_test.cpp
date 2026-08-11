@@ -304,6 +304,55 @@ void assert_invalid_occurrences_fail_closed() {
   }
 }
 
+void assert_compact_route_adjacency() {
+  auto records = make_records();
+  records->route_vertex_order = {4, 0, 1, 2, 3, 5, 6};
+  records->route_adjacency_complete = true;
+  FactQueryIndex index(records);
+
+  assert(index.supports_route_adjacency());
+  assert((index.route_names() ==
+          std::vector<std::string>{"external-target", "canonical-target",
+                                   "canonical-caller", "canonical-run-one",
+                                   "canonical-run-two", "canonical-shared-one",
+                                   "canonical-shared-two"}));
+  assert((index.get_successors("canonical-caller") ==
+          std::vector<CodeGraph::VertexId>{4, 0, 0, 0}));
+  assert((index.get_predecessors("canonical-target") ==
+          std::vector<CodeGraph::VertexId>{1, 1, 1}));
+  assert(index.get_successors("missing").empty());
+
+  const auto scan = index.route_scan_records(2);
+  assert(scan.size() == 2);
+  assert(scan[0].name == "external-target");
+  assert(scan[0].display_name == "dependency.py:external()");
+  assert(scan[1].name == "canonical-target");
+
+  auto unavailable_records = make_records();
+  FactQueryIndex unavailable(unavailable_records);
+  assert(!unavailable.supports_route_adjacency());
+  assert(unavailable.route_names().empty());
+  assert(unavailable.get_successors("canonical-caller").empty());
+
+  auto incomplete = make_records();
+  incomplete->route_adjacency_complete = true;
+  incomplete->route_vertex_order = {0, 1};
+  try {
+    (void)FactQueryIndex(incomplete);
+    assert(false);
+  } catch (const std::invalid_argument &) {
+  }
+
+  auto duplicate = make_records();
+  duplicate->route_adjacency_complete = true;
+  duplicate->route_vertex_order = {0, 1, 2, 3, 4, 5, 5};
+  try {
+    (void)FactQueryIndex(duplicate);
+    assert(false);
+  } catch (const std::invalid_argument &) {
+  }
+}
+
 } // namespace
 
 int main() {
@@ -311,6 +360,7 @@ int main() {
   assert_invalid_records_fail_closed();
   assert_exact_occurrence_ranges_and_fallbacks();
   assert_invalid_occurrences_fail_closed();
+  assert_compact_route_adjacency();
   std::cout << "fact_query_index_test: OK\n";
   return 0;
 }

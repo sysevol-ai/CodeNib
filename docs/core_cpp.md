@@ -148,15 +148,16 @@ make fact-query-profile \
 Pass `--external-index-seconds` through `FACT_QUERY_PROFILE_EXTRA_ARGS` when a
 separate cold-start analysis should include unchanged SCIP generation time.
 
-## Native clangd Symbol And Position Queries
+## Native clangd Symbol, Position, And Route Queries
 
 The C/C++ query-specific path starts from an existing project-local clangd
 `.idx` directory. `decode_clangd_fact_query_index(...)` reads direct shards in
 stable filename order and decodes RIFF string, symbol, reference, and relation
 rows directly into provider-neutral `DecodedRecords`. `FactQueryIndex` then
 builds integer postings without a `CodeGraph`, igraph, or intermediate Python
-record dictionaries. The clangd-specific v2 contract advertises symbol and
-exact-position definition/reference support; route capability remains false.
+record dictionaries. The clangd-specific v3 contract adds complete compact
+successor/predecessor postings and a separate legacy vertex traversal order to
+the existing symbol and exact-position definition/reference support.
 
 Call `LSIndexer.process_query_index()` to obtain the capability-specific index,
 or `process_query_provider()` for a hybrid provider. Successful symbol queries
@@ -166,16 +167,32 @@ and optional target/container vertex ids. `FactQueryIndex` owns its per-file
 interval and per-target postings, so successful character-exact position
 queries stay graph-free. Unsupported, ambiguous, declaration-only, unanchored,
 and missing-source cases carry deterministic fallback reasons into the one
-complete compatible graph. A route request also materializes that graph once.
-The normal `process_index()` path, persistence format, incremental checks,
-range indexes, and graph quality behavior are unchanged.
+complete compatible graph.
+
+The raw `FactQueryIndex` reports `supports_graph_routes=false`: compact
+adjacency alone cannot supply source spans. `process_query_provider()` wraps it
+in a clangd-specific route view that lazily enriches only touched nodes through
+the C++ chunker and advertises `native-clangd-route-adjacency-v1`. Direct-symbol
+routes traverse the native postings. Query-only routes preserve the existing
+deterministic ranking while bounding the native scan to 10,000 rows, matching
+at most 256 seeds, and warming at most 512 candidates. Repeated edges are
+preserved because they affect igraph predecessor/successor parity.
+
+The decoder rejects a route index unless its traversal order covers every
+vertex exactly once and adjacency is complete. The provider verifies the
+content receipt before each route. If adjacency is unavailable or route
+preparation/execution fails, `auto` materializes one complete compatible graph
+and recomputes the whole request with a stable fallback reason. It never
+publishes a partial native result; `MemoryError` and snapshot changes fail
+closed. The normal `process_index()` path, persistence format, incremental
+checks, range indexes, and graph quality behavior are unchanged.
 
 UTF-16 is the default clangd position encoding. UTF-8 and UTF-32 are accepted
 explicitly, normalized at the provider boundary, and included in the content
 receipt. Full and incremental background commands use the same encoding flag.
-The symbol-only startup index deliberately contains no occurrence rows; this
-keeps route-first startup at the previously promoted cost, while position
-workloads pay for the native view only on first use.
+The symbol-only startup index deliberately contains no occurrence rows;
+position workloads pay for the native view only on first use. Route adjacency
+is part of that startup index and needs no second RIFF decode.
 
 `CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX=auto` is promoted by default after the
 persisted-artifact query-ready gate passed on both the generated C++ fixture
@@ -192,8 +209,7 @@ make clangd-fact-query-profile \
 ```
 
 This result measures an already generated `.idx` directory through identical
-definition/reference work. It does not claim faster clangd generation. Native
-route lookup remains an independent follow-up gate.
+definition/reference/route work. It does not claim faster clangd generation.
 
 ### MCP and agent runtime selection
 
@@ -207,10 +223,11 @@ checkouts, and disabled or unavailable native support use
 MCP definition, reference, and route tools and all three agent LSP skills use
 the common provider resolver. Definition/reference symbol requests remain on
 the startup postings path; supported exact positions use the lazy native
-occurrence view without igraph. Position fallbacks and routes share one
-snapshot-compatible complete graph. MCP result rows and `get_manifest` runtime
-metadata identify the backend, capabilities, fallback, encoding, and snapshot.
-The profiling report checks raw and MCP parity together with provider routing.
+occurrence view; supported routes use compact native adjacency. None constructs
+igraph. Position and route fallbacks share one snapshot-compatible complete
+graph. MCP result rows and `get_manifest` runtime metadata identify the
+backend, capabilities, fallback, encoding, and snapshot. The profiling report
+checks raw and MCP parity together with provider routing.
 
 ### Mixed workload and resource gate
 
@@ -229,13 +246,12 @@ make clangd-workload-gate \
   CLANGD_WORKLOAD_GATE_SUBJECT_ID=fmt-11.2.0
 ```
 
-The default gate requires at least 20% acceleration for symbol-only and
-position-first workloads, no more than 20% regression for graph-requiring
-workloads, native peak RSS no higher than 1.25x legacy or 4 GiB, no more than
-10% repeated-process peak spread, exact parity, and exactly one successful
-graph materialization when concurrent first route calls race. Symbol-only and
-position-first runs must materialize zero graphs; route-first and mixed runs
-must materialize exactly one. Graph-free route promotion remains #552.
+The v3 gate requires at least 20% acceleration for symbol-only, position-first,
+and route-first workloads, no more than 20% regression for mixed workloads,
+native peak RSS no higher than 1.25x legacy or 4 GiB, no more than 10% repeated
+process peak spread, and exact result/error parity. Every native workload must
+materialize zero graphs. Concurrent first routes must remain deterministic,
+use the native route backend, and materialize zero graphs.
 
 The maintained subject manifest pins fmt 11.2.0, GoogleTest 1.17.0, and
 protobuf 31.1 by full commit, covering template-, macro-, header-heavy, and
@@ -243,6 +259,25 @@ multi-target projects. Supplying `CLANGD_WORKLOAD_GATE_SUBJECT_ID` requires the
 checkout to be clean and at that exact revision. The Make target first executes
 the generated RIFF 18/19/20 parity matrix. clangd generation can be recorded as
 separate preparation time, but is explicitly excluded from query-ready gates.
+
+The 2026-08-11 promotion run used the clean manifest-pinned fmt 11.2.0
+revision `40626af88bd7df9a5fb80be7b25ac85b122d6c21`, 492 shards / 4,820,850
+bytes, 20 deterministic symbol and position requests, one deterministic
+query-only route, three measured process-isolated rounds after one warmup, and
+the default 20% thresholds:
+
+| Workload | Legacy | Native | Improvement | Native graphs |
+| --- | ---: | ---: | ---: | ---: |
+| symbol-only | 2.9039s | 0.1950s | 93.3% | 0 |
+| position-first | 3.0069s | 0.4308s | 85.7% | 0 |
+| route-first | 2.7913s | 0.7221s | 74.1% | 0 |
+| mixed | 2.8408s | 0.9655s | 66.0% | 0 |
+
+Exact public parity, snapshot, RIFF-version, RSS, and source-revision gates all
+passed. Three eight-worker concurrent route rounds used only
+`native-clangd-route-adjacency-v1` and materialized zero graphs. The decision
+is therefore to promote native route adjacency under `auto`, while retaining
+the complete graph as the atomic compatibility fallback.
 
 ### Content-bound snapshot receipt
 
@@ -258,11 +293,11 @@ LSP provider metadata.
 After record construction, the decoder re-reads the current canonical stream
 before publishing. This second pass is required to detect file-list or byte
 mutation during decode; both `hash_index` and `verify_snapshot` are included in
-native startup timing and reported by `make clangd-fact-query-profile`. Before
-the hybrid provider lazily parses the complete graph, it verifies the same
-receipt before and after Python record collection. A mismatch fails that
-provider session permanently instead of mixing generations. Restart the
-provider to adopt a new index. If the native candidate fails before it is
+native startup timing and reported by `make clangd-fact-query-profile`. The
+hybrid provider also verifies the same receipt before every native route and
+before and after Python record collection for a compatibility graph. A mismatch
+fails that provider session permanently instead of mixing generations. Restart
+the provider to adopt a new index. If the native candidate fails before it is
 published, `auto` may fall back to one graph from the current generation while
 `required` propagates the failure.
 

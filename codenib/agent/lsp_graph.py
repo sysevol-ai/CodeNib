@@ -292,6 +292,7 @@ def _compact_node(
     *,
     score: float = 1.0,
     use_selection_line: bool = False,
+    use_route_span: bool = False,
 ):
     info = graph.get_node_info_by_name(name) or {}
     file_path = info.get("file")
@@ -303,6 +304,8 @@ def _compact_node(
         else info.get("start_line")
     )
     end_line = start_line if use_selection_line else info.get("end_line")
+    if use_route_span and not use_selection_line:
+        start_line, end_line = _route_span(graph, name, info=info)
     if is_symbol_node(info.get("type")) and node_is_reference_only(info):
         file_path = None
         start_line = None
@@ -649,12 +652,26 @@ def _node_text(graph: Any, name: str) -> str:
 
 def _span_len(graph: Any, name: str) -> int:
     info = graph.get_node_info_by_name(name) or {}
+    start_value, end_value = _route_span(graph, name, info=info)
     try:
-        start = int(info.get("start_line") or 0)
-        end = int(info.get("end_line") or start)
+        start = int(start_value or 0)
+        end = int(end_value if end_value is not None else start)
     except (TypeError, ValueError):
         return 0
     return max(0, end - start + 1)
+
+
+def _route_span(
+    graph: Any, name: str, *, info: Optional[dict[str, Any]] = None
+) -> tuple[Any, Any]:
+    resolver = getattr(graph, "get_route_span", None)
+    if callable(resolver):
+        span = resolver(name)
+        if not isinstance(span, (tuple, list)) or len(span) != 2:
+            raise ValueError("route span resolver must return a two-item range")
+        return span[0], span[1]
+    node = info if info is not None else graph.get_node_info_by_name(name) or {}
+    return node.get("start_line"), node.get("end_line")
 
 
 def _role(graph: Any, name: str, *, query_terms: set[str]) -> str:
@@ -722,9 +739,20 @@ def _query_seed_candidates(
     if not query_terms:
         return []
 
+    prepared_query = getattr(graph, "prepared_route_seed_candidates", None)
+    if callable(prepared_query):
+        candidates = prepared_query(query_terms=query_terms, limit=limit)
+        return [dict(candidate) for candidate in candidates[:limit]]
+
     candidates: list[dict[str, Any]] = []
     scanned = 0
-    for name in getattr(graph, "name_to_vertex", {}) or {}:
+    route_names = getattr(graph, "iter_route_names", None)
+    names = (
+        route_names(_QUERY_SEED_SCAN_BUDGET)
+        if callable(route_names)
+        else (getattr(graph, "name_to_vertex", {}) or {})
+    )
+    for name in names:
         if scanned >= _QUERY_SEED_SCAN_BUDGET:
             break
         if scanned and time.monotonic() >= deadline:
@@ -806,6 +834,7 @@ def _route_node(graph: Any, candidate: dict[str, Any]) -> QueriedNode:
         name,
         relation,
         score=float(candidate.get("score") or 0.0),
+        use_route_span=True,
     )
 
 

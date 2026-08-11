@@ -16,10 +16,10 @@
 
 namespace codenib::core {
 
-inline constexpr std::uint32_t CLANGD_FACT_QUERY_ABI_VERSION = 2;
-inline constexpr char CLANGD_FACT_QUERY_FORMAT[] = "clangd-riff-fact-query-v2";
+inline constexpr std::uint32_t CLANGD_FACT_QUERY_ABI_VERSION = 3;
+inline constexpr char CLANGD_FACT_QUERY_FORMAT[] = "clangd-riff-fact-query-v3";
 inline constexpr char CLANGD_FACT_QUERY_NORMALIZATION_PROFILE[] =
-    "clangd-native-normalization-v2";
+    "clangd-native-normalization-v3";
 inline constexpr char CLANGD_FACT_QUERY_SNAPSHOT_SCHEMA[] =
     "clangd-fact-query-snapshot-v1";
 inline constexpr char CLANGD_DEFAULT_POSITION_ENCODING[] = "UTF16";

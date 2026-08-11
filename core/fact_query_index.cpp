@@ -190,6 +190,29 @@ FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
     }
   }
 
+  std::vector<std::size_t> route_rank;
+  if (records_->route_adjacency_complete) {
+    if (records_->route_vertex_order.size() != records_->vertices.size())
+      throw std::invalid_argument(
+          "FactQueryIndex complete route order must cover every vertex");
+    route_rank.assign(records_->vertices.size(),
+                      std::numeric_limits<std::size_t>::max());
+    for (std::size_t rank = 0; rank < records_->route_vertex_order.size();
+         ++rank) {
+      const auto id = records_->route_vertex_order[rank];
+      if (id < 0 || static_cast<std::size_t>(id) >= records_->vertices.size())
+        throw std::out_of_range(
+            "FactQueryIndex route vertex id is out of range");
+      auto &slot = route_rank[static_cast<std::size_t>(id)];
+      if (slot != std::numeric_limits<std::size_t>::max())
+        throw std::invalid_argument(
+            "FactQueryIndex route order contains a duplicate vertex");
+      slot = rank;
+    }
+    outgoing_neighbors_.resize(records_->vertices.size());
+    incoming_neighbors_.resize(records_->vertices.size());
+  }
+
   incoming_reference_indexes_.reserve(definition_by_name_.size());
   std::vector<std::vector<std::size_t>> reference_indexes_by_source(
       records_->vertices.size());
@@ -199,6 +222,12 @@ FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
         static_cast<std::size_t>(edge.source) >= records_->vertices.size() ||
         static_cast<std::size_t>(edge.target) >= records_->vertices.size()) {
       throw std::out_of_range("FactQueryIndex edge endpoint is out of range");
+    }
+    if (records_->route_adjacency_complete) {
+      outgoing_neighbors_[static_cast<std::size_t>(edge.source)].push_back(
+          edge.target);
+      incoming_neighbors_[static_cast<std::size_t>(edge.target)].push_back(
+          edge.source);
     }
     if (edge.type != EDGE_TYPE_REFERENCE)
       continue;
@@ -225,6 +254,20 @@ FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
       const auto target = records_->edges[*posting].target;
       incoming_reference_indexes_[target].push_back(*posting);
     }
+  }
+
+  if (records_->route_adjacency_complete) {
+    auto compact_neighbors = [&](auto &groups) {
+      for (auto &neighbors : groups) {
+        std::sort(neighbors.begin(), neighbors.end(),
+                  [&](CodeGraph::VertexId left, CodeGraph::VertexId right) {
+                    return route_rank[static_cast<std::size_t>(left)] <
+                           route_rank[static_cast<std::size_t>(right)];
+                  });
+      }
+    };
+    compact_neighbors(outgoing_neighbors_);
+    compact_neighbors(incoming_neighbors_);
   }
 
   occurrence_indexes_by_file_.reserve(records_->occurrences.size() / 8 + 1);
@@ -291,6 +334,52 @@ FactQueryIndex::get_node_info_by_id(CodeGraph::VertexId id) const {
   if (id < 0 || static_cast<std::size_t>(id) >= records_->vertices.size())
     return std::nullopt;
   return records_->vertices[static_cast<std::size_t>(id)];
+}
+
+std::vector<CodeGraph::VertexId>
+FactQueryIndex::get_successors(const std::string &name) const {
+  const auto found = record_by_name_.find(name);
+  if (found == record_by_name_.end() || !records_->route_adjacency_complete)
+    return {};
+  return outgoing_neighbors_[static_cast<std::size_t>(found->second)];
+}
+
+std::vector<CodeGraph::VertexId>
+FactQueryIndex::get_predecessors(const std::string &name) const {
+  const auto found = record_by_name_.find(name);
+  if (found == record_by_name_.end() || !records_->route_adjacency_complete)
+    return {};
+  return incoming_neighbors_[static_cast<std::size_t>(found->second)];
+}
+
+std::vector<std::string> FactQueryIndex::route_names(std::size_t limit) const {
+  std::vector<std::string> names;
+  if (!records_->route_adjacency_complete || limit == 0)
+    return names;
+  names.reserve(std::min(limit, records_->route_vertex_order.size()));
+  for (const auto id : records_->route_vertex_order) {
+    names.push_back(records_->vertices[static_cast<std::size_t>(id)].name);
+    if (names.size() >= limit)
+      break;
+  }
+  return names;
+}
+
+std::vector<FactQueryIndex::RouteScanRecord>
+FactQueryIndex::route_scan_records(std::size_t limit) const {
+  std::vector<RouteScanRecord> rows;
+  if (!records_->route_adjacency_complete || limit == 0)
+    return rows;
+  rows.reserve(std::min(limit, records_->route_vertex_order.size()));
+  for (const auto id : records_->route_vertex_order) {
+    const auto &vertex = records_->vertices[static_cast<std::size_t>(id)];
+    rows.push_back(RouteScanRecord{
+        vertex.name, vertex.type,
+        vertex.unified_name.has_value() ? *vertex.unified_name : vertex.name});
+    if (rows.size() >= limit)
+      break;
+  }
+  return rows;
 }
 
 std::string FactQueryIndex::trim_symbol(std::string value) {

@@ -18,7 +18,7 @@ core decoder continue to use the serial Python path.
 - `fact_batch_buffer.{h,cpp}` — versioned flat semantic and graph-compatibility
   tables for the native/Python boundary.
 - `clangd_fact_query.{h,cpp}` — deterministic clangd RIFF shard decoding into
-  provider-neutral records for graph-free symbol queries.
+  provider-neutral records for graph-free symbol, position, and route queries.
 - `content_digest.{h,cpp}` — dependency-free streaming SHA-256 for native
   content receipts.
 - `graph_layers.{h,cpp}` — shared normalized edge-layer classification.
@@ -124,18 +124,19 @@ make fact-query-profile \
   FACT_QUERY_PROFILE_OUTPUT=/tmp/fact-query-report.json
 ```
 
-## Native clangd Symbol And Position Queries
+## Native clangd Symbol, Position, And Route Queries
 
 For C and C++ projects with an existing project-local clangd index,
 `decode_clangd_fact_query_index(...)` reads the direct `*.idx` children in
 stable filename order, decodes them into `DecodedRecords`, and builds the same
 `FactQueryIndex` without constructing `CodeGraph`, igraph, or Python record
 dictionaries. The initial symbol-only index covers definition and reference
-lookup by symbol. Each decode also exposes a content-bound snapshot over the query contract,
-normalized project root, exact supported RIFF versions, sorted shard names,
-and the exact bytes consumed by the decoder. clangd relation rows may be
-unanchored, so this provider explicitly opts into that record policy while
-still rejecting partial or invalid anchors.
+lookup by symbol plus complete compact route adjacency and the legacy vertex
+traversal order. Each decode also exposes a content-bound snapshot over the
+query contract, normalized project root, exact supported RIFF versions, sorted
+shard names, and the exact bytes consumed by the decoder. clangd relation rows
+may be unanchored, so this provider explicitly opts into that record policy
+while still rejecting partial or invalid anchors.
 
 Use `LSIndexer.process_query_index()` for the capability-specific index or
 `process_query_provider()` for hybrid behavior. The provider keeps successful
@@ -146,11 +147,19 @@ provider-neutral zero-based, half-open file ranges, role bits, and optional
 target/container vertex ids in C++, then builds per-file interval postings and
 per-target postings without Python record dictionaries. Unsupported,
 ambiguous, declaration-only, unanchored, or missing-source positions fall back
-with a stable reason. A route request still lazily constructs the complete
-compatible graph once. Existing `process_index()`, graph persistence,
+with a stable reason.
+
+The hybrid provider adapts the compact adjacency to the established route
+contract as `native-clangd-route-adjacency-v1`. Direct-symbol routes traverse
+the native postings; query-only routes use a deterministic bounded scan and
+candidate cache. Source spans are enriched lazily only for nodes touched by the
+route. A successful route never constructs `CodeGraph` or igraph. Incomplete
+adjacency, unavailable support, or any native route error falls back to one
+complete compatible graph and recomputes the whole request; a partial native
+route is never returned. Existing `process_index()`, graph persistence,
 incremental processing, and quality gates are unchanged.
 
-The clangd query ABI is `clangd-riff-fact-query-v2`. Position offsets are
+The clangd query ABI is `clangd-riff-fact-query-v3`. Position offsets are
 explicit and receipt-bound: UTF-16 is the default, while UTF-8 and UTF-32 are
 accepted at the provider boundary. Full and incremental background indexing
 use the same normalized clangd offset flag, so their rows cannot silently mix
@@ -170,17 +179,17 @@ make clangd-fact-query-profile \
 ```
 
 The first receipt hash shares the decoder's existing byte buffers. A second
-canonical read before publication detects mutation during decode, and the
-hybrid provider verifies the same receipt before and after lazy graph record
-collection. A mismatch fails the provider session rather than combining index
-generations; restart it to adopt new shards. Both receipt stages are included
-in the existing 20% profiling gate.
+canonical read before publication detects mutation during decode. The hybrid
+provider verifies the receipt before every native route and before and after
+lazy graph record collection. A mismatch fails the provider session rather
+than combining index generations; restart it to adopt new shards. Both receipt
+stages are included in the profiling gate.
 
-The mixed-workload gate additionally requires at least 20% position-first
-acceleration with zero graph materializations. Route-first and mixed workloads
-retain the 20% non-regression budget and exactly-once graph publication rule.
-This result makes no claim about clangd index generation time; native route
-lookup remains a separate promotion gate.
+The mixed-workload gate requires at least 20% acceleration for symbol-only,
+position-first, and route-first sessions, exact public-result parity, and zero
+native graph materializations in every workload. Mixed sessions retain the 20%
+non-regression budget. Concurrent native routes must also remain deterministic
+and graph-free. This result makes no claim about clangd index generation time.
 
 ## Use Through Python
 

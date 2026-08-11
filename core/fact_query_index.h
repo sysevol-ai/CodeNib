@@ -24,8 +24,8 @@ inline constexpr char FACT_QUERY_INDEX_FORMAT[] = "fact-query-index-v1";
 
 // Graph-free read index for definition/reference subsets of the LSP-shaped
 // API. The index owns one immutable DecodedRecords allocation and stores only
-// integer postings. The generic v1 contract remains symbol-only; providers may
-// opt into occurrence postings, while route queries remain outside this type.
+// integer postings. Providers opt into occurrence postings and complete route
+// adjacency independently; an absent capability must fail closed.
 class FactQueryIndex {
 public:
   struct Reference {
@@ -61,6 +61,12 @@ public:
     std::vector<CodeGraph::VertexId> targets;
   };
 
+  struct RouteScanRecord {
+    std::string name;
+    std::string type;
+    std::string display_name;
+  };
+
   explicit FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
                           bool require_anchored_references = true,
                           std::string snapshot_id = {});
@@ -75,6 +81,13 @@ public:
                             std::size_t limit = 8) const;
   std::vector<Reference>
   incoming_references(const std::string &target_name) const;
+  std::vector<CodeGraph::VertexId>
+  get_successors(const std::string &name) const;
+  std::vector<CodeGraph::VertexId>
+  get_predecessors(const std::string &name) const;
+  std::vector<std::string> route_names(std::size_t limit = 10000) const;
+  std::vector<RouteScanRecord>
+  route_scan_records(std::size_t limit = 10000) const;
   PositionQueryResult definitions_at(const std::string &file_path, int line,
                                      int character,
                                      std::size_t limit = 8) const;
@@ -96,6 +109,9 @@ public:
   }
   bool supports_position_queries() const {
     return !records_->occurrences.empty();
+  }
+  bool supports_route_adjacency() const {
+    return records_->route_adjacency_complete;
   }
   bool requires_anchored_references() const {
     return require_anchored_references_;
@@ -134,6 +150,8 @@ private:
   std::vector<std::string> alias_order_;
   std::unordered_map<CodeGraph::VertexId, std::vector<std::size_t>>
       incoming_reference_indexes_;
+  std::vector<std::vector<CodeGraph::VertexId>> outgoing_neighbors_;
+  std::vector<std::vector<CodeGraph::VertexId>> incoming_neighbors_;
   std::unordered_map<std::string, FileOccurrencePostings>
       occurrence_indexes_by_file_;
   std::unordered_map<CodeGraph::VertexId, std::vector<std::size_t>>

@@ -97,12 +97,13 @@ py::dict position_query_to_dict(
   return result;
 }
 
-py::dict fact_query_capabilities(bool position_queries = false) {
+py::dict fact_query_capabilities(bool position_queries = false,
+                                 bool route_queries = false) {
   py::dict result;
   result["definition_by_symbol"] = true;
   result["references_by_symbol"] = true;
   result["position_queries"] = position_queries;
-  result["route_queries"] = false;
+  result["route_queries"] = route_queries;
   return result;
 }
 
@@ -491,7 +492,7 @@ py::dict clangd_fact_query_contract() {
   result["resource_limits"] = std::move(resource_limits);
   result["stable_filename_order"] = true;
   result["preserves_unanchored_relations"] = true;
-  result["capabilities"] = fact_query_capabilities(true);
+  result["capabilities"] = fact_query_capabilities(true, true);
   return result;
 }
 
@@ -539,10 +540,17 @@ PYBIND11_MODULE(codenib_core, m) {
       .def_property_readonly(
           "materializes_graph",
           [](const codenib::core::FactQueryIndex &) { return false; })
+      .def_property_readonly(
+          "supports_graph_routes",
+          [](const codenib::core::FactQueryIndex &) { return false; })
+      .def_property_readonly(
+          "supports_route_adjacency",
+          &codenib::core::FactQueryIndex::supports_route_adjacency)
       .def_property_readonly("capabilities",
                              [](const codenib::core::FactQueryIndex &index) {
                                return fact_query_capabilities(
-                                   index.supports_position_queries());
+                                   index.supports_position_queries(),
+                                   index.supports_route_adjacency());
                              })
       .def_property_readonly("project_root",
                              [](const codenib::core::FactQueryIndex &index) {
@@ -588,6 +596,22 @@ PYBIND11_MODULE(codenib_core, m) {
       .def("resolve_symbol_candidates",
            &codenib::core::FactQueryIndex::resolve_symbol_candidates,
            py::arg("symbol"), py::arg("limit") = 8)
+      .def("get_successors", &codenib::core::FactQueryIndex::get_successors,
+           py::arg("name"))
+      .def("get_predecessors", &codenib::core::FactQueryIndex::get_predecessors,
+           py::arg("name"))
+      .def("iter_route_names", &codenib::core::FactQueryIndex::route_names,
+           py::arg("limit") = 10000)
+      .def(
+          "route_scan_records",
+          [](const codenib::core::FactQueryIndex &index, std::size_t limit) {
+            py::list result;
+            for (const auto &row : index.route_scan_records(limit))
+              result.append(
+                  py::make_tuple(row.name, row.type, row.display_name));
+            return result;
+          },
+          py::arg("limit") = 10000)
       .def(
           "iter_incoming_references",
           [](const codenib::core::FactQueryIndex &index,
