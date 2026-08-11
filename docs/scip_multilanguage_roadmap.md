@@ -6,14 +6,18 @@ SPDX-License-Identifier: Apache-2.0
 
 # SCIP Multi-Language Roadmap
 
-This is the long-running goal for CodeNib's multi-language graph indexing and
-acceleration work. Keep it current when a PR lands, when a candidate backend is
-promoted, or when an issue is closed because the roadmap gate is satisfied.
+**Status:** the original Phase 0--6 program is complete and archived. Its final
+implementation slice merged through #558 / PR #593 at `d9996e88`; the
+post-merge gate-stability reconciliation #594 / PR #595 is included at
+`8362551c` on 2026-08-11.
 
-The program is not complete until the candidate SCIP cold-start languages have
-validated implementation paths, existing LSP graph behavior is preserved, and
-the C++ acceleration surface is justified by measured bottlenecks instead of
-guesswork.
+This document is the durable history for CodeNib's multi-language graph
+indexing and acceleration work. Keep it current when a backend is promoted, a
+gate changes, or a related issue is reconciled. New consumer-boundary and
+repository-batching experiments belong to the separate
+[Consumer-boundary acceleration](https://github.com/sysevol-ai/CodeNib/milestone/3)
+milestone tracked by [#601](https://github.com/sysevol-ai/CodeNib/issues/601);
+they do not make the completed phases below incomplete again.
 
 ## Current Baseline
 
@@ -30,10 +34,9 @@ through `graph_route="lsp"` for regression checks and for loose-file fallback.
 Scala has no registered LSP graph route today; its active graph support is the
 `scip-java` route only.
 
-## Layered Goal
+## Archived Layered Goal
 
-Complete the multi-language SCIP cold-start and acceleration program end to
-end:
+The completed multi-language SCIP cold-start and acceleration program required:
 
 1. Preserve the current LSP graph/index behavior and public language capability
    matrix.
@@ -78,7 +81,7 @@ C++ acceleration for a newly promoted language is a separate gate:
 - Decoder registration, aliases, and Python/C++ registry metadata must be
   updated together before the language is advertised as core-accelerated.
 
-## Work Queue
+## Completed Work Queue
 
 ### Phase 0: Operating Contract
 
@@ -665,9 +668,11 @@ validation, and read-only ownership contract landed through #564/PR #567.
 
 FactBatchBuffer runtime promotion status
 ([#565](https://github.com/sysevol-ai/CodeNib/issues/565)): the candidate uses
-ownership-safe zero-copy buffers but remains opt-in. The 2026-08-10 local gate
-alternated arm order, required graph and semantic parity, and compared median
-end-to-end time against a 20% threshold:
+ownership-safe zero-copy buffers but remains opt-in. Issue #565 is closed with
+this design recorded as a negative promotion experiment, not unfinished
+production work. The 2026-08-10 local gate alternated arm order, required graph
+and semantic parity, and compared median end-to-end time against a 20%
+threshold:
 
 | SCIP subject | Consumer | Legacy | FactBatchBuffer | Improvement | Result |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -1004,8 +1009,9 @@ and cutover gates in `docs/storage_backend_roadmap.md` pass. The broader storage
 RFC #199 also remains open for generic generation publication, jobs, leases,
 retention/GC, remaining adapters, overlays, and server backends. With foundation
 issues #554/#555 and production gates #546 through #553 merged, parent tracker
-#545 may close after this roadmap reconciliation without implying those larger
-programs are complete.
+[#545](https://github.com/sysevol-ai/CodeNib/issues/545) closed on 2026-08-11.
+That closure records completion of the query-acceleration program without
+implying that storage RFC #199 or its dependent programs are complete.
 
 Native core CI enforcement status
 ([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted
@@ -1027,7 +1033,9 @@ Native Python chunk-span POC status
 builds separately under `build/core-chunk-poc`; both its build switch and
 `CODENIB_NATIVE_PYTHON_CHUNKER` runtime selection default to `off`. `auto`
 falls back per file and `required` fails closed. The maintained `build/core`
-extension, `make core-test`, and required CI do not enable the POC.
+extension, `make core-test`, and required CI do not enable the POC. Issue #558
+is closed with the per-file design archived as a measured negative experiment,
+not a pending production route.
 
 The final gate passed exact `CodeChunk` parity for decorators, async
 definitions, Unicode and PEP 695 syntax, nested and conditional definitions,
@@ -1097,6 +1105,31 @@ dedup took about 0.27s. This does not currently justify a C++ graph-merge
 helper. Revisit only if real mixed-language repositories show merge time as a
 material fraction of cold-start graph build time.
 
+## Follow-up: Consumer-Boundary Acceleration
+
+Milestone 3 and [#601](https://github.com/sysevol-ai/CodeNib/issues/601) track a
+new, ordered program rather than extending the archived Phase 0--6 queue:
+
+1. [#597](https://github.com/sysevol-ai/CodeNib/issues/597) must produce a
+   graph-free SCIP FactQueryIndex import path, complete source/filter receipt,
+   and exact filtered-graph parity proof.
+2. [#598](https://github.com/sysevol-ai/CodeNib/issues/598) then compares that
+   candidate with the real MCP baseline of loading the existing `graph.pkl`.
+   The earlier Python/Rust query-ready gains are API evidence, not yet a
+   user-visible consumer claim.
+3. [#599](https://github.com/sysevol-ai/CodeNib/issues/599) defines exact
+   repository-level chunk parity and 20% p50/p95 gates before another native
+   implementation is added.
+4. [#600](https://github.com/sysevol-ai/CodeNib/issues/600) timeboxes one
+   repository call with bounded native workers and an ordered flat buffer. A
+   failed gate removes the POC implementation and retains only the receipt.
+
+Production integration and additional FactQueryIndex languages get focused
+issues only after #598 passes for the relevant language. Warm-session
+incremental parse-tree reuse is timeboxed only after #600 records the bounded
+batch decision, especially if batching fails its gate. Storage RFC #199 and
+Guardian #309 remain independent programs.
+
 ## PR And Issue Flow
 
 For this roadmap, a PR is merge-ready only when its own gate is complete and
@@ -1115,7 +1148,7 @@ Issue triage rules:
 - If a PR changes graph schema or decoder semantics, run parity checks and
   inspect whether `_SCHEMA_VERSION` must change.
 
-Current issue triage notes from July 28, 2026:
+Current issue triage notes through August 11, 2026:
 
 - PR #248 is merged (June 25, 2026). It was an agent-compile/Qwen local-backend
   PR outside this SCIP roadmap and landed as agent-compile work, not as a
@@ -1124,6 +1157,15 @@ Current issue triage notes from July 28, 2026:
   SCIP cold-start and acceleration program.
 - #252, the Repository Guardian RFC, is closed (July 7, 2026).
 - #199 is an enterprise index-storage RFC and remains open.
+- #545 is closed; its native query-acceleration foundation and production
+  gates are complete.
+- #565 is closed with FactBatchBuffer retained only as a default-off negative
+  promotion experiment.
+- #556 and #557 are closed after the RepoNavigator adapter and bounded MCP
+  explore/session ledger merged.
+- #558 is closed with exact parity but a negative per-file native chunking
+  result; repository batching is tracked separately by #599/#600.
+- #601 is the open tracker for consumer-boundary acceleration follow-up work.
 - #133 is closed. Its query-time skill-selection runtime landed through #149
   and the subsequent agent-runtime refactor; the original fitted A0--A6 table
   plan was retired in favor of the design-space cost study. Any new adaptive
