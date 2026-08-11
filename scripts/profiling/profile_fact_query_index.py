@@ -20,7 +20,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _CORE_BUILD = _PROJECT_ROOT / "build/core"
@@ -129,6 +129,7 @@ def _assert_query_parity(
     seeds: Sequence[str],
     expected_symbol_count: int,
     expected_reference_count: int,
+    expected_capabilities: Mapping[str, bool] | None = None,
 ) -> None:
     from codenib.agent.lsp_graph import lsp_definition, lsp_references
 
@@ -136,14 +137,14 @@ def _assert_query_parity(
         index, "graph"
     ):
         raise AssertionError("candidate materialized a graph")
-    expected_capabilities = {
+    capabilities = expected_capabilities or {
         "definition_by_symbol": True,
         "references_by_symbol": True,
         "position_queries": False,
         "route_queries": False,
     }
-    if getattr(index, "capabilities", None) != expected_capabilities:
-        raise AssertionError("candidate capabilities differ from v1")
+    if getattr(index, "capabilities", None) != dict(capabilities):
+        raise AssertionError("candidate capabilities differ from expected contract")
     if index.symbol_count != expected_symbol_count:
         raise AssertionError(
             f"definition symbol count differs: {expected_symbol_count} != "

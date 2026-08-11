@@ -63,11 +63,45 @@ py::dict vertex_to_dict(const CodeGraph::VertexData &v) {
   return d;
 }
 
-py::dict fact_query_capabilities() {
+py::dict
+location_to_dict(const codenib::core::FactQueryIndex::Location &location) {
+  py::dict row;
+  row["file_path"] = location.file_path;
+  row["start_line"] = location.start_line;
+  row["start_character"] = location.start_character;
+  row["end_line"] = location.end_line;
+  row["end_character"] = location.end_character;
+  row["roles"] = location.roles;
+  row["target_symbol"] = location.target_symbol.has_value()
+                             ? py::object(py::cast(*location.target_symbol))
+                             : py::object(py::none());
+  row["container_symbol"] =
+      location.container_symbol.has_value()
+          ? py::object(py::cast(*location.container_symbol))
+          : py::object(py::none());
+  return row;
+}
+
+py::dict position_query_to_dict(
+    const codenib::core::FactQueryIndex::PositionQueryResult &query) {
+  py::dict result;
+  result["served"] = query.served;
+  result["fallback_reason"] = query.fallback_reason.empty()
+                                  ? py::object(py::none())
+                                  : py::object(py::cast(query.fallback_reason));
+  py::list locations;
+  for (const auto &location : query.locations)
+    locations.append(location_to_dict(location));
+  result["locations"] = std::move(locations);
+  result["targets"] = query.targets;
+  return result;
+}
+
+py::dict fact_query_capabilities(bool position_queries = false) {
   py::dict result;
   result["definition_by_symbol"] = true;
   result["references_by_symbol"] = true;
-  result["position_queries"] = false;
+  result["position_queries"] = position_queries;
   result["route_queries"] = false;
   return result;
 }
@@ -253,6 +287,7 @@ py::dict clangd_decode_profile_to_dict(
   result["raw_reference_count"] = profile.raw_reference_count;
   result["definition_count"] = profile.definition_count;
   result["reference_count"] = profile.reference_count;
+  result["occurrence_count"] = profile.occurrence_count;
   result["decoded_record_count"] = profile.decoded_record_count;
   result["index_bytes"] = profile.index_bytes;
   result["decompressed_string_bytes"] = profile.decompressed_string_bytes;
@@ -380,7 +415,9 @@ py::dict fact_query_index_contract() {
 }
 
 py::dict decode_clangd_fact_query_index(const std::string &idx_directory,
-                                        const std::string &project_root) {
+                                        const std::string &project_root,
+                                        const std::string &position_encoding,
+                                        bool include_occurrences) {
   using clock = std::chrono::steady_clock;
   clock::time_point decode_started;
   clock::time_point decode_finished;
@@ -390,8 +427,9 @@ py::dict decode_clangd_fact_query_index(const std::string &idx_directory,
   {
     py::gil_scoped_release release;
     decode_started = clock::now();
-    decoded =
-        codenib::core::decode_clangd_query_records(idx_directory, project_root);
+    decoded = codenib::core::decode_clangd_query_records(
+        idx_directory, project_root, codenib::core::ClangdFactDecodeLimits{},
+        position_encoding, include_occurrences);
     decode_finished = clock::now();
     index = std::make_shared<codenib::core::FactQueryIndex>(
         decoded.records, false, decoded.receipt.snapshot_id);
@@ -409,6 +447,7 @@ py::dict decode_clangd_fact_query_index(const std::string &idx_directory,
   result["native_index_ns"] = elapsed_ns(decode_finished, index_finished);
   result["decode_profile_ns"] = clangd_decode_profile_to_dict(decoded.profile);
   result["graph_materialized"] = false;
+  result["position_records_included"] = include_occurrences;
   result["snapshot_id"] = decoded.receipt.snapshot_id;
   result["snapshot_file_count"] = decoded.receipt.file_count;
   result["snapshot_index_bytes"] = decoded.receipt.index_bytes;
@@ -445,20 +484,26 @@ py::dict clangd_fact_query_contract() {
   result["snapshot_schema"] = codenib::core::CLANGD_FACT_QUERY_SNAPSHOT_SCHEMA;
   result["snapshot_digest"] = "sha256";
   result["supported_versions"] = codenib::core::CLANGD_SUPPORTED_RIFF_VERSIONS;
+  result["default_position_encoding"] =
+      codenib::core::CLANGD_DEFAULT_POSITION_ENCODING;
+  result["supported_position_encodings"] =
+      codenib::core::CLANGD_SUPPORTED_POSITION_ENCODINGS;
   result["resource_limits"] = std::move(resource_limits);
   result["stable_filename_order"] = true;
   result["preserves_unanchored_relations"] = true;
-  result["capabilities"] = fact_query_capabilities();
+  result["capabilities"] = fact_query_capabilities(true);
   return result;
 }
 
 py::dict clangd_fact_query_snapshot(const std::string &idx_directory,
-                                    const std::string &project_root) {
+                                    const std::string &project_root,
+                                    const std::string &position_encoding) {
   codenib::core::ClangdIndexReceipt receipt;
   {
     py::gil_scoped_release release;
     receipt = codenib::core::compute_clangd_index_receipt(
-        idx_directory, project_root, codenib::core::ClangdFactDecodeLimits{});
+        idx_directory, project_root, codenib::core::ClangdFactDecodeLimits{},
+        position_encoding);
   }
   py::dict result;
   result["snapshot_id"] = receipt.snapshot_id;
@@ -495,8 +540,9 @@ PYBIND11_MODULE(codenib_core, m) {
           "materializes_graph",
           [](const codenib::core::FactQueryIndex &) { return false; })
       .def_property_readonly("capabilities",
-                             [](const codenib::core::FactQueryIndex &) {
-                               return fact_query_capabilities();
+                             [](const codenib::core::FactQueryIndex &index) {
+                               return fact_query_capabilities(
+                                   index.supports_position_queries());
                              })
       .def_property_readonly("project_root",
                              [](const codenib::core::FactQueryIndex &index) {
@@ -513,6 +559,10 @@ PYBIND11_MODULE(codenib_core, m) {
                              &codenib::core::FactQueryIndex::symbol_count)
       .def_property_readonly("reference_count",
                              &codenib::core::FactQueryIndex::reference_count)
+      .def_property_readonly("occurrence_count",
+                             &codenib::core::FactQueryIndex::occurrence_count)
+      .def_property_readonly("position_encoding",
+                             &codenib::core::FactQueryIndex::position_encoding)
       .def_property_readonly(
           "requires_anchored_references",
           &codenib::core::FactQueryIndex::requires_anchored_references)
@@ -549,7 +599,58 @@ PYBIND11_MODULE(codenib_core, m) {
             }
             return result;
           },
-          py::arg("target_name"));
+          py::arg("target_name"))
+      .def(
+          "position_definitions",
+          [](const codenib::core::FactQueryIndex &index,
+             const std::string &file_path, int line, int character,
+             std::size_t top_k) {
+            codenib::core::FactQueryIndex::PositionQueryResult query;
+            {
+              py::gil_scoped_release release;
+              query = index.definitions_at(file_path, line, character, top_k);
+            }
+            return position_query_to_dict(query);
+          },
+          py::arg("file_path"), py::arg("line"), py::arg("character"),
+          py::arg("top_k") = 8)
+      .def(
+          "position_references",
+          [](const codenib::core::FactQueryIndex &index,
+             const std::string &file_path, int line, int character,
+             bool include_declaration, std::size_t top_k) {
+            codenib::core::FactQueryIndex::PositionQueryResult query;
+            {
+              py::gil_scoped_release release;
+              query = index.references_at(file_path, line, character,
+                                          include_declaration, top_k);
+            }
+            return position_query_to_dict(query);
+          },
+          py::arg("file_path"), py::arg("line"), py::arg("character"),
+          py::arg("include_declaration") = true, py::arg("top_k") = 40)
+      .def(
+          "has_occurrence_at",
+          [](const codenib::core::FactQueryIndex &index,
+             const std::string &file_path, int line, int character) {
+            py::gil_scoped_release release;
+            return index.has_occurrence_at(file_path, line, character);
+          },
+          py::arg("file_path"), py::arg("line"), py::arg("character"))
+      .def(
+          "position_samples",
+          [](const codenib::core::FactQueryIndex &index, std::size_t limit) {
+            std::vector<codenib::core::FactQueryIndex::Location> samples;
+            {
+              py::gil_scoped_release release;
+              samples = index.position_samples(limit);
+            }
+            py::list result;
+            for (const auto &sample : samples)
+              result.append(location_to_dict(sample));
+            return result;
+          },
+          py::arg("limit") = 100);
 
   m.def("decode_scip", &decode_scip, py::arg("index_file"),
         py::arg("project_root") = std::optional<std::string>(std::nullopt),
@@ -619,13 +720,17 @@ route queries remain unavailable and no CodeGraph or igraph is materialized.
 
   m.def("decode_clangd_fact_query_index", &decode_clangd_fact_query_index,
         py::arg("idx_directory"), py::arg("project_root"),
+        py::arg("position_encoding") =
+            codenib::core::CLANGD_DEFAULT_POSITION_ENCODING,
+        py::arg("include_occurrences") = true,
         R"pbdoc(
-Decode an existing project-local clangd .idx directory into FactQueryIndex v1.
+Decode an existing project-local clangd .idx directory into FactQueryIndex v2.
 
 Direct .idx children are read in stable filename order into provider-neutral
-decoded records. The returned index supports symbol definitions and references
-without Python record dictionaries, CodeGraph, or igraph. Position and route
-queries remain outside this baseline capability.
+decoded records. With ``include_occurrences=True`` the returned index supports
+symbol and exact position definition/reference queries without Python record
+dictionaries, CodeGraph, or igraph. Route queries remain outside this
+capability.
 )pbdoc");
 
   m.def("clangd_fact_query_contract", &clangd_fact_query_contract,
@@ -633,6 +738,8 @@ queries remain outside this baseline capability.
 
   m.def("clangd_fact_query_snapshot", &clangd_fact_query_snapshot,
         py::arg("idx_directory"), py::arg("project_root"),
+        py::arg("position_encoding") =
+            codenib::core::CLANGD_DEFAULT_POSITION_ENCODING,
         R"pbdoc(Return the current content-bound clangd index receipt.)pbdoc");
 
   m.def("canonical_scip_decoder_languages",

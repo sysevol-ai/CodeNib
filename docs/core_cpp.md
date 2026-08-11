@@ -148,22 +148,34 @@ make fact-query-profile \
 Pass `--external-index-seconds` through `FACT_QUERY_PROFILE_EXTRA_ARGS` when a
 separate cold-start analysis should include unchanged SCIP generation time.
 
-## Native clangd Symbol Queries
+## Native clangd Symbol And Position Queries
 
 The C/C++ query-specific path starts from an existing project-local clangd
 `.idx` directory. `decode_clangd_fact_query_index(...)` reads direct shards in
 stable filename order and decodes RIFF string, symbol, reference, and relation
 rows directly into provider-neutral `DecodedRecords`. `FactQueryIndex` then
 builds integer postings without a `CodeGraph`, igraph, or intermediate Python
-record dictionaries. Its explicit contract advertises symbol definition and
-reference support while position and route capabilities remain false.
+record dictionaries. The clangd-specific v2 contract advertises symbol and
+exact-position definition/reference support; route capability remains false.
 
 Call `LSIndexer.process_query_index()` to obtain the capability-specific index,
 or `process_query_provider()` for a hybrid provider. Successful symbol queries
-stay graph-free. The first position or route request lazily materializes the
-complete compatible graph, and later unsupported requests reuse it. The normal
-`process_index()` path, persistence format, incremental checks, range indexes,
-and graph quality behavior are unchanged.
+stay on the startup index. The first position request lazily decodes a native
+occurrence view with provider-neutral zero-based, half-open ranges, role bits,
+and optional target/container vertex ids. `FactQueryIndex` owns its per-file
+interval and per-target postings, so successful character-exact position
+queries stay graph-free. Unsupported, ambiguous, declaration-only, unanchored,
+and missing-source cases carry deterministic fallback reasons into the one
+complete compatible graph. A route request also materializes that graph once.
+The normal `process_index()` path, persistence format, incremental checks,
+range indexes, and graph quality behavior are unchanged.
+
+UTF-16 is the default clangd position encoding. UTF-8 and UTF-32 are accepted
+explicitly, normalized at the provider boundary, and included in the content
+receipt. Full and incremental background commands use the same encoding flag.
+The symbol-only startup index deliberately contains no occurrence rows; this
+keeps route-first startup at the previously promoted cost, while position
+workloads pay for the native view only on first use.
 
 `CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX=auto` is promoted by default after the
 persisted-artifact query-ready gate passed on both the generated C++ fixture
@@ -181,7 +193,7 @@ make clangd-fact-query-profile \
 
 This result measures an already generated `.idx` directory through identical
 definition/reference work. It does not claim faster clangd generation. Native
-position and route lookup remain independent follow-up gates.
+route lookup remains an independent follow-up gate.
 
 ### MCP and agent runtime selection
 
@@ -193,13 +205,12 @@ checkouts, and disabled or unavailable native support use
 `persisted-symbol-graph-v1` with a deterministic fallback reason.
 
 MCP definition, reference, and route tools and all three agent LSP skills use
-the common provider resolver. Definition and reference symbol requests remain
-on the native postings path without igraph. Position and route requests lazily
-materialize one snapshot-compatible complete graph and reuse it. MCP result
-rows and `get_manifest` runtime metadata identify the backend, capabilities,
-fallback, and snapshot. The profiling report's `mcp_consumer_decision` applies
-the acceleration gate to startup plus real MCP validation and serialization,
-in addition to checking raw-query parity.
+the common provider resolver. Definition/reference symbol requests remain on
+the startup postings path; supported exact positions use the lazy native
+occurrence view without igraph. Position fallbacks and routes share one
+snapshot-compatible complete graph. MCP result rows and `get_manifest` runtime
+metadata identify the backend, capabilities, fallback, encoding, and snapshot.
+The profiling report checks raw and MCP parity together with provider routing.
 
 ### Mixed workload and resource gate
 
@@ -218,14 +229,13 @@ make clangd-workload-gate \
   CLANGD_WORKLOAD_GATE_SUBJECT_ID=fmt-11.2.0
 ```
 
-The default gate requires at least 20% symbol-only acceleration, no more than
-20% regression for graph-requiring workloads, native peak RSS no higher than
-1.25x legacy or 4 GiB, no more than 10% repeated-process peak spread, exact
-parity, and exactly one successful graph materialization when concurrent first
-route calls race. Symbol-only runs must materialize zero graphs; position,
-route, and mixed runs still intentionally materialize one complete graph in
-this milestone. Native position and graph-free route promotion remain #553 and
-#552 respectively.
+The default gate requires at least 20% acceleration for symbol-only and
+position-first workloads, no more than 20% regression for graph-requiring
+workloads, native peak RSS no higher than 1.25x legacy or 4 GiB, no more than
+10% repeated-process peak spread, exact parity, and exactly one successful
+graph materialization when concurrent first route calls race. Symbol-only and
+position-first runs must materialize zero graphs; route-first and mixed runs
+must materialize exactly one. Graph-free route promotion remains #552.
 
 The maintained subject manifest pins fmt 11.2.0, GoogleTest 1.17.0, and
 protobuf 31.1 by full commit, covering template-, macro-, header-heavy, and

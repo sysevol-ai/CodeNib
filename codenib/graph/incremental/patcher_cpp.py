@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 from ...log_utils import get_logger
+from ...ls_index.clangd_contract import clangd_background_index_command
 from ...types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_REFERENCE,
@@ -406,13 +407,7 @@ class PatcherCpp(PatcherBase):
             )
             pre_count = len(list(idx_dir.glob("*.idx")))
 
-        cmd = [
-            clangd,
-            "--background-index",
-            f"--compile-commands-dir={comp_db.parent}",
-            "--background-index-priority=normal",
-            "--log=error",
-        ]
+        cmd = list(clangd_background_index_command(clangd, comp_db.parent))
         process = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,

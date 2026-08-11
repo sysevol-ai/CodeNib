@@ -4,6 +4,7 @@
 
 #include "fact_query_index.h"
 
+#include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <memory>
@@ -13,6 +14,7 @@
 #include <vector>
 
 using codenib::core::CodeGraph;
+using codenib::core::DecodedOccurrence;
 using codenib::core::DecodedRecords;
 using codenib::core::FactQueryIndex;
 
@@ -60,6 +62,47 @@ std::shared_ptr<DecodedRecords> make_records() {
       {1, 0, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", 10},
       {1, 4, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", 11},
       {1, 0, codenib::core::EDGE_TYPE_CONTAIN, std::nullopt, std::nullopt},
+  };
+  return records;
+}
+
+DecodedOccurrence
+occurrence(int line, int start_character, int end_character,
+           std::uint32_t roles, std::optional<CodeGraph::VertexId> target,
+           std::optional<CodeGraph::VertexId> container = std::nullopt) {
+  return DecodedOccurrence{"src/main.py", line,  start_character, line,
+                           end_character, roles, target,          container};
+}
+
+std::shared_ptr<DecodedRecords> make_occurrence_records() {
+  auto records = make_records();
+  // An empty root makes this a provider-neutral range test without depending
+  // on a checkout path. Source availability is covered separately below.
+  records->project_root.clear();
+  records->position_encoding = "UTF16";
+  records->occurrences = {
+      occurrence(2, 4, 10,
+                 codenib::core::OCCURRENCE_ROLE_DEFINITION |
+                     codenib::core::OCCURRENCE_ROLE_PRIMARY_DEFINITION,
+                 0),
+      occurrence(5, 10, 16, codenib::core::OCCURRENCE_ROLE_REFERENCE, 0, 1),
+      occurrence(5, 10, 16,
+                 codenib::core::OCCURRENCE_ROLE_REFERENCE |
+                     codenib::core::OCCURRENCE_ROLE_SPELLED,
+                 0, 1),
+      occurrence(1, 4, 10, codenib::core::OCCURRENCE_ROLE_DECLARATION, 0),
+      occurrence(7, 0, 5, codenib::core::OCCURRENCE_ROLE_REFERENCE,
+                 std::nullopt, 1),
+      occurrence(12, 4, 8,
+                 codenib::core::OCCURRENCE_ROLE_DEFINITION |
+                     codenib::core::OCCURRENCE_ROLE_PRIMARY_DEFINITION,
+                 2),
+      occurrence(9, 0, 20, codenib::core::OCCURRENCE_ROLE_DEFINITION, 1, 1),
+      occurrence(9, 3, 8, codenib::core::OCCURRENCE_ROLE_REFERENCE, 0, 1),
+      occurrence(9, 3, 8, codenib::core::OCCURRENCE_ROLE_REFERENCE, 2, 1),
+      occurrence(10, 1, 4, codenib::core::OCCURRENCE_ROLE_REFERENCE, 0, 1),
+      occurrence(10, 8, 12, codenib::core::OCCURRENCE_ROLE_REFERENCE, 2, 1),
+      occurrence(11, 4, 19, codenib::core::OCCURRENCE_ROLE_REFERENCE, 4, 1),
   };
   return records;
 }
@@ -183,11 +226,91 @@ void assert_invalid_records_fail_closed() {
   }
 }
 
+void assert_exact_occurrence_ranges_and_fallbacks() {
+  FactQueryIndex index(make_occurrence_records(), true, "snapshot:test");
+  assert(index.snapshot_id() == "snapshot:test");
+  assert(index.position_encoding() == "UTF16");
+  assert(index.occurrence_count() == 12);
+  assert(index.supports_position_queries());
+
+  const auto at_start = index.definitions_at("src/main.py", 5, 10, 8);
+  assert(at_start.served);
+  assert(at_start.locations.size() == 1);
+  assert(at_start.locations[0].start_line == 2);
+  assert(index.definitions_at("src/main.py", 5, 15, 8).served);
+  const auto at_end = index.definitions_at("src/main.py", 5, 16, 8);
+  assert(!at_end.served);
+  assert(at_end.fallback_reason == "native_position_occurrence_not_found");
+
+  const auto with_definition =
+      index.references_at("src/main.py", 5, 10, true, 40);
+  assert(with_definition.served);
+  assert(with_definition.locations.size() == 4);
+  const auto merged_duplicate = std::find_if(
+      with_definition.locations.begin(), with_definition.locations.end(),
+      [](const FactQueryIndex::Location &location) {
+        return location.start_line == 5 && location.start_character == 10;
+      });
+  assert(merged_duplicate != with_definition.locations.end());
+  assert((merged_duplicate->roles & codenib::core::OCCURRENCE_ROLE_SPELLED) !=
+         0);
+  const auto without_definition =
+      index.references_at("src/main.py", 5, 10, false, 40);
+  assert(without_definition.served);
+  assert(without_definition.locations.size() == 3);
+
+  const auto overload = index.definitions_at("src/main.py", 9, 4, 8);
+  assert(overload.served);
+  assert(overload.locations.size() == 2);
+  const auto ambiguous = index.definitions_at("src/main.py", 10, 1, 8);
+  assert(!ambiguous.served);
+  assert(ambiguous.fallback_reason ==
+         "native_position_line_ambiguity_requires_legacy_graph");
+
+  const auto declaration = index.definitions_at("src/main.py", 1, 4, 8);
+  assert(!declaration.served);
+  assert(declaration.fallback_reason ==
+         "native_position_declaration_requires_legacy_graph");
+  const auto unsupported = index.definitions_at("src/main.py", 7, 1, 8);
+  assert(!unsupported.served);
+  assert(unsupported.fallback_reason == "native_position_target_unsupported");
+  const auto unavailable = index.definitions_at("../src/main.py", 5, 10, 8);
+  assert(!unavailable.served);
+  assert(unavailable.fallback_reason == "native_position_source_unavailable");
+
+  const auto samples = index.position_samples(100);
+  assert(!samples.empty());
+  for (const auto &sample : samples)
+    assert(sample.start_line != 1 && sample.start_line != 7);
+}
+
+void assert_invalid_occurrences_fail_closed() {
+  auto invalid_range = make_occurrence_records();
+  invalid_range->occurrences.push_back(
+      occurrence(13, 8, 4, codenib::core::OCCURRENCE_ROLE_REFERENCE, 0, 1));
+  try {
+    (void)FactQueryIndex(invalid_range);
+    assert(false);
+  } catch (const std::invalid_argument &) {
+  }
+
+  auto invalid_symbol = make_occurrence_records();
+  invalid_symbol->occurrences.push_back(
+      occurrence(13, 4, 8, codenib::core::OCCURRENCE_ROLE_REFERENCE, 99, 1));
+  try {
+    (void)FactQueryIndex(invalid_symbol);
+    assert(false);
+  } catch (const std::out_of_range &) {
+  }
+}
+
 } // namespace
 
 int main() {
   assert_symbol_resolution_and_postings();
   assert_invalid_records_fail_closed();
+  assert_exact_occurrence_ranges_and_fallbacks();
+  assert_invalid_occurrences_fail_closed();
   std::cout << "fact_query_index_test: OK\n";
   return 0;
 }

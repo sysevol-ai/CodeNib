@@ -25,6 +25,7 @@ from ..graph.code_graph import CodeGraph
 from ..log_utils import get_logger
 from ..paths import CLANGD_INDEX_DIRNAME, temp_state_dir
 from ..profiler import Profiler
+from .clangd_contract import clangd_background_index_command
 from .index_quality import (
     IndexQualityPolicy,
     assess_index_quality,
@@ -128,13 +129,7 @@ class ClangdIndexer:
         """Build the full clangd background-index command."""
         clangd_cmd = getattr(self, "_clangd_path", "clangd")
         compile_commands_dir = str(comp_db.parent)
-        return [
-            clangd_cmd,
-            "--background-index",
-            f"--compile-commands-dir={compile_commands_dir}",
-            "--background-index-priority=normal",
-            "--log=error",
-        ]
+        return list(clangd_background_index_command(clangd_cmd, compile_commands_dir))
 
     def _get_decoder_class(self):
         """Return ClangdGraphDecoder."""

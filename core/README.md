@@ -124,14 +124,14 @@ make fact-query-profile \
   FACT_QUERY_PROFILE_OUTPUT=/tmp/fact-query-report.json
 ```
 
-## Native clangd Symbol Queries
+## Native clangd Symbol And Position Queries
 
 For C and C++ projects with an existing project-local clangd index,
 `decode_clangd_fact_query_index(...)` reads the direct `*.idx` children in
 stable filename order, decodes them into `DecodedRecords`, and builds the same
 `FactQueryIndex` without constructing `CodeGraph`, igraph, or Python record
-dictionaries. The v1 slice covers definition and reference lookup by symbol.
-Each decode also exposes a content-bound snapshot over the query contract,
+dictionaries. The initial symbol-only index covers definition and reference
+lookup by symbol. Each decode also exposes a content-bound snapshot over the query contract,
 normalized project root, exact supported RIFF versions, sorted shard names,
 and the exact bytes consumed by the decoder. clangd relation rows may be
 unanchored, so this provider explicitly opts into that record policy while
@@ -139,9 +139,22 @@ still rejecting partial or invalid anchors.
 
 Use `LSIndexer.process_query_index()` for the capability-specific index or
 `process_query_provider()` for hybrid behavior. The provider keeps successful
-symbol queries on the native index and lazily constructs the complete graph
-once when a position or route query is requested. Existing `process_index()`,
-graph persistence, incremental processing, and quality gates are unchanged.
+symbol queries on the native index. Its first exact position request lazily
+builds a second native occurrence view; a successful definition/reference
+position lookup never constructs `CodeGraph` or igraph. The view stores
+provider-neutral zero-based, half-open file ranges, role bits, and optional
+target/container vertex ids in C++, then builds per-file interval postings and
+per-target postings without Python record dictionaries. Unsupported,
+ambiguous, declaration-only, unanchored, or missing-source positions fall back
+with a stable reason. A route request still lazily constructs the complete
+compatible graph once. Existing `process_index()`, graph persistence,
+incremental processing, and quality gates are unchanged.
+
+The clangd query ABI is `clangd-riff-fact-query-v2`. Position offsets are
+explicit and receipt-bound: UTF-16 is the default, while UTF-8 and UTF-32 are
+accepted at the provider boundary. Full and incremental background indexing
+use the same normalized clangd offset flag, so their rows cannot silently mix
+coordinate systems.
 
 `CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX=auto` is the default and falls back to
 the compatible graph if native decoding fails. Set it to `off` to force the
@@ -163,9 +176,11 @@ collection. A mismatch fails the provider session rather than combining index
 generations; restart it to adopt new shards. Both receipt stages are included
 in the existing 20% profiling gate.
 
-This baseline makes no claim about clangd index generation time. Native
-position and route queries and serving integration remain separate promotion
-gates.
+The mixed-workload gate additionally requires at least 20% position-first
+acceleration with zero graph materializations. Route-first and mixed workloads
+retain the 20% non-regression budget and exactly-once graph publication rule.
+This result makes no claim about clangd index generation time; native route
+lookup remains a separate promotion gate.
 
 ## Use Through Python
 

@@ -8,7 +8,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
+#include <limits>
 #include <stdexcept>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 
@@ -32,6 +35,78 @@ bool has_suffix(const std::string &value, const std::string &suffix) {
   return value.size() >= suffix.size() &&
          value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
              0;
+}
+
+using Position = std::pair<int, int>;
+
+Position start_position(const DecodedOccurrence &occurrence) {
+  return {occurrence.start_line, occurrence.start_character};
+}
+
+Position end_position(const DecodedOccurrence &occurrence) {
+  return {occurrence.end_line, occurrence.end_character};
+}
+
+bool contains(const DecodedOccurrence &occurrence, Position position) {
+  return start_position(occurrence) <= position &&
+         position < end_position(occurrence);
+}
+
+auto span_key(const DecodedOccurrence &occurrence) {
+  return std::make_tuple(occurrence.end_line - occurrence.start_line,
+                         static_cast<long long>(occurrence.end_character) -
+                             static_cast<long long>(occurrence.start_character),
+                         occurrence.start_line, occurrence.start_character,
+                         occurrence.end_line, occurrence.end_character);
+}
+
+FactQueryIndex::Location location_from(const DecodedOccurrence &occurrence) {
+  return FactQueryIndex::Location{occurrence.file,
+                                  occurrence.start_line,
+                                  occurrence.start_character,
+                                  occurrence.end_line,
+                                  occurrence.end_character,
+                                  occurrence.roles,
+                                  occurrence.target_symbol,
+                                  occurrence.container_symbol};
+}
+
+bool location_less(const FactQueryIndex::Location &left,
+                   const FactQueryIndex::Location &right) {
+  return std::tie(left.file_path, left.start_line, left.start_character,
+                  left.end_line, left.end_character, left.target_symbol,
+                  left.container_symbol, left.roles) <
+         std::tie(right.file_path, right.start_line, right.start_character,
+                  right.end_line, right.end_character, right.target_symbol,
+                  right.container_symbol, right.roles);
+}
+
+bool same_location_identity(const FactQueryIndex::Location &left,
+                            const FactQueryIndex::Location &right) {
+  return left.file_path == right.file_path &&
+         left.start_line == right.start_line &&
+         left.start_character == right.start_character &&
+         left.end_line == right.end_line &&
+         left.end_character == right.end_character &&
+         left.target_symbol == right.target_symbol &&
+         left.container_symbol == right.container_symbol;
+}
+
+void sort_unique_locations(std::vector<FactQueryIndex::Location> &locations,
+                           std::size_t limit) {
+  std::sort(locations.begin(), locations.end(), location_less);
+  std::vector<FactQueryIndex::Location> compact;
+  compact.reserve(locations.size());
+  for (auto &location : locations) {
+    if (!compact.empty() && same_location_identity(compact.back(), location)) {
+      compact.back().roles |= location.roles;
+      continue;
+    }
+    compact.push_back(std::move(location));
+  }
+  locations = std::move(compact);
+  if (locations.size() > limit)
+    locations.resize(limit);
 }
 
 } // namespace
@@ -149,6 +224,52 @@ FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
          posting != source_postings.rend(); ++posting) {
       const auto target = records_->edges[*posting].target;
       incoming_reference_indexes_[target].push_back(*posting);
+    }
+  }
+
+  occurrence_indexes_by_file_.reserve(records_->occurrences.size() / 8 + 1);
+  occurrence_indexes_by_target_.reserve(definition_by_name_.size());
+  for (std::size_t index = 0; index < records_->occurrences.size(); ++index) {
+    const auto &occurrence = records_->occurrences[index];
+    if (occurrence.start_line < 0 || occurrence.start_character < 0 ||
+        occurrence.end_line < 0 || occurrence.end_character < 0 ||
+        end_position(occurrence) < start_position(occurrence)) {
+      throw std::invalid_argument("FactQueryIndex occurrence range is invalid");
+    }
+    for (const auto symbol :
+         {occurrence.target_symbol, occurrence.container_symbol}) {
+      if (symbol.has_value() &&
+          (*symbol < 0 ||
+           static_cast<std::size_t>(*symbol) >= records_->vertices.size())) {
+        throw std::out_of_range(
+            "FactQueryIndex occurrence symbol is out of range");
+      }
+    }
+    if (!occurrence.file.empty())
+      occurrence_indexes_by_file_[occurrence.file].indexes.push_back(index);
+    if (occurrence.target_symbol.has_value())
+      occurrence_indexes_by_target_[*occurrence.target_symbol].push_back(index);
+  }
+
+  for (auto &[file, postings] : occurrence_indexes_by_file_) {
+    (void)file;
+    std::sort(
+        postings.indexes.begin(), postings.indexes.end(),
+        [&](std::size_t left, std::size_t right) {
+          const auto &a = records_->occurrences[left];
+          const auto &b = records_->occurrences[right];
+          return std::make_tuple(a.start_line, a.start_character, a.end_line,
+                                 a.end_character, a.target_symbol.value_or(-1),
+                                 a.roles, left) <
+                 std::make_tuple(b.start_line, b.start_character, b.end_line,
+                                 b.end_character, b.target_symbol.value_or(-1),
+                                 b.roles, right);
+        });
+    postings.prefix_max_end.reserve(postings.indexes.size());
+    Position maximum{-1, -1};
+    for (const auto index : postings.indexes) {
+      maximum = std::max(maximum, end_position(records_->occurrences[index]));
+      postings.prefix_max_end.push_back(maximum);
     }
   }
 }
@@ -380,6 +501,285 @@ FactQueryIndex::incoming_references(const std::string &target_name) const {
     const auto &edge = records_->edges[index];
     result.push_back(
         Reference{edge.source, edge.anchor_file, edge.anchor_line});
+  }
+  return result;
+}
+
+bool FactQueryIndex::source_is_available(const std::string &file_path) const {
+  if (file_path.empty() || file_path.find('\\') != std::string::npos)
+    return false;
+  const std::filesystem::path relative(file_path);
+  if (relative.is_absolute() || relative.lexically_normal() != relative)
+    return false;
+  for (const auto &part : relative) {
+    if (part == "." || part == ".." || part.empty())
+      return false;
+  }
+  if (records_->project_root.empty())
+    return true;
+  std::error_code error;
+  const auto root = std::filesystem::weakly_canonical(
+      std::filesystem::path(records_->project_root), error);
+  if (error)
+    return false;
+  const auto source = std::filesystem::weakly_canonical(root / relative, error);
+  if (error)
+    return false;
+  auto root_part = root.begin();
+  auto source_part = source.begin();
+  for (; root_part != root.end(); ++root_part, ++source_part) {
+    if (source_part == source.end() || *source_part != *root_part)
+      return false;
+  }
+  return std::filesystem::is_regular_file(source, error) && !error;
+}
+
+std::vector<std::size_t>
+FactQueryIndex::occurrences_at(const std::string &file_path, int line,
+                               int character) const {
+  if (line < 0 || character < 0)
+    return {};
+  const auto found = occurrence_indexes_by_file_.find(file_path);
+  if (found == occurrence_indexes_by_file_.end())
+    return {};
+  const Position position{line, character};
+  const auto &postings = found->second;
+  auto upper = std::upper_bound(
+      postings.indexes.begin(), postings.indexes.end(), position,
+      [&](Position requested, std::size_t index) {
+        return requested < start_position(records_->occurrences[index]);
+      });
+
+  std::vector<std::size_t> matches;
+  auto cursor = static_cast<std::size_t>(upper - postings.indexes.begin());
+  while (cursor > 0) {
+    --cursor;
+    if (!(position < postings.prefix_max_end[cursor]))
+      break;
+    const auto index = postings.indexes[cursor];
+    if (contains(records_->occurrences[index], position))
+      matches.push_back(index);
+  }
+  if (matches.empty())
+    return matches;
+
+  const auto best = *std::min_element(
+      matches.begin(), matches.end(), [&](std::size_t left, std::size_t right) {
+        return span_key(records_->occurrences[left]) <
+               span_key(records_->occurrences[right]);
+      });
+  const auto &best_occurrence = records_->occurrences[best];
+  matches.erase(std::remove_if(matches.begin(), matches.end(),
+                               [&](std::size_t index) {
+                                 const auto &occurrence =
+                                     records_->occurrences[index];
+                                 return start_position(occurrence) !=
+                                            start_position(best_occurrence) ||
+                                        end_position(occurrence) !=
+                                            end_position(best_occurrence);
+                               }),
+                matches.end());
+  std::sort(matches.begin(), matches.end());
+  return matches;
+}
+
+FactQueryIndex::PositionQueryResult
+FactQueryIndex::targets_at(const std::string &file_path, int line,
+                           int character,
+                           std::vector<CodeGraph::VertexId> &targets) const {
+  if (line < 0 || character < 0)
+    return {false, "native_position_invalid_request", {}};
+  if (!source_is_available(file_path))
+    return {false, "native_position_source_unavailable", {}};
+  const auto matches = occurrences_at(file_path, line, character);
+  if (matches.empty())
+    return {false, "native_position_occurrence_not_found", {}};
+
+  const bool has_navigable =
+      std::any_of(matches.begin(), matches.end(), [&](std::size_t index) {
+        return (records_->occurrences[index].roles &
+                (OCCURRENCE_ROLE_DEFINITION | OCCURRENCE_ROLE_REFERENCE)) != 0;
+      });
+  if (!has_navigable)
+    return {false, "native_position_declaration_requires_legacy_graph", {}};
+  for (const auto index : matches) {
+    const auto &occurrence = records_->occurrences[index];
+    const bool navigable =
+        (occurrence.roles &
+         (OCCURRENCE_ROLE_DEFINITION | OCCURRENCE_ROLE_REFERENCE)) != 0;
+    if (!navigable)
+      continue;
+    if (!occurrence.target_symbol.has_value())
+      return {false, "native_position_target_unsupported", {}};
+    const auto target = *occurrence.target_symbol;
+    const auto &vertex = records_->vertices[static_cast<std::size_t>(target)];
+    if (!is_symbol_type(vertex.type) || !has_definition(vertex))
+      return {false, "native_position_definition_unavailable", {}};
+    if (std::find(targets.begin(), targets.end(), target) == targets.end())
+      targets.push_back(target);
+  }
+  const auto line_targets = reference_targets_on_line(file_path, line);
+  if (std::any_of(line_targets.begin(), line_targets.end(),
+                  [&](CodeGraph::VertexId target) {
+                    return std::find(targets.begin(), targets.end(), target) ==
+                           targets.end();
+                  })) {
+    return {false, "native_position_line_ambiguity_requires_legacy_graph", {}};
+  }
+  return {true, {}, {}, targets};
+}
+
+std::optional<FactQueryIndex::Location>
+FactQueryIndex::primary_definition(CodeGraph::VertexId target) const {
+  const auto found = occurrence_indexes_by_target_.find(target);
+  if (found == occurrence_indexes_by_target_.end())
+    return std::nullopt;
+  for (const auto index : found->second) {
+    const auto &occurrence = records_->occurrences[index];
+    if ((occurrence.roles & OCCURRENCE_ROLE_PRIMARY_DEFINITION) != 0)
+      return location_from(occurrence);
+  }
+  return std::nullopt;
+}
+
+std::vector<CodeGraph::VertexId>
+FactQueryIndex::reference_targets_on_line(const std::string &file_path,
+                                          int line) const {
+  const auto found = occurrence_indexes_by_file_.find(file_path);
+  if (found == occurrence_indexes_by_file_.end())
+    return {};
+  std::vector<CodeGraph::VertexId> targets;
+  for (const auto index : found->second.indexes) {
+    const auto &occurrence = records_->occurrences[index];
+    if (occurrence.start_line < line)
+      continue;
+    if (occurrence.start_line > line)
+      break;
+    if ((occurrence.roles & OCCURRENCE_ROLE_REFERENCE) == 0 ||
+        !occurrence.target_symbol.has_value() ||
+        !occurrence.container_symbol.has_value()) {
+      continue;
+    }
+    const auto target = *occurrence.target_symbol;
+    if (std::find(targets.begin(), targets.end(), target) == targets.end())
+      targets.push_back(target);
+  }
+  return targets;
+}
+
+FactQueryIndex::PositionQueryResult
+FactQueryIndex::definitions_at(const std::string &file_path, int line,
+                               int character, std::size_t limit) const {
+  std::vector<CodeGraph::VertexId> targets;
+  auto decision = targets_at(file_path, line, character, targets);
+  if (!decision.served)
+    return decision;
+  for (const auto target : targets) {
+    const auto definition = primary_definition(target);
+    if (!definition.has_value())
+      return {false, "native_position_definition_unavailable", {}};
+    decision.locations.push_back(*definition);
+  }
+  sort_unique_locations(decision.locations, std::max<std::size_t>(1, limit));
+  return decision;
+}
+
+FactQueryIndex::PositionQueryResult
+FactQueryIndex::references_at(const std::string &file_path, int line,
+                              int character, bool include_declaration,
+                              std::size_t limit) const {
+  std::vector<CodeGraph::VertexId> targets;
+  auto decision = targets_at(file_path, line, character, targets);
+  if (!decision.served)
+    return decision;
+  std::vector<CodeGraph::VertexId> resolved_targets;
+  for (const auto target : targets) {
+    const auto &vertex = records_->vertices[static_cast<std::size_t>(target)];
+    const auto &display =
+        vertex.unified_name.has_value() ? *vertex.unified_name : vertex.name;
+    const auto candidates = resolve_symbol_candidates(display);
+    if (candidates.size() == 1 && candidates.front() == vertex.name)
+      resolved_targets.push_back(target);
+  }
+  for (const auto target : resolved_targets) {
+    const auto incoming = incoming_reference_indexes_.find(target);
+    if (incoming != incoming_reference_indexes_.end() &&
+        std::any_of(incoming->second.begin(), incoming->second.end(),
+                    [&](std::size_t index) {
+                      const auto &edge = records_->edges[index];
+                      return !edge.anchor_file.has_value() ||
+                             !edge.anchor_line.has_value();
+                    })) {
+      return {false,
+              "native_position_unanchored_reference_requires_legacy_graph",
+              {}};
+    }
+    if (include_declaration) {
+      const auto definition = primary_definition(target);
+      if (!definition.has_value())
+        return {false, "native_position_definition_unavailable", {}};
+      decision.locations.push_back(*definition);
+    }
+    const auto found = occurrence_indexes_by_target_.find(target);
+    if (found == occurrence_indexes_by_target_.end())
+      continue;
+    for (const auto index : found->second) {
+      const auto &occurrence = records_->occurrences[index];
+      if ((occurrence.roles & OCCURRENCE_ROLE_REFERENCE) == 0 ||
+          !occurrence.container_symbol.has_value()) {
+        continue;
+      }
+      decision.locations.push_back(location_from(occurrence));
+    }
+  }
+  sort_unique_locations(decision.locations, std::max<std::size_t>(1, limit));
+  return decision;
+}
+
+bool FactQueryIndex::has_occurrence_at(const std::string &file_path, int line,
+                                       int character) const {
+  std::vector<CodeGraph::VertexId> targets;
+  return targets_at(file_path, line, character, targets).served;
+}
+
+std::vector<FactQueryIndex::Location>
+FactQueryIndex::position_samples(std::size_t limit) const {
+  if (limit == 0)
+    return {};
+  std::vector<Location> references;
+  std::vector<Location> definitions;
+  for (const auto &occurrence : records_->occurrences) {
+    if (!occurrence.target_symbol.has_value() ||
+        !source_is_available(occurrence.file) ||
+        !primary_definition(*occurrence.target_symbol).has_value()) {
+      continue;
+    }
+    if ((occurrence.roles & OCCURRENCE_ROLE_REFERENCE) != 0 &&
+        occurrence.container_symbol.has_value()) {
+      references.push_back(location_from(occurrence));
+    } else if ((occurrence.roles & OCCURRENCE_ROLE_PRIMARY_DEFINITION) != 0) {
+      definitions.push_back(location_from(occurrence));
+    }
+  }
+  sort_unique_locations(references, std::numeric_limits<std::size_t>::max());
+  sort_unique_locations(definitions, std::numeric_limits<std::size_t>::max());
+  std::vector<Location> result;
+  result.reserve(std::min(limit, references.size() + definitions.size()));
+  for (const auto *candidates : {&references, &definitions}) {
+    for (const auto &location : *candidates) {
+      if (!definitions_at(location.file_path, location.start_line,
+                          location.start_character, 1)
+               .served ||
+          !references_at(location.file_path, location.start_line,
+                         location.start_character, true, 1)
+               .served ||
+          std::find(result.begin(), result.end(), location) != result.end()) {
+        continue;
+      }
+      result.push_back(location);
+      if (result.size() >= limit)
+        return result;
+    }
   }
   return result;
 }

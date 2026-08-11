@@ -754,9 +754,10 @@ Reproduce the report with `make clangd-fact-query-profile`.
 This promotion does not include or accelerate clangd index generation. RIFF
 version/resource hardening (#546), zlib CI enforcement (#547), and
 content-bound generation receipts (#548) are independent production gates.
-Serving integration is tracked below. Mixed/RSS/concurrency matrices (#550),
-native position (#553), native route (#552), and durable FactBatch storage
-(#551) remain separate review and promotion gates.
+Serving integration and the mixed/RSS/concurrency matrix are tracked below.
+Native position (#553) has its own promotion evidence below; native route
+(#552) and durable FactBatch storage (#551) remain separate review and
+promotion gates.
 
 Native clangd RIFF compatibility and resource-safety status
 ([#546](https://github.com/sysevol-ai/CodeNib/issues/546)): the v1 reader now
@@ -836,7 +837,8 @@ Median complete-graph MCP consumer time was 178.269 ms versus 27.717 ms for the
 native provider, an 84.45% improvement with exact result parity. Symbol-only
 requests never imported or materialized igraph, and the first graph-requiring
 request materialized the compatible graph once. Native position and route
-indexes remain the independent #553 and #552 promotion gates.
+indexes remained the independent #553 and #552 promotion gates at this stage;
+the position result is recorded below.
 
 Native clangd mixed-workload promotion status
 ([#550](https://github.com/sysevol-ai/CodeNib/issues/550)): first lazy graph
@@ -862,9 +864,9 @@ The subject manifest pins fmt 11.2.0, GoogleTest 1.17.0, and protobuf 31.1 at
 full commits, covering template-, macro-, header-heavy, and multi-target C++.
 Selecting a subject requires that exact clean revision. The same Make target
 first exercises generated RIFF 18/19/20 public parity fixtures. This milestone
-deliberately keeps position-first, route-first, and mixed native arms on one
-lazy complete graph; graph-free position and route changes remain isolated in
-#553 and #552.
+deliberately kept position-first, route-first, and mixed native arms on one
+lazy complete graph; the later graph-free position gate is recorded below and
+graph-free route remains isolated in #552.
 
 The recorded `cpp_simple` evidence used 223 shards and five measured rounds
 plus one warmup. Symbol-only improved from 177.96 ms to 37.28 ms (79.0%);
@@ -875,6 +877,47 @@ On the existing 51-shard fmt checkout, three isolated rounds improved
 symbol-only from 2.330 s to 0.137 s (94.1%); graph-workload regressions stayed
 within 2.3%, native peak stayed below 246 MiB and 1.14x legacy, and all three
 concurrent runs built once.
+
+Native clangd position-query promotion status
+([#553](https://github.com/sysevol-ai/CodeNib/issues/553)): the clangd query
+contract is now `clangd-riff-fact-query-v2`. It adds provider-neutral
+occurrence rows with zero-based half-open file ranges, role bits, and optional
+target/container vertex ids. `FactQueryIndex` builds native per-file interval
+postings and per-target postings without igraph or Python record dictionaries.
+UTF-16 is the default position encoding; UTF-8 and UTF-32 are normalized at the
+provider boundary, bound into the content receipt, and shared by full and
+incremental clangd background commands.
+
+The hybrid provider keeps its startup index symbol-only. Its first exact
+position request builds the native occurrence view under the same publication
+lock used for graph fallback, while route-first sessions retain the #550
+cold-start path. Successful definition/reference positions remain on
+`native-clangd-fact-query-v1` and materialize zero graphs. Invalid ranges,
+missing sources, declaration-only rows, unsupported targets, missing
+definitions, line ambiguity, unanchored references, and source-token mismatch
+carry stable reasons into the established graph fallback. A route or fallback
+still publishes one complete, range-indexed graph.
+
+The 2026-08-11 `fmt` gate used the clean pinned revision
+`b35de87ad91951c8269fe533dca6aebc3e0a25ba`, 51 shards / 2,392,564 bytes,
+20 deterministic exact positions, three measured isolated rounds after one
+warmup, and the unchanged 20% thresholds:
+
+| Workload | Legacy | Native | Change | Native graphs | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| symbol-only | 1.9313s | 0.1169s | +93.9% | 0 | pass |
+| position-first | 2.0626s | 0.2634s | +87.2% | 0 | pass |
+| route-first | 1.9109s | 2.0381s | 6.7% regression | 1 | pass |
+| mixed | 2.0475s | 2.3689s | 15.7% regression | 1 | pass |
+
+The median lazy native position initialization was 0.1388s for 121,434
+occurrence rows. Exact MCP result/public-error parity, snapshot receipts, RSS
+budgets, RIFF 18/19/20 fixtures, and all three eight-thread concurrent
+first-route runs passed; every concurrent run built exactly one graph. The
+receipt remained
+`clangd_fact_query:sha256:a88c9933461a2573a2c928eeeac8b734fcd5245d29f9d41e61d60f9c3d0b6693`.
+This is a query-ready result over existing shards, not a clangd-generation
+claim. Native route remains the independent #552 gate.
 
 Native core CI enforcement status
 ([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted

@@ -129,7 +129,7 @@ def profile_clangd_fact_query_index(
     if not hasattr(codenib_core, "decode_clangd_fact_query_index") or not hasattr(
         codenib_core, "clangd_fact_query_snapshot"
     ):
-        raise RuntimeError("compiled core does not expose clangd FactQueryIndex v1")
+        raise RuntimeError("compiled core does not expose clangd FactQueryIndex v2")
     contract = codenib_core.clangd_fact_query_contract()
     initial_receipt = dict(
         codenib_core.clangd_fact_query_snapshot(
@@ -175,11 +175,15 @@ def profile_clangd_fact_query_index(
     def native_arm() -> tuple[Any, dict[str, float]]:
         payload, startup = _timed(
             lambda: codenib_core.decode_clangd_fact_query_index(
-                idx_directory=str(idx_directory), project_root=str(project_root)
+                idx_directory=str(idx_directory),
+                project_root=str(project_root),
+                include_occurrences=False,
             )
         )
         if payload.get("graph_materialized") is not False:
             raise AssertionError("candidate payload reports graph materialization")
+        if payload.get("position_records_included") is not False:
+            raise AssertionError("symbol benchmark decoded occurrence rows")
         if payload.get("snapshot_id") != initial_receipt.get("snapshot_id"):
             raise RuntimeError("clangd index changed during native startup")
         index = payload["index"]
@@ -192,6 +196,7 @@ def profile_clangd_fact_query_index(
             "raw_reference_count",
             "definition_count",
             "reference_count",
+            "occurrence_count",
             "decoded_record_count",
             "index_bytes",
             "decompressed_string_bytes",
@@ -274,6 +279,10 @@ def profile_clangd_fact_query_index(
             seeds=parity_seeds,
             expected_symbol_count=len(all_symbols),
             expected_reference_count=expected_references,
+            expected_capabilities={
+                **contract["capabilities"],
+                "position_queries": False,
+            },
         )
         from codenib.agent.lsp_provider import StaticLSPProvider
 

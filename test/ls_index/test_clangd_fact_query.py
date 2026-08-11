@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Baseline native clangd symbol-query parity, fallback, and benchmark tests."""
+"""Native clangd symbol/position parity, fallback, and benchmark tests."""
 
 from __future__ import annotations
 
@@ -26,11 +26,18 @@ if importlib.util.find_spec("codenib_core") is None:
 
 import codenib_core  # noqa: E402
 
-from codenib.agent.lsp_graph import lsp_definition, lsp_references  # noqa: E402
+from codenib.agent.lsp_graph import lsp_definition  # noqa: E402
+from codenib.agent.lsp_graph import lsp_references
 from codenib.agent.lsp_provider import StaticLSPProvider  # noqa: E402
 from codenib.compiler.manifest import RepoManifest  # noqa: E402
 from codenib.graph.code_graph import CodeGraph  # noqa: E402
+from codenib.graph.incremental import patcher_cpp as patcher_cpp_module  # noqa: E402
 from codenib.ls_index import clangd_decode  # noqa: E402
+from codenib.ls_index import clangd_indexer as clangd_indexer_module  # noqa: E402
+from codenib.ls_index.clangd_contract import (  # noqa: E402
+    clangd_background_index_command,
+    normalize_clangd_position_encoding,
+)
 from codenib.ls_index.clangd_decode import ClangdGraphDecoder  # noqa: E402
 from codenib.ls_index.clangd_decode import (
     ClangdHybridQueryProvider,
@@ -40,7 +47,8 @@ from codenib.ls_router import LSIndexer  # noqa: E402
 from codenib.mcp.context import ServerContext  # noqa: E402
 from codenib.mcp.tools.lsp import lsp_definition_impl  # noqa: E402
 from codenib.mcp.tools.lsp import lsp_references_impl, lsp_route_impl
-from codenib.types import EDGE_TYPE_REFERENCE, node_has_definition  # noqa: E402
+from codenib.types import EDGE_TYPE_REFERENCE  # noqa: E402
+from codenib.types import node_has_definition
 from scripts.profiling.profile_clangd_fact_query_index import (  # noqa: E402
     main as profile_main,
 )
@@ -155,7 +163,9 @@ def _set_meta_version(idx_directory: Path, before: int, after: int) -> None:
     path.write_bytes(data.replace(old, new, 1))
 
 
-def _expected_snapshot_id(idx_directory: Path, project_root: Path) -> str:
+def _expected_snapshot_id(
+    idx_directory: Path, project_root: Path, position_encoding: str = "UTF16"
+) -> str:
     digest = hashlib.sha256()
 
     def field(value: str) -> None:
@@ -168,10 +178,11 @@ def _expected_snapshot_id(idx_directory: Path, project_root: Path) -> str:
 
     field("CodeNib clangd fact query snapshot")
     field("clangd-fact-query-snapshot-v1")
-    field("clangd-riff-fact-query-v1")
-    uint64(1)
-    field("clangd-native-normalization-v1")
+    field("clangd-riff-fact-query-v2")
+    uint64(2)
+    field("clangd-native-normalization-v2")
     field(project_root.absolute().as_posix())
+    field(position_encoding)
     uint64(3)
     for version in (18, 19, 20):
         uint64(version)
@@ -194,7 +205,8 @@ def clangd_fixture(tmp_path: Path) -> tuple[Path, Path]:
         "int target() { return 1; }\n"
         "int caller() { return target(); }\n"
         "int target();\n"
-        "Thing value;\n",
+        "Thing value;\n"
+        "int clean() { return 0; }\n",
         encoding="utf-8",
     )
     idx_directory = root / ".cache" / "clangd" / "index"
@@ -207,6 +219,7 @@ def clangd_fixture(tmp_path: Path) -> tuple[Path, Path]:
     function_id = bytes.fromhex("4142434445464748")
     method_three_id = bytes.fromhex("5152535455565758")
     directory_collision_id = bytes.fromhex("6162636465666768")
+    clean_id = bytes.fromhex("7172737475767778")
     zero_id = b"\x00" * 8
     strings = [
         "",
@@ -217,6 +230,7 @@ def clangd_fixture(tmp_path: Path) -> tuple[Path, Path]:
         "Thing",
         "Thing::",
         "src",
+        "clean",
     ]
     raw_strings = b"\x00".join(value.encode("utf-8") for value in strings) + b"\x00"
     string_table = struct.pack("<I", len(raw_strings)) + zlib.compress(raw_strings)
@@ -281,6 +295,16 @@ def clangd_fixture(tmp_path: Path) -> tuple[Path, Path]:
                 scope_index=0,
                 file_index=1,
                 line=0,
+            ),
+            _symbol(
+                clean_id,
+                kind=12,
+                name_index=8,
+                scope_index=4,
+                file_index=1,
+                line=4,
+                column=4,
+                end_column=9,
             ),
         )
     )
@@ -369,12 +393,14 @@ def test_contract_and_graph_free_payload_are_explicit(clangd_fixture) -> None:
     index = payload["index"]
 
     assert contract == {
-        "abi_version": 1,
-        "format": "clangd-riff-fact-query-v1",
-        "normalization_profile": "clangd-native-normalization-v1",
+        "abi_version": 2,
+        "format": "clangd-riff-fact-query-v2",
+        "normalization_profile": "clangd-native-normalization-v2",
         "snapshot_schema": "clangd-fact-query-snapshot-v1",
         "snapshot_digest": "sha256",
         "supported_versions": [18, 19, 20],
+        "default_position_encoding": "UTF16",
+        "supported_position_encodings": ["UTF8", "UTF16", "UTF32"],
         "resource_limits": {
             "max_index_files": 200_000,
             "max_chunks_per_file": 128,
@@ -394,7 +420,7 @@ def test_contract_and_graph_free_payload_are_explicit(clangd_fixture) -> None:
         "capabilities": {
             "definition_by_symbol": True,
             "references_by_symbol": True,
-            "position_queries": False,
+            "position_queries": True,
             "route_queries": False,
         },
     }
@@ -403,7 +429,40 @@ def test_contract_and_graph_free_payload_are_explicit(clangd_fixture) -> None:
     assert index.fact_query_index is True
     assert index.materializes_graph is False
     assert index.requires_anchored_references is False
+    assert index.capabilities["position_queries"] is True
+    assert index.position_encoding == "UTF16"
+    assert index.occurrence_count > 0
     assert not hasattr(index, "graph")
+
+
+def test_full_and_incremental_generation_share_utf16_contract(
+    clangd_fixture, tmp_path: Path
+) -> None:
+    root, _idx_directory = clangd_fixture
+    indexer = clangd_indexer_module.ClangdIndexer(root, output_dir=tmp_path / "out")
+    indexer._clangd_path = "/opt/clangd"
+    comp_db = root / "build" / "compile_commands.json"
+
+    expected = [
+        "/opt/clangd",
+        "--background-index",
+        f"--compile-commands-dir={comp_db.parent}",
+        "--background-index-priority=normal",
+        "--offset-encoding=utf-16",
+        "--log=error",
+    ]
+    assert indexer._build_index_command(comp_db) == expected
+    assert list(clangd_background_index_command("/opt/clangd", comp_db.parent)) == (
+        expected
+    )
+    assert (
+        patcher_cpp_module.clangd_background_index_command
+        is clangd_background_index_command
+    )
+    assert normalize_clangd_position_encoding("utf-8") == "UTF8"
+    assert normalize_clangd_position_encoding("UTF_32") == "UTF32"
+    with pytest.raises(ValueError, match="must be one of"):
+        normalize_clangd_position_encoding("bytes")
 
 
 @pytest.mark.parametrize(
@@ -444,6 +503,38 @@ def test_native_snapshot_receipt_matches_canonical_recipe(clangd_fixture) -> Non
     }
     assert payload["decode_profile_ns"]["hash_index"] > 0
     assert payload["decode_profile_ns"]["verify_snapshot"] > 0
+
+
+def test_position_encoding_is_explicit_and_snapshot_bound(
+    clangd_fixture, monkeypatch
+) -> None:
+    root, idx_directory = clangd_fixture
+
+    default = codenib_core.decode_clangd_fact_query_index(
+        idx_directory=str(idx_directory), project_root=str(root)
+    )
+    utf8 = codenib_core.decode_clangd_fact_query_index(
+        idx_directory=str(idx_directory),
+        project_root=str(root),
+        position_encoding="utf-8",
+    )
+
+    assert default["index"].position_encoding == "UTF16"
+    assert utf8["index"].position_encoding == "UTF8"
+    assert default["snapshot_id"] != utf8["snapshot_id"]
+    assert utf8["snapshot_id"] == _expected_snapshot_id(idx_directory, root, "UTF8")
+
+    monkeypatch.setenv("CODENIB_CLANGD_POSITION_ENCODING", "utf-32")
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    assert decoder.position_encoding == "UTF32"
+    assert decoder.decode_native_query_provider().position_encoding == "UTF32"
+    assert list(clangd_background_index_command("clangd", root))[-2] == (
+        "--offset-encoding=utf-32"
+    )
+
+    monkeypatch.setenv("CODENIB_CLANGD_POSITION_ENCODING", "bytes")
+    with pytest.raises(ValueError, match="must be UTF8, UTF16, or UTF32"):
+        ClangdGraphDecoder(str(idx_directory), str(root))
 
 
 def test_native_snapshot_is_order_independent_and_content_bound(
@@ -513,7 +604,7 @@ def test_symbol_results_errors_counts_and_relations_match_graph(
 
     assert index.record_count == graph.graph.vcount()
     assert index.edge_count == graph.graph.ecount()
-    assert index.symbol_count == len(_definition_symbols(graph)) == 7
+    assert index.symbol_count == len(_definition_symbols(graph)) == 8
     assert index.reference_count == expected_references == 5
 
     for seed in _seeds(graph):
@@ -871,7 +962,7 @@ def test_selector_does_not_mask_memory_exhaustion_or_unknown_mode(
         ClangdGraphDecoder(str(idx_directory), str(root)).decode_query_index()
 
 
-def test_hybrid_uses_native_symbols_then_materializes_graph_once(
+def test_hybrid_uses_native_symbols_and_positions_then_one_route_graph(
     clangd_fixture, monkeypatch
 ) -> None:
     root, idx_directory = clangd_fixture
@@ -906,8 +997,12 @@ def test_hybrid_uses_native_symbols_then_materializes_graph_once(
     assert position_result.provider_metadata_dict()["index_snapshot"] == (
         provider.snapshot_id
     )
-    assert decoder._graph_materialized is True
-    assert provider.graph_materialization_count == 1
+    assert position_result.provider_metadata_dict()["behavior_contract"] == (
+        "static_native_occurrence_lsp_v1"
+    )
+    assert position_result.provider_metadata_dict()["position_encoding"] == "UTF16"
+    assert decoder._graph_materialized is False
+    assert provider.graph_materialization_count == 0
 
     route_arguments = {
         "symbols": [target],
@@ -919,6 +1014,94 @@ def test_hybrid_uses_native_symbols_then_materializes_graph_once(
         node.model_dump() for node in legacy.route(**route_arguments)
     ]
     assert provider.graph_materialization_count == 1
+
+
+def test_native_position_queries_match_legacy_without_materializing_graph(
+    clangd_fixture,
+) -> None:
+    root, idx_directory = clangd_fixture
+    graph = ClangdGraphDecoder(str(idx_directory), str(root)).materialize_code_graph()
+    legacy = StaticLSPProvider(graph)
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    native = decoder.decode_native_query_provider()
+    assert decoder.query_index.occurrence_count == 0
+    assert native.position_initialization_count == 0
+
+    queries = [
+        ("definition", {"file_path": "src/main.cpp", "line": 1, "character": 22}),
+        (
+            "references",
+            {
+                "file_path": "src/main.cpp",
+                "line": 4,
+                "character": 4,
+                "include_declaration": True,
+            },
+        ),
+        (
+            "references",
+            {
+                "file_path": "src/main.cpp",
+                "line": 4,
+                "character": 4,
+                "include_declaration": False,
+            },
+        ),
+        ("definition", {"file_path": "src/main.cpp", "line": 0, "character": 4}),
+    ]
+    for capability, arguments in queries:
+        expected = getattr(legacy, capability)(**arguments, top_k=100)
+        observed = getattr(native, capability)(**arguments, top_k=100)
+        assert [node.model_dump() for node in observed] == [
+            node.model_dump() for node in expected
+        ]
+        metadata = observed.provider_metadata_dict()
+        assert metadata["backend"] == "native-clangd-fact-query-v1", (
+            capability,
+            arguments,
+            native.last_position_fallback_reason,
+        )
+        assert metadata["behavior_contract"] == "static_native_occurrence_lsp_v1"
+        assert metadata["position_granularity"] == "character"
+        assert metadata["position_encoding"] == "UTF16"
+        assert decoder._graph_materialized is False
+
+    index = decoder.position_query_index
+    assert index is not None
+    assert index.has_occurrence_at("src/main.cpp", 1, 22) is True
+    assert index.has_occurrence_at("src/main.cpp", 1, 27) is True
+    assert index.has_occurrence_at("src/main.cpp", 1, 28) is False
+    declaration = index.position_definitions("src/main.cpp", 2, 4)
+    assert declaration["served"] is False
+    assert declaration["fallback_reason"] == (
+        "native_position_declaration_requires_legacy_graph"
+    )
+    assert native.position_initialization_count == 1
+    assert native.graph_materialization_count == 0
+
+
+def test_native_position_missing_source_falls_back_deterministically(
+    clangd_fixture,
+) -> None:
+    root, idx_directory = clangd_fixture
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    provider = decoder.decode_native_query_provider()
+    position_index = decoder.decode_native_position_query_index()
+    (root / "src" / "main.cpp").unlink()
+
+    decision = position_index.position_definitions("src/main.cpp", 1, 22)
+    assert decision == {
+        "served": False,
+        "fallback_reason": "native_position_source_unavailable",
+        "locations": [],
+        "targets": [],
+    }
+    with pytest.raises(ValueError, match="no indexed definition token"):
+        provider.definition(file_path="src/main.cpp", line=1, character=22, top_k=10)
+    assert provider.last_position_fallback_reason == (
+        "native_position_source_unavailable"
+    )
+    assert decoder._graph_materialized is True
 
 
 def test_concurrent_first_graph_fallback_materializes_exactly_once(
@@ -975,6 +1158,63 @@ def test_concurrent_first_graph_fallback_materializes_exactly_once(
     assert results[0][1]["fallback_reason"] == (
         "native_clangd_route_query_requires_complete_graph"
     )
+    position_after_route = provider.definition(
+        file_path="src/main.cpp", line=1, character=22, top_k=100
+    )
+    assert position_after_route.provider_metadata_dict()["backend"] == (
+        "lazy-clangd-code-graph-v1"
+    )
+    assert position_after_route.provider_metadata_dict()["fallback_reason"] == (
+        "native_position_legacy_graph_already_materialized"
+    )
+    assert provider.position_initialization_count == 0
+    assert provider.graph_materialization_count == 1
+
+
+def test_concurrent_first_position_initializes_exactly_once(
+    clangd_fixture, monkeypatch
+) -> None:
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    root, idx_directory = clangd_fixture
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    provider = decoder.decode_native_query_provider()
+    initialize = decoder.decode_native_position_query_index
+    calls = 0
+    calls_lock = threading.Lock()
+    start = threading.Barrier(8)
+
+    def counted_initialize():
+        nonlocal calls
+        time.sleep(0.02)
+        with calls_lock:
+            calls += 1
+        return initialize()
+
+    monkeypatch.setattr(
+        decoder, "decode_native_position_query_index", counted_initialize
+    )
+
+    def definition_once(_index: int):
+        start.wait()
+        result = provider.definition(
+            file_path="src/main.cpp", line=1, character=22, top_k=100
+        )
+        return (
+            [node.model_dump() for node in result],
+            result.provider_metadata_dict(),
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(definition_once, range(8)))
+
+    assert all(result == results[0] for result in results)
+    assert calls == 1
+    assert provider.position_initialization_count == 1
+    assert provider.graph_materialization_count == 0
+    assert decoder._graph_materialized is False
 
 
 def test_lazy_graph_fails_closed_when_snapshot_changes(
@@ -1060,7 +1300,7 @@ def test_ls_indexer_exposes_query_index_and_provider(
     assert provider.decoder._graph_materialized is False
 
 
-def test_real_mcp_boundary_uses_native_symbols_then_one_lazy_graph(
+def test_real_mcp_boundary_keeps_supported_native_positions_graph_free(
     clangd_fixture, monkeypatch
 ) -> None:
     root, idx_directory = clangd_fixture
@@ -1088,6 +1328,8 @@ def test_real_mcp_boundary_uses_native_symbols_then_one_lazy_graph(
 
     position_arguments = {
         "file_path": "src/main.cpp",
+        # MCP positions are one-based at this boundary; the provider receives
+        # the zero-based clangd occurrence on source line 1.
         "line": 2,
         "character": 22,
         "top_k": 10,
@@ -1099,12 +1341,10 @@ def test_real_mcp_boundary_uses_native_symbols_then_one_lazy_graph(
         {key: value for key, value in row.items() if key != "lsp_provider"}
         for row in position
     ] == expected_position
-    assert position[0]["lsp_provider"]["backend"] == ("lazy-clangd-code-graph-v1")
-    assert position[0]["lsp_provider"]["fallback_reason"] == (
-        "native_clangd_position_query_requires_complete_graph"
-    )
-    assert decoder._graph_materialized is True
-    assert provider.graph_materialization_count == 1
+    assert position[0]["lsp_provider"]["backend"] == ("native-clangd-fact-query-v1")
+    assert position[0]["lsp_provider"]["position_encoding"] == "UTF16"
+    assert decoder._graph_materialized is False
+    assert provider.graph_materialization_count == 0
 
     route_arguments = {
         "symbols": [target],
@@ -1169,6 +1409,7 @@ def test_process_isolated_workload_gate_reports_rss_parity_and_concurrency(
         warmups=0,
         query_workload_size=2,
         symbol_threshold=0.0,
+        position_threshold=0.0,
         graph_non_regression_budget=10.0,
         peak_rss_ratio_budget=10.0,
         repeat_rss_spread_budget=10.0,
@@ -1192,13 +1433,26 @@ def test_process_isolated_workload_gate_reports_rss_parity_and_concurrency(
         "native-clangd-fact-query-v1"
     ]
     native_counts = report["workloads"]["symbol_only"]["native"]["index_counts"][0]
-    assert native_counts["definition_count"] == 7
+    assert native_counts["definition_count"] == 8
+    assert native_counts["occurrence_count"] == 0
     assert native_counts["snapshot_file_count"] == 1
     native_stages = report["workloads"]["symbol_only"]["native"]["stages_seconds"]
     assert "native_decompressed_string_bytes" not in native_stages
     assert "native_materialized_string_bytes" not in native_stages
     assert "native_string_entry_count" not in native_stages
-    for workload in ("position_first", "route_first", "mixed"):
+    assert report["workloads"]["position_first"]["native"]["observed_backends"] == [
+        "native-clangd-fact-query-v1"
+    ]
+    position_counts = report["workloads"]["position_first"]["native"]["index_counts"][0]
+    assert position_counts["occurrence_count"] > 0
+    assert (
+        "lazy_native_position_index"
+        in report["workloads"]["position_first"]["native"]["stages_seconds"]
+    )
+    assert report["gates"]["lazy_graph_materialization"]["workloads"]["position_first"][
+        "observed_native_counts"
+    ] == [0]
+    for workload in ("route_first", "mixed"):
         assert report["workloads"][workload]["native"]["observed_backends"] == [
             "lazy-clangd-code-graph-v1",
             "native-clangd-fact-query-v1",
@@ -1213,7 +1467,10 @@ def test_process_isolated_workload_gate_reports_rss_parity_and_concurrency(
     assert report["concurrency"]["passed"] is True
     assert report["configuration"]["process_isolated_arms"] is True
     assert report["configuration"]["alternating_arm_order"] is True
-    assert report["configuration"]["position_query_workload_size"] == 2
+    assert 1 <= report["configuration"]["position_query_workload_size"] <= 2
+    assert report["configuration"]["position_encoding"] == "UTF16"
+    assert report["gates"]["position_first"]["graph_free"] is True
+    assert report["gates"]["position_first"]["passed"] is True
     assert report["repository_preparation"]["included_in_query_ready_gate"] is False
     assert report["content_receipt"]["before"] == report["content_receipt"]["after"]
     assert report["version_matrix"]["generated_fixture_versions"] == [18, 19, 20]

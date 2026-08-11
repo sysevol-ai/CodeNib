@@ -31,7 +31,6 @@ import zlib
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Tuple
 
-from ..code_chunking import CppCodeChunker
 from ..graph.code_graph import CodeGraph
 from ..types import (
     EDGE_TYPE_CONTAIN,
@@ -42,6 +41,12 @@ from ..types import (
     NODE_TYPE_METHOD,
     NODE_TYPE_SYMBOL,
     ROOT_NODE,
+)
+from .clangd_contract import (
+    CLANGD_DEFAULT_POSITION_ENCODING,
+    CLANGD_POSITION_ENCODING_ENV,
+    CLANGD_SUPPORTED_POSITION_ENCODINGS,
+    configured_clangd_position_encoding,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,18 +82,19 @@ RELATION_OVERRIDDEN_BY = 1
 ZERO_SYMBOL_ID = "0" * 16
 
 _NATIVE_QUERY_ENV = "CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX"
+_NATIVE_POSITION_ENCODING_ENV = CLANGD_POSITION_ENCODING_ENV
 _NATIVE_QUERY_OFF = frozenset({"0", "false", "no", "off", "disabled"})
 _NATIVE_QUERY_AUTO = frozenset({"", "1", "true", "yes", "on", "auto"})
 _NATIVE_QUERY_REQUIRED = frozenset({"required", "strict"})
 _NATIVE_QUERY_PROMOTED = True
-_NATIVE_QUERY_ABI_VERSION = 1
-_NATIVE_QUERY_FORMAT = "clangd-riff-fact-query-v1"
-_NATIVE_QUERY_NORMALIZATION_PROFILE = "clangd-native-normalization-v1"
+_NATIVE_QUERY_ABI_VERSION = 2
+_NATIVE_QUERY_FORMAT = "clangd-riff-fact-query-v2"
+_NATIVE_QUERY_NORMALIZATION_PROFILE = "clangd-native-normalization-v2"
 _NATIVE_QUERY_SNAPSHOT_SCHEMA = "clangd-fact-query-snapshot-v1"
 _NATIVE_QUERY_CAPABILITIES = {
     "definition_by_symbol": True,
     "references_by_symbol": True,
-    "position_queries": False,
+    "position_queries": True,
     "route_queries": False,
 }
 
@@ -114,6 +120,19 @@ def native_clangd_query_promoted() -> bool:
     return _NATIVE_QUERY_PROMOTED
 
 
+def native_clangd_position_encoding(value: Optional[str] = None) -> str:
+    """Return the explicit character-unit contract for clangd RIFF ranges."""
+
+    raw = os.environ.get(_NATIVE_POSITION_ENCODING_ENV) if value is None else value
+    try:
+        return configured_clangd_position_encoding(value)
+    except ValueError as exc:
+        raise ValueError(
+            f"{_NATIVE_POSITION_ENCODING_ENV} must be UTF8, UTF16, or UTF32; "
+            f"got {raw!r}"
+        ) from exc
+
+
 def _validate_native_query_contract(contract: Mapping[str, Any]) -> None:
     abi_version = contract.get("abi_version")
     if type(abi_version) is not int or abi_version != _NATIVE_QUERY_ABI_VERSION:
@@ -136,9 +155,15 @@ def _validate_native_query_contract(contract: Mapping[str, Any]) -> None:
         raise RuntimeError("compiled clangd reader does not guarantee stable order")
     if contract.get("preserves_unanchored_relations") is not True:
         raise RuntimeError("compiled clangd reader drops legacy relation rows")
+    if contract.get("default_position_encoding") != CLANGD_DEFAULT_POSITION_ENCODING:
+        raise RuntimeError("compiled clangd default position encoding mismatch")
+    if set(contract.get("supported_position_encodings") or ()) != set(
+        CLANGD_SUPPORTED_POSITION_ENCODINGS
+    ):
+        raise RuntimeError("compiled clangd supported position encodings mismatch")
     if contract.get("capabilities") != _NATIVE_QUERY_CAPABILITIES:
         raise RuntimeError(
-            "compiled clangd FactQueryIndex capabilities do not match v1"
+            "compiled clangd FactQueryIndex capabilities do not match v2"
         )
 
 
@@ -415,12 +440,11 @@ def parse_idx_file(filepath: str) -> dict:
 
 
 class ClangdHybridQueryProvider:
-    """Serve symbol queries natively and lazily fall back for full-graph work.
+    """Serve symbol/position queries natively and lazily fall back for routes.
 
-    The baseline native index advertises no position or route capability.
-    Those requests therefore materialize the established Python CodeGraph
-    exactly once, including when first requests arrive concurrently. Native
-    position, route, and persisted-fact capabilities remain separate gates.
+    Exact supported occurrence queries stay graph-free. Unsupported or
+    ambiguous positions and every route request materialize the established
+    Python CodeGraph exactly once, including concurrent first fallbacks.
     """
 
     def __init__(self, decoder: "ClangdGraphDecoder", query_index: Any):
@@ -434,19 +458,60 @@ class ClangdHybridQueryProvider:
             snapshot_id=decoder.query_snapshot_id,
             backend=self.provider_backend,
         )
+        self.occurrence_index = None
+        self.position_query_index = None
+        self._position_provider = None
         self._graph_provider = None
-        self._graph_provider_lock = threading.Lock()
+        # Position-view decoding and legacy graph construction both read the
+        # clangd snapshot. Serialize their first publication so a concurrent
+        # caller never observes a partially initialized provider.
+        self._materialization_lock = threading.Lock()
         self.graph_materialization_count = 0
         self.graph_materialization_seconds = 0.0
+        self.position_initialization_count = 0
+        self.position_initialization_seconds = 0.0
         self.last_fallback_reason = None
+        self.last_position_fallback_reason = None
         self.provider = self._symbol_provider.provider
         self.snapshot_id = self._symbol_provider.snapshot_id
+        self.position_encoding = decoder.position_encoding
+
+    def _native_position_provider(self):
+        from ..agent.lsp_provider import NativeOccurrenceQueryAdapter, StaticLSPProvider
+
+        if self._position_provider is None:
+            with self._materialization_lock:
+                if self._position_provider is None:
+                    # Once the complete graph owns position service, avoid a
+                    # second snapshot decode that can no longer remain native.
+                    if (
+                        self._graph_provider is not None
+                        or self.decoder._graph_materialized
+                    ):
+                        return None
+                    started = time.perf_counter()
+                    position_index = self.decoder.decode_native_position_query_index()
+                    occurrence_index = NativeOccurrenceQueryAdapter(position_index)
+                    position_provider = StaticLSPProvider(
+                        position_index,
+                        snapshot_id=self.snapshot_id,
+                        occurrence_index=occurrence_index,
+                        backend=self.provider_backend,
+                    )
+                    self.position_initialization_seconds += (
+                        time.perf_counter() - started
+                    )
+                    self.position_initialization_count += 1
+                    self.position_query_index = position_index
+                    self.occurrence_index = occurrence_index
+                    self._position_provider = position_provider
+        return self._position_provider
 
     def _full_graph_provider(self):
         from ..agent.lsp_provider import StaticLSPProvider
 
         if self._graph_provider is None:
-            with self._graph_provider_lock:
+            with self._materialization_lock:
                 if self._graph_provider is None:
                     started = time.perf_counter()
                     graph = self.decoder.materialize_code_graph()
@@ -490,11 +555,41 @@ class ClangdHybridQueryProvider:
                 backend="lazy-clangd-code-graph-v1",
                 fallback_reason="native_clangd_route_query_requires_complete_graph",
             )
+        if str(capability) in {
+            "definition",
+            "references",
+            "textDocument/definition",
+            "textDocument/references",
+        }:
+            from dataclasses import replace
+
+            return replace(
+                decision,
+                behavior_contract="static_native_occurrence_lsp_v1",
+                position_granularity="character",
+                position_encoding=self.position_encoding,
+            )
         return decision
 
     def definition(self, **arguments):
-        if arguments.get("symbol"):
+        if arguments.get("symbol") is not None:
             return self._symbol_provider.definition(**arguments)
+        if self._is_position_query(arguments):
+            from ..agent.lsp_provider import LSPPositionFallback
+
+            position_provider = self._native_position_provider()
+            if position_provider is None:
+                return self._position_fallback(
+                    "definition",
+                    "native_position_legacy_graph_already_materialized",
+                    arguments,
+                )
+            try:
+                result = position_provider.definition(**arguments)
+            except LSPPositionFallback as exc:
+                return self._position_fallback("definition", exc.reason, arguments)
+            self.last_position_fallback_reason = None
+            return result
         return self._graph_fallback(
             "definition",
             "native_clangd_position_query_requires_complete_graph",
@@ -502,8 +597,24 @@ class ClangdHybridQueryProvider:
         )
 
     def references(self, **arguments):
-        if arguments.get("symbol"):
+        if arguments.get("symbol") is not None:
             return self._symbol_provider.references(**arguments)
+        if self._is_position_query(arguments):
+            from ..agent.lsp_provider import LSPPositionFallback
+
+            position_provider = self._native_position_provider()
+            if position_provider is None:
+                return self._position_fallback(
+                    "references",
+                    "native_position_legacy_graph_already_materialized",
+                    arguments,
+                )
+            try:
+                result = position_provider.references(**arguments)
+            except LSPPositionFallback as exc:
+                return self._position_fallback("references", exc.reason, arguments)
+            self.last_position_fallback_reason = None
+            return result
         return self._graph_fallback(
             "references",
             "native_clangd_position_query_requires_complete_graph",
@@ -516,6 +627,78 @@ class ClangdHybridQueryProvider:
             "native_clangd_route_query_requires_complete_graph",
             arguments,
         )
+
+    def position_samples(self, limit: int = 100):
+        """Return deterministic exact positions without materializing CodeGraph."""
+
+        position_provider = self._native_position_provider()
+        if position_provider is None or self.position_query_index is None:
+            raise RuntimeError(
+                "native clangd position samples require an unmaterialized snapshot"
+            )
+        return self.position_query_index.position_samples(limit)
+
+    @staticmethod
+    def _is_position_query(arguments: Mapping[str, Any]) -> bool:
+        return (
+            arguments.get("file_path") is not None
+            and arguments.get("line") is not None
+            and arguments.get("character") is not None
+            and arguments.get("symbol") is None
+        )
+
+    def _position_fallback(
+        self, capability: str, reason: str, arguments: Mapping[str, Any]
+    ):
+        from dataclasses import replace
+
+        from ..agent.lsp_provider import LSPProviderNodes
+
+        self.last_position_fallback_reason = reason
+        graph_arguments = dict(arguments)
+        graph_arguments["character"] = self._graph_character(arguments)
+        result = getattr(self._full_graph_provider(), capability)(**graph_arguments)
+        return LSPProviderNodes(
+            result,
+            metadata=replace(
+                result.lsp_provider_metadata,
+                fallback_reason=reason,
+                position_encoding=self.position_encoding,
+            ),
+        )
+
+    def _graph_character(self, arguments: Mapping[str, Any]) -> int:
+        character = int(arguments["character"])
+        if self.position_encoding == "UTF32":
+            return character
+        try:
+            relative = Path(str(arguments["file_path"]))
+            if relative.is_absolute() or any(
+                part in {"", ".", ".."} for part in relative.parts
+            ):
+                return character
+            root = self.decoder.project_root.resolve()
+            source_path = (root / relative).resolve()
+            source_path.relative_to(root)
+            source_line = source_path.read_text(
+                encoding="utf-8", errors="strict"
+            ).splitlines()[int(arguments["line"])]
+        except (OSError, IndexError, ValueError):
+            return character
+        try:
+            if self.position_encoding == "UTF8":
+                encoded = source_line.encode("utf-8")
+                if character > len(encoded):
+                    return character
+                prefix = encoded[:character].decode("utf-8")
+            else:
+                encoded = source_line.encode("utf-16-le")
+                if character * 2 > len(encoded):
+                    return character
+                prefix = encoded[: character * 2].decode("utf-16-le")
+        except UnicodeError:
+            return character
+        return len(prefix)
 
 
 class ClangdGraphDecoder:
@@ -530,9 +713,15 @@ class ClangdGraphDecoder:
         graph = decoder.decode()
     """
 
-    def __init__(self, idx_directory: str, project_root: str):
+    def __init__(
+        self,
+        idx_directory: str,
+        project_root: str,
+        position_encoding: Optional[str] = None,
+    ):
         self.idx_directory = Path(idx_directory)
         self.project_root = Path(project_root).resolve()
+        self.position_encoding = native_clangd_position_encoding(position_encoding)
         self.code_graph = CodeGraph(str(self.project_root))
 
         # Accumulated data from all .idx files (Pass 1)
@@ -557,16 +746,19 @@ class ClangdGraphDecoder:
             Tuple[int, int, str, Optional[str], Optional[int]]
         ] = []
 
-        # Code chunker for range detection
-        self._chunker = CppCodeChunker()
+        # The chunker is needed only for full graph range enrichment. Native
+        # symbol/occurrence startup must not instantiate tree-sitter eagerly.
+        self._chunker = None
         self._chunks_cache = {}
         self._graph_materialized = False
         self._range_indexes_built = False
         self._records_collected = False
         self.query_index = None
+        self.position_query_index = None
         self.query_backend = "not-decoded"
         self.query_fallback_error = None
         self.query_profile: dict[str, Any] = {}
+        self.position_query_profile: dict[str, Any] = {}
         self.query_snapshot_id: Optional[str] = None
         self._native_snapshot_error: Optional[str] = None
 
@@ -624,6 +816,7 @@ class ClangdGraphDecoder:
         receipt = snapshot(
             idx_directory=str(self.idx_directory),
             project_root=str(self.project_root),
+            position_encoding=self.position_encoding,
         )
         if not isinstance(receipt, Mapping):
             raise RuntimeError(
@@ -662,7 +855,7 @@ class ClangdGraphDecoder:
             raise RuntimeError(self._native_snapshot_error)
         return receipt
 
-    def _decode_native_query_index(self):
+    def _decode_native_query_index(self, *, include_occurrences: bool = False):
         if self._records_collected or self._graph_materialized:
             raise RuntimeError(
                 "native clangd snapshot cannot bind records collected before "
@@ -678,13 +871,15 @@ class ClangdGraphDecoder:
         decode = getattr(codenib_core, "decode_clangd_fact_query_index", None)
         contract_reader = getattr(codenib_core, "clangd_fact_query_contract", None)
         if not callable(decode) or not callable(contract_reader):
-            raise RuntimeError("compiled core does not expose clangd FactQueryIndex v1")
+            raise RuntimeError("compiled core does not expose clangd FactQueryIndex v2")
         _validate_native_query_contract(contract_reader())
 
         started = time.perf_counter()
         payload = decode(
             idx_directory=str(self.idx_directory),
             project_root=str(self.project_root),
+            position_encoding=self.position_encoding,
+            include_occurrences=include_occurrences,
         )
         binding_seconds = time.perf_counter() - started
         if not isinstance(payload, Mapping):
@@ -693,6 +888,8 @@ class ClangdGraphDecoder:
             raise RuntimeError("native clangd query decoder returned unknown format")
         if payload.get("graph_materialized") is not False:
             raise RuntimeError("native clangd query decoder materialized a graph")
+        if payload.get("position_records_included") is not include_occurrences:
+            raise RuntimeError("native clangd query decoder changed occurrence scope")
 
         index = payload.get("index")
         if index is None or getattr(index, "fact_query_index", None) is not True:
@@ -701,12 +898,32 @@ class ClangdGraphDecoder:
             raise RuntimeError(
                 "native clangd query index does not guarantee graph-free use"
             )
-        if getattr(index, "capabilities", None) != _NATIVE_QUERY_CAPABILITIES:
-            raise RuntimeError("native clangd query index capabilities do not match v1")
+        expected_capabilities = {
+            **_NATIVE_QUERY_CAPABILITIES,
+            "position_queries": include_occurrences,
+        }
+        if getattr(index, "capabilities", None) != expected_capabilities:
+            raise RuntimeError("native clangd query index capabilities do not match v2")
         if getattr(index, "requires_anchored_references", None) is not False:
             raise RuntimeError(
                 "native clangd query index cannot preserve relation references"
             )
+        if include_occurrences:
+            required_position_api = (
+                "has_occurrence_at",
+                "position_definitions",
+                "position_references",
+                "position_samples",
+            )
+            if any(
+                not callable(getattr(index, name, None))
+                for name in required_position_api
+            ):
+                raise RuntimeError(
+                    "compiled core does not expose the native clangd occurrence API"
+                )
+        if getattr(index, "position_encoding", None) != self.position_encoding:
+            raise RuntimeError("native clangd index position encoding disagrees")
         snapshot_id = payload.get("snapshot_id")
         if not isinstance(snapshot_id, str) or not snapshot_id.startswith(
             "clangd_fact_query:sha256:"
@@ -727,6 +944,8 @@ class ClangdGraphDecoder:
             "record_count": int(getattr(index, "record_count", 0)),
             "definition_count": int(getattr(index, "symbol_count", 0)),
             "reference_count": int(getattr(index, "reference_count", 0)),
+            "occurrence_count": int(getattr(index, "occurrence_count", 0)),
+            "position_encoding": self.position_encoding,
             "snapshot_id": snapshot_id,
             "snapshot_file_count": int(payload.get("snapshot_file_count") or 0),
             "snapshot_index_bytes": int(payload.get("snapshot_index_bytes") or 0),
@@ -737,6 +956,7 @@ class ClangdGraphDecoder:
             "raw_reference_count",
             "definition_count",
             "reference_count",
+            "occurrence_count",
             "decoded_record_count",
             "index_bytes",
             "decompressed_string_bytes",
@@ -747,6 +967,8 @@ class ClangdGraphDecoder:
             profile[f"native_{name}"] = (
                 int(value) if name in count_fields else int(value) / 1_000_000_000
             )
+        if self.query_snapshot_id is not None and snapshot_id != self.query_snapshot_id:
+            raise RuntimeError("native clangd position snapshot disagrees with symbols")
         self.query_snapshot_id = snapshot_id
         return index, profile
 
@@ -793,7 +1015,7 @@ class ClangdGraphDecoder:
         return self.query_index
 
     def decode_query_provider(self):
-        """Return native symbol queries with lazy position/route fallback."""
+        """Return native symbol/position queries with lazy route fallback."""
 
         from ..agent.lsp_provider import StaticLSPProvider
 
@@ -801,6 +1023,27 @@ class ClangdGraphDecoder:
         if getattr(index, "fact_query_index", False):
             return ClangdHybridQueryProvider(self, index)
         return StaticLSPProvider(index)
+
+    def decode_native_position_query_index(self):
+        """Build the occurrence view lazily without constructing CodeGraph."""
+
+        if self.position_query_index is not None:
+            return self.position_query_index
+        if self.query_index is None:
+            self.decode_native_query_provider()
+        if self.query_backend != "native-clangd-fact-query-v1":
+            raise RuntimeError("native clangd position view requires native symbols")
+        (
+            self.position_query_index,
+            self.position_query_profile,
+        ) = self._decode_native_query_index(include_occurrences=True)
+        # Publish the capability-specific profile after the complete index is
+        # available. Route-first workers therefore retain the symbol-only
+        # startup profile, while position workloads report occurrence costs.
+        self.query_profile.update(self.position_query_profile)
+        self.query_profile["fact_query_native"] = 1
+        self.query_profile["position_fact_query_native"] = 1
+        return self.position_query_index
 
     def decode_native_query_provider(self):
         """Return the native provider without silently building a legacy graph."""
@@ -1041,6 +1284,10 @@ class ClangdGraphDecoder:
             return None
 
         try:
+            if self._chunker is None:
+                from ..code_chunking import CppCodeChunker
+
+                self._chunker = CppCodeChunker()
             chunks = self._chunker.chunk_file(str(full_path))
             self._chunks_cache[file_path] = chunks
             return chunks

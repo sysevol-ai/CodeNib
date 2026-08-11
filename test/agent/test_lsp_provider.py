@@ -9,9 +9,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from codenib.agent.lsp_provider import (
     STATIC_LSP_PROVIDER,
+    LSPPositionFallback,
     LSPProviderNodes,
+    NativeOccurrenceQueryAdapter,
     StaticLSPProvider,
     normalize_native_lsp_nodes,
     select_checkout_lsp_provider,
@@ -150,6 +154,57 @@ def test_graph_position_backend_records_character_contract(tmp_path):
         "static_symbol_graph_position_lsp_v1"
     )
     assert definition.provider_metadata_dict()["position_granularity"] == "character"
+
+
+@pytest.mark.parametrize(
+    ("position_encoding", "character"),
+    [("UTF8", 5), ("UTF16", 3), ("UTF32", 2)],
+)
+def test_native_occurrence_adapter_normalizes_unicode_character_units(
+    tmp_path, position_encoding, character
+):
+    (tmp_path / "caller.cpp").write_text("😀 target();\n", encoding="utf-8")
+
+    class QueryIndex:
+        project_root = str(tmp_path)
+        occurrence_count = 1
+
+        def __init__(self):
+            self.position_encoding = position_encoding
+
+        @staticmethod
+        def position_definitions(**_arguments):
+            return {
+                "served": True,
+                "fallback_reason": None,
+                "locations": [
+                    {
+                        "file_path": "target.cpp",
+                        "start_line": 8,
+                        "start_character": 4,
+                        "end_line": 8,
+                        "end_character": 10,
+                    }
+                ],
+                "targets": [0],
+            }
+
+        @staticmethod
+        def get_node_info_by_id(_target):
+            return {"name": "canonical", "unified_name": "target.cpp:target()"}
+
+    adapter = NativeOccurrenceQueryAdapter(QueryIndex())
+
+    assert (
+        adapter.definitions(file_path="caller.cpp", line=0, character=character)[0][
+            "file_path"
+        ]
+        == "target.cpp"
+    )
+    with pytest.raises(
+        LSPPositionFallback, match="native_position_token_requires_legacy_graph"
+    ):
+        adapter.definitions(file_path="caller.cpp", line=0, character=0)
 
 
 def test_native_lsp_result_normalization_is_stable_and_deduplicated():

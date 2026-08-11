@@ -16,12 +16,15 @@
 
 namespace codenib::core {
 
-inline constexpr std::uint32_t CLANGD_FACT_QUERY_ABI_VERSION = 1;
-inline constexpr char CLANGD_FACT_QUERY_FORMAT[] = "clangd-riff-fact-query-v1";
+inline constexpr std::uint32_t CLANGD_FACT_QUERY_ABI_VERSION = 2;
+inline constexpr char CLANGD_FACT_QUERY_FORMAT[] = "clangd-riff-fact-query-v2";
 inline constexpr char CLANGD_FACT_QUERY_NORMALIZATION_PROFILE[] =
-    "clangd-native-normalization-v1";
+    "clangd-native-normalization-v2";
 inline constexpr char CLANGD_FACT_QUERY_SNAPSHOT_SCHEMA[] =
     "clangd-fact-query-snapshot-v1";
+inline constexpr char CLANGD_DEFAULT_POSITION_ENCODING[] = "UTF16";
+inline constexpr std::array<const char *, 3>
+    CLANGD_SUPPORTED_POSITION_ENCODINGS{{"UTF8", "UTF16", "UTF32"}};
 
 // clangd itself rejects non-current RIFF versions. CodeNib deliberately uses
 // an exact allowlist backed by checked fixtures and parity tests instead of
@@ -66,6 +69,7 @@ struct ClangdFactDecodeProfile {
   std::size_t raw_reference_count{0};
   std::size_t definition_count{0};
   std::size_t reference_count{0};
+  std::size_t occurrence_count{0};
   std::size_t decoded_record_count{0};
   std::uint64_t index_bytes{0};
   std::uint64_t decompressed_string_bytes{0};
@@ -90,12 +94,15 @@ struct ClangdQueryRecords {
 // the established ClangdGraphDecoder without publishing partial rows.
 ClangdQueryRecords decode_clangd_query_records(
     const std::string &idx_directory, const std::string &project_root,
-    const ClangdFactDecodeLimits &limits = ClangdFactDecodeLimits{});
+    const ClangdFactDecodeLimits &limits = ClangdFactDecodeLimits{},
+    const std::string &position_encoding = CLANGD_DEFAULT_POSITION_ENCODING,
+    bool include_occurrences = true);
 
 // Re-read the canonical filename/byte stream and return its content identity.
 // Lazy graph consumers compare this receipt with the one published by decode.
 ClangdIndexReceipt compute_clangd_index_receipt(
     const std::string &idx_directory, const std::string &project_root,
-    const ClangdFactDecodeLimits &limits = ClangdFactDecodeLimits{});
+    const ClangdFactDecodeLimits &limits = ClangdFactDecodeLimits{},
+    const std::string &position_encoding = CLANGD_DEFAULT_POSITION_ENCODING);
 
 } // namespace codenib::core

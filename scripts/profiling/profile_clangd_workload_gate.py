@@ -48,6 +48,7 @@ from scripts.profiling.profile_fact_query_index import (  # noqa: E402
 
 WORKLOADS = ("symbol_only", "position_first", "route_first", "mixed")
 DEFAULT_SYMBOL_THRESHOLD = 0.20
+DEFAULT_POSITION_THRESHOLD = 0.20
 DEFAULT_GRAPH_NON_REGRESSION_BUDGET = 0.20
 DEFAULT_PEAK_RSS_RATIO_BUDGET = 1.25
 DEFAULT_REPEAT_RSS_SPREAD_BUDGET = 0.10
@@ -338,16 +339,23 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
     workload = str(config["workload"])
     idx_directory = Path(str(config["idx_directory"])).resolve()
     project_root = Path(str(config["project_root"])).resolve()
+    position_encoding = str(config["position_encoding"])
     receipt_before = dict(
         codenib_core.clangd_fact_query_snapshot(
-            idx_directory=str(idx_directory), project_root=str(project_root)
+            idx_directory=str(idx_directory),
+            project_root=str(project_root),
+            position_encoding=position_encoding,
         )
     )
     rss_start = _current_rss_bytes()
     peak_start = _peak_rss_bytes()
     cpu_started = time.process_time()
     wall_started = time.perf_counter()
-    decoder = ClangdGraphDecoder(str(idx_directory), str(project_root))
+    decoder = ClangdGraphDecoder(
+        str(idx_directory),
+        str(project_root),
+        position_encoding=position_encoding,
+    )
     stages: dict[str, float] = {}
 
     startup_started = time.perf_counter()
@@ -400,6 +408,7 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
             "record_count",
             "definition_count",
             "reference_count",
+            "occurrence_count",
             "snapshot_file_count",
             "snapshot_index_bytes",
             "native_file_count",
@@ -407,12 +416,14 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
             "native_raw_reference_count",
             "native_definition_count",
             "native_reference_count",
+            "native_occurrence_count",
             "native_decoded_record_count",
             "native_index_bytes",
             "native_decompressed_string_bytes",
             "native_materialized_string_bytes",
             "native_string_entry_count",
             "fact_query_native",
+            "position_fact_query_native",
         }
         index_counts = {
             name: int(decoder.query_profile[name])
@@ -430,12 +441,18 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
             stages["lazy_materialize_graph"] = float(
                 provider.graph_materialization_seconds
             )
+        if getattr(provider, "position_initialization_seconds", 0.0):
+            stages["lazy_native_position_index"] = float(
+                provider.position_initialization_seconds
+            )
     else:
         index_counts = {}
 
     receipt_after = dict(
         codenib_core.clangd_fact_query_snapshot(
-            idx_directory=str(idx_directory), project_root=str(project_root)
+            idx_directory=str(idx_directory),
+            project_root=str(project_root),
+            position_encoding=position_encoding,
         )
     )
     peak_rss = _peak_rss_bytes()
@@ -643,7 +660,7 @@ def _workload_inputs(
 ) -> dict[str, Any]:
     from codenib.agent.lsp_provider import StaticLSPProvider
     from codenib.ls_index.clangd_decode import ClangdGraphDecoder
-    from codenib.mcp.tools.lsp import lsp_definition_impl
+    from codenib.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
 
     graph = ClangdGraphDecoder(
         str(idx_directory), str(project_root)
@@ -655,42 +672,73 @@ def _workload_inputs(
     legacy_context = SimpleNamespace(
         lsp_provider=StaticLSPProvider(graph), symbol_graph=graph
     )
-    candidate_symbols = _even_sample(all_symbols, max(100, query_workload_size * 20))
+    native_decoder = ClangdGraphDecoder(str(idx_directory), str(project_root))
+    native_provider = native_decoder.decode_native_query_provider()
+    native_context = SimpleNamespace(lsp_provider=native_provider, symbol_graph=None)
+    candidate_positions = native_provider.position_samples(
+        max(100, query_workload_size * 20)
+    )
     positions: list[dict[str, Any]] = []
-    seen_positions: set[tuple[str, int]] = set()
-    for symbol in candidate_symbols:
-        info = graph.get_node_info_by_name(symbol) or {}
-        file_path = info.get("file")
-        start_line = info.get("start_line")
+    seen_positions: set[tuple[str, int, int]] = set()
+    for sample in candidate_positions:
+        file_path = sample.get("file_path")
+        start_line = sample.get("start_line")
+        character = sample.get("start_character")
         if (
             not file_path
             or not isinstance(start_line, int)
             or isinstance(start_line, bool)
+            or not isinstance(character, int)
+            or isinstance(character, bool)
         ):
             continue
-        key = (str(file_path), start_line)
+        key = (str(file_path), start_line, character)
         if key in seen_positions:
             continue
-        # MCP input lines are 1-based. Character is intentionally omitted in
-        # this milestone: #550 measures the established full-graph position
-        # fallback; native character-granular occurrence lookup belongs to #553.
-        position = {"file_path": key[0], "line": start_line + 1}
-        result = lsp_definition_impl(legacy_context, **position, top_k=100)
-        if not isinstance(result, list) or not result:
+        # MCP input lines are one-based; clangd occurrence rows are zero-based.
+        position = {
+            "file_path": key[0],
+            "line": start_line + 1,
+            "character": character,
+        }
+        legacy_results = [
+            implementation(legacy_context, **position, top_k=100)
+            for implementation in (lsp_definition_impl, lsp_references_impl)
+        ]
+        native_results = [
+            implementation(native_context, **position, top_k=100)
+            for implementation in (lsp_definition_impl, lsp_references_impl)
+        ]
+        if any(not isinstance(result, list) for result in legacy_results):
+            continue
+        if any(not isinstance(result, list) for result in native_results):
+            continue
+        if [_canonical_tool_result(result) for result in native_results] != [
+            _canonical_tool_result(result) for result in legacy_results
+        ]:
+            continue
+        native_backends = {
+            str(metadata.get("backend"))
+            for result in native_results
+            for metadata in _provider_metadata(result)
+            if metadata.get("backend")
+        }
+        if native_backends != {"native-clangd-fact-query-v1"}:
             continue
         seen_positions.add(key)
         positions.append(position)
         if len(positions) >= query_workload_size:
             break
     if not positions:
-        raise ValueError("benchmark index has no usable graph position sample")
+        raise ValueError("benchmark index has no graph-free native position sample")
     route_symbols = symbols[: min(4, len(symbols))]
     if not route_symbols:
         raise ValueError("benchmark index has no route seed")
     return {
         "symbols": symbols,
         "positions": positions,
-        "position_candidate_count": len(candidate_symbols),
+        "position_candidate_count": len(candidate_positions),
+        "position_encoding": native_provider.position_encoding,
         "route_symbols": route_symbols,
         "definition_symbol_count": len(all_symbols),
         "graph_vertex_count": graph.graph.vcount(),
@@ -804,6 +852,7 @@ def profile_clangd_workload_gate(
     warmups: int = DEFAULT_WARMUPS,
     query_workload_size: int = DEFAULT_QUERY_WORKLOAD_SIZE,
     symbol_threshold: float = DEFAULT_SYMBOL_THRESHOLD,
+    position_threshold: float = DEFAULT_POSITION_THRESHOLD,
     graph_non_regression_budget: float = DEFAULT_GRAPH_NON_REGRESSION_BUDGET,
     peak_rss_ratio_budget: float = DEFAULT_PEAK_RSS_RATIO_BUDGET,
     repeat_rss_spread_budget: float = DEFAULT_REPEAT_RSS_SPREAD_BUDGET,
@@ -822,6 +871,8 @@ def profile_clangd_workload_gate(
         raise ValueError("query_workload_size must be positive")
     if not 0 <= symbol_threshold < 1:
         raise ValueError("symbol_threshold must be between 0 (inclusive) and 1")
+    if not 0 <= position_threshold < 1:
+        raise ValueError("position_threshold must be between 0 (inclusive) and 1")
     if graph_non_regression_budget < 0:
         raise ValueError("graph_non_regression_budget must be non-negative")
     if peak_rss_ratio_budget < 1:
@@ -870,7 +921,9 @@ def profile_clangd_workload_gate(
     idx_sha256, idx_bytes, idx_files = initial_idx_digest
     receipt = dict(
         codenib_core.clangd_fact_query_snapshot(
-            idx_directory=str(idx_directory), project_root=str(project_root)
+            idx_directory=str(idx_directory),
+            project_root=str(project_root),
+            position_encoding=inputs["position_encoding"],
         )
     )
     snapshot_id = str(receipt["snapshot_id"])
@@ -886,6 +939,7 @@ def profile_clangd_workload_gate(
         "symbols": inputs["symbols"],
         "positions": inputs["positions"],
         "route_symbols": inputs["route_symbols"],
+        "position_encoding": inputs["position_encoding"],
         "concurrency_workers": concurrency_workers,
     }
     workload_runs: dict[str, dict[str, list[dict[str, Any]]]] = {
@@ -943,7 +997,9 @@ def profile_clangd_workload_gate(
 
     final_receipt = dict(
         codenib_core.clangd_fact_query_snapshot(
-            idx_directory=str(idx_directory), project_root=str(project_root)
+            idx_directory=str(idx_directory),
+            project_root=str(project_root),
+            position_encoding=inputs["position_encoding"],
         )
     )
     final_idx_digest = _idx_digest(idx_directory)
@@ -961,6 +1017,7 @@ def profile_clangd_workload_gate(
     materialization_gates: dict[str, Any] = {}
     rss_gates: dict[str, Any] = {}
     symbol_gate: dict[str, Any] | None = None
+    position_gate: dict[str, Any] | None = None
     max_native_peak_rss_bytes = int(max_native_peak_rss_mb * 1024 * 1024)
 
     for workload in WORKLOADS:
@@ -992,6 +1049,23 @@ def profile_clangd_workload_gate(
                 "improvement_fraction": improvement,
                 "passed": parity and improvement >= symbol_threshold,
             }
+        elif workload == "position_first":
+            improvement = _improvement(legacy_wall, native_wall)
+            position_gate = {
+                "threshold": position_threshold,
+                "improvement_fraction": improvement,
+                "graph_free": all(
+                    run.get("graph_materialization_count") == 0
+                    and run.get("graph_materialized") is False
+                    and run.get("observed_backends") == ["native-clangd-fact-query-v1"]
+                    for run in native_runs
+                ),
+            }
+            position_gate["passed"] = (
+                parity
+                and position_gate["graph_free"]
+                and improvement >= position_threshold
+            )
         else:
             regression = _regression(legacy_wall, native_wall)
             graph_gates[workload] = {
@@ -1000,11 +1074,12 @@ def profile_clangd_workload_gate(
                 "passed": parity and regression <= graph_non_regression_budget,
             }
 
-        expected_materializations = 0 if workload == "symbol_only" else 1
+        graph_free_workload = workload in {"symbol_only", "position_first"}
+        expected_materializations = 0 if graph_free_workload else 1
         materialization_passed = all(
             run.get("graph_materialization_count") == expected_materializations
-            and run.get("graph_materialized") is (workload != "symbol_only")
-            and (workload == "symbol_only" or run.get("range_indexes_built") is True)
+            and run.get("graph_materialized") is (not graph_free_workload)
+            and (graph_free_workload or run.get("range_indexes_built") is True)
             for run in native_runs
         )
         materialization_gates[workload] = {
@@ -1060,6 +1135,8 @@ def profile_clangd_workload_gate(
 
     if symbol_gate is None:
         raise RuntimeError("symbol-only gate was not evaluated")
+    if position_gate is None:
+        raise RuntimeError("position-first gate was not evaluated")
     concurrency_thread_digests = {
         str(digest)
         for run in concurrency_runs
@@ -1098,6 +1175,7 @@ def profile_clangd_workload_gate(
     overall_passed = (
         parity_passed
         and symbol_gate["passed"]
+        and position_gate["passed"]
         and graph_passed
         and materialization_passed
         and rss_passed
@@ -1155,6 +1233,8 @@ def profile_clangd_workload_gate(
             "query_ready_excludes_process_launch_and_outer_receipt_checks": True,
             "worker_timeout_seconds": worker_timeout_seconds,
             "symbol_threshold": symbol_threshold,
+            "position_threshold": position_threshold,
+            "position_encoding": inputs["position_encoding"],
             "graph_non_regression_budget": graph_non_regression_budget,
             "peak_rss_ratio_budget": peak_rss_ratio_budget,
             "repeat_rss_spread_budget": repeat_rss_spread_budget,
@@ -1181,6 +1261,7 @@ def profile_clangd_workload_gate(
         "gates": {
             "parity": {"passed": parity_passed},
             "symbol_only": symbol_gate,
+            "position_first": position_gate,
             "graph_non_regression": {
                 "passed": graph_passed,
                 "workloads": graph_gates,
@@ -1220,6 +1301,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--symbol-threshold", type=float, default=DEFAULT_SYMBOL_THRESHOLD
+    )
+    parser.add_argument(
+        "--position-threshold", type=float, default=DEFAULT_POSITION_THRESHOLD
     )
     parser.add_argument(
         "--graph-non-regression-budget",
@@ -1272,6 +1356,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         warmups=args.warmups,
         query_workload_size=args.query_workload_size,
         symbol_threshold=args.symbol_threshold,
+        position_threshold=args.position_threshold,
         graph_non_regression_budget=args.graph_non_regression_budget,
         peak_rss_ratio_budget=args.peak_rss_ratio_budget,
         repeat_rss_spread_budget=args.repeat_rss_spread_budget,

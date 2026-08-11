@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -32,6 +33,7 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
+constexpr std::uint8_t REF_KIND_DECLARATION = 0x1;
 constexpr std::uint8_t REF_KIND_DEFINITION = 0x2;
 constexpr std::uint8_t REF_KIND_REFERENCE = 0x4;
 constexpr std::uint8_t REF_KIND_SPELLED = 0x8;
@@ -54,6 +56,25 @@ bool is_supported_version(std::uint32_t version) {
   return std::find(CLANGD_SUPPORTED_RIFF_VERSIONS.begin(),
                    CLANGD_SUPPORTED_RIFF_VERSIONS.end(),
                    version) != CLANGD_SUPPORTED_RIFF_VERSIONS.end();
+}
+
+std::string normalize_position_encoding(std::string value) {
+  std::string compact;
+  compact.reserve(value.size());
+  for (const auto character : value) {
+    const auto byte = static_cast<unsigned char>(character);
+    if (std::isalnum(byte) != 0)
+      compact.push_back(static_cast<char>(std::toupper(byte)));
+  }
+  const auto supported =
+      std::find_if(CLANGD_SUPPORTED_POSITION_ENCODINGS.begin(),
+                   CLANGD_SUPPORTED_POSITION_ENCODINGS.end(),
+                   [&](const char *candidate) { return compact == candidate; });
+  if (supported == CLANGD_SUPPORTED_POSITION_ENCODINGS.end()) {
+    throw std::invalid_argument(
+        "clangd position encoding must be UTF8, UTF16, or UTF32");
+  }
+  return compact;
 }
 
 bool is_known_chunk(std::string_view id) {
@@ -684,13 +705,15 @@ void update_field(Sha256 &digest, std::string_view value) {
 class IndexReceiptBuilder {
 public:
   IndexReceiptBuilder(const std::filesystem::path &project_root,
-                      std::size_t file_count) {
+                      std::size_t file_count,
+                      const std::string &position_encoding) {
     update_field(digest_, "CodeNib clangd fact query snapshot");
     update_field(digest_, CLANGD_FACT_QUERY_SNAPSHOT_SCHEMA);
     update_field(digest_, CLANGD_FACT_QUERY_FORMAT);
     update_u64_le(digest_, CLANGD_FACT_QUERY_ABI_VERSION);
     update_field(digest_, CLANGD_FACT_QUERY_NORMALIZATION_PROFILE);
     update_field(digest_, project_root.generic_string());
+    update_field(digest_, position_encoding);
     update_u64_le(digest_, CLANGD_SUPPORTED_RIFF_VERSIONS.size());
     for (const auto version : CLANGD_SUPPORTED_RIFF_VERSIONS)
       update_u64_le(digest_, version);
@@ -717,8 +740,9 @@ private:
 
 ClangdIndexReceipt receipt_from_files(const std::vector<IndexFile> &files,
                                       const std::filesystem::path &project_root,
-                                      const ClangdFactDecodeLimits &limits) {
-  IndexReceiptBuilder builder(project_root, files.size());
+                                      const ClangdFactDecodeLimits &limits,
+                                      const std::string &position_encoding) {
+  IndexReceiptBuilder builder(project_root, files.size(), position_encoding);
   std::uint64_t read_bytes = 0;
   for (const auto &file : files) {
     const auto data = read_file(file.path, limits);
@@ -783,10 +807,29 @@ void replace_scope_separators(std::string &value) {
 
 std::shared_ptr<DecodedRecords>
 build_query_records(const CollectedRecords &collected,
-                    const std::filesystem::path &project_root) {
+                    const std::filesystem::path &project_root,
+                    const std::string &position_encoding,
+                    bool include_occurrences) {
   auto records = std::make_shared<DecodedRecords>();
   records->project_root = project_root.generic_string();
+  records->position_encoding = position_encoding;
   records->vertices.reserve(collected.symbols.size());
+
+  // clangd repeats the same file URI for every reference. Normalize each URI
+  // once instead of rebuilding filesystem paths for every occurrence row.
+  std::unordered_map<std::string, std::string> relative_files;
+  relative_files.reserve(128);
+  auto query_file = [&](const std::string &uri) {
+    const auto found = relative_files.find(uri);
+    if (found != relative_files.end())
+      return found->second;
+    auto file = relative_file(uri, project_root);
+    if (file.empty() || std::filesystem::path(file).is_absolute() ||
+        file.find("third_party/") != std::string::npos) {
+      file.clear();
+    }
+    return relative_files.emplace(uri, std::move(file)).first->second;
+  };
 
   std::unordered_map<std::string, CodeGraph::VertexId> record_indexes;
   record_indexes.reserve(collected.symbols.size());
@@ -830,9 +873,8 @@ build_query_records(const CollectedRecords &collected,
         symbol, ref_it == collected.refs.end() ? nullptr : &ref_it->second);
     if (!definition.has_value() || definition->file.empty())
       continue;
-    const std::string file = relative_file(definition->file, project_root);
-    if (std::filesystem::path(file).is_absolute() ||
-        file.find("third_party/") != std::string::npos) {
+    const std::string file = query_file(definition->file);
+    if (file.empty()) {
       continue;
     }
 
@@ -912,6 +954,93 @@ build_query_records(const CollectedRecords &collected,
       records->query_resolution_order.push_back(
           static_cast<CodeGraph::VertexId>(index));
     }
+  }
+
+  if (include_occurrences) {
+    std::size_t occurrence_capacity = collected.symbols.size() * 2;
+    for (const auto &[symbol, references] : collected.refs) {
+      (void)symbol;
+      occurrence_capacity += references.size();
+    }
+    records->occurrences.reserve(occurrence_capacity);
+    auto target_for = [&](const std::string &symbol_id)
+        -> std::optional<CodeGraph::VertexId> {
+      const auto found = vertex_by_symbol.find(symbol_id);
+      return found == vertex_by_symbol.end()
+                 ? std::nullopt
+                 : std::optional<CodeGraph::VertexId>(found->second);
+    };
+    auto add_occurrence = [&](const Location &location, std::uint32_t roles,
+                              std::optional<CodeGraph::VertexId> target,
+                              std::optional<CodeGraph::VertexId> container) {
+      if (location.file.empty())
+        return;
+      const auto file = query_file(location.file);
+      if (file.empty()) {
+        return;
+      }
+      records->occurrences.push_back(DecodedOccurrence{
+          file, location.start_line, location.start_col, location.end_line,
+          location.end_col, roles, target, container});
+    };
+    auto same_location = [](const Location &left, const Location &right) {
+      return left.file == right.file && left.start_line == right.start_line &&
+             left.start_col == right.start_col &&
+             left.end_line == right.end_line && left.end_col == right.end_col;
+    };
+
+    for (const auto &symbol : collected.symbols) {
+      const auto target = target_for(symbol.id);
+      const auto refs = collected.refs.find(symbol.id);
+      const auto primary = resolve_definition(
+          symbol, refs == collected.refs.end() ? nullptr : &refs->second);
+      if (symbol.definition.has_value()) {
+        auto roles = OCCURRENCE_ROLE_DEFINITION;
+        if (primary.has_value() && same_location(*symbol.definition, *primary))
+          roles |= OCCURRENCE_ROLE_PRIMARY_DEFINITION;
+        add_occurrence(*symbol.definition, roles, target, std::nullopt);
+      }
+      if (symbol.canonical_declaration.has_value()) {
+        add_occurrence(*symbol.canonical_declaration,
+                       OCCURRENCE_ROLE_DECLARATION, target, std::nullopt);
+      }
+    }
+
+    for (const auto &target_symbol : collected.ref_order) {
+      const auto target = target_for(target_symbol);
+      const auto symbol_index = collected.symbol_indexes.find(target_symbol);
+      std::optional<Location> primary;
+      if (symbol_index != collected.symbol_indexes.end()) {
+        const auto &symbol = collected.symbols[symbol_index->second];
+        const auto refs = collected.refs.find(target_symbol);
+        primary = resolve_definition(
+            symbol, refs == collected.refs.end() ? nullptr : &refs->second);
+      }
+      const auto ref_group = collected.refs.find(target_symbol);
+      if (ref_group == collected.refs.end())
+        continue;
+      for (const auto &reference : ref_group->second) {
+        std::uint32_t roles = 0;
+        if ((reference.kind & REF_KIND_DECLARATION) != 0)
+          roles |= OCCURRENCE_ROLE_DECLARATION;
+        if ((reference.kind & REF_KIND_DEFINITION) != 0)
+          roles |= OCCURRENCE_ROLE_DEFINITION;
+        if ((reference.kind & REF_KIND_REFERENCE) != 0)
+          roles |= OCCURRENCE_ROLE_REFERENCE;
+        if ((reference.kind & REF_KIND_SPELLED) != 0)
+          roles |= OCCURRENCE_ROLE_SPELLED;
+        if (primary.has_value() && same_location(reference.location, *primary))
+          roles |= OCCURRENCE_ROLE_PRIMARY_DEFINITION;
+        std::optional<CodeGraph::VertexId> container;
+        if (reference.container != std::string(8, '\0'))
+          container = target_for(reference.container);
+        add_occurrence(reference.location, roles, target, container);
+      }
+    }
+
+    // Collection follows stable .idx filename and record order. The native
+    // index sorts per-file postings and every public location result is
+    // deduplicated, so a second global string-heavy sort is unnecessary.
   }
 
   for (const auto &[source_name, target_name] : structural_edge_names) {
@@ -1013,12 +1142,14 @@ build_query_records(const CollectedRecords &collected,
 
 } // namespace
 
-ClangdQueryRecords
-decode_clangd_query_records(const std::string &idx_directory,
-                            const std::string &project_root,
-                            const ClangdFactDecodeLimits &limits) {
+ClangdQueryRecords decode_clangd_query_records(
+    const std::string &idx_directory, const std::string &project_root,
+    const ClangdFactDecodeLimits &limits, const std::string &position_encoding,
+    bool include_occurrences) {
   const auto total_started = Clock::now();
   ClangdFactDecodeProfile profile;
+  const auto normalized_encoding =
+      normalize_position_encoding(position_encoding);
 
   const auto discover_started = Clock::now();
   const auto files =
@@ -1031,7 +1162,7 @@ decode_clangd_query_records(const std::string &idx_directory,
 
   CollectedRecords collected;
   DecodeBudget budget(limits);
-  IndexReceiptBuilder receipt_builder(root, files.size());
+  IndexReceiptBuilder receipt_builder(root, files.size(), normalized_encoding);
   std::uint64_t read_bytes = 0;
   for (const auto &file : files) {
     const auto read_started = Clock::now();
@@ -1065,7 +1196,8 @@ decode_clangd_query_records(const std::string &idx_directory,
   }
 
   const auto build_started = Clock::now();
-  auto records = build_query_records(collected, root);
+  auto records = build_query_records(collected, root, normalized_encoding,
+                                     include_occurrences);
   profile.build_query_records_ns = elapsed_ns(build_started, Clock::now());
   profile.decoded_record_count = records->vertices.size();
   for (const auto &vertex : records->vertices) {
@@ -1076,14 +1208,15 @@ decode_clangd_query_records(const std::string &idx_directory,
     if (edge.type == EDGE_TYPE_REFERENCE)
       ++profile.reference_count;
   }
+  profile.occurrence_count = records->occurrences.size();
   profile.index_bytes = read_bytes;
   profile.decompressed_string_bytes = budget.string_table_bytes;
   profile.materialized_string_bytes = budget.materialized_string_bytes;
   profile.string_entry_count = budget.string_entries;
   auto receipt = receipt_builder.finish(files.size());
   const auto verify_started = Clock::now();
-  const auto verified =
-      compute_clangd_index_receipt(idx_directory, project_root, limits);
+  const auto verified = compute_clangd_index_receipt(
+      idx_directory, project_root, limits, normalized_encoding);
   profile.verify_snapshot_ns = elapsed_ns(verify_started, Clock::now());
   if (verified.snapshot_id != receipt.snapshot_id) {
     throw std::runtime_error(
@@ -1096,10 +1229,14 @@ decode_clangd_query_records(const std::string &idx_directory,
 ClangdIndexReceipt
 compute_clangd_index_receipt(const std::string &idx_directory,
                              const std::string &project_root,
-                             const ClangdFactDecodeLimits &limits) {
+                             const ClangdFactDecodeLimits &limits,
+                             const std::string &position_encoding) {
   const auto files =
       discover_index_files(normalized_absolute(idx_directory), limits);
-  return receipt_from_files(files, normalized_absolute(project_root), limits);
+  const auto normalized_encoding =
+      normalize_position_encoding(position_encoding);
+  return receipt_from_files(files, normalized_absolute(project_root), limits,
+                            normalized_encoding);
 }
 
 } // namespace codenib::core

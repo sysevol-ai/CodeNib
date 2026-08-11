@@ -12,10 +12,11 @@ required.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from ..scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
 from ..types import QueriedNode
 from .lsp_graph import lsp_definition, lsp_references, lsp_route
 from .route_context import fingerprint_lsp_route_nodes, summarize_lsp_route_nodes
@@ -36,6 +37,8 @@ _SUPPORTED_CAPABILITIES = frozenset(_LSP_METHODS)
 _GRAPH_BEHAVIOR_CONTRACT = "static_graph_lsp_v1"
 _GRAPH_POSITION_BEHAVIOR_CONTRACT = "static_symbol_graph_position_lsp_v1"
 _OCCURRENCE_BEHAVIOR_CONTRACT = "static_scip_occurrence_lsp_v1"
+_NATIVE_OCCURRENCE_BEHAVIOR_CONTRACT = "static_native_occurrence_lsp_v1"
+_POSITION_WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,7 @@ class LSPProviderMetadata:
     fallback_reason: Optional[str] = None
     behavior_contract: str = _GRAPH_BEHAVIOR_CONTRACT
     position_granularity: str = "line"
+    position_encoding: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         out = {
@@ -67,6 +71,8 @@ class LSPProviderMetadata:
             out["index_snapshot"] = self.index_snapshot
         if self.fallback_reason is not None:
             out["fallback_reason"] = self.fallback_reason
+        if self.position_encoding is not None:
+            out["position_encoding"] = self.position_encoding
         return out
 
 
@@ -86,6 +92,178 @@ class LSPProviderNodes(list):
         return self.lsp_provider_metadata.to_dict()
 
 
+class LSPPositionFallback(ValueError):
+    """Signal that an exact occurrence query must use the legacy provider."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = str(reason or "native_position_fallback")
+        super().__init__(self.reason)
+
+
+class NativeOccurrenceQueryAdapter:
+    """Occurrence adapter whose rows and interval postings remain in C++."""
+
+    behavior_contract = _NATIVE_OCCURRENCE_BEHAVIOR_CONTRACT
+    authoritative_empty = True
+
+    def __init__(self, query_index: Any) -> None:
+        self.query_index = query_index
+        self.position_encoding = str(
+            getattr(query_index, "position_encoding", None) or "UTF16"
+        )
+        self.occurrence_count = int(getattr(query_index, "occurrence_count", 0))
+        self.project_root = Path(str(getattr(query_index, "project_root", "") or ""))
+
+    def occurrence_at(self, file_path: str, line: int, character: int) -> Any:
+        if self.query_index.has_occurrence_at(file_path, line, character):
+            return {
+                "file_path": file_path,
+                "line": int(line),
+                "character": int(character),
+            }
+        return None
+
+    def definitions(
+        self,
+        *,
+        file_path: str,
+        line: int,
+        character: int,
+        top_k: int = 8,
+    ) -> list[Mapping[str, Any]]:
+        return self._locations(
+            self.query_index.position_definitions(
+                file_path=file_path,
+                line=line,
+                character=character,
+                top_k=top_k,
+            ),
+            file_path=file_path,
+            line=line,
+            character=character,
+        )
+
+    def references(
+        self,
+        *,
+        file_path: str,
+        line: int,
+        character: int,
+        include_declaration: bool = True,
+        top_k: int = 40,
+    ) -> list[Mapping[str, Any]]:
+        return self._locations(
+            self.query_index.position_references(
+                file_path=file_path,
+                line=line,
+                character=character,
+                include_declaration=include_declaration,
+                top_k=top_k,
+            ),
+            file_path=file_path,
+            line=line,
+            character=character,
+        )
+
+    def _locations(
+        self,
+        payload: Any,
+        *,
+        file_path: str,
+        line: int,
+        character: int,
+    ) -> list[Mapping[str, Any]]:
+        if not isinstance(payload, Mapping):
+            raise RuntimeError("native occurrence query returned an invalid result")
+        if payload.get("served") is not True:
+            raise LSPPositionFallback(
+                str(payload.get("fallback_reason") or "native_position_fallback")
+            )
+        locations = payload.get("locations")
+        if not isinstance(locations, list) or not all(
+            isinstance(location, Mapping) for location in locations
+        ):
+            raise RuntimeError("native occurrence query returned invalid locations")
+        targets = payload.get("targets")
+        if not isinstance(targets, list) or not all(
+            isinstance(target, int) and not isinstance(target, bool)
+            for target in targets
+        ):
+            raise RuntimeError("native occurrence query returned invalid targets")
+        self._require_legacy_token_match(
+            file_path=file_path,
+            line=line,
+            character=character,
+            targets=targets,
+        )
+        return locations
+
+    def _require_legacy_token_match(
+        self,
+        *,
+        file_path: str,
+        line: int,
+        character: int,
+        targets: Sequence[int],
+    ) -> None:
+        token = self._source_token(file_path, line, character)
+        if token is None or not targets:
+            raise LSPPositionFallback("native_position_token_requires_legacy_graph")
+        for target in targets:
+            info = self.query_index.get_node_info_by_id(target)
+            if not isinstance(info, Mapping):
+                raise LSPPositionFallback("native_position_token_requires_legacy_graph")
+            anchors = {
+                self._bare_symbol(str(value))
+                for value in (info.get("name"), info.get("unified_name"))
+                if value
+            }
+            if token not in anchors:
+                raise LSPPositionFallback("native_position_token_requires_legacy_graph")
+
+    def _source_token(self, file_path: str, line: int, character: int) -> Optional[str]:
+        relative = Path(file_path)
+        if (
+            relative.is_absolute()
+            or relative != Path(*relative.parts)
+            or any(part in {"", ".", ".."} for part in relative.parts)
+        ):
+            return None
+        try:
+            root = self.project_root.resolve()
+            source = (root / relative).resolve()
+            source.relative_to(root)
+            source_line = source.read_text(
+                encoding="utf-8", errors="strict"
+            ).splitlines()[int(line)]
+            codepoint_character = self._codepoint_character(source_line, character)
+        except (OSError, IndexError, ValueError):
+            return None
+        for match in _POSITION_WORD_RE.finditer(source_line):
+            if match.start() <= codepoint_character < match.end():
+                return match.group(0)
+        return None
+
+    def _codepoint_character(self, source_line: str, character: int) -> int:
+        if character < 0:
+            raise ValueError("character must be non-negative")
+        if self.position_encoding == "UTF32":
+            if character > len(source_line):
+                raise ValueError("character exceeds source line")
+            return character
+        codec = "utf-8" if self.position_encoding == "UTF8" else "utf-16-le"
+        width = 1 if self.position_encoding == "UTF8" else 2
+        encoded = source_line.encode(codec)
+        offset = character * width
+        if offset > len(encoded):
+            raise ValueError("character exceeds source line")
+        return len(encoded[:offset].decode(codec))
+
+    @staticmethod
+    def _bare_symbol(symbol: str) -> str:
+        return symbol.split(":")[-1].split(".")[-1].split("#")[-1].rstrip("()")
+
+
 class StaticLSPProvider:
     """LSP-shaped provider backed by a loaded CodeNib symbol graph."""
 
@@ -96,7 +274,7 @@ class StaticLSPProvider:
         graph: Any,
         *,
         snapshot_id: Optional[str] = None,
-        occurrence_index: Optional[SCIPOccurrenceIndex] = None,
+        occurrence_index: Optional[Any] = None,
         backend: Optional[str] = None,
         fallback_reason: Optional[str] = None,
     ) -> None:
@@ -107,6 +285,15 @@ class StaticLSPProvider:
         self.snapshot_id = snapshot_id or _graph_snapshot_id(graph)
         self.backend = backend
         self.fallback_reason = fallback_reason
+        self.position_encoding = getattr(
+            self.occurrence_index, "position_encoding", None
+        )
+
+    def _occurrence_behavior_contract(self) -> str:
+        return str(
+            getattr(self.occurrence_index, "behavior_contract", None)
+            or _OCCURRENCE_BEHAVIOR_CONTRACT
+        )
 
     def can_serve(self, capability: str) -> LSPProviderMetadata:
         """Return a non-throwing fast-path decision for one capability."""
@@ -130,8 +317,9 @@ class StaticLSPProvider:
                 snapshot_id=self.snapshot_id,
                 backend=self.backend,
                 fallback_reason=self.fallback_reason,
-                behavior_contract=_OCCURRENCE_BEHAVIOR_CONTRACT,
+                behavior_contract=self._occurrence_behavior_contract(),
                 position_granularity="character",
+                position_encoding=self.position_encoding,
             )
         if self.graph is None:
             return _metadata(
@@ -175,14 +363,19 @@ class StaticLSPProvider:
                     character=character,
                     top_k=top_k,
                 )
+            except LSPPositionFallback:
+                raise
             except ValueError:
                 locations = []
-            if locations:
+            if locations or getattr(
+                self.occurrence_index, "authoritative_empty", False
+            ):
                 return self._wrap(
                     CAPABILITY_DEFINITION,
                     _nodes_from_locations(locations, capability=CAPABILITY_DEFINITION),
-                    behavior_contract=_OCCURRENCE_BEHAVIOR_CONTRACT,
+                    behavior_contract=self._occurrence_behavior_contract(),
                     position_granularity="character",
+                    position_encoding=self.position_encoding,
                 )
         nodes = lsp_definition(
             self.graph,
@@ -207,6 +400,7 @@ class StaticLSPProvider:
                 else _GRAPH_BEHAVIOR_CONTRACT
             ),
             position_granularity="character" if position_query else "line",
+            position_encoding="UTF32" if position_query else None,
         )
 
     def references(
@@ -237,14 +431,19 @@ class StaticLSPProvider:
                     include_declaration=include_declaration,
                     top_k=top_k,
                 )
+            except LSPPositionFallback:
+                raise
             except ValueError:
                 locations = []
-            if locations:
+            if locations or getattr(
+                self.occurrence_index, "authoritative_empty", False
+            ):
                 return self._wrap(
                     CAPABILITY_REFERENCES,
                     _nodes_from_locations(locations, capability=CAPABILITY_REFERENCES),
-                    behavior_contract=_OCCURRENCE_BEHAVIOR_CONTRACT,
+                    behavior_contract=self._occurrence_behavior_contract(),
                     position_granularity="character",
+                    position_encoding=self.position_encoding,
                 )
         nodes = lsp_references(
             self.graph,
@@ -270,6 +469,7 @@ class StaticLSPProvider:
                 else _GRAPH_BEHAVIOR_CONTRACT
             ),
             position_granularity="character" if position_query else "line",
+            position_encoding="UTF32" if position_query else None,
         )
 
     def route(
@@ -307,6 +507,7 @@ class StaticLSPProvider:
         *,
         behavior_contract: str = _GRAPH_BEHAVIOR_CONTRACT,
         position_granularity: str = "line",
+        position_encoding: Optional[str] = None,
     ) -> LSPProviderNodes:
         if capability in {CAPABILITY_DEFINITION, CAPABILITY_REFERENCES}:
             nodes = normalize_native_lsp_nodes(nodes, capability=capability)
@@ -320,6 +521,7 @@ class StaticLSPProvider:
                 fallback_reason=self.fallback_reason,
                 behavior_contract=behavior_contract,
                 position_granularity=position_granularity,
+                position_encoding=position_encoding,
             ),
         )
 
@@ -534,6 +736,7 @@ def _metadata(
     fallback_reason: Optional[str] = None,
     behavior_contract: str = _GRAPH_BEHAVIOR_CONTRACT,
     position_granularity: str = "line",
+    position_encoding: Optional[str] = None,
 ) -> LSPProviderMetadata:
     normalized = normalize_lsp_capability(capability)
     return LSPProviderMetadata(
@@ -546,6 +749,7 @@ def _metadata(
         fallback_reason=fallback_reason,
         behavior_contract=behavior_contract,
         position_granularity=position_granularity,
+        position_encoding=position_encoding,
     )
 
 
@@ -592,8 +796,8 @@ def _nodes_from_locations(
 ) -> list[QueriedNode]:
     nodes = []
     for location in locations:
-        file_path = str(location.file_path)
-        start_line = int(location.start_line)
+        file_path = str(_node_value(location, "file_path"))
+        start_line = int(_node_value(location, "start_line"))
         display_line = start_line + 1
         nodes.append(
             QueriedNode(
@@ -602,7 +806,7 @@ def _nodes_from_locations(
                 file=file_path,
                 node_id=f"{file_path}:{display_line}:{capability}",
                 start_line=start_line,
-                end_line=int(location.end_line),
+                end_line=int(_node_value(location, "end_line")),
                 score=1.0,
                 content=f"lsp {capability}",
             )
@@ -628,8 +832,10 @@ __all__ = [
     "CAPABILITY_REFERENCES",
     "CAPABILITY_ROUTE",
     "JSON_RPC_LSP_PROVIDER",
+    "LSPPositionFallback",
     "LSPProviderMetadata",
     "LSPProviderNodes",
+    "NativeOccurrenceQueryAdapter",
     "STATIC_LSP_PROVIDER",
     "StaticLSPProvider",
     "resolve_lsp_provider",
