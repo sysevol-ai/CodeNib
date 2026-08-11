@@ -46,6 +46,10 @@ from .verification import NullVerifier, UpdateVerifier, VerificationResult
 logger = logging.getLogger(__name__)
 
 
+class _AtomicIncrementalRebuildRequired(RuntimeError):
+    """Signal that vector deltas must use the complete-generation builder."""
+
+
 def _git_output(repo_path: str, *args: str) -> str:
     """Run git in *repo_path* and return stripped stdout ("" on any failure)."""
     try:
@@ -270,52 +274,122 @@ class VectorIndexBuilder:
         return vector_config_artifact_record(output_dir, model_suffix)
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus:
+        from pathlib import Path, PurePosixPath
+
+        from .._atomic_directory import (
+            PublicationDirectoryReader,
+            reopen_authenticated_directory,
+        )
+        from .._captured_directory import OwnedDirectoryStage
         from ..index.embedding.artifact_integrity import (
             begin_vector_view_update,
             finish_vector_view_update,
         )
+        from ..index.embedding.builders import _PrivateBuildDirectory
 
-        output_dir: str = kwargs["output_dir"]
-        begin_vector_view_update(output_dir)
-        status = self._build_once(scope, **kwargs)
-        finish_vector_view_update(output_dir)
+        output_path = Path(kwargs["output_dir"])
+        publication_stage = OwnedDirectoryStage.prepare(
+            output_path,
+            allow_empty_destination=True,
+        )
+
+        def copy_generation(reader: PublicationDirectoryReader) -> None:
+            for record in reader.file_records():
+                relative = PurePosixPath(record.path)
+                with reader.iter_authenticated_chunks(
+                    relative,
+                    max_bytes=record.size,
+                ) as chunks:
+                    publication_stage.write_file(
+                        relative,
+                        chunks,
+                        mode=record.mode,
+                        max_bytes=record.size,
+                    )
+
+        try:
+            with _PrivateBuildDirectory(
+                prefix=f".{output_path.name}.generation-build-",
+                parent=output_path.parent,
+            ) as build_root:
+                build_path = build_root.path
+                writer_path = build_root.writer_path
+                with build_root.path_operation("vector update marker begin"):
+                    begin_vector_view_update(writer_path)
+                build_kwargs = dict(kwargs)
+                build_kwargs["output_dir"] = str(writer_path)
+                build_kwargs["_published_output_dir"] = str(output_path)
+                build_kwargs["_build_root_guard"] = build_root
+                status = self._build_once(scope, **build_kwargs)
+                with build_root.path_operation("vector update marker finish"):
+                    finish_vector_view_update(writer_path)
+
+                model_suffix = self._embedding_route().model.replace("/", "__")
+                generation_ownership = build_root.capture_ownership(
+                    required_root_file=f"config_{model_suffix}.json",
+                )
+                reopen_authenticated_directory(
+                    build_path,
+                    generation_ownership,
+                    copy_generation,
+                )
+
+            publication_stage.publish()
+        except BaseException:  # noqa: B036 - preserve publication interruptions
+            try:
+                publication_stage.discard()
+            except BaseException:  # noqa: B036 - retain the generation failure
+                logger.exception("Could not isolate failed vector generation stage")
+            raise
         return status
 
     def _build_once(self, scope: str, **kwargs: Any) -> IndexStatus:
         repo_path: str = kwargs["repo_path"]
         output_dir: str = kwargs["output_dir"]
+        published_output_dir: str = kwargs.get("_published_output_dir", output_dir)
+        build_root_guard = kwargs.get("_build_root_guard")
 
         from pathlib import Path
 
-        from ..index.embedding.builders import build_hierarchical_vector_store
+        from ..index.embedding.builders import (
+            _PrivateBuildDirectory,
+            build_hierarchical_vector_store,
+        )
         from ..index.incremental import (
             EmbeddingsCache,
             IncrementalChunkStore,
             IncrementalState,
         )
 
-        os.makedirs(output_dir, exist_ok=True)
+        if not isinstance(build_root_guard, _PrivateBuildDirectory):
+            raise RuntimeError("full vector build requires its private root owner")
+        build_root_guard.require_writer_path(Path(output_dir))
+        build_root_guard.verify("full vector build entry")
         artifact_identity = self.artifact_identity()
-        vs = build_hierarchical_vector_store(
-            repo_path=repo_path,
-            index_path=output_dir,
-            plan_name=None,
-            languages=self.languages,
-            max_lines_per_chunk=self.max_lines_per_chunk,
-            build_levels=self.build_levels,
-            embedding_model=artifact_identity["embedding_model"],
-            embedding_provider=artifact_identity["embedding_provider"],
-            embedding_dimension=self.embedding_dimension,
-            embedding_kwargs=self._embedding_call_kwargs(),
-            index_metric=self.index_metric,
-            artifact_metadata=artifact_identity,
-            # ``build`` is the compiler's full-materialization path. Reusing an
-            # artifact merely because its model config exists would let stale
-            # vectors be stamped with the current source fingerprint. Cross-
-            # commit reuse belongs to ``incremental_update`` instead.
-            force_rebuild=True,
-            strict_chunking=True,
-        )
+        with build_root_guard.path_operation("hierarchical vector build"):
+            vs = build_hierarchical_vector_store(
+                repo_path=repo_path,
+                index_path=output_dir,
+                plan_name=None,
+                languages=self.languages,
+                max_lines_per_chunk=self.max_lines_per_chunk,
+                build_levels=self.build_levels,
+                embedding_model=artifact_identity["embedding_model"],
+                embedding_provider=artifact_identity["embedding_provider"],
+                embedding_dimension=self.embedding_dimension,
+                embedding_kwargs=self._embedding_call_kwargs(),
+                index_metric=self.index_metric,
+                artifact_metadata=artifact_identity,
+                # ``build`` is the compiler's full-materialization path.
+                # Reusing an artifact merely because its model config exists
+                # would stamp stale vectors with the current source identity.
+                force_rebuild=True,
+                strict_chunking=True,
+                # ``build`` owns the complete private generation tree.  Its
+                # outer OwnedDirectoryStage is the publication boundary.
+                _atomic_publish=False,
+                _build_root_guard=build_root_guard,
+            )
         self._validate_vector_dimension(vs)
 
         doc_count = {}
@@ -382,23 +456,27 @@ class VectorIndexBuilder:
             for content_hash, vec in hash_to_vec.items():
                 emb_cache.put(content_hash, vec)
 
-        chunk_store.save(Path(output_dir) / "chunk_store.pkl")
+        with build_root_guard.path_operation("incremental chunk seed save"):
+            chunk_store.save(Path(output_dir) / "chunk_store.pkl")
         logger.info(
             "Seeded embeddings cache with %d vectors from initial build.",
             emb_cache.size(),
         )
-        emb_cache.save(Path(output_dir) / "embeddings_cache.pkl")
+        with build_root_guard.path_operation("embedding cache seed save"):
+            emb_cache.save(Path(output_dir) / "embeddings_cache.pkl")
 
         # Persist incremental state so callers don't need to track last_commit
         inc_state = IncrementalState(
             last_commit=head_commit,
             chunk_store_path="chunk_store.pkl",
             embeddings_cache_path="embeddings_cache.pkl",
-            index_path=str(Path(output_dir).expanduser().resolve()),
+            index_path=str(Path(published_output_dir).expanduser().resolve()),
             build_levels=list(self.build_levels),
         )
-        inc_state.save(Path(output_dir))
-        persistence_config = self._persistence_config_fingerprint(output_dir)
+        with build_root_guard.path_operation("incremental state seed save"):
+            inc_state.save(Path(output_dir))
+        with build_root_guard.path_operation("persistence fingerprint read"):
+            persistence_config = self._persistence_config_fingerprint(output_dir)
 
         return IndexStatus(
             index_type="vector",
@@ -406,7 +484,7 @@ class VectorIndexBuilder:
             last_built=time.time(),
             age_seconds=0.0,
             scope=scope,
-            path=output_dir,
+            path=published_output_dir,
             metadata={
                 **artifact_identity,
                 "persistence_config_fingerprint": persistence_config,
@@ -416,25 +494,44 @@ class VectorIndexBuilder:
         )
 
     def incremental_update(self, scope: str, **kwargs: Any) -> IndexStatus:
-        """Update the vector view, rebuilding on any incremental-path failure."""
+        """Update the vector view, rebuilding on recoverable path failures."""
+
+        from ..native_index_authorization import (
+            MissingNativeIndexAuthorizationError,
+            NativeIndexAuthorizationError,
+        )
 
         try:
             return self._incremental_update_once(scope, **kwargs)
+        except MissingNativeIndexAuthorizationError as exc:
+            return self._rebuild_after_incremental_failure(scope, kwargs, exc)
+        except NativeIndexAuthorizationError:
+            # An explicit capability is caller-supplied authority.  Never turn
+            # a malformed, foreign-process, or mismatched token into a source
+            # rebuild that appears to have accepted it.
+            raise
         except Exception as exc:  # noqa: BLE001 - failed deltas must not publish
-            logger.warning("vector: incremental update failed (%s); rebuilding", exc)
-            build_kwargs = {
-                key: value
-                for key, value in kwargs.items()
-                if key not in {"last_commit", "previous_artifact_config"}
-            }
-            status = self.build(scope, **build_kwargs)
-            status.metadata["update_mode"] = "full_rebuild"
-            status.metadata["incremental_fallback_reason"] = type(exc).__name__
-            return status
+            return self._rebuild_after_incremental_failure(scope, kwargs, exc)
+
+    def _rebuild_after_incremental_failure(
+        self,
+        scope: str,
+        kwargs: Dict[str, Any],
+        exc: Exception,
+    ) -> IndexStatus:
+        logger.warning("vector: incremental update failed (%s); rebuilding", exc)
+        build_kwargs = {
+            key: value
+            for key, value in kwargs.items()
+            if key not in {"last_commit", "previous_artifact_config"}
+        }
+        status = self.build(scope, **build_kwargs)
+        status.metadata["update_mode"] = "full_rebuild"
+        status.metadata["incremental_fallback_reason"] = type(exc).__name__
+        return status
 
     def _incremental_update_once(self, scope: str, **kwargs: Any) -> IndexStatus:
-        """
-        Attempt one vector-index update using git diff detection.
+        """Validate one delta request and route it to an atomic full rebuild.
 
         Required kwargs
         ---------------
@@ -446,12 +543,10 @@ class VectorIndexBuilder:
             The git SHA recorded when the index was last fully built.
             Pass an empty string to force a full rebuild.
 
-        The method loads the existing ``CodeVectorStore``, ``IncrementalChunkStore``,
-        and ``EmbeddingsCache`` from *output_dir*, runs the incremental update
-        pipeline, then saves all state back to disk.
-
-        Missing or incompatible state propagates to :meth:`incremental_update`,
-        which rebuilds conservatively exactly once.
+        Path-based vector persistence cannot safely update the live generation
+        in place.  After exact authorization and state validation, this method
+        therefore raises a private recoverable signal.  The public wrapper
+        rebuilds one complete private generation and switches it atomically.
         """
         from ..native_index_authorization import (
             require_native_index_authorization_preflight,
@@ -459,7 +554,7 @@ class VectorIndexBuilder:
 
         native_index_authorization = kwargs.get("native_index_authorization")
         # Reject before constructing an embedding backend. The public wrapper
-        # catches this and performs one source-derived full rebuild.
+        # rebuilds only for a missing token and propagates explicit bad tokens.
         require_native_index_authorization_preflight(
             native_index_authorization,
             view_type="vector",
@@ -467,29 +562,32 @@ class VectorIndexBuilder:
 
         from pathlib import Path
 
-        from ..code_chunker import CodeChunker, RepoChunkingConfig
-        from ..index.embedding.vector_store import CodeVectorStore
-        from ..index.incremental import (
-            EmbeddingsCache,
-            GitDiffDetector,
-            IncrementalChunkStore,
-            IncrementalIndexUpdater,
-            IncrementalState,
-        )
+        from ..index.incremental import IncrementalState
 
-        repo_path: str = kwargs["repo_path"]
         output_dir: str = kwargs["output_dir"]
         last_commit: str = kwargs.get("last_commit", "")
 
-        from ..index.embedding._lifecycle import close_vector_after_failure
         from ..index.embedding.artifact_integrity import (
-            _mint_trusted_local_vector_authorization,
-            begin_vector_view_update,
-            finish_vector_view_update,
+            require_authorized_vector_view,
             require_complete_vector_view,
         )
 
         require_complete_vector_view(output_dir)
+        artifact_identity = self.artifact_identity()
+        previous_artifact = kwargs.get("previous_artifact_config")
+        if previous_artifact is not None and not isinstance(previous_artifact, dict):
+            raise ValueError("previous vector artifact config must be a mapping")
+        load_identity = (
+            dict(previous_artifact)
+            if previous_artifact is not None
+            else artifact_identity
+        )
+        require_authorized_vector_view(
+            output_dir,
+            native_index_authorization,
+            load_identity,
+        )
+
         inc_state = IncrementalState.load(Path(output_dir))
         if inc_state is None:
             raise ValueError("incremental state is missing")
@@ -528,122 +626,9 @@ class VectorIndexBuilder:
 
         if not has_chunk_store or not has_emb_cache:
             raise ValueError("incremental chunk or embedding state is missing")
-
-        # Load existing artifacts
-        artifact_identity = self.artifact_identity()
-        previous_artifact = kwargs.get("previous_artifact_config")
-        if previous_artifact is not None and not isinstance(previous_artifact, dict):
-            raise ValueError("previous vector artifact config must be a mapping")
-        load_identity = (
-            dict(previous_artifact)
-            if previous_artifact is not None
-            else artifact_identity
-        )
-        native_authorization = _mint_trusted_local_vector_authorization(
-            output_dir,
-            load_identity,
-            evidence=("compiler-incremental-vector-view",),
-        )
-        vector_store = CodeVectorStore(
-            embedding_model=artifact_identity["embedding_model"],
-            embedding_provider=artifact_identity["embedding_provider"],
-            dimension=self.embedding_dimension,
-            index_metric=self.index_metric,
-            store_path=output_dir,
-            artifact_metadata=load_identity,
-            **self._embedding_call_kwargs(),
-        )
-        try:
-            self._validate_vector_dimension(vector_store)
-            vector_store.load(
-                output_dir,
-                native_index_authorization=native_authorization,
-            )
-        except BaseException as primary:  # noqa: B036 - close partial native state
-            close_vector_after_failure(vector_store, primary)
-            raise
-
-        chunk_store = IncrementalChunkStore.load(chunk_store_path)
-        embeddings_cache = EmbeddingsCache.load(embeddings_cache_path)
-
-        # Build chunkers matching the original build config
-        primary = self.languages[0] if self.languages else "python"
-        repo_cfg = RepoChunkingConfig(languages=self.languages)
-        chunker = CodeChunker(
-            language=primary,
-            repo_config=repo_cfg,
-            max_lines_per_chunk=self.max_lines_per_chunk,
-        )
-
-        # L0 chunker for file skeletons (only if L0 was part of the build)
-        l0_chunker = None
-        if "l0" in self.build_levels:
-            l0_chunker = CodeChunker(
-                language=primary,
-                repo_config=repo_cfg,
-                max_lines_per_chunk=self.max_lines_per_chunk,
-                chunk_depth=0,
-                skeleton_mode=True,
-            )
-
-        diff_detector = GitDiffDetector()
-        updater = IncrementalIndexUpdater(
-            chunker=chunker,
-            embedding_model=vector_store.embedding,
-            diff_detector=diff_detector,
-            l0_chunker=l0_chunker,
-        )
-
-        result = updater.update(
-            repo_path=repo_path,
-            vector_store=vector_store,
-            chunk_store=chunk_store,
-            embeddings_cache=embeddings_cache,
-            last_commit=last_commit,
-        )
-        if not result.new_commit:
-            raise ValueError("incremental update did not resolve a target commit")
-
-        # Persist updated state
-        begin_vector_view_update(output_dir)
-        vector_store.save(output_dir)
-        chunk_store.save(chunk_store_path)
-        embeddings_cache.save(embeddings_cache_path)
-
-        # Update incremental state with the new commit.
-        new_state = IncrementalState(
-            last_commit=result.new_commit,
-            chunk_store_path="chunk_store.pkl",
-            embeddings_cache_path="embeddings_cache.pkl",
-            index_path=str(expected_index_path),
-            build_levels=list(self.build_levels),
-        )
-        new_state.save(Path(output_dir))
-        persistence_config = self._persistence_config_fingerprint(output_dir)
-        finish_vector_view_update(output_dir)
-
-        doc_count = {}
-        if vector_store.l0_documents:
-            doc_count["l0"] = len(vector_store.l0_documents)
-        if vector_store.l2_documents:
-            doc_count["l2"] = len(vector_store.l2_documents)
-
-        return IndexStatus(
-            index_type="vector",
-            state=IndexState.FRESH,
-            last_built=time.time(),
-            age_seconds=0.0,
-            scope=scope,
-            path=output_dir,
-            metadata={
-                **self.artifact_identity(),
-                "persistence_config_fingerprint": persistence_config,
-                "document_count": doc_count,
-                "chunks_reembedded": result.chunks_reembedded,
-                "chunks_from_cache": result.chunks_from_cache,
-                "cache_hit_rate": result.cache_hit_rate,
-                "new_commit": result.new_commit,
-            },
+        raise _AtomicIncrementalRebuildRequired(
+            "in-place vector delta publication is disabled; rebuild one "
+            "complete generation"
         )
 
 

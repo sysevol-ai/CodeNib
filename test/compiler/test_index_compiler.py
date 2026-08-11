@@ -21,6 +21,11 @@ import pytest
 
 from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
 import codenib.compiler.index_compiler as index_compiler_module
+from codenib._atomic_directory import (
+    capture_directory_ownership,
+    directory_ownership_digest,
+    directory_ownership_root_identity,
+)
 from codenib.compiler.index_builders import (
     BM25IndexBuilder,
     IndexBuilderRegistry,
@@ -46,6 +51,10 @@ from codenib.index.embedding.artifact_integrity import VECTOR_VIEW_UPDATE_MARKER
 from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
 from codenib.index.incremental import IncrementalState
 from codenib.ls_router import GraphBuildResult
+from codenib.native_index_authorization import (
+    InvalidNativeIndexAuthorizationError,
+    _mint_trusted_local_admin_authorization,
+)
 from codenib.repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     default_exclude_patterns,
@@ -215,13 +224,42 @@ class TestBM25IndexBuilder:
 # ---------------------------------------------------------------------------
 
 
+def _write_mock_vector_generation(root: Path, model_suffix: str) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / f"config_{model_suffix}.json").write_text(
+        '{"level_artifacts": {}}',
+        encoding="utf-8",
+    )
+    level = root / "l2"
+    level.mkdir()
+    (level / f"config_{model_suffix}.json").write_text("{}", encoding="utf-8")
+    (level / f"index_{model_suffix}.faiss").write_bytes(b"new-vector")
+    (level / f"documents_{model_suffix}.pkl").write_bytes(b"new-documents")
+
+
+def _tree_file_bytes(root: Path) -> dict[str, bytes]:
+    if not root.exists():
+        return {}
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
 class TestVectorIndexBuilder:
     @patch("codenib.index.embedding.builders.build_hierarchical_vector_store")
     def test_build_returns_status_with_stats(self, mock_build_fn, tmp_path):
         mock_vs = MagicMock()
         mock_vs.l0_documents = ["d1", "d2"]
         mock_vs.l2_documents = ["d3", "d4", "d5"]
-        mock_build_fn.return_value = mock_vs
+
+        def build_vector(**kwargs):
+            build_path = Path(kwargs["index_path"])
+            _write_mock_vector_generation(build_path, "test-model")
+            return mock_vs
+
+        mock_build_fn.side_effect = build_vector
 
         builder = VectorIndexBuilder(
             languages=["python"],
@@ -256,7 +294,319 @@ class TestVectorIndexBuilder:
         mock_build_fn.assert_called_once()
         assert mock_build_fn.call_args.kwargs["force_rebuild"] is True
         assert mock_build_fn.call_args.kwargs["strict_chunking"] is True
+        assert mock_build_fn.call_args.kwargs["_atomic_publish"] is False
         assert not (output_path / VECTOR_VIEW_UPDATE_MARKER).exists()
+
+    def test_build_publishes_one_complete_generation_without_stale_state(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        output_path = tmp_path / "vector"
+        output_path.mkdir()
+        (output_path / "config_test-model.json").write_bytes(b"old-config")
+        (output_path / "incremental_state.json").write_bytes(b"old-state")
+        (output_path / "chunk_store.json").write_bytes(b"old-chunks")
+        (output_path / VECTOR_VIEW_UPDATE_MARKER).write_bytes(b"stale-marker")
+        (output_path / "stale-owned-file").write_bytes(b"stale")
+
+        document = SimpleNamespace(
+            page_content="def fresh():\n    return 1\n",
+            metadata={
+                "file": "fresh.py",
+                "start_line": 0,
+                "end_line": 1,
+                "chunk_type": "function",
+                "name": "fresh",
+                "node_id": "fresh.py::fresh",
+            },
+        )
+        vector_store = MagicMock(
+            dimension=384,
+            l0_documents=[],
+            l2_documents=[document],
+        )
+        vector_store.get_embeddings_by_content_hash.return_value = {
+            "fresh-hash": [0.1, 0.2]
+        }
+        calls = []
+
+        def build_vector(**kwargs):
+            calls.append(kwargs)
+            build_path = Path(kwargs["index_path"])
+            assert (build_path / VECTOR_VIEW_UPDATE_MARKER).is_file()
+            _write_mock_vector_generation(build_path, "test-model")
+            return vector_store
+
+        monkeypatch.setattr(
+            "codenib.index.embedding.builders.build_hierarchical_vector_store",
+            build_vector,
+        )
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+
+        status = builder.build(
+            scope="current_repo",
+            repo_path=str(tmp_path),
+            output_dir=str(output_path),
+        )
+
+        files = _tree_file_bytes(output_path)
+        assert set(files) == {
+            "chunk_store.json",
+            "chunk_store.pkl",
+            "config_test-model.json",
+            "embeddings_cache.json",
+            "embeddings_cache.npz",
+            "embeddings_cache.pkl",
+            "incremental_state.json",
+            "l2/config_test-model.json",
+            "l2/documents_test-model.pkl",
+            "l2/index_test-model.faiss",
+        }
+        assert files["config_test-model.json"] != b"old-config"
+        assert VECTOR_VIEW_UPDATE_MARKER not in files
+        state = IncrementalState.load(output_path)
+        assert state is not None
+        assert state.index_path == str(output_path.resolve())
+        assert status.path == str(output_path)
+        assert calls[0]["_atomic_publish"] is False
+
+    @pytest.mark.parametrize("replacement", ["directory", "symlink"])
+    def test_build_private_root_replacement_cannot_publish_or_write_outside(
+        self,
+        replacement,
+        monkeypatch,
+        tmp_path,
+    ):
+        output_path = tmp_path / "vector"
+        _write_mock_vector_generation(output_path, "test-model")
+        (output_path / "incremental_state.json").write_bytes(b"old-state")
+        before_files = _tree_file_bytes(output_path)
+        before_ownership = capture_directory_ownership(output_path)
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        victim = outside / "victim.bin"
+        victim.write_bytes(b"outside-original")
+        vector_store = MagicMock(
+            dimension=384,
+            l0_documents=[],
+            l2_documents=[],
+        )
+
+        def replace_build_root(**kwargs):
+            anchored_root = Path(kwargs["index_path"])
+            named_root = anchored_root.resolve(strict=True)
+            moved_root = named_root.with_name(f"{named_root.name}.moved")
+            named_root.rename(moved_root)
+            if replacement == "directory":
+                named_root.mkdir()
+                (named_root / "attacker-tree").write_bytes(b"attacker")
+            else:
+                named_root.symlink_to(outside, target_is_directory=True)
+            (anchored_root / "victim.bin").write_bytes(b"private-only")
+            _write_mock_vector_generation(anchored_root, "test-model")
+            return vector_store
+
+        monkeypatch.setattr(
+            "codenib.index.embedding.builders.build_hierarchical_vector_store",
+            replace_build_root,
+        )
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+
+        with pytest.raises(RuntimeError, match="private build root changed"):
+            builder.build(
+                scope="current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(output_path),
+            )
+
+        assert _tree_file_bytes(output_path) == before_files
+        after_ownership = capture_directory_ownership(output_path)
+        assert directory_ownership_root_identity(after_ownership) == (
+            directory_ownership_root_identity(before_ownership)
+        )
+        assert directory_ownership_digest(after_ownership) == (
+            directory_ownership_digest(before_ownership)
+        )
+        assert victim.read_bytes() == b"outside-original"
+
+    @pytest.mark.parametrize(
+        "phase",
+        [
+            "marker_begin",
+            "vector_save",
+            "after_vector",
+            "seed",
+            "save",
+            "state_save",
+            "marker_finish",
+            "before_publish",
+            "after_publish_rename",
+        ],
+    )
+    @pytest.mark.parametrize(
+        "exception_type",
+        [KeyboardInterrupt, SystemExit, GeneratorExit],
+    )
+    def test_incremental_rebuild_base_exception_restores_previous_generation(
+        self,
+        phase,
+        exception_type,
+        monkeypatch,
+        tmp_path,
+    ):
+        import codenib._atomic_directory as atomic_directory
+        from codenib._captured_directory import OwnedDirectoryStage
+        from codenib.index.incremental import (
+            EmbeddingsCache,
+            IncrementalChunkStore,
+        )
+        from codenib.index.incremental import IncrementalState as StateType
+
+        output_path = tmp_path / "vector"
+        _write_mock_vector_generation(output_path, "test-model")
+        (output_path / "chunk_store.json").write_bytes(b"old-chunks")
+        (output_path / "embeddings_cache.json").write_bytes(b"old-cache")
+        (output_path / "embeddings_cache.npz").write_bytes(b"old-vectors")
+        IncrementalState(
+            last_commit="a" * 40,
+            chunk_store_path="chunk_store.pkl",
+            embeddings_cache_path="embeddings_cache.pkl",
+            index_path=str(output_path.resolve()),
+            build_levels=["l0", "l2"],
+        ).save(output_path)
+
+        document = SimpleNamespace(
+            page_content="def replacement():\n    return 2\n",
+            metadata={
+                "file": "replacement.py",
+                "start_line": 0,
+                "end_line": 1,
+                "chunk_type": "function",
+                "name": "replacement",
+                "node_id": "replacement.py::replacement",
+            },
+        )
+        vector_store = MagicMock(
+            dimension=384,
+            l0_documents=[],
+            l2_documents=[document],
+        )
+        vector_store.get_embeddings_by_content_hash.return_value = {
+            "replacement-hash": [0.3, 0.4]
+        }
+
+        def interrupt(*_args, **_kwargs):
+            raise exception_type(f"interrupt during {phase}")
+
+        def build_vector(**kwargs):
+            _write_mock_vector_generation(Path(kwargs["index_path"]), "test-model")
+            if phase == "vector_save":
+                interrupt()
+            return vector_store
+
+        monkeypatch.setattr(
+            "codenib.index.embedding.builders.build_hierarchical_vector_store",
+            build_vector,
+        )
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        previous_artifact = builder.artifact_identity()
+        before_files = _tree_file_bytes(output_path)
+        before_ownership = capture_directory_ownership(output_path)
+        authorization = _mint_trusted_local_admin_authorization(
+            before_ownership,
+            view_type="vector",
+            semantic_contract=previous_artifact,
+            evidence=("verified-incremental-rollback-test",),
+        )
+
+        if phase == "marker_begin":
+            monkeypatch.setattr(
+                "codenib.index.embedding.artifact_integrity."
+                "begin_vector_view_update",
+                interrupt,
+            )
+        elif phase == "after_vector":
+            monkeypatch.setattr(builder, "_validate_vector_dimension", interrupt)
+        elif phase == "seed":
+            monkeypatch.setattr(
+                IncrementalChunkStore,
+                "from_chunks",
+                classmethod(interrupt),
+            )
+        elif phase == "save":
+            monkeypatch.setattr(EmbeddingsCache, "save", interrupt)
+        elif phase == "state_save":
+            monkeypatch.setattr(StateType, "save", interrupt)
+        elif phase == "marker_finish":
+            monkeypatch.setattr(
+                "codenib.index.embedding.artifact_integrity."
+                "finish_vector_view_update",
+                interrupt,
+            )
+        elif phase == "before_publish":
+            real_publish = OwnedDirectoryStage.publish
+
+            def interrupt_final_publish(stage, *args, **kwargs):
+                if stage.destination == output_path.absolute():
+                    return interrupt()
+                return real_publish(stage, *args, **kwargs)
+
+            monkeypatch.setattr(
+                OwnedDirectoryStage,
+                "publish",
+                interrupt_final_publish,
+            )
+        elif phase == "after_publish_rename":
+            real_rename = atomic_directory._rename_noreplace_at
+            interrupted = False
+
+            def interrupt_after_rename(source, destination, source_fd, dest_fd):
+                nonlocal interrupted
+                real_rename(source, destination, source_fd, dest_fd)
+                if (
+                    source.startswith(".vector.normalize-")
+                    and destination == "vector"
+                    and not interrupted
+                ):
+                    interrupted = True
+                    interrupt()
+
+            monkeypatch.setattr(
+                atomic_directory,
+                "_rename_noreplace_at",
+                interrupt_after_rename,
+            )
+
+        with pytest.raises(exception_type, match=phase):
+            builder.incremental_update(
+                scope="current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(output_path),
+                last_commit="a" * 40,
+                previous_artifact_config=previous_artifact,
+                native_index_authorization=authorization,
+            )
+
+        assert _tree_file_bytes(output_path) == before_files
+        after_ownership = capture_directory_ownership(output_path)
+        assert directory_ownership_root_identity(after_ownership) == (
+            directory_ownership_root_identity(before_ownership)
+        )
+        assert directory_ownership_digest(after_ownership) == (
+            directory_ownership_digest(before_ownership)
+        )
+        assert not list(tmp_path.glob(".vector.generation-build-*"))
 
     def test_incremental_failure_falls_back_to_full_build(self, tmp_path):
         builder = VectorIndexBuilder(
@@ -297,6 +647,161 @@ class TestVectorIndexBuilder:
         assert result.metadata["update_mode"] == "full_rebuild"
         assert result.metadata["incremental_fallback_reason"] == "ValueError"
 
+    def test_explicit_invalid_native_authority_propagates(self, tmp_path):
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+
+        with patch.object(builder, "build") as mock_build:
+            with pytest.raises(
+                InvalidNativeIndexAuthorizationError,
+                match="malformed",
+            ):
+                builder.incremental_update(
+                    scope="current_repo",
+                    repo_path=str(tmp_path),
+                    output_dir=str(tmp_path / "vector"),
+                    last_commit="a" * 40,
+                    native_index_authorization=object(),
+                )
+
+        mock_build.assert_not_called()
+
+    def test_invalid_native_authority_error_is_propagated_unchanged(self, tmp_path):
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        authorization_error = InvalidNativeIndexAuthorizationError(
+            "authorization does not match captured bytes"
+        )
+
+        with (
+            patch.object(
+                builder,
+                "_incremental_update_once",
+                side_effect=authorization_error,
+            ),
+            patch.object(builder, "build") as mock_build,
+        ):
+            with pytest.raises(InvalidNativeIndexAuthorizationError) as raised:
+                builder.incremental_update(
+                    scope="current_repo",
+                    repo_path=str(tmp_path),
+                    output_dir=str(tmp_path / "vector"),
+                    last_commit="a" * 40,
+                    native_index_authorization=object(),
+                )
+
+        assert raised.value is authorization_error
+        mock_build.assert_not_called()
+
+    def test_valid_native_authority_is_passed_to_incremental_path(self, tmp_path):
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        authorization_root = tmp_path / "authorized-vector"
+        authorization_root.mkdir()
+        (authorization_root / "index.faiss").write_bytes(b"native")
+        authorization = _mint_trusted_local_admin_authorization(
+            capture_directory_ownership(authorization_root),
+            view_type="vector",
+            semantic_contract=builder.artifact_identity(),
+            evidence=("verified-test-boundary",),
+        )
+        updated = IndexStatus(
+            index_type="vector",
+            state=IndexState.FRESH,
+            path=str(tmp_path / "vector"),
+            metadata={"update_mode": "incremental"},
+        )
+
+        with patch.object(
+            builder,
+            "_incremental_update_once",
+            return_value=updated,
+        ) as incremental:
+            result = builder.incremental_update(
+                scope="current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(tmp_path / "vector"),
+                last_commit="a" * 40,
+                native_index_authorization=authorization,
+            )
+
+        assert result is updated
+        assert incremental.call_args.kwargs["native_index_authorization"] is (
+            authorization
+        )
+
+    @pytest.mark.parametrize("mismatch", ["tree", "semantic"])
+    def test_exact_native_authority_rejects_before_model_initialization(
+        self,
+        tmp_path,
+        mismatch,
+    ):
+        output_path = tmp_path / "vector"
+        IncrementalState(
+            last_commit="a" * 40,
+            chunk_store_path="chunk_store.pkl",
+            embeddings_cache_path="embeddings_cache.pkl",
+            index_path=str(output_path.resolve()),
+            build_levels=["l0", "l2"],
+        ).save(output_path)
+        (output_path / "chunk_store.json").write_text("{}", encoding="utf-8")
+        (output_path / "embeddings_cache.json").write_text("[]", encoding="utf-8")
+        (output_path / "embeddings_cache.npz").write_bytes(b"placeholder")
+
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        expected_semantic = builder.artifact_identity()
+        authorization_root = output_path
+        authorization_semantic = expected_semantic
+        if mismatch == "tree":
+            authorization_root = tmp_path / "other-vector"
+            authorization_root.mkdir()
+            (authorization_root / "config_test-model.json").write_text(
+                "{}",
+                encoding="utf-8",
+            )
+        else:
+            authorization_semantic = {"embedding_dimension": 1024}
+        authorization = _mint_trusted_local_admin_authorization(
+            capture_directory_ownership(authorization_root),
+            view_type="vector",
+            semantic_contract=authorization_semantic,
+            evidence=(f"wrong-{mismatch}-test",),
+        )
+
+        with (
+            patch(
+                "codenib.index.embedding.vector_store.CodeVectorStore",
+                side_effect=AssertionError(
+                    "exact authorization must fail before model initialization"
+                ),
+            ) as store_type,
+            patch.object(builder, "build") as full_build,
+        ):
+            with pytest.raises(
+                InvalidNativeIndexAuthorizationError,
+                match="does not match captured bytes",
+            ):
+                builder.incremental_update(
+                    scope="current_repo",
+                    repo_path=str(tmp_path),
+                    output_dir=str(output_path),
+                    last_commit="a" * 40,
+                    previous_artifact_config=expected_semantic,
+                    native_index_authorization=authorization,
+                )
+
+        store_type.assert_not_called()
+        full_build.assert_not_called()
+
     def test_missing_native_authority_rebuilds_before_model_initialization(
         self,
         tmp_path,
@@ -331,7 +836,9 @@ class TestVectorIndexBuilder:
         store_type.assert_not_called()
         mock_build.assert_called_once()
         assert result.metadata["update_mode"] == "full_rebuild"
-        assert result.metadata["incremental_fallback_reason"] == "ValueError"
+        assert result.metadata["incremental_fallback_reason"] == (
+            "MissingNativeIndexAuthorizationError"
+        )
 
     def test_missing_incremental_state_attempts_one_rebuild(self, tmp_path):
         builder = VectorIndexBuilder(
@@ -402,7 +909,10 @@ class TestVectorIndexBuilder:
         mock_build.assert_called_once()
         assert result.metadata["update_mode"] == "full_rebuild"
 
-    def test_incremental_load_uses_previous_manifest_generation(self, tmp_path):
+    def test_authorized_incremental_generation_rebuilds_before_model_init(
+        self,
+        tmp_path,
+    ):
         output_path = tmp_path / "vector"
         IncrementalState(
             last_commit="a" * 40,
@@ -426,36 +936,52 @@ class TestVectorIndexBuilder:
                 "sha256": "0" * 64,
             },
         }
-        vector_store = MagicMock(dimension=384)
-        vector_store.load.side_effect = RuntimeError("stop after generation check")
-        authorization = object()
+        authorization = _mint_trusted_local_admin_authorization(
+            capture_directory_ownership(output_path),
+            view_type="vector",
+            semantic_contract=previous,
+            evidence=("verified-previous-generation",),
+        )
+        rebuilt = IndexStatus(
+            index_type="vector",
+            state=IndexState.FRESH,
+            path=str(output_path),
+            metadata={},
+        )
+        before = _tree_file_bytes(output_path)
 
         with (
             patch(
-                "codenib.native_index_authorization.require_native_index_authorization_preflight",
-                return_value=None,
-            ),
-            patch(
                 "codenib.index.embedding.vector_store.CodeVectorStore",
-                return_value=vector_store,
+                side_effect=AssertionError(
+                    "disabled in-place update must not initialize a model"
+                ),
             ) as store_type,
+            patch.object(builder, "build", return_value=rebuilt) as full_build,
         ):
-            with pytest.raises(RuntimeError, match="generation check"):
-                builder._incremental_update_once(
-                    scope="current_repo",
-                    repo_path=str(tmp_path),
-                    output_dir=str(output_path),
-                    last_commit="a" * 40,
-                    previous_artifact_config=previous,
-                    native_index_authorization=authorization,
-                )
+            result = builder.incremental_update(
+                scope="current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(output_path),
+                last_commit="a" * 40,
+                previous_artifact_config=previous,
+                native_index_authorization=authorization,
+            )
 
-        assert store_type.call_args.kwargs["artifact_metadata"] == previous
-        vector_store.close.assert_called_once_with()
-        vector_store.load.assert_called_once_with(
-            str(output_path),
+        store_type.assert_not_called()
+        full_build.assert_called_once_with(
+            "current_repo",
+            repo_path=str(tmp_path),
+            output_dir=str(output_path),
             native_index_authorization=authorization,
         )
+        assert result is rebuilt
+        assert result.metadata["update_mode"] == "full_rebuild"
+        assert result.metadata["incremental_fallback_reason"] == (
+            "_AtomicIncrementalRebuildRequired"
+        )
+        assert _tree_file_bytes(output_path) == before
+        assert not (output_path / VECTOR_VIEW_UPDATE_MARKER).exists()
 
     @pytest.mark.parametrize("missing", ["chunk_json", "embedding_pair"])
     def test_pickle_only_incremental_state_forces_rebuild(self, tmp_path, missing):
@@ -580,12 +1106,21 @@ class TestVectorIndexBuilder:
                 repo_path="/fake/repo",
                 output_dir=str(output_path),
             )
-        assert (output_path / VECTOR_VIEW_UPDATE_MARKER).is_file()
+        assert not output_path.exists()
 
     @patch("codenib.index.embedding.builders.build_hierarchical_vector_store")
     def test_remote_runtime_secret_is_not_persisted(self, mock_build_fn, tmp_path):
         mock_vs = MagicMock(l0_documents=[], l2_documents=["doc"])
-        mock_build_fn.return_value = mock_vs
+
+        def build_vector(**kwargs):
+            build_path = Path(kwargs["index_path"])
+            _write_mock_vector_generation(
+                build_path,
+                "text-embedding-3-small",
+            )
+            return mock_vs
+
+        mock_build_fn.side_effect = build_vector
         output_path = tmp_path / "vector"
         output_path.mkdir()
         (output_path / "config_text-embedding-3-small.json").write_text(
