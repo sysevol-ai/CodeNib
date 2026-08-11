@@ -343,6 +343,7 @@ def test_strict_bm25_high_level_freezes_caller_mappings_once(
         )
         assert config.iterations == 1
         assert environment.iterations == 1
+        assert provider.support_count == 1
         assert output_owner.active
     finally:
         output_owner.close()
