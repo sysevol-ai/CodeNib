@@ -13,6 +13,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -24,6 +25,11 @@ namespace {
 bool debug_logging_enabled() {
   static const bool enabled = std::getenv("CODENIB_SCIP_DEBUG") != nullptr;
   return enabled;
+}
+
+bool profile_logging_enabled() {
+  const char *value = std::getenv("CODENIB_CORE_PROFILE");
+  return value != nullptr && std::string_view(value) == "1";
 }
 
 void log_debug(const std::string &message) {
@@ -176,9 +182,8 @@ SCIPDecoderBase::SCIPDecoderBase(std::string index_file_path,
       project_root_(std::move(project_root)),
       code_graph_(project_root_ ? *project_root_ : std::string{}) {}
 
-CodeGraph SCIPDecoderBase::decode() {
-  using clock = std::chrono::high_resolution_clock;
-  using ms = std::chrono::milliseconds;
+SCIPDecodedRecords SCIPDecoderBase::decode_records_impl() {
+  using clock = std::chrono::steady_clock;
   auto t0 = clock::now();
 
   load_metadata();
@@ -225,29 +230,77 @@ CodeGraph SCIPDecoderBase::decode() {
   }
   auto t_procs = clock::now();
 
-  code_graph_.add_root_node(ROOT_NODE);
-  merge_subgraphs(subgraphs);
-  postprocess();
+  SCIPDecodedRecords records = merge_subgraphs(subgraphs);
+  postprocess_records(records);
   auto t_merge = clock::now();
 
-  auto as_ms = [](auto a, auto b) {
-    return std::chrono::duration_cast<ms>(b - a).count();
+  auto as_ns = [](auto a, auto b) {
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count());
   };
-  std::cout << "\n=== C++ decode profile ===\n"
-            << "load_metadata:   " << as_ms(t0, t_meta) << " ms\n"
-            << "file_read:       " << as_ms(t_meta, t_read) << " ms\n"
-            << "extract_blocks:  " << as_ms(t_read, t_extract) << " ms\n"
-            << "prescan:         " << as_ms(t_extract, t_prescan) << " ms\n"
-            << "process_docs:    " << as_ms(t_prescan, t_procs)
-            << " ms  (threads=" << max_threads << ", docs=" << num_blocks
-            << ")\n"
-            << "merge_subgraphs: " << as_ms(t_procs, t_merge) << " ms\n"
-            << "total_wall:      " << as_ms(t0, t_merge) << " ms\n"
-            << "==========================\n";
+  last_profile_ = SCIPDecodeProfile{};
+  last_profile_.load_metadata_ns = as_ns(t0, t_meta);
+  last_profile_.file_read_ns = as_ns(t_meta, t_read);
+  last_profile_.extract_blocks_ns = as_ns(t_read, t_extract);
+  last_profile_.prescan_ns = as_ns(t_extract, t_prescan);
+  last_profile_.process_documents_ns = as_ns(t_prescan, t_procs);
+  last_profile_.merge_subgraphs_ns = as_ns(t_procs, t_merge);
+  last_profile_.total_ns = as_ns(t0, t_merge);
+  last_profile_.worker_count = max_threads;
+  last_profile_.document_count = num_blocks;
+  return records;
+}
+
+SCIPDecodedRecords SCIPDecoderBase::decode_records() {
+  SCIPDecodedRecords records = decode_records_impl();
+  log_profile();
+  return records;
+}
+
+CodeGraph SCIPDecoderBase::decode() {
+  using clock = std::chrono::steady_clock;
+  SCIPDecodedRecords records = decode_records_impl();
+  const auto materialize_started = clock::now();
+  code_graph_.batch_upsert_nodes(records.vertices);
+  code_graph_.batch_add_indexed_edges(records.edges);
+  const auto materialize_finished = clock::now();
+  const auto materialize_ns = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          materialize_finished - materialize_started)
+          .count());
+  last_profile_.materialize_graph_ns = materialize_ns;
+  last_profile_.total_ns += materialize_ns;
+  log_profile();
   return std::move(code_graph_);
 }
 
-void SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) {
+void SCIPDecoderBase::log_profile() const {
+  if (profile_logging_enabled()) {
+    auto ms = [](std::uint64_t ns) {
+      return static_cast<double>(ns) / 1'000'000.0;
+    };
+    std::cout << "\n=== C++ decode profile ===\n"
+              << "load_metadata:   " << ms(last_profile_.load_metadata_ns)
+              << " ms\n"
+              << "file_read:       " << ms(last_profile_.file_read_ns)
+              << " ms\n"
+              << "extract_blocks:  " << ms(last_profile_.extract_blocks_ns)
+              << " ms\n"
+              << "prescan:         " << ms(last_profile_.prescan_ns) << " ms\n"
+              << "process_docs:    " << ms(last_profile_.process_documents_ns)
+              << " ms  (threads=" << last_profile_.worker_count
+              << ", docs=" << last_profile_.document_count << ")\n"
+              << "merge_subgraphs: " << ms(last_profile_.merge_subgraphs_ns)
+              << " ms\n"
+              << "materialize_graph: " << ms(last_profile_.materialize_graph_ns)
+              << " ms\n"
+              << "total_wall:      " << ms(last_profile_.total_ns) << " ms\n"
+              << "==========================\n";
+  }
+}
+
+SCIPDecodedRecords
+SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) const {
   // Reproduce serial semantics:
   //   - First occurrence of a name takes its attrs (including unified_name).
   //   - Later DEFINITION overwrites all attrs (matches serial
@@ -257,9 +310,7 @@ void SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) {
   //   - Later REFERENCE leaves existing attrs alone (matches serial
   //     add_symbol_reference's "only create if missing").
   std::unordered_map<std::string, Subgraph::Node> merged_nodes;
-  std::vector<std::tuple<std::string, std::string, std::string,
-                         std::optional<std::string>, std::optional<int>>>
-      all_edges;
+  std::vector<Subgraph::Edge> all_edges;
 
   std::size_t estimated = 0;
   for (const auto &sg : subgraphs)
@@ -310,19 +361,96 @@ void SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) {
       // else: subsequent ref on existing node — leave attrs alone.
     }
     for (const auto &e : sg.edges) {
-      all_edges.emplace_back(e.source, e.target, e.type, e.anchor_file,
-                             e.anchor_line);
+      all_edges.push_back(e);
     }
   }
 
-  std::vector<CodeGraph::VertexData> flat_nodes;
-  flat_nodes.reserve(merged_nodes.size());
+  SCIPDecodedRecords records;
+  records.project_root = project_root_.value_or(std::string{});
+  records.vertices.reserve(merged_nodes.size() + 1);
+  CodeGraph::VertexData root;
+  root.name = ROOT_NODE;
+  root.type = "root";
+  records.vertices.push_back(std::move(root));
   for (auto &[name, node] : merged_nodes) {
-    flat_nodes.emplace_back(std::move(node.data));
+    if (name != ROOT_NODE)
+      records.vertices.emplace_back(std::move(node.data));
   }
 
-  code_graph_.batch_upsert_nodes(flat_nodes);
-  code_graph_.batch_add_edges(all_edges);
+  std::unordered_map<std::string, CodeGraph::VertexId> vertex_ids;
+  vertex_ids.reserve(records.vertices.size());
+  for (std::size_t index = 0; index < records.vertices.size(); ++index) {
+    vertex_ids.emplace(records.vertices[index].name,
+                       static_cast<CodeGraph::VertexId>(index));
+  }
+
+  struct StructuralKey {
+    CodeGraph::VertexId source;
+    CodeGraph::VertexId target;
+    bool operator==(const StructuralKey &other) const {
+      return source == other.source && target == other.target;
+    }
+  };
+  struct StructuralHash {
+    std::size_t operator()(const StructuralKey &key) const {
+      return std::hash<CodeGraph::VertexId>{}(key.source) ^
+             (std::hash<CodeGraph::VertexId>{}(key.target) << 1U);
+    }
+  };
+  struct AnchoredKey {
+    CodeGraph::VertexId source;
+    CodeGraph::VertexId target;
+    std::string type;
+    std::optional<std::string> anchor_file;
+    std::optional<int> anchor_line;
+    bool operator==(const AnchoredKey &other) const {
+      return source == other.source && target == other.target &&
+             type == other.type && anchor_file == other.anchor_file &&
+             anchor_line == other.anchor_line;
+    }
+  };
+  struct AnchoredHash {
+    std::size_t operator()(const AnchoredKey &key) const {
+      std::size_t hash = std::hash<CodeGraph::VertexId>{}(key.source);
+      hash ^= std::hash<CodeGraph::VertexId>{}(key.target) << 1U;
+      hash ^= std::hash<std::string>{}(key.type) << 2U;
+      if (key.anchor_file.has_value())
+        hash ^= std::hash<std::string>{}(*key.anchor_file) << 3U;
+      if (key.anchor_line.has_value())
+        hash ^= std::hash<int>{}(*key.anchor_line) << 4U;
+      return hash;
+    }
+  };
+
+  std::unordered_set<StructuralKey, StructuralHash> structural_edges;
+  std::unordered_set<AnchoredKey, AnchoredHash> anchored_edges;
+  structural_edges.reserve(all_edges.size());
+  anchored_edges.reserve(all_edges.size());
+  records.edges.reserve(all_edges.size());
+  for (const auto &edge : all_edges) {
+    const auto source = vertex_ids.find(edge.source);
+    const auto target = vertex_ids.find(edge.target);
+    if (source == vertex_ids.end() || target == vertex_ids.end())
+      continue;
+    const bool structural =
+        !edge.anchor_file.has_value() && !edge.anchor_line.has_value();
+    if (structural) {
+      if (!structural_edges
+               .insert(StructuralKey{source->second, target->second})
+               .second)
+        continue;
+    } else if (!anchored_edges
+                    .insert(AnchoredKey{source->second, target->second,
+                                        edge.type, edge.anchor_file,
+                                        edge.anchor_line})
+                    .second) {
+      continue;
+    }
+    records.edges.push_back(CodeGraph::EdgeData{source->second, target->second,
+                                                edge.type, edge.anchor_file,
+                                                edge.anchor_line});
+  }
+  return records;
 }
 
 } // namespace codenib::core

@@ -14,6 +14,7 @@ core decoder continue to use the serial Python path.
 ## Components
 
 - `code_graph.{h,cpp}` — C++ graph container.
+- `decoded_records.h` — provider-neutral rows before graph materialization.
 - `graph_layers.{h,cpp}` — shared normalized edge-layer classification.
 - `scip_decode_base.{h,cpp}` — common loading, document scheduling, merge, and
   post-processing behavior.
@@ -54,6 +55,14 @@ the Python `igraph` wheel.
 
 Some parity tests use generated SCIP integration fixtures and are skipped when
 those caches are absent. Always inspect the skip report from `make core-test`.
+
+## Pre-Graph Decode Boundary
+
+`SCIPDecoderBase` first produces `DecodedRecords`. The established `decode()`
+path materializes those rows into the same `CodeGraph`; `decode_records()` lets
+future capability-specific consumers stop before igraph. The record merge owns
+the established first-definition and edge-deduplication policy, and
+language-specific postprocessing runs before either consumer observes rows.
 
 ## Use Through Python
 

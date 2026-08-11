@@ -16,7 +16,7 @@ public:
 
 protected:
   Subgraph process_document(const std::string &document_block) const override;
-  void postprocess() override;
+  void postprocess_records(SCIPDecodedRecords &records) override;
 
 private:
   void process_occurrence(const std::string &occurrence_block,

@@ -584,6 +584,41 @@ void CodeGraph::batch_add_edges(
   igraph_vector_int_destroy(&edge_vector);
 }
 
+void CodeGraph::batch_add_indexed_edges(const std::vector<EdgeData> &edges) {
+  if (edges.empty()) {
+    return;
+  }
+
+  const auto vertex_count = igraph_vcount(&graph_);
+  igraph_vector_int_t edge_vector;
+  if (igraph_vector_int_init(&edge_vector,
+                             static_cast<igraph_integer_t>(edges.size() * 2)) !=
+      IGRAPH_SUCCESS) {
+    throw std::runtime_error("Failed to allocate indexed edge vector");
+  }
+
+  for (std::size_t index = 0; index < edges.size(); ++index) {
+    const auto &edge = edges[index];
+    if (edge.source < 0 || edge.target < 0 || edge.source >= vertex_count ||
+        edge.target >= vertex_count) {
+      igraph_vector_int_destroy(&edge_vector);
+      throw std::out_of_range("Indexed edge endpoint is outside vertex table");
+    }
+    VECTOR(edge_vector)[index * 2] = edge.source;
+    VECTOR(edge_vector)[index * 2 + 1] = edge.target;
+  }
+
+  const auto previous_count = static_cast<std::size_t>(igraph_ecount(&graph_));
+  if (igraph_add_edges(&graph_, &edge_vector, nullptr) != IGRAPH_SUCCESS) {
+    igraph_vector_int_destroy(&edge_vector);
+    throw std::runtime_error("Failed to batch add indexed edges");
+  }
+  igraph_vector_int_destroy(&edge_vector);
+
+  edges_.resize(previous_count + edges.size());
+  std::copy(edges.begin(), edges.end(), edges_.begin() + previous_count);
+}
+
 std::optional<CodeGraph::VertexData>
 CodeGraph::get_node_info_by_name(const std::string &node_name) const {
   auto it = name_to_vertex_.find(node_name);

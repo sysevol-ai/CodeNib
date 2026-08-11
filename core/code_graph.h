@@ -128,6 +128,11 @@ public:
           std::tuple<std::string, std::string, std::string,
                      std::optional<std::string>, std::optional<int>>> &edges);
 
+  // Append an already validated and deduplicated indexed edge table. This is
+  // the fast materialization path for DecodedRecords: vertex ids must
+  // refer to the current vertex table and rows must already be in final order.
+  void batch_add_indexed_edges(const std::vector<EdgeData> &edges);
+
   std::optional<VertexData>
   get_node_info_by_name(const std::string &node_name) const;
   std::optional<VertexData> get_node_info_by_id(VertexId vertex_id) const;

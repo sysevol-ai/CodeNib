@@ -180,8 +180,27 @@ int main(int argc, char **argv) {
   write_python_source(temp_project.path());
   const auto index_path = write_test_index(temp_project.path());
 
+  SCIPGraphDecoder records_decoder(index_path.string(),
+                                   temp_project.path().string());
+  const auto records = records_decoder.decode_records();
+  assert(records_decoder.last_profile().materialize_graph_ns == 0);
+  assert(!records.vertices.empty());
+  assert(records.vertices.front().name == ROOT_NODE);
+  assert(!records.edges.empty());
+
   SCIPGraphDecoder decoder(index_path.string(), temp_project.path().string());
   CodeGraph graph = decoder.decode();
+  assert(records.vertices.size() == graph.vertices().size());
+  assert(records.edges.size() == graph.edges().size());
+
+  CodeGraph invalid_graph;
+  invalid_graph.batch_upsert_nodes({records.vertices.front()});
+  try {
+    invalid_graph.batch_add_indexed_edges(
+        {{0, 1, "contain", std::nullopt, std::nullopt}});
+    assert(false && "out-of-range indexed edges must throw");
+  } catch (const std::out_of_range &) {
+  }
 
   const auto root_info = graph.get_node_info_by_name(ROOT_NODE);
   assert(root_info.has_value());

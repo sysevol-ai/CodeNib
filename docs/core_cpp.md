@@ -77,6 +77,15 @@ are primarily integration surfaces; application code should normally use
 `LSIndexer` so filtering, occurrence indexes, range indexes, and persistence
 remain consistent with the serial path.
 
+## Pre-Graph Decode Boundary
+
+The C++ decoder now merges each SCIP index into provider-neutral
+`DecodedRecords` before constructing igraph. The normal `decode()` API then
+materializes the same graph, so persisted schema and public graph behavior do
+not change. `decode_records()` is the reusable boundary for later consumers:
+it owns deterministic vertex order, indexed edges, project identity, and
+language-specific postprocessing without constructing a `CodeGraph`.
+
 ## Verify
 
 ```bash
@@ -92,6 +101,7 @@ skip report.
 ## Components
 
 - `code_graph.{h,cpp}` implements the C++ graph container.
+- `decoded_records.h` defines the provider-neutral pre-graph boundary.
 - `graph_layers.{h,cpp}` classifies normalized edge types into reusable graph
   layers.
 - `scip_decode_base.{h,cpp}` and `scip_decode_common.{h,cpp}` provide shared

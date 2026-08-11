@@ -651,6 +651,13 @@ decode/build gate before recommending any new C++ decoder work. This is the
 preferred path for proving that a serial-only active language has outgrown its
 current Python decoder.
 
+Provider-neutral native boundary status ([#559](https://github.com/sysevol-ai/CodeNib/issues/559)):
+the core decodes SCIP into flat `DecodedRecords` before igraph or Python object
+materialization. The established `decode()` path materializes those rows into
+the same graph, while capability-specific consumers can stop at
+`decode_records()`. FactBatch encoding (#560), FactQuery indexing (#561), and
+clangd parsing (#555) remain separate promotion and review decisions.
+
 ### Phase 6: Multi-Graph Python Surface
 
 Mixed-language repositories need a Python-side graph aggregation path before a

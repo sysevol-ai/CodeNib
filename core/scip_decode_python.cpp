@@ -51,12 +51,12 @@ SCIPPythonDecoder::process_document(const std::string &document_block) const {
   return builder.build();
 }
 
-void SCIPPythonDecoder::postprocess() {
+void SCIPPythonDecoder::postprocess_records(SCIPDecodedRecords &records) {
   // Mirror Python _fix_unified_names post-pass:
   //   - file / directory → unified_name = name
   //   - symbol with ':' in name and a file attribute →
   //     unified_name = `{file}:{symbol_part_after_colon}`
-  for (auto &v : code_graph_.mutable_vertices()) {
+  for (auto &v : records.vertices) {
     if (v.type == NODE_TYPE_FILE || v.type == NODE_TYPE_DIRECTORY) {
       v.unified_name = v.name;
       continue;
