@@ -45,8 +45,10 @@ FetchContent_MakeAvailable(igraph)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(RE2 REQUIRED re2)
+find_package(ZLIB REQUIRED)
 
 add_library(codenib_core STATIC
+    clangd_fact_query.cpp
     code_graph.cpp
     fact_batch_buffer.cpp
     fact_query_index.cpp
@@ -74,6 +76,7 @@ target_link_libraries(codenib_core
     PUBLIC
         igraph
         ${RE2_LIBRARIES}
+        ZLIB::ZLIB
 )
 
 add_executable(scip_decode_test

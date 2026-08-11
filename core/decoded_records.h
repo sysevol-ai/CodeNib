@@ -19,6 +19,11 @@ namespace codenib::core {
 struct DecodedRecords {
   std::vector<CodeGraph::VertexData> vertices;
   std::vector<CodeGraph::EdgeData> edges;
+  // Optional permutation used only while building user-facing symbol aliases.
+  // Providers whose legacy lookup groups equal display names can preserve that
+  // ordering without changing vertex ids or reference adjacency semantics.
+  // Empty means natural vertex order.
+  std::vector<CodeGraph::VertexId> query_resolution_order;
   std::string project_root;
 };
 

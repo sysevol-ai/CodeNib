@@ -4,7 +4,7 @@
 
 """Language-server indexers and decoders."""
 
-from .clangd_decode import ClangdGraphDecoder
+from .clangd_decode import ClangdGraphDecoder, ClangdHybridQueryProvider
 from .clangd_indexer import ClangdIndexer
 from .lsp_graph_decode import GenericLSPGraphDecoder
 from .lsp_indexer import GenericLSPIndexer
@@ -12,6 +12,7 @@ from .lsp_indexer import GenericLSPIndexer
 __all__ = [
     "ClangdIndexer",
     "ClangdGraphDecoder",
+    "ClangdHybridQueryProvider",
     "GenericLSPIndexer",
     "GenericLSPGraphDecoder",
 ]

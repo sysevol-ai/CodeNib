@@ -189,7 +189,7 @@ endef
 .PHONY: active-scip-tools active-lsp-tools active-scip-env active-system-deps-ubuntu
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
-.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile
+.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
 .PHONY: scip-jvm-compat-system-deps-ubuntu
@@ -421,7 +421,8 @@ core-test: core-build
 		test/facts/test_model.py \
 		test/facts/test_adapters.py \
 		test/scripts/test_profile_fact_batch_buffer.py \
-		test/scripts/test_profile_fact_query_index.py
+		test/scripts/test_profile_fact_query_index.py \
+		test/ls_index/test_clangd_fact_query.py
 
 fact-buffer-profile: core-build
 	@test -n "$(FACT_BUFFER_PROFILE_INDEX)" || { echo "Set FACT_BUFFER_PROFILE_INDEX=/path/to/index.decoded" >&2; exit 1; }
@@ -442,6 +443,15 @@ fact-query-profile: core-build
 		$(if $(FACT_QUERY_PROFILE_PROJECT_ROOT),--project-root "$(FACT_QUERY_PROFILE_PROJECT_ROOT)",) \
 		$(if $(FACT_QUERY_PROFILE_OUTPUT),--output-json "$(FACT_QUERY_PROFILE_OUTPUT)",) \
 		$(FACT_QUERY_PROFILE_EXTRA_ARGS)
+
+clangd-fact-query-profile: core-build
+	@test -n "$(CLANGD_FACT_QUERY_PROFILE_INDEX_DIR)" || { echo "Set CLANGD_FACT_QUERY_PROFILE_INDEX_DIR=/path/to/.cache/clangd/index" >&2; exit 1; }
+	@test -n "$(CLANGD_FACT_QUERY_PROFILE_PROJECT_ROOT)" || { echo "Set CLANGD_FACT_QUERY_PROFILE_PROJECT_ROOT=/path/to/repository" >&2; exit 1; }
+	PYTHONPATH="build/core:$$PYTHONPATH" python scripts/profiling/profile_clangd_fact_query_index.py \
+		--idx-directory "$(CLANGD_FACT_QUERY_PROFILE_INDEX_DIR)" \
+		--project-root "$(CLANGD_FACT_QUERY_PROFILE_PROJECT_ROOT)" \
+		$(if $(CLANGD_FACT_QUERY_PROFILE_OUTPUT),--output-json "$(CLANGD_FACT_QUERY_PROFILE_OUTPUT)",) \
+		$(CLANGD_FACT_QUERY_PROFILE_EXTRA_ARGS)
 
 scip-cold-start-tools: scip-java-tool gradle-tool sbt-tool scip-dotnet-tool scip-ruby-tool scip-php-info
 	@$(MAKE) --no-print-directory scip-cold-start-env

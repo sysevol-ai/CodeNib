@@ -31,6 +31,7 @@ Requirements:
 - a C++17 compiler
 - `pkg-config`
 - RE2 development headers
+- zlib development headers
 - pybind11 in the active Python environment
 
 On Ubuntu:
@@ -73,6 +74,7 @@ and returns no graph. Non-SCIP backends such as C/C++ ignore
 
 The pybind module also exposes lower-level `decode_scip(...)`,
 `decode_scip_fact_buffer(...)`, `fact_batch_buffer_contract(...)`,
+`decode_clangd_fact_query_index(...)`, `clangd_fact_query_contract()`,
 `classify_edge_layers(...)`, and decoder-registry inspection functions. These
 are primarily integration surfaces; application code should normally use
 `LSIndexer` so filtering, occurrence indexes, range indexes, and persistence
@@ -145,6 +147,42 @@ make fact-query-profile \
 Pass `--external-index-seconds` through `FACT_QUERY_PROFILE_EXTRA_ARGS` when a
 separate cold-start analysis should include unchanged SCIP generation time.
 
+## Native clangd Symbol Queries
+
+The C/C++ query-specific path starts from an existing project-local clangd
+`.idx` directory. `decode_clangd_fact_query_index(...)` reads direct shards in
+stable filename order and decodes RIFF string, symbol, reference, and relation
+rows directly into provider-neutral `DecodedRecords`. `FactQueryIndex` then
+builds integer postings without a `CodeGraph`, igraph, or intermediate Python
+record dictionaries. Its explicit contract advertises symbol definition and
+reference support while position and route capabilities remain false.
+
+Call `LSIndexer.process_query_index()` to obtain the capability-specific index,
+or `process_query_provider()` for a hybrid provider. Successful symbol queries
+stay graph-free. The first position or route request lazily materializes the
+complete compatible graph, and later unsupported requests reuse it. The normal
+`process_index()` path, persistence format, incremental checks, range indexes,
+and graph quality behavior are unchanged.
+
+`CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX=auto` is promoted by default after the
+persisted-artifact query-ready gate passed on both the generated C++ fixture
+and `fmt`. It falls back to the complete graph on a native candidate failure;
+`off` always selects that graph and `required` fails closed. Reproduce the
+gate with:
+
+```bash
+make clangd-fact-query-profile \
+  CLANGD_FACT_QUERY_PROFILE_INDEX_DIR=/path/to/.cache/clangd/index \
+  CLANGD_FACT_QUERY_PROFILE_PROJECT_ROOT=/path/to/repository \
+  CLANGD_FACT_QUERY_PROFILE_OUTPUT=/tmp/clangd-fact-query.json \
+  CLANGD_FACT_QUERY_PROFILE_EXTRA_ARGS='--iterations 15 --warmups 5'
+```
+
+This result measures an already generated `.idx` directory through identical
+definition/reference work. It does not claim faster clangd generation. Native
+position/route lookup, serving integration, content receipts, and systematic
+format-version/resource hardening remain independent follow-up gates.
+
 ## Verify
 
 ```bash
@@ -164,6 +202,8 @@ skip report.
 - `fact_batch_buffer.{h,cpp}` defines the v1 native buffer ABI and encoder.
 - `fact_query_index.{h,cpp}` implements graph-free symbol and reference
   postings.
+- `clangd_fact_query.{h,cpp}` decodes clangd RIFF shards into provider-neutral
+  records for the query-specific path.
 - `graph_layers.{h,cpp}` classifies normalized edge types into reusable graph
   layers.
 - `scip_decode_base.{h,cpp}` and `scip_decode_common.{h,cpp}` provide shared

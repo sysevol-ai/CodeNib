@@ -29,11 +29,12 @@ class FactQueryIndex {
 public:
   struct Reference {
     CodeGraph::VertexId source;
-    std::string anchor_file;
-    int anchor_line{0};
+    std::optional<std::string> anchor_file;
+    std::optional<int> anchor_line;
   };
 
-  explicit FactQueryIndex(std::shared_ptr<const DecodedRecords> records);
+  explicit FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
+                          bool require_anchored_references = true);
 
   bool has_symbol(const std::string &name) const;
   std::optional<CodeGraph::VertexData>
@@ -51,6 +52,9 @@ public:
   std::size_t edge_count() const { return records_->edges.size(); }
   std::size_t symbol_count() const { return definition_by_name_.size(); }
   std::size_t reference_count() const { return reference_count_; }
+  bool requires_anchored_references() const {
+    return require_anchored_references_;
+  }
 
 private:
   static std::string trim_symbol(std::string value);
@@ -70,6 +74,7 @@ private:
   std::unordered_map<CodeGraph::VertexId, std::vector<std::size_t>>
       incoming_reference_indexes_;
   std::size_t reference_count_{0};
+  bool require_anchored_references_{true};
 };
 
 } // namespace codenib::core

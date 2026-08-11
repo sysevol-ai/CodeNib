@@ -36,8 +36,10 @@ bool has_suffix(const std::string &value, const std::string &suffix) {
 
 } // namespace
 
-FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records)
-    : records_(std::move(records)) {
+FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
+                               bool require_anchored_references)
+    : records_(std::move(records)),
+      require_anchored_references_(require_anchored_references) {
   if (!records_)
     throw std::invalid_argument("FactQueryIndex records must not be null");
 
@@ -77,12 +79,38 @@ FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records)
       }
       definition_by_name_.emplace(vertex.name, id);
     }
+  }
 
-    if (vertex.unified_name.has_value() && !vertex.unified_name->empty()) {
-      add_alias(*vertex.unified_name, id);
-      add_alias(graph_bare_symbol(*vertex.unified_name), id);
-      lsp_aliases_[*vertex.unified_name].push_back(id);
-      lsp_aliases_[bare_symbol(*vertex.unified_name)].push_back(id);
+  auto add_vertex_aliases = [&](CodeGraph::VertexId id) {
+    if (id < 0 || static_cast<std::size_t>(id) >= records_->vertices.size())
+      throw std::out_of_range(
+          "FactQueryIndex query resolution vertex is out of range");
+    const auto &vertex = records_->vertices[static_cast<std::size_t>(id)];
+    if (!vertex.unified_name.has_value() || vertex.unified_name->empty())
+      return;
+    add_alias(*vertex.unified_name, id);
+    add_alias(graph_bare_symbol(*vertex.unified_name), id);
+    lsp_aliases_[*vertex.unified_name].push_back(id);
+    lsp_aliases_[bare_symbol(*vertex.unified_name)].push_back(id);
+  };
+  if (records_->query_resolution_order.empty()) {
+    for (std::size_t index = 0; index < records_->vertices.size(); ++index)
+      add_vertex_aliases(static_cast<CodeGraph::VertexId>(index));
+  } else {
+    if (records_->query_resolution_order.size() != records_->vertices.size())
+      throw std::invalid_argument(
+          "FactQueryIndex query resolution order must cover every vertex");
+    std::vector<bool> observed(records_->vertices.size(), false);
+    for (const auto id : records_->query_resolution_order) {
+      if (id < 0 || static_cast<std::size_t>(id) >= observed.size())
+        throw std::out_of_range(
+            "FactQueryIndex query resolution vertex is out of range");
+      const auto index = static_cast<std::size_t>(id);
+      if (observed[index])
+        throw std::invalid_argument(
+            "FactQueryIndex query resolution order contains a duplicate");
+      observed[index] = true;
+      add_vertex_aliases(id);
     }
   }
 
@@ -98,10 +126,14 @@ FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records)
     }
     if (edge.type != EDGE_TYPE_REFERENCE)
       continue;
-    if (!edge.anchor_file.has_value() || edge.anchor_file->empty() ||
-        !edge.anchor_line.has_value() || *edge.anchor_line < 0) {
+    const bool has_file =
+        edge.anchor_file.has_value() && !edge.anchor_file->empty();
+    const bool has_line =
+        edge.anchor_line.has_value() && *edge.anchor_line >= 0;
+    if (has_file != has_line ||
+        (require_anchored_references_ && (!has_file || !has_line))) {
       throw std::invalid_argument(
-          "FactQueryIndex requires every reference to have a source anchor");
+          "FactQueryIndex reference has an invalid source anchor");
     }
     reference_indexes_by_source[static_cast<std::size_t>(edge.source)]
         .push_back(index);
@@ -346,7 +378,7 @@ FactQueryIndex::incoming_references(const std::string &target_name) const {
   for (const auto index : postings->second) {
     const auto &edge = records_->edges[index];
     result.push_back(
-        Reference{edge.source, *edge.anchor_file, *edge.anchor_line});
+        Reference{edge.source, edge.anchor_file, edge.anchor_line});
   }
   return result;
 }

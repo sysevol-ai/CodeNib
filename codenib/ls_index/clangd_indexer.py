@@ -262,6 +262,68 @@ class ClangdIndexer:
             logger.error(f"Error processing .idx files: {e}")
             return None
 
+    def process_query_index(self):
+        """Build the gated symbol-query view from an existing clangd index.
+
+        This capability-scoped entry point leaves process_index and graph
+        persistence unchanged. It never invokes clangd index generation.
+        """
+
+        self._select_existing_idx_directory()
+        if not self.idx_directory.exists() or not any(self.idx_directory.glob("*.idx")):
+            raise FileNotFoundError(
+                f"No clangd .idx files found in {self.idx_directory}"
+            )
+        decoder_class = self._get_decoder_class()
+        with self.profiler.section("process_query_index.decode"):
+            decoder = decoder_class(
+                idx_directory=str(self.idx_directory),
+                project_root=str(self.project_root),
+            )
+            return decoder.decode_query_index()
+
+    def process_query_provider(self):
+        """Return native symbol queries with lazy complete-graph fallback."""
+
+        self._select_existing_idx_directory()
+        if not self.idx_directory.exists() or not any(self.idx_directory.glob("*.idx")):
+            raise FileNotFoundError(
+                f"No clangd .idx files found in {self.idx_directory}"
+            )
+        decoder_class = self._get_decoder_class()
+        decoder = decoder_class(
+            idx_directory=str(self.idx_directory),
+            project_root=str(self.project_root),
+        )
+        return decoder.decode_query_provider()
+
+    def _select_existing_idx_directory(self) -> Optional[Path]:
+        """Select a project-local clangd generation without building one."""
+
+        candidates = [
+            self.idx_directory,
+            self.project_root / ".cache" / "clangd" / "index",
+            self.project_root / "build" / ".cache" / "clangd" / "index",
+        ]
+        comp_db = discover_compilation_database(
+            self.project_root,
+            extra_candidates=(self.output_dir / "compile_commands.json",),
+        )
+        if comp_db is not None:
+            candidates.extend(self._build_candidate_idx_dirs(comp_db))
+
+        observed = set()
+        for candidate in candidates:
+            normalized = candidate.expanduser().absolute()
+            key = str(normalized)
+            if key in observed:
+                continue
+            observed.add(key)
+            if normalized.is_dir() and any(normalized.glob("*.idx")):
+                self.idx_directory = normalized
+                return normalized
+        return None
+
     def run_pipeline(
         self,
         output_file: Optional[str] = None,

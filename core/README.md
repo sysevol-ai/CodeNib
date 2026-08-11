@@ -17,6 +17,8 @@ core decoder continue to use the serial Python path.
 - `decoded_records.h` — provider-neutral rows before graph materialization.
 - `fact_batch_buffer.{h,cpp}` — versioned flat semantic and graph-compatibility
   tables for the native/Python boundary.
+- `clangd_fact_query.{h,cpp}` — deterministic clangd RIFF shard decoding into
+  provider-neutral records for graph-free symbol queries.
 - `graph_layers.{h,cpp}` — shared normalized edge-layer classification.
 - `scip_decode_base.{h,cpp}` — common loading, document scheduling, merge, and
   post-processing behavior.
@@ -42,6 +44,7 @@ Requirements:
 - a C++17 compiler
 - `pkg-config`
 - RE2 development headers
+- zlib development headers
 - pybind11 in the active Python environment
 
 From the repository root:
@@ -112,6 +115,40 @@ make fact-query-profile \
   FACT_QUERY_PROFILE_LANGUAGE=python \
   FACT_QUERY_PROFILE_OUTPUT=/tmp/fact-query-report.json
 ```
+
+## Native clangd Symbol Queries
+
+For C and C++ projects with an existing project-local clangd index,
+`decode_clangd_fact_query_index(...)` reads the direct `*.idx` children in
+stable filename order, decodes them into `DecodedRecords`, and builds the same
+`FactQueryIndex` without constructing `CodeGraph`, igraph, or Python record
+dictionaries. The v1 slice covers definition and reference lookup by symbol.
+clangd relation rows may be unanchored, so this provider explicitly opts into
+that record policy while still rejecting partial or invalid anchors.
+
+Use `LSIndexer.process_query_index()` for the capability-specific index or
+`process_query_provider()` for hybrid behavior. The provider keeps successful
+symbol queries on the native index and lazily constructs the complete graph
+once when a position or route query is requested. Existing `process_index()`,
+graph persistence, incremental processing, and quality gates are unchanged.
+
+`CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX=auto` is the default and falls back to
+the compatible graph if native decoding fails. Set it to `off` to force the
+graph or `required` to fail closed. Reproduce the alternating query-ready gate
+from an already generated `.idx` directory with:
+
+```bash
+make clangd-fact-query-profile \
+  CLANGD_FACT_QUERY_PROFILE_INDEX_DIR=/path/to/.cache/clangd/index \
+  CLANGD_FACT_QUERY_PROFILE_PROJECT_ROOT=/path/to/repository \
+  CLANGD_FACT_QUERY_PROFILE_OUTPUT=/tmp/clangd-fact-query.json \
+  CLANGD_FACT_QUERY_PROFILE_EXTRA_ARGS='--iterations 15 --warmups 5'
+```
+
+This baseline makes no claim about clangd index generation time. Native
+position and route queries, serving integration, content receipts, and a
+hardened clangd artifact compatibility/resource contract remain separate
+promotion gates.
 
 ## Use Through Python
 

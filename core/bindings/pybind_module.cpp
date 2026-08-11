@@ -22,6 +22,7 @@
 // serialization cost across the C++/Python boundary is just one igraph vcount +
 // ecount worth of tuples/dicts.
 
+#include "clangd_fact_query.h"
 #include "fact_batch_buffer.h"
 #include "fact_query_index.h"
 #include "graph_layers.h"
@@ -75,8 +76,12 @@ py::dict
 reference_to_dict(const codenib::core::FactQueryIndex::Reference &reference) {
   py::dict result;
   result["source_vid"] = reference.source;
-  result["file"] = reference.anchor_file;
-  result["line"] = reference.anchor_line;
+  result["file"] = reference.anchor_file.has_value()
+                       ? py::object(py::cast(*reference.anchor_file))
+                       : py::object(py::none());
+  result["line"] = reference.anchor_line.has_value()
+                       ? py::object(py::cast(*reference.anchor_line))
+                       : py::object(py::none());
   return result;
 }
 
@@ -231,6 +236,26 @@ decode_profile_to_dict(const codenib::core::SCIPDecodeProfile &profile) {
   return result;
 }
 
+py::dict clangd_decode_profile_to_dict(
+    const codenib::core::ClangdFactDecodeProfile &profile) {
+  py::dict result;
+  result["discover_files"] = profile.discover_files_ns;
+  result["read_files"] = profile.read_files_ns;
+  result["parse_files"] = profile.parse_files_ns;
+  result["merge_records"] = profile.merge_records_ns;
+  result["build_query_records"] = profile.build_query_records_ns;
+  result["materialize_graph"] = 0;
+  result["total"] = profile.total_ns;
+  result["file_count"] = profile.file_count;
+  result["raw_symbol_count"] = profile.raw_symbol_count;
+  result["raw_reference_count"] = profile.raw_reference_count;
+  result["definition_count"] = profile.definition_count;
+  result["reference_count"] = profile.reference_count;
+  result["decoded_record_count"] = profile.decoded_record_count;
+  result["index_bytes"] = profile.index_bytes;
+  return result;
+}
+
 py::dict fact_encode_profile_to_dict(
     const codenib::core::FactBatchEncodeProfile &profile) {
   py::dict result;
@@ -349,6 +374,49 @@ py::dict fact_query_index_contract() {
   return result;
 }
 
+py::dict decode_clangd_fact_query_index(const std::string &idx_directory,
+                                        const std::string &project_root) {
+  using clock = std::chrono::steady_clock;
+  clock::time_point decode_started;
+  clock::time_point decode_finished;
+  clock::time_point index_finished;
+  codenib::core::ClangdQueryRecords decoded;
+  std::shared_ptr<codenib::core::FactQueryIndex> index;
+  {
+    py::gil_scoped_release release;
+    decode_started = clock::now();
+    decoded =
+        codenib::core::decode_clangd_query_records(idx_directory, project_root);
+    decode_finished = clock::now();
+    index =
+        std::make_shared<codenib::core::FactQueryIndex>(decoded.records, false);
+    index_finished = clock::now();
+  }
+
+  auto elapsed_ns = [](clock::time_point start, clock::time_point end) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+        .count();
+  };
+  py::dict result;
+  result["format"] = codenib::core::CLANGD_FACT_QUERY_FORMAT;
+  result["index"] = std::move(index);
+  result["native_decode_ns"] = elapsed_ns(decode_started, decode_finished);
+  result["native_index_ns"] = elapsed_ns(decode_finished, index_finished);
+  result["decode_profile_ns"] = clangd_decode_profile_to_dict(decoded.profile);
+  result["graph_materialized"] = false;
+  return result;
+}
+
+py::dict clangd_fact_query_contract() {
+  py::dict result;
+  result["abi_version"] = codenib::core::CLANGD_FACT_QUERY_ABI_VERSION;
+  result["format"] = codenib::core::CLANGD_FACT_QUERY_FORMAT;
+  result["stable_filename_order"] = true;
+  result["preserves_unanchored_relations"] = true;
+  result["capabilities"] = fact_query_capabilities();
+  return result;
+}
+
 codenib::core::LayerBuckets
 classify_edge_layers_py(const std::vector<std::string> &edge_types) {
   py::gil_scoped_release release;
@@ -395,6 +463,9 @@ PYBIND11_MODULE(codenib_core, m) {
                              &codenib::core::FactQueryIndex::symbol_count)
       .def_property_readonly("reference_count",
                              &codenib::core::FactQueryIndex::reference_count)
+      .def_property_readonly(
+          "requires_anchored_references",
+          &codenib::core::FactQueryIndex::requires_anchored_references)
       .def("has_symbol", &codenib::core::FactQueryIndex::has_symbol)
       .def("get_node_info_by_name",
            [](const codenib::core::FactQueryIndex &index,
@@ -493,6 +564,20 @@ route queries remain unavailable and no CodeGraph or igraph is materialized.
   m.def(
       "fact_query_index_contract", &fact_query_index_contract,
       R"pbdoc(Return the compiled FactQueryIndex ABI and capabilities.)pbdoc");
+
+  m.def("decode_clangd_fact_query_index", &decode_clangd_fact_query_index,
+        py::arg("idx_directory"), py::arg("project_root"),
+        R"pbdoc(
+Decode an existing project-local clangd .idx directory into FactQueryIndex v1.
+
+Direct .idx children are read in stable filename order into provider-neutral
+decoded records. The returned index supports symbol definitions and references
+without Python record dictionaries, CodeGraph, or igraph. Position and route
+queries remain outside this baseline capability.
+)pbdoc");
+
+  m.def("clangd_fact_query_contract", &clangd_fact_query_contract,
+        R"pbdoc(Return the baseline native clangd query ABI contract.)pbdoc");
 
   m.def("canonical_scip_decoder_languages",
         &codenib::core::canonical_scip_decoder_languages,

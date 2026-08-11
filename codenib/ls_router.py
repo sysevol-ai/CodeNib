@@ -241,6 +241,26 @@ class LSIndexer:
     ) -> Union[CodeGraph, None]:
         return self._delegate.process_index(output_file=output_file)
 
+    def process_query_index(self) -> Any:
+        """Build a backend-specific capability-scoped query index."""
+
+        method = getattr(self._delegate, "process_query_index", None)
+        if not callable(method):
+            raise RuntimeError(
+                f"{self.language} indexer does not expose a query-index path"
+            )
+        return method()
+
+    def process_query_provider(self) -> Any:
+        """Build a backend-specific provider with compatible fallbacks."""
+
+        method = getattr(self._delegate, "process_query_provider", None)
+        if not callable(method):
+            raise RuntimeError(
+                f"{self.language} indexer does not expose a query-provider path"
+            )
+        return method()
+
     def run_pipeline(
         self,
         output_file: Optional[str] = None,

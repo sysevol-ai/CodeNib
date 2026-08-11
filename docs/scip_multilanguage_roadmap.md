@@ -720,6 +720,43 @@ separate cold-start decision. Auto promotion is therefore restricted to
 Python and Rust; every other core language stays on CodeGraph until it clears
 the same 20% gate. clangd parsing (#555) remains a separate decision.
 
+Native clangd FactQueryIndex promotion status
+([#555](https://github.com/sysevol-ai/CodeNib/issues/555)): the baseline C/C++
+slice reads the direct `*.idx` children of an existing project-local clangd
+index in stable filename order, decodes RIFF records directly into
+`DecodedRecords`, and builds `FactQueryIndex` without Python record dictionaries,
+igraph, or `CodeGraph`. Its v1 contract exposes only definition and reference
+lookup by symbol. A hybrid provider keeps those successful calls graph-free
+and materializes the complete established graph exactly once for position or
+route fallback. Existing graph decode, persistence, incremental checks, and
+quality behavior remain unchanged. `auto` falls back on native candidate
+errors, `off` forces the complete graph, and `required` fails closed.
+
+The 2026-08-10 gate started from unchanged `.idx` shards, alternated complete
+graph and native arms for 15 measured iterations after five warmups, disabled
+cyclic garbage collection inside timed regions, used the same deterministic
+definition/reference workload, and exhaustively compared public results and
+errors for canonical, display, bare, quoted, ambiguous, and missing seeds:
+
+| clangd subject | Graph shape | Parity seeds | CodeGraph | Native index | Improvement | Result |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `cpp_simple`, 0.9 MB | 33 vertices / 80 edges | 95 | 0.1162s | 0.0166s | +85.7% | promote auto |
+| `fmt`, 2.3 MB | 9,375 vertices / 36,614 edges | 25,101 | 1.2135s | 0.0974s | +92.0% | promote auto |
+
+Both parity gates passed: `cpp_simple` contained 26 definitions and 48
+references, while `fmt` contained 9,319 definitions and 27,240 references.
+The native graph-materialization stage was zero in every measured sample. The
+stable shard-set SHA-256 values were
+`ed4f34dc789611aa0f23cb1cfa6ad19a15d5bc36c43c7ac38adb1f0c42c70de4` and
+`b42e63b7afa75e2e45642779ff27ecf99505e1a4ea187a9c65d5c069884e6140`.
+Reproduce the report with `make clangd-fact-query-profile`.
+
+This promotion does not include or accelerate clangd index generation. RIFF
+version/resource hardening (#546), zlib CI enforcement (#547), content
+receipts (#548), serving integration (#549), mixed/RSS/concurrency matrices
+(#550), native position (#553), native route (#552), and durable FactBatch
+storage (#551) remain separate review and promotion gates.
+
 ### Phase 6: Multi-Graph Python Surface
 
 Mixed-language repositories need a Python-side graph aggregation path before a

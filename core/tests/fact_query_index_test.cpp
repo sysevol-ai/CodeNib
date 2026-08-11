@@ -105,6 +105,12 @@ void assert_symbol_resolution_and_postings() {
   assert(references[0].anchor_line == 10);
   assert(references[1].anchor_line == 8);
   assert(index.incoming_references("missing").empty());
+
+  auto custom_order = make_records();
+  custom_order->query_resolution_order = {0, 1, 3, 2, 4, 5, 6};
+  FactQueryIndex reordered(custom_order);
+  assert((reordered.resolve_symbol_candidates("run") ==
+          std::vector<std::string>{"canonical-run-two", "canonical-run-one"}));
 }
 
 void assert_invalid_records_fail_closed() {
@@ -145,6 +151,33 @@ void assert_invalid_records_fail_closed() {
   invalid_definition->vertices[0].end_line = 2;
   try {
     (void)FactQueryIndex(invalid_definition);
+    assert(false);
+  } catch (const std::invalid_argument &) {
+  }
+
+  auto relation = make_records();
+  relation->edges.push_back(
+      {1, 0, codenib::core::EDGE_TYPE_REFERENCE, std::nullopt, std::nullopt});
+  FactQueryIndex permissive(relation, false);
+  assert(!permissive.requires_anchored_references());
+  const auto references = permissive.incoming_references("canonical-target");
+  assert(references.size() == 3);
+  assert(!references.front().anchor_file.has_value());
+  assert(!references.front().anchor_line.has_value());
+
+  auto partial_anchor = make_records();
+  partial_anchor->edges.push_back(
+      {1, 0, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", std::nullopt});
+  try {
+    (void)FactQueryIndex(partial_anchor, false);
+    assert(false);
+  } catch (const std::invalid_argument &) {
+  }
+
+  auto duplicate_resolution = make_records();
+  duplicate_resolution->query_resolution_order = {0, 1, 2, 3, 4, 5, 5};
+  try {
+    (void)FactQueryIndex(duplicate_resolution);
     assert(false);
   } catch (const std::invalid_argument &) {
   }

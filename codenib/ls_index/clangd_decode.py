@@ -23,10 +23,12 @@ Two-pass approach for graph building:
 """
 
 import logging
+import os
 import struct
+import time
 import zlib
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Mapping, Optional, Tuple
 
 from ..code_chunking import CppCodeChunker
 from ..graph.code_graph import CodeGraph
@@ -72,6 +74,63 @@ RELATION_OVERRIDDEN_BY = 1
 
 # Zero SymbolID (8 bytes = 16 hex chars)
 ZERO_SYMBOL_ID = "0" * 16
+
+_NATIVE_QUERY_ENV = "CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX"
+_NATIVE_QUERY_OFF = frozenset({"0", "false", "no", "off", "disabled"})
+_NATIVE_QUERY_AUTO = frozenset({"", "1", "true", "yes", "on", "auto"})
+_NATIVE_QUERY_REQUIRED = frozenset({"required", "strict"})
+_NATIVE_QUERY_PROMOTED = True
+_NATIVE_QUERY_ABI_VERSION = 1
+_NATIVE_QUERY_FORMAT = "clangd-riff-fact-query-v1"
+_NATIVE_QUERY_CAPABILITIES = {
+    "definition_by_symbol": True,
+    "references_by_symbol": True,
+    "position_queries": False,
+    "route_queries": False,
+}
+
+
+def native_clangd_query_mode() -> str:
+    """Return the configured native clangd symbol-query selection mode."""
+
+    value = os.environ.get(_NATIVE_QUERY_ENV, "auto").strip().lower()
+    if value in _NATIVE_QUERY_OFF:
+        return "off"
+    if value in _NATIVE_QUERY_AUTO:
+        return "auto"
+    if value in _NATIVE_QUERY_REQUIRED:
+        return "required"
+    raise ValueError(
+        f"{_NATIVE_QUERY_ENV} must be auto, required, or 0/off; got {value!r}"
+    )
+
+
+def native_clangd_query_promoted() -> bool:
+    """Whether the checked symbol-only benchmark currently clears the gate."""
+
+    return _NATIVE_QUERY_PROMOTED
+
+
+def _validate_native_query_contract(contract: Mapping[str, Any]) -> None:
+    abi_version = contract.get("abi_version")
+    if type(abi_version) is not int or abi_version != _NATIVE_QUERY_ABI_VERSION:
+        raise RuntimeError(
+            "compiled clangd FactQueryIndex contract mismatch: "
+            f"expected ABI {_NATIVE_QUERY_ABI_VERSION}, got {abi_version!r}"
+        )
+    if contract.get("format") != _NATIVE_QUERY_FORMAT:
+        raise RuntimeError(
+            "compiled clangd FactQueryIndex contract mismatch: "
+            f"expected format {_NATIVE_QUERY_FORMAT!r}"
+        )
+    if contract.get("stable_filename_order") is not True:
+        raise RuntimeError("compiled clangd reader does not guarantee stable order")
+    if contract.get("preserves_unanchored_relations") is not True:
+        raise RuntimeError("compiled clangd reader drops legacy relation rows")
+    if contract.get("capabilities") != _NATIVE_QUERY_CAPABILITIES:
+        raise RuntimeError(
+            "compiled clangd FactQueryIndex capabilities do not match v1"
+        )
 
 
 # ===================================================================
@@ -346,6 +405,63 @@ def parse_idx_file(filepath: str) -> dict:
 # ===================================================================
 
 
+class ClangdHybridQueryProvider:
+    """Serve symbol queries natively and lazily fall back for full-graph work.
+
+    The baseline native index advertises no position or route capability.
+    Those requests therefore materialize the established Python CodeGraph
+    exactly once. Production MCP injection and content-bound generation
+    receipts remain separate follow-up decisions.
+    """
+
+    def __init__(self, decoder: "ClangdGraphDecoder", query_index: Any):
+        from ..agent.lsp_provider import StaticLSPProvider
+
+        self.decoder = decoder
+        self.graph = query_index
+        self.provider_backend = decoder.query_backend
+        self._symbol_provider = StaticLSPProvider(query_index)
+        self._graph_provider = None
+        self.graph_materialization_count = 0
+        self.last_fallback_reason = None
+        self.provider = self._symbol_provider.provider
+        self.snapshot_id = self._symbol_provider.snapshot_id
+
+    def _full_graph_provider(self, reason: str):
+        from ..agent.lsp_provider import StaticLSPProvider
+
+        self.last_fallback_reason = reason
+        if self._graph_provider is None:
+            graph = self.decoder.materialize_code_graph()
+            self._graph_provider = StaticLSPProvider(graph)
+            self.graph_materialization_count += 1
+        return self._graph_provider
+
+    def can_serve(self, capability: str):
+        # The hybrid can serve every established capability: native for symbol
+        # definition/reference calls and the complete graph for everything else.
+        return self._symbol_provider.can_serve(capability)
+
+    def definition(self, **arguments):
+        if arguments.get("symbol"):
+            return self._symbol_provider.definition(**arguments)
+        return self._full_graph_provider(
+            "native_clangd_position_query_requires_complete_graph"
+        ).definition(**arguments)
+
+    def references(self, **arguments):
+        if arguments.get("symbol"):
+            return self._symbol_provider.references(**arguments)
+        return self._full_graph_provider(
+            "native_clangd_position_query_requires_complete_graph"
+        ).references(**arguments)
+
+    def route(self, **arguments):
+        return self._full_graph_provider(
+            "native_clangd_route_query_requires_complete_graph"
+        ).route(**arguments)
+
+
 class ClangdGraphDecoder:
     """
     Decoder that builds a CodeGraph from clangd .idx files.
@@ -388,6 +504,12 @@ class ClangdGraphDecoder:
         # Code chunker for range detection
         self._chunker = CppCodeChunker()
         self._chunks_cache = {}
+        self._graph_materialized = False
+        self._range_indexes_built = False
+        self.query_index = None
+        self.query_backend = "not-decoded"
+        self.query_fallback_error = None
+        self.query_profile: dict[str, float | int] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -395,6 +517,8 @@ class ClangdGraphDecoder:
 
     def decode(self) -> CodeGraph:
         """Main entry point. Parse all .idx files and build CodeGraph."""
+        if self._graph_materialized:
+            return self.code_graph
         logger.info(f"Starting clangd idx decode from {self.idx_directory}")
 
         # Pass 1: collect all data
@@ -406,8 +530,139 @@ class ClangdGraphDecoder:
         # Pass 2: build the graph
         self.code_graph.add_root_node(ROOT_NODE)
         self._build_graph()
+        self._graph_materialized = True
 
         return self.code_graph
+
+    def materialize_code_graph(self) -> CodeGraph:
+        """Build and range-index the established graph at most once."""
+
+        graph = self.decode()
+        if not self._range_indexes_built:
+            graph.build_range_indexes()
+            self._range_indexes_built = True
+        return graph
+
+    def _decode_native_query_index(self):
+        try:
+            import codenib_core
+        except ImportError as exc:
+            raise RuntimeError(
+                "compiled codenib_core extension is unavailable"
+            ) from exc
+
+        decode = getattr(codenib_core, "decode_clangd_fact_query_index", None)
+        contract_reader = getattr(codenib_core, "clangd_fact_query_contract", None)
+        if not callable(decode) or not callable(contract_reader):
+            raise RuntimeError("compiled core does not expose clangd FactQueryIndex v1")
+        _validate_native_query_contract(contract_reader())
+
+        started = time.perf_counter()
+        payload = decode(
+            idx_directory=str(self.idx_directory),
+            project_root=str(self.project_root),
+        )
+        binding_seconds = time.perf_counter() - started
+        if not isinstance(payload, Mapping):
+            raise RuntimeError("native clangd query decoder returned non-mapping data")
+        if payload.get("format") != _NATIVE_QUERY_FORMAT:
+            raise RuntimeError("native clangd query decoder returned unknown format")
+        if payload.get("graph_materialized") is not False:
+            raise RuntimeError("native clangd query decoder materialized a graph")
+
+        index = payload.get("index")
+        if index is None or getattr(index, "fact_query_index", None) is not True:
+            raise RuntimeError("native clangd query payload is missing its index")
+        if getattr(index, "materializes_graph", None) is not False:
+            raise RuntimeError(
+                "native clangd query index does not guarantee graph-free use"
+            )
+        if getattr(index, "capabilities", None) != _NATIVE_QUERY_CAPABILITIES:
+            raise RuntimeError("native clangd query index capabilities do not match v1")
+        if getattr(index, "requires_anchored_references", None) is not False:
+            raise RuntimeError(
+                "native clangd query index cannot preserve relation references"
+            )
+
+        native_decode = int(payload.get("native_decode_ns") or 0) / 1_000_000_000
+        native_index = int(payload.get("native_index_ns") or 0) / 1_000_000_000
+        profile: dict[str, float | int] = {
+            "binding": binding_seconds,
+            "native_decode": native_decode,
+            "native_index": native_index,
+            "boundary_residual": max(
+                0.0, binding_seconds - native_decode - native_index
+            ),
+            "record_count": int(getattr(index, "record_count", 0)),
+            "definition_count": int(getattr(index, "symbol_count", 0)),
+            "reference_count": int(getattr(index, "reference_count", 0)),
+        }
+        count_fields = {
+            "file_count",
+            "raw_symbol_count",
+            "raw_reference_count",
+            "definition_count",
+            "reference_count",
+            "decoded_record_count",
+            "index_bytes",
+        }
+        for name, value in (payload.get("decode_profile_ns") or {}).items():
+            profile[f"native_{name}"] = (
+                int(value) if name in count_fields else int(value) / 1_000_000_000
+            )
+        return index, profile
+
+    def decode_query_index(self):
+        """Return the gated symbol index or the complete compatible graph."""
+
+        if self.query_index is not None:
+            return self.query_index
+        total_started = time.perf_counter()
+        mode = native_clangd_query_mode()
+        if mode == "off" or (mode == "auto" and not _NATIVE_QUERY_PROMOTED):
+            self.query_index = self.materialize_code_graph()
+            self.query_backend = (
+                "legacy-query-disabled"
+                if mode == "off"
+                else "legacy-query-not-promoted"
+            )
+            self.query_profile = {
+                "fact_query_native": 0,
+                "query_total": time.perf_counter() - total_started,
+            }
+            return self.query_index
+
+        try:
+            self.query_index, self.query_profile = self._decode_native_query_index()
+            self.query_backend = "native-clangd-fact-query-v1"
+            self.query_profile["fact_query_native"] = 1
+        except MemoryError:
+            raise
+        except Exception as exc:
+            if mode == "required":
+                raise
+            self.query_fallback_error = f"{type(exc).__name__}: {exc}"
+            logger.warning(
+                "Native clangd FactQueryIndex unavailable; falling back to "
+                "ClangdGraphDecoder: %s",
+                self.query_fallback_error,
+            )
+            self.query_index = self.materialize_code_graph()
+            self.query_backend = "legacy-query-fallback"
+            self.query_profile = {"fact_query_native": 0}
+
+        self.query_profile["query_total"] = time.perf_counter() - total_started
+        return self.query_index
+
+    def decode_query_provider(self):
+        """Return native symbol queries with lazy position/route fallback."""
+
+        from ..agent.lsp_provider import StaticLSPProvider
+
+        index = self.decode_query_index()
+        if getattr(index, "fact_query_index", False):
+            return ClangdHybridQueryProvider(self, index)
+        return StaticLSPProvider(index)
 
     def save_graph(self, output_path: str):
         """Save the code graph to a file."""
