@@ -20,7 +20,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
-from ..compiler.manifest import RepoManifest
+from ..compiler.manifest import IndexEntry, RepoManifest
 from ..index.embedding._lifecycle import close_vector_after_failure
 from ..log_utils import get_logger
 from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_route
@@ -359,11 +359,32 @@ class RepoRegistry:
         config: QAConfig,
         *,
         native_index_authorization_resolver: (
-            Callable[[Any], NativeIndexAuthorization | None] | None
+            Callable[
+                [RepoEntry, RepoManifest, IndexEntry],
+                NativeIndexAuthorization | None,
+            ]
+            | None
         ) = None,
+        allow_missing_native_index_authorization: bool = False,
     ) -> None:
+        if (
+            "vector" in config.index_types()
+            and native_index_authorization_resolver is None
+            and not allow_missing_native_index_authorization
+        ):
+            from ..native_index_authorization import (
+                MissingNativeIndexAuthorizationError,
+            )
+
+            raise MissingNativeIndexAuthorizationError(
+                "hybrid mode requires an external native-index authorization "
+                "resolver"
+            )
         self._config = config
         self._native_index_authorization_resolver = native_index_authorization_resolver
+        self._allow_missing_native_index_authorization = (
+            allow_missing_native_index_authorization
+        )
         self._bundles: Dict[str, RepoBundle] = {}
         # One embedding model per model name, shared across repos: the GPU model
         # is loaded once instead of once per CodeVectorStore (one per repo).
@@ -411,31 +432,47 @@ class RepoRegistry:
         native_index_authorization: NativeIndexAuthorization,
     ) -> "CodeVectorStore":
         """Load a manifest vector view with the configured embedding backend."""
-        from ..native_index_authorization import (
-            require_native_index_authorization_preflight,
+        from ..index.embedding.artifact_integrity import (
+            require_authorized_vector_view,
         )
 
-        require_native_index_authorization_preflight(
+        # The manifest's exact config is part of the native capability subject.
+        # Legacy route defaults are query-time compatibility inputs only: adding
+        # them to ``artifact_metadata`` would change the semantic contract after
+        # the caller had already bound its token to ``vec_entry.config``.
+        semantic_contract = dict(vec_entry.config or {})
+        # Preliminary token shape checks are intentionally not enough: reject a
+        # valid but wrong-tree or wrong-semantic capability before constructing
+        # an embedding client/model. CodeVectorStore.load recaptures and checks
+        # again, so any drift after this gate also fails before native parsing.
+        require_authorized_vector_view(
+            vec_entry.path,
             native_index_authorization,
-            view_type="vector",
+            semantic_contract,
         )
-        artifact_config = dict(vec_entry.config or {})
-        legacy_route = not artifact_config.get("embedding_route")
+        effective_route_config = dict(semantic_contract)
+        legacy_route = not effective_route_config.get("embedding_route")
         legacy_fallbacks = []
-        if legacy_route and not artifact_config.get("embedding_provider"):
+        if legacy_route and not effective_route_config.get("embedding_provider"):
             # Pre-provider manifests from build_qa_index.py intentionally relied
             # on the QA runtime route. Keep that narrow compatibility path while
             # requiring all newly built artifacts to persist their provider.
-            artifact_config["embedding_provider"] = self._config.embedding_provider
+            effective_route_config["embedding_provider"] = (
+                self._config.embedding_provider
+            )
             legacy_fallbacks.append(f"provider={self._config.embedding_provider}")
             if self._config.embedding_base_url:
-                artifact_config["embedding_endpoint"] = self._config.embedding_base_url
+                effective_route_config["embedding_endpoint"] = (
+                    self._config.embedding_base_url
+                )
         if (
             legacy_route
-            and "dimension" not in artifact_config
-            and "embedding_dimension" not in artifact_config
+            and "dimension" not in effective_route_config
+            and "embedding_dimension" not in effective_route_config
         ):
-            artifact_config["embedding_dimension"] = self._config.embedding_dimension
+            effective_route_config["embedding_dimension"] = (
+                self._config.embedding_dimension
+            )
             legacy_fallbacks.append(f"dimension={self._config.embedding_dimension}")
         if legacy_fallbacks:
             logger.warning(
@@ -445,7 +482,7 @@ class RepoRegistry:
                 vec_entry.path,
                 ", ".join(legacy_fallbacks),
             )
-        route = resolve_embedding_artifact_route(artifact_config)
+        route = resolve_embedding_artifact_route(effective_route_config)
         configured_endpoint = normalize_endpoint(self._config.embedding_base_url)
         if configured_endpoint is not None and configured_endpoint != route.endpoint:
             raise ValueError(
@@ -477,10 +514,10 @@ class RepoRegistry:
             embedding_model=route.model,
             embedding_provider=route.provider,
             dimension=route.dimension,
-            index_metric=artifact_config.get("index_metric", "ip"),
+            index_metric=effective_route_config.get("index_metric", "ip"),
             store_path=vec_entry.path,
             embedding=self._embeddings.get(cache_key),
-            artifact_metadata=artifact_config,
+            artifact_metadata=semantic_contract,
             **embedding_kwargs,
         )
         candidate_embedding = missing_embedding
@@ -540,40 +577,46 @@ class RepoRegistry:
             bm25_index.load_index(bm25_entry.path)
 
         vec_entry = manifest.indexes.get("vector")
-        if (
-            "vector" in index_types
-            and vec_entry is not None
-            and manifest.index_is_current("vector")
-        ):
+        if "vector" in index_types:
+            if vec_entry is None or not manifest.index_is_current("vector"):
+                if self._allow_missing_native_index_authorization:
+                    logger.warning(
+                        "Skipping missing or stale optional vector view; "
+                        "BM25 remains available"
+                    )
+                else:
+                    raise ValueError(
+                        "hybrid mode requires a current vector manifest entry"
+                    )
+                bundle.vector_store = None
+                bundle.bm25 = bm25_index
+                return
+
             authorization = None
-            if self._native_index_authorization_resolver is not None:
-                try:
-                    authorization = self._native_index_authorization_resolver(vec_entry)
-                except Exception as exc:  # noqa: BLE001 - BM25 remains usable
-                    logger.warning(
-                        "Native vector authorization failed for %s: %s",
-                        vec_entry.path,
-                        exc,
-                    )
+            resolver = self._native_index_authorization_resolver
+            if resolver is not None:
+                authorization = resolver(bundle.entry, manifest, vec_entry)
             if authorization is None:
-                logger.warning(
-                    "Skipping native vector view at %s without external "
-                    "authorization; BM25 remains available",
-                    vec_entry.path,
-                )
-            else:
-                try:
-                    vector_store = self._load_vector_store(
-                        vec_entry,
-                        native_index_authorization=authorization,
-                    )
-                except Exception as exc:  # noqa: BLE001 - BM25 remains usable
+                if self._allow_missing_native_index_authorization:
                     logger.warning(
-                        "Skipping unusable native vector view at %s: %s; "
-                        "BM25 remains available",
+                        "Skipping optional native vector view at %s without "
+                        "external authorization; BM25 remains available",
                         vec_entry.path,
-                        exc,
                     )
+                else:
+                    from ..native_index_authorization import (
+                        MissingNativeIndexAuthorizationError,
+                    )
+
+                    raise MissingNativeIndexAuthorizationError(
+                        "native-index authorization resolver returned no "
+                        "authorization for a required hybrid vector view"
+                    )
+            else:
+                vector_store = self._load_vector_store(
+                    vec_entry,
+                    native_index_authorization=authorization,
+                )
 
         bundle.vector_store = vector_store
         bundle.bm25 = bm25_index

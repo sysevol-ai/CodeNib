@@ -917,6 +917,7 @@ def _audit_local_wiki(local) -> dict[str, object]:
 
     from .llm.litellm_chat import LiteLLMChat
     from .web.config import load_config
+    from .web.native_authority import authorize_local_manifest_vector
     from .web.repo_registry import RepoRegistry
     from .wiki.agent_wiki import AgentWiki
     from .wiki.quality import audit_wiki
@@ -931,7 +932,10 @@ def _audit_local_wiki(local) -> dict[str, object]:
     if local.runtime_env.get("CODENIB_EMBEDDING_API_KEY"):
         config.embedding_api_key = local.runtime_env["CODENIB_EMBEDDING_API_KEY"]
 
-    registry = RepoRegistry(config)
+    registry = RepoRegistry(
+        config,
+        native_index_authorization_resolver=authorize_local_manifest_vector,
+    )
     registry.load_all()
     bundle = registry.get(local.repo_id)
     if bundle is None:
