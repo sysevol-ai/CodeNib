@@ -2052,6 +2052,32 @@ class OwnedWorkspaceAuthority:
 
         return self._lock.run(get_plan)
 
+    @property
+    def destination(self) -> Path:
+        """Return the lexical destination bound during adoption."""
+
+        self._require_owner_pid()
+
+        def get_destination() -> Path:
+            if self._destination is None:
+                raise RuntimeError("owned workspace authority has not been adopted")
+            return self._destination
+
+        return self._lock.run(get_destination)
+
+    @property
+    def expected_destination_ownership(self) -> object | None:
+        """Return the exact adopted destination token, or ``None`` if missing."""
+
+        self._require_owner_pid()
+
+        def get_expected_destination() -> object | None:
+            if self._destination is None:
+                raise RuntimeError("owned workspace authority has not been adopted")
+            return self._expected_destination
+
+        return self._lock.run(get_expected_destination)
+
     @classmethod
     def create(cls, *_args: object, **_kwargs: object) -> OwnedWorkspaceAuthority:
         """Fail before mutation until a native create-and-open backend exists."""

@@ -1363,6 +1363,8 @@ def test_preopened_workspace_writes_only_planned_files_without_mkdir(
             plan=plan,
             expected_destination=None,
         )
+        assert workspace.destination == destination
+        assert workspace.expected_destination_ownership is None
         root_record = workspace.write_file("root.bin", [b"root"])
         nested_record = workspace.write_file("nested/payload.bin", [b"payload"])
         ownership = workspace.seal()
@@ -2725,6 +2727,8 @@ def test_owned_workspace_existing_destination_receipt_retains_exact_orphan(
             plan=plan,
             expected_destination=expected_destination,
         )
+        assert workspace.destination == destination
+        assert workspace.expected_destination_ownership == expected_destination
         workspace.write_file("new", [b"new"])
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
