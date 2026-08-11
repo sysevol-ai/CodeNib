@@ -42,9 +42,11 @@ from .models import (
     normalize_digest,
 )
 
-LATEST_SCHEMA_VERSION = 3
+LATEST_SCHEMA_VERSION = 4
 DEFAULT_NAMESPACE_ID = "ns_default"
 DEFAULT_NAMESPACE_NAME = "default"
+
+_GENERATION_MEMBERS_METADATA_KEY = "_codenib_member_object_digests"
 
 CatalogError = StorageError
 CatalogConflictError = PublishConflict
@@ -949,10 +951,83 @@ _SCHEMA_V3 = (
     """,
 )
 
+_SCHEMA_V4 = (
+    """
+    CREATE TABLE view_generation_objects (
+        view_generation_id TEXT NOT NULL,
+        object_digest TEXT NOT NULL,
+        PRIMARY KEY (view_generation_id, object_digest),
+        FOREIGN KEY (view_generation_id) REFERENCES view_generations(view_generation_id)
+            ON DELETE CASCADE,
+        FOREIGN KEY (object_digest) REFERENCES objects(digest)
+            ON DELETE RESTRICT
+    )
+    """,
+    """
+    CREATE INDEX view_generation_objects_digest_idx
+        ON view_generation_objects(object_digest)
+    """,
+    """
+    CREATE TRIGGER view_generation_objects_reject_duplicate_inserts
+    BEFORE INSERT ON view_generation_objects
+    WHEN EXISTS (
+        SELECT 1 FROM view_generation_objects AS existing
+        WHERE existing.view_generation_id = NEW.view_generation_id
+            AND existing.object_digest = NEW.object_digest
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate view generation object is forbidden');
+    END
+    """,
+    """
+    CREATE TRIGGER view_generation_objects_are_immutable
+    BEFORE UPDATE ON view_generation_objects
+    BEGIN
+        SELECT RAISE(ABORT, 'view generation objects are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER ready_view_generation_objects_cannot_be_inserted
+    BEFORE INSERT ON view_generation_objects
+    WHEN EXISTS (
+        SELECT 1 FROM view_generations AS generation
+        WHERE generation.view_generation_id = NEW.view_generation_id
+            AND generation.status = 'ready'
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'ready view generation objects are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER ready_view_generation_objects_cannot_be_deleted
+    BEFORE DELETE ON view_generation_objects
+    WHEN EXISTS (
+        SELECT 1 FROM view_generations AS generation
+        WHERE generation.view_generation_id = OLD.view_generation_id
+            AND generation.status = 'ready'
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'ready view generation objects are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER member_objects_cannot_be_deleted
+    BEFORE DELETE ON objects
+    WHEN EXISTS (
+        SELECT 1 FROM view_generation_objects AS member
+        WHERE member.object_digest = OLD.digest
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'member objects cannot be deleted');
+    END
+    """,
+)
+
 _MIGRATIONS: dict[int, tuple[str, ...]] = {
     1: _SCHEMA_V1,
     2: _SCHEMA_V2,
     3: _SCHEMA_V3,
+    4: _SCHEMA_V4,
 }
 
 
@@ -1038,12 +1113,14 @@ class SQLiteCatalog:
 
     def _migrate(self) -> None:
         with self._transaction():
-            self._connection.execute("""
+            self._connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version INTEGER PRIMARY KEY,
                     applied_at TEXT NOT NULL
                 )
-                """)
+                """
+            )
             rows = self._connection.execute(
                 "SELECT version FROM schema_migrations ORDER BY version"
             ).fetchall()
@@ -2067,8 +2144,15 @@ class SQLiteCatalog:
         *,
         schema_version: str,
         metadata: Mapping[str, Any] | None = None,
+        member_object_digests: Sequence[str] = (),
     ) -> str:
-        """Stage an immutable view generation backed by a registered object."""
+        """Stage a view generation backed by one primary and optional members.
+
+        Member objects are immutable reachability edges for compound views.
+        Their canonical digest list is injected into generation metadata, so
+        the list participates in the generation identity and cannot be changed
+        independently from the primary manifest object.
+        """
         repository = _required_text(repository_id, "repository ID")
         source = _required_text(source_revision_id, "source revision ID")
         profile = _required_text(profile_id, "profile ID")
@@ -2077,7 +2161,28 @@ class SQLiteCatalog:
         normalized_schema_version = _required_text(
             schema_version, "view schema version"
         )
-        metadata_json = canonical_json(metadata or {})
+        if isinstance(member_object_digests, (str, bytes)):
+            raise CatalogValidationError("member object digests must be a sequence")
+        normalized_members = [
+            normalize_digest(value) for value in member_object_digests
+        ]
+        if len(normalized_members) != len(set(normalized_members)):
+            raise CatalogValidationError("duplicate member object digests")
+        normalized_members.sort()
+        if digest in normalized_members:
+            raise CatalogValidationError(
+                "the primary object must not also be a member object"
+            )
+        if metadata is not None and not isinstance(metadata, Mapping):
+            raise CatalogValidationError("view generation metadata must be a mapping")
+        normalized_metadata = dict(metadata or {})
+        if _GENERATION_MEMBERS_METADATA_KEY in normalized_metadata:
+            raise CatalogValidationError(
+                f"{_GENERATION_MEMBERS_METADATA_KEY} is reserved catalog metadata"
+            )
+        if normalized_members:
+            normalized_metadata[_GENERATION_MEMBERS_METADATA_KEY] = normalized_members
+        metadata_json = canonical_json(normalized_metadata)
         identity = {
             "repository_id": repository,
             "source_revision_id": source,
@@ -2104,6 +2209,8 @@ class SQLiteCatalog:
                     "view type does not match the view profile"
                 )
             self._require_record("objects", "digest", digest)
+            for member_digest in normalized_members:
+                self._require_record("objects", "digest", member_digest)
             row = self._connection.execute(
                 "SELECT * FROM view_generations WHERE view_generation_id = ?",
                 (view_generation_id,),
@@ -2155,6 +2262,39 @@ class SQLiteCatalog:
             )
             if actual != expected:
                 raise CatalogConflictError("view generation identity conflict")
+            if self.schema_version < 4:
+                if normalized_members:
+                    raise CatalogValidationError(
+                        "member objects require catalog schema version 4"
+                    )
+                member_rows = []
+            else:
+                member_rows = self._connection.execute(
+                    """
+                    SELECT object_digest FROM view_generation_objects
+                    WHERE view_generation_id = ? ORDER BY object_digest
+                    """,
+                    (view_generation_id,),
+                ).fetchall()
+            persisted_members = [member["object_digest"] for member in member_rows]
+            if not member_rows and normalized_members:
+                if row["status"] != "staged":
+                    raise CatalogConflictError(
+                        "ready view generation member objects are missing"
+                    )
+                for member_digest in normalized_members:
+                    self._connection.execute(
+                        """
+                        INSERT INTO view_generation_objects(
+                            view_generation_id, object_digest
+                        ) VALUES (?, ?)
+                        """,
+                        (view_generation_id, member_digest),
+                    )
+            elif persisted_members != normalized_members:
+                raise CatalogConflictError(
+                    "view generation member object identity conflict"
+                )
         return view_generation_id
 
     def publish_snapshot(
@@ -2529,8 +2669,32 @@ class SQLiteCatalog:
                     "view generation metadata must be a JSON object"
                 )
             canonical_metadata = canonical_json(metadata)
+            encoded_members = metadata.get(_GENERATION_MEMBERS_METADATA_KEY)
+            if encoded_members is None:
+                expected_member_digests: list[str] = []
+            else:
+                if not isinstance(encoded_members, list) or not encoded_members:
+                    raise CatalogValidationError(
+                        "view generation member metadata must be a non-empty list"
+                    )
+                expected_member_digests = [
+                    normalize_digest(value) for value in encoded_members
+                ]
+                if (
+                    expected_member_digests != sorted(expected_member_digests)
+                    or len(expected_member_digests) != len(set(expected_member_digests))
+                    or row["object_digest"] in expected_member_digests
+                ):
+                    raise CatalogValidationError(
+                        "view generation member metadata is not canonical"
+                    )
         except (TypeError, json.JSONDecodeError, CatalogValidationError) as exc:
             raise CatalogConflictError("view generation identity conflicts") from exc
+        member_objects = self._generation_member_objects(row["view_generation_id"])
+        if [member.digest for member in member_objects] != expected_member_digests:
+            raise CatalogConflictError(
+                "view generation member object identity conflicts"
+            )
         expected_view_generation_id = content_id(
             "view",
             {
@@ -2548,6 +2712,53 @@ class SQLiteCatalog:
             or row["metadata_json"] != canonical_metadata
         ):
             raise CatalogConflictError("view generation identity conflicts")
+
+    def _generation_member_objects(
+        self, view_generation_id: str
+    ) -> tuple[ObjectRecord, ...]:
+        if self.schema_version < 4:
+            return ()
+        raw_rows = self._connection.execute(
+            """
+            SELECT object_digest FROM view_generation_objects
+            WHERE view_generation_id = ? ORDER BY object_digest
+            """,
+            (view_generation_id,),
+        ).fetchall()
+        joined_rows = self._connection.execute(
+            """
+            SELECT o.digest, o.storage_key, o.byte_size, o.media_type
+            FROM view_generation_objects AS member
+            JOIN objects AS o ON o.digest = member.object_digest
+            WHERE member.view_generation_id = ?
+            ORDER BY member.object_digest
+            """,
+            (view_generation_id,),
+        ).fetchall()
+        if len(raw_rows) != len(joined_rows):
+            raise CatalogConflictError(
+                "view generation member object dependencies are missing"
+            )
+        records: list[ObjectRecord] = []
+        try:
+            for raw, joined in zip(raw_rows, joined_rows, strict=True):
+                if raw["object_digest"] != joined["digest"]:
+                    raise CatalogValidationError(
+                        "view generation member object join is inconsistent"
+                    )
+                records.append(
+                    ObjectRecord(
+                        digest=joined["digest"],
+                        storage_key=joined["storage_key"],
+                        byte_size=joined["byte_size"],
+                        media_type=joined["media_type"],
+                    )
+                )
+        except CatalogValidationError as exc:
+            raise CatalogConflictError(
+                "view generation member object metadata conflicts"
+            ) from exc
+        return tuple(records)
 
     def _validate_ready_snapshot(
         self,
@@ -2776,8 +2987,10 @@ class SQLiteCatalog:
                 raise CatalogConflictError(
                     "ready snapshot contains a non-ready view generation"
                 )
-        views = {
-            row["snapshot_view_type"]: {
+        views = {}
+        for row in view_rows:
+            member_objects = self._generation_member_objects(row["view_generation_id"])
+            views[row["snapshot_view_type"]] = {
                 "view_generation_id": row["view_generation_id"],
                 "schema_version": row["schema_version"],
                 "metadata": json.loads(row["metadata_json"]),
@@ -2792,9 +3005,16 @@ class SQLiteCatalog:
                     "byte_size": int(row["byte_size"]),
                     "media_type": row["media_type"],
                 },
+                "member_objects": [
+                    {
+                        "digest": member.digest,
+                        "storage_key": member.storage_key,
+                        "byte_size": member.byte_size,
+                        "media_type": member.media_type,
+                    }
+                    for member in member_objects
+                ],
             }
-            for row in view_rows
-        }
         return {
             "snapshot_id": snapshot["snapshot_id"],
             "repository_id": snapshot["repository_id"],

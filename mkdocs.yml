@@ -184,6 +184,7 @@ nav:
           - SCIP Index: scip_index.md
           - Regex Index: regex_index.md
       - Code Graph:
+          - Semantic Fact Batches: semantic_fact_batches.md
           - Hierarchy Model: codegraph_hierarchy_model.md
           - Range Query: graph_query.md
           - Graph Cache: graph_cache_usage.md

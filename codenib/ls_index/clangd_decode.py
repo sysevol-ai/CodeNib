@@ -976,6 +976,8 @@ class ClangdGraphDecoder:
         self._graph_materialized = False
         self._range_indexes_built = False
         self._records_collected = False
+        self._record_collection_errors: List[str] = []
+        self._records_snapshot_id: Optional[str] = None
         self.query_index = None
         self.position_query_index = None
         self.query_backend = "not-decoded"
@@ -995,16 +997,7 @@ class ClangdGraphDecoder:
             return self.code_graph
         logger.info(f"Starting clangd idx decode from {self.idx_directory}")
 
-        # Pass 1: collect all data
-        if self.query_snapshot_id:
-            self._verify_native_snapshot("before legacy record collection")
-        self._collect_all_idx()
-        if self.query_snapshot_id:
-            self._verify_native_snapshot("after legacy record collection")
-        self._records_collected = True
-
-        # Build name mapping
-        self._build_id_to_display()
+        self.collect_records()
 
         # Pass 2: build the graph
         self.code_graph.add_root_node(ROOT_NODE)
@@ -1014,6 +1007,43 @@ class ClangdGraphDecoder:
         self._graph_materialized = True
 
         return self.code_graph
+
+    def collect_records(self, *, strict: bool = False) -> "ClangdGraphDecoder":
+        """Collect normalized clangd records without materializing a graph.
+
+        This is the provider-neutral boundary used by durable FactBatch
+        publication.  ``strict=True`` rejects missing or malformed shards so
+        a partially decoded index cannot be published as a ready generation.
+        """
+
+        if self._records_collected:
+            if strict and self._record_collection_errors:
+                raise RuntimeError(
+                    "clangd record collection was incomplete: "
+                    + "; ".join(self._record_collection_errors)
+                )
+            if self.query_snapshot_id:
+                if self._records_snapshot_id != self.query_snapshot_id:
+                    raise RuntimeError(
+                        "clangd records were collected before the native snapshot "
+                        "was bound"
+                    )
+                self._verify_native_snapshot("before record reuse")
+            return self
+
+        if self.query_snapshot_id:
+            self._verify_native_snapshot("before legacy record collection")
+        self._record_collection_errors = []
+        if strict:
+            self._collect_all_idx(strict=True)
+        else:
+            self._collect_all_idx()
+        if self.query_snapshot_id:
+            self._verify_native_snapshot("after legacy record collection")
+        self._build_id_to_display()
+        self._records_snapshot_id = self.query_snapshot_id
+        self._records_collected = True
+        return self
 
     def materialize_code_graph(self) -> CodeGraph:
         """Build and range-index the established graph at most once."""
@@ -1297,43 +1327,62 @@ class ClangdGraphDecoder:
     # Pass 1: Collect
     # ------------------------------------------------------------------
 
-    def _collect_all_idx(self):
+    def _collect_all_idx(self, *, strict: bool = False):
         """Parse all .idx files and merge symbols/refs/relations."""
         idx_files = sorted(self.idx_directory.glob("*.idx"))
         if not idx_files:
-            logger.warning(f"No .idx files found in {self.idx_directory}")
+            diagnostic = f"No .idx files found in {self.idx_directory}"
+            self._record_collection_errors.append(diagnostic)
+            if strict:
+                raise RuntimeError(diagnostic)
+            logger.warning(diagnostic)
             return
 
+        # Merge into temporary accumulators so strict collection is atomic
+        # without retaining every parsed shard until the final merge.
+        symbols = dict(self._symbols)
+        refs = {symbol_id: list(values) for symbol_id, values in self._refs.items()}
+        relations = list(self._relations)
         for idx_file in idx_files:
             try:
                 parsed = parse_idx_file(str(idx_file))
             except Exception as e:
+                diagnostic = f"{idx_file.name}: {e}"
+                self._record_collection_errors.append(diagnostic)
+                if strict:
+                    raise RuntimeError(
+                        f"Failed to parse clangd index {diagnostic}"
+                    ) from e
                 logger.warning(f"Failed to parse {idx_file.name}: {e}")
                 continue
 
             # Merge symbols (first-seen wins for same ID)
             for sym in parsed["symbols"]:
                 sym_id = sym["id"]
-                if sym_id not in self._symbols:
-                    self._symbols[sym_id] = sym
+                if sym_id not in symbols:
+                    symbols[sym_id] = sym
                 else:
                     # If existing has no valid definition but this one does, update
-                    existing_def = self._symbols[sym_id].get("definition")
+                    existing_def = symbols[sym_id].get("definition")
                     new_def = sym.get("definition")
                     if (
                         not existing_def or existing_def.get("file", "") == ""
                     ) and new_def:
-                        self._symbols[sym_id] = sym
+                        symbols[sym_id] = sym
 
             # Merge refs (union all)
             for ref_group in parsed["refs"]:
                 sym_id = ref_group["symbol_id"]
-                if sym_id not in self._refs:
-                    self._refs[sym_id] = []
-                self._refs[sym_id].extend(ref_group["refs"])
+                if sym_id not in refs:
+                    refs[sym_id] = []
+                refs[sym_id].extend(ref_group["refs"])
 
             # Merge relations
-            self._relations.extend(parsed["relations"])
+            relations.extend(parsed["relations"])
+
+        self._symbols = symbols
+        self._refs = refs
+        self._relations = relations
 
         logger.info(
             f"Collected {len(self._symbols)} symbols, "

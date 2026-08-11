@@ -87,6 +87,7 @@ class IndexCatalog(Protocol):
         *,
         schema_version: str,
         metadata: Mapping[str, Any] | None = None,
+        member_object_digests: Sequence[str] = (),
     ) -> str: ...
 
     def publish_snapshot(

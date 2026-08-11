@@ -130,6 +130,15 @@ The new facts will be dual-written beside the legacy materialized graph.  The
 legacy graph remains the serving authority until range, neighborhood,
 dependency, incoming/outgoing, and incremental replay parity gates pass.
 
+The native clangd definition/reference index remains an ephemeral materialized
+query view over existing `.idx` artifacts; raw directories and pybind objects
+are not catalog state. An opt-in dual-write adapter now requires the bounded
+native decoder to bind that snapshot, then emits content-bound per-file
+FactBatch units under a complete analyzer/toolchain/build profile. Those units
+may be published through the semantic-facts generation coordinator described
+in M4/M5. This does not turn the query index into a durable snapshot, advance
+generic M2 publication, or weaken the legacy graph serving authority.
+
 ## Overlay Semantics
 
 An overlay pins a base snapshot and publishes immutable overlay generations.
@@ -255,6 +264,14 @@ publication also requires exact staged/ready timestamp pairing, canonical UTC
 publication timestamps, canonical repository/source fields, and positive
 integer persisted ref generations.
 
+Schema v4 adds generic compound-view reachability. A view generation may name
+sorted immutable member-object digests in identity-bearing reserved metadata;
+the normalized membership table references the same registered objects.
+Publication revalidates exact metadata/table membership, ready memberships are
+immutable, and member objects remain protected even for raw SQLite clients
+with foreign keys and recursive triggers disabled. Existing v3 generations
+migrate to an exact empty member set.
+
 ### M2: Immutable generation publication
 
 Status: pending.
@@ -285,27 +302,72 @@ Status: pending.
 
 ### M4: Cross-file reference de-materialization
 
-Status: pending.
+Status: in progress. The provider-neutral fact contract, clangd dual-write
+adapter, durable FactBatch publication, and local convergence gate are
+implemented; public graph-query cutover remains pending.
 
-- Preserve definitions and unresolved target monikers in Python and C++ decode
-  paths while continuing to emit the legacy graph.
-- Add snapshot-aware definition/reference resolution and bounded hot caches.
+Foundation now available:
+
+- [`FactBatch v1`](semantic_fact_batches.md) stores immutable per-file
+  definitions, exact occurrences,
+  resolved or unresolved edges, diagnostics, provider completeness, content
+  identity, profile identity, and position encoding.
+- Compatibility adapters project the existing Python `CodeGraph` and SCIP
+  occurrence index without changing the persisted graph schema or C++ decoder.
+- Ordered resolver passes resolve only unique monikers and require framework or
+  heuristic edges to retain provenance, confidence, and the synthesizing
+  resolver name.
+- File-unit overlay tests compare incremental state with a clean rebuild using
+  semantic digests; provider/profile identities can also be checked in strict
+  mode. The durable generation coordinator in M5 owns publication of those
+  units.
+- `codenib.fact-batch-artifact.v1` publishes canonical per-file FactBatch JSON
+  through the existing `ObjectStore`. Its reuse key binds schema, canonical
+  path, language, content digest, profile digest, and provider. Loads verify the
+  caller-held receipt, object-store receipt, object SHA-256, embedded batch
+  digest, reuse identity, size bound, duplicate JSON keys, and canonical bytes.
+  A repeated key producing different facts fails as an incomplete profile or
+  nondeterministic analyzer instead of silently replacing the prior result.
+- The strict clangd adapter retains exact definition/occurrence ranges and
+  unresolved cross-file SymbolID monikers after the bounded native RIFF reader
+  validates the same content snapshot. Its profile binds analyzer, target,
+  toolchain, compilation database, build context, position encoding, RIFF
+  contract, normalization, adapter schema, and FactBatch schema.
+- `codenib.fact-batch-generation.v1` publishes a source-bound manifest plus
+  explicit catalog member objects. Whole-file upserts/deletes reuse unchanged
+  path/content/profile/provider units, and a failed ref CAS leaves the previous
+  ready generation authoritative.
+- Snapshot-local definition lookup now has a bounded LRU keyed by the complete
+  snapshot ID, so unresolved edges never inherit a target from another
+  generation.
+
+Remaining publication and cutover work:
+
 - Establish parity gates for every public graph query and supported language.
 - Remove eager incoming-edge reconnection only after parity is demonstrated.
 
 ### M5: Per-file versions, retention, and overlays
 
-Status: pending.
+Status: in progress.
 
-- Store path/mode/blob identity and content-addressed analysis units per source
-  revision.
-- Reuse unchanged analysis units across commits without cross-version edge
-  contamination.
+The first durable per-file slice is implemented. Caller-owned
+`FactBatchReuseCache` maps remain non-authoritative, but the semantic-facts
+coordinator now composes verified receipts into one catalog generation. Schema
+v4 makes every unit an explicit generation member/GC root. Incremental
+publication carries forward unchanged units and applies path-aware upserts and
+deletes without resolving cross-file monikers into reusable artifacts. Tests
+cover clean/incremental convergence, profile invalidation, failed publication,
+receipt tampering, member reachability, migration, and cross-snapshot cache
+isolation.
+
+- Extend the current path/content identity with portable file mode and package
+  identity where future non-clangd adapters require them.
 - Add snapshot leases, pins, retention policy, mark-and-sweep GC, and crash
   recovery.
 - Discover and ownership-validate view-bundle `.previous-*` files before
   reclaiming verified old outputs and missing-destination sentinels.
-- Add path-aware overlay upsert/delete generations and owner isolation.
+- Generalize the clangd semantic-facts upsert/delete generation to the
+  remaining adapters and enforce owner isolation.
 
 ### M6: PostgreSQL and object-storage deployment
 

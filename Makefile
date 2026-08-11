@@ -94,6 +94,13 @@ CLANGD_WORKLOAD_GATE_SUBJECT_MANIFEST ?= scripts/profiling/clangd_workload_subje
 CLANGD_WORKLOAD_GATE_SUBJECT_ID ?=
 CLANGD_WORKLOAD_GATE_GENERATION_SECONDS ?=
 CLANGD_WORKLOAD_GATE_EXTRA_ARGS ?=
+CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR ?=
+CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT ?=
+CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS ?=
+CLANGD_FACT_GENERATION_PROFILE_TARGET_TRIPLE ?=
+CLANGD_FACT_GENERATION_PROFILE_BUILD_CONTEXT_DIGEST ?=
+CLANGD_FACT_GENERATION_PROFILE_OUTPUT ?=
+CLANGD_FACT_GENERATION_PROFILE_EXTRA_ARGS ?=
 PROJECT_LANGUAGE ?=
 PROJECT_ROOT ?=
 hash := \#
@@ -196,7 +203,7 @@ endef
 .PHONY: active-scip-tools active-lsp-tools active-scip-env active-system-deps-ubuntu
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
-.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate
+.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate clangd-fact-generation-profile
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
 .PHONY: scip-jvm-compat-system-deps-ubuntu
@@ -477,6 +484,21 @@ clangd-workload-gate: core-build
 		$(if $(CLANGD_WORKLOAD_GATE_GENERATION_SECONDS),--clangd-generation-seconds "$(CLANGD_WORKLOAD_GATE_GENERATION_SECONDS)",) \
 		--output-json "$(CLANGD_WORKLOAD_GATE_OUTPUT)" \
 		$(CLANGD_WORKLOAD_GATE_EXTRA_ARGS)
+
+clangd-fact-generation-profile: core-build
+	@test -n "$(CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR)" || { echo "Set CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR=/path/to/.cache/clangd/index" >&2; exit 1; }
+	@test -n "$(CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT)" || { echo "Set CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT=/path/to/repository" >&2; exit 1; }
+	@test -n "$(CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS)" || { echo "Set CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS=/path/to/compile_commands.json" >&2; exit 1; }
+	@test -n "$(CLANGD_FACT_GENERATION_PROFILE_TARGET_TRIPLE)" || { echo "Set CLANGD_FACT_GENERATION_PROFILE_TARGET_TRIPLE=<target>" >&2; exit 1; }
+	@test -n "$(CLANGD_FACT_GENERATION_PROFILE_BUILD_CONTEXT_DIGEST)" || { echo "Set CLANGD_FACT_GENERATION_PROFILE_BUILD_CONTEXT_DIGEST=sha256:<digest>" >&2; exit 1; }
+	PYTHONPATH="build/core:$$PYTHONPATH" python scripts/profiling/profile_clangd_fact_batch_generation.py \
+		--idx-directory "$(CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR)" \
+		--project-root "$(CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT)" \
+		--compile-commands "$(CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS)" \
+		--target-triple "$(CLANGD_FACT_GENERATION_PROFILE_TARGET_TRIPLE)" \
+		--build-context-digest "$(CLANGD_FACT_GENERATION_PROFILE_BUILD_CONTEXT_DIGEST)" \
+		$(if $(CLANGD_FACT_GENERATION_PROFILE_OUTPUT),--output-json "$(CLANGD_FACT_GENERATION_PROFILE_OUTPUT)",) \
+		$(CLANGD_FACT_GENERATION_PROFILE_EXTRA_ARGS)
 
 scip-cold-start-tools: scip-java-tool gradle-tool sbt-tool scip-dotnet-tool scip-ruby-tool scip-php-info
 	@$(MAKE) --no-print-directory scip-cold-start-env
