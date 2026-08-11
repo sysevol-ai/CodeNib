@@ -17,7 +17,13 @@ import pytest
 
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.index.embedding.artifact_integrity import (
+    capture_authenticated_vector_view,
+)
 from codenib.mcp.context import RUNTIME_VIEW_NAMES, ServerContext
+from codenib.native_index_authorization import (
+    _mint_trusted_local_admin_authorization,
+)
 from codenib.provider_routes import resolve_inference_route
 from codenib.source_fingerprint import capture_repository_source, fingerprint_repository
 
@@ -33,6 +39,47 @@ class _PendingSourceOwner:
 
     def close(self) -> None:
         self.closed = True
+
+
+def _authorize_test_vector(vector_dir: Path, semantic_contract):
+    with capture_authenticated_vector_view(vector_dir) as vector_view:
+        return _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                "mcp-context-test-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
+
+
+def _portable_vector_manifest(tmp_path: Path) -> tuple[RepoManifest, Path]:
+    vector_dir = tmp_path / "portable-vector"
+    vector_dir.mkdir()
+    config = {
+        "embedding_model": "test-model",
+        "embedding_provider": "huggingface",
+        "embedding_dimension": 4,
+        "dimension": 4,
+        "embedding_kwargs": {},
+    }
+    return (
+        RepoManifest(
+            repo_path=str(tmp_path),
+            indexes={
+                "vector": IndexEntry(
+                    index_type="vector",
+                    path=str(vector_dir),
+                    built_at="2026-08-11T00:00:00Z",
+                    built_at_epoch=0.0,
+                    status="fresh",
+                    config=config,
+                )
+            },
+        ),
+        vector_dir,
+    )
 
 
 def test_server_context_rejects_mismatched_source_authority(tmp_path: Path) -> None:
@@ -503,6 +550,92 @@ def test_empty_portable_artifact_context_stays_native_view_inert(
         ctx.load_views({"symbol_graph"})
 
 
+@pytest.mark.parametrize("origin", ["plain", "binding"])
+def test_portable_artifact_eager_load_rejects_exact_native_authority_before_parser(
+    tmp_path: Path,
+    origin: str,
+) -> None:
+    manifest, vector_dir = _portable_vector_manifest(tmp_path)
+    authorization = _authorize_test_vector(
+        vector_dir,
+        manifest.indexes["vector"].config,
+    )
+    origin_kwargs = (
+        {"artifact": {"schema": "codenib.context-artifact.v1"}}
+        if origin == "plain"
+        else {"artifact_binding": MagicMock()}
+    )
+
+    with (
+        patch("codenib.mcp.context.require_authorized_vector_view") as exact_gate,
+        patch(
+            "codenib.index.embedding.vector_store.CodeVectorStore"
+        ) as vector_constructor,
+        patch("codenib.index.embedding.vector_store.faiss.read_index") as faiss_parser,
+        patch(
+            "codenib.index.embedding.vector_store.compat_pickle.load"
+        ) as pickle_parser,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="portable artifact contexts cannot authorize native vector",
+        ):
+            ServerContext.load(
+                manifest,
+                views={"vector"},
+                native_index_authorization=authorization,
+                **origin_kwargs,
+            )
+
+    exact_gate.assert_not_called()
+    vector_constructor.assert_not_called()
+    faiss_parser.assert_not_called()
+    pickle_parser.assert_not_called()
+
+
+def test_plain_portable_artifact_lazy_load_stays_inert_with_exact_authority(
+    tmp_path: Path,
+) -> None:
+    manifest, vector_dir = _portable_vector_manifest(tmp_path)
+    authorization = _authorize_test_vector(
+        vector_dir,
+        manifest.indexes["vector"].config,
+    )
+    context = ServerContext.load(
+        manifest,
+        views=(),
+        artifact={"schema": "codenib.context-artifact.v1"},
+    )
+
+    with (
+        patch("codenib.mcp.context.require_authorized_vector_view") as exact_gate,
+        patch(
+            "codenib.index.embedding.vector_store.CodeVectorStore"
+        ) as vector_constructor,
+        patch("codenib.index.embedding.vector_store.faiss.read_index") as faiss_parser,
+        patch(
+            "codenib.index.embedding.vector_store.compat_pickle.load"
+        ) as pickle_parser,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="portable artifact contexts cannot authorize native parsing",
+        ):
+            context.load_views(
+                {"vector"},
+                native_index_authorization=authorization,
+            )
+
+        assert context._native_index_authorization is None
+        errors = context.load_views({"vector"})
+
+    assert "external authorization" in errors["vector"]
+    exact_gate.assert_not_called()
+    vector_constructor.assert_not_called()
+    faiss_parser.assert_not_called()
+    pickle_parser.assert_not_called()
+
+
 def test_load_views_adds_resources_idempotently(
     manifest_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -752,7 +885,10 @@ def test_load_vector_accepts_compiler_manifest_identity(tmp_path: Path) -> None:
     vector = MagicMock()
     vector.embedding_model = "test-model"
     vector.get_stats.return_value = {"total_documents": 3}
-    authorization = object()
+    authorization = _authorize_test_vector(
+        vector_dir,
+        manifest.indexes["vector"].config,
+    )
     with patch(
         "codenib.index.embedding.vector_store.CodeVectorStore",
         return_value=vector,
@@ -813,7 +949,10 @@ def test_validate_views_probes_vector_without_loading_embedding_model(
     vector = MagicMock()
     vector.embedding_model = "test-model"
     vector.get_stats.return_value = {"total_documents": 3}
-    authorization = object()
+    authorization = _authorize_test_vector(
+        vector_dir,
+        manifest.indexes["vector"].config,
+    )
 
     with patch(
         "codenib.index.embedding.vector_store.CodeVectorStore",
@@ -875,7 +1014,10 @@ def test_load_vector_rebinds_openai_credential_without_persisting_it(
     vector = MagicMock()
     vector.embedding_model = route.model
     vector.get_stats.return_value = {"total_documents": 3}
-    authorization = object()
+    authorization = _authorize_test_vector(
+        vector_dir,
+        manifest.indexes["vector"].config,
+    )
     with patch(
         "codenib.index.embedding.vector_store.CodeVectorStore",
         return_value=vector,
@@ -934,7 +1076,10 @@ def test_validate_views_does_not_require_remote_embedding_credentials(
     vector = MagicMock()
     vector.embedding_model = route.model
     vector.get_stats.return_value = {"total_documents": 3}
-    authorization = object()
+    authorization = _authorize_test_vector(
+        vector_dir,
+        manifest.indexes["vector"].config,
+    )
 
     with patch(
         "codenib.index.embedding.vector_store.CodeVectorStore",
@@ -978,7 +1123,10 @@ def test_validate_views_rejects_empty_vector_artifact(tmp_path: Path) -> None:
     vector = MagicMock()
     vector.embedding_model = "test-model"
     vector.get_stats.return_value = {"total_documents": 0}
-    authorization = object()
+    authorization = _authorize_test_vector(
+        vector_dir,
+        manifest.indexes["vector"].config,
+    )
 
     with patch(
         "codenib.index.embedding.vector_store.CodeVectorStore",
