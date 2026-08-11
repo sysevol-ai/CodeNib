@@ -9,12 +9,15 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
+import threading
+import time
 from unittest.mock import MagicMock
 
 import pytest
 
 from codenib.compiler.manifest import RepoManifest
 from codenib.mcp import server as server_mod
+from codenib.mcp.context import ServerContext
 from codenib.types import NodeInfo
 
 
@@ -22,8 +25,10 @@ from codenib.types import NodeInfo
 def _reset_ctx():
     """Ensure _ctx is cleaned up after each test."""
     original = server_mod._ctx
+    original_surface = server_mod.mcp.tool_surface
     yield
     server_mod._ctx = original
+    server_mod.configure_tool_surface(original_surface)
 
 
 def _make_server_ctx(*, bm25_results=None, regex_results=None, zoekt_results=None):
@@ -38,6 +43,10 @@ def _make_server_ctx(*, bm25_results=None, regex_results=None, zoekt_results=Non
     ctx.zoekt = MagicMock() if zoekt_results is not None else None
     ctx.errors = {}
     ctx.artifact = None
+    ctx.loaded_views = frozenset()
+    ctx.source_verified = False
+    ctx.source_error = "unverified"
+    ctx.explore_runtime = None
     ctx.lsp_provider_selection = {
         "provider": "codenib_static_index",
         "backend": "persisted-symbol-graph-v1",
@@ -50,6 +59,18 @@ def _make_server_ctx(*, bm25_results=None, regex_results=None, zoekt_results=Non
     if zoekt_results is not None:
         ctx.zoekt.search.return_value = zoekt_results
     return ctx
+
+
+def _empty_explore_response() -> dict:
+    return {
+        "query": "where",
+        "plan": {"delivery": {}},
+        "summary": {},
+        "source": {"verified": False},
+        "files": [],
+        "relationships": [],
+        "diagnostics": [],
+    }
 
 
 def test_search_bm25_tool() -> None:
@@ -135,6 +156,181 @@ def test_get_manifest_tool() -> None:
     assert result["repo"]["path"] == "/repo"
     assert result["repo"]["commit"] == "abc123"
     assert result["runtime"]["lsp_provider"]["backend"] == ("persisted-symbol-graph-v1")
+    assert result["runtime"]["tool_surface"] == "full"
+    assert result["runtime"]["explore_session"] == {
+        "calls": 0,
+        "ranges": 0,
+        "max_ranges": 160,
+        "evictions": 0,
+    }
+
+
+def test_default_server_registers_complete_compatible_tool_set() -> None:
+    server_mod.configure_tool_surface("full")
+
+    tools = asyncio.run(server_mod.mcp.list_tools())
+
+    assert {tool.name for tool in tools} == {
+        "explore_context",
+        "search_context",
+        "search_semantic",
+        "search_bm25",
+        "search_regex",
+        "search_zoekt",
+        "dependency_subgraph",
+        "lsp_definition",
+        "lsp_references",
+        "lsp_route",
+        "read_source",
+        "get_manifest",
+    }
+    assert len(tools) == 12
+
+
+def test_explore_tool_schema_is_bounded() -> None:
+    tools = {tool.name: tool for tool in asyncio.run(server_mod.mcp.list_tools())}
+    properties = tools["explore_context"].input_schema["properties"]
+
+    assert properties["query"]["maxLength"] == 16_000
+    assert properties["symbols"]["anyOf"][0]["maxItems"] == 32
+    assert properties["symbols"]["anyOf"][0]["items"]["maxLength"] == 1_024
+    assert properties["top_k"]["minimum"] == 1
+    assert properties["top_k"]["maximum"] == 20
+    assert properties["budget"]["enum"] == ["fast", "balanced", "thorough"]
+
+
+def test_explore_surface_instructions_and_prompt_name_only_visible_tool() -> None:
+    server_mod.configure_tool_surface("explore")
+
+    guide = asyncio.run(server_mod.codenib_guide())
+    instructions = server_mod.mcp._lowlevel_server.instructions
+    hidden_tools = {
+        "search_context",
+        "search_semantic",
+        "search_bm25",
+        "search_regex",
+        "search_zoekt",
+        "dependency_subgraph",
+        "lsp_definition",
+        "lsp_references",
+        "lsp_route",
+        "read_source",
+        "get_manifest",
+    }
+
+    assert "explore_context" in guide
+    assert "explore_context" in instructions
+    assert all(name not in guide for name in hidden_tools)
+    assert all(name not in instructions for name in hidden_tools)
+
+
+def test_mcp_lifespan_creates_and_discards_connection_runtime() -> None:
+    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+    server_mod._ctx = ctx
+
+    async def run_lifespan() -> None:
+        assert ctx.explore_runtime is None
+        async with server_mod._mcp_lifespan(server_mod.mcp) as runtime:
+            assert runtime is not None
+            assert ctx.explore_runtime is runtime
+            runtime.ledger.project(_empty_explore_response())
+            assert runtime.ledger.stats()["calls"] == 1
+        assert ctx.explore_runtime is None
+        assert runtime.ledger.stats()["calls"] == 0
+
+    asyncio.run(run_lifespan())
+
+
+def test_explore_context_serializes_calls_and_commits_in_order(monkeypatch) -> None:
+    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+    server_mod._ctx = ctx
+    state_lock = threading.Lock()
+    active = 0
+    maximum_active = 0
+
+    def implementation(*_args, **_kwargs):
+        nonlocal active, maximum_active
+        with state_lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        time.sleep(0.03)
+        with state_lock:
+            active -= 1
+        return _empty_explore_response()
+
+    monkeypatch.setattr(server_mod, "explore_context_impl", implementation)
+
+    async def run_calls():
+        return await asyncio.gather(
+            server_mod.explore_context("first"),
+            server_mod.explore_context("second"),
+        )
+
+    results = asyncio.run(run_calls())
+
+    assert maximum_active == 1
+    assert [result["summary"]["session_call"] for result in results] == [1, 2]
+    assert ctx.explore_runtime is not None
+    assert ctx.explore_runtime.ledger.stats()["calls"] == 2
+
+
+def test_explore_context_failure_does_not_commit_ledger(monkeypatch) -> None:
+    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+    server_mod._ctx = ctx
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("backend failed")
+
+    monkeypatch.setattr(server_mod, "explore_context_impl", fail)
+
+    with pytest.raises(RuntimeError, match="backend failed"):
+        asyncio.run(server_mod.explore_context("where"))
+
+    assert ctx.explore_runtime is not None
+    assert ctx.explore_runtime.ledger.stats()["calls"] == 0
+
+
+def test_explore_context_cancellation_does_not_commit_ledger(monkeypatch) -> None:
+    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+    server_mod._ctx = ctx
+    started = threading.Event()
+    second_started = threading.Event()
+    release = threading.Event()
+    call_count = 0
+
+    def implementation(*_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            started.set()
+            release.wait(timeout=2)
+        else:
+            second_started.set()
+        return _empty_explore_response()
+
+    monkeypatch.setattr(server_mod, "explore_context_impl", implementation)
+
+    async def cancel_call() -> None:
+        task = asyncio.create_task(server_mod.explore_context("where"))
+        await asyncio.to_thread(started.wait, 2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        next_task = asyncio.create_task(server_mod.explore_context("next"))
+        await asyncio.sleep(0.02)
+        assert not second_started.is_set()
+        release.set()
+        assert await asyncio.to_thread(second_started.wait, 0.5)
+        result = await next_task
+        assert result["summary"]["session_call"] == 1
+
+    try:
+        asyncio.run(cancel_call())
+    finally:
+        release.set()
+
+    assert ctx.explore_runtime is not None
+    assert ctx.explore_runtime.ledger.stats()["calls"] == 1
 
 
 def test_search_bm25_raises_without_ctx() -> None:
@@ -148,6 +344,13 @@ def test_parse_args_basic() -> None:
     assert args.manifest == "/tmp/manifest.json"
     assert args.manifest_flag is None
     assert args.log_level == "INFO"
+    assert args.tool_surface == "full"
+
+
+def test_parse_args_with_explore_surface() -> None:
+    args = server_mod._parse_args(["/tmp/manifest.json", "--tool-surface", "explore"])
+
+    assert args.tool_surface == "explore"
 
 
 def test_parse_args_with_manifest_flag() -> None:
@@ -186,6 +389,19 @@ def test_main_applies_log_level_before_initialization(monkeypatch) -> None:
         ("init", "/tmp/m.json"),
         ("run", "stdio"),
     ]
+
+
+def test_main_applies_requested_tool_surface(monkeypatch) -> None:
+    monkeypatch.setattr(server_mod, "set_console_log_level", lambda _level: None)
+    monkeypatch.setattr(server_mod, "init_server", lambda _path: None)
+    monkeypatch.setattr(server_mod.mcp, "run", lambda *, transport: None)
+
+    server_mod.main(["/tmp/m.json", "--tool-surface", "explore"])
+
+    assert server_mod.mcp.tool_surface == "explore"
+    assert server_mod.mcp._lowlevel_server.instructions == (
+        server_mod.CODENIB_EXPLORE_INSTRUCTIONS
+    )
 
 
 def test_import_does_not_configure_root_logging() -> None:

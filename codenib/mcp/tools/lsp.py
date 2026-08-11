@@ -21,7 +21,9 @@ from ._validation import (
 )
 
 
-def _coerce_symbols(symbols: Sequence[str] | str) -> list[str]:
+def normalize_lsp_route_symbols(symbols: Sequence[str] | str) -> list[str]:
+    """Validate the symbol-seed contract shared by route and explore tools."""
+
     if isinstance(symbols, str):
         route_text = bounded_text(
             symbols,
@@ -198,7 +200,7 @@ def lsp_route_impl(
 ) -> list[dict[str, Any]] | dict[str, str]:
     """Return provider-backed route anchors for one or more symbol seeds."""
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
-    seeds = _coerce_symbols(symbols)
+    seeds = normalize_lsp_route_symbols(symbols)
     requested_query = bounded_text(
         query,
         name="query",
@@ -221,3 +223,11 @@ def lsp_route_impl(
     except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
     return _serialize_results(results)
+
+
+__all__ = [
+    "lsp_definition_impl",
+    "lsp_references_impl",
+    "lsp_route_impl",
+    "normalize_lsp_route_symbols",
+]

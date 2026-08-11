@@ -91,6 +91,21 @@ Transport is stdio and logs go to stderr. A typical client configuration is:
 Use an absolute repository path because the client may launch the server from a
 different working directory.
 
+### Tool Surfaces
+
+The default `--tool-surface full` preserves the complete, compatible tool list
+and accepts existing calls unchanged. The bounded exploration surface is
+selected explicitly:
+
+```bash
+codenib mcp /path/to/repository --tool-surface explore
+```
+
+With `--tool-surface explore`, the server lists and accepts only
+`explore_context`; direct calls to tools hidden by that surface are rejected.
+Each stdio connection has its own runtime state, so reconnecting starts a fresh
+exploration ledger.
+
 ### MCP Registry
 
 CodeNib publishes its local stdio server as `ai.codenib/codenib` in the
@@ -114,6 +129,7 @@ Only tools whose backing views are fresh and available can return results.
 
 | Tool | Backing view | Granularity | Use for |
 |---|---|---|---|
+| `explore_context` | available retrieval, LSP route, `symbol_graph`, and verified checkout | grouped source windows | Bounded retrieval, navigation, dependencies, and source in one call |
 | `search_context` | available `bm25`, `vector`, and `symbol_graph` views | file/symbol | Recommended planned ranked search; reports the selected route and source identity |
 | `search_semantic` | `vector` | file/symbol (L0/L2) | Natural-language or conceptual queries |
 | `search_bm25` | `bm25` | symbol | Exact names and keyword lookups |
@@ -129,6 +145,26 @@ Only tools whose backing views are fresh and available can return results.
 All source locations returned by MCP use 1-based line numbers. Search tools
 reject blank query text, cap it at 16,000 characters, and accept `top_k` values
 from 1 through 100.
+
+`explore_context` accepts a query, optional symbol seeds, a bounded `top_k`, a
+`fast`/`balanced`/`thorough` budget, dependency direction, and test/dependency
+filters. It combines ranked retrieval, the selected LSP route, dependency
+subgraphs, and verified live-source windows. The response identifies the route
+provider and source binding explicitly. Missing or failed retrieval, route,
+dependency, or source providers degrade independently and add bounded
+`diagnostics`; unverified indexed excerpts remain marked `verified: false`
+instead of being presented as checkout source.
+
+Each complete serialized `explore_context` MCP `CallToolResult` has a hard
+256 KiB (262,144-byte) ceiling. Accounting includes the structured and text
+forms, and payload projection reserves room for the result/protocol envelope.
+The limit therefore does not grant 256 KiB to source content alone.
+
+Within each independent stdio connection, the runtime ledger remembers at most
+160 verified source ranges. A repeated identical range may use a stable
+`source_call` pointer to the call that supplied its body; unverified indexed
+excerpts are not deduplicated. Response summaries expose current ledger usage,
+deduplication, and eviction counts.
 
 Call `lsp_route` with `symbols=[]` and a non-blank query when no reliable symbol
 is known. This best-effort fallback examines at most 10,000 graph nodes, retains

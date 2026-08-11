@@ -6,7 +6,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +19,25 @@ from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprin
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.mcp.context import RUNTIME_VIEW_NAMES, ServerContext
 from codenib.provider_routes import resolve_inference_route
+
+
+def test_context_import_does_not_require_optional_mcp_dependency() -> None:
+    script = """\
+import importlib.abc
+import sys
+
+class BlockMCP(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname == "mcp" or fullname.startswith("mcp."):
+            raise ModuleNotFoundError("blocked optional MCP dependency", name=fullname)
+        return None
+
+sys.meta_path.insert(0, BlockMCP())
+from codenib.mcp.context import ServerContext
+assert ServerContext.__name__ == "ServerContext"
+"""
+
+    subprocess.run([sys.executable, "-c", script], check=True)
 
 
 @pytest.fixture()
@@ -180,6 +202,66 @@ def test_close_releases_live_runtime_resources(manifest_dir: Path) -> None:
     assert ctx.zoekt is None
     vector.close.assert_called_once_with()
     zoekt.stop.assert_called_once_with()
+
+
+def test_explore_session_lifecycle_replaces_and_resets_connection_state() -> None:
+    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+    first = ctx.begin_explore_session()
+    first.ledger.project(
+        {
+            "plan": {"delivery": {}},
+            "summary": {},
+            "files": [],
+            "relationships": [],
+            "diagnostics": [],
+        }
+    )
+    assert first.ledger.stats()["calls"] == 1
+
+    second = ctx.begin_explore_session()
+
+    assert second is ctx.explore_runtime
+    assert second is not first
+    assert first.ledger.stats()["calls"] == 0
+    ctx.end_explore_session(first)
+    assert ctx.explore_runtime is second
+
+    ctx.end_explore_session(second)
+    assert ctx.explore_runtime is None
+    assert second.ledger.stats()["calls"] == 0
+
+
+def test_ensure_explore_session_reuses_direct_embedding_runtime() -> None:
+    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+
+    first = ctx.ensure_explore_session()
+    second = ctx.ensure_explore_session()
+
+    assert second is first
+    ctx.close()
+    assert ctx.explore_runtime is None
+
+
+def test_ensure_explore_session_never_reuses_lock_across_event_loops() -> None:
+    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+
+    async def ensure_runtime():
+        return ctx.ensure_explore_session()
+
+    first = asyncio.run(ensure_runtime())
+    first.ledger.project(
+        {
+            "plan": {"delivery": {}},
+            "summary": {},
+            "files": [],
+            "relationships": [],
+            "diagnostics": [],
+        }
+    )
+    second = asyncio.run(ensure_runtime())
+
+    assert second is not first
+    assert first.ledger.stats()["calls"] == 0
 
 
 def test_load_expands_runtime_view_dependencies(

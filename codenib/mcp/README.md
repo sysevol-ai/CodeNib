@@ -65,10 +65,25 @@ codenib mcp /path/to/repo
 also remain available. All forms accept
 `--log-level {DEBUG,INFO,WARNING,ERROR}` (default `INFO`).
 
+### Tool surfaces
+
+The default `--tool-surface full` keeps the complete MCP tool surface and
+preserves existing tool listing and call behavior. To give an agent one bounded
+repository-exploration operation, start the server with:
+
+```bash
+codenib mcp /path/to/repo --tool-surface explore
+```
+
+The `explore` surface lists and accepts only `explore_context`. Calls to tools
+hidden by this surface are rejected, rather than merely omitted from tool
+discovery.
+
 ## Tools
 
 | Tool | Backing index | Result granularity | Use for |
 |------|---------------|--------------------|---------|
+| `explore_context` | available retrieval, LSP route, `symbol_graph`, verified checkout | grouped source windows | bounded retrieval, navigation, dependencies, and source in one call |
 | `search_context` | loaded `bm25`, `vector`, `symbol_graph` | file / symbol | recommended capability-aware ranked retrieval |
 | `search_semantic` | `vector` | file (l0) / symbol (l2) | natural-language / conceptual queries |
 | `search_bm25` | `bm25` | symbol | exact-name / keyword lookups |
@@ -85,6 +100,48 @@ All source locations returned by MCP use 1-based line numbers. Internal indexes
 remain 0-based; the MCP adapters perform the conversion once at the boundary.
 All search tools reject blank queries and query text longer than 16,000
 characters. They accept integer `top_k` values from 1 through 100.
+
+### `explore_context`
+
+Composes ranked retrieval, the selected LSP route provider, dependency-graph
+expansion, and verified live-source reads into one bounded response.
+
+- `query` (str): repository question or code query.
+- `symbols` (sequence of str, default empty): optional route and dependency
+  seeds; an empty sequence uses the bounded route query fallback.
+- `top_k` (int, default 8): maximum admitted source windows.
+- `budget` (str, default `"balanced"`): `"fast"`, `"balanced"`, or
+  `"thorough"`.
+- `direction` (str, default `"both"`): `"impact"`, `"dependencies"`, or
+  `"both"`.
+- `include_dependencies` (bool, default `true`): include bounded graph
+  neighborhoods when a symbol graph is available.
+- `filter_test` (bool, default `false`): exclude test files from retrieval
+  branches that support the filter.
+
+The response groups source windows by file and includes the concrete retrieval
+and route plan, provider metadata, dependency relationships, source identity,
+and a usage summary. Retrieval, routing, dependency expansion, and source reads
+degrade independently: an unavailable or failed provider is reported in
+`diagnostics` instead of being silently relabeled as another backend. When the
+checkout cannot be verified, indexed excerpts or locations are explicitly
+marked `verified: false`; they are not presented as live source.
+
+#### Result and connection bounds
+
+CodeNib enforces a 256 KiB (262,144-byte) hard ceiling on each serialized
+`explore_context` MCP `CallToolResult`, not just its inner response dictionary.
+Measurement covers the structured and text forms carried by the result.
+Explore results are projected below that ceiling to reserve space for the
+result/protocol envelope, so 256 KiB is not an application-payload budget.
+
+Every stdio connection owns an independent in-memory runtime ledger. It retains
+at most 160 verified source ranges and is not shared across connections or
+process restarts. If an identical verified range would be returned again, the
+response can replace its body with a stable `source_call` pointer to the call
+that delivered it. Unverified indexed excerpts are never session-deduplicated.
+The response summary reports ledger usage, deduplication, and evictions so the
+client can account for omitted bodies.
 
 ### `search_context`
 Plans and executes ranked retrieval without asking the agent to choose an index.

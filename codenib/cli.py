@@ -492,13 +492,23 @@ def _run_mcp(args: argparse.Namespace) -> int:
             str(repo_path),
             "--log-level",
             args.log_level,
+            "--tool-surface",
+            args.tool_surface,
         ]
         if args.repository:
             command.extend(("--repository", args.repository))
         mcp_main(command)
     else:
         manifest_path = resolve_manifest_path(args.path)
-        mcp_main([str(manifest_path), "--log-level", args.log_level])
+        mcp_main(
+            [
+                str(manifest_path),
+                "--log-level",
+                args.log_level,
+                "--tool-surface",
+                args.tool_surface,
+            ]
+        )
     return 0
 
 
@@ -1990,6 +2000,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--log-level",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
         default="INFO",
+    )
+    mcp_parser.add_argument(
+        "--tool-surface",
+        choices=("full", "explore"),
+        default="full",
+        help="MCP tool surface to expose",
     )
     mcp_parser.set_defaults(handler=_run_mcp)
 

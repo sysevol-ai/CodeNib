@@ -4,13 +4,44 @@
 
 """MCP prompt resource - guidance for calling agents."""
 
+CODENIB_FULL_INSTRUCTIONS = (
+    "CodeNib provides bounded repository exploration over pre-built indexes. "
+    "Start with explore_context to retrieve, navigate, expand dependencies, "
+    "and inspect verified source in one call. The full surface also exposes "
+    "lower-level search, LSP-shaped navigation, dependency, source, and "
+    "manifest tools when one operation must be forced explicitly."
+)
+
+CODENIB_EXPLORE_INSTRUCTIONS = (
+    "CodeNib provides one bounded repository exploration operation. Use "
+    "explore_context with a repository question and optional symbol seeds. "
+    "Inspect its plan, source identity, diagnostics, and session usage before "
+    "drawing conclusions."
+)
+
+CODENIB_EXPLORE_GUIDE = """\
+# CodeNib Explore Guide
+
+Use `explore_context` for repository questions. It composes ranked retrieval,
+symbol routing, dependency expansion, and bounded source windows in one call.
+Provide a precise `query`; add `symbols` when you already know likely entry
+points. Start with `budget="balanced"`, use `budget="fast"` for orientation,
+or `budget="thorough"` when the first result lacks enough relationships.
+
+Check `plan.route.provider` to see which navigation backend actually ran,
+`source.verified` before treating excerpts as live checkout source, and
+`diagnostics` for independently unavailable capabilities. Within one stdio
+connection, identical verified ranges can become stable session pointers;
+the response summary reports retained ranges, deduplication, and evictions.
+"""
+
 CODENIB_GUIDE = """\
 # CodeNib Tools Guide
 
 CodeNib serves ranked context and precise navigation over pre-built repository
-indexes. Start with `search_context`: it selects a deterministic BM25, dense,
-hybrid-RRF, or graph-expanded route from the views that are actually loaded.
-Use the lower-level tools when you need to force one operation.
+indexes. Start with `explore_context`: it composes ranked retrieval, symbol
+routing, dependency expansion, and verified source windows under one bounded
+response. Use the lower-level tools when you need to force one operation.
 Search responses keep every ranked location but may project large source bodies
 under a shared content budget. A truncated hit includes ``content_projection``
 metadata; use ``read_source`` with its file and 1-based line range to inspect
@@ -18,10 +49,17 @@ the exact checkout before finalizing an answer.
 
 ## When to use each tool
 
+### explore_context
+Best default for repository exploration. It reports the concrete retrieval and
+route plan, groups bounded source windows by file, and degrades unavailable
+providers through explicit diagnostics. Optional symbol seeds improve route
+and dependency precision; repeated verified ranges may use stable per-session
+pointers instead of retransmitting identical source.
+
 ### search_context
-Best default for repository questions. It returns the selected route, indexed
-commit, source fingerprint, and ranked source spans. Use `budget="fast"` for a
-smaller retrieval path or `budget="thorough"` when graph expansion is available.
+Best lower-level ranked search. It returns the selected route, indexed commit,
+source fingerprint, and ranked source spans. Use `budget="fast"` for a smaller
+retrieval path or `budget="thorough"` when graph expansion is available.
 
 Examples:
 - "where is retry backoff implemented"
@@ -75,7 +113,8 @@ source fingerprint.
 ### Choosing between them
 | Scenario | Tool |
 |----------|------|
-| General repository question | search_context |
+| General repository question | explore_context |
+| Force ranked retrieval without composed source windows | search_context |
 | Know the exact symbol name | search_bm25 |
 | Looking for a pattern across CodeGraph file/symbol nodes | search_regex |
 | Force vector similarity for a natural-language query | search_semantic |
@@ -99,3 +138,10 @@ source fingerprint.
   (for example ``function``, ``class``, or ``method``); use ``node_type`` to
   narrow it. Zoekt results carry ``type="file"``.
 """
+
+__all__ = [
+    "CODENIB_EXPLORE_GUIDE",
+    "CODENIB_EXPLORE_INSTRUCTIONS",
+    "CODENIB_FULL_INSTRUCTIONS",
+    "CODENIB_GUIDE",
+]

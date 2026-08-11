@@ -850,6 +850,97 @@ def test_mcp_command_reports_required_extra(
     assert "codenib[mcp]" in capsys.readouterr().err
 
 
+def test_mcp_parser_limits_tool_surface_and_defaults_to_full() -> None:
+    parser = cli.build_parser()
+
+    assert parser.parse_args(["mcp"]).tool_surface == "full"
+    assert parser.parse_args(["mcp", "--tool-surface", "explore"]).tool_surface == (
+        "explore"
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["mcp", "--tool-surface", "hidden"])
+
+    assert exc_info.value.code == 2
+
+
+def test_mcp_manifest_forwards_explore_tool_surface(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.mcp import server
+
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}")
+    calls = []
+    monkeypatch.setattr(cli, "_require_modules", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+    monkeypatch.setattr(server, "main", calls.append)
+    args = cli.build_parser().parse_args(
+        [
+            "mcp",
+            str(tmp_path),
+            "--log-level",
+            "WARNING",
+            "--tool-surface",
+            "explore",
+        ]
+    )
+
+    assert cli._run_mcp(args) == 0
+    assert calls == [
+        [
+            str(manifest_path),
+            "--log-level",
+            "WARNING",
+            "--tool-surface",
+            "explore",
+        ]
+    ]
+
+
+def test_mcp_portable_artifact_forwards_full_tool_surface(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.mcp import server
+
+    artifact_path = tmp_path / "portable-context"
+    repo_path = tmp_path / "checkout"
+    calls = []
+    monkeypatch.setattr(cli, "_require_modules", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "resolve_repo_path", lambda _value: repo_path)
+    monkeypatch.setattr(server, "main", calls.append)
+    args = cli.build_parser().parse_args(
+        [
+            "mcp",
+            "--artifact",
+            str(artifact_path),
+            "--repo",
+            "ignored-checkout",
+            "--repository",
+            "owner/repository",
+            "--log-level",
+            "ERROR",
+        ]
+    )
+
+    assert cli._run_mcp(args) == 0
+    assert calls == [
+        [
+            "--artifact",
+            str(artifact_path.resolve()),
+            "--repo",
+            str(repo_path),
+            "--log-level",
+            "ERROR",
+            "--tool-surface",
+            "full",
+            "--repository",
+            "owner/repository",
+        ]
+    ]
+
+
 def test_prepare_local_wiki_writes_single_repo_registry(
     tmp_path: Path,
 ) -> None:

@@ -22,18 +22,32 @@ import argparse
 import asyncio
 import logging
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, Literal, Optional
 
-from mcp.server import MCPServer
 from pydantic import Field
 
 from ..compiler.manifest import RepoManifest
 from ..log_utils import set_console_log_level
 from .context import ServerContext
-from .prompts import CODENIB_GUIDE
+from .explore_session import ExploreSessionLedger, ExploreSessionRuntime
+from .prompts import (
+    CODENIB_EXPLORE_GUIDE,
+    CODENIB_EXPLORE_INSTRUCTIONS,
+    CODENIB_FULL_INSTRUCTIONS,
+    CODENIB_GUIDE,
+)
+from .tool_surface import (
+    TOOL_SURFACE_EXPLORE,
+    TOOL_SURFACE_FULL,
+    TOOL_SURFACES,
+    ToolSurfaceMCPServer,
+)
 from .tools._validation import (
     MAX_DEPENDENCY_EDGES,
+    MAX_EXPLORE_WINDOWS,
     MAX_GRAPH_DEPTH,
     MAX_LSP_POSITION,
     MAX_LSP_QUERY_CHARS,
@@ -46,6 +60,7 @@ from .tools._validation import (
     MAX_TOOL_RESULTS,
 )
 from .tools.dependency import dependency_subgraph_impl
+from .tools.explore import explore_context_impl
 from .tools.lsp import lsp_definition_impl, lsp_references_impl, lsp_route_impl
 from .tools.search import search_bm25_impl, search_context_impl, search_regex_impl
 from .tools.search import search_semantic as _search_semantic_impl
@@ -53,6 +68,10 @@ from .tools.search import search_zoekt_impl
 from .tools.source import read_source_impl
 
 logger = logging.getLogger(__name__)
+
+# Historical embedders import ``MCPServer`` from this module. Keep that alias
+# while specializing the server with opt-in tool visibility.
+MCPServer = ToolSurfaceMCPServer
 
 # Global context is set once at startup before the event loop runs tools.
 _ctx: Optional[ServerContext] = None
@@ -82,6 +101,23 @@ _RouteSymbols = Annotated[
     Field(max_length=MAX_ROUTE_SYMBOLS),
 ]
 _SourcePath = Annotated[str, Field(min_length=1, max_length=MAX_SOURCE_PATH_CHARS)]
+_ExploreTopK = Annotated[int, Field(ge=1, le=MAX_EXPLORE_WINDOWS)]
+_ExploreBudget = Literal["fast", "balanced", "thorough"]
+
+
+@asynccontextmanager
+async def _mcp_lifespan(
+    _server: Any,
+) -> AsyncIterator[ExploreSessionRuntime | None]:
+    """Own one fresh exploration runtime for each transport connection."""
+
+    ctx = _ctx
+    runtime = ctx.begin_explore_session() if ctx is not None else None
+    try:
+        yield runtime
+    finally:
+        if ctx is not None and runtime is not None:
+            ctx.end_explore_session(runtime)
 
 
 def get_context() -> ServerContext:
@@ -102,28 +138,113 @@ if not _root_logger.handlers:
 try:
     mcp = MCPServer(
         "codenib",
-        instructions=(
-            "CodeNib provides code search over pre-built indexes. "
-            "Start with search_context for planned ranked retrieval over the "
-            "available lexical, dense, and structural views. Use search_semantic "
-            "for direct vector/embedding similarity, "
-            "search_bm25 for keyword lookups, search_regex for CodeGraph "
-            "file/symbol pattern matching, and search_zoekt for fast trigram-based "
-            "substring/regex search across raw file contents. Use "
-            "lsp_definition, lsp_references, and lsp_route for provider-backed "
-            "LSP-shaped symbol navigation."
-            " Use read_source to inspect a bounded source window after search or "
-            "navigation returns a location."
-        ),
+        instructions=CODENIB_FULL_INSTRUCTIONS,
+        lifespan=_mcp_lifespan,
     )
 finally:
     if _import_logging_guard is not None:
         _root_logger.removeHandler(_import_logging_guard)
 
 
+def configure_tool_surface(value: str) -> str:
+    """Apply one surface consistently to discovery, calls, and instructions."""
+
+    surface = mcp.set_tool_surface(value)
+    mcp._lowlevel_server.instructions = (  # noqa: SLF001 - SDK has no setter
+        CODENIB_EXPLORE_INSTRUCTIONS
+        if surface == TOOL_SURFACE_EXPLORE
+        else CODENIB_FULL_INSTRUCTIONS
+    )
+    return surface
+
+
+def _finish_abandoned_explore_worker(
+    runtime: ExploreSessionRuntime,
+    worker: asyncio.Task[Any],
+) -> None:
+    """Consume a cancelled caller's worker and release its runtime barrier."""
+
+    if runtime.pending_worker is worker:
+        runtime.pending_worker = None
+    if not worker.cancelled():
+        worker.exception()
+
+
+async def _wait_for_abandoned_explore_worker(
+    runtime: ExploreSessionRuntime,
+) -> None:
+    """Keep backend access serialized after an earlier caller cancelled."""
+
+    worker = runtime.pending_worker
+    if worker is None:
+        return
+    try:
+        await asyncio.shield(worker)
+    except Exception:  # noqa: BLE001 - the abandoned call was already cancelled
+        pass
+    finally:
+        if worker.done() and runtime.pending_worker is worker:
+            runtime.pending_worker = None
+
+
 # ------------------------------------------------------------------
 # Tools
 # ------------------------------------------------------------------
+
+
+@mcp.tool(
+    name="explore_context",
+    description=(
+        "Recommended bounded repository exploration. Composes ranked retrieval, "
+        "the selected LSP-shaped route, dependency expansion, and verified source "
+        "windows. Returns the concrete provider plan, source identity, independent "
+        "diagnostics, and per-connection delivery usage."
+    ),
+)
+async def explore_context(
+    query: _SearchQuery,
+    symbols: _RouteSymbols | None = None,
+    top_k: _ExploreTopK = 8,
+    budget: _ExploreBudget = "balanced",
+    direction: _GraphDirection = "both",
+    include_dependencies: bool = True,
+    filter_test: bool = False,
+) -> dict[str, Any]:
+    """Compose repository context and commit delivery history atomically."""
+
+    ctx = get_context()
+    runtime = ctx.ensure_explore_session()
+    async with runtime.call_lock:
+        await _wait_for_abandoned_explore_worker(runtime)
+        worker = asyncio.create_task(
+            asyncio.to_thread(
+                explore_context_impl,
+                ctx,
+                query,
+                symbols or (),
+                top_k,
+                budget,
+                direction,
+                include_dependencies,
+                filter_test,
+            )
+        )
+        try:
+            response = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            # ``to_thread`` cannot stop an already-running function. Let it
+            # finish read-only and never commit it. Cancellation remains
+            # responsive; the next call waits on this worker before touching
+            # the same providers.
+            runtime.pending_worker = worker
+            worker.add_done_callback(
+                lambda completed: _finish_abandoned_explore_worker(
+                    runtime,
+                    completed,
+                )
+            )
+            raise
+        return runtime.ledger.project(response)
 
 
 @mcp.tool(
@@ -430,9 +551,17 @@ async def get_manifest() -> dict[str, Any]:
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     result = _ctx.manifest.to_dict()
+    explore_runtime = getattr(_ctx, "explore_runtime", None)
+    explore_session = (
+        explore_runtime.ledger.stats()
+        if isinstance(explore_runtime, ExploreSessionRuntime)
+        else ExploreSessionLedger().stats()
+    )
     result["runtime"] = {
         "loaded_views": sorted(_ctx.loaded_views),
         "view_errors": dict(sorted(_ctx.errors.items())),
+        "tool_surface": mcp.tool_surface,
+        "explore_session": explore_session,
         "source_read": {
             "verified": _ctx.source_verified,
             "error": _ctx.source_error,
@@ -454,6 +583,8 @@ async def get_manifest() -> dict[str, Any]:
     description="Guidance on how to use CodeNib search tools effectively.",
 )
 async def codenib_guide() -> str:
+    if mcp.tool_surface == TOOL_SURFACE_EXPLORE:
+        return CODENIB_EXPLORE_GUIDE
     return CODENIB_GUIDE
 
 
@@ -573,6 +704,12 @@ def _parse_args(
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level.",
     )
+    parser.add_argument(
+        "--tool-surface",
+        choices=sorted(TOOL_SURFACES),
+        default=TOOL_SURFACE_FULL,
+        help="MCP tool discovery and call surface.",
+    )
     return parser.parse_args(argv)
 
 
@@ -650,6 +787,7 @@ def main(argv: list[str] | None = None) -> None:
     program_name = _cli_program_name()
     args = _parse_args(argv)
     set_console_log_level(args.log_level)
+    configure_tool_surface(args.tool_surface)
     manifest_path = args.manifest_flag or args.manifest
     if args.artifact and manifest_path:
         logger.error("Choose either a manifest or --artifact, not both")

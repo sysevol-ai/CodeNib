@@ -12,6 +12,7 @@ call time rather than blocking server startup.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from ..index.regex_idx import RegexNodeIndex
     from ..index.sparse_idx import BM25CodeIndexer
     from ..index.trigram import ZoektSearcher
+    from .explore_session import ExploreSessionRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,15 @@ RUNTIME_VIEW_NAMES = frozenset(name for name, _ in _VIEW_LOADERS)
 _VIEW_DEPENDENCIES = {
     "regex_index": frozenset({"symbol_graph"}),
 }
+
+
+def _running_event_loop() -> asyncio.AbstractEventLoop | None:
+    """Return the active loop without requiring one during sync setup."""
+
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
 
 
 class _DimensionProbeEmbedding:
@@ -128,6 +139,12 @@ class ServerContext:
     artifact: Optional[Mapping[str, Any]] = None
     source_verified: bool = False
     source_error: Optional[str] = "source binding has not been verified"
+    explore_runtime: Optional[ExploreSessionRuntime] = field(
+        default=None, init=False, repr=False
+    )
+    _explore_loop: asyncio.AbstractEventLoop | None = field(
+        default=None, init=False, repr=False
+    )
     _lsp_allow_native: bool = field(default=False, init=False, repr=False)
     _lsp_native_disabled_reason: str = field(
         default="local_source_not_verified", init=False, repr=False
@@ -225,6 +242,7 @@ class ServerContext:
         """Release runtime resources owned by this context."""
 
         with self._view_lock:
+            self.end_explore_session()
             self.lsp_provider = None
             if self.zoekt is not None:
                 _stop_zoekt(self.zoekt)
@@ -232,6 +250,56 @@ class ServerContext:
             if self.vector is not None:
                 _close_vector(self.vector)
                 self.vector = None
+
+    def begin_explore_session(self) -> ExploreSessionRuntime:
+        """Create fresh state for one stdio connection.
+
+        Stdio normally has one live connection per process. Replacing any
+        previous runtime keeps reconnects fail-closed even when an embedding
+        application reuses the same :class:`ServerContext`.
+        """
+
+        from .explore_session import ExploreSessionRuntime
+
+        with self._view_lock:
+            previous = self.explore_runtime
+            runtime = ExploreSessionRuntime()
+            self.explore_runtime = runtime
+            self._explore_loop = _running_event_loop()
+            if previous is not None:
+                previous.close()
+            return runtime
+
+    def ensure_explore_session(self) -> ExploreSessionRuntime:
+        """Return the connection runtime, creating one for direct embeddings."""
+
+        from .explore_session import ExploreSessionRuntime
+
+        with self._view_lock:
+            loop = _running_event_loop()
+            if self.explore_runtime is None or (
+                loop is not None
+                and self._explore_loop is not None
+                and loop is not self._explore_loop
+            ):
+                previous = self.explore_runtime
+                self.explore_runtime = ExploreSessionRuntime()
+                if previous is not None:
+                    previous.close()
+            if loop is not None:
+                self._explore_loop = loop
+            return self.explore_runtime
+
+    def end_explore_session(self, runtime: ExploreSessionRuntime | None = None) -> None:
+        """Discard one connection's ledger without clearing a newer runtime."""
+
+        with self._view_lock:
+            current = self.explore_runtime
+            if current is None or (runtime is not None and current is not runtime):
+                return
+            self.explore_runtime = None
+            self._explore_loop = None
+            current.close()
 
     def configure_lsp_provider(
         self,
