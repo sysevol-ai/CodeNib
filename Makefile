@@ -189,7 +189,7 @@ endef
 .PHONY: active-scip-tools active-lsp-tools active-scip-env active-system-deps-ubuntu
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
-.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile
+.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
 .PHONY: scip-jvm-compat-system-deps-ubuntu
@@ -412,13 +412,16 @@ core-test: core-build
 	./build/core/scip_decode_test
 	./build/core/graph_layers_test
 	./build/core/fact_batch_buffer_test
+	./build/core/fact_query_index_test
 	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
 		test/scip/test_scip_core.py \
 		test/scip/test_scip_core_registry.py \
 		test/scip/test_fact_batch_buffer.py \
+		test/scip/test_fact_query_index.py \
 		test/facts/test_model.py \
 		test/facts/test_adapters.py \
-		test/scripts/test_profile_fact_batch_buffer.py
+		test/scripts/test_profile_fact_batch_buffer.py \
+		test/scripts/test_profile_fact_query_index.py
 
 fact-buffer-profile: core-build
 	@test -n "$(FACT_BUFFER_PROFILE_INDEX)" || { echo "Set FACT_BUFFER_PROFILE_INDEX=/path/to/index.decoded" >&2; exit 1; }
@@ -429,6 +432,16 @@ fact-buffer-profile: core-build
 		$(if $(FACT_BUFFER_PROFILE_PROJECT_ROOT),--project-root "$(FACT_BUFFER_PROFILE_PROJECT_ROOT)",) \
 		$(if $(FACT_BUFFER_PROFILE_OUTPUT),--output-json "$(FACT_BUFFER_PROFILE_OUTPUT)",) \
 		$(FACT_BUFFER_PROFILE_EXTRA_ARGS)
+
+fact-query-profile: core-build
+	@test -n "$(FACT_QUERY_PROFILE_INDEX)" || { echo "Set FACT_QUERY_PROFILE_INDEX=/path/to/index.decoded" >&2; exit 1; }
+	@test -n "$(FACT_QUERY_PROFILE_LANGUAGE)" || { echo "Set FACT_QUERY_PROFILE_LANGUAGE=<language>" >&2; exit 1; }
+	PYTHONPATH="build/core:$$PYTHONPATH" python scripts/profiling/profile_fact_query_index.py \
+		--index "$(FACT_QUERY_PROFILE_INDEX)" \
+		--language "$(FACT_QUERY_PROFILE_LANGUAGE)" \
+		$(if $(FACT_QUERY_PROFILE_PROJECT_ROOT),--project-root "$(FACT_QUERY_PROFILE_PROJECT_ROOT)",) \
+		$(if $(FACT_QUERY_PROFILE_OUTPUT),--output-json "$(FACT_QUERY_PROFILE_OUTPUT)",) \
+		$(FACT_QUERY_PROFILE_EXTRA_ARGS)
 
 scip-cold-start-tools: scip-java-tool gradle-tool sbt-tool scip-dotnet-tool scip-ruby-tool scip-php-info
 	@$(MAKE) --no-print-directory scip-cold-start-env

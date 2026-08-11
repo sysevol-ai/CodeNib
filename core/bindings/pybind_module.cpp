@@ -23,6 +23,7 @@
 // ecount worth of tuples/dicts.
 
 #include "fact_batch_buffer.h"
+#include "fact_query_index.h"
 #include "graph_layers.h"
 #include "scip_decode.h"
 
@@ -59,6 +60,24 @@ py::dict vertex_to_dict(const CodeGraph::VertexData &v) {
   d["has_definition"] =
       v.has_definition.has_value() ? py::cast(*v.has_definition) : py::none();
   return d;
+}
+
+py::dict fact_query_capabilities() {
+  py::dict result;
+  result["definition_by_symbol"] = true;
+  result["references_by_symbol"] = true;
+  result["position_queries"] = false;
+  result["route_queries"] = false;
+  return result;
+}
+
+py::dict
+reference_to_dict(const codenib::core::FactQueryIndex::Reference &reference) {
+  py::dict result;
+  result["source_vid"] = reference.source;
+  result["file"] = reference.anchor_file;
+  result["line"] = reference.anchor_line;
+  return result;
 }
 
 py::dict decode_scip(const std::string &index_file,
@@ -284,6 +303,52 @@ py::dict fact_batch_buffer_contract() {
   return result;
 }
 
+py::dict decode_scip_fact_query_index(const std::string &index_file,
+                                      std::optional<std::string> project_root,
+                                      const std::string &language) {
+  auto decoder =
+      codenib::core::make_scip_decoder(language, index_file, project_root);
+
+  using clock = std::chrono::steady_clock;
+  clock::time_point decode_started;
+  clock::time_point decode_finished;
+  clock::time_point index_finished;
+  codenib::core::SCIPDecodeProfile decode_profile;
+  std::shared_ptr<codenib::core::FactQueryIndex> index;
+  {
+    py::gil_scoped_release release;
+    decode_started = clock::now();
+    auto records = std::make_shared<codenib::core::SCIPDecodedRecords>(
+        decoder->decode_records());
+    decode_finished = clock::now();
+    decode_profile = decoder->last_profile();
+    index = std::make_shared<codenib::core::FactQueryIndex>(records);
+    index_finished = clock::now();
+  }
+
+  auto elapsed_ns = [](clock::time_point start, clock::time_point end) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+        .count();
+  };
+  py::dict result;
+  result["format"] = codenib::core::FACT_QUERY_INDEX_FORMAT;
+  result["index"] = std::move(index);
+  result["native_decode_ns"] = elapsed_ns(decode_started, decode_finished);
+  result["native_index_ns"] = elapsed_ns(decode_finished, index_finished);
+  result["decode_profile_ns"] = decode_profile_to_dict(decode_profile);
+  result["graph_materialized"] = false;
+  return result;
+}
+
+py::dict fact_query_index_contract() {
+  py::dict result;
+  result["abi_version"] = codenib::core::FACT_QUERY_INDEX_ABI_VERSION;
+  result["format"] = codenib::core::FACT_QUERY_INDEX_FORMAT;
+  result["requires_anchored_references"] = true;
+  result["capabilities"] = fact_query_capabilities();
+  return result;
+}
+
 codenib::core::LayerBuckets
 classify_edge_layers_py(const std::vector<std::string> &edge_types) {
   py::gil_scoped_release release;
@@ -301,6 +366,67 @@ PYBIND11_MODULE(codenib_core, m) {
       .def("__len__", [](const FactBatchOwnedBuffer &buffer) {
         return buffer.bytes().size();
       });
+
+  py::class_<codenib::core::FactQueryIndex,
+             std::shared_ptr<codenib::core::FactQueryIndex>>(
+      m, "_NativeFactQueryIndex")
+      .def_property_readonly(
+          "fact_query_index",
+          [](const codenib::core::FactQueryIndex &) { return true; })
+      .def_property_readonly(
+          "materializes_graph",
+          [](const codenib::core::FactQueryIndex &) { return false; })
+      .def_property_readonly("capabilities",
+                             [](const codenib::core::FactQueryIndex &) {
+                               return fact_query_capabilities();
+                             })
+      .def_property_readonly("project_root",
+                             [](const codenib::core::FactQueryIndex &index) {
+                               return index.project_root().empty()
+                                          ? py::object(py::none())
+                                          : py::object(
+                                                py::cast(index.project_root()));
+                             })
+      .def_property_readonly("record_count",
+                             &codenib::core::FactQueryIndex::record_count)
+      .def_property_readonly("edge_count",
+                             &codenib::core::FactQueryIndex::edge_count)
+      .def_property_readonly("symbol_count",
+                             &codenib::core::FactQueryIndex::symbol_count)
+      .def_property_readonly("reference_count",
+                             &codenib::core::FactQueryIndex::reference_count)
+      .def("has_symbol", &codenib::core::FactQueryIndex::has_symbol)
+      .def("get_node_info_by_name",
+           [](const codenib::core::FactQueryIndex &index,
+              const std::string &name) -> py::object {
+             const auto vertex = index.get_node_info_by_name(name);
+             if (!vertex.has_value())
+               return py::none();
+             return vertex_to_dict(*vertex);
+           })
+      .def("get_node_info_by_id",
+           [](const codenib::core::FactQueryIndex &index,
+              CodeGraph::VertexId id) -> py::object {
+             const auto vertex = index.get_node_info_by_id(id);
+             if (!vertex.has_value())
+               return py::none();
+             return vertex_to_dict(*vertex);
+           })
+      .def("resolve_symbol_candidates",
+           &codenib::core::FactQueryIndex::resolve_symbol_candidates,
+           py::arg("symbol"), py::arg("limit") = 8)
+      .def(
+          "iter_incoming_references",
+          [](const codenib::core::FactQueryIndex &index,
+             const std::string &target_name) {
+            py::list result;
+            for (const auto &reference :
+                 index.incoming_references(target_name)) {
+              result.append(reference_to_dict(reference));
+            }
+            return result;
+          },
+          py::arg("target_name"));
 
   m.def("decode_scip", &decode_scip, py::arg("index_file"),
         py::arg("project_root") = std::optional<std::string>(std::nullopt),
@@ -351,6 +477,22 @@ buffer exporters instead of copying every table into Python bytes.
 
   m.def("fact_batch_buffer_contract", &fact_batch_buffer_contract,
         R"pbdoc(Return the compiled FactBatchBuffer ABI contract.)pbdoc");
+
+  m.def("decode_scip_fact_query_index", &decode_scip_fact_query_index,
+        py::arg("index_file"),
+        py::arg("project_root") = std::optional<std::string>(std::nullopt),
+        py::arg("language") = std::string("python"),
+        R"pbdoc(
+Decode a SCIP index into a graph-free FactQueryIndex v1.
+
+The returned index owns immutable decoded records and integer postings. It
+supports symbol-based definitions and anchored references only; position and
+route queries remain unavailable and no CodeGraph or igraph is materialized.
+)pbdoc");
+
+  m.def(
+      "fact_query_index_contract", &fact_query_index_contract,
+      R"pbdoc(Return the compiled FactQueryIndex ABI and capabilities.)pbdoc");
 
   m.def("canonical_scip_decoder_languages",
         &codenib::core::canonical_scip_decoder_languages,

@@ -688,6 +688,38 @@ the report with `make fact-buffer-profile` and add
 facts. FactQuery indexing (#561) and clangd parsing (#555) remain separate
 promotion and review decisions.
 
+FactQueryIndex v1 promotion status
+([#561](https://github.com/sysevol-ai/CodeNib/issues/561)): the graph-free index
+owns `DecodedRecords` plus integer postings and exposes only symbol definitions
+and fully anchored references. Position and route capabilities remain false;
+invalid endpoints, definition ranges, duplicate names, and unanchored
+references fail the candidate before it can return a partial result. The
+existing `decode()` graph API is unchanged. `decode_query_index()` defaults to
+`auto`, with compatible graph fallback; `required` fails closed.
+
+The 2026-08-10 query-ready gate starts from a saved `index.decoded`, alternates
+complete-CodeGraph and FactQueryIndex arms, includes an identical workload of
+100 definition/reference symbol pairs, and requires exact results and public
+errors across canonical, display, bare, quoted, ambiguous, and missing seeds:
+
+| SCIP subject | Parity seeds | CodeGraph | FactQueryIndex | Index build | Improvement | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| CodeNib Python, 41.6 MB | 1,143 | 0.4006s | 0.2991s | 0.0171s | +25.3% | promote auto |
+| Ruff Rust, 130.5 MB | 1,109 | 2.4401s | 1.7280s | 0.1377s | +29.2% | promote auto |
+
+The Python report used 15 measured iterations after five warmups; Rust used
+seven after three. Cyclic garbage collection was collected before each arm and
+disabled inside timed regions, and both reports retain every raw sample and
+arm order. The artifact SHA-256 values are
+`96e2c407c421d7eb72b2fd834c812c6b688b3634973f2fcdc865cb78bfe87227` and
+`ab55627fb2f379bff19b3fe8123cb94b4d019732711b16c0ddaf5179898c8778`.
+This is a persisted-artifact query-readiness decision, not a claim that
+unchanged external SCIP generation becomes faster. Use
+`make fact-query-profile` and optionally pass `--external-index-seconds` for a
+separate cold-start decision. Auto promotion is therefore restricted to
+Python and Rust; every other core language stays on CodeGraph until it clears
+the same 20% gate. clangd parsing (#555) remains a separate decision.
+
 ### Phase 6: Multi-Graph Python Surface
 
 Mixed-language repositories need a Python-side graph aggregation path before a

@@ -90,6 +90,29 @@ make fact-buffer-profile \
   FACT_BUFFER_PROFILE_EXTRA_ARGS='--include-semantic-consumer'
 ```
 
+## FactQueryIndex v1
+
+`decode_scip_fact_query_index(...)` owns immutable `DecodedRecords` and builds
+integer symbol/reference postings without constructing `CodeGraph` or igraph.
+Its v1 capabilities are intentionally limited to canonical/display/bare symbol
+resolution, definition metadata, and anchored incoming references. Position
+and route queries report unsupported; a malformed endpoint, definition range,
+duplicate name, or unanchored reference rejects the whole candidate.
+
+The existing `SCIPDecoderCore.decode()` behavior does not change. Call
+`decode_query_index()` for this capability-specific route. Its
+`CODENIB_NATIVE_FACT_QUERY_INDEX=auto` default selects the native index only
+for Python and Rust, which passed the 20% query-ready gate; `off` always
+returns the complete graph and `required` attempts native indexing for any
+core language without fallback. Reproduce the gate with:
+
+```bash
+make fact-query-profile \
+  FACT_QUERY_PROFILE_INDEX=/path/to/index.decoded \
+  FACT_QUERY_PROFILE_LANGUAGE=python \
+  FACT_QUERY_PROFILE_OUTPUT=/tmp/fact-query-report.json
+```
+
 ## Use Through Python
 
 Application code should select the core decoder through `LSIndexer`, which

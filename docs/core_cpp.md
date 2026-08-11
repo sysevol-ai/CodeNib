@@ -115,6 +115,36 @@ make fact-buffer-profile \
   FACT_BUFFER_PROFILE_EXTRA_ARGS='--iterations 7 --warmups 2 --include-semantic-consumer'
 ```
 
+## FactQueryIndex v1
+
+`SCIPDecoderCore.decode_query_index()` can stop at a graph-free native index
+for symbol definition and reference consumers. The index owns the decoded
+records and integer postings, resolves canonical, display, and bare names, and
+returns only fully anchored references. Its capability metadata explicitly
+marks position and route queries unavailable. Invalid endpoints, definition
+ranges, duplicate names, and unanchored references fail closed before any
+public result is returned.
+
+This API is separate from `decode()`, whose graph behavior is unchanged.
+`CODENIB_NATIVE_FACT_QUERY_INDEX=auto` selects native indexing only for Python
+and Rust; other languages receive the complete compatible graph. Use `off` to
+force that graph or `required` to attempt the native path without fallback.
+The promotion gate starts from an existing `index.decoded` artifact and
+measures both decode-to-query-ready startup and an identical symbol workload.
+Reproduce it with:
+
+```bash
+make fact-query-profile \
+  FACT_QUERY_PROFILE_INDEX=/path/to/index.decoded \
+  FACT_QUERY_PROFILE_LANGUAGE=python \
+  FACT_QUERY_PROFILE_PROJECT_ROOT=/path/to/repository \
+  FACT_QUERY_PROFILE_OUTPUT=/tmp/fact-query-report.json \
+  FACT_QUERY_PROFILE_EXTRA_ARGS='--iterations 15 --warmups 5'
+```
+
+Pass `--external-index-seconds` through `FACT_QUERY_PROFILE_EXTRA_ARGS` when a
+separate cold-start analysis should include unchanged SCIP generation time.
+
 ## Verify
 
 ```bash
@@ -132,6 +162,8 @@ skip report.
 - `code_graph.{h,cpp}` implements the C++ graph container.
 - `decoded_records.h` defines the provider-neutral pre-graph boundary.
 - `fact_batch_buffer.{h,cpp}` defines the v1 native buffer ABI and encoder.
+- `fact_query_index.{h,cpp}` implements graph-free symbol and reference
+  postings.
 - `graph_layers.{h,cpp}` classifies normalized edge types into reusable graph
   layers.
 - `scip_decode_base.{h,cpp}` and `scip_decode_common.{h,cpp}` provide shared

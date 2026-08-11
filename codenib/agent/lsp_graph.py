@@ -214,10 +214,16 @@ def _unified_index(graph: Any) -> dict[str, list[str]]:
 
 def resolve_symbol_candidates(graph: Any, symbol: str, limit: int = 8) -> list[str]:
     """Return canonical node names that match a user-facing symbol seed."""
-    names = getattr(graph, "name_to_vertex", {}) or {}
     seed = (symbol or "").strip().strip("`'\"")
     if not seed:
         return []
+    direct_resolver = getattr(graph, "resolve_symbol_candidates", None)
+    if callable(direct_resolver):
+        return _dedupe_names(
+            (str(name) for name in direct_resolver(seed, limit)), limit
+        )
+
+    names = getattr(graph, "name_to_vertex", {}) or {}
     if seed in names:
         return [seed]
 
@@ -416,6 +422,9 @@ def lsp_definition(
     limit = max(1, int(top_k or 8))
     if symbol:
         return _definitions_for_symbol(graph, symbol, limit)
+    capabilities = getattr(graph, "capabilities", None)
+    if isinstance(capabilities, dict) and capabilities.get("position_queries") is False:
+        raise ValueError("query index does not support position queries")
     if not file_path or line is None:
         raise ValueError("lsp_definition requires either symbol or file_path + line")
     if not hasattr(graph, "query_range"):
@@ -594,21 +603,31 @@ def lsp_references(
                 )
             )
 
-        vid = getattr(graph, "name_to_vertex", {}).get(name)
-        if vid is None or not hasattr(graph, "graph"):
-            continue
-        for eid in graph.graph.incident(vid, mode="in"):
-            edge = graph.graph.es[eid]
-            attrs = edge.attributes()
-            if attrs.get("type") != EDGE_TYPE_REFERENCE:
+        direct_references = getattr(graph, "iter_incoming_references", None)
+        if callable(direct_references):
+            references = direct_references(name)
+        else:
+            vid = getattr(graph, "name_to_vertex", {}).get(name)
+            if vid is None or not hasattr(graph, "graph"):
                 continue
+            references = (
+                {
+                    "source_vid": edge.source,
+                    "file": edge.attributes().get("anchor_file"),
+                    "line": edge.attributes().get("anchor_line"),
+                }
+                for eid in graph.graph.incident(vid, mode="in")
+                if (edge := graph.graph.es[eid]).attributes().get("type")
+                == EDGE_TYPE_REFERENCE
+            )
+        for reference in references:
             nodes.append(
                 _compact_reference(
                     graph,
                     target_name=name,
-                    source_vid=edge.source,
-                    file_path=attrs.get("anchor_file"),
-                    line=attrs.get("anchor_line"),
+                    source_vid=reference.get("source_vid"),
+                    file_path=reference.get("file"),
+                    line=reference.get("line"),
                 )
             )
     return _dedupe_nodes(nodes, limit)
@@ -856,6 +875,10 @@ def lsp_route(
     neighborhood. This function intentionally avoids benchmark instance names or
     scorer-specific answer ordering.
     """
+    capabilities = getattr(graph, "capabilities", None)
+    if isinstance(capabilities, dict) and capabilities.get("route_queries") is False:
+        raise ValueError("query index does not support route queries")
+
     limit = max(1, int(top_k or 12))
     query_terms = _query_terms(query)
     candidates: list[dict[str, Any]] = []
