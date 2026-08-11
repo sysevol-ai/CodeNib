@@ -20,10 +20,13 @@ from codenib.artifacts import normalize_owned_query_view, validate_portable_quer
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    capture_authenticated_vector_view,
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
-from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
+from codenib.native_index_authorization import (
+    _mint_trusted_local_admin_authorization,
+)
 from codenib.provider_routes import resolve_inference_route
 
 _VECTOR_CONFIG = {
@@ -39,13 +42,19 @@ _MODEL_SUFFIX = "test__model"
 _REVISION = "a" * 40
 
 
-def _vector_authorization(vector: Path, store):
-    return _mint_trusted_local_admin_authorization(
-        capture_directory_ownership(vector),
-        view_type="vector",
-        semantic_contract=store.artifact_metadata,
-        evidence=("portable-vector-view-test-local-admin",),
-    )
+def _authorize_vector_runtime(path: Path, semantic_contract: dict[str, object]):
+    """Mint the exact process-local capability used by real FAISS load tests."""
+
+    with capture_authenticated_vector_view(path) as view:
+        return _mint_trusted_local_admin_authorization(
+            view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                "portable-vector-runtime-contract-test",
+                "captured-vector-tree-subject",
+            ),
+        )
 
 
 def _tree(root: Path) -> dict[str, bytes]:
@@ -1524,7 +1533,12 @@ def test_normalize_schema6_view_loads_with_runtime_contract(
         trust_remote_code=False,
     )
 
-    store.load(native_index_authorization=_vector_authorization(vector, store))
+    store.load(
+        native_index_authorization=_authorize_vector_runtime(
+            vector,
+            store.artifact_metadata,
+        )
+    )
 
     assert len(store.l2_documents) == 1
     assert int(store.l2_index.ntotal) == 1
@@ -1719,7 +1733,7 @@ def test_normalize_schema6_rejects_faiss_index_type_drift(tmp_path: Path) -> Non
         )
 
 
-def test_normalize_rejects_untrained_active_ivf_before_runtime_first_search(
+def test_runtime_and_normalize_reject_untrained_active_ivf_before_first_search(
     tmp_path: Path,
 ) -> None:
     from codenib.index.embedding.vector_store import CodeVectorStore
@@ -1756,7 +1770,12 @@ def test_normalize_rejects_untrained_active_ivf_before_runtime_first_search(
         trust_remote_code=False,
     )
     with pytest.raises(ValueError, match="FAISS index is not trained"):
-        store.load(native_index_authorization=_vector_authorization(vector, store))
+        store.load(
+            native_index_authorization=_authorize_vector_runtime(
+                vector,
+                store.artifact_metadata,
+            )
+        )
 
     with pytest.raises(ValueError, match="active IVF index is untrained"):
         normalize_owned_query_view(

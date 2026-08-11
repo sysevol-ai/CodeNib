@@ -25,6 +25,8 @@ pin down:
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+from types import SimpleNamespace
 from typing import List
 
 import pytest
@@ -40,7 +42,7 @@ from codenib.agent.skills.registry import SkillRegistry
 from codenib.compiler import resources as compiler_resources
 from codenib.compiler import skill_context
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
-from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.compiler.manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
 from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
 
 
@@ -500,6 +502,8 @@ def test_embedding_resource_limits_reach_builder_and_loader(
             "embedding_kwargs": {"max_seq_length": 8192},
             "trust_remote_code": False,
             "default_batch_size": 4,
+            "artifact_metadata": None,
+            "native_index_authorization": None,
         }
     ]
 
@@ -528,8 +532,125 @@ def test_bundled_embedding_policy_reaches_builder_and_loader(
             "embedding_kwargs": None,
             "trust_remote_code": True,
             "default_batch_size": None,
+            "artifact_metadata": None,
+            "native_index_authorization": None,
         }
     ]
+
+
+def test_existing_required_vector_without_authority_forces_rebuild(
+    registry,
+    mocked_build,
+    tmp_path,
+):
+    cache = tmp_path / "cache"
+    vector = cache / "vector"
+    vector.mkdir(parents=True)
+    (vector / "existing").write_text("untrusted", encoding="utf-8")
+
+    skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["embedding_search"],
+        cache_dir=str(cache),
+        skill_registry=registry,
+    )
+
+    assert mocked_build["compile"] == [("vector",)]
+
+
+def test_compiler_owned_vector_mints_exact_manifest_contract(
+    registry,
+    mocked_build,
+    monkeypatch,
+    tmp_path,
+):
+    cache = tmp_path / "cache"
+    vector = cache / "vector"
+    contract = {"embedding_fingerprint": "sha256:compiler-owned"}
+    entry = IndexEntry(
+        index_type="vector",
+        path=str(vector),
+        built_at="2026-08-11T00:00:00Z",
+        built_at_epoch=0.0,
+        status="fresh",
+        config=contract,
+    )
+    manifest = RepoManifest(indexes={"vector": entry})
+    ownership = object()
+    authorization = object()
+    minted = []
+
+    monkeypatch.setattr(
+        skill_context,
+        "_run_compiler",
+        lambda *_args, **_kwargs: manifest,
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.artifact_integrity.capture_authenticated_vector_view",
+        lambda path: nullcontext(SimpleNamespace(ownership=ownership, root=path)),
+    )
+
+    def mint(captured, **kwargs):
+        minted.append((captured, kwargs))
+        return authorization
+
+    monkeypatch.setattr(
+        "codenib.native_index_authorization._mint_trusted_local_admin_authorization",
+        mint,
+    )
+
+    skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["embedding_search"],
+        cache_dir=str(cache),
+        skill_registry=registry,
+    )
+
+    assert minted[0][0] is ownership
+    assert minted[0][1]["semantic_contract"] == contract
+    assert mocked_build["vector_kwargs"][0]["artifact_metadata"] == contract
+    assert (
+        mocked_build["vector_kwargs"][0]["native_index_authorization"] is authorization
+    )
+
+
+def test_existing_vector_token_uses_current_manifest_contract(
+    registry,
+    mocked_build,
+    tmp_path,
+):
+    cache = tmp_path / "cache"
+    vector = cache / "vector"
+    vector.mkdir(parents=True)
+    (vector / "existing").write_text("captured", encoding="utf-8")
+    contract = {"embedding_fingerprint": "sha256:expected"}
+    RepoManifest(
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(vector),
+                built_at="2026-08-11T00:00:00Z",
+                built_at_epoch=0.0,
+                status="fresh",
+                config=contract,
+            )
+        }
+    ).save(cache / MANIFEST_FILENAME)
+    authorization = object()
+
+    skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["embedding_search"],
+        cache_dir=str(cache),
+        skill_registry=registry,
+        native_index_authorization=authorization,
+    )
+
+    assert mocked_build["compile"] == []
+    assert mocked_build["vector_kwargs"][0]["artifact_metadata"] == contract
+    assert (
+        mocked_build["vector_kwargs"][0]["native_index_authorization"] is authorization
+    )
 
 
 def test_partial_cache_only_rebuilds_missing(registry, mocked_build, tmp_path):
@@ -554,6 +675,17 @@ def test_partial_cache_only_rebuilds_missing(registry, mocked_build, tmp_path):
 # optional index handling in build_skill_contexts — load-if-present only,
 # never build.
 # ---------------------------------------------------------------------------
+
+
+def _optional_vector_registry() -> SkillRegistry:
+    reg = SkillRegistry()
+    metadata = _make_meta("fallback_search", SkillType.RETRIEVAL)
+    metadata.index_requirements = [
+        compiler_resources.IndexRequirement(index_type="bm25"),
+        compiler_resources.IndexRequirement(index_type="vector", required=False),
+    ]
+    reg.register(metadata)
+    return reg
 
 
 def test_optional_index_loaded_when_already_present(
@@ -596,6 +728,29 @@ def test_optional_index_skipped_when_absent(mixed_registry, mocked_build, tmp_pa
     assert mocked_build["loaded"] == ["bm25"]
     assert "expand" not in contexts
     assert contexts["retrieve"].bm25 is not None
+
+
+def test_optional_vector_without_authority_preserves_bm25_fallback(
+    mocked_build,
+    tmp_path,
+):
+    cache = tmp_path / "cache"
+    for index_type in ("bm25", "vector"):
+        directory = cache / index_type
+        directory.mkdir(parents=True)
+        (directory / "present").write_text("present", encoding="utf-8")
+
+    contexts = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["fallback_search"],
+        cache_dir=str(cache),
+        skill_registry=_optional_vector_registry(),
+    )
+
+    assert mocked_build["compile"] == []
+    assert mocked_build["loaded"] == ["bm25"]
+    assert contexts["retrieve"].bm25 is not None
+    assert contexts["retrieve"].vector_store is None
 
 
 def test_build_skill_contexts_without_reset_is_idempotent(
@@ -857,6 +1012,76 @@ def test_manifest_skips_optional_index_when_absent(mixed_registry, mocked_build)
     assert mocked_build["loaded"] == ["bm25"]
     assert "expand" not in contexts
     assert contexts["retrieve"].bm25 is not None
+
+
+def test_manifest_optional_vector_without_authority_preserves_bm25_fallback(
+    mocked_build,
+):
+    manifest = RepoManifest(
+        indexes={
+            "bm25": _fresh_entry("bm25", "/idx/bm25"),
+            "vector": _fresh_entry("vector", "/idx/vector"),
+        }
+    )
+
+    contexts = skill_context.load_contexts_from_manifest(
+        manifest,
+        skill_ids=["fallback_search"],
+        skill_registry=_optional_vector_registry(),
+    )
+
+    assert mocked_build["loaded"] == ["bm25"]
+    assert contexts["retrieve"].bm25 is not None
+    assert contexts["retrieve"].vector_store is None
+
+
+def test_manifest_required_vector_without_authority_fails_before_model_init(
+    registry,
+    monkeypatch,
+):
+    entry = _fresh_entry("vector", "/idx/vector")
+    entry.config = {
+        "builder_schema": 2,
+        "embedding_model": "vendor/model",
+        "embedding_provider": "huggingface",
+        "embedding_dimension": 4,
+        "dimension": 4,
+        "embedding_kwargs": {},
+    }
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        lambda **_kwargs: pytest.fail(
+            "missing authority must fail before embedding model initialization"
+        ),
+    )
+
+    with pytest.raises(ValueError, match="requires external authorization"):
+        skill_context.load_contexts_from_manifest(
+            RepoManifest(indexes={"vector": entry}),
+            skill_ids=["embedding_search"],
+            skill_registry=registry,
+        )
+
+
+def test_skill_vector_rejects_invalid_authority_before_model_init(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        lambda **_kwargs: pytest.fail(
+            "invalid authority must fail before embedding model initialization"
+        ),
+    )
+
+    with pytest.raises(ValueError, match="requires external authorization"):
+        skill_context._load_vector(
+            str(tmp_path / "vector"),
+            embedding_model="vendor/model",
+            embedding_provider="huggingface",
+            embedding_dimension=4,
+            native_index_authorization=object(),
+        )
 
 
 def test_manifest_missing_required_index_raises(mixed_registry, mocked_build):

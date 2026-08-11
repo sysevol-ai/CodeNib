@@ -4,16 +4,16 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
-from ..index.embedding.artifact_integrity import (
-    _mint_trusted_local_vector_authorization,
-)
 from ..log_utils import get_logger
 from ..types import QueriedNode
 
 logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from ..native_index_authorization import NativeIndexAuthorization
 
 
 class EmbeddingRetrievePipeline:
@@ -79,6 +79,7 @@ class EmbeddingRetrievePipeline:
         index_type: str = "flat",
         ivf_nlist: int = 100,
         ivf_nprobe: int = 8,
+        native_index_authorization: NativeIndexAuthorization | None = None,
     ) -> None:
         self.top_k = top_k
         _embedding_kwargs = dict(embedding_kwargs or {})
@@ -124,9 +125,15 @@ class EmbeddingRetrievePipeline:
                 ivf_nlist=ivf_nlist,
                 ivf_nprobe=ivf_nprobe,
                 force_rebuild=force_rebuild,
+                native_index_authorization=native_index_authorization,
             )
 
-    def load_index(self, index_path: str) -> None:
+    def load_index(
+        self,
+        index_path: str,
+        *,
+        native_index_authorization: NativeIndexAuthorization | None = None,
+    ) -> None:
         """Hot-swap the FAISS index without reloading the embedding model.
 
         Validates the pre-built index at *index_path* before releasing the
@@ -134,14 +141,9 @@ class EmbeddingRetrievePipeline:
         faster than creating a new :class:`EmbeddingRetrievePipeline` for each
         instance, and a failed replacement leaves the current index available.
         """
-        native_authorization = _mint_trusted_local_vector_authorization(
-            index_path,
-            self.vector_store.artifact_metadata,
-            evidence=("embedding-retrieval-vector-swap",),
-        )
         self.vector_store.swap_index(
             index_path,
-            native_index_authorization=native_authorization,
+            native_index_authorization=native_index_authorization,
         )
 
     def query(self, query: str, top_k: Optional[int] = None) -> List[QueriedNode]:

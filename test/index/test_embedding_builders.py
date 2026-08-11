@@ -118,3 +118,167 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
     assert result.l2_documents
     assert all(not path.exists() for path in stale_files)
     assert unrelated.read_bytes() == b"other"
+
+
+def test_cached_index_without_authority_is_rebuilt_from_source(
+    monkeypatch,
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "source.py"
+    source.write_text("def example():\n    pass\n", encoding="utf-8")
+    chunk = SimpleNamespace(
+        file="source.py",
+        _asdict=lambda: {
+            "file": "source.py",
+            "content": source.read_text(encoding="utf-8"),
+        },
+    )
+    calls = {"chunk": 0, "load": 0, "save": 0}
+
+    class FakeChunker:
+        def __init__(self, **_kwargs):
+            pass
+
+        def chunk_repository(self, repo_path, *, strict=False):
+            assert repo_path == str(repo)
+            calls["chunk"] += 1
+            return [chunk]
+
+    class FakeStore:
+        def __init__(self, **_kwargs):
+            self.l0_documents = []
+            self.l2_documents = []
+
+        def load(self, *_args, **_kwargs):
+            calls["load"] += 1
+
+        def add_code_chunks(self, chunks, level):
+            assert level == "l2"
+            self.l2_documents.extend(chunks)
+
+        def save(self, _path):
+            calls["save"] += 1
+
+    monkeypatch.setattr(builders, "CodeChunker", FakeChunker)
+    monkeypatch.setattr(builders, "CodeVectorStore", FakeStore)
+
+    index = tmp_path / "index"
+    stale_l0 = index / "l0"
+    stale_l0.mkdir(parents=True)
+    (index / "config_test-model.json").write_text("{}", encoding="utf-8")
+    (stale_l0 / "index_test-model.faiss").write_bytes(b"stale")
+
+    result = builders.build_hierarchical_vector_store(
+        repo_path=str(repo),
+        index_path=str(index),
+        languages=["python"],
+        build_levels=["l2"],
+        embedding_model="test-model",
+        embedding_provider="huggingface",
+        embedding_dimension=2,
+    )
+
+    assert result.l2_documents
+    assert calls == {"chunk": 1, "load": 0, "save": 1}
+    assert not stale_l0.exists()
+
+
+def test_cached_index_without_authority_or_source_is_left_unchanged(tmp_path):
+    index = tmp_path / "index"
+    stale_l0 = index / "l0"
+    stale_l0.mkdir(parents=True)
+    config = index / "config_test-model.json"
+    stale = stale_l0 / "index_test-model.faiss"
+    config.write_bytes(b"config")
+    stale.write_bytes(b"stale")
+    before = {
+        path.relative_to(index).as_posix(): path.read_bytes()
+        for path in index.rglob("*")
+        if path.is_file()
+    }
+
+    with pytest.raises(ValueError, match="repo_path is required to rebuild"):
+        builders.build_hierarchical_vector_store(
+            repo_path="",
+            index_path=str(index),
+            languages=["python"],
+            build_levels=["l2"],
+            embedding_model="test-model",
+            embedding_provider="huggingface",
+            embedding_dimension=2,
+        )
+
+    after = {
+        path.relative_to(index).as_posix(): path.read_bytes()
+        for path in index.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_authorized_cache_is_loaded_without_rechunking(monkeypatch, tmp_path):
+    index = tmp_path / "index"
+    index.mkdir()
+    (index / "config_test-model.json").write_text("{}", encoding="utf-8")
+    authorization = object()
+    calls = []
+
+    class FakeStore:
+        def __init__(self, **_kwargs):
+            pass
+
+        def load(self, path, *, native_index_authorization):
+            calls.append((path, native_index_authorization))
+
+    monkeypatch.setattr(builders, "CodeVectorStore", FakeStore)
+    monkeypatch.setattr(
+        builders,
+        "CodeChunker",
+        lambda **_kwargs: pytest.fail("authorized cache must not be rechunked"),
+    )
+
+    result = builders.build_hierarchical_vector_store(
+        repo_path="",
+        index_path=str(index),
+        embedding_model="test-model",
+        embedding_provider="huggingface",
+        embedding_dimension=2,
+        native_index_authorization=authorization,
+    )
+
+    assert isinstance(result, FakeStore)
+    assert calls == [(str(index), authorization)]
+
+
+def test_invalid_cache_authority_propagates_without_rebuild(monkeypatch, tmp_path):
+    index = tmp_path / "index"
+    index.mkdir()
+    (index / "config_test-model.json").write_text("{}", encoding="utf-8")
+
+    class FakeStore:
+        def __init__(self, **_kwargs):
+            pass
+
+        def load(self, _path, *, native_index_authorization):
+            assert native_index_authorization is invalid_authorization
+            raise ValueError("authorization does not match captured bytes")
+
+    invalid_authorization = object()
+    monkeypatch.setattr(builders, "CodeVectorStore", FakeStore)
+    monkeypatch.setattr(
+        builders,
+        "CodeChunker",
+        lambda **_kwargs: pytest.fail("invalid authority must not trigger rebuild"),
+    )
+
+    with pytest.raises(ValueError, match="does not match captured bytes"):
+        builders.build_hierarchical_vector_store(
+            repo_path=str(tmp_path),
+            index_path=str(index),
+            embedding_model="test-model",
+            embedding_provider="huggingface",
+            embedding_dimension=2,
+            native_index_authorization=invalid_authorization,
+        )

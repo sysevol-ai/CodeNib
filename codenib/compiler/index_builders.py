@@ -453,6 +453,18 @@ class VectorIndexBuilder:
         Missing or incompatible state propagates to :meth:`incremental_update`,
         which rebuilds conservatively exactly once.
         """
+        from ..native_index_authorization import (
+            require_native_index_authorization_preflight,
+        )
+
+        native_index_authorization = kwargs.get("native_index_authorization")
+        # Reject before constructing an embedding backend. The public wrapper
+        # catches this and performs one source-derived full rebuild.
+        require_native_index_authorization_preflight(
+            native_index_authorization,
+            view_type="vector",
+        )
+
         from pathlib import Path
 
         from ..code_chunker import CodeChunker, RepoChunkingConfig

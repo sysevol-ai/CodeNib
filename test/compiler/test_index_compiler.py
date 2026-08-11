@@ -297,6 +297,42 @@ class TestVectorIndexBuilder:
         assert result.metadata["update_mode"] == "full_rebuild"
         assert result.metadata["incremental_fallback_reason"] == "ValueError"
 
+    def test_missing_native_authority_rebuilds_before_model_initialization(
+        self,
+        tmp_path,
+    ):
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        rebuilt = IndexStatus(
+            index_type="vector",
+            state=IndexState.FRESH,
+            path=str(tmp_path / "vector"),
+            metadata={},
+        )
+
+        with (
+            patch(
+                "codenib.index.embedding.vector_store.CodeVectorStore",
+                side_effect=AssertionError(
+                    "missing authority must not initialize an embedding model"
+                ),
+            ) as store_type,
+            patch.object(builder, "build", return_value=rebuilt) as mock_build,
+        ):
+            result = builder.incremental_update(
+                scope="current_repo",
+                repo_path=str(tmp_path),
+                output_dir=str(tmp_path / "vector"),
+                last_commit="a" * 40,
+            )
+
+        store_type.assert_not_called()
+        mock_build.assert_called_once()
+        assert result.metadata["update_mode"] == "full_rebuild"
+        assert result.metadata["incremental_fallback_reason"] == "ValueError"
+
     def test_missing_incremental_state_attempts_one_rebuild(self, tmp_path):
         builder = VectorIndexBuilder(
             embedding_model="test-model",
@@ -392,11 +428,18 @@ class TestVectorIndexBuilder:
         }
         vector_store = MagicMock(dimension=384)
         vector_store.load.side_effect = RuntimeError("stop after generation check")
+        authorization = object()
 
-        with patch(
-            "codenib.index.embedding.vector_store.CodeVectorStore",
-            return_value=vector_store,
-        ) as store_type:
+        with (
+            patch(
+                "codenib.native_index_authorization.require_native_index_authorization_preflight",
+                return_value=None,
+            ),
+            patch(
+                "codenib.index.embedding.vector_store.CodeVectorStore",
+                return_value=vector_store,
+            ) as store_type,
+        ):
             with pytest.raises(RuntimeError, match="generation check"):
                 builder._incremental_update_once(
                     scope="current_repo",
@@ -404,10 +447,15 @@ class TestVectorIndexBuilder:
                     output_dir=str(output_path),
                     last_commit="a" * 40,
                     previous_artifact_config=previous,
+                    native_index_authorization=authorization,
                 )
 
         assert store_type.call_args.kwargs["artifact_metadata"] == previous
         vector_store.close.assert_called_once_with()
+        vector_store.load.assert_called_once_with(
+            str(output_path),
+            native_index_authorization=authorization,
+        )
 
     @pytest.mark.parametrize("missing", ["chunk_json", "embedding_pair"])
     def test_pickle_only_incremental_state_forces_rebuild(self, tmp_path, missing):

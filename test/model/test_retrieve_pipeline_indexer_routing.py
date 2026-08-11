@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 
 def make_fake_graph_builder(calls):
     def fake_build_graph_for_languages(
@@ -236,12 +238,6 @@ def test_retrieve_rerank_cache_load_closes_store_on_base_exception(
             self.close_calls += 1
 
     monkeypatch.setattr(pipeline_module, "CodeVectorStore", FakeVectorStore)
-    monkeypatch.setattr(
-        pipeline_module,
-        "_mint_trusted_local_vector_authorization",
-        lambda *_args, **_kwargs: object(),
-    )
-
     pipeline = object.__new__(pipeline_module.RetrieveRerankPipeline)
     pipeline.repo_path = str(tmp_path)
     pipeline.index_path = index_path
@@ -250,6 +246,7 @@ def test_retrieve_rerank_cache_load_closes_store_on_base_exception(
     pipeline.max_lines_per_chunk = 300
     pipeline.index_metric = "ip"
     pipeline.profiler = None
+    pipeline._native_index_authorization = object()
 
     observed = None
     try:
@@ -265,3 +262,98 @@ def test_retrieve_rerank_cache_load_closes_store_on_base_exception(
     assert observed is primary
     assert len(stores) == 1
     assert stores[0].close_calls == 1
+
+
+def test_retrieve_rerank_cache_without_authority_forces_source_rebuild(
+    monkeypatch,
+    tmp_path,
+):
+    from codenib.model import retrieve_rerank_pipeline as pipeline_module
+
+    index = tmp_path / "index"
+    index.mkdir()
+    (index / "config_model.json").write_text("{}", encoding="utf-8")
+    built_store = object()
+    builder_calls = []
+
+    class FakeVectorStore:
+        def __init__(self, **_kwargs):
+            self.embedding = object()
+
+        def load(self, *_args, **_kwargs):
+            raise AssertionError("unauthorized cache must not be loaded")
+
+    monkeypatch.setattr(pipeline_module, "CodeVectorStore", FakeVectorStore)
+    monkeypatch.setattr(
+        pipeline_module,
+        "build_hierarchical_vector_store",
+        lambda **kwargs: builder_calls.append(kwargs) or built_store,
+    )
+    pipeline = object.__new__(pipeline_module.RetrieveRerankPipeline)
+    pipeline.repo_path = str(tmp_path)
+    pipeline.index_path = index
+    pipeline.retrieval_level = "l2"
+    pipeline.languages = ["python"]
+    pipeline.max_lines_per_chunk = 300
+    pipeline.index_metric = "ip"
+    pipeline.profiler = None
+    pipeline._native_index_authorization = None
+
+    result = pipeline._initialize_vector_store(
+        embedding_model="model",
+        embedding_provider="huggingface",
+        embedding_dimension=4,
+        embedding_kwargs={},
+    )
+
+    assert result is built_store
+    assert builder_calls[0]["force_rebuild"] is True
+    assert builder_calls[0]["native_index_authorization"] is None
+
+
+def test_retrieve_rerank_authorized_cache_loads_without_rebuild(
+    monkeypatch,
+    tmp_path,
+):
+    from codenib.model import retrieve_rerank_pipeline as pipeline_module
+
+    index = tmp_path / "index"
+    index.mkdir()
+    (index / "config_model.json").write_text("{}", encoding="utf-8")
+    authorization = object()
+    loads = []
+
+    class FakeVectorStore:
+        def __init__(self, **_kwargs):
+            self.embedding = object()
+            self.l0_documents = [object()]
+            self.l2_documents = [object()]
+
+        def load(self, path, *, native_index_authorization):
+            loads.append((path, native_index_authorization))
+
+    monkeypatch.setattr(pipeline_module, "CodeVectorStore", FakeVectorStore)
+    monkeypatch.setattr(
+        pipeline_module,
+        "build_hierarchical_vector_store",
+        lambda **_kwargs: pytest.fail("authorized complete cache must be reused"),
+    )
+    pipeline = object.__new__(pipeline_module.RetrieveRerankPipeline)
+    pipeline.repo_path = str(tmp_path)
+    pipeline.index_path = index
+    pipeline.retrieval_level = "l2"
+    pipeline.languages = ["python"]
+    pipeline.max_lines_per_chunk = 300
+    pipeline.index_metric = "ip"
+    pipeline.profiler = None
+    pipeline._native_index_authorization = authorization
+
+    result = pipeline._initialize_vector_store(
+        embedding_model="model",
+        embedding_provider="huggingface",
+        embedding_dimension=4,
+        embedding_kwargs={},
+    )
+
+    assert isinstance(result, FakeVectorStore)
+    assert loads == [(str(index), authorization)]
