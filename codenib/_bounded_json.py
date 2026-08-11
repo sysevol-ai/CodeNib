@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Incremental, complexity-bounded parsing for large JSON document arrays."""
+"""Incremental, complexity-bounded framing for UTF-8 JSON documents."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ DEFAULT_MAX_NODES_PER_ELEMENT = 100_000
 DEFAULT_MAX_LEXICAL_TOKENS = 200_000
 DEFAULT_MAX_DEPTH = 64
 DEFAULT_MAX_KEY_BYTES = 4_096
+DEFAULT_MAX_ATOM_BYTES = 1_024
+DEFAULT_MAX_STRING_BYTES = 64 * 1024 * 1024
 
 
 class BinaryReader(Protocol):
@@ -70,6 +72,260 @@ def validate_json_complexity(
             stack.extend((child, depth + 1) for child in current)
 
 
+def validate_bounded_json_stream(
+    source: BinaryReader,
+    *,
+    label: str,
+    max_bytes: int = DEFAULT_MAX_ELEMENT_BYTES,
+    max_nodes: int = DEFAULT_MAX_NODES_PER_ELEMENT,
+    max_lexical_tokens: int = DEFAULT_MAX_LEXICAL_TOKENS,
+    max_depth: int = DEFAULT_MAX_DEPTH,
+    max_key_bytes: int = DEFAULT_MAX_KEY_BYTES,
+    max_string_bytes: int = DEFAULT_MAX_STRING_BYTES,
+    max_atom_bytes: int = DEFAULT_MAX_ATOM_BYTES,
+) -> None:
+    """Bound arbitrary JSON lexical complexity before allocating its DOM.
+
+    This is deliberately a framing and resource-budget pass, not a text or
+    semantic JSON decoder. Framing uses JSON's ASCII structural bytes, so a
+    caller accepting publication JSON must strictly decode UTF-8 before its
+    subsequent semantic decode. Duplicate keys, non-finite constants, exact
+    number syntax, and decoded-string semantics remain the responsibility of
+    that decoder. Object keys count as lexical tokens but not value nodes;
+    container and scalar values use the same one-based depth and node model as
+    :func:`validate_json_complexity`. String and key byte limits count their
+    encoded lexical bytes between quotes, including escape syntax; callers may
+    additionally enforce decoded-key limits after parsing.
+    """
+
+    limits = (
+        max_bytes,
+        max_nodes,
+        max_lexical_tokens,
+        max_depth,
+        max_key_bytes,
+        max_string_bytes,
+        max_atom_bytes,
+    )
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value <= 0
+        for value in limits
+    ):
+        raise ValueError("bounded JSON limits must be positive integers")
+
+    # Frames contain ``[opening delimiter, parser state]``. The state is only
+    # as strict as needed to identify keys and value boundaries safely; the
+    # caller's decoder remains the JSON grammar authority.
+    frames: list[list[Any]] = []
+    root_state = "value"
+    in_string = False
+    string_is_key = False
+    escaped = False
+    string_bytes = 0
+    key_bytes = 0
+    in_atom = False
+    atom_bytes = 0
+    token_count = 0
+    node_count = 0
+    total_bytes = 0
+
+    def fail(message: str) -> None:
+        raise ValueError(f"{label} {message}")
+
+    def add_token() -> None:
+        nonlocal token_count
+        token_count += 1
+        if token_count > max_lexical_tokens:
+            fail(f"exceeds its {max_lexical_tokens}-token limit")
+
+    def start_value() -> None:
+        nonlocal node_count
+        depth = len(frames) + 1
+        if depth > max_depth:
+            fail(f"exceeds its {max_depth}-level depth limit")
+        node_count += 1
+        if node_count > max_nodes:
+            fail(f"exceeds its {max_nodes}-node limit")
+        add_token()
+
+    def finish_value() -> None:
+        nonlocal root_state
+        if frames:
+            frames[-1][1] = "comma_or_end"
+        else:
+            root_state = "done"
+
+    def expecting_value() -> bool:
+        if frames:
+            return frames[-1][1] in {"value", "value_or_end"}
+        return root_state == "value"
+
+    def start_string(*, key: bool) -> None:
+        nonlocal in_string, string_is_key, escaped, string_bytes, key_bytes
+        if key:
+            add_token()
+        else:
+            start_value()
+        in_string = True
+        string_is_key = key
+        escaped = False
+        string_bytes = 0
+        key_bytes = 0
+
+    def start_atom() -> None:
+        nonlocal in_atom, atom_bytes
+        start_value()
+        in_atom = True
+        atom_bytes = 0
+
+    while True:
+        block = source.read(_READ_BYTES)
+        if type(block) is not bytes or len(block) > _READ_BYTES:
+            raise ValueError(
+                "bounded JSON reader returned an invalid or oversized block"
+            )
+        if not block:
+            break
+        total_bytes += len(block)
+        if total_bytes > max_bytes:
+            fail(f"exceeds its {max_bytes}-byte limit")
+
+        index = 0
+        while index < len(block):
+            current = block[index]
+
+            if in_string:
+                if escaped:
+                    escaped = False
+                    string_bytes += 1
+                    if string_is_key:
+                        key_bytes += 1
+                    index += 1
+                else:
+                    match = _STRING_SPECIAL.search(block, index)
+                    if match is None:
+                        length = len(block) - index
+                        string_bytes += length
+                        if string_is_key:
+                            key_bytes += length
+                        index = len(block)
+                    else:
+                        special = match.start()
+                        length = special - index
+                        string_bytes += length
+                        if string_is_key:
+                            key_bytes += length
+                        if block[special] == ord("\\"):
+                            string_bytes += 1
+                            if string_is_key:
+                                key_bytes += 1
+                            escaped = True
+                        else:
+                            in_string = False
+                            if string_is_key:
+                                frames[-1][1] = "colon"
+                            else:
+                                finish_value()
+                        index = special + 1
+                if string_bytes > max_string_bytes:
+                    fail(f"string exceeds its {max_string_bytes}-byte limit")
+                if string_is_key and key_bytes > max_key_bytes:
+                    fail(f"contains a key exceeding {max_key_bytes} bytes")
+                continue
+
+            if in_atom:
+                if current in _ATOM_DELIMITERS:
+                    in_atom = False
+                    finish_value()
+                    continue
+                atom_bytes += 1
+                if atom_bytes > max_atom_bytes:
+                    fail(f"atom exceeds its {max_atom_bytes}-byte limit")
+                index += 1
+                continue
+
+            if current in _JSON_WHITESPACE:
+                match = _NON_JSON_WHITESPACE.search(block, index + 1)
+                index = len(block) if match is None else match.start()
+                continue
+
+            if not frames and root_state == "done":
+                fail("contains trailing data")
+
+            if frames:
+                opening, state = frames[-1]
+                if opening == ord("{"):
+                    if state == "key_or_end":
+                        if current == ord("}"):
+                            frames.pop()
+                            finish_value()
+                            index += 1
+                            continue
+                        if current != ord('"'):
+                            fail("contains an invalid object key")
+                        start_string(key=True)
+                        index += 1
+                        continue
+                    if state == "colon":
+                        if current != ord(":"):
+                            fail("contains an object key without a colon")
+                        frames[-1][1] = "value"
+                        index += 1
+                        continue
+                    if state == "comma_or_end":
+                        if current == ord("}"):
+                            frames.pop()
+                            finish_value()
+                            index += 1
+                            continue
+                        if current != ord(","):
+                            fail("contains an object value without a delimiter")
+                        frames[-1][1] = "key_or_end"
+                        index += 1
+                        continue
+                elif state == "comma_or_end":
+                    if current == ord("]"):
+                        frames.pop()
+                        finish_value()
+                        index += 1
+                        continue
+                    if current != ord(","):
+                        fail("contains an array value without a delimiter")
+                    frames[-1][1] = "value_or_end"
+                    index += 1
+                    continue
+                elif state == "value_or_end" and current == ord("]"):
+                    frames.pop()
+                    finish_value()
+                    index += 1
+                    continue
+
+            if not expecting_value():
+                fail("contains invalid JSON framing")
+            if current == ord('"'):
+                start_string(key=False)
+            elif current in {ord("{"), ord("[")}:
+                start_value()
+                state = "key_or_end" if current == ord("{") else "value_or_end"
+                frames.append([current, state])
+            elif current in {ord("}"), ord("]"), ord(","), ord(":")}:
+                fail("contains mismatched JSON delimiters")
+            else:
+                # Permit any bounded atom here. The strict decoder below this
+                # layer remains authoritative for literals, number syntax, and
+                # non-finite constants such as NaN/Infinity.
+                start_atom()
+                continue
+            index += 1
+
+    if in_string or escaped or frames:
+        fail("is truncated JSON")
+    if in_atom:
+        finish_value()
+    if root_state != "done":
+        fail("is empty or truncated JSON")
+
+
 class _ByteStream:
     def __init__(self, source: BinaryReader) -> None:
         self._source = source
@@ -115,6 +371,7 @@ class _ByteStream:
 _JSON_WHITESPACE = frozenset(b" \t\r\n")
 _ATOM_DELIMITERS = frozenset(b" \t\r\n,]}:")
 _STRING_SPECIAL = re.compile(rb'["\\]')
+_NON_JSON_WHITESPACE = re.compile(rb"[^ \t\r\n]")
 
 
 def _next_non_whitespace(stream: _ByteStream) -> int | None:
@@ -484,14 +741,18 @@ def write_chunks(handle: BinaryIO, chunks: Iterable[bytes]) -> tuple[int, str]:
 
 __all__ = [
     "DEFAULT_MAX_ARRAY_ITEMS",
+    "DEFAULT_MAX_ATOM_BYTES",
     "DEFAULT_MAX_DEPTH",
     "DEFAULT_MAX_ELEMENT_BYTES",
     "DEFAULT_MAX_KEY_BYTES",
+    "DEFAULT_MAX_LEXICAL_TOKENS",
     "DEFAULT_MAX_NODES_PER_ELEMENT",
+    "DEFAULT_MAX_STRING_BYTES",
     "canonical_json_array_chunks",
     "canonical_json_bytes",
     "canonical_json_value_chunks",
     "iter_bounded_json_array",
+    "validate_bounded_json_stream",
     "validate_json_complexity",
     "write_chunks",
 ]

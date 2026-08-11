@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import codenib.artifacts.security as security_module
 from codenib import cli
 from codenib._atomic_directory import (
     PublicationDirectoryReader,
@@ -371,3 +372,188 @@ def test_publishability_reader_rejects_lexical_path_when_resolve_is_redirected(
 
     with pytest.raises(ValueError, match="absolute build-machine path"):
         reopen_authenticated_directory(root, ownership, validate)
+
+
+def _validate_publishable_reader(
+    root: Path,
+    *,
+    environ: dict[str, str] | None = None,
+) -> None:
+    ownership = capture_directory_ownership(root)
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        assert_publishable_tree_reader(
+            reader,
+            forbidden_paths=(),
+            environ={} if environ is None else environ,
+            label="bounded publication",
+        )
+
+    reopen_authenticated_directory(root, ownership, validate)
+
+
+@pytest.mark.parametrize(
+    ("limit_name", "limit", "payload", "message"),
+    [
+        (
+            "_MAX_PUBLISHABLE_JSON_NODES",
+            4,
+            b'{"a":0,"b":1,"c":2,"d":3}',
+            "4-node limit",
+        ),
+        (
+            "_MAX_PUBLISHABLE_JSON_TOKENS",
+            4,
+            b'{"a":0,"b":1}',
+            "4-token limit",
+        ),
+        (
+            "_MAX_PUBLISHABLE_JSON_DEPTH",
+            3,
+            b'{"a":{"b":{"c":0}}}',
+            "3-level depth limit",
+        ),
+        (
+            "_MAX_PUBLISHABLE_JSON_KEY_BYTES",
+            4,
+            b'{"abcde":0}',
+            "key exceeding 4 bytes",
+        ),
+        (
+            "_MAX_PUBLISHABLE_JSON_STRING_BYTES",
+            4,
+            b'{"a":"12345"}',
+            "string exceeds its 4-byte limit",
+        ),
+        (
+            "_MAX_PUBLISHABLE_JSON_ATOM_BYTES",
+            4,
+            b'{"a":12345}',
+            "atom exceeds its 4-byte limit",
+        ),
+    ],
+)
+def test_publishability_reader_rejects_json_complexity_before_dom(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    limit_name: str,
+    limit: int,
+    payload: bytes,
+    message: str,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "config.json").write_bytes(payload)
+    monkeypatch.setattr(security_module, limit_name, limit)
+
+    def forbidden_loads(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("lexical complexity must be rejected before DOM allocation")
+
+    monkeypatch.setattr(security_module.json, "loads", forbidden_loads)
+
+    with pytest.raises(ValueError, match=message):
+        _validate_publishable_reader(root)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b"{}", b"[]", b'"scalar"', b"7", b"true", b"null"],
+)
+def test_publishability_reader_accepts_bounded_arbitrary_top_level_json(
+    tmp_path: Path,
+    payload: bytes,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "config.json").write_bytes(payload)
+
+    _validate_publishable_reader(root)
+
+
+def test_publishability_reader_decodes_utf8_before_strict_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "config.json").write_bytes('{"value":"雪"}'.encode("utf-8"))
+    real_loads = json.loads
+    observed: list[str] = []
+
+    def observe_loads(serialized: str, **kwargs: object) -> object:
+        assert type(serialized) is str
+        observed.append(serialized)
+        return real_loads(serialized, **kwargs)
+
+    monkeypatch.setattr(security_module.json, "loads", observe_loads)
+
+    _validate_publishable_reader(root)
+
+    assert observed == ['{"value":"雪"}']
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param(b"\xef\xbb\xbf0", id="utf-8-bom"),
+        pytest.param("0".encode("utf-16"), id="utf-16-bom"),
+        pytest.param("0".encode("utf-16-le"), id="utf-16-le"),
+        pytest.param("0".encode("utf-16-be"), id="utf-16-be"),
+        pytest.param("0".encode("utf-32"), id="utf-32-bom"),
+        pytest.param("0".encode("utf-32-le"), id="utf-32-le"),
+        pytest.param("0".encode("utf-32-be"), id="utf-32-be"),
+    ],
+)
+def test_publishability_reader_requires_utf8_without_bom(
+    tmp_path: Path,
+    payload: bytes,
+) -> None:
+    # Python's bytes decoder accepts these representations. Publication policy
+    # deliberately narrows that ambient behavior to one portable encoding.
+    assert json.loads(payload) == 0
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "config.json").write_bytes(payload)
+
+    with pytest.raises(ValueError, match="UTF-8 without BOM required"):
+        _validate_publishable_reader(root)
+
+
+def test_publishability_reader_casefolds_json_suffix_before_validation(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "CONFIG.JSON").write_text('{"safe":1,"\\u0073afe":2}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid JSON"):
+        _validate_publishable_reader(root)
+
+
+@pytest.mark.parametrize("payload", [b"NaN", b"Infinity", b"-Infinity"])
+def test_publishability_reader_preserves_nonfinite_json_rejection(
+    tmp_path: Path,
+    payload: bytes,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "config.json").write_bytes(payload)
+
+    with pytest.raises(ValueError, match="invalid JSON"):
+        _validate_publishable_reader(root)
+
+
+def test_publishability_reader_preserves_decoded_secret_rejection(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "config.json").write_text(
+        '{"value":"runtime-secret-value"}', encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="configured credential"):
+        _validate_publishable_reader(
+            root,
+            environ={"CUSTOM_TOKEN": "runtime-secret-value"},
+        )

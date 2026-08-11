@@ -14,6 +14,16 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .._atomic_directory import PublicationDirectoryReader
+from .._bounded_json import (
+    DEFAULT_MAX_ATOM_BYTES,
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_KEY_BYTES,
+    DEFAULT_MAX_LEXICAL_TOKENS,
+    DEFAULT_MAX_NODES_PER_ELEMENT,
+    DEFAULT_MAX_STRING_BYTES,
+    validate_bounded_json_stream,
+    validate_json_complexity,
+)
 from .._secret_fields import assert_no_secret_fields
 
 _SENSITIVE_ENV_NAMES = {
@@ -33,6 +43,12 @@ _SENSITIVE_ENV_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET")
 _SCAN_CHUNK_BYTES = 1024 * 1024
 _MAX_CANONICAL_SCALAR_BYTES = 1_024
 _MAX_PUBLISHABLE_JSON_BYTES = 64 * 1024 * 1024
+_MAX_PUBLISHABLE_JSON_NODES = DEFAULT_MAX_NODES_PER_ELEMENT
+_MAX_PUBLISHABLE_JSON_TOKENS = DEFAULT_MAX_LEXICAL_TOKENS
+_MAX_PUBLISHABLE_JSON_DEPTH = DEFAULT_MAX_DEPTH
+_MAX_PUBLISHABLE_JSON_KEY_BYTES = DEFAULT_MAX_KEY_BYTES
+_MAX_PUBLISHABLE_JSON_STRING_BYTES = DEFAULT_MAX_STRING_BYTES
+_MAX_PUBLISHABLE_JSON_ATOM_BYTES = DEFAULT_MAX_ATOM_BYTES
 
 
 def assert_no_credential_fields(value: Any, *, source: str) -> None:
@@ -250,7 +266,11 @@ def assert_publishable_tree_reader(
     label: str,
     max_json_bytes: int = _MAX_PUBLISHABLE_JSON_BYTES,
 ) -> None:
-    """Apply publication policy through one authenticated tree authority."""
+    """Apply publication policy through one authenticated tree authority.
+
+    Publication JSON is UTF-8 without a byte-order mark. Its lexical resource
+    budgets are enforced before strict UTF-8 decoding and DOM allocation.
+    """
 
     if (
         isinstance(max_json_bytes, bool)
@@ -263,12 +283,15 @@ def assert_publishable_tree_reader(
     forbidden = _serialized_patterns(_forbidden_path_strings(roots))
     secrets = _secret_values(environ)
 
+    def is_json_path(path: str) -> bool:
+        return path.casefold().endswith(".json")
+
     def entry_policy(path: str, kind: str, mode: int, size: int) -> None:
         del mode
         encoded = path.encode("utf-8", errors="strict")
         if any(secret in encoded for secret in secrets):
             raise ValueError(f"{label} contains a configured credential in {path}")
-        if kind == "file" and path.endswith(".json") and size > max_json_bytes:
+        if kind == "file" and is_json_path(path) and size > max_json_bytes:
             raise ValueError(
                 f"{label} JSON file exceeds its {max_json_bytes}-byte limit: {path}"
             )
@@ -276,7 +299,23 @@ def assert_publishable_tree_reader(
     reader.capture_ownership(entry_policy=entry_policy)
     for record in reader.file_records():
         relative = record.path
-        if relative.endswith(".json"):
+        if is_json_path(relative):
+            json_label = f"{label} JSON {relative}"
+            with reader.open_authenticated_file(
+                relative,
+                max_bytes=max_json_bytes,
+            ) as source:
+                validate_bounded_json_stream(
+                    source,
+                    label=json_label,
+                    max_bytes=max_json_bytes,
+                    max_nodes=_MAX_PUBLISHABLE_JSON_NODES,
+                    max_lexical_tokens=_MAX_PUBLISHABLE_JSON_TOKENS,
+                    max_depth=_MAX_PUBLISHABLE_JSON_DEPTH,
+                    max_key_bytes=_MAX_PUBLISHABLE_JSON_KEY_BYTES,
+                    max_string_bytes=_MAX_PUBLISHABLE_JSON_STRING_BYTES,
+                    max_atom_bytes=_MAX_PUBLISHABLE_JSON_ATOM_BYTES,
+                )
             payload = reader.read_bytes(relative, max_bytes=max_json_bytes)
             match = _matching_kind_blocks(
                 (payload,),
@@ -284,8 +323,9 @@ def assert_publishable_tree_reader(
                 secrets=secrets,
             )
             try:
+                serialized = payload.decode("utf-8", errors="strict")
                 decoded = json.loads(
-                    payload,
+                    serialized,
                     object_pairs_hook=_reject_duplicate_json_object,
                     parse_int=_bounded_publication_int,
                     parse_float=_bounded_publication_float,
@@ -293,13 +333,21 @@ def assert_publishable_tree_reader(
                 )
             except (RecursionError, ValueError) as exc:
                 raise ValueError(
-                    f"{label} contains invalid JSON in {relative}"
+                    f"{label} contains invalid JSON "
+                    f"(UTF-8 without BOM required) in {relative}"
                 ) from exc
+            validate_json_complexity(
+                decoded,
+                label=json_label,
+                max_nodes=_MAX_PUBLISHABLE_JSON_NODES,
+                max_depth=_MAX_PUBLISHABLE_JSON_DEPTH,
+                max_key_bytes=_MAX_PUBLISHABLE_JSON_KEY_BYTES,
+            )
             assert_publishable_json_value(
                 decoded,
                 forbidden_paths=roots,
                 environ=environ,
-                label=f"{label} JSON {relative}",
+                label=json_label,
             )
         else:
             with reader.open_authenticated_file(
