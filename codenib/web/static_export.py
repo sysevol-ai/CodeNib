@@ -18,7 +18,10 @@ from typing import Any, Iterable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 
 from .._atomic_directory import (
+    PublicationDirectoryReader,
+    _annotate_secondary_error,
     capture_directory_ownership,
+    directory_ownership_root_identity,
     discard_owned_directory,
     lexical_directory_path,
     publish_staged_directory,
@@ -825,6 +828,9 @@ def export_static_wiki(
         )
     )
     stage_root_ownership = capture_directory_ownership(stage)
+    initial_stage_root_identity = directory_ownership_root_identity(
+        stage_root_ownership
+    )
     try:
         _copy_frontend(frontend, stage, base_path=base_path)
         _write_bytes(stage, "runtime-config.js", _runtime_config(base_path))
@@ -900,7 +906,7 @@ def export_static_wiki(
 
         expected_manifest_bytes = _json_bytes(export_manifest)
 
-        def validate_export(candidate: Path) -> None:
+        def validate_export_path(candidate: Path) -> None:
             assert_publishable_tree(
                 candidate,
                 forbidden_paths=(repo_path, manifest_path.parent),
@@ -917,6 +923,52 @@ def export_static_wiki(
                     "published static export differs from its staged identity"
                 )
 
+        # Carry the path validators' result across publication with one exact
+        # full-tree token. Publication callbacks receive a retained reader and
+        # must never reopen the staged or published path.
+        validate_export_path(stage)
+        publication_ownership = capture_directory_ownership(stage)
+        if (
+            directory_ownership_root_identity(publication_ownership)
+            != initial_stage_root_identity
+        ):
+            raise RuntimeError("static export stage root changed during build")
+        stage_root_ownership = publication_ownership
+        expected_manifest_size, expected_manifest_digest = file_sha256(manifest_file)
+
+        def validate_export(candidate: PublicationDirectoryReader) -> None:
+            records = candidate.file_records()
+            candidate_manifest = next(
+                (record for record in records if record.path == STATIC_EXPORT_MANIFEST),
+                None,
+            )
+            actual_files = [
+                {
+                    "path": record.path,
+                    "bytes": record.size,
+                    "sha256": record.sha256,
+                }
+                for record in sorted(
+                    records,
+                    key=lambda item: PurePosixPath(item.path),
+                )
+                if record.path != STATIC_EXPORT_MANIFEST
+            ]
+            if (
+                candidate_manifest is None
+                or candidate_manifest.size != expected_manifest_size
+                or candidate_manifest.sha256 != expected_manifest_digest
+                or candidate.read_bytes(
+                    STATIC_EXPORT_MANIFEST,
+                    max_bytes=expected_manifest_size,
+                )
+                != expected_manifest_bytes
+                or actual_files != export_manifest["files"]
+            ):
+                raise ValueError(
+                    "published static export differs from its staged identity"
+                )
+
         publish_staged_directory(
             stage,
             output_dir,
@@ -926,8 +978,28 @@ def export_static_wiki(
             validate_published_destination=validate_export,
         )
         manifest_file = output_dir / manifest_file.relative_to(stage)
-    except BaseException:
-        discard_owned_directory(stage, stage_root_ownership)
+    except BaseException as primary_error:
+        try:
+            observed_stage_ownership = capture_directory_ownership(stage)
+            if (
+                directory_ownership_root_identity(observed_stage_ownership)
+                == initial_stage_root_identity
+            ):
+                stage_root_ownership = observed_stage_ownership
+        except BaseException as capture_error:  # noqa: B036 - preserve primary
+            _annotate_secondary_error(
+                primary_error,
+                "static export stage cleanup capture also failed",
+                capture_error,
+            )
+        try:
+            discard_owned_directory(stage, stage_root_ownership)
+        except BaseException as discard_error:  # noqa: B036 - preserve primary
+            _annotate_secondary_error(
+                primary_error,
+                "static export stage discard also failed",
+                discard_error,
+            )
         raise
 
     return StaticExportResult(

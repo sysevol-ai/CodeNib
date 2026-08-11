@@ -13,7 +13,7 @@ from codenib._atomic_directory import (
     capture_directory_ownership,
     directory_ownership_file_records,
 )
-from codenib._captured_directory import CapturedDirectoryReader
+from codenib._captured_directory import CapturedDirectoryReader, OwnedDirectoryStage
 
 
 def test_tree_ownership_exposes_canonical_file_records(tmp_path: Path) -> None:
@@ -78,3 +78,33 @@ def test_captured_reader_rejects_identical_nested_a_b_a_replacement(
         reader.close()
 
     assert (replacement / "payload").read_bytes() == b"same bytes"
+
+
+def test_owned_stage_publishes_its_final_full_tree(tmp_path: Path) -> None:
+    destination = tmp_path / "published"
+    stage = OwnedDirectoryStage(destination)
+    stage.write_file("nested/payload", [b"owned bytes"])
+
+    stage.publish(expected_destination_ownership=None)
+
+    assert (destination / "nested" / "payload").read_bytes() == b"owned bytes"
+
+
+def test_owned_stage_rejects_root_replacement_before_publish(tmp_path: Path) -> None:
+    destination = tmp_path / "published"
+    stage = OwnedDirectoryStage(destination)
+    stage.write_file("payload", [b"owned bytes"])
+    stolen = tmp_path / "stolen-stage"
+    stage.path.rename(stolen)
+    stage.path.mkdir()
+    (stage.path / "foreign").write_bytes(b"foreign")
+
+    try:
+        with pytest.raises(RuntimeError, match="owned stage root changed"):
+            stage.publish(expected_destination_ownership=None)
+    finally:
+        stage.discard()
+
+    assert not destination.exists()
+    assert (stolen / "payload").read_bytes() == b"owned bytes"
+    assert (stage.path / "foreign").read_bytes() == b"foreign"

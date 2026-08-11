@@ -454,6 +454,7 @@ class OwnedDirectoryStage:
             )
         )
         self._initial = capture_directory_ownership(self.path)
+        self._cleanup_ownership = self._initial
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
         self._descriptor = os.open(self.path, flags)
@@ -468,9 +469,22 @@ class OwnedDirectoryStage:
             self._descriptor = -1
 
     def discard(self) -> None:
+        if not self._published:
+            try:
+                self._cleanup_ownership = self._capture_current_ownership()
+            except (OSError, RuntimeError, ValueError):
+                pass
         self.close()
         if not self._published:
-            discard_owned_directory(self.path, self._initial)
+            discard_owned_directory(self.path, self._cleanup_ownership)
+
+    def _capture_current_ownership(self):
+        observed = capture_directory_ownership(self.path)
+        if directory_ownership_root_identity(observed) != (
+            directory_ownership_root_identity(self._initial)
+        ):
+            raise RuntimeError("owned stage root changed")
+        return observed
 
     def _parent_descriptor(self, relative: PurePosixPath) -> int:
         descriptor = os.dup(self._descriptor)
@@ -577,11 +591,12 @@ class OwnedDirectoryStage:
         validate_staged_directory=None,
         validate_published_destination=None,
     ) -> None:
+        self._cleanup_ownership = self._capture_current_ownership()
         self.close()
         publish_staged_directory(
             self.path,
             self.destination,
-            expected_stage_root_ownership=self._initial,
+            expected_stage_root_ownership=self._cleanup_ownership,
             expected_destination_ownership=expected_destination_ownership,
             validate_staged_directory=validate_staged_directory,
             validate_published_destination=validate_published_destination,
