@@ -19,7 +19,9 @@ from typing import Any, Iterable, Literal, Mapping
 
 from .. import compat_pickle
 from .._atomic_directory import (
+    _annotate_secondary_error,
     capture_directory_ownership,
+    directory_ownership_file_records,
     directory_ownership_inventory,
     directory_ownership_root_identity,
 )
@@ -30,6 +32,12 @@ from ..index.embedding.artifact_integrity import (
     VECTOR_VIEW_UPDATE_MARKER,
 )
 from ..index.embedding.model_policy import resolve_embedding_load_policy_from_options
+from ..native_index_authorization import (
+    MissingNativeIndexAuthorizationError,
+    NativeIndexAuthorization,
+    require_native_index_authorization,
+    require_native_index_authorization_preflight,
+)
 from ..provider_routes import normalize_provider, resolve_embedding_artifact_route
 from .security import assert_publishable_json_value
 
@@ -54,6 +62,7 @@ _PICKLE_SUFFIXES = frozenset({".pkl", ".pickle"})
 _WINDOWS_REPARSE_POINT = 0x400
 _MAX_CONFIG_JSON_BYTES = 16 * 1024 * 1024
 _MAX_DOCUMENTS_JSON_BYTES = 256 * 1024 * 1024
+_MAX_FAISS_INDEX_BYTES = 8 * 1024 * 1024 * 1024
 _JSON_READ_CHUNK_BYTES = 1024 * 1024
 SourceTrust = Literal["portable-inert", "trusted-local"]
 
@@ -638,6 +647,9 @@ class _OwnedViewReader:
                 self._cached_payloads[relative] = payload
             if keep_descriptor:
                 os.lseek(descriptor, 0, os.SEEK_SET)
+                previous = self._authenticated_files.pop(relative, None)
+                if previous is not None:
+                    os.close(previous[0])
                 self._authenticated_files[relative] = (descriptor, opened)
                 descriptor = -1
         except OSError as exc:
@@ -985,6 +997,38 @@ def _owned_inventory_paths(root: Path, ownership: object, *, kind: str) -> set[P
     }
 
 
+def _authenticate_initial_file(
+    reader: _OwnedViewReader,
+    root: Path,
+    ownership: object,
+    path: Path,
+    *,
+    max_bytes: int,
+    cache_bytes: bool = False,
+    keep_descriptor: bool = False,
+) -> None:
+    """Bind one later read/parser to the bytes in the initial tree capture."""
+
+    relative = path.relative_to(root).as_posix()
+    record = next(
+        (
+            item
+            for item in directory_ownership_file_records(ownership)
+            if item.path == relative
+        ),
+        None,
+    )
+    if record is None:
+        raise ValueError(f"portable vector artifact is missing: {relative}")
+    reader.authenticate(
+        path,
+        {"size": record.size, "sha256": record.sha256},
+        cache_bytes=cache_bytes,
+        max_bytes=max_bytes,
+        keep_descriptor=keep_descriptor,
+    )
+
+
 def _pickle_paths(root: Path, ownership: object) -> list[Path]:
     return sorted(
         path
@@ -1123,7 +1167,7 @@ def _validate_vector_model_policy(
     *,
     ownership: object,
     model_suffix: str,
-    source_trust: SourceTrust,
+    native_authorized: bool,
 ) -> None:
     """Reject ambiguous multi-model trees and untrusted serialized objects."""
 
@@ -1154,7 +1198,7 @@ def _validate_vector_model_policy(
         )
 
     pickles = _pickle_paths(root, ownership)
-    if source_trust == "portable-inert":
+    if not native_authorized:
         _reject_inert_pickles(root, ownership)
         return
 
@@ -1316,17 +1360,13 @@ def _validate_vector_semantics(
 def _faiss_contract(
     path: Path,
     *,
-    reader: _OwnedViewReader | None = None,
+    reader: _OwnedViewReader,
 ) -> tuple[int, int, str, str, bool]:
     """Read the persisted index contract, importing FAISS on demand."""
 
     try:
         faiss = importlib.import_module("faiss")
-        index = (
-            faiss.read_index(str(path))
-            if reader is None
-            else reader.faiss_index(path, faiss)
-        )
+        index = reader.faiss_index(path, faiss)
         dimension = int(index.d)
         total = int(index.ntotal)
         is_trained = bool(index.is_trained)
@@ -1360,8 +1400,8 @@ def _validate_level_semantics(
     metric: object,
     index_type: str,
     count: int,
+    reader: _OwnedViewReader,
     canonicalize: bool = True,
-    reader: _OwnedViewReader | None = None,
 ) -> None:
     if not present:
         return
@@ -1437,9 +1477,9 @@ def _validate_vector_layout(
     expected_dimension: int,
     expected_metric: str,
     expected_index_type: str,
-    source_trust: SourceTrust,
+    native_authorized: bool,
+    reader: _OwnedViewReader,
     canonicalize_level_configs: bool = True,
-    reader: _OwnedViewReader | None = None,
 ) -> tuple[
     str,
     dict[Path, list[dict[str, Any]]],
@@ -1519,14 +1559,19 @@ def _validate_vector_layout(
         path = present[0]
         document_format = path.suffix.removeprefix(".")
         if document_format == "pkl":
-            if source_trust != "trusted-local":
-                raise ValueError(
-                    "portable-inert vector view must not deserialize documents"
+            if not native_authorized:
+                raise MissingNativeIndexAuthorizationError(
+                    "vector pickle deserialization requires external native "
+                    "authorization"
                 )
-            if reader is None:
-                raise RuntimeError(
-                    "trusted-local vector normalization requires an owned reader"
-                )
+            _authenticate_initial_file(
+                reader,
+                root,
+                ownership,
+                path,
+                max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
+                cache_bytes=True,
+            )
             payload = _normalize_pickle_documents(path, repo_path, reader=reader)
         else:
             payload = _normalize_json_documents(path, repo_path, reader=reader)
@@ -1536,22 +1581,14 @@ def _validate_vector_layout(
                 f"expected {count}, found {len(payload)}"
             )
         count = len(payload)
-        if reader is not None:
-            reader.pin_file(index_path)
-        dimension, total, metric, index_type, is_trained = _faiss_contract(
+        _authenticate_initial_file(
+            reader,
+            root,
+            ownership,
             index_path,
-            reader=reader,
+            max_bytes=_MAX_FAISS_INDEX_BYTES,
+            keep_descriptor=native_authorized,
         )
-        if dimension != expected_dimension:
-            raise ValueError(
-                f"portable vector FAISS dimension mismatch in {level}: "
-                f"expected {expected_dimension}, found {dimension}"
-            )
-        if total != count:
-            raise ValueError(
-                f"portable vector FAISS count mismatch in {level}: "
-                f"expected {count}, found {total}"
-            )
         derived_counts[level] = count
         if legacy_counts and count == 0:
             stale_paths.update(
@@ -1565,20 +1602,35 @@ def _validate_vector_layout(
                 if candidate in inventory_files
             )
             continue
-        if metric != expected_metric:
-            raise ValueError(
-                f"portable vector FAISS metric mismatch in {level}: "
-                f"expected {expected_metric}, found {metric}"
+        if native_authorized:
+            dimension, total, metric, index_type, is_trained = _faiss_contract(
+                index_path,
+                reader=reader,
             )
-        if index_type != expected_index_type:
-            raise ValueError(
-                f"portable vector FAISS index type mismatch in {level}: "
-                f"expected {expected_index_type}, found {index_type}"
-            )
-        if index_type == "ivf" and not is_trained:
-            raise ValueError(
-                f"portable vector active IVF index is untrained in {level}"
-            )
+            if dimension != expected_dimension:
+                raise ValueError(
+                    f"portable vector FAISS dimension mismatch in {level}: "
+                    f"expected {expected_dimension}, found {dimension}"
+                )
+            if total != count:
+                raise ValueError(
+                    f"portable vector FAISS count mismatch in {level}: "
+                    f"expected {count}, found {total}"
+                )
+            if metric != expected_metric:
+                raise ValueError(
+                    f"portable vector FAISS metric mismatch in {level}: "
+                    f"expected {expected_metric}, found {metric}"
+                )
+            if index_type != expected_index_type:
+                raise ValueError(
+                    f"portable vector FAISS index type mismatch in {level}: "
+                    f"expected {expected_index_type}, found {index_type}"
+                )
+            if index_type == "ivf" and not is_trained:
+                raise ValueError(
+                    f"portable vector active IVF index is untrained in {level}"
+                )
         level_config_path = level_path / f"config_{model_suffix}.json"
         _validate_level_semantics(
             level_config_path,
@@ -1815,7 +1867,7 @@ def _normalize_vector_view(
     initial_tree: object,
     reader: _OwnedViewReader,
     view_config: Mapping[str, Any],
-    source_trust: SourceTrust,
+    native_authorized: bool,
 ) -> dict[str, Any]:
     assert_no_secret_fields(view_config, source="portable vector view config")
     initial_files = _owned_inventory_paths(root, initial_tree, kind="file")
@@ -1843,7 +1895,7 @@ def _normalize_vector_view(
         root,
         ownership=initial_tree,
         model_suffix=model_suffix,
-        source_trust=source_trust,
+        native_authorized=native_authorized,
     )
     expected_config = view_config.get("persistence_config_fingerprint")
     config_path = root / f"config_{model_suffix}.json"
@@ -1892,7 +1944,7 @@ def _normalize_vector_view(
         expected_dimension=expected_dimension,
         expected_metric=expected_metric,
         expected_index_type=expected_index_type,
-        source_trust=source_trust,
+        native_authorized=native_authorized,
         reader=reader,
     )
     _validate_view_document_count(view_config, counts)
@@ -2066,12 +2118,14 @@ def normalize_owned_query_view(
     view_type: str,
     view_config: Mapping[str, Any],
     source_trust: SourceTrust = "portable-inert",
+    native_index_authorization: NativeIndexAuthorization | None = None,
 ) -> dict[str, Any]:
     """Normalize one copied view and return its portable identity adjustments.
 
     ``root`` must be a caller-owned copy that can be safely rewritten.
-    ``source_trust`` defaults to inert portable data; only ``trusted-local`` may
-    deserialize the exact legacy vector pickle names owned by this program.
+    ``source_trust`` is descriptive compatibility metadata, not authority.
+    Native FAISS or legacy pickle parsing requires a process-local authorization
+    bound to the initial captured tree and this exact view config.
     """
 
     if not isinstance(source_trust, str) or source_trust not in {
@@ -2079,12 +2133,55 @@ def normalize_owned_query_view(
         "trusted-local",
     }:
         raise ValueError(f"invalid portable query view source trust: {source_trust!r}")
+    if not isinstance(view_config, Mapping):
+        raise ValueError(f"portable {view_type} normalization requires its view config")
+    try:
+        view_config_snapshot = json.loads(
+            _json_bytes(dict(view_config)),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_number,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "portable query view config is not canonical JSON data"
+        ) from exc
+    if not isinstance(view_config_snapshot, dict):  # pragma: no cover - dict encoded
+        raise ValueError("portable query view config must be a JSON object")
+    if native_index_authorization is not None:
+        if view_type != "vector":
+            raise ValueError(
+                "native index authorization is only valid for vector views"
+            )
+        require_native_index_authorization_preflight(
+            native_index_authorization,
+            view_type="vector",
+        )
     normalized_root, repository = _owned_view_root(root, repo_path)
     try:
         initial_tree = capture_directory_ownership(normalized_root)
         reader = _OwnedViewReader(normalized_root, initial_tree)
     except (OSError, RuntimeError, ValueError) as exc:
         raise RuntimeError("portable query view could not be captured safely") from exc
+    native_authorized = False
+    if native_index_authorization is not None:
+        try:
+            require_native_index_authorization(
+                native_index_authorization,
+                initial_tree,
+                view_type="vector",
+                semantic_contract=view_config_snapshot,
+            )
+        except BaseException as primary_error:
+            try:
+                reader.close()
+            except BaseException as cleanup_error:  # noqa: B036 - preserve primary
+                _annotate_secondary_error(
+                    primary_error,
+                    "portable query view reader cleanup also failed",
+                    cleanup_error,
+                )
+            raise
+        native_authorized = True
     try:
         if view_type == "vector":
             return _normalize_vector_view(
@@ -2092,8 +2189,8 @@ def normalize_owned_query_view(
                 repository,
                 initial_tree=initial_tree,
                 reader=reader,
-                view_config=view_config,
-                source_trust=source_trust,
+                view_config=view_config_snapshot,
+                native_authorized=native_authorized,
             )
         if view_type == "bm25":
             return _normalize_bm25_view(
@@ -2254,6 +2351,7 @@ def _authenticate_vector_generation(
             root / level / index_name,
             index_record,
             cache_bytes=False,
+            max_bytes=_MAX_FAISS_INDEX_BYTES,
             keep_descriptor=True,
         )
     return config
@@ -2368,7 +2466,7 @@ def _validate_portable_vector_view(
         root,
         ownership=initial_tree,
         model_suffix=model_suffix,
-        source_trust="portable-inert",
+        native_authorized=False,
     )
     expected_config = view_config.get("persistence_config_fingerprint")
     if expected_config is None:
@@ -2407,7 +2505,7 @@ def _validate_portable_vector_view(
         expected_dimension=expected_dimension,
         expected_metric=expected_metric,
         expected_index_type=expected_index_type,
-        source_trust="portable-inert",
+        native_authorized=False,
         canonicalize_level_configs=False,
         reader=reader,
     )

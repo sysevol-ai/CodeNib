@@ -34,6 +34,7 @@ from ..index.embedding.artifact_integrity import (
     require_complete_vector_view,
     validate_vector_config_artifact,
 )
+from ..native_index_authorization import _mint_trusted_local_admin_authorization
 from ..provider_routes import resolve_embedding_artifact_route
 from .portable_views import normalize_owned_query_view, validate_portable_query_view
 from .security import assert_no_credential_fields, assert_publishable_tree, file_sha256
@@ -250,6 +251,15 @@ def stage_context_artifact(
             artifact_root=manifest_root,
         )
     selected = _selected_views(manifest, views)
+    if "vector" in selected and not validate_checkout:
+        # Native parsing is an administrative action.  Even callers that have
+        # already performed a broader publication check must bind this exact
+        # manifest to the current source tree before this function may mint.
+        validate_checkout_identity(
+            repo_path,
+            manifest,
+            artifact_root=manifest_root,
+        )
     unsupported = sorted(set(selected) - PORTABLE_CONTEXT_VIEWS)
     if unsupported:
         raise ValueError(
@@ -289,24 +299,41 @@ def stage_context_artifact(
             if view == "vector":
                 require_complete_vector_view(source)
                 expected_config = entry.config.get("persistence_config_fingerprint")
-                if expected_config is not None:
-                    validate_vector_config_artifact(
-                        source,
-                        route.model.replace("/", "__"),
-                        expected_config,
+                if expected_config is None:
+                    raise ValueError(
+                        "portable vector staging requires its config fingerprint"
                     )
+                validate_vector_config_artifact(
+                    source,
+                    route.model.replace("/", "__"),
+                    expected_config,
+                )
             elif view == "bm25":
                 # Validate the committed source generation before copying and
                 # rewriting its machine-local metadata. Otherwise staging
                 # could bless a torn or tampered source with fresh hashes.
                 require_bm25_manifest_artifact(entry)
             relative = _copy_view(source, stage, view)
+            owned_view = stage.joinpath(*PurePosixPath(relative).parts)
+            native_authorization = None
+            if view == "vector":
+                copied_ownership = capture_directory_ownership(owned_view)
+                native_authorization = _mint_trusted_local_admin_authorization(
+                    copied_ownership,
+                    view_type="vector",
+                    semantic_contract=entry.config,
+                    evidence=(
+                        "context-stage-local-admin",
+                        "manifest-and-checkout-validated",
+                    ),
+                )
             adjustments = normalize_owned_query_view(
-                stage.joinpath(*PurePosixPath(relative).parts),
+                owned_view,
                 repo_path=repo_path,
                 view_type=view,
                 view_config=entry.config,
                 source_trust="trusted-local",
+                native_index_authorization=native_authorization,
             )
             entry_data = entry.to_dict()
             entry_data["path"] = relative
