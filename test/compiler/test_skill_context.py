@@ -44,6 +44,7 @@ from codenib.compiler import skill_context
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
 from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
+from codenib.native_index_authorization import InvalidNativeIndexAuthorizationError
 
 
 def _make_meta(
@@ -653,6 +654,61 @@ def test_existing_vector_token_uses_current_manifest_contract(
     )
 
 
+def test_existing_vector_resolver_receives_exact_current_manifest_entry(
+    registry,
+    mocked_build,
+    tmp_path,
+):
+    cache = tmp_path / "cache"
+    vector = cache / "vector"
+    vector.mkdir(parents=True)
+    (vector / "existing").write_text("captured", encoding="utf-8")
+    contract = {"embedding_fingerprint": "sha256:resolver-bound"}
+    expected_entry = IndexEntry(
+        index_type="vector",
+        path=str(vector),
+        built_at="2026-08-11T00:00:00Z",
+        built_at_epoch=0.0,
+        status="fresh",
+        config=contract,
+    )
+    RepoManifest(indexes={"vector": expected_entry}).save(cache / MANIFEST_FILENAME)
+    authorization = object()
+    resolved = []
+
+    contexts = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["embedding_search"],
+        cache_dir=str(cache),
+        skill_registry=registry,
+        native_index_authorization_resolver=lambda entry: (
+            resolved.append(entry) or authorization
+        ),
+    )
+
+    assert contexts["retrieve"].vector_store is not None
+    assert mocked_build["compile"] == []
+    assert len(resolved) == 1
+    assert resolved[0].path == expected_entry.path
+    assert resolved[0].config == contract
+    assert mocked_build["vector_kwargs"][0]["artifact_metadata"] == contract
+    assert (
+        mocked_build["vector_kwargs"][0]["native_index_authorization"] is authorization
+    )
+
+
+def test_build_context_rejects_token_and_resolver_together(registry, tmp_path):
+    with pytest.raises(ValueError, match="either native_index_authorization"):
+        skill_context.build_skill_contexts(
+            repo_path=str(tmp_path),
+            skill_ids=["embedding_search"],
+            cache_dir=str(tmp_path / "cache"),
+            skill_registry=registry,
+            native_index_authorization=object(),
+            native_index_authorization_resolver=lambda _entry: object(),
+        )
+
+
 def test_partial_cache_only_rebuilds_missing(registry, mocked_build, tmp_path):
     """bm25 already built, vector missing → only vector is rebuilt."""
     cache = tmp_path / "cache"
@@ -1063,6 +1119,38 @@ def test_manifest_required_vector_without_authority_fails_before_model_init(
         )
 
 
+def test_manifest_vector_resolver_receives_exact_loaded_entry(
+    registry,
+    mocked_build,
+):
+    entry = _fresh_entry("vector", "/idx/vector")
+    entry.config = {
+        "builder_schema": 2,
+        "embedding_model": "vendor/model",
+        "embedding_provider": "huggingface",
+        "embedding_dimension": 4,
+        "dimension": 4,
+        "embedding_kwargs": {},
+    }
+    authorization = object()
+    resolved = []
+
+    contexts = skill_context.load_contexts_from_manifest(
+        RepoManifest(indexes={"vector": entry}),
+        skill_ids=["embedding_search"],
+        skill_registry=registry,
+        native_index_authorization_resolver=lambda candidate: (
+            resolved.append(candidate) or authorization
+        ),
+    )
+
+    assert contexts["retrieve"].vector_store is not None
+    assert resolved == [entry]
+    assert (
+        mocked_build["vector_kwargs"][0]["native_index_authorization"] is authorization
+    )
+
+
 def test_skill_vector_rejects_invalid_authority_before_model_init(
     monkeypatch,
     tmp_path,
@@ -1074,7 +1162,10 @@ def test_skill_vector_rejects_invalid_authority_before_model_init(
         ),
     )
 
-    with pytest.raises(ValueError, match="requires external authorization"):
+    with pytest.raises(
+        InvalidNativeIndexAuthorizationError,
+        match="malformed",
+    ):
         skill_context._load_vector(
             str(tmp_path / "vector"),
             embedding_model="vendor/model",

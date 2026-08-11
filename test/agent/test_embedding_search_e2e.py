@@ -27,6 +27,9 @@ from pathlib import Path
 
 import pytest
 
+from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
+
 
 def _cuda_available() -> bool:
     try:
@@ -51,16 +54,30 @@ DEFAULT_EMBEDDING_PROVIDER = "huggingface"
 EMBEDDING_INDEX_PATH = "/tmp/embedding_e2e_index"
 
 
+def _load_test_owned_vector(store, path):
+    """Authorize the session-owned local E2E cache, never artifact input."""
+
+    semantic_contract = dict(store.artifact_metadata)
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                "embedding-search-e2e-local-cache",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
+
+
 @pytest.fixture(scope="session")
 def vector_store(httpie_cli_repo):
     """Build or load a CodeVectorStore for the httpie/cli repo."""
     from codenib.index.embedding import CodeVectorStore, build_hierarchical_vector_store
-    from codenib.index.embedding.artifact_integrity import (
-        capture_authenticated_vector_view,
-    )
-    from codenib.native_index_authorization import (
-        _mint_trusted_local_admin_authorization,
-    )
 
     repo_path = str(httpie_cli_repo)
     store_root = Path(EMBEDDING_INDEX_PATH)
@@ -71,16 +88,6 @@ def vector_store(httpie_cli_repo):
         if l0_dir.exists() and l2_dir.exists():
             print(f"\n[e2e] Loading cached index from {EMBEDDING_INDEX_PATH}")
             artifact_contract = {}
-            with capture_authenticated_vector_view(store_root) as vector_view:
-                authorization = _mint_trusted_local_admin_authorization(
-                    vector_view.ownership,
-                    view_type="vector",
-                    semantic_contract=artifact_contract,
-                    evidence=(
-                        "embedding-e2e-local-vector-view",
-                        "captured-vector-tree-subject",
-                    ),
-                )
             vs = CodeVectorStore(
                 embedding_model=DEFAULT_EMBEDDING_MODEL,
                 embedding_provider=DEFAULT_EMBEDDING_PROVIDER,
@@ -98,10 +105,7 @@ def vector_store(httpie_cli_repo):
                 },
             )
             resources.callback(vs.close)
-            vs.load(
-                EMBEDDING_INDEX_PATH,
-                native_index_authorization=authorization,
-            )
+            _load_test_owned_vector(vs, EMBEDDING_INDEX_PATH)
         else:
             print(
                 f"\n[e2e] Building index for {repo_path} into "

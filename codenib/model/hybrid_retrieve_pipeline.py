@@ -78,11 +78,14 @@ References
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence
+from typing import TYPE_CHECKING, List, Optional, Sequence
 
 from ..compiler import build_skill_contexts
 from ..log_utils import get_logger
 from ..types import QueriedNode
+
+if TYPE_CHECKING:
+    from ..native_index_authorization import NativeIndexAuthorization
 
 logger = get_logger(__name__)
 
@@ -126,6 +129,7 @@ class HybridRetrievePipeline:
         trust_remote_code: Optional[bool] = None,
         languages: Sequence[str] = ("python",),
         embedding_batch_size: int = 8,
+        native_index_authorization: NativeIndexAuthorization | None = None,
     ):
         self.repo_path = repo_path
         self.stage1_topk = stage1_topk
@@ -163,6 +167,7 @@ class HybridRetrievePipeline:
             default_level="l2",  # embedding level
             trust_remote_code=trust_remote_code,
             embedding_batch_size=embedding_batch_size,  # Avoid CUDA OOM
+            native_index_authorization=native_index_authorization,
         )
 
         retrieve_ctx = contexts.get("retrieve")

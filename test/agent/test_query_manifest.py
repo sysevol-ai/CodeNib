@@ -126,6 +126,39 @@ class TestExactlyOneModeEnforced:
                 ),
             )
 
+    def test_native_token_and_resolver_are_mutually_exclusive(self):
+        with pytest.raises(ValueError, match="either native_index_authorization"):
+            query(
+                "anything",
+                options=CodeNibAgentOptions(
+                    repo_path="/tmp/x",
+                    llm=_mock_llm_final_answer(),
+                    native_index_authorization=object(),
+                    native_index_authorization_resolver=lambda _entry: object(),
+                ),
+            )
+
+    @pytest.mark.parametrize(
+        "authority_options",
+        [
+            {"native_index_authorization": object()},
+            {"native_index_authorization_resolver": lambda _entry: object()},
+        ],
+    )
+    def test_contexts_mode_rejects_unused_authority_options(
+        self,
+        authority_options,
+    ):
+        with pytest.raises(ValueError, match="not accepted in contexts mode"):
+            query(
+                "anything",
+                options=CodeNibAgentOptions(
+                    contexts={},
+                    llm=_mock_llm_final_answer(),
+                    **authority_options,
+                ),
+            )
+
 
 # ---------------------------------------------------------------------------
 # Manifest mode wiring
@@ -133,6 +166,33 @@ class TestExactlyOneModeEnforced:
 
 
 class TestManifestMode:
+    def test_manifest_mode_threads_native_authorization_resolver(self, monkeypatch):
+        from codenib import compiler as compiler_pkg
+
+        captured = {}
+
+        def resolver(_entry):
+            return object()
+
+        def fake_load(*_args, **kwargs):
+            captured.update(kwargs)
+            return {}
+
+        monkeypatch.setattr(compiler_pkg, "load_contexts_from_manifest", fake_load)
+
+        query(
+            "noop",
+            options=CodeNibAgentOptions(
+                manifest=_fake_manifest(),
+                llm=_mock_llm_final_answer(),
+                allowed_skills=["bm25_search"],
+                native_index_authorization_resolver=resolver,
+            ),
+        )
+
+        assert captured["native_index_authorization"] is None
+        assert captured["native_index_authorization_resolver"] is resolver
+
     def test_manifest_mode_skips_build_skill_contexts(self, monkeypatch):
         """When ``manifest`` is set, the inline build path must never run.
 

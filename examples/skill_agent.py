@@ -35,7 +35,7 @@ import os
 import sys
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping
 
 # ---------------------------------------------------------------------------
 # Ensure the project root is on sys.path when running as a script
@@ -53,6 +53,41 @@ from codenib.ops.rerank import RerankContext
 from codenib.ops.retrieve import RetrieveContext
 from codenib.paths import repo_index_dir
 from codenib.types import QueriedNode
+
+
+def _load_vector_from_local_admin_boundary(
+    store: Any,
+    path: str | Path,
+    *,
+    semantic_contract: Mapping[str, Any],
+    evidence: str,
+) -> None:
+    """Authorize one lexical local cache owned by this example invocation."""
+
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
+
+    if not evidence:
+        raise ValueError("local vector authorization evidence must be non-empty")
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                evidence,
+                "skill-agent-example-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -129,12 +164,6 @@ def build_vector_store(
 ):
     """Build (or load) hierarchical embedding index."""
     from codenib.index.embedding import CodeVectorStore, build_hierarchical_vector_store
-    from codenib.index.embedding.artifact_integrity import (
-        capture_authenticated_vector_view,
-    )
-    from codenib.native_index_authorization import (
-        _mint_trusted_local_admin_authorization,
-    )
 
     store_path = Path(index_path)
     store_path.mkdir(parents=True, exist_ok=True)
@@ -144,16 +173,6 @@ def build_vector_store(
     if l0.exists() and l2.exists():
         print("  Embedding: loading cached index")
         artifact_contract: Dict[str, Any] = {}
-        with capture_authenticated_vector_view(store_path) as vector_view:
-            native_authorization = _mint_trusted_local_admin_authorization(
-                vector_view.ownership,
-                view_type="vector",
-                semantic_contract=artifact_contract,
-                evidence=(
-                    "skill-agent-cached-vector-view",
-                    "captured-vector-tree-subject",
-                ),
-            )
         with ExitStack() as resources:
             vs = CodeVectorStore(
                 embedding_model=embedding_model,
@@ -163,9 +182,11 @@ def build_vector_store(
                 artifact_metadata=artifact_contract,
             )
             resources.callback(vs.close)
-            vs.load(
-                str(store_path),
-                native_index_authorization=native_authorization,
+            _load_vector_from_local_admin_boundary(
+                vs,
+                store_path,
+                semantic_contract=artifact_contract,
+                evidence="skill-agent-standalone-local-cache",
             )
             if vs.l0_documents and vs.l2_documents:
                 resources.pop_all()
@@ -327,13 +348,7 @@ def run_agent(args: argparse.Namespace) -> None:
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from codenib.compiler.manifest import RepoManifest
     from codenib.index.embedding import CodeVectorStore
-    from codenib.index.embedding.artifact_integrity import (
-        capture_authenticated_vector_view,
-    )
     from codenib.llm.litellm_chat import LiteLLMChat
-    from codenib.native_index_authorization import (
-        _mint_trusted_local_admin_authorization,
-    )
 
     repo_path = os.path.abspath(args.repo)
     cache_dir = args.index_path or str(repo_index_dir(repo_path))
@@ -416,16 +431,6 @@ def run_agent(args: argparse.Namespace) -> None:
             emb_dim = artifact_contract.get(
                 "embedding_dimension", args.embedding_dimension
             )
-            with capture_authenticated_vector_view(entry.path) as vector_view:
-                native_authorization = _mint_trusted_local_admin_authorization(
-                    vector_view.ownership,
-                    view_type="vector",
-                    semantic_contract=artifact_contract,
-                    evidence=(
-                        "skill-agent-manifest-vector-view",
-                        "captured-vector-tree-subject",
-                    ),
-                )
             vector_store = CodeVectorStore(
                 embedding_model=emb_model,
                 embedding_provider="huggingface",
@@ -434,9 +439,11 @@ def run_agent(args: argparse.Namespace) -> None:
                 artifact_metadata=artifact_contract,
             )
             resources.callback(vector_store.close)
-            vector_store.load(
+            _load_vector_from_local_admin_boundary(
+                vector_store,
                 entry.path,
-                native_index_authorization=native_authorization,
+                semantic_contract=artifact_contract,
+                evidence="skill-agent-compiled-local-manifest",
             )
             print(f"  Loaded vector store from {entry.path}")
 

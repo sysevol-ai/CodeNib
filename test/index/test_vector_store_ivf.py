@@ -23,10 +23,10 @@ import faiss
 import numpy as np
 import pytest
 
-from codenib._atomic_directory import capture_directory_ownership
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
     VECTOR_VIEW_UPDATE_MARKER,
+    capture_authenticated_vector_view,
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
@@ -70,12 +70,16 @@ def _make_store(**kwargs) -> CodeVectorStore:
 
 def _authorization(store: CodeVectorStore, path=None):
     root = Path(path) if path is not None else Path(store.store_path)
-    return _mint_trusted_local_admin_authorization(
-        capture_directory_ownership(root),
-        view_type="vector",
-        semantic_contract=store.artifact_metadata,
-        evidence=("vector-store-test-local-admin",),
-    )
+    with capture_authenticated_vector_view(root) as view:
+        return _mint_trusted_local_admin_authorization(
+            view.ownership,
+            view_type="vector",
+            semantic_contract=store.artifact_metadata,
+            evidence=(
+                "vector-store-test-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
 
 
 def _load_trusted(store: CodeVectorStore, path=None) -> None:

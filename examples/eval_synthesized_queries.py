@@ -44,6 +44,7 @@ Usage:
         --queries-dir synthesized_queries/ \
         --filter-instance "astral-sh__ruff-15309"
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,7 +57,7 @@ import time
 from collections import Counter, defaultdict
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
@@ -75,6 +76,42 @@ from codenib.paths import prebuilt_data_dir, repo_index_dir, user_state_dir
 from codenib.types import QueriedNode
 
 logger = get_logger(__name__)
+
+
+def _load_vector_from_local_admin_boundary(
+    store: Any,
+    path: str | Path,
+    *,
+    semantic_contract: Mapping[str, Any],
+    evidence: str,
+) -> None:
+    """Authorize one compiler-produced local view for this eval process."""
+
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
+
+    if not evidence:
+        raise ValueError("local vector authorization evidence must be non-empty")
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                evidence,
+                "synthesized-query-eval-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Language detection
@@ -373,14 +410,8 @@ def _make_agent(
     from codenib.compiler.manifest import RepoManifest
     from codenib.compiler.params import SessionContext
     from codenib.index.embedding import CodeVectorStore
-    from codenib.index.embedding.artifact_integrity import (
-        capture_authenticated_vector_view,
-    )
     from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
     from codenib.llm.litellm_chat import LiteLLMChat
-    from codenib.native_index_authorization import (
-        _mint_trusted_local_admin_authorization,
-    )
     from codenib.ops.rerank import RerankContext
     from codenib.ops.retrieve import RetrieveContext
 
@@ -428,16 +459,6 @@ def _make_agent(
         ):
             entry = manifest.indexes["vector"]
             artifact_contract = dict(entry.config)
-            with capture_authenticated_vector_view(entry.path) as vector_view:
-                native_authorization = _mint_trusted_local_admin_authorization(
-                    vector_view.ownership,
-                    view_type="vector",
-                    semantic_contract=artifact_contract,
-                    evidence=(
-                        "synthesized-eval-local-vector-view",
-                        "captured-vector-tree-subject",
-                    ),
-                )
             vector_store = CodeVectorStore(
                 embedding_model=artifact_contract.get(
                     "embedding_model", args.embedding_model
@@ -450,9 +471,11 @@ def _make_agent(
                 artifact_metadata=artifact_contract,
             )
             resources.callback(vector_store.close)
-            vector_store.load(
+            _load_vector_from_local_admin_boundary(
+                vector_store,
                 entry.path,
-                native_index_authorization=native_authorization,
+                semantic_contract=artifact_contract,
+                evidence="synthesized-query-eval-compiled-local-manifest",
             )
 
         ctx: Dict[str, Any] = {

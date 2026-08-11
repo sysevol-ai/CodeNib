@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..graph.roi_subgraph import ROISubgraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
@@ -15,6 +15,9 @@ from ..log_utils import get_logger
 from ..ls_router import build_graph_for_languages
 from ..profiler import Profiler
 from ..types import QueriedNode
+
+if TYPE_CHECKING:
+    from ..native_index_authorization import NativeIndexAuthorization
 
 logger = get_logger(__name__)
 
@@ -85,6 +88,7 @@ class SparseSeededGraphRetrievePipeline:
         max_lines_per_chunk: int = 300,
         project_name: Optional[str] = None,
         profiler: Optional[Profiler] = None,
+        native_index_authorization: NativeIndexAuthorization | None = None,
     ) -> None:
         self.stage1_topk = stage1_topk
         self.stage2_topk = stage2_topk
@@ -152,6 +156,7 @@ class SparseSeededGraphRetrievePipeline:
                     embedding_kwargs=embedding_kwargs,
                     index_metric="ip",
                     profiler=profiler,
+                    native_index_authorization=native_index_authorization,
                 )
 
     def query(

@@ -19,16 +19,14 @@ import time
 from collections import defaultdict
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Mapping
 
 import datasets
 
 from codenib.compiler.manifest import IndexEntry, RepoManifest
-from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.search import search_semantic
-from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.paths import prebuilt_data_dir
 
 CODENIB_DATA = prebuilt_data_dir()
@@ -51,6 +49,41 @@ LANGUAGE_GROUP_MAP: Dict[str, List[str]] = {
     "Rust": ["rust"],
     "TypeScript/JavaScript": ["typescript", "javascript"],
 }
+
+
+def _load_vector_from_local_admin_boundary(
+    store: CodeVectorStore,
+    path: str | Path,
+    *,
+    semantic_contract: Mapping[str, Any],
+    evidence: str,
+) -> None:
+    """Authorize one prebuilt local benchmark view at the CLI boundary."""
+
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
+
+    if not evidence:
+        raise ValueError("local vector authorization evidence must be non-empty")
+    with capture_authenticated_vector_view(path) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=(
+                evidence,
+                "mcp-benchmark-cli-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
+        store.load(
+            str(path),
+            native_index_authorization=authorization,
+        )
 
 
 def _normalize_symbol(s: str) -> str:
@@ -151,17 +184,6 @@ async def benchmark_instance(
         ctx = ServerContext(manifest=manifest)
         resources.callback(ctx.close)
         try:
-            with capture_authenticated_vector_view(repo_dir) as vector_view:
-                native_authorization = _mint_trusted_local_admin_authorization(
-                    vector_view.ownership,
-                    view_type="vector",
-                    semantic_contract=artifact_contract,
-                    evidence=(
-                        "mcp-benchmark-local-vector-view",
-                        "captured-vector-tree-subject",
-                    ),
-                )
-
             ctx.vector = CodeVectorStore(
                 embedding_model=embedding_model,
                 embedding_provider="huggingface",
@@ -176,8 +198,11 @@ async def benchmark_instance(
                 ),
                 trust_remote_code=(embedding_model == DEFAULT_EMBEDDING_MODEL),
             )
-            ctx.vector.load(
-                native_index_authorization=native_authorization,
+            _load_vector_from_local_admin_boundary(
+                ctx.vector,
+                manifest.indexes["vector"].path,
+                semantic_contract=artifact_contract,
+                evidence="mcp-benchmark-prebuilt-local-index",
             )
         except Exception as e:
             return {

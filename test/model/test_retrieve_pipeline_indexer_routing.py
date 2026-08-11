@@ -120,6 +120,7 @@ def test_graph_pipeline_routes_languages_to_graph_builder_and_rerank(
 
     repo_path = str(tmp_path / "repo")
     index_path = str(tmp_path / "index")
+    authorization = object()
     pipeline = pipeline_module.GraphRetrievePipeline(
         repo_path=repo_path,
         index_path=index_path,
@@ -130,6 +131,7 @@ def test_graph_pipeline_routes_languages_to_graph_builder_and_rerank(
         languages=["rust", "python"],
         graph_route="scip-candidate",
         project_name="repo__case",
+        native_index_authorization=authorization,
     )
 
     assert graph_calls == [
@@ -156,6 +158,7 @@ def test_graph_pipeline_routes_languages_to_graph_builder_and_rerank(
         "revision": "f" * 40,
         "trust_remote_code": True,
     }
+    assert vector_call["native_index_authorization"] is authorization
 
 
 def test_graph_retrieve_pipeline_name_is_sparse_seeded_alias():
@@ -315,12 +318,27 @@ def test_retrieve_rerank_authorized_cache_loads_without_rebuild(
     monkeypatch,
     tmp_path,
 ):
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
     from codenib.model import retrieve_rerank_pipeline as pipeline_module
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
 
     index = tmp_path / "index"
     index.mkdir()
     (index / "config_model.json").write_text("{}", encoding="utf-8")
-    authorization = object()
+    with capture_authenticated_vector_view(index) as vector_view:
+        authorization = _mint_trusted_local_admin_authorization(
+            vector_view.ownership,
+            view_type="vector",
+            semantic_contract={},
+            evidence=(
+                "retrieve-cache-test-local-admin",
+                "captured-vector-tree-subject",
+            ),
+        )
     loads = []
 
     class FakeVectorStore:

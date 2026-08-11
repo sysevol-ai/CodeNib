@@ -11,7 +11,9 @@ from types import SimpleNamespace
 
 import faiss
 import numpy as np
+import pytest
 
+from codenib import compat_pickle
 from codenib.compiler.artifact_quality import (
     assess_vector_artifact,
     constrain_and_assess_graph_artifact,
@@ -19,6 +21,8 @@ from codenib.compiler.artifact_quality import (
 )
 from codenib.git_snapshot import GitSourceSurface
 from codenib.graph.code_graph import CodeGraph
+from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 
 
 def _git(repo, *args):
@@ -42,6 +46,28 @@ def _source_surface(tmp_path):
     _git(repo, "add", "src/main.py")
     _git(repo, "commit", "-m", "initial")
     return repo, GitSourceSurface.load(repo)
+
+
+def _assess_vector_as_trusted_local_admin(root, **kwargs):
+    """Test-only lexical admin boundary for locally constructed fixtures."""
+
+    expected_artifact = kwargs["expected_artifact"]
+    with capture_authenticated_vector_view(root) as view:
+        authorization = _mint_trusted_local_admin_authorization(
+            view.ownership,
+            view_type="vector",
+            semantic_contract=expected_artifact,
+            evidence=(
+                "artifact-quality-test-owned-fixture",
+                "captured-vector-tree-subject",
+            ),
+        )
+        return assess_vector_artifact(
+            root,
+            authenticated_view=view,
+            native_index_authorization=authorization,
+            **kwargs,
+        )
 
 
 def test_graph_quality_removes_paths_outside_commit(tmp_path):
@@ -105,7 +131,10 @@ def test_graph_quality_reports_malformed_paths_before_constraining(tmp_path):
     assert "../generated.py" not in graph.name_to_vertex
 
 
-def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(tmp_path):
+def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(
+    tmp_path,
+    monkeypatch,
+):
     _repo, surface = _source_surface(tmp_path)
     model = "test/model"
     suffix = "test__model"
@@ -137,7 +166,66 @@ def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(tmp_path):
         encoding="utf-8",
     )
 
-    report = assess_vector_artifact(
+    def parser_must_not_run(*_args, **_kwargs):
+        raise AssertionError("native parser ran before external authorization")
+
+    with capture_authenticated_vector_view(root) as view:
+        with monkeypatch.context() as guard:
+            guard.setattr(compat_pickle, "load", parser_must_not_run)
+            guard.setattr(faiss, "read_index", parser_must_not_run)
+            with pytest.raises(ValueError, match="requires external authorization"):
+                assess_vector_artifact(
+                    root,
+                    embedding_model=model,
+                    build_levels=["l0"],
+                    surface=surface,
+                    expected_artifact=identity,
+                    required_l0_files=["src/main.py"],
+                    authenticated_view=view,
+                    native_index_authorization=None,
+                )
+
+    with capture_authenticated_vector_view(root) as view:
+        authorization = _mint_trusted_local_admin_authorization(
+            view.ownership,
+            view_type="vector",
+            semantic_contract=identity,
+            evidence=(
+                "artifact-quality-primary-error-test",
+                "captured-vector-tree-subject",
+            ),
+        )
+
+        def fail_assessment(_paths):
+            raise ValueError("primary assessment failure")
+
+        def fail_final_verification():
+            raise RuntimeError("secondary final verification failure")
+
+        failing_surface = SimpleNamespace(
+            commit=surface.commit,
+            tree=surface.tree,
+            classify=fail_assessment,
+        )
+        with monkeypatch.context() as guard:
+            guard.setattr(
+                type(view),
+                "verify_final",
+                lambda _self: fail_final_verification(),
+            )
+            with pytest.raises(ValueError, match="primary assessment failure"):
+                assess_vector_artifact(
+                    root,
+                    embedding_model=model,
+                    build_levels=["l0"],
+                    surface=failing_surface,
+                    expected_artifact=identity,
+                    required_l0_files=["src/main.py"],
+                    authenticated_view=view,
+                    native_index_authorization=authorization,
+                )
+
+    report = _assess_vector_as_trusted_local_admin(
         root,
         embedding_model=model,
         build_levels=["l0"],
@@ -171,7 +259,7 @@ def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(tmp_path):
     stale_level.mkdir()
     stale_index = stale_level / f"index_{suffix}.faiss"
     stale_index.write_bytes(b"stale")
-    unexpected = assess_vector_artifact(
+    unexpected = _assess_vector_as_trusted_local_admin(
         root,
         embedding_model=model,
         build_levels=["l0"],
@@ -186,7 +274,7 @@ def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(tmp_path):
     documents[0].metadata = []
     with documents_path.open("wb") as handle:
         pickle.dump(documents, handle)
-    invalid = assess_vector_artifact(
+    invalid = _assess_vector_as_trusted_local_admin(
         root,
         embedding_model=model,
         build_levels=["l0"],
@@ -203,7 +291,7 @@ def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(tmp_path):
         documents[0].metadata = metadata
         with documents_path.open("wb") as handle:
             pickle.dump(documents, handle)
-        invalid_path = assess_vector_artifact(
+        invalid_path = _assess_vector_as_trusted_local_admin(
             root,
             embedding_model=model,
             build_levels=["l0"],
@@ -225,7 +313,7 @@ def test_vector_quality_does_not_report_missing_level_as_empty(tmp_path):
         encoding="utf-8",
     )
 
-    report = assess_vector_artifact(
+    report = _assess_vector_as_trusted_local_admin(
         root,
         embedding_model=model,
         build_levels=["l0"],
