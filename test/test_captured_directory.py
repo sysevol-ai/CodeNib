@@ -533,6 +533,21 @@ def test_workspace_plan_rejects_atomic_scanner_overflow_before_provisioning(
         )
 
 
+def test_workspace_plan_rejects_metadata_budget_before_provisioning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(captured_directory, "_MAX_OWNERSHIP_METADATA_BYTES", 100)
+
+    with pytest.raises(ValueError, match="path metadata exceeds"):
+        WorkspacePlan(
+            subject_digest="c" * 64,
+            directories=(
+                WorkspaceDirectory("a" * 48),
+                WorkspaceDirectory("b" * 48),
+            ),
+        )
+
+
 def test_owned_workspace_publication_support_gate_is_side_effect_free(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1156,6 +1171,40 @@ def test_preopened_workspace_record_install_interruption_terminally_fails(
         workspace._written_files = InterruptingRecords()
 
         with pytest.raises(KeyboardInterrupt, match="record install interruption"):
+            workspace.write_file("payload", [b"safe"])
+
+        assert workspace.state == "closed"
+        assert (stage / "payload").read_bytes() == b"safe"
+        with pytest.raises(RuntimeError, match="cannot seal while closed"):
+            workspace.seal()
+
+
+def test_preopened_workspace_record_construction_interruption_terminally_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="a" * 64,
+        files=(WorkspaceFile("payload", max_bytes=4),),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            expected_destination=None,
+        )
+
+        def interrupt_record(*_args, **_kwargs):
+            raise KeyboardInterrupt("record construction interruption")
+
+        monkeypatch.setattr(captured_directory, "TreeFileRecord", interrupt_record)
+        with pytest.raises(KeyboardInterrupt, match="record construction interruption"):
             workspace.write_file("payload", [b"safe"])
 
         assert workspace.state == "closed"

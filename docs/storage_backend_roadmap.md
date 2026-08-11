@@ -260,6 +260,17 @@ captured vector tree. These compatibility and publication gates preserve the
 previous complete vector generation on interruption, but they do not complete
 the catalog-backed M2 generation coordinator or durable worker wiring.
 
+Strict workspace publication now has a provider-neutral foundation. A caller
+supplies one canonical `WorkspacePlan`; entry count, aggregate path-metadata,
+per-file, and aggregate byte budgets fail before provisioning. A trusted
+provisioner must pre-open and adopt the exact directory skeleton, after which
+descriptor-bound writes, complete-tree sealing, staged/published validation,
+and the retained publication receipt share one ownership boundary. The
+platform capability probe is side-effect free and fails closed where anchored
+directory descriptors or atomic no-replace rename are unavailable. This slice
+does not add a production workspace provider or wire a compiler/context
+producer, so M1 remains in progress.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced

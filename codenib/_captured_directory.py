@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - Windows fails closed when requested
 
 from ._atomic_directory import (
     _MAX_OWNERSHIP_ENTRIES,
+    _MAX_OWNERSHIP_METADATA_BYTES,
     _SAFE_OWNERSHIP_DIRECTORY_FDS,
     DirectoryOrphan,
     PublicationDirectoryReader,
@@ -74,6 +75,7 @@ _UNSET_DESTINATION_OWNERSHIP = object()
 _MAX_WORKSPACE_ENTRIES = _MAX_OWNERSHIP_ENTRIES
 _MAX_WORKSPACE_FILE_BYTES = 64 * 1024 * 1024 * 1024
 _MAX_WORKSPACE_TOTAL_BYTES = 64 * 1024 * 1024 * 1024
+_OWNERSHIP_RECORD_FIXED_METADATA_BYTES = 8 + 1 + 4 + 8 + 32
 _WORKSPACE_PLAN_DOMAIN = b"codenib-owned-workspace-plan-v1"
 _WORKSPACE_RECEIPT_EMPTY = object()
 _WORKSPACE_RECEIPT_CLOSED = object()
@@ -279,6 +281,7 @@ class WorkspacePlan:
         directory_by_path: dict[str, WorkspaceDirectory] = {}
         file_by_path: dict[str, WorkspaceFile] = {}
         portable_paths: dict[str, str] = {}
+        metadata_bytes = 0
         for directory_item in directories:
             path = directory_item.path.as_posix()
             if path in directory_by_path:
@@ -292,6 +295,11 @@ class WorkspacePlan:
                 )
             portable_paths[portable] = path
             directory_by_path[path] = directory_item
+            metadata_bytes += (
+                len(os.fsencode(path)) + _OWNERSHIP_RECORD_FIXED_METADATA_BYTES
+            )
+            if metadata_bytes > _MAX_OWNERSHIP_METADATA_BYTES:
+                raise ValueError("workspace plan path metadata exceeds its budget")
         total_bytes = 0
         for file_item in files:
             path = file_item.path.as_posix()
@@ -310,6 +318,11 @@ class WorkspacePlan:
                 )
             portable_paths[portable] = path
             file_by_path[path] = file_item
+            metadata_bytes += (
+                len(os.fsencode(path)) + _OWNERSHIP_RECORD_FIXED_METADATA_BYTES
+            )
+            if metadata_bytes > _MAX_OWNERSHIP_METADATA_BYTES:
+                raise ValueError("workspace plan path metadata exceeds its budget")
             total_bytes += file_item.max_bytes
             if total_bytes > _MAX_WORKSPACE_TOTAL_BYTES:
                 raise ValueError("workspace plan total byte limit is out of bounds")
@@ -1840,14 +1853,14 @@ class OwnedWorkspaceAuthority:
             self._close_resources_after_error_locked(primary_error)
             raise primary_error.with_traceback(primary_error.__traceback__)
         assert record is not None
-        public_record = TreeFileRecord(
-            path=path,
-            mode=record[1],
-            size=record[2],
-            sha256=record[3],
-        )
         try:
             self._written_files[path] = record
+            public_record = TreeFileRecord(
+                path=path,
+                mode=record[1],
+                size=record[2],
+                sha256=record[3],
+            )
             self._refresh_locked(require_complete=False)
             self._state = "writing"
         except BaseException as transition_error:
