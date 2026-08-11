@@ -17,7 +17,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from .._atomic_directory import (
+    PublicationDirectoryReader,
+    _annotate_secondary_error,
     capture_directory_ownership,
+    directory_ownership_root_identity,
     discard_owned_directory,
     lexical_directory_path,
     publish_staged_directory,
@@ -265,6 +268,9 @@ def stage_context_artifact(
         )
     )
     stage_root_ownership = capture_directory_ownership(stage)
+    initial_stage_root_identity = directory_ownership_root_identity(
+        stage_root_ownership
+    )
     try:
         portable = manifest.to_dict()
         portable["repo"]["path"] = "source"
@@ -368,7 +374,7 @@ def stage_context_artifact(
 
         expected_metadata_bytes = _json_bytes(metadata)
 
-        def validate_artifact(candidate: Path) -> None:
+        def validate_artifact_path(candidate: Path) -> None:
             for view, (relative, config) in portable_validation.items():
                 validate_portable_query_view(
                     candidate.joinpath(*PurePosixPath(relative).parts),
@@ -399,6 +405,57 @@ def stage_context_artifact(
                     "published context artifact differs from its staged identity"
                 )
 
+        # The path-based validators run before the final ownership capture.
+        # Publication callbacks receive a descriptor-bound reader, never a Path;
+        # the exact captured tree then carries those validation results across
+        # both the staged and published callbacks.
+        validate_artifact_path(stage)
+        publication_ownership = capture_directory_ownership(stage)
+        if (
+            directory_ownership_root_identity(publication_ownership)
+            != initial_stage_root_identity
+        ):
+            raise RuntimeError("context artifact stage root changed during build")
+        stage_root_ownership = publication_ownership
+        expected_metadata_size, expected_metadata_digest = file_sha256(metadata_path)
+
+        def validate_artifact(candidate: PublicationDirectoryReader) -> None:
+            records = candidate.file_records()
+            candidate_metadata = next(
+                (
+                    record
+                    for record in records
+                    if record.path == CONTEXT_ARTIFACT_MANIFEST
+                ),
+                None,
+            )
+            actual_files = [
+                {
+                    "path": record.path,
+                    "bytes": record.size,
+                    "sha256": record.sha256,
+                }
+                for record in sorted(
+                    records,
+                    key=lambda item: PurePosixPath(item.path),
+                )
+                if record.path != CONTEXT_ARTIFACT_MANIFEST
+            ]
+            if (
+                candidate_metadata is None
+                or candidate_metadata.size != expected_metadata_size
+                or candidate_metadata.sha256 != expected_metadata_digest
+                or candidate.read_bytes(
+                    CONTEXT_ARTIFACT_MANIFEST,
+                    max_bytes=expected_metadata_size,
+                )
+                != expected_metadata_bytes
+                or actual_files != files
+            ):
+                raise ValueError(
+                    "published context artifact differs from its staged identity"
+                )
+
         publish_staged_directory(
             stage,
             output_dir,
@@ -407,8 +464,28 @@ def stage_context_artifact(
             validate_staged_directory=validate_artifact,
             validate_published_destination=validate_artifact,
         )
-    except BaseException:
-        discard_owned_directory(stage, stage_root_ownership)
+    except BaseException as primary_error:
+        try:
+            observed_stage_ownership = capture_directory_ownership(stage)
+            if (
+                directory_ownership_root_identity(observed_stage_ownership)
+                == initial_stage_root_identity
+            ):
+                stage_root_ownership = observed_stage_ownership
+        except BaseException as capture_error:  # noqa: B036 - preserve primary
+            _annotate_secondary_error(
+                primary_error,
+                "context artifact stage cleanup capture also failed",
+                capture_error,
+            )
+        try:
+            discard_owned_directory(stage, stage_root_ownership)
+        except BaseException as discard_error:  # noqa: B036 - preserve primary
+            _annotate_secondary_error(
+                primary_error,
+                "context artifact stage discard also failed",
+                discard_error,
+            )
         raise
 
     byte_count = sum(int(item["bytes"]) for item in files)
