@@ -109,6 +109,55 @@ def _remember_cleanup_interruption(
     return deferred if deferred is not None else interruption
 
 
+def _annotate_secondary_cleanup_error(
+    primary_error: BaseException,
+    label: str,
+    cleanup_error: BaseException,
+) -> None:
+    """Keep cleanup diagnostics reachable without replacing the first fault."""
+
+    message = f"{label}: {cleanup_error!r}"
+    try:
+        add_note = getattr(primary_error, "add_note", None)
+        if callable(add_note):
+            add_note(message)
+            return
+    except BaseException:  # noqa: B036 - annotation must not mask primary
+        pass
+    try:
+        notes = list(getattr(primary_error, "_codenib_cleanup_notes", ()))
+        notes.append(message)
+        primary_error._codenib_cleanup_notes = tuple(notes)  # type: ignore[attr-defined]
+    except BaseException:  # noqa: B036 - primary still remains authoritative
+        pass
+    try:
+        if primary_error.__cause__ is None:
+            primary_error.__cause__ = cleanup_error
+    except BaseException:  # noqa: B036 - primary still remains authoritative
+        pass
+
+
+def _finish_cleanup_preserving_primary(
+    primary_error: BaseException | None,
+    label: str,
+    cleanup: Callable[[], BaseException | None],
+) -> None:
+    """Finish cleanup, propagating it only when no earlier failure exists."""
+
+    try:
+        deferred = cleanup()
+        if deferred is not None:
+            raise deferred
+    except BaseException as cleanup_error:  # noqa: B036 - preserve first fault
+        if primary_error is None:
+            raise
+        _annotate_secondary_cleanup_error(
+            primary_error,
+            label,
+            cleanup_error,
+        )
+
+
 def _posix_lifecycle_guard_is_owned() -> bool:
     """Return whether the current CPython thread owns the lifecycle RLock."""
 
@@ -467,6 +516,7 @@ def _open_posix_cache_directory(cache_dir: str | Path) -> Iterator[tuple[Path, i
         descriptor = os.open(cache, _directory_open_flags())
     except OSError as exc:
         raise RuntimeError(f"could not open compiler cache directory: {cache}") from exc
+    primary_error: BaseException | None = None
     try:
         metadata = os.fstat(descriptor)
         if not stat.S_ISDIR(metadata.st_mode) or _is_reparse_point(metadata):
@@ -477,8 +527,15 @@ def _open_posix_cache_directory(cache_dir: str | Path) -> Iterator[tuple[Path, i
         flags = fcntl.fcntl(descriptor, fcntl.F_GETFD)
         fcntl.fcntl(descriptor, fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
         yield cache, descriptor
+    except BaseException as exc:  # noqa: B036 - cleanup preserves first fault
+        primary_error = exc
+        raise
     finally:
-        os.close(descriptor)
+        _finish_cleanup_preserving_primary(
+            primary_error,
+            "compiler cache directory cleanup also failed",
+            lambda: _close_descriptor_for_cleanup(descriptor, None),
+        )
 
 
 def _posix_lock_flags(*, create: bool) -> int:
@@ -589,25 +646,29 @@ def _open_posix_lock_file(
                     raise RuntimeError(
                         f"could not open compiler cache lock: {lock_path}"
                     ) from exc
-                deferred = _close_owned_descriptor_for_cleanup(
-                    descriptor,
-                    descriptor_owner,
-                    None,
-                    active_registry=_ACTIVE_POSIX_LOCK_DESCRIPTORS,
-                )
-                if deferred is not None:
-                    raise deferred
-                raise
-            except BaseException:
-                if descriptor is not None:
-                    deferred = _close_owned_descriptor_for_cleanup(
+                _finish_cleanup_preserving_primary(
+                    exc,
+                    "compiler cache lock acquisition cleanup also failed",
+                    lambda descriptor=descriptor: _close_owned_descriptor_for_cleanup(
                         descriptor,
                         descriptor_owner,
                         None,
                         active_registry=_ACTIVE_POSIX_LOCK_DESCRIPTORS,
+                    ),
+                )
+                raise
+            except BaseException as exc:
+                if descriptor is not None:
+                    _finish_cleanup_preserving_primary(
+                        exc,
+                        "compiler cache lock acquisition cleanup also failed",
+                        lambda descriptor=descriptor: _close_owned_descriptor_for_cleanup(
+                            descriptor,
+                            descriptor_owner,
+                            None,
+                            active_registry=_ACTIVE_POSIX_LOCK_DESCRIPTORS,
+                        ),
                     )
-                    if deferred is not None:
-                        raise deferred
                 raise
             return descriptor, identity
         raise RuntimeError(f"compiler cache lock changed repeatedly: {lock_path}")
@@ -647,6 +708,7 @@ def _posix_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
         lock_path = cache / COMPILER_CACHE_LOCK_FILENAME
         descriptor_owner: list[int] = []
         locked = False
+        primary_error: BaseException | None = None
         try:
             descriptor, identity = _open_posix_lock_file(
                 cache,
@@ -663,11 +725,21 @@ def _posix_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
                 expected_identity=identity,
             )
             yield
+        except BaseException as exc:  # noqa: B036 - cleanup preserves first fault
+            primary_error = exc
+            raise
         finally:
             # The child-side at-fork callback already closed its inherited
             # descriptor.  The generation guard prevents closing a reused fd.
             if descriptor_owner and _POSIX_FORK_GENERATION == owner_generation:
-                _close_posix_lock_file(descriptor_owner, locked=locked)
+                _finish_cleanup_preserving_primary(
+                    primary_error,
+                    "compiler cache lock cleanup also failed",
+                    lambda: _close_posix_lock_file(
+                        descriptor_owner,
+                        locked=locked,
+                    ),
+                )
 
 
 def _windows_identity(metadata: os.stat_result, path: Path) -> tuple[int, ...]:
@@ -768,23 +840,27 @@ def _open_windows_lock_file(
                 raise RuntimeError(
                     f"could not open compiler cache lock: {lock_path}"
                 ) from exc
-            deferred = _close_owned_descriptor_for_cleanup(
-                descriptor,
-                owner,
-                None,
-            )
-            if deferred is not None:
-                raise deferred
-            raise
-        except BaseException:
-            if descriptor is not None:
-                deferred = _close_owned_descriptor_for_cleanup(
+            _finish_cleanup_preserving_primary(
+                exc,
+                "compiler cache lock acquisition cleanup also failed",
+                lambda descriptor=descriptor: _close_owned_descriptor_for_cleanup(
                     descriptor,
                     owner,
                     None,
+                ),
+            )
+            raise
+        except BaseException as exc:
+            if descriptor is not None:
+                _finish_cleanup_preserving_primary(
+                    exc,
+                    "compiler cache lock acquisition cleanup also failed",
+                    lambda descriptor=descriptor: _close_owned_descriptor_for_cleanup(
+                        descriptor,
+                        owner,
+                        None,
+                    ),
                 )
-                if deferred is not None:
-                    raise deferred
             raise
         return descriptor, identity
     raise RuntimeError(f"compiler cache lock changed repeatedly: {lock_path}")
@@ -852,6 +928,7 @@ def _windows_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
     cache_identity = _validate_windows_cache(cache)
     descriptor_owner: list[int] = []
     locked = False
+    primary_error: BaseException | None = None
     try:
         descriptor, lock_identity = _open_windows_lock_file(
             cache,
@@ -867,9 +944,19 @@ def _windows_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
             expected_identity=lock_identity,
         )
         yield
+    except BaseException as exc:  # noqa: B036 - cleanup preserves first fault
+        primary_error = exc
+        raise
     finally:
         if descriptor_owner:
-            _close_windows_lock_file(descriptor_owner, locked=locked)
+            _finish_cleanup_preserving_primary(
+                primary_error,
+                "compiler cache lock cleanup also failed",
+                lambda: _close_windows_lock_file(
+                    descriptor_owner,
+                    locked=locked,
+                ),
+            )
 
 
 @contextmanager
