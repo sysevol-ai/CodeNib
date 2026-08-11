@@ -8,13 +8,26 @@
 
 from __future__ import annotations
 
-from contextlib import nullcontext
-from pathlib import Path
+import os
+import stat
+import tempfile
+from contextlib import contextmanager, nullcontext
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from ..._atomic_directory import (
+    PublicationDirectoryReader,
+    capture_directory_ownership,
+    directory_ownership_root_identity,
+    discard_owned_directory,
+    lexical_directory_path,
+    reopen_authenticated_directory,
+)
+from ..._captured_directory import OwnedDirectoryStage
 from ...code_chunker import CodeChunker, RepoChunkingConfig
 from ...log_utils import get_logger
 from ...profiler import Profiler
+from .artifact_integrity import VECTOR_VIEW_UPDATE_MARKER
 from .vector_store import CodeVectorStore
 
 if TYPE_CHECKING:
@@ -22,29 +35,277 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_MODEL_LEVEL_FILE_TEMPLATES = (
+    "config_{model_suffix}.json",
+    "index_{model_suffix}.faiss",
+    "documents_{model_suffix}.pkl",
+    "documents_{model_suffix}.json",
+    "index_{model_suffix}.pkl",
+)
+_GENERATION_STATE_ROOT_FILES = frozenset(
+    {
+        VECTOR_VIEW_UPDATE_MARKER,
+        "chunk_store.json",
+        "chunk_store.pkl",
+        "embeddings_cache.json",
+        "embeddings_cache.npz",
+        "embeddings_cache.pkl",
+        "incremental_state.json",
+    }
+)
 
-def _remove_unrequested_model_levels(
-    store_path: Path,
-    embedding_model: str,
-    build_levels: List[str],
-) -> None:
-    model_suffix = embedding_model.replace("/", "__")
-    requested = frozenset(build_levels)
-    for level in ("l0", "l2"):
-        if level in requested:
-            continue
-        level_path = store_path / level
-        for name in (
-            f"config_{model_suffix}.json",
-            f"index_{model_suffix}.faiss",
-            f"documents_{model_suffix}.pkl",
-            f"index_{model_suffix}.pkl",
-        ):
-            (level_path / name).unlink(missing_ok=True)
+
+def _metadata_root_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        getattr(metadata, "st_file_attributes", 0),
+    )
+
+
+class _PrivateBuildDirectory:
+    """Retain and continuously verify one private path-based build root.
+
+    Model/index libraries still require a filesystem path.  Capturing only
+    after those libraries return is insufficient: a callback can rename the
+    private root and recreate its old name.  This owner captures the empty root
+    before the first callback, retains its directory descriptor where the host
+    supports it, and brackets every path-based operation with a no-follow root
+    binding check.
+    """
+
+    def __init__(self, *, parent: Path, prefix: str) -> None:
+        self.path = lexical_directory_path(
+            Path(tempfile.mkdtemp(prefix=prefix, dir=str(parent)))
+        )
+        self._descriptor = -1
+        self._closed = False
+        self._dirty = False
+        self._writer_path: Path | None = None
+        self._cleanup_ownership = capture_directory_ownership(self.path)
+        self._root_identity = directory_ownership_root_identity(self._cleanup_ownership)
+        flags = os.O_RDONLY
+        flags |= getattr(os, "O_DIRECTORY", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_CLOEXEC", 0)
         try:
-            level_path.rmdir()
-        except OSError:
-            pass
+            try:
+                self._descriptor = os.open(self.path, flags)
+            except OSError:
+                if os.name != "nt":
+                    raise
+            self.verify("private build root initialization")
+            if self._descriptor >= 0:
+                for descriptor_root in (Path("/proc/self/fd"), Path("/dev/fd")):
+                    candidate = descriptor_root / str(self._descriptor)
+                    try:
+                        if (
+                            _metadata_root_identity(os.stat(candidate))
+                            == self._root_identity
+                        ):
+                            self._writer_path = candidate
+                            break
+                    except OSError:
+                        continue
+        except BaseException as primary_error:
+            if self._descriptor >= 0:
+                os.close(self._descriptor)
+                self._descriptor = -1
+            try:
+                discard_owned_directory(self.path, self._cleanup_ownership)
+            except BaseException as cleanup_error:  # noqa: B036 - retain primary
+                add_note = getattr(primary_error, "add_note", None)
+                if callable(add_note):
+                    add_note(
+                        "private build initialization cleanup also failed: "
+                        f"{cleanup_error}"
+                    )
+            raise
+
+    @property
+    def writer_path(self) -> Path:
+        """Return a path whose resolution is anchored to the retained root fd."""
+
+        self.verify("descriptor-anchored writer path selection")
+        if self._writer_path is None:
+            raise RuntimeError(
+                "safe path-based vector builds require a descriptor-anchored "
+                "directory path on this platform"
+            )
+        try:
+            if (
+                _metadata_root_identity(os.stat(self._writer_path))
+                != self._root_identity
+            ):
+                raise RuntimeError("descriptor-anchored private build path changed")
+        except OSError as exc:
+            raise RuntimeError(
+                "descriptor-anchored private build path changed"
+            ) from exc
+        return self._writer_path
+
+    def require_writer_path(self, path: Path) -> None:
+        if lexical_directory_path(path) != self.writer_path:
+            raise RuntimeError(
+                "path-based vector writer is not anchored to its private root"
+            )
+
+    def verify(self, operation: str) -> None:
+        if self._closed:
+            raise RuntimeError("private build root owner is closed")
+        try:
+            if self._descriptor >= 0:
+                path_metadata = os.stat(self.path, follow_symlinks=False)
+                path_identity = _metadata_root_identity(path_metadata)
+                descriptor_identity = _metadata_root_identity(
+                    os.fstat(self._descriptor)
+                )
+            else:
+                ownership = capture_directory_ownership(
+                    self.path,
+                    allow_empty_root=True,
+                )
+                path_identity = directory_ownership_root_identity(ownership)
+                descriptor_identity = path_identity
+                path_metadata = os.stat(self.path, follow_symlinks=False)
+        except OSError as exc:
+            raise RuntimeError(
+                f"private build root changed during {operation}"
+            ) from exc
+        if (
+            not stat.S_ISDIR(path_metadata.st_mode)
+            or path_identity != self._root_identity
+            or descriptor_identity != self._root_identity
+        ):
+            raise RuntimeError(f"private build root changed during {operation}")
+
+    @contextmanager
+    def path_operation(self, operation: str):
+        """Require the same retained root immediately before and after a call."""
+
+        self.verify(f"before {operation}")
+        self._dirty = True
+        try:
+            yield
+        except BaseException as primary_error:  # noqa: B036 - retain interrupt
+            try:
+                self.verify(f"after failed {operation}")
+            except BaseException as continuity_error:  # noqa: B036
+                add_note = getattr(primary_error, "add_note", None)
+                if callable(add_note):
+                    add_note(
+                        "private build root verification also failed: "
+                        f"{continuity_error}"
+                    )
+            raise
+        self.verify(f"after {operation}")
+
+    def capture_ownership(self, *, required_root_file: str) -> object:
+        self.verify("before final ownership capture")
+        ownership = capture_directory_ownership(
+            self.path,
+            required_root_file=required_root_file,
+        )
+        if directory_ownership_root_identity(ownership) != self._root_identity:
+            raise RuntimeError("private build root changed during final capture")
+        self.verify("after final ownership capture")
+        self._cleanup_ownership = ownership
+        self._dirty = False
+        return ownership
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        cleanup_error: BaseException | None = None
+        try:
+            if self._dirty:
+                self.verify("cleanup capture")
+                ownership = capture_directory_ownership(
+                    self.path,
+                    allow_empty_root=True,
+                )
+                if directory_ownership_root_identity(ownership) != self._root_identity:
+                    raise RuntimeError("private build root changed during cleanup")
+                self._cleanup_ownership = ownership
+        except BaseException as exc:  # noqa: B036 - close the retained handle
+            cleanup_error = exc
+        finally:
+            if self._descriptor >= 0:
+                try:
+                    os.close(self._descriptor)
+                except OSError as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+                self._descriptor = -1
+            self._closed = True
+        try:
+            discard_owned_directory(self.path, self._cleanup_ownership)
+        except BaseException as exc:  # noqa: B036 - report safe orphaning
+            if cleanup_error is None:
+                cleanup_error = exc
+        if cleanup_error is not None:
+            raise cleanup_error
+
+    def __enter__(self) -> _PrivateBuildDirectory:
+        return self
+
+    def __exit__(self, _exc_type, exc, _traceback) -> None:
+        try:
+            self.close()
+        except BaseException as cleanup_error:  # noqa: B036 - retain primary
+            if exc is None:
+                raise
+            add_note = getattr(exc, "add_note", None)
+            if callable(add_note):
+                add_note(f"private build root cleanup also failed: {cleanup_error}")
+
+
+def _model_level_file_names(model_suffix: str) -> tuple[str, ...]:
+    return tuple(
+        template.format(model_suffix=model_suffix)
+        for template in _MODEL_LEVEL_FILE_TEMPLATES
+    )
+
+
+def _replaced_generation_paths(
+    model_suffix: str,
+) -> frozenset[str]:
+    paths = {
+        f"config_{model_suffix}.json",
+        f".config_{model_suffix}.json.save-in-progress",
+        *_GENERATION_STATE_ROOT_FILES,
+    }
+    paths.update(
+        f"{level}/{name}"
+        for level in ("l0", "l2")
+        for name in _model_level_file_names(model_suffix)
+    )
+    return frozenset(paths)
+
+
+def _copy_captured_tree(
+    reader: PublicationDirectoryReader,
+    stage: OwnedDirectoryStage,
+    *,
+    excluded: frozenset[str] = frozenset(),
+) -> None:
+    """Copy authenticated regular files into an authority-owned private stage."""
+
+    for record in reader.file_records():
+        relative = PurePosixPath(record.path)
+        if relative.as_posix() in excluded:
+            continue
+        with reader.iter_authenticated_chunks(
+            relative,
+            max_bytes=record.size,
+        ) as chunks:
+            stage.write_file(
+                relative,
+                chunks,
+                mode=record.mode,
+                max_bytes=record.size,
+            )
 
 
 def _profiler_section(profiler, label, metadata=None):
@@ -76,13 +337,17 @@ def build_hierarchical_vector_store(
     strict_chunking: bool = False,
     artifact_metadata: Optional[Dict[str, Any]] = None,
     native_index_authorization: NativeIndexAuthorization | None = None,
+    _atomic_publish: bool = True,
+    _build_root_guard: _PrivateBuildDirectory | None = None,
 ) -> CodeVectorStore:
     """Build (or load) a hierarchical vector store (L0/L2) for a repository.
 
     When ``force_rebuild=False`` (the default) and a saved index for the
     requested ``embedding_model`` already exists at ``index_path``, the store
     is loaded from disk instead of re-chunking and re-embedding the repository.
-    Pass ``force_rebuild=True`` to unconditionally rebuild.
+    Pass ``force_rebuild=True`` to unconditionally rebuild. Rebuilds compose a
+    complete private tree and atomically switch the directory only after save
+    and ownership verification succeed.
     """
     store_path = Path(index_path)
     if plan_name:
@@ -102,19 +367,19 @@ def build_hierarchical_vector_store(
             "repo_path is required to rebuild a vector index when no authorized "
             "cache can be loaded"
         )
-    if effective_force_rebuild:
-        _remove_unrequested_model_levels(
-            store_path,
-            embedding_model,
-            normalized_levels,
-        )
-
     if not effective_force_rebuild:
         if config_path.exists():
             logger.info(
                 "Pre-built index found at %s — loading instead of rebuilding "
                 "(pass force_rebuild=True to override).",
                 store_path,
+            )
+            from .artifact_integrity import require_authorized_vector_view
+
+            require_authorized_vector_view(
+                store_path,
+                native_index_authorization,
+                artifact_metadata or {},
             )
             vector_store = CodeVectorStore(
                 embedding_model=embedding_model,
@@ -221,32 +486,94 @@ def build_hierarchical_vector_store(
         "avg_chunk_loc": round(total_loc / max(total_chunks, 1), 1),
     }
 
-    store_path.mkdir(parents=True, exist_ok=True)
-    vector_store = CodeVectorStore(
-        embedding_model=embedding_model,
-        embedding_provider=embedding_provider,
-        dimension=embedding_dimension,
-        index_metric=index_metric,
-        index_type=index_type,
-        ivf_nlist=ivf_nlist,
-        ivf_nprobe=ivf_nprobe,
-        store_path=str(store_path),
-        profiler=profiler,
-        embedding=embedding,
-        artifact_metadata=artifact_metadata,
-        **(embedding_kwargs or {}),
-    )
+    def materialize(
+        build_path: Path,
+        build_root: _PrivateBuildDirectory,
+    ) -> CodeVectorStore:
+        with build_root.path_operation("vector store initialization"):
+            vector_store = CodeVectorStore(
+                embedding_model=embedding_model,
+                embedding_provider=embedding_provider,
+                dimension=embedding_dimension,
+                index_metric=index_metric,
+                index_type=index_type,
+                ivf_nlist=ivf_nlist,
+                ivf_nprobe=ivf_nprobe,
+                store_path=str(build_path),
+                profiler=profiler,
+                embedding=embedding,
+                artifact_metadata=artifact_metadata,
+                **(embedding_kwargs or {}),
+            )
 
-    if l0_chunks:
-        vector_store.add_code_chunks(
-            [chunk._asdict() for chunk in l0_chunks], level="l0"
-        )
-    if l2_chunks:
-        vector_store.add_code_chunks(
-            [chunk._asdict() for chunk in l2_chunks], level="l2"
-        )
+        if l0_chunks:
+            with build_root.path_operation("L0 vector materialization"):
+                vector_store.add_code_chunks(
+                    [chunk._asdict() for chunk in l0_chunks], level="l0"
+                )
+        if l2_chunks:
+            with build_root.path_operation("L2 vector materialization"):
+                vector_store.add_code_chunks(
+                    [chunk._asdict() for chunk in l2_chunks], level="l2"
+                )
+        with build_root.path_operation("vector store save"):
+            vector_store.save(str(build_path))
+        return vector_store
 
-    vector_store.save(str(store_path))
+    if _atomic_publish:
+        publication_stage = OwnedDirectoryStage.prepare(
+            store_path,
+            allow_empty_destination=True,
+        )
+        try:
+            previous_ownership = publication_stage.expected_destination_ownership
+            if previous_ownership is not None:
+                reopen_authenticated_directory(
+                    store_path,
+                    previous_ownership,  # type: ignore[arg-type]
+                    lambda reader: _copy_captured_tree(
+                        reader,
+                        publication_stage,
+                        excluded=_replaced_generation_paths(model_suffix),
+                    ),
+                )
+
+            with _PrivateBuildDirectory(
+                prefix=f".{store_path.name}.vector-build-",
+                parent=store_path.parent,
+            ) as build_root:
+                build_path = build_root.path
+                vector_store = materialize(build_root.writer_path, build_root)
+                build_ownership = build_root.capture_ownership(
+                    required_root_file=f"config_{model_suffix}.json",
+                )
+                reopen_authenticated_directory(
+                    build_path,
+                    build_ownership,
+                    lambda reader: _copy_captured_tree(reader, publication_stage),
+                )
+
+            publication_stage.publish()
+        except BaseException:  # noqa: B036 - preserve interrupts across rollback
+            try:
+                publication_stage.discard()
+            except BaseException:  # noqa: B036 - retain the publication failure
+                logger.exception("Could not isolate failed vector publication stage")
+            raise
+    else:
+        # The compiler uses this only inside its private full-generation tree;
+        # the outer OwnedDirectoryStage is the sole publication transaction.
+        if _build_root_guard is None or not isinstance(
+            _build_root_guard, _PrivateBuildDirectory
+        ):
+            raise RuntimeError(
+                "non-atomic vector materialization requires its private root owner"
+            )
+        _build_root_guard.require_writer_path(store_path)
+        _build_root_guard.verify("non-atomic vector materialization entry")
+        vector_store = materialize(store_path, _build_root_guard)
+
+    vector_store.store_path = store_path
     vector_store.chunk_stats = chunk_stats
     return vector_store
 
