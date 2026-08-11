@@ -46,6 +46,7 @@ class LSPProviderMetadata:
     capability: str
     status: str
     lsp_method: str
+    backend: Optional[str] = None
     index_snapshot: Optional[str] = None
     fallback_reason: Optional[str] = None
     behavior_contract: str = _GRAPH_BEHAVIOR_CONTRACT
@@ -60,6 +61,8 @@ class LSPProviderMetadata:
             "behavior_contract": self.behavior_contract,
             "position_granularity": self.position_granularity,
         }
+        if self.backend is not None:
+            out["backend"] = self.backend
         if self.index_snapshot is not None:
             out["index_snapshot"] = self.index_snapshot
         if self.fallback_reason is not None:
@@ -94,12 +97,16 @@ class StaticLSPProvider:
         *,
         snapshot_id: Optional[str] = None,
         occurrence_index: Optional[SCIPOccurrenceIndex] = None,
+        backend: Optional[str] = None,
+        fallback_reason: Optional[str] = None,
     ) -> None:
         self.graph = graph
         self.occurrence_index = occurrence_index or getattr(
             graph, "lsp_occurrence_index", None
         )
         self.snapshot_id = snapshot_id or _graph_snapshot_id(graph)
+        self.backend = backend
+        self.fallback_reason = fallback_reason
 
     def can_serve(self, capability: str) -> LSPProviderMetadata:
         """Return a non-throwing fast-path decision for one capability."""
@@ -110,6 +117,7 @@ class StaticLSPProvider:
                 normalized,
                 status="unsupported",
                 snapshot_id=self.snapshot_id,
+                backend=self.backend,
                 fallback_reason="unsupported_capability",
             )
         if (
@@ -120,6 +128,8 @@ class StaticLSPProvider:
                 normalized,
                 status="ok",
                 snapshot_id=self.snapshot_id,
+                backend=self.backend,
+                fallback_reason=self.fallback_reason,
                 behavior_contract=_OCCURRENCE_BEHAVIOR_CONTRACT,
                 position_granularity="character",
             )
@@ -128,9 +138,16 @@ class StaticLSPProvider:
                 normalized,
                 status="unavailable",
                 snapshot_id=None,
+                backend=self.backend,
                 fallback_reason="symbol_graph_unavailable",
             )
-        return _metadata(normalized, status="ok", snapshot_id=self.snapshot_id)
+        return _metadata(
+            normalized,
+            status="ok",
+            snapshot_id=self.snapshot_id,
+            backend=self.backend,
+            fallback_reason=self.fallback_reason,
+        )
 
     def definition(
         self,
@@ -299,6 +316,8 @@ class StaticLSPProvider:
                 capability,
                 status="ok",
                 snapshot_id=self.snapshot_id,
+                backend=self.backend,
+                fallback_reason=self.fallback_reason,
                 behavior_contract=behavior_contract,
                 position_granularity=position_granularity,
             ),
@@ -308,13 +327,146 @@ class StaticLSPProvider:
 def resolve_lsp_provider(context: Any) -> Any:
     """Return an injected LSP provider or the default static graph provider."""
 
-    provider = getattr(context, "lsp_provider", None) if context is not None else None
+    provider = _context_attribute(context, "lsp_provider")
     if provider is not None:
         return provider
-    graph = getattr(context, "code_graph", None) if context is not None else None
+    graph = _context_attribute(context, "code_graph")
+    if graph is None:
+        graph = _context_attribute(context, "symbol_graph")
     if graph is None:
         raise RuntimeError("LSP provider and symbol graph are unavailable")
     return StaticLSPProvider(graph)
+
+
+def _context_attribute(context: Any, name: str) -> Any:
+    """Read a real context field without materializing MagicMock children."""
+
+    if context is None:
+        return None
+    attributes = getattr(context, "__dict__", {})
+    mock_children = (
+        attributes.get("_mock_children") if isinstance(attributes, Mapping) else None
+    )
+    if (
+        isinstance(mock_children, Mapping)
+        and name not in mock_children
+        and name not in attributes
+    ):
+        return None
+    return getattr(context, name, None)
+
+
+def select_checkout_lsp_provider(
+    *,
+    project_root: str,
+    languages: Iterable[str],
+    symbol_graph: Any = None,
+    allow_native: bool = True,
+    native_disabled_reason: str = "native_provider_not_authorized",
+) -> tuple[Any, dict[str, Any]]:
+    """Select an existing local clangd generation or an explicit graph fallback.
+
+    Selection never generates a clangd index. Mixed-language and portable
+    contexts retain the persisted graph so the native C++ slice cannot hide
+    other languages or become part of a portable artifact contract.
+    """
+
+    from ..languages import normalize_graph_language
+
+    normalized_languages = [
+        normalize_graph_language(str(language)) for language in languages
+    ]
+    canonical_languages = {
+        normalized for normalized in normalized_languages if normalized is not None
+    }
+    has_unknown_language = any(
+        normalized is None for normalized in normalized_languages
+    )
+    mode = "auto"
+    fallback_reason: Optional[str] = None
+    if not allow_native:
+        fallback_reason = native_disabled_reason or "native_provider_not_authorized"
+    elif canonical_languages != {"cpp"} or has_unknown_language:
+        fallback_reason = (
+            "mixed_language_requires_persisted_graph"
+            if "cpp" in canonical_languages
+            else "native_clangd_not_applicable"
+        )
+    else:
+        from ..ls_index.clangd_decode import (
+            native_clangd_query_mode,
+            native_clangd_query_promoted,
+        )
+
+        mode = native_clangd_query_mode()
+        if mode == "off":
+            fallback_reason = "native_clangd_provider_disabled"
+        elif mode == "auto" and not native_clangd_query_promoted():
+            fallback_reason = "native_clangd_provider_below_threshold"
+
+    if fallback_reason is None:
+        try:
+            from ..ls_router import LSIndexer
+
+            provider = LSIndexer(
+                project_root=project_root,
+                output_dir=project_root,
+                language="cpp",
+            ).process_query_provider(require_native=True)
+        except MemoryError:
+            raise
+        except Exception:
+            if mode == "required":
+                raise
+            fallback_reason = "native_clangd_provider_unavailable"
+        else:
+            backend = getattr(
+                provider,
+                "provider_backend",
+                "native-clangd-fact-query-v1",
+            )
+            return provider, {
+                "provider": getattr(provider, "provider", STATIC_LSP_PROVIDER),
+                "backend": backend,
+                "status": "ok",
+                "index_snapshot": getattr(provider, "snapshot_id", None),
+                "capabilities": {
+                    CAPABILITY_DEFINITION: True,
+                    CAPABILITY_REFERENCES: True,
+                    CAPABILITY_ROUTE: True,
+                },
+            }
+
+    if symbol_graph is not None:
+        provider = StaticLSPProvider(
+            symbol_graph,
+            backend="persisted-symbol-graph-v1",
+            fallback_reason=fallback_reason,
+        )
+        return provider, {
+            "provider": provider.provider,
+            "backend": provider.backend,
+            "status": "ok",
+            "index_snapshot": provider.snapshot_id,
+            "fallback_reason": fallback_reason,
+            "capabilities": {
+                CAPABILITY_DEFINITION: True,
+                CAPABILITY_REFERENCES: True,
+                CAPABILITY_ROUTE: True,
+            },
+        }
+
+    return None, {
+        "provider": STATIC_LSP_PROVIDER,
+        "backend": "unavailable",
+        "status": "unavailable",
+        "fallback_reason": fallback_reason or "symbol_graph_unavailable",
+        "capabilities": {
+            CAPABILITY_DEFINITION: False,
+            CAPABILITY_REFERENCES: False,
+            CAPABILITY_ROUTE: False,
+        },
+    }
 
 
 def normalize_native_lsp_nodes(
@@ -378,6 +530,7 @@ def _metadata(
     *,
     status: str,
     snapshot_id: Optional[str],
+    backend: Optional[str] = None,
     fallback_reason: Optional[str] = None,
     behavior_contract: str = _GRAPH_BEHAVIOR_CONTRACT,
     position_granularity: str = "line",
@@ -388,6 +541,7 @@ def _metadata(
         capability=normalized,
         status=status,
         lsp_method=_LSP_METHODS.get(normalized, normalized),
+        backend=backend,
         index_snapshot=snapshot_id,
         fallback_reason=fallback_reason,
         behavior_contract=behavior_contract,
@@ -479,6 +633,7 @@ __all__ = [
     "STATIC_LSP_PROVIDER",
     "StaticLSPProvider",
     "resolve_lsp_provider",
+    "select_checkout_lsp_provider",
     "fingerprint_lsp_result",
     "lsp_result_metadata",
     "normalize_native_lsp_nodes",

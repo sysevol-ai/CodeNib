@@ -15,6 +15,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Literal
 from unittest.mock import MagicMock, patch
 
@@ -249,6 +250,44 @@ def test_lsp_definition_tool_no_symbol_graph():
     result = lsp_definition_impl(MagicMock(symbol_graph=None), symbol="load_config")
 
     assert result == {"error": "symbol_graph index not available"}
+
+
+def test_lsp_definition_uses_injected_provider_and_serializes_metadata():
+    from codenib.agent.lsp_provider import LSPProviderMetadata, LSPProviderNodes
+    from codenib.types import QueriedNode
+
+    class Provider:
+        def definition(self, **_kwargs):
+            return LSPProviderNodes(
+                [
+                    QueriedNode(
+                        node_name="demo",
+                        file="demo.cpp",
+                        start_line=4,
+                        end_line=4,
+                        content="definition of demo",
+                    )
+                ],
+                metadata=LSPProviderMetadata(
+                    provider="codenib_static_index",
+                    capability="definition",
+                    status="ok",
+                    lsp_method="textDocument/definition",
+                    backend="native-clangd-fact-query-v1",
+                    index_snapshot="clangd_fact_query:sha256:test",
+                ),
+            )
+
+    result = lsp_definition_impl(
+        SimpleNamespace(lsp_provider=Provider(), symbol_graph=None),
+        symbol="demo",
+    )
+
+    assert result[0]["start_line"] == 5
+    assert result[0]["lsp_provider"]["backend"] == ("native-clangd-fact-query-v1")
+    assert result[0]["lsp_provider"]["index_snapshot"] == (
+        "clangd_fact_query:sha256:test"
+    )
 
 
 def test_lsp_definition_tool_serializes_one_based_lines():

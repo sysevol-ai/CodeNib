@@ -7,9 +7,9 @@
 """Benchmark native clangd symbol queries against the complete CodeGraph.
 
 Both arms start from the same existing project-local .idx directory and run
-the same deterministic definition/reference workload. clangd index generation,
-position queries, routes, persistence, and serving integration are outside this
-baseline gate.
+the same deterministic definition/reference workload through both the raw query
+surface and the MCP consumer boundary. clangd index generation, native position
+and route indexes, and persistence are outside this gate.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Sequence
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -65,6 +66,34 @@ def _idx_digest(idx_directory: Path) -> tuple[str, int, int]:
 
 def _append_sample(samples: dict[str, list[float]], name: str, value: float) -> None:
     samples.setdefault(name, []).append(float(value))
+
+
+def _mcp_query_outcomes(provider: Any, symbols: Sequence[str]) -> list[Any]:
+    """Run MCP validation/serialization and normalize provider-only metadata."""
+
+    from codenib.mcp.tools.lsp import lsp_definition_impl, lsp_references_impl
+
+    context = SimpleNamespace(lsp_provider=provider, symbol_graph=None)
+    outcomes: list[Any] = []
+    for symbol in symbols:
+        for implementation in (lsp_definition_impl, lsp_references_impl):
+            result = implementation(context, symbol=symbol, top_k=100)
+            if isinstance(result, list):
+                result = [
+                    {key: value for key, value in row.items() if key != "lsp_provider"}
+                    for row in result
+                ]
+            outcomes.append(result)
+    return outcomes
+
+
+def _mcp_query_workload(provider: Any, symbols: Sequence[str]) -> int:
+    """Exercise provider resolution plus MCP validation and serialization."""
+
+    return sum(
+        len(result) if isinstance(result, list) else 1
+        for result in _mcp_query_outcomes(provider, symbols)
+    )
 
 
 def profile_clangd_fact_query_index(
@@ -132,6 +161,17 @@ def profile_clangd_fact_query_index(
     parity_symbols = _even_sample(all_symbols, parity_sample_limit)
     parity_seeds = _parity_seeds(baseline_graph, parity_symbols)
 
+    def measure_mcp_consumer(index: Any, *, backend: str) -> float:
+        from codenib.agent.lsp_provider import StaticLSPProvider
+
+        _, elapsed = _timed(
+            lambda: _mcp_query_workload(
+                StaticLSPProvider(index, backend=backend),
+                workload_symbols,
+            )
+        )
+        return elapsed
+
     def native_arm() -> tuple[Any, dict[str, float]]:
         payload, startup = _timed(
             lambda: codenib_core.decode_clangd_fact_query_index(
@@ -170,8 +210,16 @@ def profile_clangd_fact_query_index(
         }
 
     for _ in range(warmups):
-        _run_arm(legacy_arm)
-        _run_arm(native_arm)
+        (warm_graph, _timings), _total = _run_arm(legacy_arm)
+        measure_mcp_consumer(
+            warm_graph,
+            backend="persisted-symbol-graph-v1",
+        )
+        (warm_index, _timings), _total = _run_arm(native_arm)
+        measure_mcp_consumer(
+            warm_index,
+            backend="native-clangd-fact-query-v1",
+        )
 
     legacy_samples: dict[str, list[float]] = {}
     native_samples: dict[str, list[float]] = {}
@@ -182,13 +230,33 @@ def profile_clangd_fact_query_index(
         if iteration % 2 == 0:
             first_arm_by_iteration.append("legacy")
             (last_graph, legacy_timing), legacy_total = _run_arm(legacy_arm)
+            legacy_mcp = measure_mcp_consumer(
+                last_graph,
+                backend="persisted-symbol-graph-v1",
+            )
             (last_index, native_timing), native_total = _run_arm(native_arm)
+            native_mcp = measure_mcp_consumer(
+                last_index,
+                backend="native-clangd-fact-query-v1",
+            )
         else:
             first_arm_by_iteration.append("native")
             (last_index, native_timing), native_total = _run_arm(native_arm)
+            native_mcp = measure_mcp_consumer(
+                last_index,
+                backend="native-clangd-fact-query-v1",
+            )
             (last_graph, legacy_timing), legacy_total = _run_arm(legacy_arm)
+            legacy_mcp = measure_mcp_consumer(
+                last_graph,
+                backend="persisted-symbol-graph-v1",
+            )
         legacy_timing["total"] = legacy_total
         native_timing["total"] = native_total
+        legacy_timing["mcp_query_workload"] = legacy_mcp
+        native_timing["mcp_query_workload"] = native_mcp
+        legacy_timing["consumer_total"] = legacy_timing["startup"] + legacy_mcp
+        native_timing["consumer_total"] = native_timing["startup"] + native_mcp
         for name, value in legacy_timing.items():
             _append_sample(legacy_samples, name, value)
         for name, value in native_timing.items():
@@ -204,6 +272,24 @@ def profile_clangd_fact_query_index(
             expected_symbol_count=len(all_symbols),
             expected_reference_count=expected_references,
         )
+        from codenib.agent.lsp_provider import StaticLSPProvider
+
+        legacy_mcp_outcomes = _mcp_query_outcomes(
+            StaticLSPProvider(
+                last_graph,
+                backend="persisted-symbol-graph-v1",
+            ),
+            parity_seeds,
+        )
+        native_mcp_outcomes = _mcp_query_outcomes(
+            StaticLSPProvider(
+                last_index,
+                backend="native-clangd-fact-query-v1",
+            ),
+            parity_seeds,
+        )
+        if native_mcp_outcomes != legacy_mcp_outcomes:
+            raise AssertionError("MCP definition/reference outcomes differ")
     except AssertionError as exc:
         parity = False
         parity_error = str(exc)
@@ -231,6 +317,14 @@ def profile_clangd_fact_query_index(
         external_index_seconds=external_index_seconds,
         parity=parity,
         candidate_name="native-clangd-fact-query-index",
+    )
+    consumer_decision = acceleration_decision(
+        legacy_local_seconds=legacy_summary["consumer_total"]["median_seconds"],
+        candidate_local_seconds=native_summary["consumer_total"]["median_seconds"],
+        threshold=threshold,
+        external_index_seconds=external_index_seconds,
+        parity=parity,
+        candidate_name="native-clangd-mcp-provider",
     )
     hash_seconds = native_summary["native_stage_hash_index"]["median_seconds"]
     verify_seconds = native_summary["native_stage_verify_snapshot"]["median_seconds"]
@@ -264,6 +358,7 @@ def profile_clangd_fact_query_index(
             "cyclic_gc_disabled_during_timed_regions": True,
             "external_index_seconds": external_index_seconds,
             "clangd_fact_query_contract": contract,
+            "consumer_boundary": "codenib.mcp.tools.lsp:v1",
         },
         "capabilities": dict(contract["capabilities"]),
         "parity": {"passed": parity, "error": parity_error},
@@ -285,6 +380,7 @@ def profile_clangd_fact_query_index(
             ),
         },
         "decision": decision,
+        "mcp_consumer_decision": consumer_decision,
     }
 
 

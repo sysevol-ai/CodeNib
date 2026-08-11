@@ -282,7 +282,7 @@ class ClangdIndexer:
             )
             return decoder.decode_query_index()
 
-    def process_query_provider(self):
+    def process_query_provider(self, *, require_native: bool = False):
         """Return native symbol queries with lazy complete-graph fallback."""
 
         self._select_existing_idx_directory()
@@ -295,6 +295,8 @@ class ClangdIndexer:
             idx_directory=str(self.idx_directory),
             project_root=str(self.project_root),
         )
+        if require_native:
+            return decoder.decode_native_query_provider()
         return decoder.decode_query_provider()
 
     def _select_existing_idx_directory(self) -> Optional[Path]:

@@ -66,11 +66,27 @@ def _node_to_dict(node: Any) -> dict[str, Any]:
     return to_agent_repr(node)
 
 
-def _symbol_graph(ctx: Any) -> Any:
-    graph = getattr(ctx, "symbol_graph", None)
-    if graph is None:
+def _lsp_provider(ctx: Any) -> Any:
+    from ...agent.lsp_provider import resolve_lsp_provider
+
+    try:
+        return resolve_lsp_provider(ctx)
+    except RuntimeError:
         return None
-    return graph
+
+
+def _serialize_results(results: Any) -> list[dict[str, Any]]:
+    from ...agent.lsp_provider import lsp_result_metadata
+
+    metadata = lsp_result_metadata(results)
+    rows = [_node_to_dict(node) for node in results]
+    if metadata is not None and (
+        metadata.get("backend") is not None
+        or metadata.get("fallback_reason") is not None
+    ):
+        for row in rows:
+            row["lsp_provider"] = dict(metadata)
+    return rows
 
 
 def lsp_definition_impl(
@@ -81,7 +97,7 @@ def lsp_definition_impl(
     symbol: str = "",
     top_k: int = 8,
 ) -> list[dict[str, Any]] | dict[str, str]:
-    """Return graph-backed definition locations."""
+    """Return provider-backed definition locations."""
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     file_path = bounded_text(
         file_path,
@@ -102,25 +118,24 @@ def lsp_definition_impl(
             minimum=0,
             maximum=MAX_LSP_POSITION,
         )
-    graph = _symbol_graph(ctx)
-    if graph is None:
+    provider = _lsp_provider(ctx)
+    if provider is None:
         return {"error": "symbol_graph index not available"}
 
     from ...agent.boundary import from_agent_repr
-    from ...agent.lsp_provider import StaticLSPProvider
 
     graph_line = from_agent_repr(line)
     try:
-        results = StaticLSPProvider(graph).definition(
+        results = provider.definition(
             file_path=file_path or None,
             line=graph_line,
             character=character,
             symbol=symbol or None,
             top_k=top_k,
         )
-    except ValueError as exc:
+    except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
-    return [_node_to_dict(node) for node in results]
+    return _serialize_results(results)
 
 
 def lsp_references_impl(
@@ -132,7 +147,7 @@ def lsp_references_impl(
     include_declaration: bool = True,
     top_k: int = 40,
 ) -> list[dict[str, Any]] | dict[str, str]:
-    """Return graph-backed reference locations."""
+    """Return provider-backed reference locations."""
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     file_path = bounded_text(
         file_path,
@@ -153,16 +168,15 @@ def lsp_references_impl(
             minimum=0,
             maximum=MAX_LSP_POSITION,
         )
-    graph = _symbol_graph(ctx)
-    if graph is None:
+    provider = _lsp_provider(ctx)
+    if provider is None:
         return {"error": "symbol_graph index not available"}
 
     from ...agent.boundary import from_agent_repr
-    from ...agent.lsp_provider import StaticLSPProvider
 
     graph_line = from_agent_repr(line)
     try:
-        results = StaticLSPProvider(graph).references(
+        results = provider.references(
             file_path=file_path or None,
             line=graph_line,
             character=character,
@@ -170,9 +184,9 @@ def lsp_references_impl(
             include_declaration=bool(include_declaration),
             top_k=top_k,
         )
-    except ValueError as exc:
+    except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
-    return [_node_to_dict(node) for node in results]
+    return _serialize_results(results)
 
 
 def lsp_route_impl(
@@ -182,7 +196,7 @@ def lsp_route_impl(
     top_k: int = 12,
     include_neighbors: bool = True,
 ) -> list[dict[str, Any]] | dict[str, str]:
-    """Return graph-backed route anchors for one or more symbol seeds."""
+    """Return provider-backed route anchors for one or more symbol seeds."""
     top_k = bounded_integer(top_k, name="top_k", maximum=MAX_TOOL_RESULTS)
     seeds = _coerce_symbols(symbols)
     requested_query = bounded_text(
@@ -193,16 +207,17 @@ def lsp_route_impl(
     normalized_query = requested_query.strip()
     if not seeds and not normalized_query:
         return []
-    graph = _symbol_graph(ctx)
-    if graph is None:
+    provider = _lsp_provider(ctx)
+    if provider is None:
         return {"error": "symbol_graph index not available"}
 
-    from ...agent.lsp_provider import StaticLSPProvider
-
-    results = StaticLSPProvider(graph).route(
-        symbols=seeds,
-        query=normalized_query or None,
-        top_k=top_k,
-        include_neighbors=bool(include_neighbors),
-    )
-    return [_node_to_dict(node) for node in results]
+    try:
+        results = provider.route(
+            symbols=seeds,
+            query=normalized_query or None,
+            top_k=top_k,
+            include_neighbors=bool(include_neighbors),
+        )
+    except (RuntimeError, ValueError) as exc:
+        return {"error": str(exc)}
+    return _serialize_results(results)

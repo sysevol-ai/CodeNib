@@ -38,6 +38,11 @@ def _make_server_ctx(*, bm25_results=None, regex_results=None, zoekt_results=Non
     ctx.zoekt = MagicMock() if zoekt_results is not None else None
     ctx.errors = {}
     ctx.artifact = None
+    ctx.lsp_provider_selection = {
+        "provider": "codenib_static_index",
+        "backend": "persisted-symbol-graph-v1",
+        "status": "ok",
+    }
     if bm25_results is not None:
         ctx.bm25.search.return_value = bm25_results
     if regex_results is not None:
@@ -129,6 +134,7 @@ def test_get_manifest_tool() -> None:
 
     assert result["repo"]["path"] == "/repo"
     assert result["repo"]["commit"] == "abc123"
+    assert result["runtime"]["lsp_provider"]["backend"] == ("persisted-symbol-graph-v1")
 
 
 def test_search_bm25_raises_without_ctx() -> None:

@@ -7,13 +7,14 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from codenib.agent.lsp_provider import (
     STATIC_LSP_PROVIDER,
     LSPProviderNodes,
     StaticLSPProvider,
     normalize_native_lsp_nodes,
+    select_checkout_lsp_provider,
 )
 from codenib.agent.runner import AgentRunner
 from codenib.agent.skills.core import (
@@ -191,6 +192,104 @@ def test_static_lsp_provider_reports_fallback_reason_without_graph():
     assert decision.status == "unavailable"
     assert decision.fallback_reason == "symbol_graph_unavailable"
     assert decision.provider == STATIC_LSP_PROVIDER
+
+
+def test_persisted_provider_fallback_is_explicit_in_result_metadata():
+    provider, selection = select_checkout_lsp_provider(
+        project_root="/portable/repo",
+        languages=["cpp"],
+        symbol_graph=_range_graph(),
+        allow_native=False,
+        native_disabled_reason="portable_artifact_uses_persisted_graph",
+    )
+
+    result = provider.definition(symbol="load_config")
+    metadata = result.provider_metadata_dict()
+
+    assert selection["backend"] == "persisted-symbol-graph-v1"
+    assert selection["fallback_reason"] == ("portable_artifact_uses_persisted_graph")
+    assert metadata["backend"] == "persisted-symbol-graph-v1"
+    assert metadata["fallback_reason"] == ("portable_artifact_uses_persisted_graph")
+
+
+def test_mixed_language_checkout_does_not_hide_graph_symbols():
+    graph = _range_graph()
+    provider, selection = select_checkout_lsp_provider(
+        project_root="/mixed/repo",
+        languages=["cpp", "python"],
+        symbol_graph=graph,
+    )
+
+    assert provider.graph is graph
+    assert selection["backend"] == "persisted-symbol-graph-v1"
+    assert selection["fallback_reason"] == ("mixed_language_requires_persisted_graph")
+    assert selection["capabilities"] == {
+        "definition": True,
+        "references": True,
+        "route": True,
+    }
+
+
+def test_unknown_language_alongside_cpp_forces_graph_fallback():
+    graph = _range_graph()
+    provider, selection = select_checkout_lsp_provider(
+        project_root="/mixed/repo",
+        languages=["cpp", "unregistered-language"],
+        symbol_graph=graph,
+    )
+
+    assert provider.graph is graph
+    assert selection["backend"] == "persisted-symbol-graph-v1"
+    assert selection["fallback_reason"] == ("mixed_language_requires_persisted_graph")
+
+
+def test_runtime_native_off_switch_uses_persisted_provider(monkeypatch):
+    graph = _range_graph()
+    monkeypatch.setenv("CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX", "off")
+
+    with patch("codenib.ls_router.LSIndexer") as indexer:
+        provider, selection = select_checkout_lsp_provider(
+            project_root="/local/repo",
+            languages=["cpp"],
+            symbol_graph=graph,
+        )
+
+    indexer.assert_not_called()
+    assert provider.graph is graph
+    assert selection["backend"] == "persisted-symbol-graph-v1"
+    assert selection["fallback_reason"] == "native_clangd_provider_disabled"
+
+
+def test_native_checkout_selection_requires_native_query_provider():
+    native_provider = SimpleNamespace(
+        provider=STATIC_LSP_PROVIDER,
+        provider_backend="native-clangd-fact-query-v1",
+        snapshot_id="clangd_fact_query:sha256:test",
+    )
+
+    with patch("codenib.ls_router.LSIndexer") as indexer:
+        indexer.return_value.process_query_provider.return_value = native_provider
+        provider, selection = select_checkout_lsp_provider(
+            project_root="/local/repo",
+            languages=["cpp"],
+            symbol_graph=_range_graph(),
+        )
+
+    assert provider is native_provider
+    indexer.return_value.process_query_provider.assert_called_once_with(
+        require_native=True
+    )
+    assert selection == {
+        "provider": STATIC_LSP_PROVIDER,
+        "backend": "native-clangd-fact-query-v1",
+        "status": "ok",
+        "index_snapshot": "clangd_fact_query:sha256:test",
+        "capabilities": {
+            "definition": True,
+            "references": True,
+            "route": True,
+        },
+    }
 
 
 def test_runner_traces_static_lsp_provider_for_dynamic_tool_call():

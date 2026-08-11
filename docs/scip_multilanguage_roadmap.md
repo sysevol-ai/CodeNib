@@ -754,9 +754,9 @@ Reproduce the report with `make clangd-fact-query-profile`.
 This promotion does not include or accelerate clangd index generation. RIFF
 version/resource hardening (#546), zlib CI enforcement (#547), and
 content-bound generation receipts (#548) are independent production gates.
-Serving integration (#549), mixed/RSS/concurrency matrices (#550), native
-position (#553), native route (#552), and durable FactBatch storage (#551)
-remain separate review and promotion gates.
+Serving integration is tracked below. Mixed/RSS/concurrency matrices (#550),
+native position (#553), native route (#552), and durable FactBatch storage
+(#551) remain separate review and promotion gates.
 
 Native clangd RIFF compatibility and resource-safety status
 ([#546](https://github.com/sysevol-ai/CodeNib/issues/546)): the v1 reader now
@@ -810,6 +810,33 @@ receipt passes were included. The fused first-pass hash took 2.94 ms (12.6% of
 native startup); hashing plus publication verification took 7.09 ms. The
 maintained profiler now reports both stages and their fraction of startup, and
 the existing 20% acceleration decision includes their cost.
+
+Native clangd MCP consumer-routing status
+([#549](https://github.com/sysevol-ai/CodeNib/issues/549)):
+`ServerContext` now owns one runtime-only LSP provider selection. A
+source-verified, local, C/C++-only manifest may reuse its existing project-local
+clangd shards through the native fact-query provider; startup never generates
+or publishes a clangd index. Portable artifacts, mixed-language manifests,
+disabled or unavailable native support, and unverified checkouts select the
+persisted symbol graph with an explicit fallback reason. MCP definition,
+reference, and route calls and the three agent LSP skills all use the same
+provider resolver.
+
+Native definition and reference requests remain graph-free. The first position
+or route request materializes the snapshot-compatible complete graph exactly
+once and later graph-requiring calls reuse it. Result rows and `get_manifest`
+runtime metadata expose the selected backend, fallback reason, capabilities,
+and native snapshot identity. The maintained profiler now validates both raw
+query parity and MCP serialization/public-error parity and publishes a separate
+`mcp_consumer_decision` over startup plus consumer work.
+
+The 2026-08-10 consumer-boundary gate used 223 `cpp_simple` shards, five
+alternating measured rounds, and 100 deterministic symbol requests per round.
+Median complete-graph MCP consumer time was 178.269 ms versus 27.717 ms for the
+native provider, an 84.45% improvement with exact result parity. Symbol-only
+requests never imported or materialized igraph, and the first graph-requiring
+request materialized the compatible graph once. Native position and route
+indexes remain the independent #553 and #552 promotion gates.
 
 Native core CI enforcement status
 ([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted

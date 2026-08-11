@@ -496,11 +496,19 @@ def build_skill_contexts(
                 exc,
             )
 
+    lsp_provider = None
+    if SkillType.EXPAND in skill_types or "symbol_graph" in loaded:
+        lsp_provider = _select_cpp_lsp_provider(
+            repo_path=repo_path,
+            languages=languages,
+            symbol_graph=loaded.get("symbol_graph"),
+        )
     return _package_contexts(
         loaded,
         skill_types=skill_types,
         default_top_k=default_top_k,
         default_level=default_level,
+        lsp_provider=lsp_provider,
     )
 
 
@@ -583,12 +591,41 @@ def load_contexts_from_manifest(
             manifest.indexes["symbol_graph"].path
         )
 
+    lsp_provider = None
+    if SkillType.EXPAND in skill_types or "symbol_graph" in loaded:
+        lsp_provider = _select_cpp_lsp_provider(
+            repo_path=manifest.repo_path,
+            languages=manifest.languages,
+            symbol_graph=loaded.get("symbol_graph"),
+        )
     return _package_contexts(
         loaded,
         skill_types=skill_types,
         default_top_k=default_top_k,
         default_level=default_level,
+        lsp_provider=lsp_provider,
     )
+
+
+def _select_cpp_lsp_provider(
+    *, repo_path: str, languages: Sequence[str], symbol_graph: Any
+) -> Any:
+    """Bind the native provider only for an unambiguous local C/C++ context."""
+
+    from ..languages import normalize_graph_language
+
+    normalized = [normalize_graph_language(language) for language in languages]
+    if not normalized or any(language != "cpp" for language in normalized):
+        return None
+
+    from ..agent.lsp_provider import select_checkout_lsp_provider
+
+    provider, _selection = select_checkout_lsp_provider(
+        project_root=repo_path,
+        languages=languages,
+        symbol_graph=symbol_graph,
+    )
+    return provider
 
 
 def _package_contexts(
@@ -597,6 +634,7 @@ def _package_contexts(
     skill_types: Set[SkillType],
     default_top_k: int,
     default_level: str,
+    lsp_provider: Any = None,
 ) -> Dict[str, Any]:
     """Wrap loaded index artifacts into the per-context-type dataclasses.
 
@@ -629,6 +667,9 @@ def _package_contexts(
     if SkillType.EXPAND in skill_types or "symbol_graph" in loaded:
         from ..ops.expand import ExpandContext
 
-        contexts["expand"] = ExpandContext(code_graph=loaded.get("symbol_graph"))
+        contexts["expand"] = ExpandContext(
+            code_graph=loaded.get("symbol_graph"),
+            lsp_provider=lsp_provider,
+        )
 
     return contexts

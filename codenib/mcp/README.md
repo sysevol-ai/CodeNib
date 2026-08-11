@@ -75,9 +75,9 @@ also remain available. All forms accept
 | `search_regex` | `symbol_graph` | file / symbol | structural pattern matching |
 | `search_zoekt` | `zoekt` | file | fast substring/regex across raw repo contents |
 | `dependency_subgraph` | `symbol_graph` | call graph | structural dependency / impact analysis |
-| `lsp_definition` | `symbol_graph` | location | static graph analogue of go-to-definition |
-| `lsp_references` | `symbol_graph` | locations | static graph analogue of find-references |
-| `lsp_route` | `symbol_graph` | locations | compact route anchors for related symbols |
+| `lsp_definition` | runtime LSP provider or `symbol_graph` | location | static graph analogue of go-to-definition |
+| `lsp_references` | runtime LSP provider or `symbol_graph` | locations | static graph analogue of find-references |
+| `lsp_route` | runtime LSP provider or `symbol_graph` | locations | compact route anchors for related symbols |
 | `read_source` | verified checkout | source window | bounded source inspection after retrieval/navigation |
 | `get_manifest` | — | — | repo metadata: path, commit, languages, capabilities |
 
@@ -171,8 +171,16 @@ Returns `root`, `direction`, `nodes`, `edges`, `truncated`, and `note`.
 Each node's optional `line` is 1-based.
 
 ### `lsp_definition` / `lsp_references` / `lsp_route`
-Static LSP-shaped navigation over the loaded `symbol_graph`. These tools return
-compact locations only; clients should read source before finalizing.
+Static LSP-shaped navigation through the server's selected runtime provider.
+A source-verified local C/C++-only checkout can reuse an existing project-local
+clangd index for symbol definition and reference queries without generating a
+new index. Position and route calls lazily load the compatible complete graph
+once. Portable artifacts, mixed-language repositories, unverified checkouts,
+and disabled or unavailable native support use the persisted `symbol_graph`.
+Result rows expose provider backend, fallback, capability, and snapshot metadata
+when available; `get_manifest.runtime.lsp_provider` exposes the selection before
+the first result. These tools return compact locations only; clients should read
+source before finalizing.
 All three tools require `top_k` from 1 through 100. File paths are limited to
 4,096 characters, each symbol field or route entry to 1,024 characters, and a
 route query to 16,000 characters. `lsp_route` accepts at most 32 supplied symbol

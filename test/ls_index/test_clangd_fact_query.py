@@ -13,6 +13,7 @@ import os
 import struct
 import zlib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable
 
 import pytest
@@ -27,6 +28,7 @@ import codenib_core  # noqa: E402
 
 from codenib.agent.lsp_graph import lsp_definition, lsp_references  # noqa: E402
 from codenib.agent.lsp_provider import StaticLSPProvider  # noqa: E402
+from codenib.compiler.manifest import RepoManifest  # noqa: E402
 from codenib.graph.code_graph import CodeGraph  # noqa: E402
 from codenib.ls_index import clangd_decode  # noqa: E402
 from codenib.ls_index.clangd_decode import ClangdGraphDecoder  # noqa: E402
@@ -35,6 +37,12 @@ from codenib.ls_index.clangd_decode import (
     _validate_native_query_contract,
 )
 from codenib.ls_router import LSIndexer  # noqa: E402
+from codenib.mcp.context import ServerContext  # noqa: E402
+from codenib.mcp.tools.lsp import (  # noqa: E402
+    lsp_definition_impl,
+    lsp_references_impl,
+    lsp_route_impl,
+)
 from codenib.types import EDGE_TYPE_REFERENCE, node_has_definition  # noqa: E402
 from scripts.profiling.profile_clangd_fact_query_index import (  # noqa: E402
     main as profile_main,
@@ -996,6 +1004,103 @@ def test_ls_indexer_exposes_query_index_and_provider(
     assert provider.decoder._graph_materialized is False
 
 
+def test_real_mcp_boundary_uses_native_symbols_then_one_lazy_graph(
+    clangd_fixture, monkeypatch
+) -> None:
+    root, idx_directory = clangd_fixture
+    monkeypatch.delenv("CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX", raising=False)
+    legacy_graph = ClangdGraphDecoder(
+        str(idx_directory), str(root)
+    ).materialize_code_graph()
+    legacy = SimpleNamespace(
+        lsp_provider=StaticLSPProvider(legacy_graph),
+        symbol_graph=legacy_graph,
+    )
+    decoder = ClangdGraphDecoder(str(idx_directory), str(root))
+    provider = decoder.decode_native_query_provider()
+    context = SimpleNamespace(lsp_provider=provider, symbol_graph=None)
+    target = bytes.fromhex("1112131415161718").hex()
+
+    definitions = lsp_definition_impl(context, symbol=target, top_k=10)
+    references = lsp_references_impl(context, symbol=target, top_k=10)
+
+    assert decoder._graph_materialized is False
+    assert provider.graph_materialization_count == 0
+    assert definitions[0]["lsp_provider"]["backend"] == ("native-clangd-fact-query-v1")
+    assert definitions[0]["lsp_provider"]["index_snapshot"] == (provider.snapshot_id)
+    assert references[0]["lsp_provider"]["backend"] == ("native-clangd-fact-query-v1")
+
+    position_arguments = {
+        "file_path": "src/main.cpp",
+        "line": 2,
+        "character": 22,
+        "top_k": 10,
+    }
+    position = lsp_definition_impl(context, **position_arguments)
+    expected_position = lsp_definition_impl(legacy, **position_arguments)
+
+    assert [
+        {key: value for key, value in row.items() if key != "lsp_provider"}
+        for row in position
+    ] == expected_position
+    assert position[0]["lsp_provider"]["backend"] == ("lazy-clangd-code-graph-v1")
+    assert position[0]["lsp_provider"]["fallback_reason"] == (
+        "native_clangd_position_query_requires_complete_graph"
+    )
+    assert decoder._graph_materialized is True
+    assert provider.graph_materialization_count == 1
+
+    route_arguments = {
+        "symbols": [target],
+        "query": "target caller",
+        "top_k": 10,
+    }
+    route = lsp_route_impl(context, **route_arguments)
+    expected_route = lsp_route_impl(legacy, **route_arguments)
+
+    assert [
+        {key: value for key, value in row.items() if key != "lsp_provider"}
+        for row in route
+    ] == expected_route
+    assert route[0]["lsp_provider"]["backend"] == ("lazy-clangd-code-graph-v1")
+    assert route[0]["lsp_provider"]["fallback_reason"] == (
+        "native_clangd_route_query_requires_complete_graph"
+    )
+    assert provider.graph_materialization_count == 1
+
+
+def test_server_context_selects_native_and_portable_graph_fallback(
+    clangd_fixture, monkeypatch
+) -> None:
+    root, idx_directory = clangd_fixture
+    monkeypatch.delenv("CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX", raising=False)
+    graph = ClangdGraphDecoder(str(idx_directory), str(root)).materialize_code_graph()
+    context = ServerContext(
+        manifest=RepoManifest(repo_path=str(root), languages=["cpp"]),
+        symbol_graph=graph,
+    )
+
+    native = context.configure_lsp_provider(allow_native=True)
+
+    assert native["backend"] == "native-clangd-fact-query-v1"
+    assert native["index_snapshot"].startswith("clangd_fact_query:sha256:")
+    assert native["capabilities"] == {
+        "definition": True,
+        "references": True,
+        "route": True,
+    }
+    assert context.lsp_provider.decoder._graph_materialized is False
+
+    portable = context.configure_lsp_provider(
+        allow_native=False,
+        native_disabled_reason="portable_artifact_uses_persisted_graph",
+    )
+
+    assert portable["backend"] == "persisted-symbol-graph-v1"
+    assert portable["fallback_reason"] == "portable_artifact_uses_persisted_graph"
+    assert context.lsp_provider.graph is graph
+
+
 def test_profiler_records_parity_samples_order_and_contract(
     clangd_fixture,
 ) -> None:
@@ -1027,6 +1132,12 @@ def test_profiler_records_parity_samples_order_and_contract(
     )
     assert 0 <= report["snapshot_receipt"]["fraction_of_native_startup"] <= 1
     assert report["decision"]["parity"] is True
+    assert report["mcp_consumer_decision"]["parity"] is True
+    assert len(report["raw_samples"]["legacy_clangd_graph"]["consumer_total"]) == 2
+    assert (
+        len(report["raw_samples"]["native_clangd_fact_query_index"]["consumer_total"])
+        == 2
+    )
 
 
 def test_profiler_cli_writes_json(clangd_fixture, tmp_path: Path, capsys) -> None:

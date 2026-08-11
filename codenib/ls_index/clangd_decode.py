@@ -429,7 +429,9 @@ class ClangdHybridQueryProvider:
         self.graph = query_index
         self.provider_backend = decoder.query_backend
         self._symbol_provider = StaticLSPProvider(
-            query_index, snapshot_id=decoder.query_snapshot_id
+            query_index,
+            snapshot_id=decoder.query_snapshot_id,
+            backend=self.provider_backend,
         )
         self._graph_provider = None
         self.graph_materialization_count = 0
@@ -437,41 +439,72 @@ class ClangdHybridQueryProvider:
         self.provider = self._symbol_provider.provider
         self.snapshot_id = self._symbol_provider.snapshot_id
 
-    def _full_graph_provider(self, reason: str):
+    def _full_graph_provider(self):
         from ..agent.lsp_provider import StaticLSPProvider
 
-        self.last_fallback_reason = reason
         if self._graph_provider is None:
             graph = self.decoder.materialize_code_graph()
             self._graph_provider = StaticLSPProvider(
-                graph, snapshot_id=self.snapshot_id
+                graph,
+                snapshot_id=self.snapshot_id,
+                backend="lazy-clangd-code-graph-v1",
             )
             self.graph_materialization_count += 1
         return self._graph_provider
 
+    def _graph_fallback(self, capability: str, reason: str, arguments: Mapping):
+        from dataclasses import replace
+
+        from ..agent.lsp_provider import LSPProviderNodes
+
+        self.last_fallback_reason = reason
+        result = getattr(self._full_graph_provider(), capability)(**arguments)
+        return LSPProviderNodes(
+            result,
+            metadata=replace(
+                result.lsp_provider_metadata,
+                fallback_reason=reason,
+            ),
+        )
+
     def can_serve(self, capability: str):
         # The hybrid can serve every established capability: native for symbol
         # definition/reference calls and the complete graph for everything else.
-        return self._symbol_provider.can_serve(capability)
+        decision = self._symbol_provider.can_serve(capability)
+        if str(capability) in {"route", "codenib/lspRoute"}:
+            from dataclasses import replace
+
+            return replace(
+                decision,
+                backend="lazy-clangd-code-graph-v1",
+                fallback_reason="native_clangd_route_query_requires_complete_graph",
+            )
+        return decision
 
     def definition(self, **arguments):
         if arguments.get("symbol"):
             return self._symbol_provider.definition(**arguments)
-        return self._full_graph_provider(
-            "native_clangd_position_query_requires_complete_graph"
-        ).definition(**arguments)
+        return self._graph_fallback(
+            "definition",
+            "native_clangd_position_query_requires_complete_graph",
+            arguments,
+        )
 
     def references(self, **arguments):
         if arguments.get("symbol"):
             return self._symbol_provider.references(**arguments)
-        return self._full_graph_provider(
-            "native_clangd_position_query_requires_complete_graph"
-        ).references(**arguments)
+        return self._graph_fallback(
+            "references",
+            "native_clangd_position_query_requires_complete_graph",
+            arguments,
+        )
 
     def route(self, **arguments):
-        return self._full_graph_provider(
-            "native_clangd_route_query_requires_complete_graph"
-        ).route(**arguments)
+        return self._graph_fallback(
+            "route",
+            "native_clangd_route_query_requires_complete_graph",
+            arguments,
+        )
 
 
 class ClangdGraphDecoder:
@@ -754,6 +787,23 @@ class ClangdGraphDecoder:
         if getattr(index, "fact_query_index", False):
             return ClangdHybridQueryProvider(self, index)
         return StaticLSPProvider(index)
+
+    def decode_native_query_provider(self):
+        """Return the native provider without silently building a legacy graph."""
+
+        if self.query_index is None:
+            total_started = time.perf_counter()
+            self.query_index, self.query_profile = self._decode_native_query_index()
+            self.query_backend = "native-clangd-fact-query-v1"
+            self.query_profile["fact_query_native"] = 1
+            self.query_profile["query_total"] = time.perf_counter() - total_started
+        if self.query_backend != "native-clangd-fact-query-v1" or not getattr(
+            self.query_index, "fact_query_index", False
+        ):
+            raise RuntimeError(
+                "clangd query decoder is already bound to a non-native backend"
+            )
+        return ClangdHybridQueryProvider(self, self.query_index)
 
     def save_graph(self, output_path: str):
         """Save the code graph to a file."""

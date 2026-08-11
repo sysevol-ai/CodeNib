@@ -251,7 +251,7 @@ class LSIndexer:
             )
         return method()
 
-    def process_query_provider(self) -> Any:
+    def process_query_provider(self, *, require_native: bool = False) -> Any:
         """Build a backend-specific provider with compatible fallbacks."""
 
         method = getattr(self._delegate, "process_query_provider", None)
@@ -259,6 +259,8 @@ class LSIndexer:
             raise RuntimeError(
                 f"{self.language} indexer does not expose a query-provider path"
             )
+        if require_native:
+            return method(require_native=True)
         return method()
 
     def run_pipeline(

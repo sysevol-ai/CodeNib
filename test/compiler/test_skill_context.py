@@ -250,6 +250,66 @@ def test_build_returns_expand_for_find_callers(registry, mocked_build, tmp_path)
     assert contexts["expand"].code_graph is not None
 
 
+def test_build_injects_native_provider_into_cpp_expand_context(
+    registry, mocked_build, tmp_path, monkeypatch
+):
+    from codenib.agent import lsp_provider
+
+    native_provider = object()
+    selections = []
+
+    def select_provider(**kwargs):
+        selections.append(kwargs)
+        return native_provider, {"backend": "native-clangd-fact-query-v1"}
+
+    monkeypatch.setattr(
+        lsp_provider,
+        "select_checkout_lsp_provider",
+        select_provider,
+    )
+
+    contexts = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["find_callers"],
+        languages=("cpp",),
+        cache_dir=str(tmp_path / "cache"),
+        skill_registry=registry,
+    )
+
+    assert contexts["expand"].lsp_provider is native_provider
+    assert selections == [
+        {
+            "project_root": str(tmp_path),
+            "languages": ("cpp",),
+            "symbol_graph": contexts["expand"].code_graph,
+        }
+    ]
+
+
+def test_cpp_retrieve_context_does_not_start_lsp_provider(
+    registry, mocked_build, tmp_path, monkeypatch
+):
+    from codenib.agent import lsp_provider
+
+    selections = []
+    monkeypatch.setattr(
+        lsp_provider,
+        "select_checkout_lsp_provider",
+        lambda **kwargs: selections.append(kwargs),
+    )
+
+    contexts = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["bm25_search"],
+        languages=("cpp",),
+        cache_dir=str(tmp_path / "cache"),
+        skill_registry=registry,
+    )
+
+    assert set(contexts) == {"retrieve"}
+    assert selections == []
+
+
 def test_build_returns_both_keys_for_mixed_skills(registry, mocked_build, tmp_path):
     contexts = skill_context.build_skill_contexts(
         repo_path=str(tmp_path),

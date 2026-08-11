@@ -122,10 +122,16 @@ class ServerContext:
     regex_index: Optional[RegexNodeIndex] = None
     zoekt: Optional[ZoektSearcher] = None
     vector: Optional[CodeVectorStore] = None
+    lsp_provider: Optional[Any] = field(default=None, repr=False)
+    lsp_provider_selection: Dict[str, Any] = field(default_factory=dict)
     errors: Dict[str, str] = field(default_factory=dict)
     artifact: Optional[Mapping[str, Any]] = None
     source_verified: bool = False
     source_error: Optional[str] = "source binding has not been verified"
+    _lsp_allow_native: bool = field(default=False, init=False, repr=False)
+    _lsp_native_disabled_reason: str = field(
+        default="local_source_not_verified", init=False, repr=False
+    )
     _view_lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
     @classmethod
@@ -152,6 +158,14 @@ class ServerContext:
         ctx = cls(manifest=manifest, artifact=dict(artifact) if artifact else None)
 
         ctx.load_views(selected)
+        ctx.configure_lsp_provider(
+            allow_native=False,
+            native_disabled_reason=(
+                "portable_artifact_uses_persisted_graph"
+                if ctx.artifact is not None
+                else "local_source_not_verified"
+            ),
+        )
 
         cap_summary = {k: v for k, v in manifest.capabilities.items() if v}
         loaded = [
@@ -196,6 +210,11 @@ class ServerContext:
                 getattr(self, loader_name)()
                 if getattr(self, view, None) is not None:
                     self.errors.pop(view, None)
+            if "symbol_graph" in selected:
+                self.configure_lsp_provider(
+                    allow_native=self._lsp_allow_native,
+                    native_disabled_reason=self._lsp_native_disabled_reason,
+                )
             return {
                 view: self.errors.get(view, "view did not load")
                 for view in selected
@@ -206,12 +225,36 @@ class ServerContext:
         """Release runtime resources owned by this context."""
 
         with self._view_lock:
+            self.lsp_provider = None
             if self.zoekt is not None:
                 _stop_zoekt(self.zoekt)
                 self.zoekt = None
             if self.vector is not None:
                 _close_vector(self.vector)
                 self.vector = None
+
+    def configure_lsp_provider(
+        self,
+        *,
+        allow_native: bool,
+        native_disabled_reason: str = "native_provider_not_authorized",
+    ) -> Dict[str, Any]:
+        """Bind a runtime-only provider without mutating persisted artifacts."""
+
+        from ..agent.lsp_provider import select_checkout_lsp_provider
+
+        self._lsp_allow_native = allow_native
+        self._lsp_native_disabled_reason = native_disabled_reason
+        provider, selection = select_checkout_lsp_provider(
+            project_root=self.manifest.repo_path,
+            languages=self.manifest.languages,
+            symbol_graph=self.symbol_graph,
+            allow_native=allow_native,
+            native_disabled_reason=native_disabled_reason,
+        )
+        self.lsp_provider = provider
+        self.lsp_provider_selection = selection
+        return dict(selection)
 
     @classmethod
     def validate_views(

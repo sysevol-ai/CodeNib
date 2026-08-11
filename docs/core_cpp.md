@@ -181,8 +181,25 @@ make clangd-fact-query-profile \
 
 This result measures an already generated `.idx` directory through identical
 definition/reference work. It does not claim faster clangd generation. Native
-position/route lookup and serving integration remain independent follow-up
-gates.
+position and route lookup remain independent follow-up gates.
+
+### MCP and agent runtime selection
+
+`ServerContext` and compiler skill contexts select one runtime-only LSP
+provider. A source-verified local C/C++-only checkout can reuse its existing
+clangd shards through `native-clangd-fact-query-v1`; selection does not generate
+an index. Portable artifacts, mixed-language repositories, unverified
+checkouts, and disabled or unavailable native support use
+`persisted-symbol-graph-v1` with a deterministic fallback reason.
+
+MCP definition, reference, and route tools and all three agent LSP skills use
+the common provider resolver. Definition and reference symbol requests remain
+on the native postings path without igraph. Position and route requests lazily
+materialize one snapshot-compatible complete graph and reuse it. MCP result
+rows and `get_manifest` runtime metadata identify the backend, capabilities,
+fallback, and snapshot. The profiling report's `mcp_consumer_decision` applies
+the acceleration gate to startup plus real MCP validation and serialization,
+in addition to checking raw-query parity.
 
 ### Content-bound snapshot receipt
 

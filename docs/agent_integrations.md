@@ -58,6 +58,19 @@ indexed search, and graph traversal. This checks that the provider boundary is
 language-agnostic; it is not evidence that the pinned Python-only LocAgent or
 OrcaLoca native implementations support those languages.
 
+### Shared LSP navigation provider
+
+The definition, reference, and route agent skills resolve the same provider
+injected into `ExpandContext`. For a source-verified C/C++-only build, symbol
+definition and reference requests can use the native clangd fact-query postings
+without materializing igraph; position and route requests lazily build and
+reuse the compatible complete graph. Mixed-language contexts select the
+persisted symbol graph; prebuilt contexts without a usable local native
+generation do the same, and portable artifacts always do so. Provider results
+retain backend,
+fallback, capability, and snapshot metadata so an agent trace can explain the
+route without changing the public location shape.
+
 ## Benchmark Compatibility
 
 These integrations evaluate CodeNib's native repository algorithms against

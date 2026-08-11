@@ -110,7 +110,7 @@ try:
             "search_bm25 for keyword lookups, search_regex for CodeGraph "
             "file/symbol pattern matching, and search_zoekt for fast trigram-based "
             "substring/regex search across raw file contents. Use "
-            "lsp_definition, lsp_references, and lsp_route for graph-backed "
+            "lsp_definition, lsp_references, and lsp_route for provider-backed "
             "LSP-shaped symbol navigation."
             " Use read_source to inspect a bounded source window after search or "
             "navigation returns a location."
@@ -305,9 +305,10 @@ async def dependency_subgraph(
 @mcp.tool(
     name="lsp_definition",
     description=(
-        "Return compact definition locations from CodeNib's static symbol "
-        "graph. Provide either symbol or file_path + 1-based line. Results are "
-        "locations only; call read_source before finalizing."
+        "Return compact definition locations from CodeNib's runtime LSP "
+        "provider or persisted symbol graph fallback. Provide either symbol "
+        "or file_path + 1-based line. Results are locations only; call "
+        "read_source before finalizing."
     ),
 )
 async def lsp_definition(
@@ -317,7 +318,7 @@ async def lsp_definition(
     symbol: _LspSymbol = "",
     top_k: _SearchTopK = 8,
 ) -> list[dict[str, Any]] | dict[str, str]:
-    """Graph-backed definition lookup over the static symbol graph."""
+    """Provider-backed definition lookup with persisted-graph fallback."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
@@ -334,9 +335,10 @@ async def lsp_definition(
 @mcp.tool(
     name="lsp_references",
     description=(
-        "Return compact definition/reference locations from CodeNib's static "
-        "symbol graph. Provide either symbol or file_path + 1-based line. "
-        "Results are locations only; call read_source before finalizing."
+        "Return compact definition/reference locations from CodeNib's runtime "
+        "LSP provider or persisted symbol graph fallback. Provide either "
+        "symbol or file_path + 1-based line. Results are locations only; call "
+        "read_source before finalizing."
     ),
 )
 async def lsp_references(
@@ -347,7 +349,7 @@ async def lsp_references(
     include_declaration: bool = True,
     top_k: _SearchTopK = 40,
 ) -> list[dict[str, Any]] | dict[str, str]:
-    """Graph-backed reference lookup over the static symbol graph."""
+    """Provider-backed reference lookup with persisted-graph fallback."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
@@ -365,10 +367,10 @@ async def lsp_references(
 @mcp.tool(
     name="lsp_route",
     description=(
-        "Return compact route anchors from CodeNib's static symbol graph for "
-        "symbol seeds, or use a query alone when no reliable symbol is known. "
-        "Use this for a route map across endpoint, bridge/factory, "
-        "provider/value, or type anchors. "
+        "Return compact route anchors from CodeNib's runtime LSP provider or "
+        "persisted symbol graph fallback for symbol seeds, or use a query "
+        "alone when no reliable symbol is known. Use this for a route map "
+        "across endpoint, bridge/factory, provider/value, or type anchors. "
         "Results are locations only; call read_source before finalizing."
     ),
 )
@@ -378,7 +380,7 @@ async def lsp_route(
     top_k: _SearchTopK = 12,
     include_neighbors: bool = True,
 ) -> list[dict[str, Any]] | dict[str, str]:
-    """Graph-backed route map over the static symbol graph."""
+    """Provider-backed route map with persisted-graph fallback."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
@@ -435,6 +437,7 @@ async def get_manifest() -> dict[str, Any]:
             "verified": _ctx.source_verified,
             "error": _ctx.source_error,
         },
+        "lsp_provider": dict(_ctx.lsp_provider_selection),
     }
     if _ctx.artifact is not None:
         result["artifact"] = dict(_ctx.artifact)
@@ -489,6 +492,13 @@ def server_status() -> str:
             lines.append("  ✓ symbol_graph: loaded")
         else:
             lines.append("  ✗ symbol_graph: not_loaded")
+
+        lsp_selection = ctx.lsp_provider_selection
+        lines.append(
+            "  lsp_provider: "
+            f"{lsp_selection.get('backend', 'unavailable')} "
+            f"({lsp_selection.get('status', 'unavailable')})"
+        )
 
         if ctx.zoekt is not None:
             lines.append(f"  ✓ zoekt: port={ctx.zoekt.port}")
@@ -625,6 +635,14 @@ def init_server(
                 _ctx.source_error = None
         if not _ctx.source_verified:
             logger.warning("Source reads disabled: %s", _ctx.source_error)
+    _ctx.configure_lsp_provider(
+        allow_native=_ctx.source_verified and _ctx.artifact is None,
+        native_disabled_reason=(
+            "portable_artifact_uses_persisted_graph"
+            if _ctx.artifact is not None
+            else "local_source_not_verified"
+        ),
+    )
 
 
 def main(argv: list[str] | None = None) -> None:

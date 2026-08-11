@@ -120,9 +120,9 @@ Only tools whose backing views are fresh and available can return results.
 | `search_regex` | `symbol_graph` | file / symbol | Structural pattern matching |
 | `search_zoekt` | `zoekt` | file | Fast substring or regex search over files |
 | `dependency_subgraph` | `symbol_graph` | call graph | Caller impact, callee dependencies, or a one-hop neighborhood |
-| `lsp_definition` | `symbol_graph` | location | Static go-to-definition-shaped lookup |
-| `lsp_references` | `symbol_graph` | locations | Static find-references-shaped lookup |
-| `lsp_route` | `symbol_graph` | locations | Compact route anchors from symbol seeds or a bounded query fallback |
+| `lsp_definition` | runtime LSP provider or `symbol_graph` fallback | location | Static go-to-definition-shaped lookup |
+| `lsp_references` | runtime LSP provider or `symbol_graph` fallback | locations | Static find-references-shaped lookup |
+| `lsp_route` | runtime LSP provider or `symbol_graph` fallback | locations | Compact route anchors from symbol seeds or a bounded query fallback |
 | `read_source` | verified checkout | source window | Read an exact 1-based span after retrieval or navigation |
 | `get_manifest` | manifest | repository | Repository identity, languages, view states, and capabilities |
 
@@ -134,6 +134,16 @@ Call `lsp_route` with `symbols=[]` and a non-blank query when no reliable symbol
 is known. This best-effort fallback examines at most 10,000 graph nodes, retains
 at most 256 query matches and 512 expanded candidates, and stops after 100
 milliseconds.
+
+For a source-verified local C/C++-only checkout, the server can reuse an
+existing project-local clangd index for definition and reference symbol
+queries. This runtime selection never generates clangd data. Position and route
+queries lazily load the compatible complete graph once. Portable artifacts,
+mixed-language repositories, unverified checkouts, and disabled or unavailable
+native support remain on the persisted symbol graph. LSP result rows identify
+their backend, fallback reason, capabilities, and snapshot when provider
+metadata is available; `get_manifest.runtime.lsp_provider` reports the same
+selection even before a result is returned.
 
 `search_context` accepts `query`, `top_k` (1-100), `budget`
 (`fast`, `balanced`, or `thorough`), dense `level` (`l0` or `l2`), and

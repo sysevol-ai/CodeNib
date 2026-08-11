@@ -91,6 +91,31 @@ def test_load_selects_only_requested_views(
     assert calls == ["bm25"]
 
 
+def test_portable_context_never_attaches_project_local_native_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph = object()
+
+    def load_graph(self):
+        self.symbol_graph = graph
+
+    monkeypatch.setattr(ServerContext, "_load_symbol_graph", load_graph)
+    manifest = RepoManifest(repo_path=str(tmp_path), languages=["cpp"])
+    with patch("codenib.ls_router.LSIndexer") as indexer:
+        ctx = ServerContext.load(
+            manifest,
+            views={"symbol_graph"},
+            artifact={"verified": True},
+        )
+
+    indexer.assert_not_called()
+    assert ctx.lsp_provider.graph is graph
+    assert ctx.lsp_provider_selection["backend"] == "persisted-symbol-graph-v1"
+    assert ctx.lsp_provider_selection["fallback_reason"] == (
+        "portable_artifact_uses_persisted_graph"
+    )
+
+
 def test_load_views_adds_resources_idempotently(
     manifest_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -110,6 +135,36 @@ def test_load_views_adds_resources_idempotently(
 
     assert calls == ["bm25"]
     assert ctx.loaded_views == frozenset({"bm25"})
+
+
+def test_load_views_rebinds_lsp_provider_after_lazy_graph_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = RepoManifest(repo_path=str(tmp_path), languages=["cpp"])
+    ctx = ServerContext.load(manifest, views=(), artifact={"verified": True})
+    graph = object()
+
+    def load_graph(self):
+        self.symbol_graph = graph
+
+    monkeypatch.setattr(ServerContext, "_load_symbol_graph", load_graph)
+
+    assert ctx.lsp_provider is None
+    assert ctx.lsp_provider_selection["status"] == "unavailable"
+    assert ctx.load_views({"symbol_graph"}) == {}
+    assert ctx.lsp_provider.graph is graph
+    assert ctx.lsp_provider_selection == {
+        "provider": "codenib_static_index",
+        "backend": "persisted-symbol-graph-v1",
+        "status": "ok",
+        "index_snapshot": "symbol_graph:unknown:0:0",
+        "fallback_reason": "portable_artifact_uses_persisted_graph",
+        "capabilities": {
+            "definition": True,
+            "references": True,
+            "route": True,
+        },
+    }
 
 
 def test_close_releases_live_runtime_resources(manifest_dir: Path) -> None:

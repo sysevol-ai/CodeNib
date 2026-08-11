@@ -468,3 +468,21 @@ def test_lsp_route_skill_exposes_static_graph_tool_contract():
     assert results[0].content == "route endpoint: direct seed HandleRequest"
     assert lsp_result_metadata(results)["provider"] == STATIC_LSP_PROVIDER
     assert lsp_result_metadata(results)["capability"] == "route"
+
+
+def test_lsp_route_skill_uses_injected_provider_without_graph():
+    class Provider:
+        def route(self, **kwargs):
+            return [kwargs]
+
+    context = {"expand": ExpandContext(lsp_provider=Provider())}
+    meta = SkillLoader().load_skill("codenib/agent/skills/lsp_route", context)
+
+    assert meta.executor_fn(symbols=["demo"], query="find demo") == [
+        {
+            "symbols": ["demo"],
+            "query": "find demo",
+            "top_k": 12,
+            "include_neighbors": True,
+        }
+    ]

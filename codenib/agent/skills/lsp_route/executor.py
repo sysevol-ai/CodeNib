@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 def create_executor(context: "ExpandContext") -> Callable[..., List["QueriedNode"]]:
     """Return a semantic route-map implementation over the static graph."""
-    from ...lsp_provider import StaticLSPProvider
+    from ...lsp_provider import resolve_lsp_provider
 
     def execute(
         symbols: List[str],
@@ -22,9 +22,7 @@ def create_executor(context: "ExpandContext") -> Callable[..., List["QueriedNode
         include_neighbors: bool = True,
         **kwargs: Any,
     ) -> List["QueriedNode"]:
-        if context is None or context.code_graph is None:
-            raise RuntimeError("Symbol graph not available")
-        return StaticLSPProvider(context.code_graph).route(
+        return resolve_lsp_provider(context).route(
             symbols=list(symbols or []),
             query=query,
             top_k=int(top_k or 12),
