@@ -302,7 +302,9 @@ serial-chain failure blocks it. The job itself only runs when `preflight` set
 `run-slow=true` (see [Skip mechanisms](#skip-mechanisms)). This tier is
 intentionally not xdist-parallelized because embedding model loads can exhaust
 shared GPU memory when started by multiple workers. Sets up GCP credentials and
-`VERTEXAI_PROJECT`, then:
+`VERTEXAI_PROJECT`, selects `VERTEXAI_LOCATION` from the repository variable
+with `us-east5` as the maintained-model fallback, installs the `test,vertex`
+project extras, then:
 
 ```bash
 pytest -m "slow" --tb=short
@@ -318,6 +320,12 @@ use `make test-slow` explicitly for this tier. CI requires a non-empty, valid
 `GOOGLE_APPLICATION_CREDENTIALS_JSON` secret and exports its ADC path before
 running provider tests. Missing credentials fail the selected slow job, while
 an unconfigured local run skips provider-only cases before expensive fixtures.
+The generated agent embedding index is reused while its resolved model revision
+matches. A revision mismatch takes the builder's explicit `force_rebuild` path
+once, so a legacy self-hosted-runner cache cannot keep the slow tier red.
+Live agent routing remains intentionally non-deterministic: provider/index smoke
+tests validate any BM25 call that occurs without rejecting the always-on
+`read`/`grep`/`glob`/`bash` tools.
 
 The checked-in pull-request workflows route executable PR content only to
 ephemeral hosted runners. Drafts run hosted documentation, packaging, and
@@ -401,6 +409,10 @@ use the `./.github/actions/setup-env` composite action, which provisions:
 
 - **conda** env `codenib-test` (Python 3.12 by default) plus a separate
   `scip-env` from `codenib/scip_interface/scip-environment.yml`.
+- **Editable project extras** — `project-extras` defaults to `test`; jobs that
+  exercise an optional provider must opt in explicitly (`slow` uses
+  `test,vertex`). The action validates the comma-separated value before using
+  it in the pip requirement.
 - **CPU torch preinstall** — enabled by default through
   `preinstall-cpu-torch`, `torch-version`, and `torch-index-url`, so non-GPU
   jobs do not accidentally download CUDA wheels through transitive embedding

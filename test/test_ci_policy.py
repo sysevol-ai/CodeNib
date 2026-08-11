@@ -387,7 +387,14 @@ def test_default_make_target_excludes_external_and_billed_tiers() -> None:
 
 
 def test_slow_ci_requires_and_exports_explicit_vertex_credentials() -> None:
-    workflow = (ROOT / ".github/workflows/ci-full.yml").read_text(encoding="utf-8")
+    workflow_path = ROOT / ".github/workflows/ci-full.yml"
+    workflow = workflow_path.read_text(encoding="utf-8")
+    document = _workflow(str(workflow_path.relative_to(ROOT)))
+    setup_step = next(
+        step
+        for step in document["jobs"]["slow"]["steps"]
+        if step.get("name") == "Setup environment"
+    )
 
     assert "GOOGLE_APPLICATION_CREDENTIALS_JSON is required" in workflow
     assert 'python -m json.tool "$CREDENTIALS_PATH" >/dev/null' in workflow
@@ -395,6 +402,39 @@ def test_slow_ci_requires_and_exports_explicit_vertex_credentials() -> None:
         'echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS_PATH" >> "$GITHUB_ENV"'
         in workflow
     )
+    assert setup_step["with"]["project-extras"] == "test,vertex"
+    assert (
+        document["jobs"]["slow"]["env"]["VERTEXAI_LOCATION"]
+        == "${{ vars.VERTEXAI_LOCATION || 'us-east5' }}"
+    )
+
+
+def test_shared_ci_setup_validates_configurable_project_extras() -> None:
+    action = _workflow(".github/actions/setup-env/action.yml")
+    install_step = next(
+        step
+        for step in action["runs"]["steps"]
+        if step.get("name") == "Install dependencies"
+    )
+    install_run = str(install_step["run"])
+
+    assert action["inputs"]["project-extras"]["default"] == "test"
+    assert (
+        install_step["env"]["CODENIB_CI_PROJECT_EXTRAS"]
+        == "${{ inputs.project-extras }}"
+    )
+    assert "^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$" in install_run
+    assert 'pip install -e ".[${CODENIB_CI_PROJECT_EXTRAS}]"' in install_run
+
+
+def test_slow_embedding_cache_rebuild_is_narrowly_revision_scoped() -> None:
+    source = (ROOT / "test/agent/test_agent_embedding_search.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "except ValueError as exc:" in source
+    assert '"Vector config embedding revision mismatch" not in str(exc)' in source
+    assert "force_rebuild=True" in source
 
 
 def test_live_provider_tests_do_not_hide_runtime_failures() -> None:

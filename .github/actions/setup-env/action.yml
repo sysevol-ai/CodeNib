@@ -10,6 +10,10 @@ inputs:
     description: "Python version for conda"
     required: false
     default: "3.12"
+  project-extras:
+    description: "Comma-separated CodeNib extras installed with the editable package"
+    required: false
+    default: "test"
   install-rust:
     description: "Install Rust toolchain + rust-analyzer"
     required: false
@@ -96,16 +100,21 @@ runs:
       shell: bash -l {0}
       env:
         CODENIB_CI_PREINSTALL_CPU_TORCH: ${{ inputs.preinstall-cpu-torch }}
+        CODENIB_CI_PROJECT_EXTRAS: ${{ inputs.project-extras }}
         CODENIB_CI_TORCH_VERSION: ${{ inputs.torch-version }}
         CODENIB_CI_TORCH_INDEX_URL: ${{ inputs.torch-index-url }}
       run: |
         python -m pip install --upgrade pip
+        if [[ ! "$CODENIB_CI_PROJECT_EXTRAS" =~ ^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$ ]]; then
+          echo "::error::Invalid project-extras value: $CODENIB_CI_PROJECT_EXTRAS"
+          exit 2
+        fi
         if [[ "$CODENIB_CI_PREINSTALL_CPU_TORCH" == "true" ]]; then
           python -m pip install \
             --index-url "$CODENIB_CI_TORCH_INDEX_URL" \
             "torch==$CODENIB_CI_TORCH_VERSION"
         fi
-        pip install -e ".[test]"
+        pip install -e ".[${CODENIB_CI_PROJECT_EXTRAS}]"
 
     - name: Install Rust toolchain + rust-analyzer
       if: inputs.install-rust == 'true'

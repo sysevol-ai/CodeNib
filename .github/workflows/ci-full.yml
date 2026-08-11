@@ -529,6 +529,7 @@ jobs:
       TMP: ${{ github.workspace }}/../.tmp
       TEMP: ${{ github.workspace }}/../.tmp
       VERTEXAI_PROJECT: ${{ vars.VERTEXAI_PROJECT }}
+      VERTEXAI_LOCATION: ${{ vars.VERTEXAI_LOCATION || 'us-east5' }}
     steps:
       - name: Prepare temp HOME
         run: |
@@ -565,6 +566,8 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
+        with:
+          project-extras: "test,vertex"
 
       - name: Setup GCP credentials
         env:

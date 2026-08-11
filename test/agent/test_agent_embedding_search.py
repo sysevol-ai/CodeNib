@@ -49,47 +49,37 @@ class TestAgentEmbeddingSearch:
     def real_embedding_search(self, httpie_cli_repo):
         """Load embedding_search skill with real FAISS index over httpie/cli."""
         import codenib.agent.skills as pkg
-        from codenib.index.embedding import (
-            CodeVectorStore,
-            build_hierarchical_vector_store,
-        )
+        from codenib.index.embedding import build_hierarchical_vector_store
         from codenib.ops.retrieve import RetrieveContext
 
         repo_path = str(httpie_cli_repo)
-        l0 = Path(EMBEDDING_INDEX_PATH) / "l0"
-        l2 = Path(EMBEDDING_INDEX_PATH) / "l2"
-
-        if l0.exists() and l2.exists():
-            print(f"Loading existing index from {EMBEDDING_INDEX_PATH}")
-            vs = CodeVectorStore(
-                embedding_model="nomic-ai/CodeRankEmbed",
-                embedding_provider="huggingface",
-                dimension=768,
-                store_path=EMBEDDING_INDEX_PATH,
-                model_kwargs={"trust_remote_code": True},
-                encode_kwargs={
+        build_kwargs = {
+            "repo_path": repo_path,
+            "index_path": EMBEDDING_INDEX_PATH,
+            "languages": ["python"],
+            "embedding_model": "nomic-ai/CodeRankEmbed",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 768,
+            "embedding_kwargs": {
+                "model_kwargs": {"trust_remote_code": True},
+                "encode_kwargs": {
                     "batch_size": 8,
                     "normalize_embeddings": True,
                 },
+            },
+        }
+        try:
+            vs = build_hierarchical_vector_store(**build_kwargs)
+        except ValueError as exc:
+            if "Vector config embedding revision mismatch" not in str(exc):
+                raise
+            print(
+                "Cached embedding index has an incompatible model revision; "
+                f"rebuilding {EMBEDDING_INDEX_PATH}"
             )
-            vs.load(EMBEDDING_INDEX_PATH)
-        else:
-            print(f"Building new index at {EMBEDDING_INDEX_PATH}")
-            Path(EMBEDDING_INDEX_PATH).mkdir(parents=True, exist_ok=True)
             vs = build_hierarchical_vector_store(
-                repo_path=repo_path,
-                index_path=EMBEDDING_INDEX_PATH,
-                languages=["python"],
-                embedding_model="nomic-ai/CodeRankEmbed",
-                embedding_provider="huggingface",
-                embedding_dimension=768,
-                embedding_kwargs={
-                    "model_kwargs": {"trust_remote_code": True},
-                    "encode_kwargs": {
-                        "batch_size": 8,
-                        "normalize_embeddings": True,
-                    },
-                },
+                **build_kwargs,
+                force_rebuild=True,
             )
 
         ctx = RetrieveContext(vector_store=vs, default_level="l2")

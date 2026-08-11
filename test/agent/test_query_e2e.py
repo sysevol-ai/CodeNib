@@ -395,11 +395,10 @@ def test_query_with_real_vertex_model(
     # The agent actually ran a tool-call → observe → finalize loop.
     assert result.total_turns >= 1
     assert result.answer is not None
-    # The model may have skipped tool calls entirely (gemini can decide it
-    # already knows enough), so we don't *require* a tool call — but if it
-    # did make one, it must have succeeded against the real index.
-    for tc in result.tool_calls:
-        assert tc.skill_id == "bm25_search"
+    # The model may skip bm25 entirely or call an always-on default tool such
+    # as ``read`` first.  Only validate BM25 calls here: the test is a live
+    # provider/index smoke, not a deterministic routing assertion.
+    for tc in (tc for tc in result.tool_calls if tc.skill_id == "bm25_search"):
         assert tc.error is None, f"bm25_search execution failed: {tc.error}"
 
     # Token usage was tracked — sanity check that LiteLLMChat actually
