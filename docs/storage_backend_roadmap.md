@@ -308,6 +308,19 @@ captured vector tree. These compatibility and publication gates preserve the
 previous complete vector generation on interruption, but they do not complete
 the catalog-backed M2 generation coordinator or durable worker wiring.
 
+Static Wiki export now writes through one bounded `OwnedDirectoryStage`
+generation, authenticates the prebuilt frontend before copying it, and checks
+the complete staged and published inventories through callback-scoped readers.
+Frontend, generated metadata, and manifest identities are bounded before the
+rename; failures retain only an ownership-described orphan for later
+quiescent reclamation instead of recursively deleting an online path. This is
+still a local compatibility publication path, not a catalog receipt.
+`StrictWorkspaceProvider` builds on the foundation with a callback-scoped
+contract for a trusted provider to supply a pre-opened
+`OwnedWorkspaceAuthority`, exact workspace plan, destination expectation, and
+retained publication receipt owner. No production provider or BM25/context
+producer is wired to that strict contract yet, so M1 remains in progress.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
