@@ -332,8 +332,15 @@ retained publication receipt owner. Session writes, validation, publication,
 and revocation share one cancellation-safe gate so a provider callback cannot
 publish after it escapes. The gate records the exact callback result or
 `BaseException`; a provider cannot substitute its return value or swallow a
-callback failure. No production provider or BM25/context producer is wired to
-that strict contract yet, so M1 remains in progress.
+callback failure. The strict BM25 producer now plans canonical document and
+metadata bytes from one retained source generation, binds the source/output
+records, repository fingerprint, and caller configuration into an exact
+workspace plan, then replays and validates the same bytes through that contract
+before and after replacement. Its `PlannedBm25View` is a short-lived in-process
+replay subject, not a catalog profile or durable job payload. No production
+provider, compiler integration, or whole-context producer is wired to the
+strict contract yet, so M1 remains in progress and the M2 BM25 profile adapter
+is still outstanding.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable
