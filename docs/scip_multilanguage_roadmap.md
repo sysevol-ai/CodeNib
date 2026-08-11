@@ -755,9 +755,9 @@ This promotion does not include or accelerate clangd index generation. RIFF
 version/resource hardening (#546), zlib CI enforcement (#547), and
 content-bound generation receipts (#548) are independent production gates.
 Serving integration and the mixed/RSS/concurrency matrix are tracked below.
-Native position (#553) has its own promotion evidence below; native route
-(#552) and durable FactBatch storage (#551) remain separate review and
-promotion gates.
+Native position (#553), native route (#552), and durable FactBatch publication
+(#551) keep independent promotion decisions; their landed evidence is recorded
+below.
 
 Native clangd RIFF compatibility and resource-safety status
 ([#546](https://github.com/sysevol-ai/CodeNib/issues/546)): the v1 reader now
@@ -958,6 +958,43 @@ The route-first improvement exceeds the 20% promotion threshold, so `auto`
 promotes compact native route adjacency and retains the full graph only as its
 atomic compatibility fallback. This remains a query-ready result over existing
 shards and does not claim faster clangd index generation.
+
+Native clangd durable FactBatch publication status
+([#551](https://github.com/sysevol-ai/CodeNib/issues/551)): the strict C/C++
+dual-write adapter collects normalized records from the bounded native decoder
+without constructing `CodeGraph`, then emits canonical per-file `FactBatch v1`
+units. The profile fails closed unless analyzer, target, toolchain, compilation
+database, build context, position encoding, RIFF contract, normalization,
+adapter schema, and FactBatch schema all participate in its identity.
+
+`codenib.fact-batch-generation.v1` composes the verified unit receipts into one
+source- and profile-bound generation manifest. Every member is an immutable
+catalog object and an explicit reachability/GC root. Path-aware upserts and
+deletes reuse unchanged units, while profile changes, nondeterministic reuse,
+tampered receipts, missing objects, and a failed ref compare-and-swap fail
+closed without replacing the previous generation. Snapshot-local definition
+lookup resolves unresolved SymbolID monikers only against the pinned generation
+and keys its bounded cache by the complete snapshot identity.
+
+The 2026-08-11 `fmt` gate used the clean pinned 11.2.0 revision
+`40626af88bd7df9a5fb80be7b25ac85b122d6c21` and 492 `.idx` shards. It published
+51 file units containing 9,783 definitions, 98,552 occurrences, 85,903 edges,
+and 64,668 unresolved targets. The manifest and its 51 units produced 52
+reachable objects. An unchanged publication reused 51/51 units, republished
+zero units, matched the clean semantic digest, and materialized zero graphs.
+Median end-to-end time improved from 9.9169s for the clean generation to
+5.2349s for unchanged reuse (47.2%). Reproduce the gate with
+`make clangd-fact-generation-profile`.
+
+This is durable publication and incremental-reuse evidence over existing
+clangd shards, not a claim that clangd index generation is faster. The legacy
+materialized graph remains the public graph-query authority until the M4 parity
+and cutover gates in `docs/storage_backend_roadmap.md` pass. The broader storage
+RFC #199 also remains open for generic generation publication, jobs, leases,
+retention/GC, remaining adapters, overlays, and server backends. With foundation
+issues #554/#555 and production gates #546 through #553 merged, parent tracker
+#545 may close after this roadmap reconciliation without implying those larger
+programs are complete.
 
 Native core CI enforcement status
 ([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted
