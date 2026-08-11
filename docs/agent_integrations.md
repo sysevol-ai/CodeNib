@@ -430,6 +430,78 @@ COSIL_CHECKOUT=/path/to/CoSIL \
 pytest -q test/integrations/test_cosil_upstream.py
 ```
 
+## [RepoNavigator](https://arxiv.org/abs/2512.20957v6)
+
+RepoNavigator paper revision `arXiv:2512.20957v6` publishes one repository
+application tool:
+
+```text
+jump(file_path, symbol, index?) -> definition source snippet and file path
+```
+
+`RepoNavigatorRepositoryProvider` supplies that tool from an existing
+graph-enabled manifest. It finds the selected occurrence in the referring
+source file, converts it to a 0-based line and provider-specific UTF-8, UTF-16,
+or UTF-32 character offset, delegates to an LSP-shaped definition provider, and
+returns the containing definition source together with its repository path. It
+does not build a RepoNavigator-specific index.
+
+The semantic definition signal is part of the compatibility gate. By default,
+`from_manifest` loads the persisted `lsp_index.pkl` beside `graph.pkl`; callers
+may instead inject a live language-server provider. A manifest with only
+symbol-graph position heuristics is rejected unless the caller explicitly opts
+into degraded behavior.
+
+```python
+from codenib.integrations.reponavigator import (
+    RepoNavigatorRepositoryProvider,
+    get_reponavigator_tool_schemas,
+)
+
+provider = RepoNavigatorRepositoryProvider.from_manifest(
+    "/path/to/repo_manifest.json",
+)
+tools = get_reponavigator_tool_schemas()
+signal = provider.signal_metadata()
+observation = provider.dispatch(
+    "jump",
+    {"file_path": "src/service.py", "symbol": "calculate_tax", "index": 0},
+)
+```
+
+The schema contains only the paper's lowercase `jump` name. `file_path` is the
+referencing file, not the definition file; `index` is a zero-based resolvable
+occurrence index and defaults to `0`. Persisted SCIP occurrences filter comments
+and other non-semantic text. Definition source is bounded to 400 lines and
+32,000 characters. Invalid paths, missing occurrences, unavailable definitions,
+and out-of-range indices return explicit `Jump failed: ...` observations.
+
+Inspect the contract without installing RepoNavigator:
+
+```bash
+python examples/integrations/reponavigator.py \
+  --manifest /path/to/repo_manifest.json \
+  --file-path src/service.py \
+  --symbol calculate_tax \
+  --index 0
+```
+
+Use `--allow-graph-fallback` only when degraded graph-position behavior is
+acceptable. The opt-in is enforced for each definition call as well as at
+startup: a SCIP occurrence lookup that dynamically falls back to the symbol
+graph is rejected otherwise. Before the first call,
+`provider.signal_metadata()` describes the configured signal; afterwards it
+describes the backend that served the most recent call. It distinguishes
+persisted SCIP and native occurrence signals, live LSP, caller-attested
+external, and graph-fallback behavior. This is a paper-contract provider, not
+a revision-pinned upstream integration: CodeNib does not claim compatibility
+with an unreleased agent loop, prompt, error wording, GRPO training, or reported
+benchmark scores.
+
+```bash
+pytest -q test/integrations/test_reponavigator.py
+```
+
 ## [OrcaLoca](https://github.com/fishmingyu/OrcaLoca)
 
 The OrcaLoca provider replaces its repository data plane while retaining the

@@ -51,6 +51,11 @@ and MCP tools instead of making every agent rediscover the codebase.
 
 ## News
 
+- **2026-08-08 — RepoNavigator Jump adapter.** The published single-tool
+  [RepoNavigator](https://arxiv.org/abs/2512.20957v6) contract now resolves
+  symbol definitions through a persisted SCIP occurrence or injected LSP
+  signal, with graph-only resolution disclosed as a degraded fallback.
+  [Support boundary](https://docs.codenib.ai/agent_integrations/#reponavigator)
 - **2026-08-05 — CodeNib 0.2.0.** Build a static Wiki and reusable context
   artifact once, then serve it through Pages or the official MCP package.
   Hybrid retrieval and managed SCIP/LSP providers ship in the same CLI.
@@ -212,7 +217,7 @@ capabilities, loaded views, fusion, graph, and reranking trace.
 | Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths; see the [validated model matrix](https://docs.codenib.ai/rag_ops/#validated-models) |
 | Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
 | MCP and LSP-shaped tools | Serve one manifest to coding agents without tying the runtime to one agent framework |
-| Agent compatibility | Reuse one manifest across revision-pinned [LocAgent](https://github.com/gersteinlab/LocAgent), [Agentless](https://github.com/OpenAutoCoder/Agentless), [CoSIL](https://github.com/ZhonghaoJiang/CoSIL), and [OrcaLoca](https://github.com/fishmingyu/OrcaLoca) contracts; see the [support matrix](https://docs.codenib.ai/agent_integrations/) |
+| Agent compatibility | Reuse one manifest across revision-pinned [LocAgent](https://github.com/gersteinlab/LocAgent), [Agentless](https://github.com/OpenAutoCoder/Agentless), [CoSIL](https://github.com/ZhonghaoJiang/CoSIL), and [OrcaLoca](https://github.com/fishmingyu/OrcaLoca) contracts, plus the published [RepoNavigator](https://arxiv.org/abs/2512.20957v6) `jump` contract over SCIP/LSP definition signals; see the [support matrix](https://docs.codenib.ai/agent_integrations/) |
 | Benchmark compatibility | Evaluate native exploration against pinned external datasets and scorers, including [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench); see the [dataset and benchmark matrix](https://docs.codenib.ai/evaluation/) |
 | Local inspection | Audit the same context through Wiki pages, Ask answers, citations, and the Dependency Map |
 | Evaluation harness | Measure retrieval, navigation, incremental maintenance, and context policies on the same artifacts |
