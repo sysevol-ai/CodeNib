@@ -406,9 +406,13 @@ core-build: core-python-deps
 core-test: core-build
 	./build/core/scip_decode_test
 	./build/core/graph_layers_test
+	./build/core/fact_batch_buffer_test
 	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
 		test/scip/test_scip_core.py \
-		test/scip/test_scip_core_registry.py
+		test/scip/test_scip_core_registry.py \
+		test/scip/test_fact_batch_buffer.py \
+		test/facts/test_model.py \
+		test/facts/test_adapters.py
 
 scip-cold-start-tools: scip-java-tool gradle-tool sbt-tool scip-dotnet-tool scip-ruby-tool scip-php-info
 	@$(MAKE) --no-print-directory scip-cold-start-env

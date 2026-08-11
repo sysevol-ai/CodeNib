@@ -15,6 +15,8 @@ core decoder continue to use the serial Python path.
 
 - `code_graph.{h,cpp}` — C++ graph container.
 - `decoded_records.h` — provider-neutral rows before graph materialization.
+- `fact_batch_buffer.{h,cpp}` — versioned flat semantic and graph-compatibility
+  tables for the native/Python boundary.
 - `graph_layers.{h,cpp}` — shared normalized edge-layer classification.
 - `scip_decode_base.{h,cpp}` — common loading, document scheduling, merge, and
   post-processing behavior.
@@ -23,7 +25,8 @@ core decoder continue to use the serial Python path.
 - `scip_decode_<language>.{h,cpp}` — language-specific decoder policy.
 - `scip_decoder_registry.{h,cpp}` — canonical decoder names and aliases.
 - `bindings/pybind_module.cpp` — Python bindings for `decode_scip(...)`,
-  `classify_edge_layers(...)`, and registry inspection.
+  `decode_scip_fact_buffer(...)`, `classify_edge_layers(...)`, and registry
+  inspection.
 
 `codenib_core.decode_scip(...)` is a low-level flat transport API. It does not
 apply source-aware post-decode layers, including TypeScript import enrichment,
@@ -63,6 +66,16 @@ path materializes those rows into the same `CodeGraph`; `decode_records()` lets
 future capability-specific consumers stop before igraph. The record merge owns
 the established first-definition and edge-deduplication policy, and
 language-specific postprocessing runs before either consumer observes rows.
+
+## FactBatchBuffer v1
+
+`decode_scip_fact_buffer(...)` encodes `DecodedRecords` into fixed-width,
+little-endian tables plus one shared UTF-8 arena. Consumers may request the
+provider-neutral per-file `FactBatch` projection, the exact legacy graph
+projection, or omit the graph tables entirely. The Python view validates the
+fixed envelope immediately and the complete selected projection before
+returning a materialized consumer result. The zero-copy mode keeps native
+storage alive through read-only buffer owners.
 
 ## Use Through Python
 

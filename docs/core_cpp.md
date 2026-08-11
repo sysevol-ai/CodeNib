@@ -72,6 +72,7 @@ and returns no graph. Non-SCIP backends such as C/C++ ignore
 `decoder_backend` because they do not use a SCIP decoder.
 
 The pybind module also exposes lower-level `decode_scip(...)`,
+`decode_scip_fact_buffer(...)`, `fact_batch_buffer_contract(...)`,
 `classify_edge_layers(...)`, and decoder-registry inspection functions. These
 are primarily integration surfaces; application code should normally use
 `LSIndexer` so filtering, occurrence indexes, range indexes, and persistence
@@ -85,6 +86,17 @@ materializes the same graph, so persisted schema and public graph behavior do
 not change. `decode_records()` is the reusable boundary for later consumers:
 it owns deterministic vertex order, indexed edges, project identity, and
 language-specific postprocessing without constructing a `CodeGraph`.
+
+## FactBatchBuffer v1
+
+The optional buffer transport consumes `DecodedRecords` directly and crosses
+the pybind boundary as a constant number of fixed-width little-endian tables
+plus one shared UTF-8 arena. It can expose provider-neutral per-file semantic
+facts, preserve the exact legacy vertex/edge/range projection, or omit graph
+compatibility tables for fact-only consumers. Python validates the fixed
+envelope immediately, then checks the selected projection's flags, string
+references, identities, ranges, and graph endpoints before constructing its
+consumer result. Zero-copy exports are read-only and retain their native owner.
 
 ## Verify
 
@@ -102,6 +114,7 @@ skip report.
 
 - `code_graph.{h,cpp}` implements the C++ graph container.
 - `decoded_records.h` defines the provider-neutral pre-graph boundary.
+- `fact_batch_buffer.{h,cpp}` defines the v1 native buffer ABI and encoder.
 - `graph_layers.{h,cpp}` classifies normalized edge types into reusable graph
   layers.
 - `scip_decode_base.{h,cpp}` and `scip_decode_common.{h,cpp}` provide shared

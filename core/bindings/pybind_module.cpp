@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Pybind11 bindings for codenib::core SCIP decoders.
+// Pybind11 bindings for codenib::core semantic decoders and transports.
 //
 // Exposes a low-level function `decode_scip(index_file, project_root,
 // language)` that returns a transport with two flat Python lists:
@@ -22,15 +22,19 @@
 // serialization cost across the C++/Python boundary is just one igraph vcount +
 // ecount worth of tuples/dicts.
 
+#include "fact_batch_buffer.h"
 #include "graph_layers.h"
 #include "scip_decode.h"
 
+#include <chrono>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace py = pybind11;
@@ -101,6 +105,185 @@ py::dict decode_scip(const std::string &index_file,
   return result;
 }
 
+py::bytes bytes_from_vector(const std::vector<std::uint8_t> &buffer) {
+  if (buffer.empty())
+    return py::bytes();
+  return py::bytes(reinterpret_cast<const char *>(buffer.data()),
+                   buffer.size());
+}
+
+enum class FactBufferTable {
+  Meta,
+  Batches,
+  Symbols,
+  Occurrences,
+  Edges,
+  Diagnostics,
+  GraphVertices,
+  GraphEdges,
+  Arena,
+};
+
+class FactBatchOwnedBuffer {
+public:
+  FactBatchOwnedBuffer(std::shared_ptr<codenib::core::FactBatchBuffers> owner,
+                       FactBufferTable table)
+      : owner_(std::move(owner)), table_(table) {}
+
+  const std::vector<std::uint8_t> &bytes() const {
+    switch (table_) {
+    case FactBufferTable::Meta:
+      return owner_->meta;
+    case FactBufferTable::Batches:
+      return owner_->batches;
+    case FactBufferTable::Symbols:
+      return owner_->symbols;
+    case FactBufferTable::Occurrences:
+      return owner_->occurrences;
+    case FactBufferTable::Edges:
+      return owner_->edges;
+    case FactBufferTable::Diagnostics:
+      return owner_->diagnostics;
+    case FactBufferTable::GraphVertices:
+      return owner_->graph_vertices;
+    case FactBufferTable::GraphEdges:
+      return owner_->graph_edges;
+    case FactBufferTable::Arena:
+      return owner_->arena;
+    }
+    throw std::logic_error("unknown FactBatchBuffer table");
+  }
+
+  py::buffer_info buffer_info() const {
+    const auto &buffer = bytes();
+    return py::buffer_info(buffer.data(),
+                           static_cast<py::ssize_t>(buffer.size()), true);
+  }
+
+private:
+  std::shared_ptr<codenib::core::FactBatchBuffers> owner_;
+  FactBufferTable table_;
+};
+
+void add_fact_buffers(py::dict &result, codenib::core::FactBatchBuffers buffers,
+                      bool copy_buffers) {
+  if (copy_buffers) {
+    result["meta"] = bytes_from_vector(buffers.meta);
+    result["batches"] = bytes_from_vector(buffers.batches);
+    result["symbols"] = bytes_from_vector(buffers.symbols);
+    result["occurrences"] = bytes_from_vector(buffers.occurrences);
+    result["edges"] = bytes_from_vector(buffers.edges);
+    result["diagnostics"] = bytes_from_vector(buffers.diagnostics);
+    result["graph_vertices"] = bytes_from_vector(buffers.graph_vertices);
+    result["graph_edges"] = bytes_from_vector(buffers.graph_edges);
+    result["arena"] = bytes_from_vector(buffers.arena);
+    return;
+  }
+
+  auto owner =
+      std::make_shared<codenib::core::FactBatchBuffers>(std::move(buffers));
+  auto add = [&](const char *name, FactBufferTable table) {
+    result[name] = py::cast(FactBatchOwnedBuffer(owner, table));
+  };
+  add("meta", FactBufferTable::Meta);
+  add("batches", FactBufferTable::Batches);
+  add("symbols", FactBufferTable::Symbols);
+  add("occurrences", FactBufferTable::Occurrences);
+  add("edges", FactBufferTable::Edges);
+  add("diagnostics", FactBufferTable::Diagnostics);
+  add("graph_vertices", FactBufferTable::GraphVertices);
+  add("graph_edges", FactBufferTable::GraphEdges);
+  add("arena", FactBufferTable::Arena);
+}
+
+py::dict
+decode_profile_to_dict(const codenib::core::SCIPDecodeProfile &profile) {
+  py::dict result;
+  result["load_metadata"] = profile.load_metadata_ns;
+  result["file_read"] = profile.file_read_ns;
+  result["extract_blocks"] = profile.extract_blocks_ns;
+  result["prescan"] = profile.prescan_ns;
+  result["process_documents"] = profile.process_documents_ns;
+  result["merge_subgraphs"] = profile.merge_subgraphs_ns;
+  result["materialize_graph"] = profile.materialize_graph_ns;
+  result["total"] = profile.total_ns;
+  result["worker_count"] = profile.worker_count;
+  result["document_count"] = profile.document_count;
+  return result;
+}
+
+py::dict fact_encode_profile_to_dict(
+    const codenib::core::FactBatchEncodeProfile &profile) {
+  py::dict result;
+  result["validate_options"] = profile.validate_options_ns;
+  result["collect_indexes"] = profile.collect_indexes_ns;
+  result["collect_facts"] = profile.collect_facts_ns;
+  result["encode_semantic"] = profile.encode_semantic_ns;
+  result["encode_graph"] = profile.encode_graph_ns;
+  result["finalize"] = profile.finalize_ns;
+  result["total"] = profile.total_ns;
+  return result;
+}
+
+py::dict decode_scip_fact_buffer(
+    const std::string &index_file, const std::string &profile_digest,
+    std::optional<std::string> project_root, const std::string &language,
+    const std::unordered_map<std::string, std::string> &content_digests,
+    bool include_graph_compat, bool copy_buffers) {
+  auto decoder =
+      codenib::core::make_scip_decoder(language, index_file, project_root);
+  codenib::core::FactBatchBufferOptions options;
+  options.language = language;
+  options.profile_digest = profile_digest;
+  options.content_digests = content_digests;
+  options.include_graph_compat = include_graph_compat;
+
+  using clock = std::chrono::steady_clock;
+  clock::time_point decode_started;
+  clock::time_point decode_finished;
+  clock::time_point encode_finished;
+  codenib::core::SCIPDecodeProfile decode_profile;
+  codenib::core::FactBatchBuffers buffers;
+  {
+    py::gil_scoped_release release;
+    decode_started = clock::now();
+    codenib::core::SCIPDecodedRecords records = decoder->decode_records();
+    decode_finished = clock::now();
+    decode_profile = decoder->last_profile();
+    buffers = codenib::core::encode_fact_batch_buffer(
+        records.vertices, records.edges, records.project_root, options);
+    encode_finished = clock::now();
+  }
+
+  auto elapsed_ns = [](clock::time_point start, clock::time_point end) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+        .count();
+  };
+  py::dict result;
+  const auto encode_profile = buffers.profile;
+  add_fact_buffers(result, std::move(buffers), copy_buffers);
+  result["native_decode_ns"] = elapsed_ns(decode_started, decode_finished);
+  result["native_encode_ns"] = elapsed_ns(decode_finished, encode_finished);
+  result["decode_profile_ns"] = decode_profile_to_dict(decode_profile);
+  result["encode_profile_ns"] = fact_encode_profile_to_dict(encode_profile);
+  return result;
+}
+
+py::dict fact_batch_buffer_contract() {
+  py::dict result;
+  result["abi_version"] = codenib::core::FACT_BATCH_BUFFER_ABI_VERSION;
+  result["schema_version"] = codenib::core::FACT_BATCH_SCHEMA_VERSION;
+  result["meta_size"] = codenib::core::FACT_BATCH_META_SIZE;
+  result["batch_row_size"] = codenib::core::FACT_BATCH_ROW_SIZE;
+  result["symbol_row_size"] = codenib::core::FACT_SYMBOL_ROW_SIZE;
+  result["occurrence_row_size"] = codenib::core::FACT_OCCURRENCE_ROW_SIZE;
+  result["edge_row_size"] = codenib::core::FACT_EDGE_ROW_SIZE;
+  result["diagnostic_row_size"] = codenib::core::FACT_DIAGNOSTIC_ROW_SIZE;
+  result["graph_vertex_row_size"] = codenib::core::FACT_GRAPH_VERTEX_ROW_SIZE;
+  result["graph_edge_row_size"] = codenib::core::FACT_GRAPH_EDGE_ROW_SIZE;
+  return result;
+}
+
 codenib::core::LayerBuckets
 classify_edge_layers_py(const std::vector<std::string> &edge_types) {
   py::gil_scoped_release release;
@@ -110,8 +293,14 @@ classify_edge_layers_py(const std::vector<std::string> &edge_types) {
 } // namespace
 
 PYBIND11_MODULE(codenib_core, m) {
-  m.doc() =
-      "codenib::core SCIP decoders (Python / Go / Rust / Ruby / TypeScript).";
+  m.doc() = "CodeNib native semantic decoders and transports.";
+
+  py::class_<FactBatchOwnedBuffer>(m, "_FactBatchOwnedBuffer",
+                                   py::buffer_protocol())
+      .def_buffer(&FactBatchOwnedBuffer::buffer_info)
+      .def("__len__", [](const FactBatchOwnedBuffer &buffer) {
+        return buffer.bytes().size();
+      });
 
   m.def("decode_scip", &decode_scip, py::arg("index_file"),
         py::arg("project_root") = std::optional<std::string>(std::nullopt),
@@ -140,6 +329,28 @@ Returns:
            anchor_file_or_None, anchor_line_or_None)
       - "project_root": the effective project_root used.
 )pbdoc");
+
+  m.def("decode_scip_fact_buffer", &decode_scip_fact_buffer,
+        py::arg("index_file"), py::arg("profile_digest"),
+        py::arg("project_root") = std::optional<std::string>(std::nullopt),
+        py::arg("language") = std::string("python"),
+        py::arg("content_digests") =
+            std::unordered_map<std::string, std::string>{},
+        py::arg("include_graph_compat") = true, py::arg("copy_buffers") = true,
+        R"pbdoc(
+Decode a SCIP index into FactBatchBuffer v1 byte tables.
+
+The return value contains a constant number of Python bytes objects rather
+than one dict/tuple per vertex or edge. ``graph_vertices`` and ``graph_edges``
+are an exact compatibility projection for the existing CodeGraph schema;
+the semantic tables remain grouped by file for FactBatch consumers. Set
+``include_graph_compat=False`` for consumers that do not materialize the
+legacy graph. Set ``copy_buffers=False`` to return ownership-safe read-only
+buffer exporters instead of copying every table into Python bytes.
+)pbdoc");
+
+  m.def("fact_batch_buffer_contract", &fact_batch_buffer_contract,
+        R"pbdoc(Return the compiled FactBatchBuffer ABI contract.)pbdoc");
 
   m.def("canonical_scip_decoder_languages",
         &codenib::core::canonical_scip_decoder_languages,
