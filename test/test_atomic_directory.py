@@ -2853,6 +2853,286 @@ def test_directory_orphan_callback_primary_survives_post_content_drift(
         saved_reader[0].capture_ownership()
 
 
+def _posix_cleanup_test_reader(
+    root: Path,
+) -> tuple[atomic_module.PublicationDirectoryReader, int]:
+    ownership = capture_directory_ownership(root)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    root_descriptor = os.open(root, flags)
+    reader = atomic_module.PublicationDirectoryReader(
+        root,
+        ownership.root_identity,
+        lambda _required, _allow_empty, _policy: ownership,
+        lambda relative, max_bytes, expected: (
+            atomic_module._open_posix_authenticated_file(
+                root_descriptor,
+                root,
+                relative,
+                max_bytes=max_bytes,
+                expected=expected,
+            )
+        ),
+        ownership,
+    )
+    return reader, root_descriptor
+
+
+def _windows_cleanup_test_reader() -> tuple[
+    _FakeWindowsApi,
+    atomic_module.PublicationDirectoryReader,
+    int,
+]:
+    api = _FakeWindowsApi()
+    nested = api.add_directory(api.root_id, "nested")
+    api.add_file(nested, "payload.txt", b"payload")
+    root_path = Path("C:/authority")
+    root_handle = api.create_directory_handle(root_path)
+    ownership = atomic_module._capture_windows_directory_handle(
+        api,
+        root_handle,
+        root_path,
+        required_root_file=None,
+        allow_empty_root=False,
+        entry_policy=None,
+    )
+    reader = atomic_module.PublicationDirectoryReader(
+        root_path,
+        ownership.root_identity,
+        lambda _required, _allow_empty, _policy: ownership,
+        lambda relative, max_bytes, expected: (
+            atomic_module._open_windows_authenticated_file(
+                api,
+                root_handle,
+                root_path,
+                relative,
+                max_bytes=max_bytes,
+                expected=expected,
+            )
+        ),
+        ownership,
+    )
+    return api, reader, root_handle
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+@pytest.mark.parametrize("primary_type", [KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_posix_authenticated_file_body_primary_survives_cleanup_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    primary_type: type[BaseException],
+) -> None:
+    root = tmp_path / "publication"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_bytes(b"payload")
+    reader, root_descriptor = _posix_cleanup_test_reader(root)
+    real_close = os.close
+    primary = primary_type("body-primary")
+    close_errors: list[OSError] = []
+
+    def fail_finalize(_authenticated: object) -> None:
+        raise RuntimeError("finalize-secondary")
+
+    def close_then_fail(descriptor: int) -> None:
+        real_close(descriptor)
+        error = OSError(f"close-secondary-{len(close_errors)}")
+        close_errors.append(error)
+        raise error
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(
+                atomic_module.PublicationAuthenticatedFile,
+                "_finalize",
+                fail_finalize,
+            )
+            faults.setattr(atomic_module.os, "close", close_then_fail)
+            with pytest.raises(primary_type, match="body-primary") as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    raise primary
+
+        assert caught.value is primary
+        notes = _exception_notes(primary)
+        assert any(
+            "file finalization also failed" in note and "finalize-secondary" in note
+            for note in notes
+        )
+        assert any("file descriptor cleanup also failed" in note for note in notes)
+        assert any("directory descriptor cleanup also failed" in note for note in notes)
+        assert len(close_errors) == 3
+        assert reader._authentication_failed is True
+        with pytest.raises(RuntimeError, match="suppressed authentication failure"):
+            reader._require_valid()
+    finally:
+        reader._deactivate()
+        real_close(root_descriptor)
+
+
+@pytest.mark.parametrize("primary_type", [KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_windows_authenticated_file_body_primary_survives_cleanup_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    primary_type: type[BaseException],
+) -> None:
+    api, reader, root_handle = _windows_cleanup_test_reader()
+    real_close = api.close
+    primary = primary_type("body-primary")
+    close_errors: list[OSError] = []
+
+    def fail_finalize(_authenticated: object) -> None:
+        raise RuntimeError("finalize-secondary")
+
+    def close_then_fail(handle: int) -> None:
+        real_close(handle)
+        error = OSError(f"close-secondary-{len(close_errors)}")
+        close_errors.append(error)
+        raise error
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(
+                atomic_module.PublicationAuthenticatedFile,
+                "_finalize",
+                fail_finalize,
+            )
+            faults.setattr(api, "close", close_then_fail)
+            with pytest.raises(primary_type, match="body-primary") as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    raise primary
+
+        assert caught.value is primary
+        notes = _exception_notes(primary)
+        assert any(
+            "file finalization also failed" in note and "finalize-secondary" in note
+            for note in notes
+        )
+        assert any("file HANDLE cleanup also failed" in note for note in notes)
+        assert any("directory HANDLE cleanup also failed" in note for note in notes)
+        assert len(close_errors) == 2
+        assert reader._authentication_failed is True
+        with pytest.raises(RuntimeError, match="suppressed authentication failure"):
+            reader._require_valid()
+    finally:
+        reader._deactivate()
+        real_close(root_handle)
+    assert api.handles == {}
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+@pytest.mark.parametrize("failure_phase", ["finalize", "close"])
+def test_posix_authenticated_file_cleanup_primary_is_exact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_phase: str,
+) -> None:
+    root = tmp_path / "publication"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_bytes(b"payload")
+    reader, root_descriptor = _posix_cleanup_test_reader(root)
+    real_close = os.close
+    cleanup_primary = SystemExit(f"{failure_phase}-primary")
+    close_calls = 0
+
+    def fail_finalize(_authenticated: object) -> None:
+        raise cleanup_primary
+
+    def close_with_first_fault(descriptor: int) -> None:
+        nonlocal close_calls
+        real_close(descriptor)
+        close_calls += 1
+        if close_calls == 1:
+            raise cleanup_primary
+
+    try:
+        with monkeypatch.context() as faults:
+            if failure_phase == "finalize":
+                faults.setattr(
+                    atomic_module.PublicationAuthenticatedFile,
+                    "_finalize",
+                    fail_finalize,
+                )
+            else:
+                faults.setattr(atomic_module.os, "close", close_with_first_fault)
+            with pytest.raises(SystemExit, match=f"{failure_phase}-primary") as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    pass
+
+        assert caught.value is cleanup_primary
+        if failure_phase == "close":
+            assert close_calls == 3
+        assert reader._authentication_failed is True
+        with pytest.raises(RuntimeError, match="suppressed authentication failure"):
+            reader._require_valid()
+    finally:
+        reader._deactivate()
+        real_close(root_descriptor)
+
+
+@pytest.mark.parametrize("failure_phase", ["finalize", "close"])
+def test_windows_authenticated_file_cleanup_primary_is_exact(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_phase: str,
+) -> None:
+    api, reader, root_handle = _windows_cleanup_test_reader()
+    real_close = api.close
+    cleanup_primary = SystemExit(f"{failure_phase}-primary")
+    close_calls = 0
+
+    def fail_finalize(_authenticated: object) -> None:
+        raise cleanup_primary
+
+    def close_with_first_fault(handle: int) -> None:
+        nonlocal close_calls
+        real_close(handle)
+        close_calls += 1
+        if close_calls == 1:
+            raise cleanup_primary
+
+    try:
+        with monkeypatch.context() as faults:
+            if failure_phase == "finalize":
+                faults.setattr(
+                    atomic_module.PublicationAuthenticatedFile,
+                    "_finalize",
+                    fail_finalize,
+                )
+            else:
+                faults.setattr(api, "close", close_with_first_fault)
+            with pytest.raises(SystemExit, match=f"{failure_phase}-primary") as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    pass
+
+        assert caught.value is cleanup_primary
+        if failure_phase == "close":
+            assert close_calls == 2
+        assert reader._authentication_failed is True
+        with pytest.raises(RuntimeError, match="suppressed authentication failure"):
+            reader._require_valid()
+    finally:
+        reader._deactivate()
+        real_close(root_handle)
+    assert api.handles == {}
+
+
 def test_publication_reader_streams_and_authenticates_on_context_exit(
     tmp_path: Path,
 ) -> None:

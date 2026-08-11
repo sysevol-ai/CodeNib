@@ -497,6 +497,57 @@ def _retain_first_error(
     return primary_error
 
 
+@contextmanager
+def _run_context_with_cleanup_actions(
+    cleanup_actions: Callable[
+        [],
+        tuple[tuple[str, Callable[[], None]], ...],
+    ],
+) -> Iterator[None]:
+    """Run every cleanup action without replacing a context-body primary."""
+
+    if not callable(cleanup_actions):
+        raise TypeError("context cleanup actions must be callable")
+    # An outer ``except`` leaves an ambient value in ``sys.exc_info()``. Track
+    # it separately so cleanup-only failure still propagates from a successful
+    # context body entered while that unrelated exception is being handled.
+    ambient_error = sys.exc_info()[1]
+    context_error: BaseException | None = None
+    try:
+        yield
+    except BaseException as error:  # noqa: B036 - preserve exact local primary
+        context_error = error
+        raise
+    finally:
+        active_error = sys.exc_info()[1]
+        locally_unwinding = context_error is not None or (
+            active_error is not None and active_error is not ambient_error
+        )
+        primary_error = context_error
+        if primary_error is None and locally_unwinding:
+            primary_error = active_error
+        try:
+            actions = cleanup_actions()
+        except BaseException as action_error:  # noqa: B036 - keep first primary
+            primary_error = _retain_first_error(
+                primary_error,
+                "publication authenticated cleanup planning also failed",
+                action_error,
+            )
+        else:
+            for label, cleanup in actions:
+                try:
+                    cleanup()
+                except BaseException as cleanup_error:  # noqa: B036 - keep first
+                    primary_error = _retain_first_error(
+                        primary_error,
+                        label,
+                        cleanup_error,
+                    )
+        if not locally_unwinding and primary_error is not None:
+            raise primary_error
+
+
 def _run_callback_with_post_validations(
     callback: Callable[[], _T],
     post_validations: tuple[tuple[str, Callable[[], None]], ...],
@@ -2173,7 +2224,33 @@ def _open_windows_authenticated_file(
     authenticated: PublicationAuthenticatedFile | None = None
     expected_directories = dict(expected.directory_identities)
     traversed: list[str] = []
-    try:
+
+    def cleanup_actions() -> tuple[tuple[str, Callable[[], None]], ...]:
+        actions: list[tuple[str, Callable[[], None]]] = []
+        if authenticated is not None:
+            actions.append(
+                (
+                    "publication authenticated file finalization also failed",
+                    lambda: authenticated._finalize(),
+                )
+            )
+        if file_handle:
+            actions.append(
+                (
+                    "publication authenticated file HANDLE cleanup also failed",
+                    lambda: api.close(file_handle),
+                )
+            )
+        actions.extend(
+            (
+                "publication authenticated directory HANDLE cleanup also failed",
+                lambda handle=handle: api.close(handle),
+            )
+            for handle in reversed(opened_directories)
+        )
+        return tuple(actions)
+
+    with _run_context_with_cleanup_actions(cleanup_actions):
         for part in relative.parts[:-1]:
             traversed.append(part)
             relative_directory = "/".join(traversed)
@@ -2263,15 +2340,6 @@ def _open_windows_authenticated_file(
             verify_callback=verify,
         )
         yield authenticated
-    finally:
-        try:
-            if authenticated is not None:
-                authenticated._finalize()
-        finally:
-            if file_handle:
-                api.close(file_handle)
-            for handle in reversed(opened_directories):
-                api.close(handle)
 
 
 def _scan_windows_owned_directory(
@@ -2844,7 +2912,33 @@ def _open_posix_authenticated_file(
     authenticated: PublicationAuthenticatedFile | None = None
     expected_directories = dict(expected.directory_identities)
     traversed: list[str] = []
-    try:
+
+    def cleanup_actions() -> tuple[tuple[str, Callable[[], None]], ...]:
+        actions: list[tuple[str, Callable[[], None]]] = []
+        if authenticated is not None:
+            actions.append(
+                (
+                    "publication authenticated file finalization also failed",
+                    lambda: authenticated._finalize(),
+                )
+            )
+        if file_descriptor >= 0:
+            actions.append(
+                (
+                    "publication authenticated file descriptor cleanup also failed",
+                    lambda: os.close(file_descriptor),
+                )
+            )
+        actions.extend(
+            (
+                "publication authenticated directory descriptor cleanup also failed",
+                lambda descriptor=descriptor: os.close(descriptor),
+            )
+            for descriptor in reversed(descriptors)
+        )
+        return tuple(actions)
+
+    with _run_context_with_cleanup_actions(cleanup_actions):
         for part in relative.parts[:-1]:
             traversed.append(part)
             relative_directory = "/".join(traversed)
@@ -2939,15 +3033,6 @@ def _open_posix_authenticated_file(
             verify_callback=verify,
         )
         yield authenticated
-    finally:
-        try:
-            if authenticated is not None:
-                authenticated._finalize()
-        finally:
-            if file_descriptor >= 0:
-                os.close(file_descriptor)
-            for descriptor in reversed(descriptors):
-                os.close(descriptor)
 
 
 def _ownership_hash_field(hasher, value: bytes) -> None:
