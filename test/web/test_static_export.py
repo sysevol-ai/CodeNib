@@ -350,6 +350,41 @@ def test_static_export_rejects_output_symlink(
     assert _tree_bytes(victim) == previous
 
 
+def test_static_export_preserves_primary_when_stage_discard_fails(
+    export_setup,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = KeyboardInterrupt("static-build-primary")
+    secondary = SystemExit("static-discard-secondary")
+
+    def fail_copy(*_args, **_kwargs):
+        raise primary
+
+    def fail_discard(_stage):
+        raise secondary
+
+    monkeypatch.setattr(static_module, "_copy_frontend", fail_copy)
+    monkeypatch.setattr(static_module.OwnedDirectoryStage, "discard", fail_discard)
+
+    with pytest.raises(KeyboardInterrupt, match="static-build-primary") as caught:
+        export_static_wiki(
+            export_setup.repo,
+            export_setup.manifest_path,
+            export_setup.output,
+            frontend_dir=export_setup.frontend,
+        )
+
+    assert caught.value is primary
+    notes = tuple(getattr(primary, "__notes__", ())) + tuple(
+        getattr(primary, "_codenib_cleanup_notes", ())
+    )
+    assert any(
+        "static export stage discard also failed" in note
+        and "static-discard-secondary" in note
+        for note in notes
+    )
+
+
 def test_static_export_never_overwrites_raced_runtime_config(
     export_setup,
     monkeypatch: pytest.MonkeyPatch,

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import os
 import re
 import subprocess
@@ -18,8 +17,8 @@ from typing import Any, Iterable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 
 from .._atomic_directory import (
-    DirectoryOrphan,
     PublicationDirectoryReader,
+    _annotate_secondary_error,
     capture_directory_ownership,
     directory_ownership_file_records,
     lexical_directory_path,
@@ -38,26 +37,6 @@ from .local import prepare_local_wiki
 
 STATIC_EXPORT_SCHEMA_VERSION = "1.0"
 STATIC_EXPORT_MANIFEST = "codenib-static.json"
-logger = logging.getLogger(__name__)
-
-
-def _record_publication_orphan(
-    orphan: DirectoryOrphan | None,
-    *,
-    operation: str,
-) -> None:
-    if orphan is None:
-        return
-    logger.warning(
-        "Static export %s retained an orphan for quiescent GC: "
-        "path=%s digest=%s entries=%d bytes=%d verified=%s",
-        operation,
-        orphan.path,
-        orphan.ownership_digest,
-        orphan.entries,
-        orphan.byte_count,
-        orphan.verified_at_isolation,
-    )
 
 
 _DOCUMENT_BASE_RE = re.compile(r"<base\s+[^>]*href=(['\"])[^'\"]*\1[^>]*>", re.I)
@@ -1009,14 +988,20 @@ def export_static_wiki(
                     "published static export differs from its staged identity"
                 )
 
-        publication_orphan = stage.publish(
+        stage.publish(
             validate_staged_directory=validate_export,
             validate_published_destination=validate_export,
         )
-        _record_publication_orphan(publication_orphan, operation="publication")
         manifest_file = output_dir.joinpath(*manifest_file.parts)
-    except BaseException:
-        _record_publication_orphan(stage.discard(), operation="discard")
+    except BaseException as primary_error:
+        try:
+            stage.discard()
+        except BaseException as discard_error:  # noqa: B036 - preserve primary
+            _annotate_secondary_error(
+                primary_error,
+                "static export stage discard also failed",
+                discard_error,
+            )
         raise
 
     return StaticExportResult(
