@@ -7,7 +7,6 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
-import os
 import pickle
 from pathlib import Path
 from types import SimpleNamespace
@@ -294,15 +293,19 @@ def test_context_artifact_restores_previous_output_on_publish_failure(
         bm25_artifact_file_fingerprints(view_path)
     )
     manifest.save(manifest_path)
-    real_replace = os.replace
+    from codenib import _atomic_directory as atomic_module
 
-    def fail_final_publish(source, target):
-        source_path = Path(source)
-        if source_path.name.startswith(".context.tmp-") and Path(target) == output:
+    real_rename = atomic_module._rename_noreplace_at
+
+    def fail_final_publish(source, target, source_parent, target_parent):
+        if source.startswith(".context.tmp-") and target == output.name:
             raise OSError("injected context publish failure")
-        return real_replace(source, target)
+        return real_rename(source, target, source_parent, target_parent)
 
-    monkeypatch.setattr("codenib._atomic_directory.os.replace", fail_final_publish)
+    monkeypatch.setattr(
+        "codenib._atomic_directory._rename_noreplace_at",
+        fail_final_publish,
+    )
 
     with pytest.raises(OSError, match="injected context publish failure"):
         stage_context_artifact(
