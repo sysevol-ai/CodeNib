@@ -6,13 +6,18 @@
 
 from __future__ import annotations
 
+import json
 import stat
 import tempfile
 import zipfile
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
 from .._atomic_directory import (
+    PublicationDirectoryReader,
+    _annotate_secondary_error,
     capture_directory_ownership,
+    directory_ownership_root_identity,
     discard_owned_directory,
     lexical_directory_path,
     publish_staged_directory,
@@ -23,6 +28,7 @@ from .runtime import VerifiedContextArtifact, verify_context_artifact
 DEFAULT_MAX_ARCHIVE_FILES = 100_000
 DEFAULT_MAX_EXPANDED_BYTES = 64 * 1024 * 1024 * 1024
 _COPY_CHUNK_BYTES = 1024 * 1024
+_MAX_CONTEXT_METADATA_BYTES = 16 * 1024 * 1024
 
 
 def _member_path(value: str) -> PurePosixPath:
@@ -187,6 +193,9 @@ def extract_context_artifact_archive(
         )
     )
     stage_root_ownership = capture_directory_ownership(stage)
+    initial_stage_root_identity = directory_ownership_root_identity(
+        stage_root_ownership
+    )
     try:
         with zipfile.ZipFile(archive_path) as archive:
             members = _validated_members(
@@ -197,16 +206,56 @@ def extract_context_artifact_archive(
             for info, relative in members:
                 _extract_member(archive, info, relative, stage)
 
-        def validate_artifact(candidate: Path) -> None:
-            verify_context_artifact(
-                candidate,
-                expected_repository=expected_repository,
-                expected_commit=expected_commit,
-                max_files=max_files,
-                max_bytes=max_bytes,
-            )
+        verified = verify_context_artifact(
+            stage,
+            expected_repository=expected_repository,
+            expected_commit=expected_commit,
+            max_files=max_files,
+            max_bytes=max_bytes,
+        )
+        publication_ownership = capture_directory_ownership(stage)
+        if (
+            directory_ownership_root_identity(publication_ownership)
+            != initial_stage_root_identity
+        ):
+            raise RuntimeError("context artifact stage root changed during extraction")
+        stage_root_ownership = publication_ownership
+        expected_files = {
+            item["path"]: (item["bytes"], item["sha256"])
+            for item in verified.metadata["files"]
+        }
 
-        validate_artifact(stage)
+        def validate_artifact(candidate: PublicationDirectoryReader) -> None:
+            records = {record.path: record for record in candidate.file_records()}
+            metadata_record = records.pop(CONTEXT_ARTIFACT_MANIFEST, None)
+            if (
+                metadata_record is None
+                or metadata_record.size > _MAX_CONTEXT_METADATA_BYTES
+                or set(records) != set(expected_files)
+                or any(
+                    (record.size, record.sha256) != expected_files[path]
+                    for path, record in records.items()
+                )
+            ):
+                raise ValueError(
+                    "published context artifact differs from its verified identity"
+                )
+            try:
+                metadata = json.loads(
+                    candidate.read_bytes(
+                        CONTEXT_ARTIFACT_MANIFEST,
+                        max_bytes=_MAX_CONTEXT_METADATA_BYTES,
+                    ).decode("utf-8", errors="strict")
+                )
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    "published context artifact metadata is invalid"
+                ) from exc
+            if metadata != verified.metadata:
+                raise ValueError(
+                    "published context artifact metadata changed after verification"
+                )
+
         publish_staged_directory(
             stage,
             output,
@@ -216,20 +265,60 @@ def extract_context_artifact_archive(
             validate_published_destination=validate_artifact,
         )
     except zipfile.BadZipFile as exc:
-        discard_owned_directory(stage, stage_root_ownership)
-        raise ValueError(
+        primary_error = ValueError(
             f"context artifact archive is not a valid ZIP: {archive_path}"
-        ) from exc
-    except BaseException:
-        discard_owned_directory(stage, stage_root_ownership)
+        )
+        try:
+            observed_stage_ownership = capture_directory_ownership(stage)
+            if (
+                directory_ownership_root_identity(observed_stage_ownership)
+                == initial_stage_root_identity
+            ):
+                stage_root_ownership = observed_stage_ownership
+        except BaseException as capture_error:  # noqa: B036 - preserve primary
+            _annotate_secondary_error(
+                primary_error,
+                "context archive stage cleanup capture also failed",
+                capture_error,
+            )
+        try:
+            discard_owned_directory(stage, stage_root_ownership)
+        except BaseException as discard_error:  # noqa: B036 - preserve primary
+            _annotate_secondary_error(
+                primary_error,
+                "context archive stage discard also failed",
+                discard_error,
+            )
+        raise primary_error from exc
+    except BaseException as primary_error:
+        try:
+            observed_stage_ownership = capture_directory_ownership(stage)
+            if (
+                directory_ownership_root_identity(observed_stage_ownership)
+                == initial_stage_root_identity
+            ):
+                stage_root_ownership = observed_stage_ownership
+        except BaseException as capture_error:  # noqa: B036 - preserve primary
+            _annotate_secondary_error(
+                primary_error,
+                "context archive stage cleanup capture also failed",
+                capture_error,
+            )
+        try:
+            discard_owned_directory(stage, stage_root_ownership)
+        except BaseException as discard_error:  # noqa: B036 - preserve primary
+            _annotate_secondary_error(
+                primary_error,
+                "context archive stage discard also failed",
+                discard_error,
+            )
         raise
 
-    return verify_context_artifact(
-        output,
-        expected_repository=expected_repository,
-        expected_commit=expected_commit,
-        max_files=max_files,
-        max_bytes=max_bytes,
+    return replace(
+        verified,
+        root=output,
+        metadata_path=output / CONTEXT_ARTIFACT_MANIFEST,
+        manifest_path=output / verified.manifest_path.relative_to(stage),
     )
 
 

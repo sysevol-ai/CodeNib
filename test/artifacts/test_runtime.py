@@ -9,7 +9,6 @@ import hashlib
 import io
 import json
 import math
-import os
 import shlex
 import shutil
 import stat
@@ -513,18 +512,19 @@ def test_extract_archive_restores_previous_output_on_publish_failure(
     extract_context_artifact_archive(archive, output)
     marker = output / "previous-output.marker"
     marker.write_text("preserve", encoding="utf-8")
-    real_replace = os.replace
+    from codenib import _atomic_directory as atomic_directory
 
-    def fail_final_publish(source, target):
-        source_path = Path(source)
-        if (
-            source_path.name.startswith(".extracted.extract-")
-            and Path(target) == output
-        ):
+    real_rename = atomic_directory._rename_noreplace_at
+
+    def fail_final_publish(source, target, source_dir_fd, target_dir_fd):
+        if source.startswith(".extracted.extract-") and target == output.name:
             raise OSError("injected archive publish failure")
-        return real_replace(source, target)
+        return real_rename(source, target, source_dir_fd, target_dir_fd)
 
-    monkeypatch.setattr("codenib._atomic_directory.os.replace", fail_final_publish)
+    monkeypatch.setattr(
+        "codenib._atomic_directory._rename_noreplace_at",
+        fail_final_publish,
+    )
 
     with pytest.raises(OSError, match="injected archive publish failure"):
         extract_context_artifact_archive(archive, output)
