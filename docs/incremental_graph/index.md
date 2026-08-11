@@ -41,7 +41,7 @@ compiler.update_repo("/path/to/repo")    # incremental advance to HEAD
 - **Nothing to do** — `HEAD` unchanged and every requested index `fresh`: returns the existing manifest untouched.
 - **Retry incomplete builds** — `HEAD` unchanged but some requested index is missing or not `fresh` (a previous run failed partway): re-runs a full `compile_repo()` so the failed indexes are retried instead of staying stale.
 - **Full rebuild fallback** — no manifest, an unreadable manifest, or an empty `last_indexed_commit` (no complete baseline was ever established): falls back to `compile_repo()`.
-- **Incremental advance** — otherwise, each builder's `incremental_update(..., last_commit=<previous>)` runs. Builders without a real delta path (BM25, Zoekt) rebuild internally, the vector builder applies a git-diff-driven embedding update, and the symbol-graph builder runs the LSP patcher described below — the result is always correct, only the cost differs.
+- **Incremental advance** — otherwise, each builder's `incremental_update(..., last_commit=<previous>)` runs. Builders without a safely publishable delta path rebuild internally. BM25 and Zoekt rebuild, and the vector builder validates the existing generation and its native-read authority before publishing one complete private-generation rebuild; it does not mutate the live vector tree in place. The symbol-graph builder runs the LSP patcher described below — the result is always correct, only the cost differs.
 
 ### last_indexed_commit Semantics
 
