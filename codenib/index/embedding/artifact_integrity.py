@@ -16,6 +16,7 @@ from typing import Any, Mapping
 
 from ..._atomic_directory import (
     TreeFileRecord,
+    _annotate_secondary_error,
     capture_directory_ownership,
     directory_ownership_file_records,
     directory_ownership_inventory,
@@ -23,6 +24,11 @@ from ..._atomic_directory import (
 )
 from ..._bounded_json import iter_bounded_json_array
 from ..._captured_directory import AuthenticatedFile, CapturedDirectoryReader
+from ...native_index_authorization import (
+    NativeIndexAuthorization,
+    require_native_index_authorization,
+    require_native_index_authorization_preflight,
+)
 
 VECTOR_PERSISTENCE_SCHEMA = 1
 VECTOR_VIEW_UPDATE_MARKER = ".vector-view.update-in-progress"
@@ -255,6 +261,46 @@ def capture_authenticated_vector_view(root: str | Path) -> AuthenticatedVectorVi
         return AuthenticatedVectorView.capture(root)
     except (OSError, RuntimeError, ValueError) as exc:
         raise ValueError(f"vector view could not be captured safely: {root}") from exc
+
+
+def require_authorized_vector_view(
+    root: str | Path,
+    authorization: NativeIndexAuthorization | None,
+    semantic_contract: Mapping[str, Any],
+) -> None:
+    """Require exact authority for a vector tree without loading its model.
+
+    This gate is intended for callers whose vector-store constructor may load
+    an embedding model or initialize a remote client. It binds the supplied
+    capability to one freshly captured tree and semantic contract, verifies
+    that the tree remained stable, and closes the captured view before the
+    caller performs any expensive initialization.
+    """
+
+    require_native_index_authorization_preflight(
+        authorization,
+        view_type="vector",
+    )
+    view = capture_authenticated_vector_view(root)
+    try:
+        require_native_index_authorization(
+            authorization,
+            view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+        )
+        view.verify_final()
+    except BaseException as primary_error:  # noqa: B036 - preserve first failure
+        try:
+            view.close()
+        except BaseException as cleanup_error:  # noqa: B036 - preserve first failure
+            _annotate_secondary_error(
+                primary_error,
+                "authenticated vector view cleanup also failed",
+                cleanup_error,
+            )
+        raise
+    view.close()
 
 
 def _file_identity(metadata: os.stat_result) -> tuple[int, ...]:
@@ -577,6 +623,7 @@ __all__ = [
     "begin_vector_view_update",
     "capture_authenticated_vector_view",
     "finish_vector_view_update",
+    "require_authorized_vector_view",
     "require_complete_vector_view",
     "validate_vector_config_artifact",
     "validate_vector_generation_artifacts",

@@ -28,6 +28,7 @@ from .._atomic_directory import (
 from .._bounded_json import iter_bounded_json_array
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import RepoManifest
+from ..index.embedding.artifact_integrity import require_authorized_vector_view
 from ..provider_routes import resolve_embedding_artifact_route
 
 if TYPE_CHECKING:
@@ -274,11 +275,11 @@ class ServerContext:
         ctx: ServerContext | None = None
         try:
             selected = _resolve_views(views)
-            if artifact_binding is not None and native_index_authorization is not None:
-                raise ValueError(
-                    "portable artifact bindings cannot authorize native vector parsing"
-                )
             artifact_origin = artifact is not None or artifact_binding is not None
+            if artifact_origin and native_index_authorization is not None:
+                raise ValueError(
+                    "portable artifact contexts cannot authorize native vector parsing"
+                )
             if artifact_origin:
                 disallowed = selected - _PORTABLE_ARTIFACT_RUNTIME_VIEWS
                 if views is not None and disallowed:
@@ -425,18 +426,24 @@ class ServerContext:
 
         selected = _resolve_views(views)
         with self._view_lock:
-            if self.artifact is not None or self._artifact_binding is not None:
+            artifact_origin = (
+                self.artifact is not None or self._artifact_binding is not None
+            )
+            if artifact_origin:
                 disallowed = selected - _PORTABLE_ARTIFACT_RUNTIME_VIEWS
                 if disallowed:
                     raise ValueError(
                         "portable artifact contexts cannot load native views: "
                         + ", ".join(sorted(disallowed))
                     )
-            if native_index_authorization is not None:
-                if self._artifact_binding is not None:
+                if (
+                    native_index_authorization is not None
+                    or self._native_index_authorization is not None
+                ):
                     raise ValueError(
-                        "portable artifact bindings cannot authorize native parsing"
+                        "portable artifact contexts cannot authorize native parsing"
                     )
+            if native_index_authorization is not None:
                 self._native_index_authorization = native_index_authorization
             for view, loader_name in _VIEW_LOADERS:
                 if view not in selected or getattr(self, view, None) is not None:
@@ -678,6 +685,13 @@ class ServerContext:
         entry = self.manifest.indexes.get("vector")
         if not entry or not self.manifest.index_is_current("vector"):
             return
+        if self.artifact is not None or self._artifact_binding is not None:
+            self.errors["vector"] = (
+                "portable artifact contexts cannot use external authorization "
+                "for native vector parsing"
+            )
+            logger.warning("Portable vector view remains native-parser inert")
+            return
         if self._native_index_authorization is None:
             self.errors["vector"] = (
                 "native vector parsing requires external authorization; "
@@ -691,6 +705,11 @@ class ServerContext:
             from ..index.embedding.vector_store import CodeVectorStore
 
             cfg = entry.config
+            require_authorized_vector_view(
+                entry.path,
+                self._native_index_authorization,
+                cfg,
+            )
             route = resolve_embedding_artifact_route(cfg)
             kwargs = route.embedding_backend_kwargs()
             if probe:
