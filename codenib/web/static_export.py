@@ -10,7 +10,6 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
@@ -26,12 +25,20 @@ from .._atomic_directory import (
 )
 from .._captured_directory import OwnedDirectoryStage
 from .._version import package_version
-from ..artifacts.security import (
-    assert_publishable_tree_reader,
+from ..artifacts.runtime import (
+    SourceBindingCleanupOwner,
+    _raise_source_cleanup_failure,
+    _source_cleanup_owner_is_pending,
 )
+from ..artifacts.security import assert_publishable_tree_reader
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import RepoManifest
-from ..source_fingerprint import lexical_repository_path
+from ..source_fingerprint import (
+    RepositorySourceReader,
+    capture_repository_source,
+    is_secure_source_fingerprint_v2,
+    lexical_repository_path,
+)
 from .launcher import find_frontend_dir
 from .local import prepare_local_wiki
 
@@ -248,6 +255,7 @@ def _page_graph(bundle: Any, page: Mapping[str, Any]) -> dict[str, Any]:
                 page.get("citations") or (),
                 repo_dir=bundle.entry.repo_dir,
                 hierarchy_graph=bundle.hierarchical_graph(),
+                source_reader=getattr(bundle, "source_reader", None),
             )
         )
     except Exception:  # noqa: BLE001 - an optional graph must not block the Wiki
@@ -677,32 +685,12 @@ def _view_provenance(manifest: RepoManifest) -> dict[str, Any]:
     return result
 
 
-def _github_repository_url(repo_path: Path) -> str | None:
-    result = subprocess.run(
-        ["git", "-C", str(repo_path), "remote", "get-url", "origin"],
-        capture_output=True,
-        check=False,
-        text=True,
-    )
-    if result.returncode != 0:
-        return None
-    origin = result.stdout.strip()
-    if origin.startswith("git@github.com:"):
-        path = origin.split(":", 1)[1]
-    else:
-        parsed = urlsplit(origin)
-        if (parsed.hostname or "").lower() != "github.com":
-            return None
-        path = parsed.path.lstrip("/")
-    if path.endswith(".git"):
-        path = path[:-4]
-    path = path.strip("/")
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", path):
-        return None
-    return f"https://github.com/{path}"
-
-
-def _load_static_bundle(local: Any, manifest_path: Path) -> Any:
+def _load_static_bundle(
+    local: Any,
+    manifest_path: Path,
+    *,
+    source_reader: RepositorySourceReader | None = None,
+) -> Any:
     """Load only the persisted views required to render static Wiki pages."""
 
     from ..index.sparse_idx.bm25_index import BM25CodeIndexer
@@ -732,6 +720,7 @@ def _load_static_bundle(local: Any, manifest_path: Path) -> Any:
         chat_available=False,
         view_loader=load_views,
         runtime_loader=None,
+        source_reader=source_reader,
     )
 
 
@@ -810,6 +799,40 @@ def _validated_output(
     return output_dir
 
 
+def _close_static_source(owner: SourceBindingCleanupOwner) -> None:
+    cleanup_failure: BaseException | None = None
+    try:
+        owner.close()
+    except BaseException as exc:  # noqa: B036 - retryable retained authority
+        cleanup_failure = exc
+    pending_owner = owner if _source_cleanup_owner_is_pending(owner) else None
+    if cleanup_failure is not None:
+        _raise_source_cleanup_failure(
+            cleanup_failure,
+            None,
+            pending_owner,
+        )
+    if pending_owner is not None:
+        _raise_source_cleanup_failure(
+            RuntimeError("static export source cleanup did not finish"),
+            None,
+            pending_owner,
+        )
+
+
+def _raise_after_static_source_cleanup(
+    owner: SourceBindingCleanupOwner,
+    primary: BaseException,
+) -> None:
+    cleanup_failure: BaseException | None = None
+    try:
+        owner.close()
+    except BaseException as exc:  # noqa: B036 - preserve body and retry owner
+        cleanup_failure = exc
+    pending_owner = owner if _source_cleanup_owner_is_pending(owner) else None
+    _raise_source_cleanup_failure(primary, cleanup_failure, pending_owner)
+
+
 def export_static_wiki(
     repo_path: Path,
     manifest_path: Path,
@@ -837,58 +860,97 @@ def export_static_wiki(
         repo_path,
         manifest_path,
         frontend_port=0,
+        repository_slug=repo_path.name or "repository",
         agent_wiki=False,
     )
 
     from ..wiki import WikiBuilder
 
-    bundle = _load_static_bundle(local, manifest_path)
-    builder = WikiBuilder(bundle)
-
-    tree = builder.page_tree()
-    page_ids = _page_ids(tree)
-    pages = []
-    graphs: dict[str, dict[str, Any]] = {}
-    for page_id in page_ids:
-        page = builder.page(page_id)
-        if page is None:
-            raise ValueError(f"Wiki page tree references a missing page: {page_id}")
-        normalized = _normalize_page(builder, page)
-        pages.append(normalized)
-        graphs[page_id] = _embed_page_graph_sources(
-            builder,
-            _page_graph(bundle, normalized),
-        )
-
-    repo_info = _model_dict(bundle.info())
-    capabilities = {name: False for name in dict(repo_info.get("capabilities") or {})}
-    capabilities.update(
-        {
-            "chat": False,
-            "codemap": False,
-            "edge_labels": False,
-            "source_citations": True,
-            "static_wiki": True,
-            "wiki_graph": any(graph.get("available") for graph in graphs.values()),
-        }
-    )
-    repo_info["capabilities"] = capabilities
-    repo_info["problem_statement"] = ""
-    repo_info["incremental"] = None
-    repo_info["source_url"] = _github_repository_url(repo_path)
-
+    cleanup_owner = SourceBindingCleanupOwner()
+    stage: OwnedDirectoryStage | None = None
     try:
-        stage = OwnedDirectoryStage.prepare(
-            output_dir,
-            required_destination_file=STATIC_EXPORT_MANIFEST,
-            allow_empty_destination=True,
+        expected_manifest = RepoManifest.load(str(manifest_path))
+        if not is_secure_source_fingerprint_v2(expected_manifest.source_fingerprint):
+            raise ValueError("static export source reads require source fingerprint v2")
+        source_binding = capture_repository_source(
+            repo_path,
+            exclude_roots=(manifest_path.parent,),
+            _source_owner=cleanup_owner.retain,
         )
-    except (OSError, RuntimeError) as exc:
-        raise ValueError(
-            "refusing to replace a non-empty directory that is not a CodeNib "
-            f"static export: {output_dir}"
-        ) from exc
-    try:
+        if (
+            source_binding.fingerprint != expected_manifest.source_fingerprint
+            or source_binding.file_count != expected_manifest.file_count
+        ):
+            raise ValueError("repository source content does not match the manifest")
+        source_reader = source_binding.borrow_reader()
+
+        with source_binding.read_session():
+            bundle = _load_static_bundle(
+                local,
+                manifest_path,
+                source_reader=source_reader,
+            )
+            if (
+                source_binding.fingerprint != bundle.manifest.source_fingerprint
+                or source_binding.file_count != bundle.manifest.file_count
+            ):
+                raise ValueError(
+                    "repository source content does not match the loaded manifest"
+                )
+            builder = WikiBuilder(bundle, source_reader=source_reader)
+
+            tree = builder.page_tree()
+            page_ids = _page_ids(tree)
+            pages = []
+            graphs: dict[str, dict[str, Any]] = {}
+            for page_id in page_ids:
+                page = builder.page(page_id)
+                if page is None:
+                    raise ValueError(
+                        f"Wiki page tree references a missing page: {page_id}"
+                    )
+                normalized = _normalize_page(builder, page)
+                pages.append(normalized)
+                graphs[page_id] = _embed_page_graph_sources(
+                    builder,
+                    _page_graph(bundle, normalized),
+                )
+
+            repo_info = _model_dict(bundle.info())
+            capabilities = {
+                name: False for name in dict(repo_info.get("capabilities") or {})
+            }
+            capabilities.update(
+                {
+                    "chat": False,
+                    "codemap": False,
+                    "edge_labels": False,
+                    "source_citations": True,
+                    "static_wiki": True,
+                    "wiki_graph": any(
+                        graph.get("available") for graph in graphs.values()
+                    ),
+                }
+            )
+            repo_info["capabilities"] = capabilities
+            repo_info["problem_statement"] = ""
+            repo_info["incremental"] = None
+            # The retained source authority does not authenticate Git config.
+            # Publishing no origin is safer than attributing a raced checkout.
+            repo_info["source_url"] = None
+
+        try:
+            stage = OwnedDirectoryStage.prepare(
+                output_dir,
+                required_destination_file=STATIC_EXPORT_MANIFEST,
+                allow_empty_destination=True,
+            )
+        except (OSError, RuntimeError) as exc:
+            raise ValueError(
+                "refusing to replace a non-empty directory that is not a CodeNib "
+                f"static export: {output_dir}"
+            ) from exc
+
         _copy_frontend(frontend, stage, base_path=base_path)
         _write_bytes(stage, "runtime-config.js", _runtime_config(base_path))
         _write_bytes(stage, "404.html", _not_found_page(base_path))
@@ -988,21 +1050,24 @@ def export_static_wiki(
                     "published static export differs from its staged identity"
                 )
 
+        source_binding.verify_snapshot()
+        _close_static_source(cleanup_owner)
         stage.publish(
             validate_staged_directory=validate_export,
             validate_published_destination=validate_export,
         )
         manifest_file = output_dir.joinpath(*manifest_file.parts)
-    except BaseException as primary_error:
-        try:
-            stage.discard()
-        except BaseException as discard_error:  # noqa: B036 - preserve primary
-            _annotate_secondary_error(
-                primary_error,
-                "static export stage discard also failed",
-                discard_error,
-            )
-        raise
+    except BaseException as primary_error:  # noqa: B036 - preserve + re-raise
+        if stage is not None:
+            try:
+                stage.discard()
+            except BaseException as discard_error:  # noqa: B036 - preserve primary
+                _annotate_secondary_error(
+                    primary_error,
+                    "static export stage discard also failed",
+                    discard_error,
+                )
+        _raise_after_static_source_cleanup(cleanup_owner, primary_error)
 
     return StaticExportResult(
         output_dir=output_dir,

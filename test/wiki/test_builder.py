@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.repository_summary import readme_summary
+from codenib.source_fingerprint import capture_repository_source
 from codenib.wiki.builder import (
     Symbol,
     WikiBuilder,
@@ -234,6 +235,36 @@ def test_symbol_content_is_hydrated_from_source(repo_dir):
     )
     assert "normalized retrieval tokens" not in page["markdown"]
     assert "def run():" in page["citations"][0]["content"]
+
+
+def test_bound_source_hydrates_far_offset_symbol_without_prefix_truncation(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "pkg" / "far.py"
+    source.parent.mkdir(parents=True)
+    filler = (b"# " + (b"x" * 510) + b"\n") * 17_000
+    source.write_bytes(filler + b"def target(): return 'far-offset'\n")
+    document = _Doc(
+        "stale index payload",
+        {
+            "file": str(source),
+            "name": "target",
+            "chunk_type": "function",
+            "start_line": 17_000,
+            "end_line": 17_000,
+        },
+    )
+    bundle = _make_bundle(str(tmp_path))
+    bundle.vector_store = None
+    bundle.bm25 = SimpleNamespace(documents=[document])
+
+    with capture_repository_source(tmp_path) as binding:
+        builder = WikiBuilder(bundle, source_reader=binding.borrow_reader())
+
+        assert builder._symbols()[0].content == "def target(): return 'far-offset'"
+        excerpt = builder.source("pkg/far.py", 17_001, 17_001)
+        assert excerpt is not None
+        assert excerpt["content"] == "def target(): return 'far-offset'\n"
 
 
 def test_source_traversal_guard(repo_dir):

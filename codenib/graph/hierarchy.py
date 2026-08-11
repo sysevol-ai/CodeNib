@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import AbstractSet, Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from ..types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE, is_symbol_node
 from .code_graph import CodeGraph
@@ -161,20 +161,54 @@ def _hierarchy_path(file: str, source_root: Optional[str]) -> List[str]:
     return parts
 
 
-def _is_external_symbol(attrs: Dict[str, Any], repo_dir: Optional[str]) -> bool:
+def _captured_source_path(
+    file: str,
+    repo_dir: Optional[str],
+    source_paths: AbstractSet[str],
+) -> Optional[str]:
+    candidate = file.replace("\\", os.sep).replace("/", os.sep)
+    if os.path.isabs(candidate):
+        if not repo_dir:
+            return None
+        try:
+            candidate = os.path.relpath(candidate, os.path.abspath(repo_dir))
+        except ValueError:
+            return None
+    normalized = os.path.normpath(candidate)
+    if normalized in {"", ".", ".."} or normalized.startswith(".." + os.sep):
+        return None
+    relative = normalized.replace(os.sep, "/")
+    return relative if relative in source_paths else None
+
+
+def _is_external_symbol(
+    attrs: Dict[str, Any],
+    repo_dir: Optional[str],
+    source_paths: Optional[AbstractSet[str]] = None,
+) -> bool:
     file = attrs.get("file")
     start = attrs.get("start_line")
     if not isinstance(file, str) or not file or not isinstance(start, int):
         return True
+    if source_paths is not None:
+        return _captured_source_path(file, repo_dir, source_paths) is None
     if repo_dir:
         safe = os.path.normpath(file).lstrip(os.sep).lstrip("/")
         return not os.path.isfile(os.path.join(repo_dir, safe))
     return False
 
 
-def _file_key(attrs: Dict[str, Any], repo_dir: Optional[str]) -> str:
+def _file_key(
+    attrs: Dict[str, Any],
+    repo_dir: Optional[str],
+    source_paths: Optional[AbstractSet[str]] = None,
+) -> str:
     file = attrs.get("file")
-    if _is_external_symbol(attrs, repo_dir) or not isinstance(file, str) or not file:
+    if not isinstance(file, str) or not file:
+        return EXTERNAL_FILE
+    if source_paths is not None:
+        return _captured_source_path(file, repo_dir, source_paths) or EXTERNAL_FILE
+    if _is_external_symbol(attrs, repo_dir):
         return EXTERNAL_FILE
     return file.replace("\\", "/")
 
@@ -295,7 +329,10 @@ def _assign_depths(nodes: List[ContainmentNode]) -> None:
 
 
 def build_hierarchical_code_graph(
-    graph: CodeGraph, repo_dir: Optional[str] = None
+    graph: CodeGraph,
+    repo_dir: Optional[str] = None,
+    *,
+    source_paths: Optional[AbstractSet[str]] = None,
 ) -> HierarchicalCodeGraph:
     """Build a reusable repo-level compound graph from a :class:`CodeGraph`."""
 
@@ -312,7 +349,7 @@ def build_hierarchical_code_graph(
             continue
         symbol_vids[vertex.index] = name
         attrs_by_name[name] = attrs
-        file_by_name[name] = _file_key(attrs, repo_dir)
+        file_by_name[name] = _file_key(attrs, repo_dir, source_paths)
 
     source_root = _common_source_root(list(file_by_name.values()))
     importance = _reference_importance(graph, attrs_by_name.keys())

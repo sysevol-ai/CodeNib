@@ -21,7 +21,7 @@ import os
 import re
 from collections import deque
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..graph.code_graph import CodeGraph
 from ..graph.hierarchy import (
@@ -48,6 +48,9 @@ from .repository_files import (
     safe_repo_relative_path,
     valid_commit,
 )
+
+if TYPE_CHECKING:
+    from ..source_fingerprint import RepositorySourceReader
 
 # Node types eligible as a focus / default seed (skip file/dir/import nodes).
 _SYMBOL_TYPES = frozenset({"function", "method", "class"})
@@ -233,10 +236,23 @@ class _DerivedFiles:
     """
 
     def __init__(
-        self, repo_dir: Optional[str] = None, repo_commit: Optional[str] = None
+        self,
+        repo_dir: Optional[str] = None,
+        repo_commit: Optional[str] = None,
+        *,
+        source_reader: Optional[RepositorySourceReader] = None,
     ) -> None:
-        self._repo_dir = os.path.realpath(repo_dir) if repo_dir else None
-        self._repo_commit = repo_commit if valid_commit(repo_commit) else None
+        self._source_reader = source_reader
+        self._repo_dir = (
+            None
+            if source_reader is not None
+            else (os.path.realpath(repo_dir) if repo_dir else None)
+        )
+        self._repo_commit = (
+            None
+            if source_reader is not None
+            else (repo_commit if valid_commit(repo_commit) else None)
+        )
         self._cache: Dict[str, bool] = {}
         # Keep this potentially large set request-local. Concurrent requests
         # may evict the process-level entry, but this map never repeats the
@@ -259,6 +275,12 @@ class _DerivedFiles:
     def _classify(self, file_path: str) -> bool:
         if is_declaration_file(file_path) or is_non_source_file(file_path):
             return True
+        if self._source_reader is not None:
+            relative = self._source_reader.captured_relative_path(file_path)
+            if relative is None:
+                return False
+            head = self._source_reader.read_prefix(relative, max_bytes=2048)
+            return source_has_generated_marker(head)
         if not self._repo_dir:
             return False
         relative = safe_repo_relative_path(self._repo_dir, file_path)
@@ -455,6 +477,7 @@ def _is_external(
     repo_dir: Optional[str] = None,
     repo_commit: Optional[str] = None,
     repo_paths: object = _GIT_PATHS_UNSET,
+    source_reader: Optional[RepositorySourceReader] = None,
 ) -> bool:
     """True if a node has no openable in-repo source.
 
@@ -469,6 +492,8 @@ def _is_external(
     s = a.get("start_line")
     if not isinstance(s, int) or not isinstance(f, str) or not f:
         return True
+    if source_reader is not None:
+        return source_reader.captured_relative_path(f) is None
     if repo_dir:
         root = os.path.realpath(repo_dir)
         relative = safe_repo_relative_path(root, f)
@@ -895,6 +920,8 @@ def build_page_subgraph(
     max_nodes: int = 18,
     repo_dir: Optional[str] = None,
     hierarchy_graph: Optional[HierarchicalCodeGraph] = None,
+    *,
+    source_reader: Optional[RepositorySourceReader] = None,
 ) -> Dict[str, Any]:
     """Page-evidence-first reference subgraph over a wiki page's cited symbols.
 
@@ -989,7 +1016,11 @@ def build_page_subgraph(
             if other is None or other in seeds:
                 continue
             other_attrs = _attrs(graph, other)
-            if _is_external(other_attrs, repo_dir):
+            if _is_external(
+                other_attrs,
+                repo_dir,
+                source_reader=source_reader,
+            ):
                 continue
             candidate_order.setdefault(other, len(candidate_order))
             bridge_edges.setdefault(other, set()).add(key)
@@ -1090,7 +1121,11 @@ def build_page_subgraph(
                 "kind": a.get("type") or "symbol",
                 "depth": 0 if name in seeds else 1,
                 "is_root": name in seeds,  # highlight the page's own symbols
-                "external": _is_external(a, repo_dir),
+                "external": _is_external(
+                    a,
+                    repo_dir,
+                    source_reader=source_reader,
+                ),
             }
         )
 
@@ -1102,7 +1137,12 @@ def build_page_subgraph(
         edge.update(edge_anchors.fields((s, t)))
         edges.append(edge)
 
-    nodes, edges = _enrich(graph, nodes, edges, _DerivedFiles(repo_dir))
+    nodes, edges = _enrich(
+        graph,
+        nodes,
+        edges,
+        _DerivedFiles(repo_dir, source_reader=source_reader),
+    )
     hierarchy = (
         hierarchy_for_view(hierarchy_graph, nodes)
         if hierarchy_graph is not None
