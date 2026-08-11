@@ -757,6 +757,20 @@ receipts (#548), serving integration (#549), mixed/RSS/concurrency matrices
 (#550), native position (#553), native route (#552), and durable FactBatch
 storage (#551) remain separate review and promotion gates.
 
+Native core CI enforcement status
+([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted
+`scip-core` job now declares zlib development headers alongside RE2 and CMake,
+preserves the vendored-igraph and system-libstdc++ loader contracts, and calls
+the maintained `make core-test` gate instead of one SCIP-only pytest file. The
+gate runs all four C++ executables plus SCIP, Fact, native clangd, fallback, and
+profiler-contract Python tests. It first asserts that the built extension
+exports `decode_clangd_fact_query_index` and `clangd_fact_query_contract`, so a
+missing or stale extension cannot silently skip the clangd module. CI-policy
+tests pin the dependency probe, Make target, binding guard, and test inventory.
+The same `make core-test` command is the documented local reproduction; slow,
+billed, and external clangd-generation benchmarks remain outside this
+deterministic job.
+
 ### Phase 6: Multi-Graph Python Surface
 
 Mixed-language repositories need a Python-side graph aggregation path before a

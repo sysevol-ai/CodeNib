@@ -59,6 +59,11 @@ The resulting library and Python extension are placed in `build/core`.
 c-igraph is fetched by CMake and linked privately to avoid symbol clashes with
 the Python `igraph` wheel.
 
+`make core-test` is also the maintained native gate used by trusted full CI.
+It runs every C++ test executable, verifies that the built extension exports
+the required clangd query ABI, and then runs the SCIP, Fact, clangd, and
+profiling-contract Python tests with `build/core` first on `PYTHONPATH`.
+
 Some parity tests use generated SCIP integration fixtures and are skipped when
 those caches are absent. Always inspect the skip report from `make core-test`.
 

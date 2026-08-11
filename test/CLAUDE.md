@@ -27,8 +27,8 @@ the heavier deps, and pick the right tier: anything that *mutates* a shared
 repo must be `integration_serial`, never plain `integration` — the
 `integration` job runs parallel under pytest-xdist and a mutating test breaks
 it. The CI jobs key off exactly these markers (`unit`, `integration`,
-`integration-serial`, `graph-consumer`, `slow`; `scip-core` runs
-`test/scip/test_scip_core.py` directly) — see
+`integration-serial`, `graph-consumer`, `slow`; `scip-core` runs the C++
+executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 [`docs/ci_cd.md`](../docs/ci_cd.md) for the job chain.
 
 ## Fixtures & caches

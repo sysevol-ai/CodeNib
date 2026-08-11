@@ -190,10 +190,13 @@ make core-test
 ```
 
 This runs the C++ smoke tests, graph-layer checks, registry consistency checks,
-and the serial/core parity fixtures available in the checkout. Some
-integration-cache parity cases are skipped when their generated SCIP fixtures
-are not present, so a successful local run should be read together with its
-skip report.
+Fact transport/query tests, native clangd result/error and fallback tests, and
+the serial/core parity fixtures available in the checkout. Before pytest it
+also requires the built extension to export the native clangd decode and
+contract bindings, so an absent or stale extension cannot turn that gate into
+a skip. Some integration-cache parity cases are skipped when their generated
+SCIP fixtures are not present, so a successful local run should be read
+together with its skip report.
 
 ## Components
 

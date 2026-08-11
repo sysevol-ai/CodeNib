@@ -107,7 +107,7 @@ preflight ─ unit ─ integration ─ integration-serial ─┬─ scip-core �
 | **unit** | `preflight` | self-hosted | `not slow and not integration and not integration_serial and not integration_serial_consumer` | 20 min |
 | **integration** | `preflight`, `unit` | self-hosted | `integration and not slow` | 30 min |
 | **integration-serial** | `preflight`, `integration` | self-hosted | `integration_serial` | 45 min |
-| **scip-core** | `preflight`, `integration-serial` | self-hosted | `test/scip/test_scip_core.py` (C++ decoder parity) | 30 min |
+| **scip-core** | `preflight`, `integration-serial` | self-hosted | `make core-test` (C++ executables plus SCIP/Fact/clangd parity) | 30 min |
 | **graph-consumer** | `preflight`, `integration-serial` | self-hosted | `integration_serial_consumer` | 15 min |
 | **slow** | `preflight`, `unit`, `integration`, `integration-serial`, `scip-core`, `graph-consumer` | self-hosted | `slow` | 60 min |
 
@@ -246,13 +246,14 @@ pytest -m "integration_serial" -x -v --tb=short --timeout=900 --durations=20
 
 ### scip-core
 
-Builds the `core/` C++ pybind module and **parity-checks the C++ decoder against
-the Python implementation** using the serial graphs persisted by
-`integration-serial`. Gated on both `should-run` and `run-serial`. Key steps:
+Builds the `core/` C++ pybind module and runs the maintained C++, SCIP, Fact,
+and clangd gate, including decoder parity against the serial graphs persisted
+by `integration-serial`. Gated on both `should-run` and `run-serial`. Key
+steps:
 
 - Checks out with `submodules: recursive` (libigraph is vendored via
-  `FetchContent` in `core/CMakeLists.txt`; only `re2` + `cmake` come from the
-  system).
+  `FetchContent` in `core/CMakeLists.txt`; `re2`, zlib, and build tools come
+  from the system).
 - Installs `pybind11`, caches `build/core`, then builds:
 
   ```bash
@@ -263,12 +264,17 @@ the Python implementation** using the serial graphs persisted by
   cmake --build build/core -j "$(nproc)"
   ```
 
-- Runs the parity tests with `PYTHONPATH=build/core` and an `LD_PRELOAD` of the
-  system `libstdc++.so.6` (to match the GCC that compiled the pybind `.so`):
+- Runs the maintained native gate with an `LD_PRELOAD` of the system
+  `libstdc++.so.6` (to match the GCC that compiled the pybind `.so`):
 
   ```bash
-  pytest test/scip/test_scip_core.py -v --tb=short
+  make core-test
   ```
+
+  This incrementally reuses the configured build, runs all C++ executables,
+  verifies the required clangd bindings are present, and executes the SCIP,
+  Fact, clangd, and profiler-contract Python tests with `build/core` first on
+  `PYTHONPATH`. The same `make core-test` command is the local reproduction.
 
 ### graph-consumer
 

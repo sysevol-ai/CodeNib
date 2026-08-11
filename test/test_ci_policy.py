@@ -283,6 +283,42 @@ def test_trusted_full_ci_is_separate_from_pull_request_ci() -> None:
         assert full_ci["jobs"][name]["runs-on"] == "self-hosted"
 
 
+def test_full_ci_enforces_the_maintained_native_core_gate() -> None:
+    workflow = _workflow(".github/workflows/ci-full.yml")
+    steps = workflow["jobs"]["scip-core"]["steps"]
+    dependency_step = next(
+        step for step in steps if step.get("name") == "Install C++ build deps"
+    )
+    gate_step = next(
+        step for step in steps if step.get("name") == "Run maintained core gate"
+    )
+    dependency_run = str(dependency_step["run"])
+    gate_run = str(gate_step["run"])
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    core_target = makefile.split("\ncore-test:", 1)[1].split("\n\n", 1)[0]
+
+    assert "pkg-config --exists zlib" in dependency_run
+    assert "zlib1g-dev" in dependency_run
+    core_packages = next(
+        line
+        for line in makefile.splitlines()
+        if line.startswith("CORE_SYSTEM_PACKAGES")
+    )
+    assert "zlib1g-dev" in core_packages
+    assert "make core-test" in gate_run
+    assert "pytest test/scip/test_scip_core.py" not in gate_run
+    assert "LD_PRELOAD" in gate_run
+    assert "decode_clangd_fact_query_index" in core_target
+    for command in (
+        "./build/core/scip_decode_test",
+        "./build/core/graph_layers_test",
+        "./build/core/fact_batch_buffer_test",
+        "./build/core/fact_query_index_test",
+        "test/ls_index/test_clangd_fact_query.py",
+    ):
+        assert command in core_target
+
+
 def test_draft_ci_defers_hosted_unit_tests_until_review() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 

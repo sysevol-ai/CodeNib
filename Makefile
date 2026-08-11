@@ -45,7 +45,7 @@ COMPOSER_DOCKER_IMAGE ?= composer:2
 SCIP_JDK_PACKAGE ?= openjdk-21-jdk
 SCIP_JDK_COMPAT_PACKAGES ?= openjdk-11-jdk
 ACTIVE_SCIP_SYSTEM_PACKAGES ?= bear build-essential clang clangd cmake curl git gzip nodejs npm pkg-config python3-dev python3-venv tar unzip $(SCIP_JDK_PACKAGE)
-CORE_SYSTEM_PACKAGES ?= build-essential cmake git libre2-dev pkg-config python3-dev python3-venv
+CORE_SYSTEM_PACKAGES ?= build-essential cmake git libre2-dev pkg-config python3-dev python3-venv zlib1g-dev
 SCIP_CANDIDATE_SYSTEM_PACKAGES ?= build-essential curl git gzip libyaml-dev ruby-dev ruby-full tar unzip zlib1g-dev
 SCIP_PHP_SYSTEM_PACKAGES ?= php-cli composer git unzip
 JDTLS_VERSION ?= 1.58.0
@@ -413,6 +413,7 @@ core-test: core-build
 	./build/core/graph_layers_test
 	./build/core/fact_batch_buffer_test
 	./build/core/fact_query_index_test
+	PYTHONPATH="build/core:$$PYTHONPATH" python -c 'import sys; import codenib_core as core; required = ("decode_clangd_fact_query_index", "clangd_fact_query_contract"); missing = [name for name in required if not hasattr(core, name)]; missing and sys.exit(f"codenib_core missing required bindings: {missing}")'
 	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
 		test/scip/test_scip_core.py \
 		test/scip/test_scip_core_registry.py \
