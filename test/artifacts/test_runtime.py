@@ -49,6 +49,7 @@ from codenib.artifacts import (
 from codenib.cli import run
 from codenib.compiler.index_builders import VectorIndexBuilder
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.index.embedding.artifact_integrity import vector_config_artifact_record
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.source import read_source_impl
@@ -227,6 +228,11 @@ def _vector_artifact(tmp_path: Path) -> tuple[Path, Path, str]:
             level="l2",
         )
         store.save()
+
+    config["persistence_config_fingerprint"] = vector_config_artifact_record(
+        vector,
+        "test__model",
+    )
 
     source_identity = fingerprint_repository(repo)
     manifest_path = index_root / "repo_manifest.json"

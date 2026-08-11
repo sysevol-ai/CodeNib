@@ -23,9 +23,7 @@ from codenib.index.embedding.artifact_integrity import (
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
-from codenib.native_index_authorization import (
-    _mint_trusted_local_admin_authorization,
-)
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.provider_routes import resolve_inference_route
 
 _VECTOR_CONFIG = {
@@ -813,6 +811,10 @@ def test_normalize_vector_converts_trusted_pickle_and_strips_build_state(
         view_type="vector",
         view_config=_VECTOR_CONFIG,
         source_trust="trusted-local",
+        native_index_authorization=_authorize_vector_runtime(
+            vector,
+            _VECTOR_CONFIG,
+        ),
     )
 
     documents_path = level / f"documents_{_MODEL_SUFFIX}.json"
@@ -907,8 +909,9 @@ def test_portable_vector_validator_rejects_noncanonical_json_without_mutation(
     } == before_modes
 
 
-def test_portable_vector_validator_rechecks_faiss_semantics_after_records(
+def test_portable_vector_validator_treats_authenticated_faiss_as_inert_bytes(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, _source = _repository(tmp_path)
     vector = _vector_view(tmp_path, repo, document_format="json")
@@ -937,13 +940,18 @@ def test_portable_vector_validator_rechecks_faiss_semantics_after_records(
         ),
     }
 
-    with pytest.raises(ValueError, match="FAISS dimension mismatch"):
-        validate_portable_query_view(
-            vector,
-            repo_path=repo,
-            view_type="vector",
-            view_config=view_config,
-        )
+    faiss = importlib.import_module("faiss")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("portable validation must not parse FAISS bytes")
+
+    monkeypatch.setattr(faiss, "read_index", fail_if_called)
+    validate_portable_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=view_config,
+    )
 
 
 @pytest.mark.parametrize("artifact", ["config", "documents", "faiss"])
@@ -1009,36 +1017,35 @@ def test_portable_vector_rejects_fifo_swapped_after_capture_without_blocking(
         target.write_bytes(original)
 
 
-def test_portable_vector_parses_faiss_from_authenticated_callback_reader(
+def test_portable_vector_normalize_and_validate_do_not_parse_faiss(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, _source = _repository(tmp_path)
     vector = _vector_view(tmp_path, repo, document_format="json")
+    import codenib.artifacts.portable_views as portable_views_module
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("portable normalization must not invoke native parsers")
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "importlib",
+        SimpleNamespace(import_module=fail_if_called),
+    )
+    monkeypatch.setattr(portable_views_module.compat_pickle, "load", fail_if_called)
     adjustments = normalize_owned_query_view(
         vector,
         repo_path=repo,
         view_type="vector",
         view_config=_VECTOR_CONFIG,
     )
-    faiss = importlib.import_module("faiss")
-    real_read_index = faiss.read_index
-    sources: list[object] = []
-
-    def tracking_read_index(source, *args, **kwargs):
-        sources.append(source)
-        return real_read_index(source, *args, **kwargs)
-
-    monkeypatch.setattr(faiss, "read_index", tracking_read_index)
     validate_portable_query_view(
         vector,
         repo_path=repo,
         view_type="vector",
         view_config={**_VECTOR_CONFIG, **adjustments},
     )
-
-    assert len(sources) == 1
-    assert not isinstance(sources[0], (str, Path))
 
 
 def test_portable_vector_rejects_external_symlink_swap_and_restore(
@@ -1312,6 +1319,10 @@ def test_normalize_upgrades_fully_legacy_vector_config(tmp_path: Path) -> None:
         view_type="vector",
         view_config=_VECTOR_CONFIG,
         source_trust="trusted-local",
+        native_index_authorization=_authorize_vector_runtime(
+            vector,
+            _VECTOR_CONFIG,
+        ),
     )
 
     upgraded = json.loads(config_path.read_text(encoding="utf-8"))
@@ -1439,6 +1450,43 @@ def test_normalize_prunes_current_model_files_for_zero_count(tmp_path: Path) -> 
         view_type="vector",
         view_config=_VECTOR_CONFIG,
         source_trust="trusted-local",
+        native_index_authorization=_authorize_vector_runtime(
+            vector,
+            _VECTOR_CONFIG,
+        ),
+    )
+
+    assert not stale.exists()
+
+
+def test_inert_zero_and_nonzero_levels_never_invoke_native_parsers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    stale = vector / "l0"
+    stale.mkdir()
+    (stale / f"documents_{_MODEL_SUFFIX}.json").write_text("[]\n", encoding="utf-8")
+    _write_faiss(stale / f"index_{_MODEL_SUFFIX}.faiss", count=0)
+    (stale / f"config_{_MODEL_SUFFIX}.json").write_text("{}\n", encoding="utf-8")
+    import codenib.artifacts.portable_views as portable_views_module
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("portable-inert levels must not invoke native parsers")
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "importlib",
+        SimpleNamespace(import_module=fail_if_called),
+    )
+    monkeypatch.setattr(portable_views_module.compat_pickle, "load", fail_if_called)
+
+    normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=_VECTOR_CONFIG,
     )
 
     assert not stale.exists()
@@ -1466,15 +1514,20 @@ def test_normalize_inert_pickle_rejects_before_loading(
 ) -> None:
     repo, _source = _repository(tmp_path)
     vector = _vector_view(tmp_path, repo, document_format="pkl")
+    import codenib.artifacts.portable_views as portable_views_module
+
     called = False
 
-    def fail_if_called(_handle):
+    def fail_if_called(*_args, **_kwargs):
         nonlocal called
         called = True
         raise AssertionError("pickle loader must not run")
 
+    monkeypatch.setattr(portable_views_module.compat_pickle, "load", fail_if_called)
     monkeypatch.setattr(
-        "codenib.artifacts.portable_views.compat_pickle.load", fail_if_called
+        portable_views_module,
+        "importlib",
+        SimpleNamespace(import_module=fail_if_called),
     )
     with pytest.raises(ValueError, match="portable-inert.*pickle"):
         normalize_owned_query_view(
@@ -1482,8 +1535,113 @@ def test_normalize_inert_pickle_rejects_before_loading(
             repo_path=repo,
             view_type="vector",
             view_config=_VECTOR_CONFIG,
+            source_trust="trusted-local",
         )
     assert called is False
+
+
+def test_malformed_native_authorization_rejects_before_parsers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="pkl")
+    faiss = importlib.import_module("faiss")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("invalid authorization must not reach native parsers")
+
+    monkeypatch.setattr(
+        "codenib.artifacts.portable_views.compat_pickle.load", fail_if_called
+    )
+    monkeypatch.setattr(faiss, "read_index", fail_if_called)
+    with pytest.raises(ValueError, match="authorization.*malformed"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=_VECTOR_CONFIG,
+            native_index_authorization=object(),  # type: ignore[arg-type]
+        )
+
+
+def test_native_authorization_tree_drift_rejects_before_parsers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="pkl")
+    authorization = _authorize_vector_runtime(vector, _VECTOR_CONFIG)
+    index_path = vector / "l2" / f"index_{_MODEL_SUFFIX}.faiss"
+    index_path.write_bytes(index_path.read_bytes() + b"drift")
+    faiss = importlib.import_module("faiss")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("drifted authorization must not reach native parsers")
+
+    monkeypatch.setattr(
+        "codenib.artifacts.portable_views.compat_pickle.load", fail_if_called
+    )
+    monkeypatch.setattr(faiss, "read_index", fail_if_called)
+    with pytest.raises(ValueError, match="authorization does not match captured bytes"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=_VECTOR_CONFIG,
+            native_index_authorization=authorization,
+        )
+
+
+def test_native_authorization_config_drift_rejects_before_parsers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="pkl")
+    authorization = _authorize_vector_runtime(vector, _VECTOR_CONFIG)
+    changed_config = {**_VECTOR_CONFIG, "index_metric": "l2"}
+    faiss = importlib.import_module("faiss")
+    import codenib.artifacts.portable_views as portable_views_module
+
+    real_close = portable_views_module._OwnedViewReader.close
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("config drift must not reach native parsers")
+
+    monkeypatch.setattr(
+        "codenib.artifacts.portable_views.compat_pickle.load", fail_if_called
+    )
+    monkeypatch.setattr(faiss, "read_index", fail_if_called)
+
+    def close_then_fail(reader):
+        real_close(reader)
+        raise RuntimeError("injected reader close failure")
+
+    monkeypatch.setattr(
+        portable_views_module._OwnedViewReader,
+        "close",
+        close_then_fail,
+    )
+    with pytest.raises(
+        ValueError,
+        match="authorization does not match captured bytes",
+    ) as exc_info:
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=changed_config,
+            native_index_authorization=authorization,
+        )
+    notes = (
+        *getattr(exc_info.value, "__notes__", ()),
+        *getattr(exc_info.value, "_codenib_cleanup_notes", ()),
+    )
+    assert any(
+        "reader cleanup also failed" in note and "injected reader close failure" in note
+        for note in notes
+    )
 
 
 def test_portable_views_do_not_import_faiss_eagerly() -> None:
@@ -1711,6 +1869,10 @@ def test_normalize_schema6_rejects_faiss_metric_drift(tmp_path: Path) -> None:
             repo_path=repo,
             view_type="vector",
             view_config=view_config,
+            native_index_authorization=_authorize_vector_runtime(
+                vector,
+                view_config,
+            ),
         )
 
 
@@ -1729,6 +1891,10 @@ def test_normalize_schema6_rejects_faiss_index_type_drift(tmp_path: Path) -> Non
             repo_path=repo,
             view_type="vector",
             view_config=view_config,
+            native_index_authorization=_authorize_vector_runtime(
+                vector,
+                view_config,
+            ),
         )
 
 
@@ -1782,6 +1948,10 @@ def test_runtime_and_normalize_reject_untrained_active_ivf_before_first_search(
             repo_path=repo,
             view_type="vector",
             view_config=view_config,
+            native_index_authorization=_authorize_vector_runtime(
+                vector,
+                view_config,
+            ),
         )
 
 
@@ -1822,6 +1992,10 @@ def test_normalize_vector_rejects_mixed_document_formats(tmp_path: Path) -> None
             repo_path=repo,
             view_type="vector",
             view_config=_VECTOR_CONFIG,
+            native_index_authorization=_authorize_vector_runtime(
+                vector,
+                _VECTOR_CONFIG,
+            ),
             source_trust="trusted-local",
         )
 
@@ -1866,13 +2040,15 @@ def test_normalize_vector_rejects_malformed_committed_json(tmp_path: Path) -> No
         )
 
 
-def test_normalize_vector_rejects_residual_pickle(tmp_path: Path) -> None:
+def test_trusted_local_string_does_not_authorize_residual_pickle(
+    tmp_path: Path,
+) -> None:
     repo, _source = _repository(tmp_path)
     vector = _vector_view(tmp_path, repo, document_format="json")
     residual = vector / "unexamined.pkl"
     residual.write_bytes(b"must-not-publish")
 
-    with pytest.raises(ValueError, match="unexpected pickle"):
+    with pytest.raises(ValueError, match="portable-inert.*pickle"):
         normalize_owned_query_view(
             vector,
             repo_path=repo,
@@ -2208,6 +2384,10 @@ def test_normalize_rejects_faiss_shape_drift(
             repo_path=repo,
             view_type="vector",
             view_config=_VECTOR_CONFIG,
+            native_index_authorization=_authorize_vector_runtime(
+                vector,
+                _VECTOR_CONFIG,
+            ),
         )
 
 

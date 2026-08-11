@@ -571,6 +571,31 @@ def test_context_artifact_rejects_unpublished_vector_generation(tmp_path: Path) 
         )
 
 
+def test_context_vector_requires_config_authority_before_mint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, manifest_path, _vector = _fixture_vector_manifest(tmp_path)
+    manifest = RepoManifest.load(manifest_path)
+    manifest.indexes["vector"].config.pop("persistence_config_fingerprint")
+    manifest.save(manifest_path)
+    import codenib.artifacts.context as context_module
+
+    monkeypatch.setattr(
+        context_module,
+        "_mint_trusted_local_admin_authorization",
+        lambda *args, **kwargs: pytest.fail(
+            "unanchored vector config must not mint native authorization"
+        ),
+    )
+    with pytest.raises(ValueError, match="requires its config fingerprint"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            tmp_path / "publish" / "context",
+        )
+
+
 def test_context_artifact_rejects_tampered_vector_level(tmp_path: Path) -> None:
     repo, manifest_path, vector = _fixture_vector_manifest(tmp_path)
     documents = vector / "l2" / "documents_test__model.pkl"
@@ -639,6 +664,30 @@ def test_context_artifact_rejects_source_drift(tmp_path: Path) -> None:
             repo,
             manifest_path,
             tmp_path / "publish" / "context",
+        )
+
+
+def test_context_vector_never_mints_from_unvalidated_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, manifest_path, _vector = _fixture_vector_manifest(tmp_path)
+    (repo / "sample.py").write_text("VALUE = 2\n")
+    import codenib.artifacts.context as context_module
+
+    monkeypatch.setattr(
+        context_module,
+        "_mint_trusted_local_admin_authorization",
+        lambda *args, **kwargs: pytest.fail(
+            "source drift must be rejected before native authorization"
+        ),
+    )
+    with pytest.raises(ValueError, match="source files do not match"):
+        stage_context_artifact(
+            repo,
+            manifest_path,
+            tmp_path / "publish" / "context",
+            validate_checkout=False,
         )
 
 
