@@ -230,6 +230,7 @@ def _install_fake_windows_api(
 
     monkeypatch.setattr(atomic_module.sys, "platform", "win32")
     monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
+    monkeypatch.setattr(atomic_module, "_windows_require_publication_api", lambda: None)
     monkeypatch.setattr(
         atomic_module._windows_fs,
         "open_lexical_directory_authority",
@@ -7910,6 +7911,9 @@ def test_publication_authority_close_preserves_close_error_over_state_probe() ->
     assert any("secondary close-state interruption" in note for note in notes)
     assert not authority._close_state
     assert authority_owner.authority is authority
+    authority._close_callback = lambda _resource: None
+    authority._close_complete_callback = lambda: True
+    authority_owner.close()
 
 
 @pytest.mark.skipif(
@@ -8497,3 +8501,1289 @@ def test_resource_owner_documents_native_p2_boundary() -> None:
     assert "raw" in posix_source and "native owning object" in posix_source
     assert "raw HANDLE" in windows_source and "native owning object" in windows_source
     assert "exact dup2 ABA" in reconciliation_source
+
+
+def test_project_directory_ownership_subtree_matches_capture_without_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outer = tmp_path / "outer"
+    selected = outer / "selected"
+    nested = selected / "nested"
+    empty = selected / "empty"
+    nested.mkdir(parents=True)
+    empty.mkdir()
+    (outer / "outside.txt").write_bytes(b"outside")
+    (selected / "root.txt").write_bytes(b"root")
+    (nested / "payload.bin").write_bytes(b"payload")
+    outer_ownership = capture_directory_ownership(outer)
+    selected_ownership = capture_directory_ownership(selected)
+    nested_ownership = capture_directory_ownership(nested)
+
+    def unexpected_io(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("subtree ownership projection performed I/O")
+
+    for name in ("open", "read", "stat", "fstat", "scandir"):
+        monkeypatch.setattr(atomic_module.os, name, unexpected_io)
+
+    assert (
+        atomic_module.project_directory_ownership_subtree(
+            outer_ownership,
+            "selected",
+        )
+        == selected_ownership
+    )
+    assert (
+        atomic_module.project_directory_ownership_subtree(
+            outer_ownership,
+            PurePosixPath("selected/nested"),
+        )
+        == nested_ownership
+    )
+    assert (
+        atomic_module.project_directory_ownership_subtree(
+            outer_ownership,
+            "selected/empty",
+        ).inventory
+        == ()
+    )
+    assert "project_directory_ownership_subtree" in atomic_module.__all__
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["", ".", "..", "/selected", "selected/", "selected//nested", "x/../y"],
+)
+def test_project_directory_ownership_subtree_rejects_noncanonical_prefix(
+    tmp_path: Path,
+    prefix: str,
+) -> None:
+    outer = tmp_path / "outer"
+    (outer / "selected").mkdir(parents=True)
+    ownership = capture_directory_ownership(outer)
+
+    with pytest.raises(ValueError, match="subtree prefix"):
+        atomic_module.project_directory_ownership_subtree(ownership, prefix)
+
+
+def test_project_directory_ownership_subtree_rejects_forged_token(
+    tmp_path: Path,
+) -> None:
+    outer = tmp_path / "outer"
+    selected = outer / "selected"
+    selected.mkdir(parents=True)
+    (selected / "payload.bin").write_bytes(b"payload")
+    ownership = capture_directory_ownership(outer)
+    record = ownership.file_records[0]
+    forged = (
+        replace(ownership, digest="0" * 64),
+        replace(ownership, entries=ownership.entries + 1),
+        replace(ownership, byte_count=ownership.byte_count + 1),
+        replace(ownership, inventory=tuple(reversed(ownership.inventory))),
+        replace(
+            ownership,
+            file_records=(replace(record, sha256=" " * 64),),
+        ),
+    )
+
+    for token in forged:
+        with pytest.raises(RuntimeError, match="directory ownership token"):
+            atomic_module.project_directory_ownership_subtree(token, "selected")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX raw path names")
+def test_project_directory_ownership_subtree_preserves_raw_posix_names(
+    tmp_path: Path,
+) -> None:
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    outer_descriptor = os.open(outer, os.O_RDONLY | os.O_DIRECTORY)
+    raw_name = b"raw\xff"
+    try:
+        os.mkdir(raw_name, dir_fd=outer_descriptor)
+        child_descriptor = os.open(
+            raw_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=outer_descriptor,
+        )
+        try:
+            payload = os.open(
+                b"payload\xfe.bin",
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+                dir_fd=child_descriptor,
+            )
+            try:
+                os.write(payload, b"payload")
+            finally:
+                os.close(payload)
+            expected = atomic_module._capture_posix_directory_descriptor(
+                child_descriptor,
+                outer / os.fsdecode(raw_name),
+                required_root_file=None,
+                allow_empty_root=False,
+                entry_policy=None,
+            )
+        finally:
+            os.close(child_descriptor)
+    finally:
+        os.close(outer_descriptor)
+
+    outer_ownership = capture_directory_ownership(outer)
+    assert (
+        atomic_module.project_directory_ownership_subtree(
+            outer_ownership,
+            os.fsdecode(raw_name),
+        )
+        == expected
+    )
+
+
+def test_authenticated_reader_subtree_is_prefix_relative_and_lifetime_bound(
+    tmp_path: Path,
+) -> None:
+    outer = tmp_path / "outer"
+    nested = outer / "selected" / "nested"
+    nested.mkdir(parents=True)
+    (outer / "outside.bin").write_bytes(b"outside")
+    (outer / "selected" / "root.bin").write_bytes(b"root")
+    (nested / "payload.bin").write_bytes(b"payload")
+    ownership = capture_directory_ownership(outer)
+    saved: list[atomic_module.PublicationDirectoryReader] = []
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> bytes:
+        selected = reader.subtree("selected")
+        nested_reader = selected.subtree("nested")
+        saved.extend((selected, nested_reader))
+        assert selected.inventory() == (
+            ("nested", "directory"),
+            ("nested/payload.bin", "file"),
+            ("root.bin", "file"),
+        )
+        assert tuple(record.path for record in selected.file_records()) == (
+            "nested/payload.bin",
+            "root.bin",
+        )
+        assert selected.capture_ownership() == (
+            atomic_module.project_directory_ownership_subtree(ownership, "selected")
+        )
+        for escaped in ("../outside.bin", "/outside.bin", "nested/../../outside.bin"):
+            with pytest.raises(ValueError, match="publication reader"):
+                selected.read_bytes(escaped, max_bytes=64)
+        snapshot = nested_reader.authenticated_snapshot(
+            "payload.bin",
+            max_bytes=64,
+        )
+        assert snapshot.record.path == "payload.bin"
+        return snapshot.read_bytes()
+
+    assert (
+        atomic_module.reopen_authenticated_directory(
+            outer,
+            ownership,
+            consume,
+        )
+        == b"payload"
+    )
+    for reader in saved:
+        with pytest.raises(RuntimeError, match="no longer active"):
+            reader.inventory()
+
+
+def test_fake_windows_reader_subtree_keeps_prefix_relative_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    owned_id = api.add_directory(api.root_id, "owned")
+    selected_id = api.add_directory(owned_id, "sélected")
+    nested_id = api.add_directory(selected_id, "子")
+    api.add_file(owned_id, "outside.bin", b"outside")
+    api.add_file(selected_id, "root.bin", b"root")
+    api.add_file(nested_id, "payload.bin", b"payload")
+    owned_handle = api._new_handle(owned_id)
+    try:
+        ownership = atomic_module._capture_windows_directory_handle(
+            api,
+            owned_handle,
+            Path("C:/authority/owned"),
+            required_root_file=None,
+            allow_empty_root=False,
+            entry_policy=None,
+        )
+    finally:
+        api.close(owned_handle)
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> bytes:
+        selected = reader.subtree("sélected")
+        assert tuple(record.path for record in selected.file_records()) == (
+            "root.bin",
+            "子/payload.bin",
+        )
+        with pytest.raises(ValueError, match="publication reader"):
+            selected.read_bytes("../outside.bin", max_bytes=64)
+        return selected.subtree("子").read_bytes("payload.bin", max_bytes=64)
+
+    _install_fake_windows_api(monkeypatch, api)
+
+    assert (
+        atomic_module.reopen_authenticated_directory(
+            Path("C:/authority/owned"),
+            ownership,
+            consume,
+        )
+        == b"payload"
+    )
+    assert api.handles == {}
+
+
+def test_reopen_closes_manual_file_and_hidden_iterator_escapes(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload-data")
+    ownership = capture_directory_ownership(directory)
+    escaped_files: list[atomic_module.PublicationAuthenticatedFile] = []
+    escaped_contexts: list[object] = []
+    escaped_iterators: list[object] = []
+    hidden_readers: list[object] = []
+
+    def consume(
+        reader: atomic_module.PublicationDirectoryReader,
+    ) -> atomic_module.PublicationAuthenticatedFile:
+        file_context = reader.open_authenticated_file(
+            "payload.bin",
+            max_bytes=64,
+        )
+        authenticated = file_context.__enter__()
+        assert authenticated.read(2) == b"pa"
+        chunk_context = reader.iter_authenticated_chunks(
+            "payload.bin",
+            max_bytes=64,
+            chunk_size=3,
+        )
+        chunks = chunk_context.__enter__()
+        assert next(chunks) == b"pay"
+        escaped_files.extend((authenticated,))
+        escaped_contexts.extend((file_context, chunk_context))
+        escaped_iterators.append(chunks)
+        hidden_readers.append(lambda: authenticated.read(1))
+        return authenticated
+
+    returned = atomic_module.reopen_authenticated_directory(
+        directory,
+        ownership,
+        consume,
+    )
+
+    assert returned is escaped_files[0]
+    assert returned.record.sha256 == hashlib.sha256(b"payload-data").hexdigest()
+    with pytest.raises(ValueError, match="closed"):
+        returned.read(1)
+    with pytest.raises(ValueError, match="closed"):
+        hidden_readers[0]()
+    with pytest.raises(StopIteration):
+        next(escaped_iterators[0])
+    assert escaped_contexts[0].__exit__(None, None, None) is False
+    assert escaped_contexts[1].__exit__(None, None, None) is False
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor semantics",
+)
+@pytest.mark.parametrize("primary_type", [KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_posix_manual_stream_escape_aborts_without_drain_on_callback_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    primary_type: type[BaseException],
+) -> None:
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    payload = b"prefix-" + (b"x" * (2 << 20))
+    (directory / "payload.bin").write_bytes(payload)
+    ownership = capture_directory_ownership(directory)
+    real_read = atomic_module.os.read
+    target = -1
+    target_reads: list[bytes] = []
+    escaped: list[atomic_module.PublicationAuthenticatedFile] = []
+    primary = primary_type("callback primary")
+
+    def track_read(descriptor: int, size: int) -> bytes:
+        block = real_read(descriptor, size)
+        if descriptor == target and escaped and not escaped[0]._closed:
+            target_reads.append(block)
+        return block
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        nonlocal target
+        context = reader.open_authenticated_file(
+            "payload.bin",
+            max_bytes=len(payload),
+        )
+        authenticated = context.__enter__()
+        escaped.append(authenticated)
+        target = next(
+            cell.cell_contents
+            for cell in (authenticated._read_callback.__closure__ or ())
+            if isinstance(cell.cell_contents, int)
+        )
+        assert authenticated.read(7) == b"prefix-"
+        raise primary
+
+    monkeypatch.setattr(atomic_module.os, "read", track_read)
+    with pytest.raises(primary_type) as caught:
+        atomic_module.reopen_authenticated_directory(directory, ownership, consume)
+
+    assert caught.value is primary
+    assert target_reads == [b"prefix-"]
+    with pytest.raises(ValueError, match="closed"):
+        escaped[0].read(1)
+    with pytest.raises(RuntimeError, match="after context verification"):
+        _ = escaped[0].record
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor semantics",
+)
+def test_manual_stream_aborts_on_callback_result_return_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    payload = b"prefix-" + (b"x" * (2 << 20))
+    (directory / "payload.bin").write_bytes(payload)
+    ownership = capture_directory_ownership(directory)
+    real_read = atomic_module.os.read
+    target = -1
+    target_reads: list[bytes] = []
+    escaped: list[atomic_module.PublicationAuthenticatedFile] = []
+    interruption = KeyboardInterrupt("callback return cancellation")
+
+    def track_read(descriptor: int, size: int) -> bytes:
+        block = real_read(descriptor, size)
+        if descriptor == target and escaped and not escaped[0]._closed:
+            target_reads.append(block)
+        return block
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> int:
+        nonlocal target
+        context = reader.open_authenticated_file(
+            "payload.bin",
+            max_bytes=len(payload),
+        )
+        authenticated = context.__enter__()
+        escaped.append(authenticated)
+        target = next(
+            cell.cell_contents
+            for cell in (authenticated._read_callback.__closure__ or ())
+            if isinstance(cell.cell_contents, int)
+        )
+        assert authenticated.read(7) == b"prefix-"
+        return 7
+
+    monkeypatch.setattr(atomic_module.os, "read", track_read)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_after_store(
+            atomic_module._run_publication_reader_callback,
+            "result",
+            lambda: atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                consume,
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert target_reads == [b"prefix-"]
+    with pytest.raises(ValueError, match="closed"):
+        escaped[0].read(1)
+
+
+@pytest.mark.parametrize("primary_type", [KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_fake_windows_manual_stream_aborts_without_drain_on_callback_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    primary_type: type[BaseException],
+) -> None:
+    api = _FakeWindowsApi()
+    child_id = api.add_directory(api.root_id, "owned")
+    payload = b"prefix-" + (b"x" * (2 << 20))
+    api.add_file(child_id, "payload.bin", payload)
+    child_handle = api._new_handle(child_id)
+    try:
+        ownership = atomic_module._capture_windows_directory_handle(
+            api,
+            child_handle,
+            Path("C:/authority/owned"),
+            required_root_file=None,
+            allow_empty_root=False,
+            entry_policy=None,
+        )
+    finally:
+        api.close(child_handle)
+    real_read = api.read
+    target = 0
+    target_reads: list[bytes] = []
+    escaped: list[atomic_module.PublicationAuthenticatedFile] = []
+    primary = primary_type("callback primary")
+
+    def track_read(handle: int, size: int) -> bytes:
+        block = real_read(handle, size)
+        if handle == target and escaped and not escaped[0]._closed:
+            target_reads.append(block)
+        return block
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        nonlocal target
+        context = reader.open_authenticated_file(
+            "payload.bin",
+            max_bytes=len(payload),
+        )
+        authenticated = context.__enter__()
+        escaped.append(authenticated)
+        target = next(
+            cell.cell_contents
+            for cell in (authenticated._read_callback.__closure__ or ())
+            if isinstance(cell.cell_contents, int)
+        )
+        assert authenticated.read(7) == b"prefix-"
+        raise primary
+
+    _install_fake_windows_api(monkeypatch, api)
+    monkeypatch.setattr(api, "read", track_read)
+    with pytest.raises(primary_type) as caught:
+        atomic_module.reopen_authenticated_directory(
+            Path("C:/authority/owned"),
+            ownership,
+            consume,
+        )
+
+    assert caught.value is primary
+    assert target_reads == [b"prefix-"]
+    with pytest.raises(ValueError, match="closed"):
+        escaped[0].read(1)
+    assert api.handles == {}
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor semantics",
+)
+def test_public_reopen_retains_posix_stream_close_for_explicit_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload")
+    ownership = capture_directory_ownership(directory)
+    real_close = atomic_module.os.close
+    close_error = OSError(errno.EIO, "persistent authenticated close failure")
+    target = -1
+
+    def fail_stream_close(descriptor: int) -> None:
+        nonlocal target
+        if target < 0 and stat.S_ISREG(os.fstat(descriptor).st_mode):
+            target = descriptor
+        if descriptor == target:
+            raise close_error
+        real_close(descriptor)
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        monkeypatch.setattr(atomic_module.os, "close", fail_stream_close)
+        with reader.open_authenticated_file(
+            "payload.bin",
+            max_bytes=64,
+        ) as authenticated:
+            assert authenticated.read(2) == b"pa"
+
+    try:
+        with pytest.raises(OSError) as caught:
+            atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                consume,
+            )
+        assert caught.value is close_error
+        assert target >= 0
+        os.fstat(target)
+        assert len(atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS) == 1
+    finally:
+        monkeypatch.setattr(atomic_module.os, "close", real_close)
+        atomic_module.retry_retained_publication_cleanup()
+
+    assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+    _assert_descriptor_closed(target)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor semantics",
+)
+def test_escaped_stream_cleanup_preserves_primary_and_attempts_every_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "first.bin").write_bytes(b"first")
+    (directory / "second.bin").write_bytes(b"second")
+    ownership = capture_directory_ownership(directory)
+    real_close = atomic_module.os.close
+    primary = KeyboardInterrupt("callback primary")
+    targets: list[int] = []
+    close_calls: dict[int, int] = {}
+    close_errors: dict[int, OSError] = {}
+
+    def fail_stream_closes(descriptor: int) -> None:
+        if descriptor in targets:
+            close_calls[descriptor] = close_calls.get(descriptor, 0) + 1
+            error = close_errors.setdefault(
+                descriptor,
+                OSError(errno.EIO, f"persistent close failure {descriptor}"),
+            )
+            raise error
+        real_close(descriptor)
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        for path in ("first.bin", "second.bin"):
+            context = reader.open_authenticated_file(path, max_bytes=64)
+            authenticated = context.__enter__()
+            authenticated.read(1)
+            descriptor = next(
+                cell.cell_contents
+                for cell in (authenticated._read_callback.__closure__ or ())
+                if isinstance(cell.cell_contents, int)
+            )
+            targets.append(descriptor)
+        monkeypatch.setattr(atomic_module.os, "close", fail_stream_closes)
+        raise primary
+
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                consume,
+            )
+        assert caught.value is primary
+        assert len(set(targets)) == 2
+        assert all(close_calls[target] >= 2 for target in targets)
+        notes = _exception_notes(primary)
+        for error in close_errors.values():
+            assert any(repr(error) in note for note in notes)
+        assert len(atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS) == 1
+    finally:
+        monkeypatch.setattr(atomic_module.os, "close", real_close)
+        atomic_module.retry_retained_publication_cleanup()
+
+    for target in targets:
+        _assert_descriptor_closed(target)
+
+
+def test_public_reopen_retains_fake_windows_stream_close_for_explicit_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    api = _FakeWindowsApi()
+    child_id = api.add_directory(api.root_id, "owned")
+    api.add_file(child_id, "payload.bin", b"payload")
+    child_handle = api._new_handle(child_id)
+    try:
+        ownership = atomic_module._capture_windows_directory_handle(
+            api,
+            child_handle,
+            Path("C:/authority/owned"),
+            required_root_file=None,
+            allow_empty_root=False,
+            entry_policy=None,
+        )
+    finally:
+        api.close(child_handle)
+    real_close = api.close
+    close_error = OSError(errno.EIO, "persistent authenticated HANDLE failure")
+    target = 0
+
+    def fail_stream_close(handle: int) -> None:
+        nonlocal target
+        if not target and stat.S_ISREG(api.metadata(handle).st_mode):
+            target = handle
+        if handle == target:
+            raise close_error
+        real_close(handle)
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        monkeypatch.setattr(api, "close", fail_stream_close)
+        with reader.open_authenticated_file(
+            "payload.bin",
+            max_bytes=64,
+        ) as authenticated:
+            assert authenticated.read(2) == b"pa"
+
+    _install_fake_windows_api(monkeypatch, api)
+    try:
+        with pytest.raises(OSError) as caught:
+            atomic_module.reopen_authenticated_directory(
+                Path("C:/authority/owned"),
+                ownership,
+                consume,
+            )
+        assert caught.value is close_error
+        assert target in api.handles
+        assert len(atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS) == 1
+    finally:
+        monkeypatch.setattr(api, "close", real_close)
+        atomic_module.retry_retained_publication_cleanup()
+
+    assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+    assert api.handles == {}
+
+
+def test_retry_retained_cleanup_preserves_first_and_attempts_every_owner() -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    first = KeyboardInterrupt("first retained cleanup failure")
+    second = SystemExit("second retained cleanup failure")
+    failures: list[BaseException | None] = [first, second]
+    calls = [0, 0]
+    closed = [False, False]
+    owners: list[atomic_module._PublicationAuthorityOwner] = []
+
+    for index in range(2):
+
+        def close_resource(_resource: int, *, selected: int = index) -> None:
+            calls[selected] += 1
+            failure = failures[selected]
+            if failure is not None:
+                raise failure
+            closed[selected] = True
+
+        authority = atomic_module._PublicationAuthority(
+            display_parent=Path("/authority"),
+            identity=(1, index + 1),
+            backend_tag="test",
+            resource=index + 1,
+            close_callback=close_resource,
+            metadata_callback=lambda _name, _path, _label: None,
+            reader_callback=lambda *_args: None,
+            rename_callback=lambda _source, _destination: None,
+            verify_callback=lambda: None,
+            close_complete_callback=lambda selected=index: closed[selected],
+        )
+        owner = atomic_module._PublicationAuthorityOwner()
+        owner.install(authority)
+        owners.append(owner)
+
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            atomic_module.retry_retained_publication_cleanup()
+        assert caught.value is first
+        assert calls == [1, 1]
+        assert any(repr(second) in note for note in _exception_notes(first))
+        assert all(owner.authority is not None for owner in owners)
+    finally:
+        failures[:] = [None, None]
+        atomic_module.retry_retained_publication_cleanup()
+
+    assert closed == [True, True]
+    assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux") or not hasattr(os, "fork"),
+    reason="requires real POSIX fork semantics",
+)
+def test_retained_authority_registry_rehomes_and_closes_in_real_child(
+    tmp_path: Path,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    owner = atomic_module._PublicationAuthorityOwner()
+    authority = atomic_module._open_posix_publication_authority(
+        tmp_path,
+        parent_resource=None,
+        expected_parent_identity=None,
+        authority_owner=owner,
+    )
+    resources = _posix_authority_resources(authority)
+    inherited = tuple(
+        record.descriptor for record in resources._records if record.descriptor >= 0
+    )
+    child = os.fork()
+    if child == 0:
+        try:
+            try:
+                authority.verify_path_binding()
+            except RuntimeError as error:
+                if "process boundary" not in str(error):
+                    os._exit(11)
+            else:
+                os._exit(12)
+            atomic_module.retry_retained_publication_cleanup()
+            if atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS:
+                os._exit(13)
+            for descriptor in inherited:
+                try:
+                    os.fstat(descriptor)
+                except OSError as error:
+                    if error.errno != errno.EBADF:
+                        os._exit(14)
+                else:
+                    os._exit(15)
+            os._exit(0)
+        except BaseException:  # noqa: B036 - child reports failure by exit status
+            os._exit(16)
+
+    waited, status = os.waitpid(child, 0)
+    assert waited == child
+    assert os.waitstatus_to_exitcode(status) == 0
+    authority.verify_path_binding()
+    for descriptor in inherited:
+        os.fstat(descriptor)
+    owner.close()
+    assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux") or not hasattr(os, "fork"),
+    reason="requires real POSIX fork semantics",
+)
+def test_reader_and_authenticated_file_reject_real_fork_escape(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload")
+    ownership = capture_directory_ownership(directory)
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        with reader.open_authenticated_file(
+            "payload.bin",
+            max_bytes=64,
+        ) as authenticated:
+            child = os.fork()
+            if child == 0:
+                try:
+                    for callback in (
+                        reader.inventory,
+                        lambda: authenticated.read(1),
+                    ):
+                        try:
+                            callback()
+                        except RuntimeError as error:
+                            if "process boundary" not in str(error):
+                                os._exit(21)
+                        else:
+                            os._exit(22)
+                    os._exit(0)
+                except BaseException:  # noqa: B036 - child reports by exit status
+                    os._exit(23)
+            waited, status = os.waitpid(child, 0)
+            assert waited == child
+            assert os.waitstatus_to_exitcode(status) == 0
+            assert authenticated.read() == b"payload"
+
+    atomic_module.reopen_authenticated_directory(directory, ownership, consume)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor semantics",
+)
+def test_capture_retains_posix_regular_file_close_for_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload")
+    real_close = atomic_module.os.close
+    close_error = OSError(errno.EIO, "persistent ownership file close failure")
+    target = -1
+
+    def fail_regular_file_close(descriptor: int) -> None:
+        nonlocal target
+        if target < 0 and stat.S_ISREG(os.fstat(descriptor).st_mode):
+            target = descriptor
+        if descriptor == target:
+            raise close_error
+        real_close(descriptor)
+
+    try:
+        monkeypatch.setattr(atomic_module.os, "close", fail_regular_file_close)
+        with pytest.raises(OSError) as caught:
+            atomic_module.capture_directory_ownership(directory)
+        assert caught.value is close_error
+        assert target >= 0
+        os.fstat(target)
+        assert len(atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS) == 1
+    finally:
+        monkeypatch.setattr(atomic_module.os, "close", real_close)
+        atomic_module.retry_retained_publication_cleanup()
+
+    assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+    _assert_descriptor_closed(target)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux") or not hasattr(os, "fork"),
+    reason="requires real POSIX fork semantics",
+)
+def test_capture_retained_regular_file_cleanup_rehomes_across_fork(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload")
+    real_close = atomic_module.os.close
+    close_error = OSError(errno.EIO, "persistent ownership file close failure")
+    target = -1
+
+    def fail_regular_file_close(descriptor: int) -> None:
+        nonlocal target
+        if target < 0 and stat.S_ISREG(os.fstat(descriptor).st_mode):
+            target = descriptor
+        if descriptor == target:
+            raise close_error
+        real_close(descriptor)
+
+    monkeypatch.setattr(atomic_module.os, "close", fail_regular_file_close)
+    with pytest.raises(OSError) as caught:
+        atomic_module.capture_directory_ownership(directory)
+    assert caught.value is close_error
+    assert target >= 0
+    assert len(atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS) == 1
+    monkeypatch.setattr(atomic_module.os, "close", real_close)
+
+    child = os.fork()
+    if child == 0:
+        try:
+            atomic_module.retry_retained_publication_cleanup()
+            if atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS:
+                os._exit(31)
+            try:
+                os.fstat(target)
+            except OSError as error:
+                if error.errno != errno.EBADF:
+                    os._exit(32)
+            else:
+                os._exit(33)
+            os._exit(0)
+        except BaseException:  # noqa: B036 - child reports by exit status
+            os._exit(34)
+
+    waited, status = os.waitpid(child, 0)
+    assert waited == child
+    assert os.waitstatus_to_exitcode(status) == 0
+    os.fstat(target)
+    atomic_module.retry_retained_publication_cleanup()
+    assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+    _assert_descriptor_closed(target)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor semantics",
+)
+def test_post_callback_capture_close_failure_keeps_callback_primary_and_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload")
+    ownership = capture_directory_ownership(directory)
+    real_close = atomic_module.os.close
+    callback_error = ValueError("callback primary")
+    close_error = OSError(errno.EIO, "post-callback ownership close failure")
+    target = -1
+
+    def fail_regular_file_close(descriptor: int) -> None:
+        nonlocal target
+        if target < 0 and stat.S_ISREG(os.fstat(descriptor).st_mode):
+            target = descriptor
+        if descriptor == target:
+            raise close_error
+        real_close(descriptor)
+
+    def consume(_reader: atomic_module.PublicationDirectoryReader) -> None:
+        monkeypatch.setattr(atomic_module.os, "close", fail_regular_file_close)
+        raise callback_error
+
+    try:
+        with pytest.raises(ValueError) as caught:
+            atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                consume,
+            )
+        assert caught.value is callback_error
+        assert target >= 0
+        os.fstat(target)
+        assert any(
+            repr(close_error) in note for note in _exception_notes(callback_error)
+        )
+        assert len(atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS) == 1
+    finally:
+        monkeypatch.setattr(atomic_module.os, "close", real_close)
+        atomic_module.retry_retained_publication_cleanup()
+
+    assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+    _assert_descriptor_closed(target)
+
+
+def test_capture_retains_fake_windows_regular_file_close_for_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    api = _FakeWindowsApi()
+    owned_id = api.add_directory(api.root_id, "owned")
+    api.add_file(owned_id, "payload.bin", b"payload")
+    owned_handle = api._new_handle(owned_id)
+    try:
+        ownership = atomic_module._capture_windows_directory_handle(
+            api,
+            owned_handle,
+            Path("C:/authority/owned"),
+            required_root_file=None,
+            allow_empty_root=False,
+            entry_policy=None,
+        )
+    finally:
+        api.close(owned_handle)
+    real_close = api.close
+    close_error = OSError(errno.EIO, "persistent ownership HANDLE close failure")
+    target = 0
+
+    def fail_regular_file_close(handle: int) -> None:
+        nonlocal target
+        if not target and stat.S_ISREG(api.metadata(handle).st_mode):
+            target = handle
+        if handle == target:
+            raise close_error
+        real_close(handle)
+
+    _install_fake_windows_api(monkeypatch, api)
+    try:
+        monkeypatch.setattr(api, "close", fail_regular_file_close)
+        with pytest.raises(OSError) as caught:
+            atomic_module.reopen_authenticated_directory(
+                Path("C:/authority/owned"),
+                ownership,
+                lambda _reader: None,
+            )
+        assert caught.value is close_error
+        assert target in api.handles
+        assert len(atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS) == 1
+    finally:
+        monkeypatch.setattr(api, "close", real_close)
+        atomic_module.retry_retained_publication_cleanup()
+
+    assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+    assert api.handles == {}
+
+
+def _call_with_interrupt_before_reader_inactive_store(
+    callback: object,
+    *,
+    error: BaseException,
+    event_mode: str,
+) -> None:
+    assert callable(callback)
+    assert event_mode in {"opcode", "line"}
+    code = atomic_module._force_publication_reader_inactive.__code__
+    store_offsets = {
+        instruction.offset
+        for instruction in dis.get_instructions(
+            atomic_module._force_publication_reader_inactive
+        )
+        if instruction.opname == "STORE_ATTR" and instruction.argval == "active"
+    }
+    assert store_offsets
+    source, first_line = inspect.getsourcelines(
+        atomic_module._force_publication_reader_inactive
+    )
+    assignment_lines = {
+        first_line + offset
+        for offset, line in enumerate(source)
+        if "lifetime.active = False" in line
+    }
+    assert len(assignment_lines) == 1
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and frame.f_code is code
+            and (
+                (
+                    event_mode == "opcode"
+                    and event == "opcode"
+                    and frame.f_lasti in store_offsets
+                )
+                or (
+                    event_mode == "line"
+                    and event == "line"
+                    and frame.f_lineno in assignment_lines
+                )
+            )
+            and frame.f_locals["lifetime"].active
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to inject before reader inactive STORE_ATTR"
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor reuse semantics",
+)
+def test_posix_reader_deactivation_interrupt_closes_child_and_rejects_aba(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload")
+    ownership = capture_directory_ownership(directory)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    foreign_source = os.open(
+        foreign,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+    )
+    foreign_identity = atomic_module._resource_owner_identity(os.fstat(foreign_source))
+    real_close = atomic_module.os.close
+    deactivation_error = KeyboardInterrupt("reader deactivation interruption")
+    close_error = SystemExit("child close ABA interruption")
+    target = -1
+    reused = False
+    saved: list[atomic_module.PublicationDirectoryReader] = []
+
+    def close_then_reuse(descriptor: int) -> None:
+        nonlocal reused
+        real_close(descriptor)
+        if descriptor == target and not reused:
+            os.dup2(foreign_source, descriptor)
+            reused = True
+            raise close_error
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> int:
+        nonlocal target
+        saved.append(reader)
+        target = next(
+            cell.cell_contents
+            for cell in (reader._capture.__closure__ or ())
+            if isinstance(cell.cell_contents, int)
+        )
+        monkeypatch.setattr(atomic_module.os, "close", close_then_reuse)
+        return 7
+
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            _call_with_interrupt_before_reader_inactive_store(
+                lambda: atomic_module.reopen_authenticated_directory(
+                    directory,
+                    ownership,
+                    consume,
+                ),
+                error=deactivation_error,
+                event_mode="opcode",
+            )
+        assert caught.value is deactivation_error
+        assert reused
+        assert any(repr(close_error) in note for note in _exception_notes(caught.value))
+        assert atomic_module._resource_owner_identity(os.fstat(target)) == (
+            foreign_identity
+        )
+        with pytest.raises(RuntimeError, match="no longer active"):
+            saved[0].read_bytes("payload.bin", max_bytes=64)
+        assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+    finally:
+        monkeypatch.setattr(atomic_module.os, "close", real_close)
+        if target >= 0:
+            try:
+                real_close(target)
+            except OSError as error:
+                if error.errno != errno.EBADF:
+                    raise
+        real_close(foreign_source)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor reuse semantics",
+)
+def test_reader_deactivation_and_child_cleanup_keep_callback_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload")
+    ownership = capture_directory_ownership(directory)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    foreign_source = os.open(
+        foreign,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+    )
+    real_close = atomic_module.os.close
+    callback_error = ValueError("callback primary")
+    deactivation_error = KeyboardInterrupt("reader deactivation interruption")
+    close_error = SystemExit("child close ABA interruption")
+    target = -1
+    reused = False
+    saved: list[atomic_module.PublicationDirectoryReader] = []
+
+    def close_then_reuse(descriptor: int) -> None:
+        nonlocal reused
+        real_close(descriptor)
+        if descriptor == target and not reused:
+            os.dup2(foreign_source, descriptor)
+            reused = True
+            raise close_error
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        nonlocal target
+        saved.append(reader)
+        target = next(
+            cell.cell_contents
+            for cell in (reader._capture.__closure__ or ())
+            if isinstance(cell.cell_contents, int)
+        )
+        monkeypatch.setattr(atomic_module.os, "close", close_then_reuse)
+        raise callback_error
+
+    try:
+        with pytest.raises(ValueError) as caught:
+            _call_with_interrupt_before_reader_inactive_store(
+                lambda: atomic_module.reopen_authenticated_directory(
+                    directory,
+                    ownership,
+                    consume,
+                ),
+                error=deactivation_error,
+                event_mode="line",
+            )
+        assert caught.value is callback_error
+        assert reused
+        notes = _exception_notes(callback_error)
+        deactivation_note = next(
+            index
+            for index, note in enumerate(notes)
+            if repr(deactivation_error) in note
+        )
+        child_note = next(
+            index for index, note in enumerate(notes) if repr(close_error) in note
+        )
+        assert deactivation_note < child_note
+        with pytest.raises(RuntimeError, match="no longer active"):
+            saved[0].inventory()
+    finally:
+        monkeypatch.setattr(atomic_module.os, "close", real_close)
+        if target >= 0:
+            try:
+                real_close(target)
+            except OSError as error:
+                if error.errno != errno.EBADF:
+                    raise
+        real_close(foreign_source)
+
+
+def test_fake_windows_reader_deactivation_interrupt_rejects_handle_aba(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    api = _FakeWindowsApi()
+    owned_id = api.add_directory(api.root_id, "owned")
+    api.add_file(owned_id, "payload.bin", b"payload")
+    foreign_id = api.add_directory()
+    owned_handle = api._new_handle(owned_id)
+    try:
+        ownership = atomic_module._capture_windows_directory_handle(
+            api,
+            owned_handle,
+            Path("C:/authority/owned"),
+            required_root_file=None,
+            allow_empty_root=False,
+            entry_policy=None,
+        )
+    finally:
+        api.close(owned_handle)
+    real_close = api.close
+    deactivation_error = KeyboardInterrupt("reader deactivation interruption")
+    close_error = SystemExit("child HANDLE ABA interruption")
+    target = 0
+    reused = False
+    saved: list[atomic_module.PublicationDirectoryReader] = []
+
+    def close_then_reuse(handle: int) -> None:
+        nonlocal reused
+        real_close(handle)
+        if handle == target and not reused:
+            api.handles[handle] = foreign_id
+            api.offsets[handle] = 0
+            reused = True
+            raise close_error
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> int:
+        nonlocal target
+        saved.append(reader)
+        target = next(
+            cell.cell_contents
+            for cell in (reader._capture.__closure__ or ())
+            if isinstance(cell.cell_contents, int)
+        )
+        monkeypatch.setattr(api, "close", close_then_reuse)
+        return 7
+
+    _install_fake_windows_api(monkeypatch, api)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            _call_with_interrupt_before_reader_inactive_store(
+                lambda: atomic_module.reopen_authenticated_directory(
+                    Path("C:/authority/owned"),
+                    ownership,
+                    consume,
+                ),
+                error=deactivation_error,
+                event_mode="line",
+            )
+        assert caught.value is deactivation_error
+        assert reused
+        assert any(repr(close_error) in note for note in _exception_notes(caught.value))
+        assert api.handles[target] == foreign_id
+        with pytest.raises(RuntimeError, match="no longer active"):
+            saved[0].read_bytes("payload.bin", max_bytes=64)
+        assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+    finally:
+        monkeypatch.setattr(api, "close", real_close)
+        if target in api.handles:
+            real_close(target)
+
+    assert api.handles == {}

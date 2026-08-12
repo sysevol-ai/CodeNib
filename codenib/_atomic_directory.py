@@ -17,7 +17,9 @@ from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from functools import partial
+from itertools import pairwise
 from pathlib import Path, PurePosixPath
+from threading import RLock
 from typing import (
     Callable,
     ContextManager,
@@ -152,6 +154,8 @@ class PublicationAuthenticatedFile:
         "_digest",
         "_record",
         "_closed",
+        "_pid",
+        "_lifetime",
     )
 
     def __init__(
@@ -172,6 +176,13 @@ class PublicationAuthenticatedFile:
         self._digest = hashlib.sha256()
         self._record: TreeFileRecord | None = None
         self._closed = False
+        self._pid = os.getpid()
+        self._lifetime: _PublicationReaderLifetime | None = None
+
+    def _bind_lifetime(self, lifetime: _PublicationReaderLifetime) -> None:
+        if self._lifetime is not None and self._lifetime is not lifetime:
+            raise RuntimeError("publication authenticated file lifetime changed")
+        self._lifetime = lifetime
 
     @property
     def record(self) -> TreeFileRecord:
@@ -182,6 +193,17 @@ class PublicationAuthenticatedFile:
         return self._record
 
     def read(self, size: int = -1) -> bytes:
+        if os.getpid() != self._pid:
+            self._closed = True
+            raise RuntimeError(
+                "publication authenticated file cannot cross a process boundary"
+            )
+        lifetime = self._lifetime
+        if lifetime is not None and (
+            not lifetime.active or lifetime.pid != os.getpid()
+        ):
+            self._closed = True
+            raise ValueError("publication authenticated file is closed")
         if self._closed:
             raise ValueError("publication authenticated file is closed")
         if isinstance(size, bool) or not isinstance(size, int):
@@ -238,6 +260,190 @@ class PublicationAuthenticatedFile:
         finally:
             self._closed = True
 
+    def _abort(self) -> None:
+        """Terminate a failed consumer stream without reading more source bytes."""
+
+        self._closed = True
+
+
+class _PublicationReaderLifetime:
+    """Process-local lifetime shared by one reader and every subtree facade."""
+
+    __slots__ = ("pid", "active", "authentication_failed", "open_files")
+
+    def __init__(self) -> None:
+        self.pid = os.getpid()
+        self.active = True
+        self.authentication_failed = False
+        self.open_files: list[_PublicationAuthenticatedFileContext] = []
+
+
+class _PublicationAuthenticatedFileContext:
+    """Own one callback-scoped file context until it is verified or aborted."""
+
+    __slots__ = (
+        "_reader",
+        "_relative",
+        "_authority_relative",
+        "_max_bytes",
+        "_expected",
+        "_authority_expected",
+        "_backend_context",
+        "_authenticated",
+        "_entered",
+        "_finished",
+    )
+
+    def __init__(
+        self,
+        reader: PublicationDirectoryReader,
+        *,
+        relative: PurePosixPath,
+        authority_relative: PurePosixPath,
+        max_bytes: int,
+        expected: _ExpectedPublicationFile,
+        authority_expected: _ExpectedPublicationFile,
+    ) -> None:
+        self._reader = reader
+        self._relative = relative
+        self._authority_relative = authority_relative
+        self._max_bytes = max_bytes
+        self._expected = expected
+        self._authority_expected = authority_expected
+        self._backend_context: ContextManager[PublicationAuthenticatedFile] | None = (
+            None
+        )
+        self._authenticated: PublicationAuthenticatedFile | None = None
+        self._entered = False
+        self._finished = False
+
+    def __enter__(self) -> PublicationAuthenticatedFile:
+        if self._entered:
+            raise RuntimeError("publication authenticated file context is single-use")
+        self._reader._require_active()
+        self._entered = True
+        self._reader._register_open_file(self)
+        context: ContextManager[PublicationAuthenticatedFile] | None = None
+        try:
+            context = self._reader._open_file(
+                self._authority_relative,
+                self._max_bytes,
+                self._authority_expected,
+            )
+            self._backend_context = context
+            authenticated = context.__enter__()
+            self._authenticated = authenticated
+            authenticated._bind_lifetime(self._reader._lifetime)
+            if (
+                authenticated.path,
+                authenticated.mode,
+                authenticated.size,
+            ) != (
+                self._authority_expected.record.path,
+                self._authority_expected.record.mode,
+                self._authority_expected.record.size,
+            ):
+                raise RuntimeError(
+                    "publication file metadata differs from captured ownership"
+                )
+            # The backend authenticates the authority-root-relative path.  A
+            # subtree facade presents only its own relative namespace.
+            authenticated.path = self._relative.as_posix()
+            return authenticated
+        except BaseException as primary_error:
+            self._reader._mark_authentication_failed()
+            if context is not None:
+                authenticated = self._authenticated
+                if authenticated is not None:
+                    authenticated._abort()
+                try:
+                    context.__exit__(
+                        type(primary_error),
+                        primary_error,
+                        primary_error.__traceback__,
+                    )
+                except BaseException as cleanup_error:  # noqa: B036
+                    if cleanup_error is not primary_error:
+                        _annotate_secondary_error(
+                            primary_error,
+                            "publication authenticated file entry cleanup also failed",
+                            cleanup_error,
+                        )
+            self._finished = True
+            self._reader._forget_open_file(self)
+            raise
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: object,
+    ) -> Literal[False]:
+        self._finish(exc, exc_type=exc_type, traceback=traceback)
+        return False
+
+    def _finish(
+        self,
+        primary_error: BaseException | None,
+        *,
+        exc_type: type[BaseException] | None = None,
+        traceback: object = None,
+    ) -> None:
+        if self._finished:
+            return
+        if not self._entered:
+            self._finished = True
+            return
+        context = self._backend_context
+        authenticated = self._authenticated
+        if context is None:
+            self._finished = True
+            self._reader._forget_open_file(self)
+            return
+        if primary_error is not None:
+            self._reader._mark_authentication_failed()
+            if authenticated is not None:
+                authenticated._abort()
+            if exc_type is None:
+                exc_type = type(primary_error)
+            if traceback is None:
+                traceback = primary_error.__traceback__
+        try:
+            context.__exit__(exc_type, primary_error, traceback)
+            if primary_error is None:
+                if (
+                    authenticated is None
+                    or authenticated.record != self._expected.record
+                ):
+                    raise RuntimeError(
+                        "publication file bytes differ from captured ownership"
+                    )
+        except BaseException:
+            self._reader._mark_authentication_failed()
+            raise
+        finally:
+            self._finished = True
+            self._reader._forget_open_file(self)
+
+    def _abort_and_close(self) -> None:
+        """Abort an escaped stream and close it without authenticating more bytes."""
+
+        if self._finished:
+            return
+        authenticated = self._authenticated
+        context = self._backend_context
+        if authenticated is not None:
+            authenticated._abort()
+        try:
+            if context is not None:
+                context.__exit__(None, None, None)
+        except BaseException:
+            self._reader._mark_authentication_failed()
+            raise
+        finally:
+            self._finished = True
+            self._reader._forget_open_file(self)
+
 
 class PublicationDirectoryReader:
     """A child tree that is usable only during an authority-owned callback."""
@@ -250,8 +456,11 @@ class PublicationDirectoryReader:
         "_expected_ownership",
         "_records_by_path",
         "_entries_by_path",
-        "_authentication_failed",
-        "_active",
+        "_authority_records_by_path",
+        "_authority_entries_by_path",
+        "_authority_expected_ownership",
+        "_path_prefix",
+        "_lifetime",
     )
 
     def __init__(
@@ -266,12 +475,25 @@ class PublicationDirectoryReader:
             ContextManager[PublicationAuthenticatedFile],
         ],
         expected_ownership: _TreeOwnership | None,
+        *,
+        _authority_expected_ownership: _TreeOwnership | None = None,
+        _path_prefix: PurePosixPath | None = None,
+        _lifetime: _PublicationReaderLifetime | None = None,
     ) -> None:
         self._diagnostic_path = display_path
         self.root_identity = root_identity
         self._capture = capture
         self._open_file = open_file
         self._expected_ownership = expected_ownership
+        self._authority_expected_ownership = (
+            expected_ownership
+            if _authority_expected_ownership is None
+            else _authority_expected_ownership
+        )
+        self._path_prefix = _path_prefix
+        self._lifetime = (
+            _PublicationReaderLifetime() if _lifetime is None else _lifetime
+        )
         self._records_by_path = (
             {}
             if expected_ownership is None
@@ -285,16 +507,111 @@ class PublicationDirectoryReader:
                 for path, kind, identity in expected_ownership.entry_identities
             }
         )
-        self._authentication_failed = False
-        self._active = True
+        authority_ownership = self._authority_expected_ownership
+        self._authority_records_by_path = (
+            {}
+            if authority_ownership is None
+            else {record.path: record for record in authority_ownership.file_records}
+        )
+        self._authority_entries_by_path = (
+            {}
+            if authority_ownership is None
+            else {
+                path: (kind, identity)
+                for path, kind, identity in authority_ownership.entry_identities
+            }
+        )
         if (
             expected_ownership is not None
             and root_identity != expected_ownership.root_identity
         ):
-            self._authentication_failed = True
+            self._mark_authentication_failed()
             raise RuntimeError(
                 "publication callback root differs from captured ownership"
             )
+
+    @property
+    def _authentication_failed(self) -> bool:
+        return self._lifetime.authentication_failed
+
+    @_authentication_failed.setter
+    def _authentication_failed(self, value: bool) -> None:
+        self._lifetime.authentication_failed = value
+
+    @property
+    def _active(self) -> bool:
+        return self._lifetime.active and self._lifetime.pid == os.getpid()
+
+    @_active.setter
+    def _active(self, value: bool) -> None:
+        self._lifetime.active = value
+
+    def _require_active(self) -> None:
+        if self._lifetime.pid != os.getpid():
+            self._lifetime.active = False
+            raise RuntimeError(
+                "publication tree reader cannot cross a process boundary"
+            )
+        if not self._lifetime.active:
+            raise RuntimeError("publication tree reader is no longer active")
+
+    def _mark_authentication_failed(self) -> None:
+        self._lifetime.authentication_failed = True
+
+    def _register_open_file(
+        self,
+        context: _PublicationAuthenticatedFileContext,
+    ) -> None:
+        self._require_active()
+        self._lifetime.open_files.append(context)
+
+    def _forget_open_file(
+        self,
+        context: _PublicationAuthenticatedFileContext,
+    ) -> None:
+        self._lifetime.open_files[:] = [
+            candidate
+            for candidate in self._lifetime.open_files
+            if candidate is not context
+        ]
+
+    def _close_open_files(self, primary_error: BaseException | None) -> None:
+        actions = tuple(
+            (
+                "publication escaped authenticated file cleanup also failed",
+                lambda context=context: context._finish(primary_error),
+            )
+            for context in reversed(tuple(self._lifetime.open_files))
+        )
+        failures = _OrderedActionState(
+            actions=actions,
+            iteration_failure_label=(
+                "publication escaped file cleanup iteration also failed"
+            ),
+            primary_error=None,
+        )
+        _run_ordered_actions(failures)
+        if failures.primary_error is not None:
+            raise failures.primary_error
+
+    def _abort_open_files(self) -> None:
+        actions = tuple(
+            (
+                "publication escaped authenticated file abort also failed",
+                context._abort_and_close,
+            )
+            for context in reversed(tuple(self._lifetime.open_files))
+        )
+        failures = _OrderedActionState(
+            actions=actions,
+            iteration_failure_label=(
+                "publication escaped file abort iteration also failed"
+            ),
+            primary_error=None,
+        )
+        _run_ordered_actions(failures)
+        if failures.primary_error is not None:
+            raise failures.primary_error
 
     def capture_ownership(
         self,
@@ -305,9 +622,14 @@ class PublicationDirectoryReader:
     ) -> _TreeOwnership:
         """Capture through the already-open directory authority."""
 
-        if not self._active:
-            raise RuntimeError("publication tree reader is no longer active")
+        self._require_active()
         try:
+            if self._path_prefix is not None:
+                return self._projected_capture(
+                    required_root_file=required_root_file,
+                    allow_empty_root=allow_empty_root,
+                    entry_policy=entry_policy,
+                )
             observed = self._capture(
                 required_root_file,
                 allow_empty_root,
@@ -322,19 +644,92 @@ class PublicationDirectoryReader:
                 )
             return observed
         except BaseException:
-            self._authentication_failed = True
+            self._mark_authentication_failed()
             raise
 
+    def _projected_capture(
+        self,
+        *,
+        required_root_file: str | None,
+        allow_empty_root: bool,
+        entry_policy: DirectoryEntryPolicy | None,
+    ) -> _TreeOwnership:
+        ownership = self._expected_ownership
+        if ownership is None:
+            raise RuntimeError("publication subtree requires captured ownership")
+        marker = _required_root_file_bytes(required_root_file)
+        if marker is not None:
+            marker_name = os.fsdecode(marker)
+            roots = {
+                path: kind for path, kind in ownership.inventory if "/" not in path
+            }
+            if (
+                not (allow_empty_root and not roots)
+                and roots.get(marker_name) != "file"
+            ):
+                raise RuntimeError(
+                    "directory ownership root is missing its required marker"
+                )
+        if entry_policy is not None:
+            records = {record.path: record for record in ownership.file_records}
+            identities = {
+                path: identity for path, _kind, identity in ownership.entry_identities
+            }
+            for path, kind in ownership.inventory:
+                if kind == "file":
+                    record = records[path]
+                    entry_policy(path, "file", record.mode, record.size)
+                else:
+                    entry_policy(
+                        path,
+                        "directory",
+                        stat.S_IMODE(identities[path][2]),
+                        0,
+                    )
+        return ownership
+
+    def subtree(
+        self,
+        prefix: str | PurePosixPath,
+    ) -> PublicationDirectoryReader:
+        """Return an authority-scoped, prefix-relative view of an owned subtree."""
+
+        self._require_active()
+        ownership = self._expected_ownership
+        if ownership is None:
+            self._mark_authentication_failed()
+            raise RuntimeError("publication subtree requires captured ownership")
+        try:
+            normalized = PurePosixPath(_ownership_subtree_prefix(prefix))
+            projected = project_directory_ownership_subtree(
+                ownership,
+                normalized,
+            )
+        except BaseException:
+            self._mark_authentication_failed()
+            raise
+        authority_prefix = (
+            normalized if self._path_prefix is None else self._path_prefix / normalized
+        )
+        return PublicationDirectoryReader(
+            self._diagnostic_path.joinpath(*normalized.parts),
+            projected.root_identity,
+            self._capture,
+            self._open_file,
+            projected,
+            _authority_expected_ownership=self._authority_expected_ownership,
+            _path_prefix=authority_prefix,
+            _lifetime=self._lifetime,
+        )
+
     def inventory(self) -> tuple[tuple[str, str], ...]:
-        if not self._active:
-            raise RuntimeError("publication tree reader is no longer active")
+        self._require_active()
         if self._expected_ownership is not None:
             return self._expected_ownership.inventory
         return self.capture_ownership().inventory
 
     def file_records(self) -> tuple[TreeFileRecord, ...]:
-        if not self._active:
-            raise RuntimeError("publication tree reader is no longer active")
+        self._require_active()
         if self._expected_ownership is not None:
             return self._expected_ownership.file_records
         return self.capture_ownership().file_records
@@ -345,8 +740,7 @@ class PublicationDirectoryReader:
         *,
         max_bytes: int,
     ) -> PublicationFileSnapshot:
-        if not self._active:
-            raise RuntimeError("publication tree reader is no longer active")
+        self._require_active()
         if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
             raise TypeError("publication snapshot limit must be an integer")
         if max_bytes < 0 or max_bytes > _MAX_PUBLICATION_SNAPSHOT_BYTES:
@@ -374,15 +768,13 @@ class PublicationDirectoryReader:
             max_bytes=max_bytes,
         ).read_bytes()
 
-    @contextmanager
     def open_authenticated_file(
         self,
         relative: str | PurePosixPath,
         *,
         max_bytes: int,
-    ) -> Iterator[PublicationAuthenticatedFile]:
-        if not self._active:
-            raise RuntimeError("publication tree reader is no longer active")
+    ) -> ContextManager[PublicationAuthenticatedFile]:
+        self._require_active()
         if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
             raise TypeError("publication stream limit must be an integer")
         if max_bytes < 0 or max_bytes > _MAX_OWNERSHIP_BYTES:
@@ -390,26 +782,25 @@ class PublicationDirectoryReader:
         normalized = _publication_relative_path(relative)
         expected = self._expected_file(normalized)
         try:
-            with self._open_file(normalized, max_bytes, expected) as authenticated:
-                if (
-                    authenticated.path,
-                    authenticated.mode,
-                    authenticated.size,
-                ) != (
-                    expected.record.path,
-                    expected.record.mode,
-                    expected.record.size,
-                ):
-                    raise RuntimeError(
-                        "publication file metadata differs from captured ownership"
-                    )
-                yield authenticated
-            if authenticated.record != expected.record:
-                raise RuntimeError(
-                    "publication file bytes differ from captured ownership"
-                )
+            authority_relative = (
+                normalized
+                if self._path_prefix is None
+                else self._path_prefix / normalized
+            )
+            authority_expected = self._expected_file(
+                authority_relative,
+                authority=True,
+            )
+            return _PublicationAuthenticatedFileContext(
+                self,
+                relative=normalized,
+                authority_relative=authority_relative,
+                max_bytes=max_bytes,
+                expected=expected,
+                authority_expected=authority_expected,
+            )
         except BaseException:
-            self._authentication_failed = True
+            self._mark_authentication_failed()
             raise
 
     @contextmanager
@@ -429,37 +820,49 @@ class PublicationDirectoryReader:
     def _expected_file(
         self,
         relative: PurePosixPath,
+        *,
+        authority: bool = False,
     ) -> _ExpectedPublicationFile:
-        ownership = self._expected_ownership
+        ownership = (
+            self._authority_expected_ownership
+            if authority
+            else self._expected_ownership
+        )
         if ownership is None:
-            self._authentication_failed = True
+            self._mark_authentication_failed()
             raise RuntimeError(
                 "publication file reads require captured callback ownership"
             )
         normalized = relative.as_posix()
+        records_by_path = (
+            self._authority_records_by_path if authority else self._records_by_path
+        )
+        entries_by_path = (
+            self._authority_entries_by_path if authority else self._entries_by_path
+        )
         try:
-            record = self._records_by_path[normalized]
-            kind, file_identity = self._entries_by_path[normalized]
+            record = records_by_path[normalized]
+            kind, file_identity = entries_by_path[normalized]
         except KeyError as exc:
-            self._authentication_failed = True
+            self._mark_authentication_failed()
             raise ValueError(
                 f"publication file is absent from captured ownership: {normalized}"
             ) from exc
         if kind != "file":
-            self._authentication_failed = True
+            self._mark_authentication_failed()
             raise ValueError(f"publication path is not a captured file: {normalized}")
         directories: list[tuple[str, tuple[int, ...]]] = []
         for depth in range(1, len(relative.parts)):
             directory = "/".join(relative.parts[:depth])
             try:
-                directory_kind, identity = self._entries_by_path[directory]
+                directory_kind, identity = entries_by_path[directory]
             except KeyError as exc:
-                self._authentication_failed = True
+                self._mark_authentication_failed()
                 raise RuntimeError(
                     f"publication directory is absent from ownership: {directory}"
                 ) from exc
             if directory_kind != "directory":
-                self._authentication_failed = True
+                self._mark_authentication_failed()
                 raise RuntimeError(
                     f"publication ancestor is not a directory: {directory}"
                 )
@@ -475,10 +878,58 @@ class PublicationDirectoryReader:
             raise RuntimeError("publication callback suppressed authentication failure")
 
     def _deactivate(self) -> None:
-        self._active = False
+        failures = _OrderedActionState(
+            actions=(),
+            iteration_failure_label=(
+                "publication reader deactivation iteration also failed"
+            ),
+            primary_error=None,
+        )
+        try:
+            _force_publication_reader_inactive(self._lifetime, failures)
+        except BaseException as deactivation_error:  # noqa: B036 - cleanup-all
+            failures.retain(
+                "publication reader deactivation also failed",
+                deactivation_error,
+            )
+        if self._lifetime.open_files:
+            self._mark_authentication_failed()
+        failures.actions = (
+            (
+                "publication reader escaped stream abort also failed",
+                self._abort_open_files,
+            ),
+        )
+        _run_ordered_actions(failures)
+        if failures.primary_error is not None:
+            raise failures.primary_error
 
 
 _PublicationTreeReader = PublicationDirectoryReader
+
+
+def _force_publication_reader_inactive(
+    lifetime: _PublicationReaderLifetime,
+    failures: _OrderedActionState,
+) -> None:
+    """Finish the idempotent inactive transition after an injected interruption."""
+
+    try:
+        while lifetime.active:
+            try:
+                lifetime.active = False
+            except BaseException as transition_error:  # noqa: B036 - retry state
+                failures.retain(
+                    "publication reader inactive transition also failed",
+                    transition_error,
+                )
+    except BaseException as iteration_error:  # noqa: B036 - retry transition
+        failures.retain(
+            "publication reader inactive transition iteration also failed",
+            iteration_error,
+        )
+        if lifetime.active:
+            _force_publication_reader_inactive(lifetime, failures)
 
 
 def _annotate_secondary_error(
@@ -1060,21 +1511,47 @@ def _run_publication_reader_callback(
     callback: Callable[[PublicationDirectoryReader], _T],
     validate_child_binding: Callable[[], None],
 ) -> _T:
-    """Run a reader callback and always recheck validity plus child binding."""
+    """Run a reader callback, close escaped streams, and recheck its authority."""
 
-    return _run_callback_with_post_validations(
-        lambda: callback(reader),
-        (
-            (
-                "publication reader validity validation also failed",
-                reader._require_valid,
+    ambient_error = sys.exc_info()[1]
+    callback_error: BaseException | None = None
+    try:
+        result = callback(reader)
+        return result
+    except BaseException as error:  # noqa: B036 - preserve exact callback primary
+        callback_error = error
+        raise
+    finally:
+        active_error = sys.exc_info()[1]
+        locally_unwinding = callback_error is not None or (
+            active_error is not None and active_error is not ambient_error
+        )
+        primary_error = callback_error
+        if primary_error is None and locally_unwinding:
+            primary_error = active_error
+        failures = _OrderedActionState(
+            actions=(
+                (
+                    "publication reader escaped file cleanup also failed",
+                    lambda: reader._close_open_files(primary_error),
+                ),
+                (
+                    "publication reader validity validation also failed",
+                    reader._require_valid,
+                ),
+                (
+                    "publication reader child namespace validation also failed",
+                    validate_child_binding,
+                ),
             ),
-            (
-                "publication reader child namespace validation also failed",
-                validate_child_binding,
+            iteration_failure_label=(
+                "publication reader post-validation iteration also failed"
             ),
-        ),
-    )
+            primary_error=primary_error,
+        )
+        _run_ordered_actions(failures)
+        if not locally_unwinding and failures.primary_error is not None:
+            raise failures.primary_error
 
 
 @dataclass(slots=True)
@@ -1817,10 +2294,16 @@ class _WindowsLexicalAuthorityOwner:
 class _PublicationAuthorityOwner:
     """Pre-existing slot for cancellation-safe authority handoff."""
 
-    __slots__ = ("_authority",)
+    __slots__ = ("_authority", "_pid")
 
     def __init__(self) -> None:
         self._authority: _PublicationAuthority | None = None
+        self._pid = os.getpid()
+        # Registration precedes acquisition of any authority resource.  Once
+        # install succeeds, an interrupted or persistently failing close stays
+        # reachable for an explicit retry instead of becoming an fd/HANDLE
+        # leak hidden in a dead stack frame.
+        _register_publication_authority_owner(self)
 
     @property
     def authority(self) -> _PublicationAuthority | None:
@@ -1834,33 +2317,50 @@ class _PublicationAuthorityOwner:
     def install(self, authority: _PublicationAuthority) -> None:
         if self._authority is not None:
             raise RuntimeError("publication authority owner is already active")
+        _register_publication_authority_owner(self)
         self._authority = authority
 
     def close(self) -> None:
-        authority = self._authority
-        if authority is None:
-            return
-        primary_error: BaseException | None = None
-        try:
-            authority.close()
-        except BaseException as close_error:  # noqa: B036 - reconcile owner state
-            primary_error = close_error
-        try:
-            close_complete = authority._closed
-        except BaseException as reconciliation_error:  # noqa: B036
-            if primary_error is None:
-                raise
-            _annotate_secondary_error(
-                primary_error,
-                "publication authority owner reconciliation also failed",
-                reconciliation_error,
-            )
-        else:
-            if close_complete:
-                self._authority = None
-        if primary_error is not None:
-            _attach_publication_cleanup_owner(primary_error, self)
-            raise primary_error
+        _synchronize_retained_publication_process()
+        with _RETAINED_PUBLICATION_AUTHORITY_LOCK:
+            authority = self._authority
+            if authority is None:
+                _forget_publication_authority_owner(self)
+                return
+            primary_error: BaseException | None = None
+            try:
+                authority.close()
+            except BaseException as close_error:  # noqa: B036 - reconcile owner state
+                primary_error = close_error
+            try:
+                close_complete = authority._closed
+            except BaseException as reconciliation_error:  # noqa: B036
+                if primary_error is None:
+                    primary_error = reconciliation_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "publication authority owner reconciliation also failed",
+                        reconciliation_error,
+                    )
+            else:
+                if close_complete:
+                    self._authority = None
+            if self._authority is None:
+                try:
+                    _forget_publication_authority_owner(self)
+                except BaseException as retention_error:  # noqa: B036
+                    if primary_error is None:
+                        primary_error = retention_error
+                    else:
+                        _annotate_secondary_error(
+                            primary_error,
+                            "publication authority retry release also failed",
+                            retention_error,
+                        )
+            if primary_error is not None:
+                _attach_publication_cleanup_owner(primary_error, self)
+                raise primary_error
 
     def close_after_error(self, primary_error: BaseException) -> None:
         try:
@@ -1888,6 +2388,78 @@ class _PublicationAuthorityOwner:
             self.close_after_error(exc)
 
 
+_RETAINED_PUBLICATION_AUTHORITY_OWNERS: list[_PublicationAuthorityOwner] = []
+_RETAINED_PUBLICATION_AUTHORITY_LOCK = RLock()
+_RETAINED_PUBLICATION_AUTHORITY_PID = os.getpid()
+
+
+def _synchronize_retained_publication_process() -> None:
+    """Re-home inherited retry state after a real or simulated process fork."""
+
+    global _RETAINED_PUBLICATION_AUTHORITY_LOCK
+    global _RETAINED_PUBLICATION_AUTHORITY_PID
+    pid = os.getpid()
+    if pid == _RETAINED_PUBLICATION_AUTHORITY_PID:
+        return
+    # A lock held by a vanished thread cannot be reused safely in the child.
+    _RETAINED_PUBLICATION_AUTHORITY_LOCK = RLock()
+    _RETAINED_PUBLICATION_AUTHORITY_PID = pid
+    for owner in _RETAINED_PUBLICATION_AUTHORITY_OWNERS:
+        owner._pid = pid
+
+
+def _register_publication_authority_owner(
+    owner: _PublicationAuthorityOwner,
+) -> None:
+    _synchronize_retained_publication_process()
+    with _RETAINED_PUBLICATION_AUTHORITY_LOCK:
+        owner._pid = os.getpid()
+        if any(
+            retained is owner for retained in _RETAINED_PUBLICATION_AUTHORITY_OWNERS
+        ):
+            return
+        _RETAINED_PUBLICATION_AUTHORITY_OWNERS.append(owner)
+
+
+def _forget_publication_authority_owner(
+    owner: _PublicationAuthorityOwner,
+) -> None:
+    _synchronize_retained_publication_process()
+    with _RETAINED_PUBLICATION_AUTHORITY_LOCK:
+        _RETAINED_PUBLICATION_AUTHORITY_OWNERS[:] = [
+            retained
+            for retained in _RETAINED_PUBLICATION_AUTHORITY_OWNERS
+            if retained is not owner
+        ]
+
+
+def retry_retained_publication_cleanup() -> None:
+    """Retry every retained authority close after publication work is quiescent."""
+
+    _synchronize_retained_publication_process()
+    with _RETAINED_PUBLICATION_AUTHORITY_LOCK:
+        failures = _OrderedActionState(
+            actions=tuple(
+                (
+                    "additional retained publication authority cleanup failed",
+                    owner.close,
+                )
+                for owner in tuple(_RETAINED_PUBLICATION_AUTHORITY_OWNERS)
+            ),
+            iteration_failure_label=(
+                "retained publication cleanup iteration also failed"
+            ),
+            primary_error=None,
+        )
+        _run_ordered_actions(failures)
+    if failures.primary_error is not None:
+        raise failures.primary_error
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_synchronize_retained_publication_process)
+
+
 class _PublicationAuthority:
     """One pinned parent namespace and its platform-specific operations.
 
@@ -1908,6 +2480,7 @@ class _PublicationAuthority:
         "_verify_callback",
         "_close_complete_callback",
         "_close_state",
+        "_pid",
     )
 
     def __init__(
@@ -1944,6 +2517,11 @@ class _PublicationAuthority:
         self._verify_callback = verify_callback
         self._close_complete_callback = close_complete_callback
         self._close_state = False
+        self._pid = os.getpid()
+
+    def _require_process(self) -> None:
+        if self._pid != os.getpid():
+            raise RuntimeError("publication authority cannot cross a process boundary")
 
     @property
     def _closed(self) -> bool:
@@ -1960,6 +2538,7 @@ class _PublicationAuthority:
 
     @property
     def resource(self) -> int:
+        self._require_process()
         if self._closed:
             raise RuntimeError("publication authority is closed")
         return self._resource
@@ -1971,6 +2550,7 @@ class _PublicationAuthority:
         path: Path,
         label: str,
     ) -> object | None:
+        self._require_process()
         if self._closed:
             raise RuntimeError("publication authority is closed")
         child_name = _simple_child_name(name, label=label)
@@ -1985,6 +2565,7 @@ class _PublicationAuthority:
         expected_ownership: _TreeOwnership | None = None,
         callback: Callable[[_PublicationTreeReader], _T],
     ) -> _T:
+        self._require_process()
         if self._closed:
             raise RuntimeError("publication authority is closed")
         child_name = _simple_child_name(name, label=label)
@@ -2019,6 +2600,7 @@ class _PublicationAuthority:
         )
 
     def rename_noreplace(self, source: str, destination: str) -> None:
+        self._require_process()
         if self._closed:
             raise RuntimeError("publication authority is closed")
         self._rename_callback(
@@ -2027,6 +2609,7 @@ class _PublicationAuthority:
         )
 
     def verify_path_binding(self) -> None:
+        self._require_process()
         if self._closed:
             raise RuntimeError("publication authority is closed")
         self._verify_callback()
@@ -2321,9 +2904,28 @@ def _open_posix_publication_authority(
                 flags,
                 dir_fd=owned_descriptor,
             )
+            child_record = resources.record_for_cleanup(child_descriptor)
+            child_owner = resources._exact_record_cleanup_owner(child_record)
             reader: _PublicationTreeReader | None = None
-            primary_error: BaseException | None = None
-            try:
+
+            def deactivate_reader() -> None:
+                if reader is not None:
+                    reader._deactivate()
+
+            cleanup_actions = (
+                (
+                    "publication reader deactivation also failed",
+                    deactivate_reader,
+                ),
+                _OrderedAction(
+                    label="publication child descriptor cleanup also failed",
+                    action=child_owner.close,
+                    complete=lambda owner=child_owner: owner.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=child_owner,
+                ),
+            )
+            with _run_context_with_cleanup_actions(cleanup_actions):
                 opened_child = os.fstat(child_descriptor)
                 if (
                     _is_link_or_reparse(opened_child)
@@ -2340,6 +2942,7 @@ def _open_posix_publication_authority(
                         _capture_posix_directory_descriptor(
                             child_descriptor,
                             display_path,
+                            resources=resources,
                             required_root_file=required_root_file,
                             allow_empty_root=allow_empty_root,
                             entry_policy=entry_policy,
@@ -2349,6 +2952,7 @@ def _open_posix_publication_authority(
                         child_descriptor,
                         display_path,
                         relative,
+                        resources=resources,
                         max_bytes=max_bytes,
                         expected=expected,
                     ),
@@ -2369,22 +2973,6 @@ def _open_posix_publication_authority(
                     callback,
                     validate_child_binding,
                 )
-            except BaseException as exc:
-                primary_error = exc
-                raise
-            finally:
-                if reader is not None:
-                    reader._deactivate()
-                try:
-                    resources.close_descriptor(child_descriptor)
-                except BaseException as close_error:  # noqa: B036
-                    if primary_error is None:
-                        raise
-                    _annotate_secondary_error(
-                        primary_error,
-                        "publication child descriptor cleanup also failed",
-                        close_error,
-                    )
 
         def rename_callback(source: str, destination: str) -> None:
             _rename_noreplace_at(
@@ -2977,11 +3565,16 @@ def _open_windows_authenticated_file(
     root_path: Path,
     relative: PurePosixPath,
     *,
+    resources: _WindowsResourceOwner | None = None,
     max_bytes: int,
     expected: _ExpectedPublicationFile,
 ) -> Iterator[PublicationAuthenticatedFile]:
-    resources = _WindowsResourceOwner(api)
+    owns_resources = resources is None
+    selected_resources = _WindowsResourceOwner(api) if resources is None else resources
+    root_before = api.metadata(root_handle)
     parent_handle = root_handle
+    opened_directories: list[int] = []
+    exact_owners: list[_ExactResourceCleanupOwner] = []
     bindings: list[tuple[int, str, int, int, tuple[int, ...]]] = []
     file_handle = 0
     authenticated: PublicationAuthenticatedFile | None = None
@@ -2995,7 +3588,28 @@ def _open_windows_authenticated_file(
 
     def close_resources() -> None:
         nonlocal cleanup_complete
-        resources.close_all()
+        if owns_resources:
+            selected_resources.close_all()
+        else:
+            failures = _OrderedActionState(
+                actions=tuple(
+                    _OrderedAction(
+                        label="publication authenticated HANDLE cleanup also failed",
+                        action=owner.close,
+                        complete=lambda owner=owner: owner.closed,
+                        retry_incomplete="cancellation",
+                        incomplete_owner=owner,
+                    )
+                    for owner in reversed(exact_owners)
+                ),
+                iteration_failure_label=(
+                    "publication authenticated HANDLE cleanup iteration also failed"
+                ),
+                primary_error=None,
+            )
+            _run_ordered_actions(failures)
+            if failures.primary_error is not None:
+                raise failures.primary_error
         cleanup_complete = True
 
     cleanup_actions: tuple[_OrderedActionInput, ...] = (
@@ -3011,7 +3625,7 @@ def _open_windows_authenticated_file(
             action=close_resources,
             complete=lambda: cleanup_complete,
             retry_incomplete="cancellation",
-            incomplete_owner=resources,
+            incomplete_owner=selected_resources,
         ),
     )
 
@@ -3031,8 +3645,14 @@ def _open_windows_authenticated_file(
                 | _WINDOWS_FILE_READ_ATTRIBUTES
                 | _WINDOWS_SYNCHRONIZE,
                 expected_directory=True,
-                resource_owner=resources,
+                resource_owner=selected_resources,
             )
+            if not owns_resources:
+                child_record = selected_resources.record_for_cleanup(child_handle)
+                exact_owners.append(
+                    selected_resources._exact_record_cleanup_owner(child_record)
+                )
+            opened_directories.append(child_handle)
             if opened.st_dev != root_before.st_dev:
                 raise RuntimeError("publication stream crosses a volume")
             if expected_directories.get(
@@ -3063,8 +3683,13 @@ def _open_windows_authenticated_file(
             | _WINDOWS_FILE_READ_ATTRIBUTES
             | _WINDOWS_SYNCHRONIZE,
             expected_directory=False,
-            resource_owner=resources,
+            resource_owner=selected_resources,
         )
+        if not owns_resources:
+            file_record = selected_resources.record_for_cleanup(file_handle)
+            exact_owners.append(
+                selected_resources._exact_record_cleanup_owner(file_record)
+            )
         if opened_file.st_dev != root_before.st_dev:
             raise RuntimeError("publication stream crosses a volume")
         if _ownership_version_identity(opened_file) != expected.file_identity:
@@ -3104,7 +3729,11 @@ def _open_windows_authenticated_file(
             read_callback=lambda size: api.read(file_handle, size),
             verify_callback=verify,
         )
-        yield authenticated
+        try:
+            yield authenticated
+        except BaseException:
+            authenticated._abort()
+            raise
 
 
 def _scan_windows_owned_directory(
@@ -3277,71 +3906,52 @@ def _capture_windows_directory_handle(
     handle: int,
     path: Path,
     *,
+    resources: _WindowsResourceOwner | None = None,
     required_root_file: str | None,
     allow_empty_root: bool,
     entry_policy: DirectoryEntryPolicy | None,
 ) -> _TreeOwnership:
+    selected_resources = _WindowsResourceOwner(api) if resources is None else resources
     _required_root_file_bytes(required_root_file)
-    resources = _WindowsResourceOwner(api)
-    cleanup_complete = False
-
-    def close_resources() -> None:
-        nonlocal cleanup_complete
-        resources.close_all()
-        cleanup_complete = True
-
-    with _run_context_with_cleanup_actions(
-        (
-            _OrderedAction(
-                label="Windows ownership scan HANDLE cleanup also failed",
-                action=close_resources,
-                complete=lambda: cleanup_complete,
-                retry_incomplete="cancellation",
-                incomplete_owner=resources,
-            ),
-        )
-    ):
-        opened = api.metadata(handle)
-        if _is_link_or_reparse(opened) or not stat.S_ISDIR(opened.st_mode):
-            raise RuntimeError(f"directory ownership root changed: {path}")
-        if not opened.st_dev or not opened.st_ino:
-            raise RuntimeError(
-                "directory ownership root has no reliable FILE_ID identity"
-            )
-        budget = _OwnershipBudget()
-        inventory: list[tuple[str, str]] = []
-        file_records: list[TreeFileRecord] = []
-        entry_identities: list[tuple[str, str, tuple[int, ...]]] = []
-        digest = _scan_windows_owned_directory(
-            api,
-            handle,
-            path,
-            (),
-            root_device=opened.st_dev,
-            budget=budget,
-            inventory=inventory,
-            file_records=file_records,
-            entry_identities=entry_identities,
-            entry_policy=entry_policy,
-            depth=0,
-            required_root_file=required_root_file,
-            allow_empty_root=allow_empty_root,
-            resource_owner=resources,
-        )
-        after = api.metadata(handle)
-        if _ownership_version_identity(after) != _ownership_version_identity(opened):
-            raise RuntimeError(f"directory ownership root changed: {path}")
-        return _TreeOwnership(
-            root_identity=_directory_inode_identity(opened),
-            root_version_identity=_ownership_version_identity(opened),
-            digest=digest.hex(),
-            entries=budget.entries,
-            byte_count=budget.byte_count,
-            metadata_bytes=budget.metadata_bytes,
-            inventory=tuple(sorted(inventory)),
-            file_records=tuple(sorted(file_records, key=lambda record: record.path)),
-            entry_identities=tuple(sorted(entry_identities)),
-        )
+    opened = api.metadata(handle)
+    if _is_link_or_reparse(opened) or not stat.S_ISDIR(opened.st_mode):
+        raise RuntimeError(f"directory ownership root changed: {path}")
+    if not opened.st_dev or not opened.st_ino:
+        raise RuntimeError("directory ownership root has no reliable FILE_ID identity")
+    budget = _OwnershipBudget()
+    inventory: list[tuple[str, str]] = []
+    file_records: list[TreeFileRecord] = []
+    entry_identities: list[tuple[str, str, tuple[int, ...]]] = []
+    digest = _scan_windows_owned_directory(
+        api,
+        handle,
+        path,
+        (),
+        root_device=opened.st_dev,
+        budget=budget,
+        inventory=inventory,
+        file_records=file_records,
+        entry_identities=entry_identities,
+        entry_policy=entry_policy,
+        depth=0,
+        required_root_file=required_root_file,
+        allow_empty_root=allow_empty_root,
+        resource_owner=selected_resources,
+    )
+    after = api.metadata(handle)
+    if _ownership_version_identity(after) != _ownership_version_identity(opened):
+        raise RuntimeError(f"directory ownership root changed: {path}")
+    return _TreeOwnership(
+        root_identity=_directory_inode_identity(opened),
+        root_version_identity=_ownership_version_identity(opened),
+        digest=digest.hex(),
+        entries=budget.entries,
+        byte_count=budget.byte_count,
+        metadata_bytes=budget.metadata_bytes,
+        inventory=tuple(sorted(inventory)),
+        file_records=tuple(sorted(file_records, key=lambda record: record.path)),
+        entry_identities=tuple(sorted(entry_identities)),
+    )
 
 
 def _open_windows_publication_authority(
@@ -3492,9 +4102,28 @@ def _open_windows_publication_authority(
             if metadata.st_dev != opened.st_dev:
                 resources.close_handle(handle)
                 raise RuntimeError("publication child crosses a volume")
+            handle_record = resources.record_for_cleanup(handle)
+            handle_owner = resources._exact_record_cleanup_owner(handle_record)
             reader: _PublicationTreeReader | None = None
-            primary_error: BaseException | None = None
-            try:
+
+            def deactivate_reader() -> None:
+                if reader is not None:
+                    reader._deactivate()
+
+            cleanup_actions = (
+                (
+                    "Windows publication reader deactivation also failed",
+                    deactivate_reader,
+                ),
+                _OrderedAction(
+                    label="Windows reader HANDLE cleanup also failed",
+                    action=handle_owner.close,
+                    complete=lambda: handle_owner.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=handle_owner,
+                ),
+            )
+            with _run_context_with_cleanup_actions(cleanup_actions):
                 reader = _PublicationTreeReader(
                     display_path,
                     _directory_inode_identity(metadata),
@@ -3503,6 +4132,7 @@ def _open_windows_publication_authority(
                             api,
                             handle,
                             display_path,
+                            resources=resources,
                             required_root_file=required_root_file,
                             allow_empty_root=allow_empty_root,
                             entry_policy=entry_policy,
@@ -3514,6 +4144,7 @@ def _open_windows_publication_authority(
                             handle,
                             display_path,
                             relative,
+                            resources=resources,
                             max_bytes=max_bytes,
                             expected=expected,
                         )
@@ -3531,22 +4162,6 @@ def _open_windows_publication_authority(
                     callback,
                     validate_child_binding,
                 )
-            except BaseException as exc:
-                primary_error = exc
-                raise
-            finally:
-                if reader is not None:
-                    reader._deactivate()
-                try:
-                    resources.close_handle(handle)
-                except BaseException as close_error:  # noqa: B036
-                    if primary_error is None:
-                        raise
-                    _annotate_secondary_error(
-                        primary_error,
-                        "Windows reader HANDLE cleanup also failed",
-                        close_error,
-                    )
 
         def rename_callback(source: str, destination: str) -> None:
             opened_source = open_child(
@@ -3749,14 +4364,17 @@ def _open_posix_authenticated_file(
     root_path: Path,
     relative: PurePosixPath,
     *,
+    resources: _PosixResourceOwner | None = None,
     max_bytes: int,
     expected: _ExpectedPublicationFile,
 ) -> Iterator[PublicationAuthenticatedFile]:
-    resources = _PosixResourceOwner()
+    owns_resources = resources is None
+    selected_resources = _PosixResourceOwner() if resources is None else resources
     flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     directory_flags = flags | os.O_DIRECTORY | getattr(os, "O_NONBLOCK", 0)
     file_flags = flags | getattr(os, "O_NONBLOCK", 0)
     descriptors: list[int] = []
+    exact_owners: list[_ExactResourceCleanupOwner] = []
     bindings: list[tuple[int, str, int, tuple[int, ...]]] = []
     file_descriptor = -1
     authenticated: PublicationAuthenticatedFile | None = None
@@ -3770,7 +4388,31 @@ def _open_posix_authenticated_file(
 
     def close_resources() -> None:
         nonlocal cleanup_complete
-        resources.close_all()
+        if owns_resources:
+            selected_resources.close_all()
+        else:
+            failures = _OrderedActionState(
+                actions=tuple(
+                    _OrderedAction(
+                        label=(
+                            "publication authenticated descriptor cleanup also failed"
+                        ),
+                        action=owner.close,
+                        complete=lambda owner=owner: owner.closed,
+                        retry_incomplete="cancellation",
+                        incomplete_owner=owner,
+                    )
+                    for owner in reversed(exact_owners)
+                ),
+                iteration_failure_label=(
+                    "publication authenticated descriptor cleanup iteration also "
+                    "failed"
+                ),
+                primary_error=None,
+            )
+            _run_ordered_actions(failures)
+            if failures.primary_error is not None:
+                raise failures.primary_error
         cleanup_complete = True
 
     cleanup_actions: tuple[_OrderedActionInput, ...] = (
@@ -3786,14 +4428,20 @@ def _open_posix_authenticated_file(
             action=close_resources,
             complete=lambda: cleanup_complete,
             retry_incomplete="cancellation",
-            incomplete_owner=resources,
+            incomplete_owner=selected_resources,
         ),
     )
 
     with _run_context_with_cleanup_actions(cleanup_actions):
         root_before = os.fstat(root_descriptor)
         root_device = root_before.st_dev
-        descriptors.append(resources.duplicate(root_descriptor))
+        root_copy = selected_resources.duplicate(root_descriptor)
+        descriptors.append(root_copy)
+        if not owns_resources:
+            root_record = selected_resources.record_for_cleanup(root_copy)
+            exact_owners.append(
+                selected_resources._exact_record_cleanup_owner(root_record)
+            )
         for part in relative.parts[:-1]:
             traversed.append(part)
             relative_directory = "/".join(traversed)
@@ -3807,8 +4455,13 @@ def _open_posix_authenticated_file(
                 raise RuntimeError(
                     f"publication stream refuses directory: {root_path / relative}"
                 )
-            child = resources.open(part, directory_flags, dir_fd=parent)
+            child = selected_resources.open(part, directory_flags, dir_fd=parent)
             descriptors.append(child)
+            if not owns_resources:
+                child_record = selected_resources.record_for_cleanup(child)
+                exact_owners.append(
+                    selected_resources._exact_record_cleanup_owner(child_record)
+                )
             opened = os.fstat(child)
             if _ownership_binding_identity(opened) != _ownership_binding_identity(
                 metadata
@@ -3833,7 +4486,12 @@ def _open_posix_authenticated_file(
             raise RuntimeError(
                 f"publication stream refuses non-file: {root_path / relative}"
             )
-        file_descriptor = resources.open(name, file_flags, dir_fd=parent)
+        file_descriptor = selected_resources.open(name, file_flags, dir_fd=parent)
+        if not owns_resources:
+            file_record = selected_resources.record_for_cleanup(file_descriptor)
+            exact_owners.append(
+                selected_resources._exact_record_cleanup_owner(file_record)
+            )
         opened_file = os.fstat(file_descriptor)
         if _ownership_binding_identity(opened_file) != _ownership_binding_identity(
             metadata
@@ -3887,7 +4545,11 @@ def _open_posix_authenticated_file(
             read_callback=lambda size: os.read(file_descriptor, size),
             verify_callback=verify,
         )
-        yield authenticated
+        try:
+            yield authenticated
+        except BaseException:
+            authenticated._abort()
+            raise
 
 
 def _ownership_hash_field(hasher, value: bytes) -> None:
@@ -3933,6 +4595,7 @@ def _hash_owned_regular_file(
     path: Path,
     metadata: os.stat_result,
     *,
+    resources: _PosixResourceOwner,
     root_device: int,
     budget: _OwnershipBudget,
     relative: str,
@@ -3941,8 +4604,20 @@ def _hash_owned_regular_file(
     flags = os.O_RDONLY | os.O_NOFOLLOW
     flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NONBLOCK", 0)
-    descriptor = os.open(name, flags, dir_fd=parent_descriptor)
-    try:
+    descriptor = resources.open(name, flags, dir_fd=parent_descriptor)
+    descriptor_record = resources.record_for_cleanup(descriptor)
+    exact_owner = resources._exact_record_cleanup_owner(descriptor_record)
+    with _run_context_with_cleanup_actions(
+        (
+            _OrderedAction(
+                label="directory ownership file descriptor cleanup also failed",
+                action=exact_owner.close,
+                complete=lambda: exact_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=exact_owner,
+            ),
+        )
+    ):
         opened = os.fstat(descriptor)
         if (
             not stat.S_ISREG(opened.st_mode)
@@ -3980,8 +4655,6 @@ def _hash_owned_regular_file(
             opened
         ):
             raise RuntimeError(f"directory ownership file changed: {path}")
-    finally:
-        os.close(descriptor)
     budget.byte_count += size
     return size, digest.hexdigest(), _ownership_version_identity(after)
 
@@ -3991,6 +4664,7 @@ def _scan_owned_directory(
     path: Path,
     parts: tuple[bytes, ...],
     *,
+    resources: _PosixResourceOwner,
     root_device: int,
     mount_points: frozenset[str],
     budget: _OwnershipBudget,
@@ -4015,9 +4689,21 @@ def _scan_owned_directory(
 
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     flags |= getattr(os, "O_CLOEXEC", 0)
-    scan_descriptor = os.open(".", flags, dir_fd=descriptor)
+    scan_descriptor = resources.open(".", flags, dir_fd=descriptor)
+    scan_record = resources.record_for_cleanup(scan_descriptor)
+    scan_owner = resources._exact_record_cleanup_owner(scan_record)
     names: list[tuple[bytes, str]] = []
-    try:
+    with _run_context_with_cleanup_actions(
+        (
+            _OrderedAction(
+                label="directory ownership scan descriptor cleanup also failed",
+                action=scan_owner.close,
+                complete=lambda: scan_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=scan_owner,
+            ),
+        )
+    ):
         with os.scandir(scan_descriptor) as entries:
             for entry in entries:
                 raw_name = os.fsencode(entry.name)
@@ -4028,8 +4714,6 @@ def _scan_owned_directory(
                 relative = _ownership_relative_path(parts + (raw_name,))
                 _reserve_ownership_record(budget, relative=relative)
                 names.append((raw_name, entry.name))
-    finally:
-        os.close(scan_descriptor)
     names.sort(key=lambda item: item[0])
     if (
         required_root_file is not None
@@ -4071,8 +4755,19 @@ def _scan_owned_directory(
                     stat.S_IMODE(metadata.st_mode),
                     0,
                 )
-            child_descriptor = os.open(name, flags, dir_fd=descriptor)
-            try:
+            child_descriptor = resources.open(name, flags, dir_fd=descriptor)
+            child_record = resources.record_for_cleanup(child_descriptor)
+            child_owner = resources._exact_record_cleanup_owner(child_record)
+            child_cleanup: tuple[_OrderedActionInput, ...] = (
+                _OrderedAction(
+                    label="directory ownership child descriptor cleanup also failed",
+                    action=child_owner.close,
+                    complete=lambda owner=child_owner: owner.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=child_owner,
+                ),
+            )
+            with _run_context_with_cleanup_actions(child_cleanup):
                 opened = os.fstat(child_descriptor)
                 if _ownership_binding_identity(opened) != _ownership_binding_identity(
                     metadata
@@ -4084,6 +4779,7 @@ def _scan_owned_directory(
                     child_descriptor,
                     child_path,
                     child_parts,
+                    resources=resources,
                     root_device=root_device,
                     mount_points=mount_points,
                     budget=budget,
@@ -4100,8 +4796,6 @@ def _scan_owned_directory(
                     raise RuntimeError(
                         f"directory ownership directory changed: {child_path}"
                     )
-            finally:
-                os.close(child_descriptor)
             path_after = os.stat(
                 name,
                 dir_fd=descriptor,
@@ -4131,6 +4825,7 @@ def _scan_owned_directory(
                 name,
                 child_path,
                 metadata,
+                resources=resources,
                 root_device=root_device,
                 budget=budget,
                 relative=os.fsdecode(relative),
@@ -4186,6 +4881,7 @@ def _capture_posix_directory_descriptor(
     descriptor: int,
     path: Path,
     *,
+    resources: _PosixResourceOwner | None = None,
     required_root_file: str | None,
     allow_empty_root: bool,
     entry_policy: DirectoryEntryPolicy | None,
@@ -4193,6 +4889,7 @@ def _capture_posix_directory_descriptor(
     """Capture one already-open POSIX directory without reacquiring its path."""
 
     required_root_file_bytes = _required_root_file_bytes(required_root_file)
+    selected_resources = _PosixResourceOwner() if resources is None else resources
     opened = os.fstat(descriptor)
     if _is_link_or_reparse(opened) or not stat.S_ISDIR(opened.st_mode):
         raise RuntimeError(f"directory ownership root changed: {path}")
@@ -4208,6 +4905,7 @@ def _capture_posix_directory_descriptor(
         descriptor,
         path,
         (),
+        resources=selected_resources,
         root_device=opened.st_dev,
         mount_points=_linux_mount_points(),
         budget=budget,
@@ -4330,6 +5028,391 @@ def capture_directory_ownership_if_exists(
             raise RuntimeError("directory ownership root changed while it was captured")
         authority.verify_path_binding()
         return ownership
+
+
+def _ownership_token_path_bytes(value: object) -> bytes:
+    """Return the exact path bytes represented by one captured token entry."""
+
+    if not isinstance(value, str) or not value or value in {".", ".."}:
+        raise RuntimeError("directory ownership token contains an invalid path")
+    if "\x00" in value:
+        raise RuntimeError("directory ownership token contains an invalid path")
+    path = PurePosixPath(value)
+    if path.is_absolute() or path.as_posix() != value:
+        raise RuntimeError("directory ownership token contains a non-canonical path")
+    if len(path.parts) > _MAX_SAFE_REMOVAL_DEPTH:
+        raise RuntimeError("directory ownership token path exceeds its depth limit")
+    try:
+        encoded_parts = tuple(os.fsencode(part) for part in path.parts)
+    except UnicodeEncodeError as exc:
+        raise RuntimeError(
+            "directory ownership token path cannot be represented"
+        ) from exc
+    if any(not part or part in {b".", b".."} for part in encoded_parts):
+        raise RuntimeError("directory ownership token contains an invalid path")
+    if any(len(part) > _MAX_OWNERSHIP_COMPONENT_BYTES for part in encoded_parts):
+        raise RuntimeError("directory ownership token component exceeds its byte limit")
+    return _ownership_relative_path(encoded_parts)
+
+
+def _ownership_subtree_prefix(value: object) -> str:
+    raw = value.as_posix() if isinstance(value, PurePosixPath) else value
+    try:
+        _ownership_token_path_bytes(raw)
+    except RuntimeError as exc:
+        raise ValueError(
+            "directory ownership subtree prefix must be canonical and non-root"
+        ) from exc
+    if not isinstance(raw, str):
+        raise ValueError(
+            "directory ownership subtree prefix must be canonical and non-root"
+        )
+    return raw
+
+
+def _validated_ownership_version_identity(
+    value: object,
+    *,
+    kind: Literal["directory", "file"],
+    root_device: int | None = None,
+) -> tuple[int, ...]:
+    if (
+        not isinstance(value, tuple)
+        or len(value) != 8
+        or any(isinstance(part, bool) or not isinstance(part, int) for part in value)
+    ):
+        raise RuntimeError("directory ownership token contains an invalid identity")
+    identity = value
+    device, inode, mode, size, attributes, _mtime, _ctime, link_count = identity
+    expected_type = stat.S_IFDIR if kind == "directory" else stat.S_IFREG
+    if (
+        device <= 0
+        or inode <= 0
+        or not 0 <= mode < 1 << 32
+        or stat.S_IFMT(mode) != expected_type
+        or size < 0
+        or attributes < 0
+        or attributes & _FILE_ATTRIBUTE_REPARSE_POINT
+        or link_count <= 0
+        or (kind == "directory" and size != 0)
+        or (root_device is not None and device != root_device)
+    ):
+        raise RuntimeError("directory ownership token contains an invalid identity")
+    return identity
+
+
+def _validated_ownership_kind(
+    value: object,
+) -> Literal["directory", "file"]:
+    if value == "directory":
+        return "directory"
+    if value == "file":
+        return "file"
+    raise RuntimeError("directory ownership token contains an invalid entry kind")
+
+
+def _ownership_root_identity_from_version(
+    identity: tuple[int, ...],
+) -> tuple[int, ...]:
+    return (identity[0], identity[1], stat.S_IFMT(identity[2]), identity[4])
+
+
+def _rebuild_ownership_digest(
+    root_version_identity: tuple[int, ...],
+    entries: dict[str, tuple[Literal["directory", "file"], tuple[int, ...]]],
+    records: dict[str, TreeFileRecord],
+) -> str:
+    children: dict[str, list[str]] = {"": []}
+    for path, (kind, _identity) in entries.items():
+        parts = PurePosixPath(path).parts
+        parent = "/".join(parts[:-1])
+        if parent:
+            parent_entry = entries.get(parent)
+            if parent_entry is None or parent_entry[0] != "directory":
+                raise RuntimeError(
+                    "directory ownership token is missing a directory ancestor"
+                )
+        children.setdefault(parent, []).append(path)
+        if kind == "directory":
+            children.setdefault(path, [])
+
+    def raw_byte_order(paths: list[str]) -> Iterator[str]:
+        terminal = -1
+        trie: dict[int, object] = {}
+        for candidate in paths:
+            node = trie
+            for octet in os.fsencode(PurePosixPath(candidate).name):
+                child = node.get(octet)
+                if child is None:
+                    child = {}
+                    node[octet] = child
+                if not isinstance(child, dict):
+                    raise RuntimeError(
+                        "directory ownership token contains a duplicate raw name"
+                    )
+                node = child
+            if terminal in node:
+                raise RuntimeError(
+                    "directory ownership token contains a duplicate raw name"
+                )
+            node[terminal] = candidate
+
+        def visit(node: dict[int, object]) -> Iterator[str]:
+            candidate = node.get(terminal)
+            if candidate is not None:
+                if not isinstance(candidate, str):
+                    raise RuntimeError("directory ownership token trie is invalid")
+                yield candidate
+            keys = 0
+            for octet in node:
+                if octet >= 0:
+                    keys |= 1 << octet
+            while keys:
+                lowest = keys & -keys
+                octet = lowest.bit_length() - 1
+                child = node[octet]
+                if not isinstance(child, dict):
+                    raise RuntimeError("directory ownership token trie is invalid")
+                yield from visit(child)
+                keys ^= lowest
+
+        yield from visit(trie)
+
+    def hash_directory(path: str, identity: tuple[int, ...]) -> bytes:
+        hasher = hashlib.sha256()
+        hasher.update(b"codenib.atomic-directory.v1\x00")
+        hasher.update(stat.S_IMODE(identity[2]).to_bytes(4, "big"))
+        for child in raw_byte_order(children.get(path, [])):
+            kind, child_identity = entries[child]
+            relative = _ownership_token_path_bytes(child)
+            entry_hasher = hashlib.sha256()
+            if kind == "directory":
+                entry_hasher.update(b"D")
+                _ownership_hash_field(entry_hasher, relative)
+                entry_hasher.update(stat.S_IMODE(child_identity[2]).to_bytes(4, "big"))
+                entry_hasher.update(hash_directory(child, child_identity))
+            else:
+                record = records[child]
+                entry_hasher.update(b"F")
+                _ownership_hash_field(entry_hasher, relative)
+                entry_hasher.update(record.mode.to_bytes(4, "big"))
+                entry_hasher.update(record.size.to_bytes(8, "big"))
+                entry_hasher.update(bytes.fromhex(record.sha256))
+            hasher.update(entry_hasher.digest())
+        return hasher.digest()
+
+    return hash_directory("", root_version_identity).hex()
+
+
+def _validate_directory_ownership_token(
+    ownership: _TreeOwnership,
+) -> dict[str, tuple[Literal["directory", "file"], tuple[int, ...]]]:
+    """Validate canonical structure and every redundant ownership-token field."""
+
+    if not isinstance(ownership, _TreeOwnership):
+        raise TypeError("ownership must be a captured directory ownership token")
+    root_version = _validated_ownership_version_identity(
+        ownership.root_version_identity,
+        kind="directory",
+    )
+    if ownership.root_identity != _ownership_root_identity_from_version(root_version):
+        raise RuntimeError("directory ownership token root identity is inconsistent")
+    for value, limit, label in (
+        (ownership.entries, _MAX_OWNERSHIP_ENTRIES, "entry"),
+        (ownership.byte_count, _MAX_OWNERSHIP_BYTES, "byte"),
+        (ownership.metadata_bytes, _MAX_OWNERSHIP_METADATA_BYTES, "metadata"),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not 0 <= value <= limit
+        ):
+            raise RuntimeError(
+                f"directory ownership token contains an invalid {label} count"
+            )
+    if (
+        not isinstance(ownership.digest, str)
+        or len(ownership.digest) != 64
+        or ownership.digest != ownership.digest.lower()
+    ):
+        raise RuntimeError("directory ownership token contains an invalid digest")
+    try:
+        digest_bytes = bytes.fromhex(ownership.digest)
+    except ValueError as exc:
+        raise RuntimeError(
+            "directory ownership token contains an invalid digest"
+        ) from exc
+    if len(digest_bytes) != hashlib.sha256().digest_size or any(
+        character not in "0123456789abcdef" for character in ownership.digest
+    ):
+        raise RuntimeError("directory ownership token contains an invalid digest")
+    if not all(
+        isinstance(collection, tuple)
+        for collection in (
+            ownership.inventory,
+            ownership.file_records,
+            ownership.entry_identities,
+        )
+    ):
+        raise RuntimeError("directory ownership token collections are not canonical")
+
+    entries: dict[str, tuple[Literal["directory", "file"], tuple[int, ...]]] = {}
+    inventory_kinds: dict[str, Literal["directory", "file"]] = {}
+    inventory: list[tuple[str, str]] = []
+    for inventory_item in ownership.inventory:
+        if (
+            not isinstance(inventory_item, tuple)
+            or len(inventory_item) != 2
+            or inventory_item[1] not in {"directory", "file"}
+        ):
+            raise RuntimeError("directory ownership token inventory is invalid")
+        path, raw_kind = inventory_item
+        kind = _validated_ownership_kind(raw_kind)
+        _ownership_token_path_bytes(path)
+        if path in inventory_kinds:
+            raise RuntimeError("directory ownership token contains a duplicate path")
+        inventory_kinds[path] = kind
+        inventory.append((path, kind))
+    if any(previous >= current for previous, current in pairwise(inventory)):
+        raise RuntimeError("directory ownership token inventory is not canonical")
+    if ownership.entries != len(inventory):
+        raise RuntimeError("directory ownership token entry count is inconsistent")
+
+    identities: list[tuple[str, str, tuple[int, ...]]] = []
+    seen_identities: set[str] = set()
+    for identity_item in ownership.entry_identities:
+        if not isinstance(identity_item, tuple) or len(identity_item) != 3:
+            raise RuntimeError("directory ownership token identities are invalid")
+        path, raw_kind, raw_identity = identity_item
+        kind = _validated_ownership_kind(raw_kind)
+        if path in seen_identities or inventory_kinds.get(path) != kind:
+            raise RuntimeError("directory ownership token identities are inconsistent")
+        identity = _validated_ownership_version_identity(
+            raw_identity,
+            kind=kind,
+            root_device=root_version[0],
+        )
+        entries[path] = (kind, identity)
+        seen_identities.add(path)
+        identities.append((path, kind, identity))
+    if any(
+        previous >= current for previous, current in pairwise(identities)
+    ) or seen_identities != set(inventory_kinds):
+        raise RuntimeError("directory ownership token identities are not canonical")
+
+    records: dict[str, TreeFileRecord] = {}
+    canonical_records: list[TreeFileRecord] = []
+    for record in ownership.file_records:
+        if not isinstance(record, TreeFileRecord):
+            raise RuntimeError("directory ownership token file records are invalid")
+        entry = entries.get(record.path)
+        if entry is None or entry[0] != "file" or record.path in records:
+            raise RuntimeError(
+                "directory ownership token file records are inconsistent"
+            )
+        if (
+            isinstance(record.mode, bool)
+            or not isinstance(record.mode, int)
+            or not 0 <= record.mode <= 0o7777
+            or isinstance(record.size, bool)
+            or not isinstance(record.size, int)
+            or record.size < 0
+            or record.size != entry[1][3]
+            or record.mode != stat.S_IMODE(entry[1][2])
+            or not isinstance(record.sha256, str)
+            or len(record.sha256) != 64
+            or record.sha256 != record.sha256.lower()
+        ):
+            raise RuntimeError("directory ownership token file record is invalid")
+        try:
+            record_digest = bytes.fromhex(record.sha256)
+        except ValueError as exc:
+            raise RuntimeError(
+                "directory ownership token file record is invalid"
+            ) from exc
+        if len(record_digest) != hashlib.sha256().digest_size or any(
+            character not in "0123456789abcdef" for character in record.sha256
+        ):
+            raise RuntimeError("directory ownership token file record is invalid")
+        records[record.path] = record
+        canonical_records.append(record)
+    expected_files = {
+        path for path, (kind, _identity) in entries.items() if kind == "file"
+    }
+    if set(records) != expected_files or any(
+        previous.path >= current.path
+        for previous, current in pairwise(canonical_records)
+    ):
+        raise RuntimeError("directory ownership token file records are not canonical")
+
+    byte_count = sum(record.size for record in records.values())
+    metadata_bytes = sum(
+        8 + len(_ownership_token_path_bytes(path)) + 1 + 4 + 8 + 32 for path in entries
+    )
+    if byte_count != ownership.byte_count or metadata_bytes != ownership.metadata_bytes:
+        raise RuntimeError("directory ownership token accounting is inconsistent")
+    if _rebuild_ownership_digest(root_version, entries, records) != ownership.digest:
+        raise RuntimeError("directory ownership token digest is inconsistent")
+    return entries
+
+
+def project_directory_ownership_subtree(
+    outer: _TreeOwnership,
+    prefix: str | PurePosixPath,
+) -> _TreeOwnership:
+    """Derive an exact subtree token without reopening filesystem paths.
+
+    The returned token describes data only.  It does not grant read authority;
+    callers need an active ``PublicationDirectoryReader.subtree`` facade to
+    consume the corresponding bytes.
+    """
+
+    entries = _validate_directory_ownership_token(outer)
+    normalized = _ownership_subtree_prefix(prefix)
+    selected = entries.get(normalized)
+    if selected is None:
+        raise ValueError("directory ownership subtree prefix is absent")
+    if selected[0] != "directory":
+        raise ValueError("directory ownership subtree prefix is not a directory")
+    root_version = selected[1]
+    descendant_prefix = f"{normalized}/"
+
+    projected_inventory = tuple(
+        (path[len(descendant_prefix) :], kind)
+        for path, kind in outer.inventory
+        if path.startswith(descendant_prefix)
+    )
+    projected_records = tuple(
+        replace(record, path=record.path[len(descendant_prefix) :])
+        for record in outer.file_records
+        if record.path.startswith(descendant_prefix)
+    )
+    projected_identities = tuple(
+        (path[len(descendant_prefix) :], kind, identity)
+        for path, kind, identity in outer.entry_identities
+        if path.startswith(descendant_prefix)
+    )
+    projected_entries = {
+        path: (_validated_ownership_kind(kind), identity)
+        for path, kind, identity in projected_identities
+    }
+    records = {record.path: record for record in projected_records}
+    projected = _TreeOwnership(
+        root_identity=_ownership_root_identity_from_version(root_version),
+        root_version_identity=root_version,
+        digest=_rebuild_ownership_digest(root_version, projected_entries, records),
+        entries=len(projected_inventory),
+        byte_count=sum(record.size for record in projected_records),
+        metadata_bytes=sum(
+            8 + len(_ownership_token_path_bytes(path)) + 1 + 4 + 8 + 32
+            for path, _kind in projected_inventory
+        ),
+        inventory=projected_inventory,
+        file_records=projected_records,
+        entry_identities=projected_identities,
+    )
+    _validate_directory_ownership_token(projected)
+    return projected
 
 
 def directory_ownership_inventory(
@@ -5284,7 +6367,9 @@ __all__ = [
     "discard_owned_directory",
     "lexical_directory_path",
     "publication_parent_identity",
+    "project_directory_ownership_subtree",
     "publish_staged_directory",
     "reopen_authenticated_directory",
     "require_publishable_directory_ownership",
+    "retry_retained_publication_cleanup",
 ]
