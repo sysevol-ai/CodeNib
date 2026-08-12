@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import json
 import os
 import pickle
@@ -15,6 +16,12 @@ from types import SimpleNamespace
 
 import pytest
 
+import codenib.artifacts.portable_views as portable_views_module
+from codenib._atomic_directory import (
+    PublicationDirectoryReader,
+    capture_directory_ownership,
+    reopen_authenticated_directory,
+)
 from codenib.artifacts import normalize_owned_query_view, validate_portable_query_view
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.index.embedding.artifact_integrity import (
@@ -25,6 +32,11 @@ from codenib.index.embedding.artifact_integrity import (
 )
 from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.provider_routes import resolve_inference_route
+from codenib.source_fingerprint import (
+    RepositoryChangedError,
+    RepositorySourceBinding,
+    capture_repository_source,
+)
 
 _VECTOR_CONFIG = {
     "builder_schema": 2,
@@ -2611,3 +2623,490 @@ def test_normalize_owned_view_rejects_repository_overlap(tmp_path: Path) -> None
             view_type="bm25",
             view_config={},
         )
+
+
+def _validate_content_bound_view(
+    view: Path,
+    *,
+    repository_source: RepositorySourceBinding,
+    view_type: str,
+    view_config: dict[str, object],
+) -> None:
+    ownership = capture_directory_ownership(view)
+
+    def validate(publication: PublicationDirectoryReader) -> None:
+        portable_views_module.validate_content_bound_portable_query_view_reader(
+            publication,
+            repository_source=repository_source,
+            view_type=view_type,
+            view_config=view_config,
+            environ={},
+        )
+
+    reopen_authenticated_directory(view, ownership, validate)
+
+
+def test_content_bound_portable_reader_has_stable_public_signature() -> None:
+    validator = portable_views_module.validate_content_bound_portable_query_view_reader
+    signature = inspect.signature(validator)
+
+    assert list(signature.parameters) == [
+        "publication",
+        "repository_source",
+        "view_type",
+        "view_config",
+        "forbidden_paths",
+        "environ",
+    ]
+    assert (
+        signature.parameters["publication"].kind
+        is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    )
+    for name in (
+        "repository_source",
+        "view_type",
+        "view_config",
+        "forbidden_paths",
+        "environ",
+    ):
+        assert signature.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+    assert signature.parameters["view_config"].default is None
+    assert signature.parameters["forbidden_paths"].default == ()
+    assert signature.parameters["environ"].default is None
+    assert validator.__name__ in portable_views_module.__all__
+
+    assert list(inspect.signature(normalize_owned_query_view).parameters) == [
+        "root",
+        "repo_path",
+        "view_type",
+        "view_config",
+        "source_trust",
+        "native_index_authorization",
+    ]
+    assert list(inspect.signature(validate_portable_query_view).parameters) == [
+        "root",
+        "repo_path",
+        "view_type",
+        "view_config",
+        "forbidden_paths",
+        "environ",
+    ]
+
+
+def test_content_bound_portable_reader_validates_bm25_without_documents_dom(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "VALUE = 1",
+                "metadata": {"file": "sample.py"},
+            }
+        ],
+    )
+    view_config = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    real_load_json = portable_views_module._load_json
+
+    def reject_documents_dom(path: Path, *args: object, **kwargs: object) -> object:
+        if path.name == "documents.json":
+            pytest.fail("content-bound BM25 documents used a whole-file DOM")
+        return real_load_json(path, *args, **kwargs)
+
+    real_read_bytes = portable_views_module._PublicationViewReader.read_bytes
+
+    def reject_documents_read_bytes(
+        reader: object,
+        path: Path,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        if path.name == "documents.json":
+            pytest.fail("content-bound BM25 documents used a whole-file byte read")
+        return real_read_bytes(reader, path, max_bytes=max_bytes)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(portable_views_module, "_load_json", reject_documents_dom)
+    monkeypatch.setattr(
+        portable_views_module._PublicationViewReader,
+        "read_bytes",
+        reject_documents_read_bytes,
+    )
+
+    with capture_repository_source(repo) as repository_source:
+        _validate_content_bound_view(
+            bm25,
+            repository_source=repository_source,
+            view_type="bm25",
+            view_config=view_config,
+        )
+
+
+def test_content_bound_portable_reader_validates_vector_without_native_load(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, vector, original_config = _production_vector_view(tmp_path)
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=original_config,
+    )
+    view_config = {**original_config, **adjustments}
+
+    def forbidden_native(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("content-bound vector validation invoked native parsing")
+
+    real_load_json = portable_views_module._load_json
+
+    def reject_documents_dom(path: Path, *args: object, **kwargs: object) -> object:
+        if path.name.startswith("documents_"):
+            pytest.fail("content-bound vector documents used a whole-file DOM")
+        return real_load_json(path, *args, **kwargs)
+
+    real_read_bytes = portable_views_module._PublicationViewReader.read_bytes
+
+    def reject_documents_read_bytes(
+        reader: object,
+        path: Path,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        if path.name.startswith("documents_"):
+            pytest.fail("content-bound vector documents used a whole-file byte read")
+        return real_read_bytes(reader, path, max_bytes=max_bytes)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(portable_views_module, "_faiss_contract", forbidden_native)
+    monkeypatch.setattr(portable_views_module.compat_pickle, "load", forbidden_native)
+    monkeypatch.setattr(portable_views_module, "_load_json", reject_documents_dom)
+    monkeypatch.setattr(
+        portable_views_module._PublicationViewReader,
+        "read_bytes",
+        reject_documents_read_bytes,
+    )
+
+    with capture_repository_source(repo) as repository_source:
+        _validate_content_bound_view(
+            vector,
+            repository_source=repository_source,
+            view_type="vector",
+            view_config=view_config,
+        )
+
+
+def test_content_bound_vector_does_not_probe_model_or_source_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, vector, original_config = _production_vector_view(tmp_path)
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=original_config,
+    )
+    view_config = {**original_config, **adjustments}
+    (tmp_path / "test" / "model").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    def fail_ambient_probe(
+        _path: Path,
+        *_args: object,
+        **_kwargs: object,
+    ) -> Path | bool:
+        pytest.fail("content-bound validation probed an ambient filesystem path")
+
+    with capture_repository_source(repo) as repository_source:
+        ownership = capture_directory_ownership(vector)
+
+        def validate(publication: PublicationDirectoryReader) -> None:
+            with monkeypatch.context() as probes:
+                probes.setattr(Path, "is_dir", fail_ambient_probe)
+                probes.setattr(Path, "expanduser", fail_ambient_probe)
+                portable_views_module.validate_content_bound_portable_query_view_reader(
+                    publication,
+                    repository_source=repository_source,
+                    view_type="vector",
+                    view_config=view_config,
+                    environ={},
+                )
+
+        reopen_authenticated_directory(vector, ownership, validate)
+
+
+def test_content_bound_vector_rejects_absolute_local_model_before_fs_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, vector, original_config = _production_vector_view(tmp_path)
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=original_config,
+    )
+    model = str(tmp_path / "local-model")
+    options = {"revision": _REVISION, "trust_remote_code": False}
+    route = resolve_inference_route(
+        operation="embeddings",
+        provider="huggingface",
+        model=model,
+        dimension=4,
+        compatibility_options=options,
+        environ={},
+    )
+    view_config = {
+        **original_config,
+        **adjustments,
+        "embedding_model": model,
+        "embedding_route": route.public_identity(),
+        "embedding_fingerprint": route.compatibility_fingerprint,
+    }
+
+    with capture_repository_source(repo) as repository_source:
+        ownership = capture_directory_ownership(vector)
+
+        def validate(publication: PublicationDirectoryReader) -> None:
+            def fail_ambient_probe(
+                _path: Path,
+                *_args: object,
+                **_kwargs: object,
+            ) -> object:
+                pytest.fail("local artifact model reached a filesystem probe")
+
+            with monkeypatch.context() as probes:
+                probes.setattr(Path, "is_dir", fail_ambient_probe)
+                probes.setattr(Path, "stat", fail_ambient_probe)
+                with pytest.raises(ValueError, match="filesystem-shaped path"):
+                    portable_views_module.validate_content_bound_portable_query_view_reader(
+                        publication,
+                        repository_source=repository_source,
+                        view_type="vector",
+                        view_config=view_config,
+                        environ={},
+                    )
+
+        reopen_authenticated_directory(vector, ownership, validate)
+
+
+@pytest.mark.parametrize(
+    "source_path",
+    [
+        "~other/sample.py",
+        "/outside/sample.py",
+        "C:/repo/sample.py",
+        "C:\\repo\\sample.py",
+        "//server/share/sample.py",
+        "\\\\server\\share\\sample.py",
+        "./sample.py",
+        "../sample.py",
+    ],
+)
+def test_content_bound_bm25_rejects_filesystem_shaped_sources_without_expansion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_path: str,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    (bm25 / "documents.json").write_bytes(
+        _canonical_json_bytes(
+            [
+                {
+                    "page_content": "VALUE = 1",
+                    "metadata": {"file": source_path},
+                }
+            ]
+        )
+    )
+    view_config = {"artifact_file_fingerprints": bm25_artifact_file_fingerprints(bm25)}
+
+    with capture_repository_source(repo) as repository_source:
+        ownership = capture_directory_ownership(bm25)
+
+        def validate(publication: PublicationDirectoryReader) -> None:
+            with monkeypatch.context() as probes:
+                probes.setattr(
+                    Path,
+                    "expanduser",
+                    lambda _path: pytest.fail(
+                        "content-bound source validation expanded an ambient path"
+                    ),
+                )
+                portable_views_module.validate_content_bound_portable_query_view_reader(
+                    publication,
+                    repository_source=repository_source,
+                    view_type="bm25",
+                    view_config=view_config,
+                    environ={},
+                )
+
+        with pytest.raises(ValueError, match="portable repository-relative path"):
+            reopen_authenticated_directory(bm25, ownership, validate)
+
+
+def test_content_bound_portable_reader_rejects_source_outside_frozen_records(
+    tmp_path: Path,
+) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "LATE = 1",
+                "metadata": {"file": "late.py"},
+            }
+        ],
+    )
+    late_source = repo / "late.py"
+    late_source.write_text("LATE = 1\n", encoding="utf-8")
+    view_config = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    late_source.unlink()
+
+    with capture_repository_source(repo) as repository_source:
+        with pytest.raises(ValueError, match="authenticated repository source"):
+            _validate_content_bound_view(
+                bm25,
+                repository_source=repository_source,
+                view_type="bm25",
+                view_config=view_config,
+            )
+
+
+def test_content_bound_portable_reader_rejects_source_drift(
+    tmp_path: Path,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    view_config = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+
+    with capture_repository_source(repo) as repository_source:
+        (repo / "sample.py").write_text("VALUE = 2\n", encoding="utf-8")
+        with pytest.raises(RepositoryChangedError):
+            _validate_content_bound_view(
+                bm25,
+                repository_source=repository_source,
+                view_type="bm25",
+                view_config=view_config,
+            )
+
+
+def test_content_bound_vector_rejects_extra_document_store(tmp_path: Path) -> None:
+    repo, vector, original_config = _production_vector_view(tmp_path)
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=original_config,
+    )
+    view_config = {**original_config, **adjustments}
+    extra = vector / "l2" / "documents_uncommitted.json"
+    extra.write_text("[]\n", encoding="utf-8")
+
+    with capture_repository_source(repo) as repository_source:
+        with pytest.raises(ValueError, match="unexpected|other-model"):
+            _validate_content_bound_view(
+                vector,
+                repository_source=repository_source,
+                view_type="vector",
+                view_config=view_config,
+            )
+
+
+def test_content_bound_reader_keeps_semantic_primary_through_all_final_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    view_config = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    ownership = capture_directory_ownership(bm25)
+    primary = ValueError("semantic primary")
+    cleanup_failure = RuntimeError("reader cleanup secondary")
+    final_calls: list[str] = []
+    real_verify = portable_views_module._PublicationViewReader.verify_root
+
+    def fail_semantics(*_args: object, **_kwargs: object) -> None:
+        (repo / "sample.py").write_text("VALUE = 2\n", encoding="utf-8")
+        (bm25 / "documents.json").write_text("[ ]\n", encoding="utf-8")
+        raise primary
+
+    def verify_reader(reader: object) -> None:
+        final_calls.append("reader")
+        real_verify(reader)  # type: ignore[arg-type]
+
+    def fail_close(_reader: object) -> None:
+        final_calls.append("close")
+        raise cleanup_failure
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "_validate_portable_bm25_view",
+        fail_semantics,
+    )
+    monkeypatch.setattr(
+        portable_views_module._PublicationViewReader,
+        "verify_root",
+        verify_reader,
+    )
+    monkeypatch.setattr(
+        portable_views_module._PublicationViewReader,
+        "close",
+        fail_close,
+    )
+
+    def validate(publication: PublicationDirectoryReader) -> None:
+        portable_views_module.validate_content_bound_portable_query_view_reader(
+            publication,
+            repository_source=repository_source,
+            view_type="bm25",
+            view_config=view_config,
+            environ={},
+        )
+
+    repository_source = capture_repository_source(repo)
+    try:
+        with pytest.raises(ValueError, match="semantic primary") as exc:
+            reopen_authenticated_directory(
+                bm25,
+                ownership,
+                validate,
+            )
+    finally:
+        repository_source.close()
+
+    assert exc.value is primary
+    assert final_calls == ["reader", "close"]
+    assert repository_source.failure_reason is not None
+    notes = "\n".join(
+        (
+            *getattr(primary, "__notes__", ()),
+            *getattr(primary, "_codenib_cleanup_notes", ()),
+        )
+    )
+    assert "final ownership validation" in notes
+    assert "reader cleanup" in notes
+    assert "reader cleanup secondary" in notes

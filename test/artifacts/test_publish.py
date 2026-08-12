@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import subprocess
 from pathlib import Path
@@ -608,3 +609,141 @@ def test_publishability_reader_preserves_decoded_secret_rejection(
             root,
             environ={"CUSTOM_TOKEN": "runtime-secret-value"},
         )
+
+
+def test_publishability_reader_streams_exact_caller_validated_json(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "documents.json").write_text(
+        json.dumps([{"page_content": "safe", "metadata": {}}]),
+        encoding="utf-8",
+    )
+    ownership = capture_directory_ownership(root)
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        assert_publishable_tree_reader(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="streamed tree",
+            max_json_bytes=8,
+            streaming_json_paths=("documents.json",),
+        )
+
+    reopen_authenticated_directory(root, ownership, validate)
+
+
+def test_publishability_reader_streaming_paths_is_explicit_keyword_api() -> None:
+    signature = inspect.signature(assert_publishable_tree_reader)
+
+    assert list(signature.parameters) == [
+        "reader",
+        "forbidden_paths",
+        "environ",
+        "label",
+        "max_json_bytes",
+        "streaming_json_paths",
+    ]
+    assert signature.parameters["streaming_json_paths"].kind is (
+        inspect.Parameter.KEYWORD_ONLY
+    )
+    assert signature.parameters["streaming_json_paths"].default == ()
+
+
+def test_publishability_reader_streamed_json_still_has_lexical_validation(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    # The security layer rechecks bounded lexical framing; the caller-owned
+    # semantic validator is authoritative for exact JSON grammar/canonicality.
+    (root / "documents.json").write_bytes(b'{"truncated": [1, 2')
+    ownership = capture_directory_ownership(root)
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        assert_publishable_tree_reader(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="streamed tree",
+            max_json_bytes=8,
+            streaming_json_paths=("documents.json",),
+        )
+
+    with pytest.raises(ValueError, match="invalid JSON|truncated JSON"):
+        reopen_authenticated_directory(root, ownership, validate)
+
+
+def test_publishability_reader_streamed_json_still_has_full_secret_scan(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    secret = "configured-secret-value"
+    (root / "documents.json").write_text(
+        json.dumps([{"page_content": secret, "metadata": {}}]),
+        encoding="utf-8",
+    )
+    ownership = capture_directory_ownership(root)
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        assert_publishable_tree_reader(
+            reader,
+            forbidden_paths=(),
+            environ={"CODENIB_DEMO_API_KEY": secret},
+            label="streamed tree",
+            max_json_bytes=8,
+            streaming_json_paths=("documents.json",),
+        )
+
+    with pytest.raises(ValueError, match="configured credential"):
+        reopen_authenticated_directory(root, ownership, validate)
+
+
+def test_publishability_reader_does_not_whitelist_json_by_basename(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "publication"
+    (root / "nested").mkdir(parents=True)
+    (root / "documents.json").write_text("[]\n", encoding="utf-8")
+    (root / "nested" / "documents.json").write_text(
+        json.dumps([{"unexpected": "large-enough"}]),
+        encoding="utf-8",
+    )
+    ownership = capture_directory_ownership(root)
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        assert_publishable_tree_reader(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="streamed tree",
+            max_json_bytes=8,
+            streaming_json_paths=("documents.json",),
+        )
+
+    with pytest.raises(ValueError, match="nested/documents.json"):
+        reopen_authenticated_directory(root, ownership, validate)
+
+
+def test_publishability_reader_requires_every_streaming_json_path(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "config.json").write_text("{}\n", encoding="utf-8")
+    ownership = capture_directory_ownership(root)
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        assert_publishable_tree_reader(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="streamed tree",
+            streaming_json_paths=("documents.json",),
+        )
+
+    with pytest.raises(ValueError, match="path is absent: documents.json"):
+        reopen_authenticated_directory(root, ownership, validate)

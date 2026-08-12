@@ -14,16 +14,28 @@ import os
 import re
 import stat
 import sys
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Literal, Mapping
+from typing import Any, Iterable, Iterator, Literal, Mapping
 
 from .. import compat_pickle
 from .._atomic_directory import (
+    PublicationAuthenticatedFile,
+    PublicationDirectoryReader,
+    TreeFileRecord,
     _annotate_secondary_error,
+    _run_callback_with_post_validations,
     capture_directory_ownership,
     directory_ownership_file_records,
     directory_ownership_inventory,
     directory_ownership_root_identity,
+)
+from .._bounded_json import (
+    canonical_json_array_chunks,
+    canonical_json_value_chunks,
+    iter_bounded_json_array,
+    validate_bounded_json_stream,
+    validate_json_complexity,
 )
 from .._contained_source import validate_repository_file
 from .._secret_fields import assert_no_secret_fields
@@ -31,7 +43,10 @@ from ..index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
     VECTOR_VIEW_UPDATE_MARKER,
 )
-from ..index.embedding.model_policy import resolve_embedding_load_policy_from_options
+from ..index.embedding.model_policy import (
+    resolve_embedding_artifact_load_policy_from_options,
+    resolve_embedding_load_policy_from_options,
+)
 from ..native_index_authorization import (
     MissingNativeIndexAuthorizationError,
     NativeIndexAuthorization,
@@ -39,6 +54,7 @@ from ..native_index_authorization import (
     require_native_index_authorization_preflight,
 )
 from ..provider_routes import normalize_provider, resolve_embedding_artifact_route
+from ..source_fingerprint import RepositorySourceBinding
 from .security import assert_publishable_json_value
 
 _VECTOR_LEVELS = ("l0", "l2")
@@ -64,6 +80,8 @@ _MAX_CONFIG_JSON_BYTES = 16 * 1024 * 1024
 _MAX_DOCUMENTS_JSON_BYTES = 256 * 1024 * 1024
 _MAX_FAISS_INDEX_BYTES = 8 * 1024 * 1024 * 1024
 _JSON_READ_CHUNK_BYTES = 1024 * 1024
+_MAX_SOURCE_PATH_BYTES = 4_096
+_MAX_SOURCE_PATH_COMPONENTS = 256
 SourceTrust = Literal["portable-inert", "trusted-local"]
 
 
@@ -734,6 +752,156 @@ class _OwnedViewReader:
         return index
 
 
+class _PublicationViewReader:
+    """Portable-view facade over one callback-scoped publication authority."""
+
+    def __init__(
+        self,
+        publication: PublicationDirectoryReader,
+        ownership: object,
+    ) -> None:
+        # Synthetic only: callers use it for relative path arithmetic, never as
+        # a filesystem authority.
+        self.root = Path("/__codenib_publication_view__")
+        self.ownership = ownership
+        self._publication = publication
+        records = tuple(
+            directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+        )
+        self._records = {record.path: record for record in records}
+        if len(self._records) != len(records):
+            raise RuntimeError("publication view repeats a file record")
+
+    def _relative_path(self, path: Path | PurePosixPath) -> PurePosixPath:
+        if isinstance(path, Path):
+            try:
+                relative = PurePosixPath(path.relative_to(self.root).as_posix())
+            except ValueError as exc:
+                raise ValueError("publication view path is outside its root") from exc
+        elif isinstance(path, PurePosixPath):
+            relative = path
+        else:  # pragma: no cover - private callers are statically constrained
+            raise TypeError("publication view path must be path-like")
+        if (
+            relative.is_absolute()
+            or not relative.parts
+            or any(part in {"", ".", ".."} for part in relative.parts)
+            or len(relative.as_posix().encode("utf-8", errors="strict"))
+            > _MAX_SOURCE_PATH_BYTES
+            or len(relative.parts) > _MAX_SOURCE_PATH_COMPONENTS
+        ):
+            raise ValueError(f"publication view path is invalid: {relative}")
+        return relative
+
+    def record(self, path: Path | PurePosixPath) -> TreeFileRecord:
+        relative = self._relative_path(path)
+        try:
+            return self._records[relative.as_posix()]
+        except KeyError as exc:
+            raise ValueError(
+                f"publication view has no initial file record: {relative}"
+            ) from exc
+
+    @contextmanager
+    def open_file(
+        self,
+        path: Path | PurePosixPath,
+        *,
+        max_bytes: int | None = None,
+    ) -> Iterator[PublicationAuthenticatedFile]:
+        relative = self._relative_path(path)
+        expected = self.record(relative)
+        limit = expected.size if max_bytes is None else max_bytes
+        with self._publication.open_authenticated_file(
+            relative,
+            max_bytes=limit,
+        ) as source:
+            yield source
+        observed = source.record
+        if observed != expected:
+            raise RuntimeError(
+                f"publication view file differs from its initial record: {relative}"
+            )
+
+    def read_bytes(self, path: Path, *, max_bytes: int) -> bytes:
+        relative = self._relative_path(path)
+        payload = bytearray()
+        with self.open_file(relative, max_bytes=max_bytes) as source:
+            for chunk in source.iter_bytes(chunk_size=_JSON_READ_CHUNK_BYTES):
+                payload.extend(chunk)
+        return bytes(payload)
+
+    def validate_json(self, path: Path, *, label: str, max_bytes: int) -> None:
+        """Apply bounded lexical JSON policy before any DOM allocation."""
+
+        record = self.record(path)
+        lexical_budget = max(1, record.size)
+        with self.open_file(path, max_bytes=max_bytes) as source:
+            validate_bounded_json_stream(
+                source,
+                label=label,
+                max_bytes=max_bytes,
+                max_nodes=lexical_budget,
+                max_lexical_tokens=lexical_budget,
+            )
+
+    def require_fingerprint(
+        self,
+        path: Path,
+        expected: object,
+    ) -> PurePosixPath:
+        relative = self._relative_path(path)
+        record = self.record(relative)
+        if not isinstance(expected, Mapping):
+            raise ValueError(f"portable view fingerprint is invalid: {relative}")
+        expected_fields = {"size", "sha256"}
+        if "file" in expected:
+            expected_fields.add("file")
+        if set(expected) != expected_fields or (
+            "file" in expected and expected.get("file") != relative.name
+        ):
+            raise ValueError(f"portable view fingerprint is invalid: {relative}")
+        if expected.get("size") != record.size or expected.get("sha256") != (
+            record.sha256
+        ):
+            raise ValueError(f"portable view fingerprint mismatch: {relative}")
+        return relative
+
+    def authenticate(
+        self,
+        path: Path,
+        expected: object,
+        *,
+        cache_bytes: bool,
+        max_bytes: int | None = None,
+        keep_descriptor: bool = False,
+    ) -> None:
+        # ``keep_descriptor`` is deliberately ignored. Content-bound portable
+        # validation never grants native parsing authority.
+        del keep_descriptor
+        relative = self.require_fingerprint(path, expected)
+        limit = self.record(relative).size if max_bytes is None else max_bytes
+        del cache_bytes
+        with self.open_file(relative, max_bytes=limit) as source:
+            for _chunk in source.iter_bytes(chunk_size=_JSON_READ_CHUNK_BYTES):
+                pass
+
+    def verify_root(self) -> None:
+        if self._publication.capture_ownership() != self.ownership:
+            raise RuntimeError("publication view changed during validation")
+
+    def close(self) -> None:
+        return None
+
+    def faiss_index(self, _path: Path, _faiss: Any) -> Any:
+        raise RuntimeError(
+            "content-bound portable validation keeps native indexes inert"
+        )
+
+
+_ViewReader = _OwnedViewReader | _PublicationViewReader
+
+
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -759,6 +927,90 @@ def _json_bytes(value: Any) -> bytes:
         )
         + "\n"
     ).encode("utf-8")
+
+
+def _bounded_json_object_snapshot(
+    value: Mapping[str, Any],
+    *,
+    label: str,
+) -> dict[str, Any]:
+    """Detach caller-owned config into one bounded JSON object."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{label} requires a mapping")
+    detached = dict(value)
+    validate_json_complexity(detached, label=label)
+    payload = bytearray()
+    try:
+        for chunk in canonical_json_value_chunks(detached):
+            payload.extend(chunk)
+            if len(payload) + 1 > _MAX_CONFIG_JSON_BYTES:
+                raise ValueError(
+                    f"{label} exceeds its {_MAX_CONFIG_JSON_BYTES}-byte limit"
+                )
+        payload.extend(b"\n")
+        snapshot = json.loads(
+            payload.decode("utf-8", errors="strict"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_number,
+        )
+    except (RecursionError, TypeError, ValueError) as exc:
+        raise ValueError(f"{label} is not canonical JSON data") from exc
+    if not isinstance(snapshot, dict):  # pragma: no cover - detached is a dict
+        raise AssertionError(f"{label} snapshot is not an object")
+    return snapshot
+
+
+def _environment_snapshot(environ: Mapping[str, str] | None) -> dict[str, str]:
+    source = os.environ if environ is None else environ
+    if not isinstance(source, Mapping):
+        raise TypeError("portable validation environment must be a mapping")
+    snapshot = dict(source)
+    if any(
+        not isinstance(key, str) or not isinstance(value, str)
+        for key, value in snapshot.items()
+    ):
+        raise TypeError("portable validation environment must contain text pairs")
+    return snapshot
+
+
+def _assert_authenticated_publishable_json_value(
+    value: Any,
+    *,
+    forbidden_paths: Iterable[Path],
+    environ: Mapping[str, str],
+    label: str,
+) -> None:
+    """Apply publication policy without resolving authority display paths."""
+
+    assert_publishable_json_value(
+        value,
+        forbidden_paths=(),
+        environ=environ,
+        label=label,
+    )
+    forbidden: set[str] = set()
+    for path in forbidden_paths:
+        raw = os.fsdecode(os.fspath(path))
+        lexical = os.path.abspath(raw)
+        if os.path.isabs(raw):
+            forbidden.add(raw)
+        forbidden.update((lexical, Path(lexical).as_posix()))
+    patterns = tuple(sorted(pattern for pattern in forbidden if pattern))
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, Mapping):
+            for key, child in current.items():
+                if any(pattern in key for pattern in patterns):
+                    raise ValueError(f"{label} contains an absolute build-machine path")
+                stack.append(child)
+        elif isinstance(current, (list, tuple)):
+            stack.extend(current)
+        elif isinstance(current, str) and any(
+            pattern in current for pattern in patterns
+        ):
+            raise ValueError(f"{label} contains an absolute build-machine path")
 
 
 def _json_file_signature(metadata: os.stat_result) -> tuple[int, ...]:
@@ -829,8 +1081,10 @@ def _load_json(
     label: str,
     max_bytes: int,
     require_canonical: bool = False,
-    reader: _OwnedViewReader | None = None,
+    reader: _ViewReader | None = None,
 ) -> Any:
+    if isinstance(reader, _PublicationViewReader):
+        reader.validate_json(path, label=label, max_bytes=max_bytes)
     payload = (
         _read_bounded_json(path, label=label, max_bytes=max_bytes)
         if reader is None
@@ -855,7 +1109,7 @@ def _load_json_object(
     label: str,
     max_bytes: int = _MAX_CONFIG_JSON_BYTES,
     require_canonical: bool = False,
-    reader: _OwnedViewReader | None = None,
+    reader: _ViewReader | None = None,
 ) -> dict[str, Any]:
     value = _load_json(
         path,
@@ -892,14 +1146,49 @@ def _owned_view_root(root: Path, repo_path: Path) -> tuple[Path, Path]:
     return resolved, repository
 
 
-def _portable_source_path(value: object, repo_path: Path, *, source: str) -> str:
+def _portable_source_path(
+    value: object,
+    repo_path: Path,
+    *,
+    source: str,
+    authenticated_source_files: frozenset[str] | None = None,
+) -> str:
     raw = str(value or "")
     if not raw:
         return ""
+    try:
+        encoded = raw.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"{source} is not a valid UTF-8 path") from exc
+    if len(encoded) > _MAX_SOURCE_PATH_BYTES:
+        raise ValueError(f"{source} exceeds {_MAX_SOURCE_PATH_BYTES} UTF-8 path bytes")
     if any(ord(character) < 32 or ord(character) == 127 for character in raw):
         raise ValueError(
             f"{source} is not a portable repository-relative path: {raw!r}"
         )
+
+    if authenticated_source_files is not None:
+        raw_parts = raw.split("/")
+        normalized = PurePosixPath(raw)
+        if (
+            raw.startswith("~")
+            or raw.startswith("/")
+            or "\\" in raw
+            or _WINDOWS_DRIVE_RE.match(raw)
+            or normalized.is_absolute()
+            or any(part in {"", ".", "..", "~"} for part in raw_parts)
+            or raw != normalized.as_posix()
+            or len(normalized.parts) > _MAX_SOURCE_PATH_COMPONENTS
+        ):
+            raise ValueError(
+                f"{source} is not a portable repository-relative path: {raw!r}"
+            )
+        normalized_text = normalized.as_posix()
+        if normalized_text not in authenticated_source_files:
+            raise ValueError(
+                f"{source} is not in the authenticated repository source: {raw}"
+            )
+        return normalized_text
 
     path = Path(raw).expanduser()
     if path.is_absolute():
@@ -926,15 +1215,17 @@ def _portable_source_path(value: object, repo_path: Path, *, source: str) -> str
         normalized.is_absolute()
         or any(part in {"", ".", ".."} for part in raw_parts)
         or raw != normalized.as_posix()
+        or len(normalized.parts) > _MAX_SOURCE_PATH_COMPONENTS
     ):
         raise ValueError(f"{source} is not repository-relative: {raw}")
+    normalized_text = normalized.as_posix()
     try:
-        validate_repository_file(repo_path, normalized.as_posix())
+        validate_repository_file(repo_path, normalized_text)
     except ValueError as exc:
         raise ValueError(
             f"{source} is not a stable contained source file: {raw}"
         ) from exc
-    return normalized.as_posix()
+    return normalized_text
 
 
 def _normalize_pickle_documents(
@@ -998,7 +1289,7 @@ def _owned_inventory_paths(root: Path, ownership: object, *, kind: str) -> set[P
 
 
 def _authenticate_initial_file(
-    reader: _OwnedViewReader,
+    reader: _ViewReader,
     root: Path,
     ownership: object,
     path: Path,
@@ -1050,7 +1341,8 @@ def _normalize_json_documents(
     path: Path,
     repo_path: Path,
     *,
-    reader: _OwnedViewReader | None = None,
+    reader: _ViewReader | None = None,
+    authenticated_source_files: frozenset[str] | None = None,
 ) -> list[dict[str, Any]]:
     documents = _load_json(
         path,
@@ -1091,6 +1383,7 @@ def _normalize_json_documents(
             raw_file,
             repo_path,
             source=f"vector document {index} file",
+            authenticated_source_files=authenticated_source_files,
         )
         payload.append(
             {
@@ -1099,6 +1392,106 @@ def _normalize_json_documents(
             }
         )
     return payload
+
+
+def _iter_content_bound_documents(
+    path: Path,
+    repo_path: Path,
+    *,
+    reader: _PublicationViewReader,
+    view_type: str,
+    forbidden_paths: Iterable[Path],
+    environ: Mapping[str, str],
+    authenticated_source_files: frozenset[str],
+) -> Iterable[dict[str, Any]]:
+    relative = PurePosixPath(path.relative_to(reader.root).as_posix())
+    with reader.open_file(relative, max_bytes=_MAX_DOCUMENTS_JSON_BYTES) as source:
+        documents = iter_bounded_json_array(
+            source,
+            label=f"portable {view_type} documents",
+        )
+        for index, document in enumerate(documents):
+            if not isinstance(document, dict) or set(document) != {
+                "page_content",
+                "metadata",
+            }:
+                raise ValueError(
+                    f"portable {view_type} document {index} has an invalid shape"
+                )
+            page_content = document["page_content"]
+            metadata = document["metadata"]
+            if not isinstance(page_content, str) or not isinstance(metadata, dict):
+                raise ValueError(
+                    f"portable {view_type} document {index} has invalid content or "
+                    "metadata"
+                )
+            assert_no_secret_fields(
+                metadata,
+                source=f"portable {view_type} document {index} metadata",
+            )
+            raw_file = metadata.get("file")
+            if raw_file is not None and not isinstance(raw_file, str):
+                raise ValueError(
+                    f"portable {view_type} document {index} has an invalid source path"
+                )
+            normalized_metadata = dict(metadata)
+            if view_type.startswith("vector") or raw_file is not None:
+                normalized_metadata["file"] = _portable_source_path(
+                    raw_file,
+                    repo_path,
+                    source=f"portable {view_type} document {index} file",
+                    authenticated_source_files=authenticated_source_files,
+                )
+            normalized_document = {
+                "page_content": page_content,
+                "metadata": normalized_metadata,
+            }
+            _assert_authenticated_publishable_json_value(
+                normalized_document,
+                forbidden_paths=forbidden_paths,
+                environ=environ,
+                label=f"portable {view_type} document {index}",
+            )
+            yield normalized_document
+
+
+def _require_content_bound_canonical_documents(
+    path: Path,
+    repo_path: Path,
+    *,
+    reader: _PublicationViewReader,
+    view_type: str,
+    forbidden_paths: Iterable[Path],
+    environ: Mapping[str, str],
+    authenticated_source_files: frozenset[str],
+) -> int:
+    count = 0
+    size = 0
+    digest = hashlib.sha256()
+
+    def values() -> Iterable[dict[str, Any]]:
+        nonlocal count
+        for document in _iter_content_bound_documents(
+            path,
+            repo_path,
+            reader=reader,
+            view_type=view_type,
+            forbidden_paths=forbidden_paths,
+            environ=environ,
+            authenticated_source_files=authenticated_source_files,
+        ):
+            count += 1
+            yield document
+
+    for chunk in canonical_json_array_chunks(values()):
+        size += len(chunk)
+        if size > _MAX_DOCUMENTS_JSON_BYTES:
+            raise ValueError(f"portable {view_type} documents exceed their byte limit")
+        digest.update(chunk)
+    record = reader.record(path)
+    if size != record.size or digest.hexdigest() != record.sha256:
+        raise ValueError(f"portable {view_type} documents are not canonical JSON")
+    return count
 
 
 def _normalize_bm25_documents(
@@ -1222,12 +1615,23 @@ def _validate_vector_model_policy(
 def _validate_vector_semantics(
     config: Mapping[str, Any],
     view_config: Mapping[str, Any],
+    *,
+    portable_artifact_policy: bool = False,
 ) -> tuple[str, int, str | None, str, str]:
     """Close the manifest-route to persisted-config compatibility contract."""
 
-    route = resolve_embedding_artifact_route(view_config)
+    route_environment = {} if portable_artifact_policy else None
+    load_policy_resolver = (
+        resolve_embedding_artifact_load_policy_from_options
+        if portable_artifact_policy
+        else resolve_embedding_load_policy_from_options
+    )
+    route = resolve_embedding_artifact_route(
+        view_config,
+        environ=route_environment,
+    )
     expected_revision = (
-        resolve_embedding_load_policy_from_options(
+        load_policy_resolver(
             route.model,
             route.compatibility_options,
         ).revision
@@ -1299,7 +1703,10 @@ def _validate_vector_semantics(
     if persisted_identity is not None:
         if not isinstance(persisted_identity, Mapping):
             raise ValueError("portable vector persistence artifact identity is invalid")
-        persisted_route = resolve_embedding_artifact_route(persisted_identity)
+        persisted_route = resolve_embedding_artifact_route(
+            persisted_identity,
+            environ=route_environment,
+        )
         if persisted_route.public_identity() != route.public_identity():
             raise ValueError(
                 "portable vector persistence route identity does not match its view "
@@ -1315,7 +1722,7 @@ def _validate_vector_semantics(
                 "its view config"
             )
         persisted_revision = (
-            resolve_embedding_load_policy_from_options(
+            load_policy_resolver(
                 persisted_route.model,
                 persisted_route.compatibility_options,
             ).revision
@@ -1340,7 +1747,10 @@ def _validate_vector_semantics(
     elif "embedding_kwargs" in config:
         # Legacy configs sometimes expose the semantic options directly. When
         # present, absence is not treated as a wildcard.
-        persisted_route = resolve_embedding_artifact_route(config)
+        persisted_route = resolve_embedding_artifact_route(
+            config,
+            environ=route_environment,
+        )
         if persisted_route.public_identity() != route.public_identity():
             raise ValueError(
                 "portable vector persistence options do not match its view route"
@@ -1400,7 +1810,7 @@ def _validate_level_semantics(
     metric: object,
     index_type: str,
     count: int,
-    reader: _OwnedViewReader,
+    reader: _ViewReader,
     canonicalize: bool = True,
 ) -> None:
     if not present:
@@ -1478,8 +1888,11 @@ def _validate_vector_layout(
     expected_metric: str,
     expected_index_type: str,
     native_authorized: bool,
-    reader: _OwnedViewReader,
+    reader: _ViewReader,
     canonicalize_level_configs: bool = True,
+    authenticated_source_files: frozenset[str] | None = None,
+    document_forbidden_paths: Iterable[Path] = (),
+    document_environ: Mapping[str, str] | None = None,
 ) -> tuple[
     str,
     dict[Path, list[dict[str, Any]]],
@@ -1574,13 +1987,36 @@ def _validate_vector_layout(
             )
             payload = _normalize_pickle_documents(path, repo_path, reader=reader)
         else:
-            payload = _normalize_json_documents(path, repo_path, reader=reader)
-        if count is not None and len(payload) != count:
+            if authenticated_source_files is not None:
+                if not isinstance(reader, _PublicationViewReader):
+                    raise RuntimeError(
+                        "authenticated source validation requires a publication reader"
+                    )
+                actual_count = _require_content_bound_canonical_documents(
+                    path,
+                    repo_path,
+                    reader=reader,
+                    view_type=f"vector {level}",
+                    forbidden_paths=document_forbidden_paths,
+                    environ={} if document_environ is None else document_environ,
+                    authenticated_source_files=authenticated_source_files,
+                )
+                payload = []
+            else:
+                payload = _normalize_json_documents(
+                    path,
+                    repo_path,
+                    reader=reader,
+                )
+                actual_count = len(payload)
+        if document_format == "pkl":
+            actual_count = len(payload)
+        if count is not None and actual_count != count:
             raise ValueError(
                 f"portable vector {level} count differs from {path.name}: "
-                f"expected {count}, found {len(payload)}"
+                f"expected {count}, found {actual_count}"
             )
-        count = len(payload)
+        count = actual_count
         _authenticate_initial_file(
             reader,
             root,
@@ -2214,8 +2650,24 @@ def _validate_normalized_document_sources(
     view_type: str,
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str],
-    reader: _OwnedViewReader | None = None,
+    reader: _ViewReader | None = None,
+    authenticated_source_files: frozenset[str] | None = None,
 ) -> None:
+    if authenticated_source_files is not None:
+        if not isinstance(reader, _PublicationViewReader):
+            raise RuntimeError(
+                "authenticated source validation requires a publication reader"
+            )
+        _require_content_bound_canonical_documents(
+            path,
+            repo_path,
+            reader=reader,
+            view_type=view_type,
+            forbidden_paths=forbidden_paths,
+            environ=environ,
+            authenticated_source_files=authenticated_source_files,
+        )
+        return
     documents = _load_json(
         path,
         label=f"portable {view_type} documents",
@@ -2260,6 +2712,7 @@ def _validate_normalized_document_sources(
                 raw_file,
                 repo_path,
                 source=f"portable {view_type} document {index} file",
+                authenticated_source_files=authenticated_source_files,
             )
             if raw_file != normalized_file:
                 raise ValueError(
@@ -2268,7 +2721,7 @@ def _validate_normalized_document_sources(
 
 
 def _authenticate_vector_generation(
-    reader: _OwnedViewReader,
+    reader: _ViewReader,
     root: Path,
     *,
     model_suffix: str,
@@ -2365,7 +2818,8 @@ def _validate_portable_bm25_view(
     forbidden: tuple[Path, ...],
     environment: Mapping[str, str],
     initial_tree: object,
-    reader: _OwnedViewReader,
+    reader: _ViewReader,
+    authenticated_source_files: frozenset[str] | None = None,
 ) -> None:
     assert_no_secret_fields(view_config, source="portable BM25 view config")
     fingerprints = view_config.get("artifact_file_fingerprints")
@@ -2405,7 +2859,12 @@ def _validate_portable_bm25_view(
         reader=reader,
     )
     assert_no_secret_fields(metadata, source="portable BM25 metadata")
-    assert_publishable_json_value(
+    publishable_guard = (
+        assert_publishable_json_value
+        if authenticated_source_files is None
+        else _assert_authenticated_publishable_json_value
+    )
+    publishable_guard(
         metadata,
         forbidden_paths=forbidden,
         environ=environment,
@@ -2432,6 +2891,7 @@ def _validate_portable_bm25_view(
         forbidden_paths=forbidden,
         environ=environment,
         reader=reader,
+        authenticated_source_files=authenticated_source_files,
     )
 
 
@@ -2443,10 +2903,15 @@ def _validate_portable_vector_view(
     forbidden: tuple[Path, ...],
     environment: Mapping[str, str],
     initial_tree: object,
-    reader: _OwnedViewReader,
+    reader: _ViewReader,
+    authenticated_source_files: frozenset[str] | None = None,
 ) -> None:
     assert_no_secret_fields(view_config, source="portable vector view config")
-    route = resolve_embedding_artifact_route(view_config)
+    portable_artifact_policy = authenticated_source_files is not None
+    route = resolve_embedding_artifact_route(
+        view_config,
+        environ={} if portable_artifact_policy else None,
+    )
     expected_suffix = route.model.replace("/", "__")
     inventory_files = _owned_inventory_paths(root, initial_tree, kind="file")
     root_configs = sorted(
@@ -2478,7 +2943,12 @@ def _validate_portable_vector_view(
         expected_config=expected_config,
     )
     assert_no_secret_fields(config, source="portable vector config")
-    assert_publishable_json_value(
+    publishable_guard = (
+        assert_publishable_json_value
+        if authenticated_source_files is None
+        else _assert_authenticated_publishable_json_value
+    )
+    publishable_guard(
         config,
         forbidden_paths=forbidden,
         environ=environment,
@@ -2490,7 +2960,11 @@ def _validate_portable_vector_view(
         expected_revision,
         expected_metric,
         expected_index_type,
-    ) = _validate_vector_semantics(config, view_config)
+    ) = _validate_vector_semantics(
+        config,
+        view_config,
+        portable_artifact_policy=portable_artifact_policy,
+    )
     if semantic_suffix != model_suffix:
         raise ValueError("portable vector config embedding model does not match")
     document_format, _documents, counts, stale_paths = _validate_vector_layout(
@@ -2508,6 +2982,9 @@ def _validate_portable_vector_view(
         native_authorized=False,
         canonicalize_level_configs=False,
         reader=reader,
+        authenticated_source_files=authenticated_source_files,
+        document_forbidden_paths=forbidden,
+        document_environ=environment,
     )
     if document_format != "json" or stale_paths:
         raise ValueError("portable vector view is not in its normalized final form")
@@ -2523,7 +3000,7 @@ def _validate_portable_vector_view(
         level_root = root / level
         level_config = level_root / f"config_{model_suffix}.json"
         if level_config in inventory_files:
-            assert_publishable_json_value(
+            publishable_guard(
                 _load_json_object(
                     level_config,
                     label=f"portable vector {level} config",
@@ -2534,14 +3011,111 @@ def _validate_portable_vector_view(
                 environ=environment,
                 label=f"portable vector {level} config",
             )
-        _validate_normalized_document_sources(
-            level_root / f"documents_{model_suffix}.json",
-            repository,
-            view_type=f"vector {level}",
-            forbidden_paths=forbidden,
-            environ=environment,
-            reader=reader,
-        )
+        if authenticated_source_files is None:
+            _validate_normalized_document_sources(
+                level_root / f"documents_{model_suffix}.json",
+                repository,
+                view_type=f"vector {level}",
+                forbidden_paths=forbidden,
+                environ=environment,
+                reader=reader,
+            )
+
+
+def validate_content_bound_portable_query_view_reader(
+    publication: PublicationDirectoryReader,
+    *,
+    repository_source: RepositorySourceBinding,
+    view_type: str,
+    view_config: Mapping[str, Any] | None = None,
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+) -> None:
+    """Validate one portable view through retained view and source authorities.
+
+    Document source paths are matched only against the repository binding's
+    frozen records. Vector native indexes remain opaque authenticated bytes.
+    """
+
+    if type(publication) is not PublicationDirectoryReader:
+        raise TypeError("portable view requires a publication directory reader")
+    if type(repository_source) is not RepositorySourceBinding:
+        raise TypeError("portable view repository source has an invalid type")
+    if view_type not in {"bm25", "vector"}:
+        raise ValueError(f"unsupported portable query view: {view_type!r}")
+    if not isinstance(view_config, Mapping):
+        raise ValueError(f"portable {view_type} validation requires its view config")
+
+    config_snapshot = _bounded_json_object_snapshot(
+        view_config,
+        label=f"portable {view_type} view config",
+    )
+    if view_type == "vector":
+        route = resolve_embedding_artifact_route(config_snapshot, environ={})
+        if route.provider == "huggingface":
+            resolve_embedding_artifact_load_policy_from_options(
+                route.model,
+                route.compatibility_options,
+            )
+    if not repository_source.usable:
+        raise RuntimeError("portable view repository source is not usable")
+    environment = _environment_snapshot(environ)
+    forbidden = tuple(forbidden_paths)
+    if any(not isinstance(path, Path) for path in forbidden):
+        raise TypeError("portable validation forbidden paths must be Path values")
+    repository_records = tuple(repository_source.file_records)
+    authenticated_source_files = frozenset(record.path for record in repository_records)
+    if len(authenticated_source_files) != len(repository_records):
+        raise RuntimeError("authenticated repository source repeats a file record")
+
+    initial_tree = publication.capture_ownership()
+    reader = _PublicationViewReader(publication, initial_tree)
+
+    def validate_semantics() -> None:
+        with repository_source.read_session():
+            policy_paths = (repository_source.root, *forbidden)
+            _assert_authenticated_publishable_json_value(
+                config_snapshot,
+                forbidden_paths=policy_paths,
+                environ=environment,
+                label=f"portable {view_type} view config",
+            )
+            if view_type == "bm25":
+                _validate_portable_bm25_view(
+                    reader.root,
+                    repository_source.root,
+                    view_config=config_snapshot,
+                    forbidden=policy_paths,
+                    environment=environment,
+                    initial_tree=initial_tree,
+                    reader=reader,
+                    authenticated_source_files=authenticated_source_files,
+                )
+            else:
+                _validate_portable_vector_view(
+                    reader.root,
+                    repository_source.root,
+                    view_config=config_snapshot,
+                    forbidden=policy_paths,
+                    environment=environment,
+                    initial_tree=initial_tree,
+                    reader=reader,
+                    authenticated_source_files=authenticated_source_files,
+                )
+
+    _run_callback_with_post_validations(
+        validate_semantics,
+        (
+            (
+                "portable view final ownership validation also failed",
+                reader.verify_root,
+            ),
+            (
+                "portable view reader cleanup also failed",
+                reader.close,
+            ),
+        ),
+    )
 
 
 def validate_portable_query_view(
@@ -2608,5 +3182,6 @@ def validate_portable_query_view(
 __all__ = [
     "SourceTrust",
     "normalize_owned_query_view",
+    "validate_content_bound_portable_query_view_reader",
     "validate_portable_query_view",
 ]

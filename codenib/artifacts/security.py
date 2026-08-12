@@ -10,7 +10,7 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 
 from .._atomic_directory import PublicationDirectoryReader
@@ -43,6 +43,7 @@ _SENSITIVE_ENV_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET")
 _SCAN_CHUNK_BYTES = 1024 * 1024
 _MAX_CANONICAL_SCALAR_BYTES = 1_024
 _MAX_PUBLISHABLE_JSON_BYTES = 64 * 1024 * 1024
+_MAX_STREAMING_PUBLISHABLE_JSON_BYTES = 256 * 1024 * 1024
 _MAX_PUBLISHABLE_JSON_NODES = DEFAULT_MAX_NODES_PER_ELEMENT
 _MAX_PUBLISHABLE_JSON_TOKENS = DEFAULT_MAX_LEXICAL_TOKENS
 _MAX_PUBLISHABLE_JSON_DEPTH = DEFAULT_MAX_DEPTH
@@ -265,11 +266,15 @@ def assert_publishable_tree_reader(
     environ: Mapping[str, str],
     label: str,
     max_json_bytes: int = _MAX_PUBLISHABLE_JSON_BYTES,
+    streaming_json_paths: Iterable[str | PurePosixPath] = (),
 ) -> None:
     """Apply publication policy through one authenticated tree authority.
 
     Publication JSON is UTF-8 without a byte-order mark. Its lexical resource
     budgets are enforced before strict UTF-8 decoding and DOM allocation.
+    ``streaming_json_paths`` must enumerate exact JSON paths whose semantic
+    validator already consumed their canonical form; those files still receive
+    bounded lexical validation and a complete path/credential byte scan here.
     """
 
     if (
@@ -279,6 +284,38 @@ def assert_publishable_tree_reader(
         or max_json_bytes > _MAX_PUBLISHABLE_JSON_BYTES
     ):
         raise ValueError("publishable JSON byte limit is out of bounds")
+    streaming_json: set[str] = set()
+    for raw_relative in streaming_json_paths:
+        if isinstance(raw_relative, PurePosixPath):
+            raw_text: object = raw_relative.as_posix()
+        else:
+            raw_text = raw_relative
+        if not isinstance(raw_text, str):
+            raise ValueError("streaming publication JSON path is invalid")
+        try:
+            relative = PurePosixPath(raw_text)
+            encoded = raw_text.encode("utf-8", errors="strict")
+        except ValueError as exc:
+            raise ValueError("streaming publication JSON path is invalid") from exc
+        normalized = relative.as_posix()
+        if (
+            not raw_text
+            or raw_text != normalized
+            or relative.is_absolute()
+            or not relative.parts
+            or any(part in {"", ".", ".."} for part in relative.parts)
+            or "\\" in raw_text
+            or relative.suffix != ".json"
+            or len(encoded) > 4_096
+            or len(relative.parts) > 256
+            or any(
+                ord(character) < 32 or ord(character) == 127 for character in raw_text
+            )
+        ):
+            raise ValueError("streaming publication JSON path is invalid")
+        if normalized in streaming_json:
+            raise ValueError("streaming publication JSON path is duplicated")
+        streaming_json.add(normalized)
     roots = tuple(forbidden_paths)
     forbidden = _serialized_patterns(_forbidden_path_strings(roots))
     secrets = _secret_values(environ)
@@ -291,15 +328,66 @@ def assert_publishable_tree_reader(
         encoded = path.encode("utf-8", errors="strict")
         if any(secret in encoded for secret in secrets):
             raise ValueError(f"{label} contains a configured credential in {path}")
-        if kind == "file" and is_json_path(path) and size > max_json_bytes:
+        if (
+            kind == "file"
+            and path in streaming_json
+            and size > _MAX_STREAMING_PUBLISHABLE_JSON_BYTES
+        ):
+            raise ValueError(
+                f"{label} streaming JSON file exceeds its "
+                f"{_MAX_STREAMING_PUBLISHABLE_JSON_BYTES}-byte limit: {path}"
+            )
+        if (
+            kind == "file"
+            and is_json_path(path)
+            and path not in streaming_json
+            and size > max_json_bytes
+        ):
             raise ValueError(
                 f"{label} JSON file exceeds its {max_json_bytes}-byte limit: {path}"
             )
 
     reader.capture_ownership(entry_policy=entry_policy)
-    for record in reader.file_records():
+    records = reader.file_records()
+    missing_streaming_json = streaming_json - {record.path for record in records}
+    if missing_streaming_json:
+        raise ValueError(
+            "streaming publication JSON path is absent: "
+            f"{sorted(missing_streaming_json)[0]}"
+        )
+    for record in records:
         relative = record.path
-        if is_json_path(relative):
+        if relative in streaming_json:
+            json_label = f"{label} JSON {relative}"
+            with reader.open_authenticated_file(
+                relative,
+                max_bytes=_MAX_STREAMING_PUBLISHABLE_JSON_BYTES,
+            ) as source:
+                # The semantic owner applies per-element budgets. This pass is
+                # intentionally lexical-only, with counts bounded by the file
+                # size so a legitimate large array is not forced into one DOM.
+                lexical_budget = max(1, record.size)
+                validate_bounded_json_stream(
+                    source,
+                    label=json_label,
+                    max_bytes=_MAX_STREAMING_PUBLISHABLE_JSON_BYTES,
+                    max_nodes=lexical_budget,
+                    max_lexical_tokens=lexical_budget,
+                    max_depth=_MAX_PUBLISHABLE_JSON_DEPTH,
+                    max_key_bytes=_MAX_PUBLISHABLE_JSON_KEY_BYTES,
+                    max_string_bytes=_MAX_PUBLISHABLE_JSON_STRING_BYTES,
+                    max_atom_bytes=_MAX_PUBLISHABLE_JSON_ATOM_BYTES,
+                )
+            with reader.open_authenticated_file(
+                relative,
+                max_bytes=record.size,
+            ) as source:
+                match = _matching_kind_blocks(
+                    source.iter_bytes(chunk_size=_SCAN_CHUNK_BYTES),
+                    forbidden=forbidden,
+                    secrets=secrets,
+                )
+        elif is_json_path(relative):
             json_label = f"{label} JSON {relative}"
             with reader.open_authenticated_file(
                 relative,
