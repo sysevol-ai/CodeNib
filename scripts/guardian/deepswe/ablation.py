@@ -134,6 +134,9 @@ def _guardian_run_status(logs_dir: Path) -> dict[str, Any] | None:
         return None
 
     summary = dict(statuses[-1])
+    if "uncertain_specifications" not in summary:
+        summary["uncertain_specifications"] = summary.get("backlog", 0)
+    summary.pop("backlog", None)
     token_fields = ("prompt", "cached_input", "completion", "total")
     summary["llm_tokens"] = {
         field: sum(
@@ -335,11 +338,18 @@ def _build_pier_command(
                 "--ak",
                 f"guardian_explorer_count={args.guardian_explorer_count}",
                 "--ak",
+                "guardian_targeted_explorer_count="
+                f"{args.guardian_targeted_explorer_count}",
+                "--ak",
+                f"guardian_search_rounds={args.guardian_search_rounds}",
+                "--ak",
                 f"guardian_max_findings={args.guardian_max_findings}",
                 "--ak",
                 f"guardian_max_cycles={args.guardian_max_cycles}",
                 "--ak",
                 f"guardian_rollout_timeout={args.guardian_rollout_timeout}",
+                "--ak",
+                f"guardian_codex_version={args.guardian_codex_version}",
                 "--ak",
                 "guardian_host_exchange_dir=" f"{logs_dir / 'guardian_exchange'}",
                 "--mounts-json",
@@ -452,6 +462,12 @@ def _run_trial(
         "guardian_explorer_count": (
             args.guardian_explorer_count if baseline == "guardian" else None
         ),
+        "guardian_targeted_explorer_count": (
+            args.guardian_targeted_explorer_count if baseline == "guardian" else None
+        ),
+        "guardian_search_rounds": (
+            args.guardian_search_rounds if baseline == "guardian" else None
+        ),
         "guardian_max_findings": (
             args.guardian_max_findings if baseline == "guardian" else None
         ),
@@ -460,6 +476,9 @@ def _run_trial(
         ),
         "guardian_rollout_timeout": (
             args.guardian_rollout_timeout if baseline == "guardian" else None
+        ),
+        "guardian_codex_version": (
+            args.guardian_codex_version if baseline == "guardian" else ""
         ),
         "repeat_index": repeat_index,
         "returncode": proc.returncode,
@@ -475,9 +494,8 @@ def _run_trial(
         ),
         "guardian_llm_backend": (guardian_status or {}).get("llm_backend"),
         "guardian_findings": (guardian_status or {}).get("findings"),
-        "guardian_backlog": (guardian_status or {}).get("backlog"),
-        "guardian_high_confidence_backlog": (guardian_status or {}).get(
-            "high_confidence_backlog"
+        "guardian_uncertain_specifications": (guardian_status or {}).get(
+            "uncertain_specifications"
         ),
         "guardian_degraded": (guardian_status or {}).get("degraded"),
         "guardian_analysis_status": (guardian_status or {}).get("analysis_status"),
@@ -557,18 +575,33 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--guardian-aggregator-model",
         default=None,
-        help="Model used to aggregate and admit explorer candidates",
+        help=(
+            "Strong model used for planning, aggregation, distillation, frontier "
+            "selection, and patch checking"
+        ),
     )
     parser.add_argument(
         "--guardian-explorer-count",
         type=int,
+        default=4,
+        help="Number of independent first-round local-specification explorers",
+    )
+    parser.add_argument(
+        "--guardian-targeted-explorer-count",
+        type=int,
         default=2,
-        help="Number of independent local-specification explorers",
+        help="Number of targeted explorers in each later search round",
+    )
+    parser.add_argument(
+        "--guardian-search-rounds",
+        type=int,
+        default=2,
+        help="Maximum internal local-specification search rounds per review",
     )
     parser.add_argument(
         "--guardian-max-findings",
         type=int,
-        default=5,
+        default=10,
         help="Maximum evidence-admitted findings delivered per review",
     )
     parser.add_argument(
@@ -582,6 +615,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=float,
         default=600.0,
         help="Timeout in seconds for each explorer or aggregator rollout",
+    )
+    parser.add_argument(
+        "--guardian-codex-version",
+        default="0.145.0",
+        help="Pinned Codex CLI version used only by Guardian sandbox rollouts",
     )
     parser.add_argument("--codenib-root", type=Path, default=DEFAULT_CODENIB_ROOT)
     parser.add_argument("--deepswe-root", type=Path, default=DEFAULT_DEEPSWE_ROOT)
@@ -604,6 +642,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         )
     if args.guardian_max_cycles < 1:
         raise ValueError("--guardian-max-cycles must be positive")
+    if args.guardian_explorer_count < 1:
+        raise ValueError("--guardian-explorer-count must be positive")
+    if args.guardian_targeted_explorer_count < 1:
+        raise ValueError("--guardian-targeted-explorer-count must be positive")
+    if args.guardian_search_rounds < 1:
+        raise ValueError("--guardian-search-rounds must be positive")
     shared_guardian_model = args.guardian_model or f"codex:{args.model}"
     args.guardian_explorer_model = args.guardian_explorer_model or shared_guardian_model
     args.guardian_aggregator_model = (

@@ -31,11 +31,13 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import logging
 import re
 import shlex
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -54,7 +56,15 @@ from codenib.clients.guardian import GuardianConfig
 
 from .checkpoint import guardian_checkpoint_script
 from .controller import GuardianHostController, sandbox_reviewer_factory
+from .delivery import completed_responses, review_request_commits
 from .message import guardian_message_script
+from .solver_logs import (
+    CodexTurnLog,
+    capture_codex_turn,
+    codex_usage,
+    persist_codex_logs,
+    restore_codex_accounting,
+)
 
 if TYPE_CHECKING:
     from pier.models.agent.install import AgentInstallSpec
@@ -111,8 +121,10 @@ class GuardianCodingAgent(BaseInstalledAgent):
         guardian_model: str | None = None,
         guardian_explorer_model: str | None = None,
         guardian_aggregator_model: str | None = None,
-        guardian_explorer_count: int = 2,
-        guardian_max_findings: int = 5,
+        guardian_explorer_count: int = 4,
+        guardian_targeted_explorer_count: int = 2,
+        guardian_search_rounds: int = 2,
+        guardian_max_findings: int = 10,
         guardian_max_cycles: int = 3,
         guardian_rollout_timeout: float = 600,
         guardian_poll_interval: int = 10,
@@ -123,6 +135,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
         guardian_docker_host: str = "unix:///var/run/docker.sock",
         guardian_platform: str = "linux/amd64",
         guardian_codex_bin: str = "/usr/local/bin/codex-guardian",
+        guardian_codex_version: str = "0.145.0",
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -142,6 +155,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
             guardian_aggregator_model or shared_guardian_model
         )
         self._guardian_explorer_count = int(guardian_explorer_count)
+        self._guardian_targeted_explorer_count = int(guardian_targeted_explorer_count)
+        self._guardian_search_rounds = int(guardian_search_rounds)
         self._guardian_max_findings = int(guardian_max_findings)
         self._guardian_max_cycles = int(guardian_max_cycles)
         self._guardian_rollout_timeout = float(guardian_rollout_timeout)
@@ -161,8 +176,17 @@ class GuardianCodingAgent(BaseInstalledAgent):
         self._guardian_docker_host = guardian_docker_host
         self._guardian_platform = guardian_platform
         self._guardian_codex_bin = guardian_codex_bin
+        if not re.fullmatch(
+            r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", guardian_codex_version
+        ):
+            raise ValueError("guardian_codex_version must be an exact semantic version")
+        self._guardian_codex_version = guardian_codex_version
         self._guardian_baseline_commit = ""
         self._guardian_image = ""
+        # Pier's installed-agent post-run hook may replace the conventional
+        # ``codex.txt`` file.  Keep immutable per-turn snapshots on the wrapper
+        # until that hook has finished so cumulative usage remains authoritative.
+        self._solver_turn_logs: list[CodexTurnLog] = []
 
         # Instantiate the inner solver, forwarding all remaining kwargs
         # so that solver-specific flags (e.g. reasoning_effort for codex) pass through.
@@ -206,42 +230,159 @@ class GuardianCodingAgent(BaseInstalledAgent):
         spec = self._inner.install_spec()
         if spec is None or self._solver_name != "codex":
             return spec
-        # Pier's Codex installation may leave /usr/local/bin/codex as a
-        # symlink into an agent home. Docker's no-new-privileges policy can
-        # deny a different non-root UID access through that home. Materialize
-        # an ordinary executable in the prepared image for sibling sandboxes.
-        step = InstallStep(
+        # Guardian deliberately disables Code Mode. Codex 0.147 routes Luna
+        # through Code Mode even with the direct shell tool enabled, so keep a
+        # separately pinned Guardian executable without changing Pier's solver.
+        codex_step = InstallStep(
             user="root",
             run=(
                 "set -euo pipefail; "
-                'source_path="$(readlink -f /usr/local/bin/codex '
-                '2>/dev/null || true)"; '
-                'if [ ! -f "$source_path" ]; then '
-                'source_path="$(find /root/.nvm /usr/local/lib /usr/lib '
-                "-type f -path '*/@openai/codex-*/vendor/*/bin/codex' "
-                '-print -quit 2>/dev/null)"; fi; '
+                "prefix=/opt/codenib-guardian-codex; "
+                'npm install --global --prefix "$prefix" '
+                f"@openai/codex@{self._guardian_codex_version}; "
+                'source_path="$(find "$prefix" -type f '
+                "-path '*/@openai/codex-*/vendor/*/bin/codex' "
+                '-print -quit)"; '
                 'test -n "$source_path"; '
                 'install -m 0755 "$source_path" /usr/local/bin/codex-guardian'
             ),
         )
-        return spec.model_copy(update={"steps": [*spec.steps, step]})
+        task_environment_step = InstallStep(
+            user="root",
+            run=(
+                "set -euo pipefail; "
+                "profile=/etc/profile.d/zz-codenib-task-venv.sh; "
+                "printf '%s\\n' "
+                '\'if [ -n "${VIRTUAL_ENV:-}" ] && '
+                '[ -d "${VIRTUAL_ENV}/bin" ]; then\' '
+                "'    PATH=\"${VIRTUAL_ENV}/bin:${PATH}\"' "
+                "'    export PATH' "
+                "'fi' > \"$profile\"; "
+                'chmod 0644 "$profile"'
+            ),
+        )
+        return spec.model_copy(
+            update={"steps": [*spec.steps, codex_step, task_environment_step]}
+        )
 
     def populate_context_post_run(self, context: AgentContext) -> None:
         self._inner.populate_context_post_run(context)
-        # Populate token counts from codex_tokens.json written by _write_codex_token_summary.
+        # The inner agent is allowed to normalize/replace its conventional log
+        # during post-run collection.  Restore our cumulative view afterwards.
+        if self._solver_name == "codex" and self._solver_turn_logs:
+            totals = restore_codex_accounting(
+                self._solver_logs_dir(), self._solver_turn_logs
+            )
+            context.n_input_tokens = totals["input_tokens"]
+            context.n_cache_tokens = totals["cached_input_tokens"]
+            context.n_output_tokens = totals["output_tokens"]
+        # Populate token counts from the cumulative solver-log summary.
         # Only fills fields that the inner solver left null (codex + ChatGPT subscription
         # never reports tokens through Pier's normal path).
-        if self._solver_name == "codex" and context.n_input_tokens is None:
-            import json as _json
-
-            tokens_path = self.logs_dir / "codex_tokens.json"
+        if self._solver_name == "codex" and not self._solver_turn_logs:
+            tokens_path = self._solver_logs_dir() / "codex_tokens.json"
             try:
-                tok = _json.loads(tokens_path.read_text())
+                tok = json.loads(tokens_path.read_text())
                 context.n_input_tokens = tok.get("input_tokens")
                 context.n_cache_tokens = tok.get("cached_input_tokens")
                 context.n_output_tokens = tok.get("output_tokens")
             except Exception:
                 pass
+
+    def _capture_solver_log(self, turn_index: int) -> tuple[Path, bytes] | None:
+        """Archive and snapshot one solver turn before another turn can replace it."""
+        return capture_codex_turn(self._solver_logs_dir(), turn_index)
+
+    def _solver_logs_dir(self) -> Path:
+        """Return the host directory mounted at ``/logs/agent`` for the solver."""
+        return self._guardian_host_exchange_dir.parent
+
+    def _restore_solver_logs(self, turn_logs: list[CodexTurnLog]) -> None:
+        """Persist per-turn and combined logs from the in-memory snapshots."""
+        persist_codex_logs(self._solver_logs_dir(), turn_logs)
+
+    @staticmethod
+    def _codex_usage(turn_logs: list[CodexTurnLog]) -> dict[str, int]:
+        """Sum Codex usage events from immutable snapshots of every solver turn."""
+        return codex_usage(turn_logs)
+
+    def _log_codex_token_summary(self, turn_logs: list[CodexTurnLog]) -> None:
+        """Log the cumulative usage calculated from immutable turn snapshots."""
+        totals = self._codex_usage(turn_logs)
+        self.logger.info("codex tokens: %s", json.dumps(totals))
+
+    def _latest_report(self) -> tuple[str, str, tuple[str, ...], int] | None:
+        latest = self._guardian_host_exchange_dir / "latest"
+        status_path = latest / "status.json"
+        report_path = latest / "findings.md"
+        findings_path = latest / "findings.json"
+        try:
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+            report = report_path.read_text(encoding="utf-8")
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(status, dict) or not status.get("review_performed", True):
+            return None
+        commit = str(status.get("commit") or "").strip()
+        identifiers: list[str] = []
+        try:
+            payload = json.loads(findings_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                for key in ("findings", "uncertain_specifications"):
+                    rows = payload.get(key, [])
+                    if isinstance(rows, list):
+                        identifiers.extend(
+                            str(row.get("specification_id") or "").strip()
+                            for row in rows
+                            if isinstance(row, dict)
+                        )
+        except (OSError, json.JSONDecodeError):
+            pass
+        return (
+            commit,
+            report,
+            tuple(value for value in identifiers if value),
+            status_path.stat().st_mtime_ns,
+        )
+
+    @staticmethod
+    def _solver_observed_report(
+        turn_log: Path | None,
+        *,
+        report: str,
+        identifiers: tuple[str, ...],
+        completed_at_ns: int,
+    ) -> bool:
+        if turn_log is None:
+            return False
+        try:
+            if turn_log.stat().st_mtime_ns < completed_at_ns:
+                return False
+        except OSError:
+            return False
+        try:
+            transcript = turn_log.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        if identifiers:
+            return all(value in transcript for value in identifiers)
+        marker = "No definite evidence-backed patch violation was found."
+        return marker in report and marker in transcript
+
+    @staticmethod
+    def _revision_instruction(original: str, report: str) -> str:
+        return (
+            "The original implementation turn ended before it demonstrably consumed "
+            "the completed Guardian report. Continue in the current repository and "
+            "evaluate the report against the code and tests. Address only findings "
+            "that you verify. If a finding is unsupported, explain why and leave the "
+            "code unchanged. If you revise the patch, test and commit it, then run the "
+            "Guardian checkpoint again when another review cycle remains.\n\n"
+            "Original task:\n\n"
+            f"{original}\n\n"
+            "Completed Guardian report:\n\n"
+            f"{report}"
+        )
 
     async def setup(self, environment: BaseEnvironment) -> None:
         await self._record_guardian_baseline(environment)
@@ -307,17 +448,11 @@ class GuardianCodingAgent(BaseInstalledAgent):
                 )
             return path
 
+        # Guardian currently executes every review role through CodexExecutor.
+        # A raw model name (for example ``gpt-5.6-luna``) is therefore no less
+        # in need of the Codex credential than its ``codex:``-prefixed form.
         default = Path.home() / ".codex" / "auth.json"
-        if (
-            any(
-                model.startswith("codex:")
-                for model in (
-                    self._guardian_explorer_model,
-                    self._guardian_aggregator_model,
-                )
-            )
-            and default.is_file()
-        ):
+        if default.is_file():
             return default
 
         return None
@@ -377,6 +512,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
             explorer_model=self._guardian_explorer_model.removeprefix("codex:"),
             aggregator_model=self._guardian_aggregator_model.removeprefix("codex:"),
             explorer_count=self._guardian_explorer_count,
+            targeted_explorer_count=self._guardian_targeted_explorer_count,
+            max_rounds=self._guardian_search_rounds,
             rollout_timeout_seconds=self._guardian_rollout_timeout,
             max_findings=self._guardian_max_findings,
             execution_isolation=ExecutionIsolation.EXTERNAL,
@@ -399,49 +536,97 @@ class GuardianCodingAgent(BaseInstalledAgent):
                 config=config,
                 reviewer_factory=reviewer_factory,
                 initial_base_commit=self._guardian_baseline_commit,
+                task_description=instruction,
                 max_cycles=self._guardian_max_cycles,
                 poll_interval_seconds=self._guardian_poll_interval,
             )
-            stop = asyncio.Event()
-            controller_task = asyncio.create_task(controller.serve(stop))
+            stop = threading.Event()
+            controller_errors: list[Exception] = []
+
+            def run_controller() -> None:
+                try:
+                    controller.serve_blocking(stop)
+                except Exception as exc:  # noqa: BLE001
+                    controller_errors.append(exc)
+
+            controller_thread = threading.Thread(
+                target=run_controller,
+                name="guardian-host-controller",
+                daemon=True,
+            )
+            controller_thread.start()
+            turn_logs: list[CodexTurnLog] = []
+            delivered_reviews: set[str] = set()
+            next_instruction = augmented
+            turn_index = 0
             try:
-                await self._inner.run(augmented, environment, context)
+                while turn_index <= self._guardian_max_cycles:
+                    turn_index += 1
+                    turn_log: Path | None = None
+                    requests_before = review_request_commits(
+                        self._guardian_host_exchange_dir
+                    )
+                    try:
+                        await self._inner.run(next_instruction, environment, context)
+                    finally:
+                        captured = self._capture_solver_log(turn_index)
+                        if captured is not None:
+                            turn_log, transcript = captured
+                            turn_logs.append((turn_index, transcript))
+
+                    # Controller idleness alone is racy: the solver can publish a
+                    # manifest just after the controller's preceding poll. Wait
+                    # for every request created by this turn to reach a terminal
+                    # response before deciding whether another solver turn is
+                    # necessary.
+                    requested = (
+                        review_request_commits(self._guardian_host_exchange_dir)
+                        - requests_before
+                    )
+                    while requested - completed_responses(
+                        self._guardian_host_exchange_dir, requested
+                    ):
+                        if controller_errors:
+                            raise RuntimeError(
+                                "Guardian host controller failed"
+                            ) from controller_errors[0]
+                        await asyncio.sleep(0.1)
+                    while not controller.is_idle():
+                        if controller_errors:
+                            raise RuntimeError(
+                                "Guardian host controller failed"
+                            ) from controller_errors[0]
+                        await asyncio.sleep(0.1)
+                    latest = self._latest_report()
+                    if latest is None:
+                        break
+                    commit, report, identifiers, completed_at_ns = latest
+                    if not commit or commit in delivered_reviews:
+                        break
+                    delivered_reviews.add(commit)
+                    if self._solver_observed_report(
+                        turn_log,
+                        report=report,
+                        identifiers=identifiers,
+                        completed_at_ns=completed_at_ns,
+                    ):
+                        break
+                    next_instruction = f"{guardian_preamble}\n\n---\n\n" + (
+                        self._revision_instruction(instruction, report)
+                    )
             finally:
                 stop.set()
-                await controller_task
+                await asyncio.to_thread(controller_thread.join, 30)
+                self._solver_turn_logs = list(turn_logs)
+                self._restore_solver_logs(turn_logs)
                 exported_memory = (
                     self._guardian_host_exchange_dir.parent / "guardian_memory"
                 )
                 shutil.copytree(memory_dir, exported_memory, dirs_exist_ok=True)
-                await self._write_codex_token_summary(environment)
-
-    async def _write_codex_token_summary(self, environment: BaseEnvironment) -> None:
-        """Parse codex turn.completed events and write token totals to codex_tokens.json."""
-        script = r"""
-import json, sys
-keys = ['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens']
-totals = {k: 0 for k in keys}
-try:
-    with open('/logs/agent/codex.txt') as f:
-        for line in f:
-            line = line.strip()
-            if '"turn.completed"' not in line:
-                continue
-            try:
-                u = json.loads(line).get('usage', {})
-                for k in keys:
-                    totals[k] += u.get(k, 0)
-            except Exception:
-                pass
-except FileNotFoundError:
-    pass
-with open('/logs/agent/codex_tokens.json', 'w') as f:
-    json.dump(totals, f, indent=2)
-print(json.dumps(totals))
-"""
-        try:
-            result = await environment.exec(f"python3 -c {shlex.quote(script)}")
-            if result.stdout:
-                self.logger.info("codex tokens: %s", result.stdout.strip())
-        except Exception as exc:  # noqa: BLE001
-            self.logger.warning("failed to write codex token summary: %s", exc)
+                self._log_codex_token_summary(turn_logs)
+                if controller_thread.is_alive():
+                    raise RuntimeError("Guardian host controller did not stop")
+                if controller_errors:
+                    raise RuntimeError("Guardian host controller failed") from (
+                        controller_errors[0]
+                    )

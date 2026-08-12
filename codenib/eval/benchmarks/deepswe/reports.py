@@ -152,8 +152,9 @@ def trial_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "main_output_tokens": row.get("main_output_tokens"),
         "main_reasoning_output_tokens": row.get("main_reasoning_output_tokens"),
         "guardian_findings": row.get("guardian_findings"),
-        "guardian_backlog": row.get("guardian_backlog"),
-        "guardian_high_confidence_backlog": row.get("guardian_high_confidence_backlog"),
+        "guardian_uncertain_specifications": row.get(
+            "guardian_uncertain_specifications", row.get("guardian_backlog")
+        ),
         "guardian_degraded": row.get("guardian_degraded"),
         "guardian_analysis_status": row.get("guardian_analysis_status"),
         "guardian_cycle_count": row.get("guardian_cycle_count"),

@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -96,14 +97,19 @@ def _write_result(
     rollout_dir.mkdir(parents=True, exist_ok=True)
     for index, rollout in enumerate(result.rollouts, 1):
         prefix = rollout_dir / f"rollout_{index:02d}"
-        is_explorer = index <= explorer_count
+        stage = (
+            result.rollout_stages[index - 1]
+            if index <= len(result.rollout_stages)
+            else "unknown"
+        )
+        is_explorer = stage in {"exploration", "investigation"}
         _write_text_atomic(prefix.with_suffix(".jsonl"), rollout.raw_output)
         _write_text_atomic(prefix.with_suffix(".stderr.txt"), rollout.stderr)
         _write_json_atomic(
             prefix.with_suffix(".metadata.json"),
             {
                 "status": rollout.status.value,
-                "role": "explorer" if is_explorer else "aggregator",
+                "role": stage,
                 "model": explorer_model if is_explorer else aggregator_model,
                 "exit_code": rollout.exit_code,
                 "duration_seconds": rollout.duration_seconds,
@@ -129,10 +135,7 @@ def _write_result(
             "commit": result.candidate_commit,
             "base_commit": result.base_commit,
             "findings": len(result.findings),
-            "backlog": len(result.backlog),
-            "high_confidence_backlog": sum(
-                finding.confidence >= 0.8 for finding in result.backlog
-            ),
+            "uncertain_specifications": len(result.uncertain_specifications),
             "candidate_count": len(result.candidates),
             "degraded": result.status is not ReviewStatus.COMPLETE,
             "analysis_status": result.status.value,
@@ -185,8 +188,7 @@ def _write_limit_response(
             "commit": request_id,
             "base_commit": base_commit,
             "findings": 0,
-            "backlog": 0,
-            "high_confidence_backlog": 0,
+            "uncertain_specifications": 0,
             "candidate_count": 0,
             "degraded": False,
             "analysis_status": "not_run",
@@ -233,8 +235,7 @@ def _write_superseded_response(
             "base_commit": base_commit,
             "expected_base_commit": expected_base_commit,
             "findings": 0,
-            "backlog": 0,
-            "high_confidence_backlog": 0,
+            "uncertain_specifications": 0,
             "candidate_count": 0,
             "degraded": False,
             "analysis_status": "not_run",
@@ -281,8 +282,7 @@ def _write_failure(
         {
             "commit": request_id,
             "findings": 0,
-            "backlog": 0,
-            "high_confidence_backlog": 0,
+            "uncertain_specifications": 0,
             "candidate_count": 0,
             "degraded": True,
             "analysis_status": "failed",
@@ -362,6 +362,7 @@ class GuardianHostController:
         reviewer_factory: ReviewerFactory,
         initial_base_commit: str | None = None,
         memory_root: Path | None = None,
+        task_description: str = "",
         max_cycles: int = 3,
         poll_interval_seconds: float = 1.0,
     ) -> None:
@@ -373,6 +374,9 @@ class GuardianHostController:
         self.episodes_root = episodes_root
         self.config = config
         self.reviewer_factory = reviewer_factory
+        if not isinstance(task_description, str):
+            raise TypeError("task_description must be a string")
+        self.task_description = task_description.strip()
         self.memory_store = GuardianMemoryStore(
             memory_root or self.episodes_root.parent / "guardian_state"
         )
@@ -495,9 +499,14 @@ class GuardianHostController:
                     workspace=workspace,
                     base_commit=request.base_commit,
                     candidate_commit=request.candidate_commit,
+                    task_description=self.task_description,
                     context=_context(self.exchange_root, workspace),
                     change_patch=patch,
                     memory=memory,
+                    previous_session_id=(
+                        memory.session_id if memory.observed_snapshots else ""
+                    ),
+                    artifact_dir=response,
                 )
             )
             updated_memory = memory
@@ -577,6 +586,48 @@ class GuardianHostController:
                 pass
         await self.process_pending()
 
+    def serve_blocking(self, stop: threading.Event) -> None:
+        """Run the controller on a dedicated event-loop thread.
+
+        Some installed agent harnesses perform blocking subprocess I/O inside
+        their async ``run`` method.  A sibling asyncio task would then starve
+        exactly while the solver waits for a checkpoint response.  The native
+        thread keeps review processing independent of the solver's event loop.
+        """
+
+        async def serve_thread() -> None:
+            self._prepare()
+            while not stop.is_set():
+                await self.process_pending()
+                await asyncio.sleep(max(0.1, self.poll_interval_seconds))
+            await self.process_pending()
+
+        asyncio.run(serve_thread())
+
+    def is_idle(self) -> bool:
+        """Return whether every published checkpoint has a response status."""
+
+        self._prepare()
+        manifests = tuple((self.exchange_root / "requests").glob("*.json"))
+        return all(
+            (self.exchange_root / "responses" / item.stem / "status.json").is_file()
+            for item in manifests
+        )
+
+    async def wait_until_idle(self) -> None:
+        """Wait until every published checkpoint has a terminal response.
+
+        ``serve`` performs the actual work.  This method gives the harness a
+        synchronization point after a solver turn, including when the solver's
+        CLI returned while its checkpoint shell process was still waiting.
+        """
+
+        self._prepare()
+        while True:
+            if self.is_idle():
+                return
+            await asyncio.sleep(min(0.25, max(0.05, self.poll_interval_seconds)))
+
 
 def sandbox_reviewer_factory(
     *,
@@ -611,7 +662,12 @@ def sandbox_reviewer_factory(
         allow_unpinned_image=True,
         limits=limits,
     )
-    staged = {".guardian-runtime/auth.json": auth_json} if auth_json is not None else {}
+    # Codex validates that CODEX_HOME exists before it considers brokered
+    # credentials.  Always materialize the directory, including deployments
+    # where no auth.json needs to be copied into the review sandbox.
+    staged = {".guardian-runtime/.keep": b""}
+    if auth_json is not None:
+        staged[".guardian-runtime/auth.json"] = auth_json
 
     def factory(_workspace: Path) -> GuardianAgent:
         runner = SandboxProcessRunner(
@@ -620,7 +676,10 @@ def sandbox_reviewer_factory(
             platform=platform,
             policy=policy,
             staged_files=staged,
-            environment={"CODEX_HOME": "/workspace/.guardian-runtime"},
+            environment={
+                "CODEX_HOME": "/workspace/.guardian-runtime",
+                "PYTHONPATH": "/workspace",
+            },
         )
         return GuardianAgent(
             config,

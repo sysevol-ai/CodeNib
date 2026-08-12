@@ -48,6 +48,7 @@ def test_local_specification_rollout_controls_are_forwarded(tmp_path):
     assert "guardian_max_findings=4" in command
     assert "guardian_max_cycles=2" in command
     assert "guardian_rollout_timeout=123.0" in command
+    assert "guardian_codex_version=0.145.0" in command
 
 
 def test_reframed_guardian_defaults_are_explicit(tmp_path):
@@ -69,12 +70,15 @@ def test_reframed_guardian_defaults_are_explicit(tmp_path):
         logs_dir=Path(tmp_path),
     )
 
-    assert "guardian_explorer_count=2" in command
+    assert "guardian_explorer_count=4" in command
+    assert "guardian_targeted_explorer_count=2" in command
+    assert "guardian_search_rounds=2" in command
     assert "guardian_explorer_model=codex:gpt-5.6-terra" in command
     assert "guardian_aggregator_model=codex:gpt-5.6-terra" in command
-    assert "guardian_max_findings=5" in command
+    assert "guardian_max_findings=10" in command
     assert "guardian_max_cycles=3" in command
     assert "guardian_rollout_timeout=600.0" in command
+    assert "guardian_codex_version=0.145.0" in command
 
 
 def test_legacy_guardian_model_remains_a_shared_fallback(tmp_path):
@@ -217,7 +221,7 @@ def test_guardian_run_status_aggregates_every_cycle(tmp_path):
         {
             "commit": "first",
             "findings": 1,
-            "backlog": 2,
+            "uncertain_specifications": 2,
             "degraded": True,
             "analysis_status": "degraded",
             "exit_reason": "ReportSubmitted",
@@ -232,7 +236,7 @@ def test_guardian_run_status_aggregates_every_cycle(tmp_path):
         {
             "commit": "second",
             "findings": 0,
-            "backlog": 0,
+            "uncertain_specifications": 0,
             "degraded": False,
             "analysis_status": "complete",
             "exit_reason": "ReportSubmitted",
@@ -253,7 +257,7 @@ def test_guardian_run_status_aggregates_every_cycle(tmp_path):
 
     assert status["commit"] == "second"
     assert status["findings"] == 0
-    assert status["backlog"] == 0
+    assert status["uncertain_specifications"] == 0
     assert status["cycle_count"] == 2
     assert status["exit_reasons"] == ["ReportSubmitted", "ReportSubmitted"]
     assert status["analysis_warnings"] == ["explorer_1 used an invalid evidence path"]
@@ -367,7 +371,6 @@ def test_dashboard_preserves_guardian_analysis_health_fields():
             "baseline": "guardian",
             "guardian_findings": 0,
             "guardian_backlog": 3,
-            "guardian_high_confidence_backlog": 2,
             "guardian_degraded": True,
             "guardian_analysis_status": "degraded",
             "guardian_cycle_count": 3,
@@ -377,8 +380,9 @@ def test_dashboard_preserves_guardian_analysis_health_fields():
     )
 
     assert row["guardian_findings"] == 0
-    assert row["guardian_backlog"] == 3
-    assert row["guardian_high_confidence_backlog"] == 2
+    assert row["guardian_uncertain_specifications"] == 3
+    assert "guardian_backlog" not in row
+    assert "guardian_high_confidence_backlog" not in row
     assert row["guardian_degraded"] is True
     assert row["guardian_analysis_status"] == "degraded"
     assert row["guardian_cycle_count"] == 3

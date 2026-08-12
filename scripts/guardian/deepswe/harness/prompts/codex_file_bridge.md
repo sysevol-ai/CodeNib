@@ -48,6 +48,12 @@ it; inspect the matching response under
 `/logs/agent/guardian_exchange/responses/` and explain the failure before
 finalizing.
 
+The shell tool may yield a running session or cell identifier while this command
+waits. That means the checkpoint is still healthy and in progress. Continue
+waiting on that same identifier until it exits; do not launch duplicate
+checkpoint commands, infer failure from an empty response directory, or return
+your final answer while the original checkpoint process is still running.
+
 Read the latest completed report with your shell tool:
 
 ```bash
@@ -66,8 +72,9 @@ Use it at these checkpoints:
    /app/.guardian/bin/guardian-checkpoint
    ```
 
-   Address verified findings and high-confidence backlog items with another
-   edit/commit, or explicitly explain why no code change is needed. If
+   Address verified findings and investigate materially important uncertain
+   specifications with another edit/commit or focused probe, or explicitly explain why
+   no code change is needed. If
    `analysis status` is degraded, do not describe zero findings as a clean
    review: perform the missing validation yourself and explain the limitation.
    Do not give your final answer until this checkpoint has succeeded for the

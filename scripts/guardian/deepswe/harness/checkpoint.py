@@ -276,11 +276,10 @@ def main() -> int:
                 print(f"model: {status.get('llm_model', '')}")
             print(f"backend: {status.get('llm_backend', '')}")
             print(f"findings: {status.get('findings', 0)}")
-            print(f"backlog: {status.get('backlog', 0)}")
-            print(
-                "high-confidence backlog: "
-                f"{status.get('high_confidence_backlog', 0)}"
+            uncertain = status.get(
+                "uncertain_specifications", status.get("backlog", 0)
             )
+            print(f"uncertain specifications: {uncertain}")
             print(f"analysis status: {analysis_status}")
             print(f"exit reason: {exit_reason or 'unknown'}")
             print(

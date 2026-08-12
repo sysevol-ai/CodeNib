@@ -59,8 +59,7 @@ def test_guardian_checkpoint_prints_fresh_report(tmp_path):
                 "commit": head,
                 "running": False,
                 "findings": 1,
-                "backlog": 1,
-                "high_confidence_backlog": 1,
+                "uncertain_specifications": 1,
                 "degraded": True,
                 "analysis_status": "degraded",
                 "exit_reason": "ReportSubmitted",
@@ -104,8 +103,8 @@ def test_guardian_checkpoint_prints_fresh_report(tmp_path):
     assert "explorer model: gpt-5.6-luna" in result.stdout
     assert "aggregator model: gpt-5.6-sol" in result.stdout
     assert "backend: codex-sdk" in result.stdout
-    assert "backlog: 1" in result.stdout
-    assert "high-confidence backlog: 1" in result.stdout
+    assert "uncertain specifications: 1" in result.stdout
+    assert "confidence" not in result.stdout
     assert "analysis status: degraded" in result.stdout
     assert "tokens: 123" in result.stdout
     assert "Risk found." in result.stdout
@@ -226,7 +225,7 @@ def test_guardian_checkpoint_rejects_no_progress_as_incomplete(tmp_path):
                 "commit": head,
                 "running": False,
                 "findings": 0,
-                "backlog": 0,
+                "uncertain_specifications": 0,
                 "degraded": False,
                 "analysis_status": "incomplete",
                 "exit_reason": "NoProgress",
@@ -354,7 +353,7 @@ def test_guardian_checkpoint_publishes_bundle_and_reads_response(tmp_path):
                 "commit": head,
                 "running": False,
                 "findings": 0,
-                "backlog": 0,
+                "uncertain_specifications": 0,
                 "analysis_status": "complete",
                 "exit_reason": "ReviewCompleted",
                 "llm_backend": "codex-cli+codenib-sandbox",

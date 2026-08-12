@@ -10,7 +10,9 @@ import asyncio
 import hashlib
 import json
 import subprocess
-from pathlib import Path
+import threading
+import time
+from pathlib import Path, PurePosixPath
 
 from codenib.clients.guardian import GuardianConfig, GuardianResult, ReviewStatus
 from scripts.guardian.deepswe.harness import controller as controller_module
@@ -151,6 +153,40 @@ def test_sandbox_reviewer_uses_stable_codex_tool_execution(
         "code_mode",
         "code_mode_host",
     )
+    assert executor_options["process_runner"]._environment["PYTHONPATH"] == (
+        "/workspace"
+    )
+    assert (
+        executor_options["process_runner"]._staged_files[
+            PurePosixPath(".guardian-runtime/.keep")
+        ]
+        == b""
+    )
+
+
+def test_sandbox_reviewer_stages_codex_auth_with_runtime_directory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    executor_options = {}
+
+    class FakeExecutor:
+        def __init__(self, **kwargs) -> None:
+            executor_options.update(kwargs)
+
+    monkeypatch.setattr(controller_module, "CodexExecutor", FakeExecutor)
+    factory = controller_module.sandbox_reviewer_factory(
+        config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+        image="fixture:latest",
+        codex_executable="/usr/local/bin/codex-guardian",
+        auth_json=b"credential",
+    )
+
+    factory(tmp_path)
+
+    assert executor_options["process_runner"]._staged_files == {
+        PurePosixPath(".guardian-runtime/.keep"): b"",
+        PurePosixPath(".guardian-runtime/auth.json"): b"credential",
+    }
 
 
 def test_host_controller_reviews_materialized_snapshot(tmp_path: Path) -> None:
@@ -163,6 +199,7 @@ def test_host_controller_reviews_materialized_snapshot(tmp_path: Path) -> None:
         config=config,
         reviewer_factory=lambda _workspace: FakeReviewer(requests),
         initial_base_commit=base,
+        task_description="Enable the feature without breaking existing callers.",
         poll_interval_seconds=0.01,
     )
 
@@ -172,6 +209,9 @@ def test_host_controller_reviews_materialized_snapshot(tmp_path: Path) -> None:
     request = requests[0]
     assert request.base_commit == base
     assert request.candidate_commit == candidate
+    assert request.task_description == (
+        "Enable the feature without breaking existing callers."
+    )
     assert "-enabled = False" in request.change_patch
     assert "+enabled = True" in request.change_patch
     status = json.loads(
@@ -188,6 +228,72 @@ def test_host_controller_reviews_materialized_snapshot(tmp_path: Path) -> None:
     assert status["memory_snapshots"] == 1
     assert (exchange / "latest" / "findings.md").is_file()
     assert (tmp_path / "episodes" / candidate / "status.json").is_file()
+
+
+def test_blocking_controller_serves_while_caller_thread_is_blocked(
+    tmp_path: Path,
+) -> None:
+    exchange, base, candidate = _publish(tmp_path)
+    requests = []
+    controller = GuardianHostController(
+        exchange_root=exchange,
+        episodes_root=tmp_path / "episodes",
+        config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+        reviewer_factory=lambda _workspace: FakeReviewer(requests),
+        initial_base_commit=base,
+        poll_interval_seconds=0.01,
+    )
+    stop = threading.Event()
+    worker = threading.Thread(target=controller.serve_blocking, args=(stop,))
+    worker.start()
+    status = exchange / "responses" / candidate / "status.json"
+    deadline = time.monotonic() + 5
+
+    # Deliberately block this thread rather than yield an asyncio event loop.
+    while not status.is_file() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    stop.set()
+    worker.join(timeout=5)
+
+    assert status.is_file()
+    assert requests
+    assert not worker.is_alive()
+
+
+def test_host_controller_waits_for_inflight_review(tmp_path: Path) -> None:
+    exchange, base, candidate = _publish(tmp_path)
+
+    async def exercise() -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        class BlockingReviewer(FakeReviewer):
+            async def review(self, request):
+                started.set()
+                await release.wait()
+                return await super().review(request)
+
+        controller = GuardianHostController(
+            exchange_root=exchange,
+            episodes_root=tmp_path / "episodes",
+            config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+            reviewer_factory=lambda _workspace: BlockingReviewer([]),
+            initial_base_commit=base,
+            poll_interval_seconds=0.01,
+        )
+        stop = asyncio.Event()
+        server = asyncio.create_task(controller.serve(stop))
+        await started.wait()
+        waiter = asyncio.create_task(controller.wait_until_idle())
+        await asyncio.sleep(0.02)
+        assert not waiter.done()
+        release.set()
+        await waiter
+        assert (exchange / "responses" / candidate / "status.json").is_file()
+        stop.set()
+        await server
+
+    asyncio.run(exercise())
 
 
 def test_host_controller_reports_invalid_bundle_without_review(tmp_path: Path) -> None:
