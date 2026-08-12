@@ -994,6 +994,49 @@ class WindowsDirectoryAuthority:
             ):
                 raise RuntimeError("Windows lexical directory component changed")
 
+    def verify_binding(self) -> None:
+        """Verify stable HANDLE and lexical-name bindings after mutation."""
+
+        if self.closed or not self.handles:
+            raise RuntimeError("Windows directory authority is closed")
+        anchor = self.api.metadata(self.handles[0])
+        if (
+            windows_handle_ownership_identity(anchor) != self.anchor_identity[:2]
+            or not stat.S_ISDIR(anchor.st_mode)
+            or anchor.st_file_attributes & FILE_ATTRIBUTE_REPARSE_POINT
+            or not anchor.st_dev
+            or not windows_file_id_is_reliable(anchor.file_id_128)
+            or anchor.delete_pending
+        ):
+            raise RuntimeError("Windows lexical anchor binding changed")
+        for observation in self.observations:
+            parent = self.api.metadata(observation.parent_handle)
+            if (
+                windows_handle_ownership_identity(parent)
+                != observation.parent_identity[:2]
+                or not stat.S_ISDIR(parent.st_mode)
+                or parent.st_file_attributes & FILE_ATTRIBUTE_REPARSE_POINT
+                or not windows_file_id_is_reliable(parent.file_id_128)
+                or parent.delete_pending
+            ):
+                raise RuntimeError("Windows lexical parent binding changed")
+            entry = self._find_exact_child(
+                observation.parent_handle,
+                observation.name,
+            )
+            if entry is None or entry.file_id_128 != observation.child_file_id:
+                raise RuntimeError("Windows lexical directory binding changed")
+            opened = self.api.metadata(observation.child_handle)
+            if (
+                windows_handle_ownership_identity(opened)
+                != observation.child_identity[:2]
+                or not stat.S_ISDIR(opened.st_mode)
+                or opened.st_file_attributes & FILE_ATTRIBUTE_REPARSE_POINT
+                or not windows_file_id_is_reliable(opened.file_id_128)
+                or opened.delete_pending
+            ):
+                raise RuntimeError("Windows lexical component binding changed")
+
     def close(self) -> None:
         if self.closed:
             return
@@ -1307,14 +1350,18 @@ def open_lexical_directory_authority(
                 if callable(iterator)
                 else selected.enumerate_directory(current_handle)
             )
-            matches = [entry for entry in entries if entry.name == component]
+            folded_component = component.casefold()
+            matches = [
+                entry for entry in entries if entry.name.casefold() == folded_component
+            ]
             if len(matches) != 1 or matches[0].file_id_128 != child.file_id_128:
                 raise RuntimeError("Windows lexical directory changed while opening")
+            bound_name = matches[0].name
             observations.append(
                 _WindowsAuthorityObservation(
                     parent_handle=current_handle,
                     parent_identity=parent_identity,
-                    name=component,
+                    name=bound_name,
                     child_handle=child_handle,
                     child_identity=windows_metadata_identity(child),
                     child_file_id=child.file_id_128,

@@ -101,10 +101,14 @@ class _FakeWindowsApi:
         parent = self.nodes[self.handles[parent_handle]]
         children = parent["children"]
         assert isinstance(children, dict)
-        try:
-            file_id = children[name]
-        except KeyError as exc:
-            raise FileNotFoundError(name) from exc
+        matches = [
+            file_id
+            for child_name, file_id in children.items()
+            if child_name.casefold() == name.casefold()
+        ]
+        if len(matches) != 1:
+            raise FileNotFoundError(name)
+        file_id = matches[0]
         assert self.nodes[file_id]["directory"] is is_directory
         return self._new_handle(file_id)
 
@@ -200,6 +204,30 @@ class _FakeWindowsApi:
         children[destination] = children.pop(source_name)
         parent["version"] = int(parent["version"]) + 1
         self.rename_calls.append((source_handle, parent_handle, destination))
+
+
+def _install_fake_windows_api(
+    monkeypatch: pytest.MonkeyPatch,
+    api: _FakeWindowsApi,
+) -> None:
+    """Install the fake under POSIX while preserving Windows path spelling."""
+
+    real_open = windows_authority_module.open_lexical_directory_authority
+
+    def open_lexical(path: Path, **kwargs: object) -> object:
+        raw = os.fspath(path).replace("\\", "/")
+        drive_offset = raw.casefold().rfind("c:/")
+        if drive_offset >= 0:
+            path = Path(raw[drive_offset:])
+        return real_open(path, **kwargs)
+
+    monkeypatch.setattr(atomic_module.sys, "platform", "win32")
+    monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
+    monkeypatch.setattr(
+        atomic_module._windows_fs,
+        "open_lexical_directory_authority",
+        open_lexical,
+    )
 
 
 def test_publish_staged_directory_replaces_existing_tree(
@@ -2423,19 +2451,19 @@ def test_windows_ownership_rejects_zero_directory_entry_file_id() -> None:
     api = _FakeWindowsApi()
     api.add_file(api.root_id, "payload.txt", b"payload")
     root_handle = api.create_directory_handle(Path("C:/authority"))
-    enumerate_directory = api.enumerate_directory
+    iter_directory = api.iter_directory
 
-    def enumerate_with_zero_id(handle: int) -> tuple[object, ...]:
-        return tuple(
+    def iterate_with_zero_id(handle: int):
+        yield from (
             atomic_module._WindowsDirectoryEntry(
                 name=entry.name,
                 file_id=0,
                 attributes=entry.attributes,
             )
-            for entry in enumerate_directory(handle)
+            for entry in iter_directory(handle)
         )
 
-    api.enumerate_directory = enumerate_with_zero_id  # type: ignore[method-assign]
+    api.iter_directory = iterate_with_zero_id  # type: ignore[method-assign]
     try:
         with pytest.raises(RuntimeError, match="reliable FILE_ID"):
             atomic_module._capture_windows_directory_handle(
@@ -2448,6 +2476,163 @@ def test_windows_ownership_rejects_zero_directory_entry_file_id() -> None:
             )
     finally:
         api.close(root_handle)
+
+
+def test_windows_ownership_uses_streaming_directory_enumeration() -> None:
+    api = _FakeWindowsApi()
+    api.add_file(api.root_id, "one.txt", b"one")
+    api.add_file(api.root_id, "two.txt", b"two")
+    root_handle = api.create_directory_handle(Path("C:/authority"))
+
+    def forbid_materialized_enumeration(_handle: int) -> tuple[object, ...]:
+        raise AssertionError("ownership scan must not materialize enumeration first")
+
+    api.enumerate_directory = forbid_materialized_enumeration  # type: ignore[method-assign]
+    try:
+        ownership = atomic_module._capture_windows_directory_handle(
+            api,
+            root_handle,
+            Path("C:/authority"),
+            required_root_file=None,
+            allow_empty_root=False,
+            entry_policy=None,
+        )
+    finally:
+        api.close(root_handle)
+
+    assert ownership.inventory == (("one.txt", "file"), ("two.txt", "file"))
+
+
+def test_windows_ownership_stops_stream_when_entry_budget_is_exceeded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    for name in ("one.txt", "two.txt", "unreachable.txt"):
+        api.add_file(api.root_id, name, name.encode())
+    root_handle = api.create_directory_handle(Path("C:/authority"))
+    real_iter = api.iter_directory
+    yielded: list[str] = []
+
+    def bounded_iter(handle: int):
+        for entry in real_iter(handle):
+            if len(yielded) == 2:
+                raise AssertionError("ownership scan consumed beyond its entry budget")
+            yielded.append(entry.name)
+            yield entry
+
+    api.iter_directory = bounded_iter  # type: ignore[method-assign]
+    monkeypatch.setattr(atomic_module, "_MAX_OWNERSHIP_ENTRIES", 1)
+    try:
+        with pytest.raises(RuntimeError, match="entry limit"):
+            atomic_module._capture_windows_directory_handle(
+                api,
+                root_handle,
+                Path("C:/authority"),
+                required_root_file=None,
+                allow_empty_root=False,
+                entry_policy=None,
+            )
+    finally:
+        api.close(root_handle)
+
+    assert yielded == ["one.txt", "two.txt"]
+
+
+def test_windows_publication_rejects_ancestor_swap_during_lexical_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    volume_children = api.nodes[api.volume_root_id]["children"]
+    assert isinstance(volume_children, dict)
+    volume_children.pop("authority")
+    trusted = api.add_directory(api.volume_root_id, "trusted")
+    trusted_children = api.nodes[trusted]["children"]
+    assert isinstance(trusted_children, dict)
+    trusted_children["authority"] = api.root_id
+    foreign = api.add_directory()
+    api.add_directory(foreign, "authority")
+    real_iter = api.iter_directory
+    opened_paths: list[str] = []
+    real_create = api.create_directory_handle
+    swapped = False
+
+    def create_anchor_only(path: Path) -> int:
+        opened_paths.append(str(path))
+        normalized = str(path).replace("/", "\\").rstrip("\\").casefold()
+        if normalized != "c:":
+            raise AssertionError("publication must not reopen the full lexical path")
+        return real_create(path)
+
+    def swap_before_binding_check(handle: int):
+        nonlocal swapped
+        if api.handles[handle] == api.volume_root_id and not swapped:
+            swapped = True
+            volume_children["trusted"] = foreign
+        yield from real_iter(handle)
+
+    api.create_directory_handle = create_anchor_only  # type: ignore[method-assign]
+    api.iter_directory = swap_before_binding_check  # type: ignore[method-assign]
+    monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
+
+    with pytest.raises(RuntimeError, match="changed while opening"):
+        atomic_module._open_windows_publication_authority(
+            Path("C:/trusted/authority"),
+            parent_resource=None,
+            expected_parent_identity=None,
+        )
+
+    assert swapped
+    assert opened_paths == ["C:\\"]
+    assert api.handles == {}
+
+
+def test_windows_publication_retains_lexical_ancestor_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    volume_children = api.nodes[api.volume_root_id]["children"]
+    assert isinstance(volume_children, dict)
+    volume_children.pop("authority")
+    trusted = api.add_directory(api.volume_root_id, "trusted")
+    trusted_children = api.nodes[trusted]["children"]
+    assert isinstance(trusted_children, dict)
+    trusted_children["authority"] = api.root_id
+    foreign = api.add_directory()
+    api.add_directory(foreign, "authority")
+    monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
+
+    authority = atomic_module._open_windows_publication_authority(
+        Path("C:/trusted/authority"),
+        parent_resource=None,
+        expected_parent_identity=None,
+    )
+    try:
+        volume_children["trusted"] = foreign
+        with pytest.raises(RuntimeError, match="binding changed"):
+            authority.verify_path_binding()
+    finally:
+        authority.close()
+
+    assert api.handles == {}
+
+
+def test_windows_publication_accepts_lexical_component_case_variation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
+
+    authority = atomic_module._open_windows_publication_authority(
+        Path("C:/AUTHORITY"),
+        parent_resource=None,
+        expected_parent_identity=None,
+    )
+    try:
+        authority.verify_path_binding()
+    finally:
+        authority.close()
+
+    assert api.handles == {}
 
 
 def test_windows_authority_closes_handles_after_reader_failure(
@@ -2698,6 +2883,7 @@ def test_windows_authority_renames_source_handle_without_replace_or_share_delete
             label="stage",
         )
         authority.rename_noreplace("stage", "published")
+        authority.verify_path_binding()
     finally:
         authority.close()
 
@@ -3242,9 +3428,8 @@ def test_reopen_authenticated_directory_fake_windows_survives_root_swap(
     api.add_file(directory_id, "payload.txt", b"payload")
     foreign_id = api.add_directory()
     api.add_file(foreign_id, "payload.txt", b"foreign")
-    monkeypatch.setattr(atomic_module.sys, "platform", "win32")
     monkeypatch.setattr(atomic_module, "_windows_require_publication_api", lambda: None)
-    monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
+    _install_fake_windows_api(monkeypatch, api)
     path = Path("C:/authority/existing")
     authority = atomic_module._open_windows_publication_authority(
         path.parent,
@@ -3291,9 +3476,8 @@ def test_reopen_authenticated_directory_fake_windows_rejects_suppressed_error(
     directory_id = api.add_directory(api.root_id, "existing")
     original_id = api.add_file(directory_id, "payload.txt", b"payload")
     foreign_id = api.add_file(directory_id, "foreign.txt", b"foreign")
-    monkeypatch.setattr(atomic_module.sys, "platform", "win32")
     monkeypatch.setattr(atomic_module, "_windows_require_publication_api", lambda: None)
-    monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
+    _install_fake_windows_api(monkeypatch, api)
     path = Path("C:/authority/existing")
     authority = atomic_module._open_windows_publication_authority(
         path.parent,
@@ -3533,8 +3717,7 @@ def test_capture_directory_ownership_if_exists_fake_windows_missing_race_closes_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     api = _FakeWindowsApi()
-    monkeypatch.setattr(atomic_module.sys, "platform", "win32")
-    monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
+    _install_fake_windows_api(monkeypatch, api)
     path = Path("C:/authority/appeared")
     child_metadata = atomic_module._PublicationAuthority.child_metadata
     injected = False
@@ -3683,10 +3866,7 @@ def _call_with_interrupt_after_store(
         if (
             frame.f_code is code
             and (
-                (
-                    event == "opcode"
-                    and frame.f_lasti in opcode_offsets_after_store
-                )
+                (event == "opcode" and frame.f_lasti in opcode_offsets_after_store)
                 or (event == "line" and frame.f_lasti in line_offsets_after_store)
             )
             and int(frame.f_locals.get(local_name, -1)) >= 0
@@ -4432,6 +4612,7 @@ def test_windows_factory_recovers_interrupt_after_registered_handle_return(
     monkeypatch.setattr(atomic_module, "_windows_kernel_api", lambda: api)
     external = api.create_directory_handle(Path("C:/external")) if use_duplicate else 0
     real_acquire = atomic_module._WindowsResourceOwner.acquire
+    real_own = atomic_module._WindowsLexicalAuthorityOwner.own
     error = KeyboardInterrupt("after registered HANDLE return")
     injected = False
 
@@ -4447,6 +4628,23 @@ def test_windows_factory_recovers_interrupt_after_registered_handle_return(
         atomic_module._WindowsResourceOwner,
         "acquire",
         acquire_then_interrupt,
+    )
+
+    def own_then_interrupt(self: object, resource: object) -> None:
+        nonlocal injected
+        real_own(self, resource)
+        if (
+            not use_duplicate
+            and isinstance(resource, windows_authority_module.WindowsDirectoryAuthority)
+            and not injected
+        ):
+            injected = True
+            raise error
+
+    monkeypatch.setattr(
+        atomic_module._WindowsLexicalAuthorityOwner,
+        "own",
+        own_then_interrupt,
     )
 
     with pytest.raises(KeyboardInterrupt) as caught:

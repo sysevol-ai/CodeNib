@@ -929,6 +929,151 @@ class _WindowsResourceOwner:
         return None
 
 
+class _WindowsLexicalAuthorityOwner:
+    """Retain a component-pinned Windows authority across handoff failures."""
+
+    __slots__ = ("_resource",)
+
+    def __init__(self) -> None:
+        self._resource: object | None = None
+
+    def own(self, resource: object) -> None:
+        current = self._resource
+        if current is not None and current is not resource:
+            current_handles = getattr(current, "handles", None)
+            replacement_handles = getattr(resource, "handles", None)
+            if current_handles is not replacement_handles:
+                raise RuntimeError("Windows lexical authority ownership changed")
+        self._resource = resource
+
+    @property
+    def authority(self) -> _windows_fs.WindowsDirectoryAuthority:
+        resource = self._resource
+        if not isinstance(resource, _windows_fs.WindowsDirectoryAuthority):
+            raise RuntimeError("Windows lexical authority was not acquired")
+        return resource
+
+    @property
+    def closed(self) -> bool:
+        resource = self._resource
+        if resource is None:
+            return True
+        handles = getattr(resource, "handles", None)
+        if isinstance(handles, list):
+            return not handles
+        return bool(resource.closed)  # type: ignore[attr-defined]
+
+    def close(self) -> None:
+        resource = self._resource
+        if resource is None:
+            return
+        handles = getattr(resource, "handles", None)
+        api = getattr(resource, "api", None)
+        if not isinstance(handles, list) or api is None:
+            resource.close()  # type: ignore[attr-defined]
+            return
+        if not handles:
+            if isinstance(resource, _windows_fs.WindowsDirectoryAuthority):
+                resource.closed = True
+            return
+
+        stored_identities: dict[int, tuple[int, ...]] = {}
+        if isinstance(resource, _windows_fs.WindowsDirectoryAuthority):
+            full_identities = {resource.handles[0]: resource.anchor_identity}
+            full_identities.update(
+                {
+                    observation.child_handle: observation.child_identity
+                    for observation in resource.observations
+                }
+            )
+            for handle, identity in full_identities.items():
+                file_id = identity[1]
+                if not isinstance(file_id, bytes):
+                    raise RuntimeError("Windows lexical FILE_ID is invalid")
+                stored_identities[handle] = (
+                    int(identity[0]),
+                    1,
+                    int.from_bytes(file_id, "big"),
+                    stat.S_IFMT(int(identity[2])),
+                )
+
+        primary_error: BaseException | None = None
+        for handle in reversed(tuple(handles)):
+            expected = stored_identities.get(handle)
+            if expected is None:
+                cleanup_identities = getattr(resource, "expected_identities", {})
+                cleanup_identity = cleanup_identities.get(handle)
+                try:
+                    observed = api.metadata(handle)
+                except KeyError:
+                    while handle in handles:
+                        handles.remove(handle)
+                    cleanup_identities.pop(handle, None)
+                    continue
+                except OSError as probe_error:
+                    if _windows_handle_is_invalid_error(probe_error):
+                        while handle in handles:
+                            handles.remove(handle)
+                        cleanup_identities.pop(handle, None)
+                        continue
+                    primary_error = _retain_first_error(
+                        primary_error,
+                        "additional Windows lexical HANDLE probe failed",
+                        probe_error,
+                    )
+                    continue
+                except BaseException as probe_error:  # noqa: B036
+                    primary_error = _retain_first_error(
+                        primary_error,
+                        "additional Windows lexical HANDLE probe failed",
+                        probe_error,
+                    )
+                    continue
+                if (
+                    cleanup_identity is not None
+                    and (
+                        observed.st_dev,
+                        observed.file_id_128,
+                    )
+                    != cleanup_identity
+                ):
+                    primary_error = _retain_first_error(
+                        primary_error,
+                        "additional Windows lexical HANDLE ownership changed",
+                        RuntimeError("Windows lexical HANDLE ownership changed"),
+                    )
+                    continue
+                expected = _resource_owner_identity(observed)
+            record = _WindowsHandleRecord(handle, expected)
+            temporary_owner = _WindowsResourceOwner(api)
+            close_error = temporary_owner._close_record(record)
+            if not record.handle:
+                while handle in handles:
+                    handles.remove(handle)
+                cleanup_identities = getattr(resource, "expected_identities", {})
+                cleanup_identities.pop(handle, None)
+            if close_error is not None:
+                primary_error = _retain_first_error(
+                    primary_error,
+                    "additional Windows lexical HANDLE cleanup failed",
+                    close_error,
+                )
+        if isinstance(resource, _windows_fs.WindowsDirectoryAuthority):
+            resource.closed = not handles
+        if primary_error is not None:
+            raise primary_error
+
+    def close_after_error(self, primary_error: BaseException) -> None:
+        try:
+            self.close()
+        except BaseException as close_error:  # noqa: B036 - keep primary
+            _annotate_secondary_error(
+                primary_error,
+                "Windows lexical authority cleanup also failed",
+                close_error,
+            )
+
+
 class _PublicationAuthorityOwner:
     """Pre-existing slot for cancellation-safe authority handoff."""
 
@@ -1925,14 +2070,14 @@ def _windows_find_child(
     name: str,
 ) -> _WindowsDirectoryEntry | None:
     folded = name.casefold()
-    matches = [
-        entry
-        for entry in api.enumerate_directory(parent_handle)
-        if entry.name.casefold() == folded
-    ]
-    if len(matches) > 1:
-        raise RuntimeError("Windows directory contains ambiguous child names")
-    return matches[0] if matches else None
+    match: _WindowsDirectoryEntry | None = None
+    for entry in api.iter_directory(parent_handle):
+        if entry.name.casefold() != folded:
+            continue
+        if match is not None:
+            raise RuntimeError("Windows directory contains ambiguous child names")
+        match = entry
+    return match
 
 
 def _windows_open_child_by_id(
@@ -2180,7 +2325,7 @@ def _scan_windows_owned_directory(
     if not stat.S_ISDIR(before.st_mode) or before.st_dev != root_device:
         raise RuntimeError(f"directory ownership root changed: {path}")
     entries: list[tuple[bytes, _WindowsDirectoryEntry]] = []
-    for entry in api.enumerate_directory(handle):
+    for entry in api.iter_directory(handle):
         _simple_child_name(entry.name, label="directory ownership component")
         try:
             raw_name = entry.name.encode("utf-8", errors="strict")
@@ -2366,17 +2511,56 @@ def _open_windows_publication_authority(
 ) -> _PublicationAuthority:
     api = _windows_kernel_api()
     resources = _WindowsResourceOwner(api)
+    lexical_owner = _WindowsLexicalAuthorityOwner()
+    lexical_authority: _windows_fs.WindowsDirectoryAuthority | None = None
     authority: _PublicationAuthority | None = None
-    try:
-        parent_handle = resources.acquire(
-            lambda: (
-                api.create_directory_handle(path)
-                if parent_resource is None
-                else api.duplicate_handle(parent_resource)
+
+    def close_resources() -> None:
+        primary_error: BaseException | None = None
+        try:
+            resources.close_all()
+        except BaseException as close_error:  # noqa: B036 - visit both owners
+            primary_error = close_error
+        try:
+            lexical_owner.close()
+        except BaseException as close_error:  # noqa: B036 - retain first
+            primary_error = _retain_first_error(
+                primary_error,
+                "Windows lexical authority cleanup also failed",
+                close_error,
             )
-        )
+        if primary_error is not None:
+            raise primary_error
+
+    def close_resources_after_error(primary_error: BaseException) -> None:
+        try:
+            close_resources()
+        except BaseException as close_error:  # noqa: B036 - keep primary
+            _annotate_secondary_error(
+                primary_error,
+                "Windows publication authority cleanup also failed",
+                close_error,
+            )
+
+    def resources_closed() -> bool:
+        return resources.closed and lexical_owner.closed
+
+    try:
+        if parent_resource is None:
+            _windows_fs.open_lexical_directory_authority(
+                path,
+                api=api,
+                cleanup_slot=lexical_owner,
+            )
+            lexical_authority = lexical_owner.authority
+            parent_handle = lexical_authority.handle
+        else:
+            parent_handle = resources.acquire(
+                lambda: api.duplicate_handle(parent_resource)
+            )
         opened = api.metadata(parent_handle)
-        resources.bind_identity(parent_handle, opened)
+        if parent_resource is not None:
+            resources.bind_identity(parent_handle, opened)
         if _is_link_or_reparse(opened) or not stat.S_ISDIR(opened.st_mode):
             raise ValueError("publication parent must be a real directory")
         identity = _directory_inode_identity(opened)
@@ -2386,9 +2570,10 @@ def _open_windows_publication_authority(
             expected_parent_identity
         ):
             raise RuntimeError("publication parent identity does not match authority")
-        path_handle = resources.acquire(lambda: api.create_directory_handle(path))
-        if _directory_inode_identity(api.metadata(path_handle)) != identity:
-            raise RuntimeError("publication parent path changed")
+        if lexical_authority is None:
+            path_handle = resources.acquire(lambda: api.create_directory_handle(path))
+            if _directory_inode_identity(api.metadata(path_handle)) != identity:
+                raise RuntimeError("publication parent path changed")
         owned_parent_handle = parent_handle
 
         def open_child(
@@ -2549,6 +2734,9 @@ def _open_windows_publication_authority(
         def verify_callback() -> None:
             if _directory_inode_identity(api.metadata(owned_parent_handle)) != identity:
                 raise RuntimeError("publication parent authority changed")
+            if lexical_authority is not None:
+                lexical_authority.verify_binding()
+                return
             rebound_handle = resources.acquire(
                 lambda: api.create_directory_handle(path)
             )
@@ -2576,12 +2764,12 @@ def _open_windows_publication_authority(
             identity=identity,
             backend_tag="windows-file-id",
             resource=owned_parent_handle,
-            close_callback=lambda _resource: resources.close_all(),
+            close_callback=lambda _resource: close_resources(),
             metadata_callback=metadata_callback,
             reader_callback=reader_callback,
             rename_callback=rename_callback,
             verify_callback=verify_callback,
-            close_complete_callback=lambda: resources.closed,
+            close_complete_callback=resources_closed,
         )
         if authority_owner is not None:
             authority_owner.install(authority)
@@ -2594,7 +2782,7 @@ def _open_windows_publication_authority(
         ):
             authority_owner.close_after_error(primary_error)
         else:
-            resources.close_all_after_error(primary_error)
+            close_resources_after_error(primary_error)
         raise
 
 
