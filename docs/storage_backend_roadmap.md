@@ -360,6 +360,20 @@ import legacy manifests into the catalog, or publish the resulting receipt as
 an M2 generation. Those adapters remain outstanding, so M1 and M2 remain in
 progress.
 
+Retained manifest import now has additional backend-neutral prerequisite
+gates. `BlobInfo` is an exact point-in-time CAS receipt, and
+the additive `ReceiptVerifyingObjectStore.verify_receipt` capability
+revalidates its digest, byte size, and canonical storage key before a metadata
+boundary without pretending to pin the object against future GC. A public
+physical archive-size gate lets import coordinators reject impossible view
+bundles before object-store byte access. Published snapshot summaries also
+close namespace and repository identity alongside source, profile, generation,
+object, and view identity. Retained materialized-bundle consumption still needs
+a non-forgeable owner and tracked streaming-resource lifecycle; no path or
+ordinary dataclass is treated as that authority. These gates do not yet plan or
+execute a legacy `RepoManifest` import, upload retained view bytes, or advance a
+ref, so M1 remains in progress.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
