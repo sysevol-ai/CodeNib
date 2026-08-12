@@ -1354,6 +1354,31 @@ def test_mapping_snapshot_rejects_repeated_container_aliases_after_one_read() ->
     assert shared.items_calls == 1
 
 
+def test_parent_json_budget_is_charged_before_consuming_a_child() -> None:
+    reads = 0
+
+    class TrapMapping(Mapping[str, object]):
+        def __getitem__(self, key: str) -> object:
+            raise KeyError(key)
+
+        def __iter__(self) -> Iterator[str]:
+            return iter(())
+
+        def __len__(self) -> int:
+            return 0
+
+        def items(self):
+            nonlocal reads
+            reads += 1
+            return ()
+
+    manifest = _manifest(include_vector=False)
+    manifest.indexes["bm25"].config = {"x" * 4096: TrapMapping()}
+    with pytest.raises(StorageValidationError, match="byte limit"):
+        plan_repo_manifest_import(manifest, max_manifest_bytes=1024)
+    assert reads == 0
+
+
 def test_mapping_snapshot_stops_at_the_node_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

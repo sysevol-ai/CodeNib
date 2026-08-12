@@ -655,6 +655,8 @@ def _json_string_size(
     """Return the exact ensure-ASCII JSON string size without encoding it."""
 
     size = 2
+    if size > max_bytes:
+        raise StorageValidationError(f"{label} exceeds its byte limit")
     for character in value:
         codepoint = ord(character)
         if 0xD800 <= codepoint <= 0xDFFF:
@@ -689,7 +691,6 @@ def _snapshot_json_value(
             # Retain the original objects, rather than only their ids, so a
             # short-lived projection cannot be freed and have its id reused.
             "seen": {},
-            "max_bytes": max_bytes,
         }
 
     if type(value) is RepoManifest:
@@ -747,6 +748,7 @@ def _snapshot_json_value(
             label=label,
             depth=depth,
             state=state,
+            max_bytes=max_bytes,
         )
 
     if type(value) is IndexEntry:
@@ -785,6 +787,7 @@ def _snapshot_json_value(
             label=label,
             depth=depth,
             state=state,
+            max_bytes=max_bytes,
         )
 
     state["nodes"] += 1
@@ -798,6 +801,8 @@ def _snapshot_json_value(
         )
 
     if isinstance(value, Mapping):
+        if max_bytes < 2:
+            raise StorageValidationError(f"{label} exceeds its byte limit")
         identity = id(value)
         if identity in state["seen"]:
             raise StorageValidationError(
@@ -823,6 +828,17 @@ def _snapshot_json_value(
                     raise StorageValidationError(
                         f"{label} object keys must be exact strings"
                     )
+                separator_size = 1 if result else 0
+                key_budget = max_bytes - size - separator_size - 2
+                key_size = _json_string_size(
+                    key,
+                    label=label,
+                    max_bytes=key_budget,
+                )
+                prefix_size = separator_size + key_size + 1
+                child_budget = max_bytes - size - prefix_size
+                if child_budget < 1:
+                    raise StorageValidationError(f"{label} exceeds its byte limit")
                 if key in result:
                     raise StorageValidationError(
                         f"{label} contains a duplicate object key: {key}"
@@ -832,19 +848,10 @@ def _snapshot_json_value(
                     label=label,
                     depth=depth + 1,
                     state=state,
+                    max_bytes=child_budget,
                 )
-                if result:
-                    size += 1
-                size += (
-                    _json_string_size(
-                        key,
-                        label=label,
-                        max_bytes=state["max_bytes"],
-                    )
-                    + 1
-                    + child_size
-                )
-                if size > state["max_bytes"]:
+                size += prefix_size + child_size
+                if size > max_bytes:
                     raise StorageValidationError(f"{label} exceeds its byte limit")
                 result[key] = child_snapshot
         except StorageValidationError:
@@ -858,6 +865,8 @@ def _snapshot_json_value(
         return result, size
 
     if type(value) in {list, tuple}:
+        if max_bytes < 2:
+            raise StorageValidationError(f"{label} exceeds its byte limit")
         identity = id(value)
         if identity in state["seen"]:
             raise StorageValidationError(
@@ -869,16 +878,19 @@ def _snapshot_json_value(
         size = 2
         try:
             for child in value:
+                separator_size = 1 if result_list else 0
+                child_budget = max_bytes - size - separator_size
+                if child_budget < 1:
+                    raise StorageValidationError(f"{label} exceeds its byte limit")
                 child_snapshot, child_size = _snapshot_json_value(
                     child,
                     label=label,
                     depth=depth + 1,
                     state=state,
+                    max_bytes=child_budget,
                 )
-                if result_list:
-                    size += 1
-                size += child_size
-                if size > state["max_bytes"]:
+                size += separator_size + child_size
+                if size > max_bytes:
                     raise StorageValidationError(f"{label} exceeds its byte limit")
                 result_list.append(child_snapshot)
         finally:
@@ -886,27 +898,39 @@ def _snapshot_json_value(
         return result_list, size
 
     if value is None:
-        return None, 4
+        size = 4
+        if size > max_bytes:
+            raise StorageValidationError(f"{label} exceeds its byte limit")
+        return None, size
     if type(value) is bool:
-        return value, 4 if value else 5
+        size = 4 if value else 5
+        if size > max_bytes:
+            raise StorageValidationError(f"{label} exceeds its byte limit")
+        return value, size
     if type(value) is int:
         if value < -(_INT64_MAX + 1) or value > _INT64_MAX:
             raise StorageValidationError(
                 f"{label} integers must fit signed 64-bit storage"
             )
-        return value, len(str(value))
+        size = len(str(value))
+        if size > max_bytes:
+            raise StorageValidationError(f"{label} exceeds its byte limit")
+        return value, size
     if type(value) is float:
         if not math.isfinite(value):
             raise StorageValidationError(f"{label} numbers must be finite")
         encoded = json.dumps(value, allow_nan=False)
         if len(encoded) > _MAX_JSON_ATOM_BYTES:
             raise StorageValidationError(f"{label} number exceeds its lexical limit")
-        return value, len(encoded)
+        size = len(encoded)
+        if size > max_bytes:
+            raise StorageValidationError(f"{label} exceeds its byte limit")
+        return value, size
     if type(value) is str:
         return value, _json_string_size(
             value,
             label=label,
-            max_bytes=state["max_bytes"],
+            max_bytes=max_bytes,
         )
     raise StorageValidationError(
         f"{label} contains unsupported {type(value).__name__} data"
