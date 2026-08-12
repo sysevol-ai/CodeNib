@@ -58,6 +58,8 @@ from ..source_fingerprint import (
     RepositorySourceBinding,
     RepositorySourceIdentitySnapshot,
 )
+from ..storage.models import StorageIntegrityError
+from ..storage.protocols import snapshot_retained_import_response
 from .security import assert_publishable_json_value
 
 _VECTOR_LEVELS = ("l0", "l2")
@@ -1770,6 +1772,50 @@ def _validate_vector_semantics(
     )
 
 
+def validate_portable_vector_persistence_semantics(
+    config: Mapping[str, Any],
+    view_config: Mapping[str, Any],
+) -> tuple[str, int, str | None, str, str]:
+    """Validate persisted vector identity using artifact-only route policy.
+
+    This source-free helper never discovers credentials or interprets an
+    embedding model as a local filesystem locator. Document/source membership
+    and directory ownership remain the responsibility of the caller's
+    retained-artifact validation layer.
+    """
+
+    try:
+        config_value = snapshot_retained_import_response(
+            config,
+            label="portable vector persistence config",
+        )
+        view_config_value = snapshot_retained_import_response(
+            view_config,
+            label="portable vector view config",
+        )
+    except StorageIntegrityError as exc:
+        raise ValueError(
+            "portable vector persistence inputs must be bounded exact JSON objects"
+        ) from exc
+    if type(config_value) is not dict or type(view_config_value) is not dict:
+        raise ValueError(
+            "portable vector persistence inputs must be bounded exact JSON objects"
+        )
+    config_snapshot = _bounded_json_object_snapshot(
+        config_value,
+        label="portable vector persistence config",
+    )
+    view_config_snapshot = _bounded_json_object_snapshot(
+        view_config_value,
+        label="portable vector view config",
+    )
+    return _validate_vector_semantics(
+        config_snapshot,
+        view_config_snapshot,
+        portable_artifact_policy=True,
+    )
+
+
 def _faiss_contract(
     path: Path,
     *,
@@ -2887,6 +2933,14 @@ def _validate_portable_bm25_view(
         or len(metadata["language"]) > 256
     ):
         raise ValueError("portable BM25 metadata is invalid")
+    configured_max_k = view_config.get("max_k")
+    if configured_max_k is not None and (
+        isinstance(configured_max_k, bool)
+        or not isinstance(configured_max_k, int)
+        or configured_max_k <= 0
+        or metadata["max_k"] != configured_max_k
+    ):
+        raise ValueError("portable BM25 metadata max_k does not match its view config")
     _validate_normalized_document_sources(
         root / "documents.json",
         repository,
@@ -3223,4 +3277,5 @@ __all__ = [
     "normalize_owned_query_view",
     "validate_content_bound_portable_query_view_reader",
     "validate_portable_query_view",
+    "validate_portable_vector_persistence_semantics",
 ]

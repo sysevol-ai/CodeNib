@@ -619,6 +619,53 @@ def test_portable_bm25_requires_complete_file_fingerprints(tmp_path: Path) -> No
             )
 
 
+def test_portable_bm25_rejects_metadata_max_k_mismatched_with_view_config(
+    tmp_path: Path,
+) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "VALUE = 1",
+                "metadata": {"file": "sample.py"},
+            }
+        ],
+        metadata={"project_root": "source", "max_k": 99, "language": "english"},
+    )
+    adjustments = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+
+    with pytest.raises(ValueError, match="max_k does not match"):
+        validate_portable_query_view(
+            bm25,
+            repo_path=repo,
+            view_type="bm25",
+            view_config={**adjustments, "max_k": 17},
+        )
+
+
+def test_vector_persistence_semantics_rejects_nonexact_json_without_traversal() -> None:
+    class TrapDict(dict[str, object]):
+        calls = 0
+
+        def items(self):  # type: ignore[no-untyped-def]
+            type(self).calls += 1
+            raise AssertionError("hostile mapping was traversed")
+
+    for config in (TrapDict(), {"nested": TrapDict()}):
+        TrapDict.calls = 0
+        with pytest.raises(ValueError, match="bounded exact JSON objects"):
+            portable_views_module.validate_portable_vector_persistence_semantics(
+                config,
+                {},
+            )
+        assert TrapDict.calls == 0
+
+
 def test_portable_bm25_rejects_documents_replaced_after_authentication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

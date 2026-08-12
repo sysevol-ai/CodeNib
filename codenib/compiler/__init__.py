@@ -29,6 +29,13 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     from codenib.compiler.index_builders import IndexBuilderRegistry
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from codenib.compiler.manifest import ManifestIndexStateStore, RepoManifest
+    from codenib.compiler.manifest_export import (
+        RepoManifestExportReceipt,
+        RepoManifestExportResult,
+        RepoManifestViewExportReceipt,
+        export_retained_repo_manifest_ref,
+        export_retained_repo_manifest_snapshot,
+    )
     from codenib.compiler.manifest_import import (
         RepoManifestImportResult,
         import_retained_repo_manifest,
@@ -69,6 +76,18 @@ _EXPORTS = {
         "codenib.compiler.manifest",
         "ManifestIndexStateStore",
     ),
+    "RepoManifestExportReceipt": (
+        "codenib.compiler.manifest_export",
+        "RepoManifestExportReceipt",
+    ),
+    "RepoManifestExportResult": (
+        "codenib.compiler.manifest_export",
+        "RepoManifestExportResult",
+    ),
+    "RepoManifestViewExportReceipt": (
+        "codenib.compiler.manifest_export",
+        "RepoManifestViewExportReceipt",
+    ),
     "RepoManifestImportResult": (
         "codenib.compiler.manifest_import",
         "RepoManifestImportResult",
@@ -94,6 +113,14 @@ _EXPORTS = {
     "import_retained_repo_manifest": (
         "codenib.compiler.manifest_import",
         "import_retained_repo_manifest",
+    ),
+    "export_retained_repo_manifest_ref": (
+        "codenib.compiler.manifest_export",
+        "export_retained_repo_manifest_ref",
+    ),
+    "export_retained_repo_manifest_snapshot": (
+        "codenib.compiler.manifest_export",
+        "export_retained_repo_manifest_snapshot",
     ),
     "ResourceResolver": ("codenib.compiler.resources", "ResourceResolver"),
     "ResourcePlan": ("codenib.compiler.resources", "ResourcePlan"),
@@ -124,6 +151,9 @@ __all__ = [
     # Manifest
     "RepoManifest",
     "ManifestIndexStateStore",
+    "RepoManifestExportReceipt",
+    "RepoManifestExportResult",
+    "RepoManifestViewExportReceipt",
     "RepoManifestImportResult",
     "RepoManifestImportPlan",
     "SourceIntent",
@@ -132,6 +162,8 @@ __all__ = [
     "plan_repo_manifest_import",
     "plan_repo_manifest_import_bytes",
     "import_retained_repo_manifest",
+    "export_retained_repo_manifest_ref",
+    "export_retained_repo_manifest_snapshot",
     # Resources
     "ResourceResolver",
     "ResourcePlan",
