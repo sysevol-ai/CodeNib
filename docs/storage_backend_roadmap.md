@@ -355,24 +355,27 @@ output receipt. Large canonical documents remain element-streamed, and vector
 indexes stay authenticated but native-inert throughout context assembly.
 Planning and publication never consult mutable public source projections after
 that identity is captured. This slice does not normalize native vector state,
-provision a production workspace provider, route compiler output,
-import legacy manifests into the catalog, or publish the resulting receipt as
-an M2 generation. Those adapters remain outstanding, so M1 and M2 remain in
-progress.
+provision a production workspace provider, or route compiler output. Its
+retained receipt is now accepted by the direct M1 importer below, but it is not
+yet an M2 fenced job output and is not wired into production compiler/runtime
+paths.
 
 Retained manifest import now has additional backend-neutral prerequisite
 gates. `BlobInfo` is an exact point-in-time CAS receipt, and
 the additive `ReceiptVerifyingObjectStore.verify_receipt` capability
 revalidates its digest, byte size, and canonical storage key before a metadata
-boundary without pretending to pin the object against future GC. A public
+boundary without pretending that the receipt itself is a pin. The additive
+`RetainedImportObjectStore.retain_receipts` callback verifies an exact receipt
+set and serializes compliant reclamation until catalog publication and
+attestation finish; LocalCAS uses its cancellation-safe lifecycle lock as that
+fence, which any future local GC must share. A public
 physical archive-size gate lets import coordinators reject impossible view
 bundles before object-store byte access. Published snapshot summaries also
 close namespace and repository identity alongside source, profile, generation,
 object, and view identity. Retained materialized-bundle consumption still needs
 a non-forgeable owner and tracked streaming-resource lifecycle; no path or
-ordinary dataclass is treated as that authority. These gates do not yet plan or
-execute a legacy `RepoManifest` import, upload retained view bytes, or advance a
-ref, so M1 remains in progress.
+ordinary dataclass is treated as that authority. Outside the bounded retention
+callback, receipts remain point-in-time checks rather than lifetime pins.
 
 A pure retained-manifest planning layer now closes the data-only side of that
 boundary for current portable `RepoManifest` v1.1 projections. It accepts only
@@ -388,9 +391,10 @@ filesystem or ambient-environment discovery. Source-fingerprint v1 remains
 diagnostic and inert; v2 is merely eligible for a later retained-source check,
 and Git commit text remains display provenance rather than source authority.
 Planning performs no source or artifact reads, native parsing, CAS/catalog
-operation, receipt minting, or ref publication. The retained reader adapter,
-object upload, atomic snapshot/ref transaction, and equivalent v1.1 export are
-still outstanding, so M1 and M2 remain in progress.
+operation, receipt minting, or ref publication. Execution is a separate
+authority-bearing API, so inspecting or serializing a plan cannot publish it.
+Equivalent v1.1 export and runtime wiring remain outstanding, so M1 and M2
+remain in progress.
 
 The retained-import foundation now also exposes schema-v4 compound-generation
 identity as one backend-neutral model rule, including the canonical member
@@ -403,10 +407,50 @@ readers can project an authenticated child subtree without filesystem I/O and
 share one process-bound lifetime across every facade and opened stream. Streams
 that escape a callback are drained and authenticated on success, aborted
 without further source reads on failure or cancellation, and retained for
-explicit cleanup retry if a descriptor or HANDLE cannot close. These are
-authority and transport prerequisites only: no view-bundle replay plan,
-manifest import transaction, materialized export owner, or ref update is added
-here, so M1 remains in progress.
+explicit cleanup retry if a descriptor or HANDLE cannot close.
+
+The authenticated reader can now plan and replay byte-identical canonical
+`view-bundle v1` archives without reopening a path. Planning performs a CRC
+pass and a complete archive-hash pass; replay is bound to the same active
+reader and exact projected subtree. A normal short consumer is drained and
+authenticated, while a failed consumer causes no additional source read. The
+complete ownership token and ZIP layout are rebuilt from exact builtin values,
+so forged equality, modes, records, or envelope fields cannot change replayed
+bytes.
+
+The first retained `RepoManifest` executor now imports strict-context receipts
+as ready schema-v4 snapshots. Its one-shot API requires both an active
+`PublishedWorkspaceReceiptOwner` and an independently retained
+source-fingerprint-v2 `RepositorySourceBinding`; a generic workspace receipt
+alone is not trusted as producer provenance. Inside one receipt callback the
+executor verifies the context envelope, validates every selected BM25/vector
+subtree against the retained source, and completes every bundle plan before the
+first CAS write. It then streams each canonical bundle and every unique
+per-file payload into the additive `RetainedImportObjectStore`, preserving
+member reachability while vector native bytes remain inert. Only after the
+callback's reader, exact-tree, child-namespace, and parent-authority postflight
+return may the importer acquire the exact object-retention scope and run the
+first catalog operation.
+
+Each import also stores a portable
+`codenib.internal.repo-manifest.v2` projection containing the canonical
+complete portable manifest, explicit required/optional/selected/skipped
+selection, plan digest, profile/generation identities, semantic object digests
+and sizes, and display provenance without backend storage keys. The internal
+generation reaches all imported objects; each public generation independently
+reaches its per-file objects. Every receipt is revalidated before the first
+catalog write and immediately before publication. Source identity is always
+read from the binding's private authenticated snapshot rather than its
+caller-visible projection. Retained-import catalog response extensions share
+capability-specific public bounds and are ignored only outside the exact
+identity core. SQLite schema v4 then atomically promotes staged generations,
+seals the snapshot, and advances its generation-counted ref; the executor
+re-resolves the ref and exact manifest summary before releasing object
+retention and returning. Earlier failures may leave unreachable CAS objects or
+staged catalog rows for future GC, but cannot move the old ref. This is the
+direct M1 bootstrap path, not the M2 fenced job-success transaction. Retained
+materialization/export, production compiler/runtime wiring, and a production
+GC implementation and policy remain outstanding, so M1 remains in progress.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable
@@ -415,8 +459,9 @@ per-ref leases.  Catalog reads revalidate the normalized view rows against the
 canonical request; the M2 publication transaction must repeat that gate before
 associating outputs.  An explicit acquire may atomically retire an expired
 holder while taking over its slot; this slice adds no background reaper and is
-not wired to the compiler or Web workers.  Legacy manifest import/export
-remains the outstanding M1 deliverable.
+not wired to the compiler or Web workers. Retained equivalent export and
+production runtime wiring remain the outstanding M1 deliverables; fenced job
+publication remains M2 work.
 
 The shared compiler-cache lock is a cooperative serialization boundary for
 compiler and importer processes using a cache namespace private to one OS
