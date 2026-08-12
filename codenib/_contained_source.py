@@ -87,12 +87,16 @@ def _normalize_link_target(
     root: Path,
     prefix: tuple[str, ...],
     target: str,
+    *,
+    allow_absolute: bool,
 ) -> tuple[str, ...]:
     if not target or "\x00" in target:
         raise ValueError("source symlink target must be non-empty")
     if len(os.fsencode(target)) > _MAX_SYMLINK_TARGET_BYTES:
         raise ValueError("source symlink target exceeds its byte limit")
     if os.path.isabs(target):
+        if not allow_absolute:
+            raise ValueError("source symlink target must be relative")
         normalized_target = Path(os.path.normpath(target))
         try:
             target = normalized_target.relative_to(root).as_posix()
@@ -335,6 +339,7 @@ def _open_secure(
     *,
     expected_final_identity: tuple[int, ...] | None = None,
     allow_stable_unresolved: bool = False,
+    allow_absolute_symlinks: bool = False,
 ) -> _BoundRepositoryFile | _StableUnresolvedRepositoryFile:
     try:
         root_before = root.lstat()
@@ -460,7 +465,12 @@ def _open_secure(
                         expected=_version_identity(before),
                     )
                 seen_links.add(link_identity)
-                target_parts = _normalize_link_target(root, resolved_prefix, target)
+                target_parts = _normalize_link_target(
+                    root,
+                    resolved_prefix,
+                    target,
+                    allow_absolute=allow_absolute_symlinks,
+                )
                 if len(target_parts) + len(pending) > _MAX_COMPONENTS:
                     raise ValueError("resolved source path exceeds its component limit")
                 pending = [*((part, False) for part in target_parts), *pending]
@@ -691,6 +701,7 @@ def resolved_repository_file(
             parts,
             expected_final_identity=expected_final_identity,
             allow_stable_unresolved=True,
+            allow_absolute_symlinks=True,
         )
     except FileNotFoundError as exc:
         raise ContainedSourceMissingError("source path does not exist") from exc
