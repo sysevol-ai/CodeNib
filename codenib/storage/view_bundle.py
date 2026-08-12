@@ -37,6 +37,7 @@ from .._atomic_directory import (
     _run_callback_with_post_validations,
     _run_context_with_cleanup_actions,
     _TreeOwnership,
+    _validate_directory_ownership_token,
     capture_directory_ownership,
     directory_ownership_entry_identities,
     directory_ownership_file_records,
@@ -462,6 +463,7 @@ def plan_view_bundle_reader(
     _validate_expected_subtree_ownership(expected_source_ownership)
 
     outer_before = publication.capture_ownership()
+    outer_snapshot = _canonical_ownership_snapshot(outer_before)
     _require_publication_subtree_projection(
         outer_before,
         normalized_prefix,
@@ -586,7 +588,7 @@ def plan_view_bundle_reader(
 
     def validate_after_namespace() -> None:
         outer_after = publication.capture_ownership()
-        if outer_after != outer_before:
+        if _canonical_ownership_snapshot(outer_after) != outer_snapshot:
             raise RuntimeError("view bundle publication tree changed while planning")
         _require_publication_subtree_projection(
             outer_after,
@@ -637,7 +639,8 @@ def consume_planned_view_bundle(
         )
 
     outer_before = publication.capture_ownership()
-    if outer_before != receipt.outer_ownership:
+    outer_snapshot = _canonical_ownership_snapshot(outer_before)
+    if outer_snapshot != _canonical_ownership_snapshot(receipt.outer_ownership):
         raise RuntimeError("planned view bundle outer ownership changed")
     _require_publication_subtree_projection(
         outer_before,
@@ -661,7 +664,7 @@ def consume_planned_view_bundle(
 
     def validate_after_namespace() -> None:
         outer_after = publication.capture_ownership()
-        if outer_after != outer_before:
+        if _canonical_ownership_snapshot(outer_after) != outer_snapshot:
             raise RuntimeError("view bundle publication tree changed while consumed")
         _require_publication_subtree_projection(
             outer_after,
@@ -1170,12 +1173,93 @@ def _publication_subtree_prefix(
 
 
 def _validate_expected_subtree_ownership(ownership: object) -> None:
-    """Type-check one opaque ownership through its required public accessors."""
+    """Validate an opaque ownership token without invoking hostile scalars."""
+
+    _canonical_ownership_snapshot(ownership)
+
+
+def _exact_identity_tuple(value: object, *, label: str) -> tuple[int, ...]:
+    if type(value) is not tuple or any(type(item) is not int for item in value):
+        raise TypeError(f"view bundle {label} must contain exact integers")
+    return value  # type: ignore[return-value]
+
+
+def _canonical_ownership_snapshot(ownership: object) -> tuple[object, ...]:
+    """Return only exact built-in fields after full token validation."""
 
     if type(ownership) is not _TreeOwnership:
         raise TypeError("view bundle subtree ownership must be an exact token")
-    directory_ownership_inventory(ownership)  # type: ignore[arg-type]
-    directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+    root_identity = _exact_identity_tuple(
+        ownership.root_identity,
+        label="ownership root identity",
+    )
+    root_version = _exact_identity_tuple(
+        ownership.root_version_identity,
+        label="ownership root version",
+    )
+    if (
+        type(ownership.digest) is not str
+        or type(ownership.entries) is not int
+        or type(ownership.byte_count) is not int
+        or type(ownership.metadata_bytes) is not int
+        or type(ownership.inventory) is not tuple
+        or type(ownership.file_records) is not tuple
+        or type(ownership.entry_identities) is not tuple
+    ):
+        raise TypeError("view bundle ownership fields must use exact built-in types")
+
+    inventory: list[tuple[str, str]] = []
+    for item in ownership.inventory:
+        if (
+            type(item) is not tuple
+            or len(item) != 2
+            or type(item[0]) is not str
+            or type(item[1]) is not str
+        ):
+            raise TypeError("view bundle ownership inventory is not exact")
+        inventory.append((item[0], item[1]))
+
+    records: list[tuple[str, int, int, str]] = []
+    for record in ownership.file_records:
+        if (
+            type(record) is not TreeFileRecord
+            or type(record.path) is not str
+            or type(record.mode) is not int
+            or type(record.size) is not int
+            or type(record.sha256) is not str
+        ):
+            raise TypeError("view bundle ownership file records are not exact")
+        records.append((record.path, record.mode, record.size, record.sha256))
+
+    identities: list[tuple[str, str, tuple[int, ...]]] = []
+    for item in ownership.entry_identities:
+        if (
+            type(item) is not tuple
+            or len(item) != 3
+            or type(item[0]) is not str
+            or type(item[1]) is not str
+        ):
+            raise TypeError("view bundle ownership entry identities are not exact")
+        identities.append(
+            (
+                item[0],
+                item[1],
+                _exact_identity_tuple(item[2], label="ownership entry identity"),
+            )
+        )
+
+    _validate_directory_ownership_token(ownership)
+    return (
+        root_identity,
+        root_version,
+        ownership.digest,
+        ownership.entries,
+        ownership.byte_count,
+        ownership.metadata_bytes,
+        tuple(inventory),
+        tuple(records),
+        tuple(identities),
+    )
 
 
 def _require_publication_subtree_projection(
@@ -1185,12 +1269,13 @@ def _require_publication_subtree_projection(
 ) -> None:
     """Match a public atomic projection to the exact expected subtree token."""
 
-    _validate_expected_subtree_ownership(expected_source_ownership)
+    expected_snapshot = _canonical_ownership_snapshot(expected_source_ownership)
+    _canonical_ownership_snapshot(outer_ownership)
     projected = project_directory_ownership_subtree(  # type: ignore[arg-type]
         outer_ownership,
         prefix,
     )
-    if projected != expected_source_ownership:
+    if _canonical_ownership_snapshot(projected) != expected_snapshot:
         raise RuntimeError("view bundle subtree root or contents differ from expected")
 
 

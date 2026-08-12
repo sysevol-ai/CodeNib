@@ -383,6 +383,38 @@ def test_reader_plan_rejects_subclassed_subtree_ownership(tmp_path: Path) -> Non
         )
 
 
+def test_reader_plan_rejects_hostile_nested_ownership_scalar(tmp_path: Path) -> None:
+    class HostileInt(int):
+        def __eq__(self, _other: object) -> bool:
+            return True
+
+        def __ne__(self, _other: object) -> bool:
+            return False
+
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    records = source_ownership.file_records
+    forged_record = replace(records[0], mode=HostileInt(0o755))
+    forged = replace(
+        source_ownership,
+        file_records=(forged_record, *records[1:]),
+    )
+
+    with pytest.raises(TypeError, match="file records are not exact"):
+        atomic_module.reopen_authenticated_directory(
+            artifact_root,
+            outer_ownership,
+            lambda reader: plan_view_bundle_reader(
+                reader,
+                "view",
+                forged,
+                view_type="bm25",
+            ),
+        )
+
+
 def test_reader_plan_cannot_cross_publication_callbacks(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
     source = _source(artifact_root)
