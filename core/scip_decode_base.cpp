@@ -4,16 +4,20 @@
 
 #include "scip_decode_base.h"
 
+#include "content_digest.h"
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <future>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -182,21 +186,70 @@ SCIPDecoderBase::SCIPDecoderBase(std::string index_file_path,
       project_root_(std::move(project_root)),
       code_graph_(project_root_ ? *project_root_ : std::string{}) {}
 
+void SCIPDecoderBase::set_metadata_receipt(
+    std::string kind, bool complete, std::vector<SCIPInputFileReceipt> inputs,
+    std::vector<std::string> internal_crates) {
+  if (kind.empty())
+    throw std::invalid_argument("SCIP metadata receipt kind must not be empty");
+  const auto bytewise_less = [](const std::string &left,
+                                const std::string &right) {
+    return std::lexicographical_compare(
+        left.begin(), left.end(), right.begin(), right.end(),
+        [](char left_byte, char right_byte) {
+          return static_cast<unsigned char>(left_byte) <
+                 static_cast<unsigned char>(right_byte);
+        });
+  };
+  std::sort(inputs.begin(), inputs.end(),
+            [&](const auto &left, const auto &right) {
+              return bytewise_less(left.path, right.path);
+            });
+  for (std::size_t index = 1; index < inputs.size(); ++index) {
+    if (inputs[index - 1].path == inputs[index].path)
+      throw std::invalid_argument(
+          "SCIP metadata receipt contains a duplicate input path");
+  }
+  std::sort(internal_crates.begin(), internal_crates.end(), bytewise_less);
+  internal_crates.erase(
+      std::unique(internal_crates.begin(), internal_crates.end()),
+      internal_crates.end());
+  last_input_receipt_.metadata_kind = std::move(kind);
+  last_input_receipt_.metadata_complete = complete;
+  last_input_receipt_.metadata_inputs = std::move(inputs);
+  last_input_receipt_.internal_crates = std::move(internal_crates);
+}
+
 SCIPDecodedRecords SCIPDecoderBase::decode_records_impl() {
   using clock = std::chrono::steady_clock;
   auto t0 = clock::now();
 
+  last_input_receipt_ = SCIPInputReceipt{};
+
   load_metadata();
   auto t_meta = clock::now();
 
-  std::ifstream input(index_file_path_);
+  std::error_code path_error;
+  const auto resolved_index =
+      std::filesystem::canonical(index_file_path_, path_error);
+  if (path_error) {
+    throw std::runtime_error("Failed to resolve SCIP index file at " +
+                             index_file_path_ + ": " + path_error.message());
+  }
+  std::ifstream input(resolved_index, std::ios::binary);
   if (!input.is_open()) {
     throw std::runtime_error("Failed to open SCIP index file at " +
                              index_file_path_);
   }
   std::ostringstream buffer;
   buffer << input.rdbuf();
+  if (input.bad()) {
+    throw std::runtime_error("Failed to read SCIP index file at " +
+                             index_file_path_);
+  }
   std::string content = buffer.str();
+  last_input_receipt_.index = SCIPInputFileReceipt{
+      resolved_index.generic_string(),
+      static_cast<std::uint64_t>(content.size()), sha256_hex(content)};
   auto t_read = clock::now();
 
   std::vector<std::string> document_blocks =
@@ -310,19 +363,33 @@ SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) const {
   //   - Later REFERENCE leaves existing attrs alone (matches serial
   //     add_symbol_reference's "only create if missing").
   std::unordered_map<std::string, Subgraph::Node> merged_nodes;
+  std::vector<std::string> merged_node_order;
   std::vector<Subgraph::Edge> all_edges;
 
   std::size_t estimated = 0;
   for (const auto &sg : subgraphs)
     estimated += sg.nodes.size();
   merged_nodes.reserve(estimated);
+  merged_node_order.reserve(estimated);
   all_edges.reserve(estimated * 3);
 
   for (const auto &sg : subgraphs) {
-    for (const auto &[name, node] : sg.nodes) {
+    if (sg.node_order.size() != sg.nodes.size()) {
+      throw std::logic_error(
+          "SCIP subgraph node order does not cover every node");
+    }
+    for (const auto &name : sg.node_order) {
+      const auto node_it = sg.nodes.find(name);
+      if (node_it == sg.nodes.end()) {
+        throw std::logic_error("SCIP subgraph node order contains an unknown "
+                               "node");
+      }
+      const auto &node = node_it->second;
       auto it = merged_nodes.find(name);
       if (it == merged_nodes.end()) {
         merged_nodes.emplace(name, node);
+        if (name != ROOT_NODE)
+          merged_node_order.push_back(name);
       } else {
         if (node.is_definition) {
           Subgraph::Node &existing = it->second;
@@ -372,9 +439,12 @@ SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) const {
   root.name = ROOT_NODE;
   root.type = "root";
   records.vertices.push_back(std::move(root));
-  for (auto &[name, node] : merged_nodes) {
-    if (name != ROOT_NODE)
-      records.vertices.emplace_back(std::move(node.data));
+  for (const auto &name : merged_node_order) {
+    auto node = merged_nodes.find(name);
+    if (node == merged_nodes.end()) {
+      throw std::logic_error("SCIP merged node order contains an unknown node");
+    }
+    records.vertices.emplace_back(std::move(node->second.data));
   }
 
   std::unordered_map<std::string, CodeGraph::VertexId> vertex_ids;
@@ -387,14 +457,18 @@ SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) const {
   struct StructuralKey {
     CodeGraph::VertexId source;
     CodeGraph::VertexId target;
+    std::string type;
     bool operator==(const StructuralKey &other) const {
-      return source == other.source && target == other.target;
+      return source == other.source && target == other.target &&
+             type == other.type;
     }
   };
   struct StructuralHash {
     std::size_t operator()(const StructuralKey &key) const {
-      return std::hash<CodeGraph::VertexId>{}(key.source) ^
-             (std::hash<CodeGraph::VertexId>{}(key.target) << 1U);
+      std::size_t hash = std::hash<CodeGraph::VertexId>{}(key.source);
+      hash ^= std::hash<CodeGraph::VertexId>{}(key.target) << 1U;
+      hash ^= std::hash<std::string>{}(key.type) << 2U;
+      return hash;
     }
   };
   struct AnchoredKey {
@@ -436,7 +510,7 @@ SCIPDecoderBase::merge_subgraphs(const std::vector<Subgraph> &subgraphs) const {
         !edge.anchor_file.has_value() && !edge.anchor_line.has_value();
     if (structural) {
       if (!structural_edges
-               .insert(StructuralKey{source->second, target->second})
+               .insert(StructuralKey{source->second, target->second, edge.type})
                .second)
         continue;
     } else if (!anchored_edges

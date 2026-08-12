@@ -148,6 +148,35 @@ make fact-query-profile \
 Pass `--external-index-seconds` through `FACT_QUERY_PROFILE_EXTRA_ARGS` when a
 separate cold-start analysis should include unchanged SCIP generation time.
 
+For a consumer-safe candidate, the native decode payload includes a v1 input
+receipt over the exact `index.decoded` bytes it parsed. Rust adds the exact
+root/member Cargo inputs and the internal-crate set produced from them. The
+native `prove_filter_identity(allowed_files, expected_query_surface_sha256)`
+API requires canonical, UTF-8 bytewise-sorted unique paths, then scans the file
+set plus every immutable vertex, edge, and reference anchor in O(F+V+E), without
+filtering or remapping records. Its allowed-path digest and partition counts are
+independently checked in Python. The required digest comes from the trusted
+serial-writer receipt, and the independently computed native digest must match
+it exactly, covering vertex and edge identity, fields, and insertion order
+rather than only aggregate counts.
+
+`codenib.scip_interface.scip_query.load_fact_query_candidate(...)` is the
+graph-free admission boundary. It requires a current builder-schema-v4,
+single-language full rebuild; verifies the manifest, source, decoded artifact,
+persisted graph-writer receipt, query-surface digest, repository filter policy,
+and Rust Cargo identity before and after decode; and returns the index only
+after the native proof succeeds. Receipt capture is enabled only by the
+compiler build that publishes schema-v4 evidence; ordinary graph pipelines do
+not incur the extra scans. Partial, incremental, multi-language,
+source-coverage fallback, symlinked cache artifacts, mutated inputs, or facts
+absent from the bound serial filtered query surface fail closed.
+Reference-only external targets are admitted only when the exact serial
+query-surface digest retains them and every incoming reference carries an
+allowed source anchor. The first admitted languages are Python and Rust; other
+metadata contracts remain future work. The legacy `decode()` graph path
+remains unchanged, and this candidate is not a production MCP route until the
+separate consumer-boundary gate passes exact parity and the required speedup.
+
 ## Native clangd Symbol, Position, And Route Queries
 
 The C/C++ query-specific path starts from an existing project-local clangd

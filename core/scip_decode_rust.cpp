@@ -4,10 +4,15 @@
 
 #include "scip_decode_rust.h"
 
+#include "content_digest.h"
+
+#include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <re2/re2.h>
+#include <sstream>
+#include <system_error>
 
 namespace codenib::core {
 
@@ -19,141 +24,435 @@ namespace {
 struct MinimalCargoToml {
   std::string package_name;
   std::vector<std::string> workspace_members;
+  bool complete{true};
+  bool saw_package_table{false};
+  bool saw_workspace_table{false};
+  bool saw_workspace_members{false};
 };
 
-MinimalCargoToml parse_cargo_toml(const std::filesystem::path &path) {
+bool valid_utf8(const std::string &value) {
+  const auto *bytes = reinterpret_cast<const unsigned char *>(value.data());
+  std::size_t index = 0;
+  while (index < value.size()) {
+    const auto lead = bytes[index];
+    if (lead <= 0x7fU) {
+      ++index;
+      continue;
+    }
+    std::size_t width = 0;
+    std::uint32_t code_point = 0;
+    if (lead >= 0xc2U && lead <= 0xdfU) {
+      width = 2;
+      code_point = lead & 0x1fU;
+    } else if (lead >= 0xe0U && lead <= 0xefU) {
+      width = 3;
+      code_point = lead & 0x0fU;
+    } else if (lead >= 0xf0U && lead <= 0xf4U) {
+      width = 4;
+      code_point = lead & 0x07U;
+    } else {
+      return false;
+    }
+    if (index + width > value.size())
+      return false;
+    for (std::size_t offset = 1; offset < width; ++offset) {
+      const auto continuation = bytes[index + offset];
+      if ((continuation & 0xc0U) != 0x80U)
+        return false;
+      code_point = (code_point << 6U) | (continuation & 0x3fU);
+    }
+    const bool overlong = (width == 2 && code_point < 0x80U) ||
+                          (width == 3 && code_point < 0x800U) ||
+                          (width == 4 && code_point < 0x10000U);
+    if (overlong || (code_point >= 0xd800U && code_point <= 0xdfffU) ||
+        code_point > 0x10ffffU) {
+      return false;
+    }
+    index += width;
+  }
+  return true;
+}
+
+bool valid_basic_string_contents(const std::string &value) {
+  if (value.empty() || !valid_utf8(value) ||
+      value.find('\\') != std::string::npos ||
+      value.find('\0') != std::string::npos) {
+    return false;
+  }
+  return std::none_of(value.begin(), value.end(), [](char character) {
+    const auto byte = static_cast<unsigned char>(character);
+    return byte <= 0x1fU || byte == 0x7fU;
+  });
+}
+
+std::string trim(std::string value) {
+  auto whitespace = [](unsigned char character) {
+    return std::isspace(character) != 0;
+  };
+  value.erase(value.begin(),
+              std::find_if_not(value.begin(), value.end(), whitespace));
+  value.erase(std::find_if_not(value.rbegin(), value.rend(), whitespace).base(),
+              value.end());
+  return value;
+}
+
+std::string strip_comment(std::string value) {
+  bool quoted = false;
+  for (std::size_t index = 0; index < value.size(); ++index) {
+    if (value[index] == '\\') {
+      ++index;
+      continue;
+    }
+    if (value[index] == '"')
+      quoted = !quoted;
+    if (value[index] == '#' && !quoted) {
+      value.resize(index);
+      break;
+    }
+  }
+  return value;
+}
+
+bool parse_basic_string(const std::string &raw, std::string &output) {
+  const auto value = trim(raw);
+  if (value.size() < 2 || value.front() != '"')
+    return false;
+  const auto close = value.find('"', 1);
+  if (close == std::string::npos || !trim(value.substr(close + 1)).empty())
+    return false;
+  output = value.substr(1, close - 1);
+  return valid_basic_string_contents(output);
+}
+
+bool parse_basic_string_array(const std::string &raw,
+                              std::vector<std::string> &output) {
+  const auto value = trim(raw);
+  if (value.size() < 2 || value.front() != '[')
+    return false;
+  std::size_t cursor = 1;
+  while (true) {
+    while (cursor < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[cursor])))
+      ++cursor;
+    if (cursor >= value.size())
+      return false;
+    if (value[cursor] == ']') {
+      ++cursor;
+      return trim(value.substr(cursor)).empty();
+    }
+    if (value[cursor] != '"')
+      return false;
+    const auto close = value.find('"', cursor + 1);
+    if (close == std::string::npos)
+      return false;
+    std::string item = value.substr(cursor + 1, close - cursor - 1);
+    if (!valid_basic_string_contents(item)) {
+      return false;
+    }
+    output.push_back(std::move(item));
+    cursor = close + 1;
+    while (cursor < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[cursor])))
+      ++cursor;
+    if (cursor >= value.size())
+      return false;
+    if (value[cursor] == ']') {
+      ++cursor;
+      return trim(value.substr(cursor)).empty();
+    }
+    if (value[cursor] != ',')
+      return false;
+    ++cursor;
+  }
+}
+
+MinimalCargoToml parse_cargo_toml(const std::string &content) {
   MinimalCargoToml result;
-  std::ifstream in(path);
-  if (!in.is_open())
-    return result;
+  result.complete = valid_utf8(content);
+  std::istringstream in(content);
   std::string line;
   std::string section;
   while (std::getline(in, line)) {
-    // strip comments
-    auto hash = line.find('#');
-    if (hash != std::string::npos)
-      line = line.substr(0, hash);
-    // strip trailing
-    while (!line.empty() &&
-           (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
-      line.pop_back();
-
-    std::size_t start = 0;
-    while (start < line.size() &&
-           std::isspace(static_cast<unsigned char>(line[start])))
-      ++start;
-    std::string trimmed = line.substr(start);
+    std::string trimmed = trim(strip_comment(line));
     if (trimmed.empty())
       continue;
 
     if (trimmed.front() == '[') {
       auto close = trimmed.find(']');
-      if (close != std::string::npos)
+      if (close != std::string::npos &&
+          trim(trimmed.substr(close + 1)).empty()) {
         section = trimmed.substr(1, close - 1);
+        if (section == "package")
+          result.saw_package_table = true;
+        if (section == "workspace")
+          result.saw_workspace_table = true;
+        if ((section.find("package") != std::string::npos ||
+             section.find("workspace") != std::string::npos) &&
+            section.find_first_of("\"'") != std::string::npos) {
+          result.complete = false;
+        }
+      } else {
+        result.complete = false;
+      }
       continue;
     }
 
     auto eq = trimmed.find('=');
     if (eq == std::string::npos)
       continue;
-    std::string key = trimmed.substr(0, eq);
-    std::string val = trimmed.substr(eq + 1);
-    // strip key/value whitespace
-    while (!key.empty() && std::isspace(static_cast<unsigned char>(key.back())))
-      key.pop_back();
-    std::size_t vs = 0;
-    while (vs < val.size() && std::isspace(static_cast<unsigned char>(val[vs])))
-      ++vs;
-    val = val.substr(vs);
+    std::string key = trim(trimmed.substr(0, eq));
+    std::string val = trim(trimmed.substr(eq + 1));
 
     if (section == "package" && key == "name") {
-      if (!val.empty() && val.front() == '"') {
-        auto end = val.find('"', 1);
-        if (end != std::string::npos)
-          result.package_name = val.substr(1, end - 1);
+      if (!result.package_name.empty() ||
+          !parse_basic_string(val, result.package_name)) {
+        result.complete = false;
       }
     } else if (section == "workspace" && key == "members") {
-      // val starts with '['; collect until ']' (may span multiple lines)
+      if (result.saw_workspace_members)
+        result.complete = false;
+      result.saw_workspace_members = true;
       std::string collected = val;
       while (collected.find(']') == std::string::npos) {
-        if (!std::getline(in, line))
+        if (!std::getline(in, line)) {
+          result.complete = false;
           break;
-        collected += " " + line;
+        }
+        collected += " " + trim(strip_comment(line));
       }
-      // extract quoted strings
-      std::size_t p = 0;
-      while (p < collected.size()) {
-        auto q1 = collected.find('"', p);
-        if (q1 == std::string::npos)
-          break;
-        auto q2 = collected.find('"', q1 + 1);
-        if (q2 == std::string::npos)
-          break;
-        result.workspace_members.emplace_back(
-            collected.substr(q1 + 1, q2 - q1 - 1));
-        p = q2 + 1;
-      }
+      std::vector<std::string> members;
+      if (!parse_basic_string_array(collected, members))
+        result.complete = false;
+      result.workspace_members.insert(result.workspace_members.end(),
+                                      members.begin(), members.end());
+    } else if (section == "workspace" && key == "exclude") {
+      // Exclusions change the expansion of ``members``. The deliberately
+      // small parser cannot prove that expansion yet, so reject the receipt.
+      result.complete = false;
+    } else if (key == "workspace.members" || key == "package.name" ||
+               (key == "workspace" &&
+                val.find("members") != std::string::npos) ||
+               key.find("members.") != std::string::npos ||
+               (section == "workspace" &&
+                key.find("members") != std::string::npos) ||
+               (section == "package" &&
+                key.find("name") != std::string::npos)) {
+      // Dotted and inline-table spellings are valid TOML, but not part of the
+      // strictly proven parser subset.
+      result.complete = false;
     }
   }
   return result;
 }
 
-// Minimal glob: supports leading path segments + trailing "*" wildcard on the
-// final component (e.g. "crates/*"). Returns matching directories.
-std::vector<std::filesystem::path>
-resolve_glob(const std::filesystem::path &root, const std::string &pattern) {
-  std::vector<std::filesystem::path> out;
-  auto slash = pattern.rfind('/');
-  std::filesystem::path base =
-      (slash == std::string::npos) ? root : root / pattern.substr(0, slash);
-  std::string leaf =
-      (slash == std::string::npos) ? pattern : pattern.substr(slash + 1);
+bool canonical_relative_path(const std::string &path, bool allow_final_star) {
+  if (path.empty() || path.find('\\') != std::string::npos ||
+      path.find('\0') != std::string::npos || path.front() == '/' ||
+      (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) &&
+       path[1] == ':')) {
+    return false;
+  }
+  std::size_t start = 0;
+  while (start <= path.size()) {
+    const auto slash = path.find('/', start);
+    const auto end = slash == std::string::npos ? path.size() : slash;
+    const auto component = path.substr(start, end - start);
+    const bool final = end == path.size();
+    if (component.empty() || component == "." || component == "..")
+      return false;
+    if (component.find_first_of("*?[") != std::string::npos &&
+        !(allow_final_star && final && component == "*")) {
+      return false;
+    }
+    if (final)
+      break;
+    start = end + 1;
+  }
+  return true;
+}
 
+bool safe_workspace_pattern(const std::string &path) {
+  if (path.empty() || path.find('\\') != std::string::npos ||
+      path.find('\0') != std::string::npos || path.front() == '/' ||
+      (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) &&
+       path[1] == ':')) {
+    return false;
+  }
+  std::size_t start = 0;
+  while (start <= path.size()) {
+    const auto slash = path.find('/', start);
+    const auto end = slash == std::string::npos ? path.size() : slash;
+    const auto component = path.substr(start, end - start);
+    if (component == "..")
+      return false;
+    if (end == path.size())
+      break;
+    start = end + 1;
+  }
+  return true;
+}
+
+bool path_is_within(const std::filesystem::path &path,
+                    const std::filesystem::path &root) {
+  auto path_part = path.begin();
+  for (auto root_part = root.begin(); root_part != root.end();
+       ++root_part, ++path_part) {
+    if (path_part == path.end() || *path_part != *root_part)
+      return false;
+  }
+  return true;
+}
+
+std::optional<std::string> read_binary_file(const std::filesystem::path &path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input.is_open())
+    return std::nullopt;
+  std::ostringstream buffer;
+  buffer << input.rdbuf();
+  if (input.bad())
+    return std::nullopt;
+  return buffer.str();
+}
+
+SCIPInputFileReceipt input_receipt(const std::string &relative_path,
+                                   const std::string &content) {
+  return SCIPInputFileReceipt{relative_path,
+                              static_cast<std::uint64_t>(content.size()),
+                              sha256_hex(content)};
+}
+
+bool resolve_workspace_dirs(const std::filesystem::path &root,
+                            const std::string &pattern,
+                            std::vector<std::filesystem::path> &output) {
+  if (!safe_workspace_pattern(pattern))
+    return false;
+  const bool proven_pattern = canonical_relative_path(pattern, true);
+  const auto slash = pattern.rfind('/');
+  const std::string leaf =
+      slash == std::string::npos ? pattern : pattern.substr(slash + 1);
+  const auto base =
+      slash == std::string::npos ? root : root / pattern.substr(0, slash);
+  std::error_code error;
   if (leaf.find('*') == std::string::npos) {
-    std::filesystem::path candidate = base / leaf;
-    if (std::filesystem::is_directory(candidate))
-      out.push_back(candidate);
-    return out;
+    const auto candidate = base / leaf;
+    if (!std::filesystem::is_directory(candidate, error) || error)
+      return false;
+    output.push_back(candidate);
+    return proven_pattern;
   }
-
-  // Trailing-* support only (good enough for common Cargo.toml members).
-  if (!std::filesystem::is_directory(base))
-    return out;
-  for (const auto &entry : std::filesystem::directory_iterator(base)) {
-    if (!entry.is_directory())
-      continue;
-    out.push_back(entry.path());
+  if (!std::filesystem::is_directory(base, error) || error)
+    return false;
+  std::filesystem::directory_iterator iterator(base, error);
+  const std::filesystem::directory_iterator end;
+  if (error)
+    return false;
+  for (; iterator != end; iterator.increment(error)) {
+    if (error)
+      return false;
+    if (iterator->is_directory(error) && !error)
+      output.push_back(iterator->path());
+    if (error)
+      return false;
   }
-  return out;
+  std::sort(output.begin(), output.end());
+  return proven_pattern && !output.empty();
 }
 
 } // namespace
 
 void SCIPRustDecoder::load_metadata() {
-  if (!project_root_.has_value())
+  internal_crates_.clear();
+  std::vector<SCIPInputFileReceipt> inputs;
+  bool complete = true;
+  if (!project_root_.has_value()) {
+    set_metadata_receipt("rust-cargo", false);
     return;
-  std::filesystem::path root(*project_root_);
-  std::filesystem::path cargo_toml = root / "Cargo.toml";
-  if (!std::filesystem::exists(cargo_toml))
+  }
+  std::error_code error;
+  const auto absolute_root =
+      std::filesystem::absolute(*project_root_, error).lexically_normal();
+  if (error) {
+    set_metadata_receipt("rust-cargo", false);
     return;
-
-  MinimalCargoToml cargo = parse_cargo_toml(cargo_toml);
+  }
+  const auto root = std::filesystem::canonical(*project_root_, error);
+  if (error) {
+    set_metadata_receipt("rust-cargo", false);
+    return;
+  }
+  complete = root == absolute_root;
+  const auto cargo_toml = root / "Cargo.toml";
+  const auto resolved_root_cargo =
+      std::filesystem::canonical(cargo_toml, error);
+  if (error || resolved_root_cargo != cargo_toml.lexically_normal())
+    complete = false;
+  error.clear();
+  const auto root_content = read_binary_file(cargo_toml);
+  if (!root_content.has_value()) {
+    set_metadata_receipt("rust-cargo", false);
+    return;
+  }
+  inputs.push_back(input_receipt("Cargo.toml", *root_content));
+  MinimalCargoToml cargo = parse_cargo_toml(*root_content);
+  complete = complete && cargo.complete &&
+             (!cargo.saw_package_table || !cargo.package_name.empty()) &&
+             (!cargo.package_name.empty() || cargo.saw_workspace_table);
   if (!cargo.package_name.empty())
     internal_crates_.insert(cargo.package_name);
 
-  if (cargo.workspace_members.empty())
-    return;
-
+  std::unordered_set<std::string> observed_members;
   for (const auto &pattern : cargo.workspace_members) {
-    for (const auto &dir : resolve_glob(root, pattern)) {
-      std::filesystem::path member_cargo = dir / "Cargo.toml";
-      if (!std::filesystem::exists(member_cargo))
+    std::vector<std::filesystem::path> directories;
+    if (!resolve_workspace_dirs(root, pattern, directories))
+      complete = false;
+    if (directories.empty())
+      continue;
+    for (const auto &directory : directories) {
+      const auto resolved_directory =
+          std::filesystem::canonical(directory, error);
+      if (error || !path_is_within(resolved_directory, root)) {
+        error.clear();
+        complete = false;
         continue;
-      MinimalCargoToml m = parse_cargo_toml(member_cargo);
+      }
+      const auto absolute_directory =
+          std::filesystem::absolute(directory, error).lexically_normal();
+      if (error || absolute_directory != resolved_directory) {
+        error.clear();
+        complete = false;
+      }
+      const auto relative_directory =
+          std::filesystem::relative(resolved_directory, root, error)
+              .generic_string();
+      if (error || !canonical_relative_path(relative_directory, false) ||
+          !observed_members.insert(relative_directory).second) {
+        error.clear();
+        complete = false;
+        continue;
+      }
+      const auto relative_cargo = relative_directory + "/Cargo.toml";
+      const auto member_cargo = resolved_directory / "Cargo.toml";
+      const auto resolved_member_cargo =
+          std::filesystem::canonical(member_cargo, error);
+      if (error || resolved_member_cargo != member_cargo.lexically_normal())
+        complete = false;
+      error.clear();
+      const auto member_content = read_binary_file(member_cargo);
+      if (!member_content.has_value()) {
+        complete = false;
+        continue;
+      }
+      inputs.push_back(input_receipt(relative_cargo, *member_content));
+      MinimalCargoToml m = parse_cargo_toml(*member_content);
+      complete = complete && m.complete && !m.package_name.empty();
       if (!m.package_name.empty())
         internal_crates_.insert(m.package_name);
     }
   }
+  std::vector<std::string> crates(internal_crates_.begin(),
+                                  internal_crates_.end());
+  set_metadata_receipt("rust-cargo", complete, std::move(inputs),
+                       std::move(crates));
 }
 
 std::string SCIPRustDecoder::unify_symbol_name(const std::string &symbol) {

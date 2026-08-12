@@ -21,6 +21,7 @@ namespace codenib::core {
 
 inline constexpr std::uint32_t FACT_QUERY_INDEX_ABI_VERSION = 1;
 inline constexpr char FACT_QUERY_INDEX_FORMAT[] = "fact-query-index-v1";
+inline constexpr std::uint32_t FILTER_IDENTITY_PROOF_SCHEMA_VERSION = 1;
 
 // Graph-free read index for definition/reference subsets of the LSP-shaped
 // API. The index owns one immutable DecodedRecords allocation and stores only
@@ -28,6 +29,27 @@ inline constexpr char FACT_QUERY_INDEX_FORMAT[] = "fact-query-index-v1";
 // adjacency independently; an absent capability must fail closed.
 class FactQueryIndex {
 public:
+  struct FilterIdentityProof {
+    std::uint32_t schema_version{FILTER_IDENTITY_PROOF_SCHEMA_VERSION};
+    bool identity{true};
+    std::size_t allowed_file_count{0};
+    // SHA-256 over bytewise-sorted canonical UTF-8 paths, each followed by a
+    // single NUL byte. NUL is forbidden in an input path; the empty set hashes
+    // the empty byte string. This framing is part of proof schema v1.
+    std::string allowed_files_sha256;
+    // Stable binary digest of every query-visible vertex and edge field in
+    // immutable record order. See prove_filter_identity() for schema v1.
+    std::string query_surface_sha256;
+    std::size_t record_count{0};
+    std::size_t directory_count{0};
+    std::size_t file_count{0};
+    std::size_t definition_count{0};
+    std::size_t reference_only_count{0};
+    std::size_t edge_count{0};
+    std::size_t reference_count{0};
+    std::size_t occurrence_count{0};
+  };
+
   struct Reference {
     CodeGraph::VertexId source;
     std::optional<std::string> anchor_file;
@@ -97,6 +119,30 @@ public:
   bool has_occurrence_at(const std::string &file_path, int line,
                          int character) const;
   std::vector<Location> position_samples(std::size_t limit = 100) const;
+
+  // Prove that applying the supplied repository file filter would preserve
+  // every immutable record and its ordering. ``allowed_files`` must be
+  // canonical, unique, and strictly increasing in UTF-8 byte order. This is
+  // an O(F + V + E) scan. Proof schema v1 rejects occurrences, explicit query
+  // resolution order, and route metadata because those surfaces are not
+  // covered by its digest. It never filters or remaps records and throws
+  // std::invalid_argument on the first unproven fact. The required expected
+  // surface digest comes from the trusted serial-writer receipt; proof v1 is
+  // valid only when the independently computed native surface exactly matches
+  // it.
+  // ``query_surface_sha256`` schema v1 is framed as:
+  //   "CodeNib-FactQuery-Surface\0" || u32be(1) || u64be(V) ||
+  //   each vertex in immutable order || u64be(E) || each edge in immutable
+  //   order. A record starts with 'V' or 'E'. Required strings/integers start
+  //   with 0x01, followed by u64be(length)+UTF-8 or signed i64be. Optional
+  //   values use 0x00 for absent and otherwise the required encoding;
+  //   optional bool uses 0x00 absent, 0x01 false, 0x02 true. Vertex fields are
+  //   name,type,file,start_line,end_line,selection_line,unified_name,
+  //   symbol_kind,has_definition; edge fields are source,target,type,
+  //   anchor_file,anchor_line.
+  FilterIdentityProof
+  prove_filter_identity(const std::vector<std::string> &allowed_files,
+                        const std::string &expected_query_surface_sha256) const;
 
   const std::string &project_root() const { return records_->project_root; }
   std::size_t record_count() const { return records_->vertices.size(); }

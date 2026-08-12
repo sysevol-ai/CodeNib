@@ -53,6 +53,31 @@ class SCIPRustIndexer(SCIPIndexerBase):
             language="rust",
             decoder_backend=decoder_backend,
         )
+        self.index_generation_report: Optional[dict] = None
+
+    def _discard_generation_outputs(self) -> bool:
+        """Remove artifacts that must never survive a failed full generation."""
+
+        removed = True
+        for path in (self.index_file, self.decoded_file):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                removed = False
+                logger.error(
+                    "Could not remove stale Rust SCIP artifact %s: %s", path, exc
+                )
+        return removed
+
+    @staticmethod
+    def _generation_report(*, status: str, complete: bool, document_count: int) -> dict:
+        return {
+            "backend": "rust-analyzer-scip",
+            "status": status,
+            "complete": complete,
+            "partial": False,
+            "document_count": document_count,
+        }
 
     def _check_indexer_available(self) -> bool:
         """
@@ -144,19 +169,65 @@ class SCIPRustIndexer(SCIPIndexerBase):
         Returns:
             bool: True if index generation was successful, False otherwise
         """
+        self.index_generation_report = None
+        if not self._discard_generation_outputs():
+            self.index_generation_report = self._generation_report(
+                status="failed", complete=False, document_count=0
+            )
+            return False
+
         # Check if Cargo.toml exists
         cargo_toml = self.project_root / "Cargo.toml"
-        if not cargo_toml.exists():
+        if cargo_toml.is_symlink() or not cargo_toml.is_file():
             logger.error(
                 f"Cargo.toml not found at {cargo_toml}. "
                 "This doesn't appear to be a Rust project."
             )
+            self.index_generation_report = self._generation_report(
+                status="failed", complete=False, document_count=0
+            )
             return False
 
-        return super().generate_index(
-            config_path=config_path,
-            exclude_vendored_libraries=exclude_vendored_libraries,
+        try:
+            success = super().generate_index(
+                config_path=config_path,
+                exclude_vendored_libraries=exclude_vendored_libraries,
+            )
+        except Exception:
+            self._discard_generation_outputs()
+            self.index_generation_report = self._generation_report(
+                status="failed", complete=False, document_count=0
+            )
+            raise
+
+        document_count = self._usable_index_document_count()
+        if success and not self.index_file.is_symlink() and self.index_file.is_file():
+            self.index_generation_report = self._generation_report(
+                status="complete", complete=True, document_count=document_count
+            )
+            return True
+
+        self._discard_generation_outputs()
+        self.index_generation_report = self._generation_report(
+            status="failed", complete=False, document_count=document_count
         )
+        return False
+
+    def _usable_index_document_count(self) -> int:
+        """Count path-addressable documents in a parseable SCIP artifact."""
+
+        if self.index_file.is_symlink() or not self.index_file.is_file():
+            return 0
+        try:
+            from google.protobuf.message import DecodeError
+
+            from .scip_pb2 import Index
+
+            index = Index()
+            index.ParseFromString(self.index_file.read_bytes())
+        except (OSError, DecodeError, ValueError):
+            return 0
+        return sum(bool(document.relative_path) for document in index.documents)
 
     def run_pipeline(
         self,

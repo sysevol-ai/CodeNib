@@ -63,6 +63,8 @@ class GraphBuildResult:
     available_languages: List[str]
     failed_languages: Dict[str, str]
     index_generation_reports: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    decoded_input_receipts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    graph_output_receipt: Optional[Dict[str, Any]] = None
 
     @property
     def partial(self) -> bool:
@@ -110,6 +112,21 @@ def _normalize_language(
         supported = ", ".join(sorted(set(LANGUAGE_ALIASES.keys())))
         raise ValueError(f"Unsupported language: {language!r}. Supported: {supported}")
     return key
+
+
+def _regular_file_receipt(path: str | Path, graph: object) -> Dict[str, Any]:
+    """Fingerprint an output immediately after the responsible writer returns."""
+
+    from .compiler.artifact_fingerprints import regular_file_fingerprint
+    from .scip_interface.query_surface import query_surface_sha256
+
+    output = Path(path)
+    fingerprint = regular_file_fingerprint(output)
+    return {
+        "path": str(output.resolve(strict=True)),
+        **fingerprint,
+        "query_surface_sha256": query_surface_sha256(graph),
+    }
 
 
 def _load_class(path: str) -> Type:
@@ -177,6 +194,7 @@ class LSIndexer:
         self.decoded_file = self._delegate.decoded_file
         self.graph_file = self._delegate.graph_file
         self.profiler = self._delegate.profiler
+        self._graph_output_receipt: Optional[Dict[str, Any]] = None
 
         logger.info(
             "Initialized LSIndexer for %s at %s (route=%s)",
@@ -270,15 +288,33 @@ class LSIndexer:
         *,
         reset_profiler: bool = True,
         report_profile: bool = True,
+        capture_artifact_receipts: bool = False,
         **kwargs,
     ) -> Union[CodeGraph, None]:
-        return self._delegate.run_pipeline(
+        if type(capture_artifact_receipts) is not bool:
+            raise ValueError("capture_artifact_receipts must be a boolean")
+        self._graph_output_receipt = None
+        pipeline_kwargs = dict(kwargs)
+        if capture_artifact_receipts and hasattr(
+            self._delegate, "_capture_artifact_receipts"
+        ):
+            pipeline_kwargs["capture_artifact_receipts"] = True
+        graph = self._delegate.run_pipeline(
             output_file=output_file,
             skip_level=skip_level,
             reset_profiler=reset_profiler,
             report_profile=report_profile,
-            **kwargs,
+            **pipeline_kwargs,
         )
+        if graph is None or skip_level == "graph" or not capture_artifact_receipts:
+            return graph
+        delegate_receipt = getattr(self._delegate, "graph_output_receipt", None)
+        self._graph_output_receipt = (
+            dict(delegate_receipt)
+            if isinstance(delegate_receipt, dict)
+            else _regular_file_receipt(output_file or self.graph_file, graph)
+        )
+        return graph
 
     def clear_cache(self, level: str = "all") -> bool:
         return self._delegate.clear_cache(level=level)
@@ -294,6 +330,18 @@ class LSIndexer:
         """Latest backend generation report, when the indexer provides one."""
 
         return getattr(self._delegate, "index_generation_report", None)
+
+    @property
+    def decoded_input_receipt(self):
+        """Decoded input generation consumed by graph construction, if any."""
+
+        return getattr(self._delegate, "decoded_input_receipt", None)
+
+    @property
+    def graph_output_receipt(self):
+        """Graph generation written by the pipeline invocation, if any."""
+
+        return self._graph_output_receipt
 
     @property
     def supports_partial_index(self) -> bool:
@@ -353,6 +401,7 @@ def build_graph_for_languages_with_report(
     graph_route: str = ACTIVE_GRAPH_ROUTE,
     allow_partial: bool = False,
     allow_partial_index: bool = False,
+    capture_artifact_receipts: bool = False,
 ) -> GraphBuildResult:
     """Build a graph and report per-language availability.
 
@@ -369,6 +418,8 @@ def build_graph_for_languages_with_report(
     supporting backend retain a parseable compiler prefix and reports that
     state separately from per-language availability.
     """
+    if type(capture_artifact_receipts) is not bool:
+        raise ValueError("capture_artifact_receipts must be a boolean")
     normalized = _normalize_language_sequence(languages, graph_route=graph_route)
     base_output = Path(output_dir)
     pname = project_name or base_output.name
@@ -383,6 +434,8 @@ def build_graph_for_languages_with_report(
         pipeline_kwargs["target_dir"] = target_dir
     if include_references:
         pipeline_kwargs["include_references"] = True
+    if capture_artifact_receipts:
+        pipeline_kwargs["capture_artifact_receipts"] = True
 
     def run_language(language: str, language_output: Path, language_project: str):
         indexer = LSIndexer(
@@ -403,13 +456,24 @@ def build_graph_for_languages_with_report(
             **language_pipeline_kwargs,
         )
         report = getattr(indexer, "index_generation_report", None)
-        return graph, dict(report) if isinstance(report, dict) else None
+        receipt = getattr(indexer, "decoded_input_receipt", None)
+        graph_receipt = getattr(indexer, "graph_output_receipt", None)
+        return (
+            graph,
+            dict(report) if isinstance(report, dict) else None,
+            dict(receipt) if isinstance(receipt, dict) else None,
+            dict(graph_receipt) if isinstance(graph_receipt, dict) else None,
+        )
 
     if len(normalized) == 1:
         language = normalized[0]
         generation_report = None
+        decoded_receipt = None
+        graph_receipt = None
         try:
-            graph, generation_report = run_language(language, base_output, pname)
+            graph, generation_report, decoded_receipt, graph_receipt = run_language(
+                language, base_output, pname
+            )
         except Exception as exc:
             if not allow_partial:
                 raise
@@ -426,16 +490,27 @@ def build_graph_for_languages_with_report(
             index_generation_reports=(
                 {language: generation_report} if generation_report is not None else {}
             ),
+            decoded_input_receipts=(
+                {language: decoded_receipt}
+                if graph is not None and decoded_receipt is not None
+                else {}
+            ),
+            graph_output_receipt=(
+                graph_receipt
+                if graph is not None and graph_receipt is not None
+                else None
+            ),
         )
 
     combined = CodeGraph(str(Path(project_root).absolute()))
     available: List[str] = []
     generation_reports: Dict[str, Dict[str, Any]] = {}
+    decoded_receipts: Dict[str, Dict[str, Any]] = {}
     for language in normalized:
         language_output = base_output / "graphs" / language
         language_project = f"{pname}-{language}"
         try:
-            graph, generation_report = run_language(
+            graph, generation_report, decoded_receipt, _graph_receipt = run_language(
                 language, language_output, language_project
             )
         except Exception as exc:
@@ -456,6 +531,8 @@ def build_graph_for_languages_with_report(
             failures[language] = message
             logger.warning("%s", message)
             continue
+        if decoded_receipt is not None:
+            decoded_receipts[language] = decoded_receipt
         combined.merge_from(graph)
         available.append(language)
 
@@ -466,10 +543,18 @@ def build_graph_for_languages_with_report(
             available_languages=[],
             failed_languages=failures,
             index_generation_reports=generation_reports,
+            decoded_input_receipts={},
+            graph_output_receipt=None,
         )
 
     base_output.mkdir(parents=True, exist_ok=True)
-    combined.save_graph(base_output / "graph.pkl")
+    combined_graph_path = base_output / "graph.pkl"
+    combined.save_graph(combined_graph_path)
+    combined_graph_receipt = (
+        _regular_file_receipt(combined_graph_path, combined)
+        if capture_artifact_receipts
+        else None
+    )
     logger.info(
         "Built combined graph for %s at %s",
         ", ".join(available),
@@ -481,6 +566,8 @@ def build_graph_for_languages_with_report(
         available_languages=available,
         failed_languages=failures,
         index_generation_reports=generation_reports,
+        decoded_input_receipts=decoded_receipts,
+        graph_output_receipt=combined_graph_receipt,
     )
 
 

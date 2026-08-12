@@ -10,6 +10,7 @@ import pytest
 
 from codenib.compiler.artifact_fingerprints import (
     bm25_artifact_file_fingerprints,
+    regular_file_fingerprint,
     require_bm25_manifest_artifact,
 )
 
@@ -64,3 +65,33 @@ def test_manifest_bm25_integrity_does_not_hide_malformed_config_record(tmp_path)
 
     with pytest.raises(ValueError, match="manifest fingerprints"):
         require_bm25_manifest_artifact(entry)
+
+
+def test_regular_file_fingerprint_rejects_a_changed_open_generation(
+    tmp_path, monkeypatch
+):
+    import codenib.compiler.artifact_fingerprints as fingerprints
+
+    path = tmp_path / "artifact.bin"
+    path.write_bytes(b"stable bytes")
+    real_fstat = fingerprints.os.fstat
+    calls = 0
+
+    def changing_fstat(descriptor):
+        nonlocal calls
+        observed = real_fstat(descriptor)
+        calls += 1
+        if calls == 2:
+            return SimpleNamespace(
+                st_mode=observed.st_mode,
+                st_dev=observed.st_dev,
+                st_ino=observed.st_ino,
+                st_size=observed.st_size + 1,
+                st_mtime_ns=observed.st_mtime_ns,
+            )
+        return observed
+
+    monkeypatch.setattr(fingerprints.os, "fstat", changing_fstat)
+
+    with pytest.raises(ValueError, match="changed while hashing"):
+        regular_file_fingerprint(path)

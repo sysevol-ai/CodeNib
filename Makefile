@@ -440,6 +440,7 @@ core-test: core-build
 		test/scip/test_scip_core_registry.py \
 		test/scip/test_fact_batch_buffer.py \
 		test/scip/test_fact_query_index.py \
+		test/scip/test_scip_query.py \
 		test/facts/test_model.py \
 		test/facts/test_adapters.py \
 		test/scripts/test_profile_fact_batch_buffer.py \

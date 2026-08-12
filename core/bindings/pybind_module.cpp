@@ -123,6 +123,50 @@ reference_to_dict(const codenib::core::FactQueryIndex::Reference &reference) {
   return result;
 }
 
+py::dict
+input_file_receipt_to_dict(const codenib::core::SCIPInputFileReceipt &receipt) {
+  py::dict result;
+  result["path"] = receipt.path;
+  result["size_bytes"] = receipt.size_bytes;
+  result["sha256"] = receipt.sha256;
+  return result;
+}
+
+py::dict input_receipt_to_dict(const codenib::core::SCIPInputReceipt &receipt) {
+  py::dict result;
+  result["schema_version"] = receipt.schema_version;
+  result["index"] = input_file_receipt_to_dict(receipt.index);
+  py::dict metadata;
+  metadata["kind"] = receipt.metadata_kind;
+  metadata["complete"] = receipt.metadata_complete;
+  py::list inputs;
+  for (const auto &input : receipt.metadata_inputs)
+    inputs.append(input_file_receipt_to_dict(input));
+  metadata["inputs"] = std::move(inputs);
+  metadata["internal_crates"] = receipt.internal_crates;
+  result["metadata"] = std::move(metadata);
+  return result;
+}
+
+py::dict filter_identity_proof_to_dict(
+    const codenib::core::FactQueryIndex::FilterIdentityProof &proof) {
+  py::dict result;
+  result["schema_version"] = proof.schema_version;
+  result["identity"] = proof.identity;
+  result["allowed_file_count"] = proof.allowed_file_count;
+  result["allowed_files_sha256"] = proof.allowed_files_sha256;
+  result["query_surface_sha256"] = proof.query_surface_sha256;
+  result["record_count"] = proof.record_count;
+  result["directory_count"] = proof.directory_count;
+  result["file_count"] = proof.file_count;
+  result["definition_count"] = proof.definition_count;
+  result["reference_only_count"] = proof.reference_only_count;
+  result["edge_count"] = proof.edge_count;
+  result["reference_count"] = proof.reference_count;
+  result["occurrence_count"] = proof.occurrence_count;
+  return result;
+}
+
 py::dict decode_scip(const std::string &index_file,
                      std::optional<std::string> project_root,
                      const std::string &language) {
@@ -383,6 +427,7 @@ py::dict decode_scip_fact_query_index(const std::string &index_file,
   clock::time_point decode_finished;
   clock::time_point index_finished;
   codenib::core::SCIPDecodeProfile decode_profile;
+  codenib::core::SCIPInputReceipt input_receipt;
   std::shared_ptr<codenib::core::FactQueryIndex> index;
   {
     py::gil_scoped_release release;
@@ -391,6 +436,7 @@ py::dict decode_scip_fact_query_index(const std::string &index_file,
         decoder->decode_records());
     decode_finished = clock::now();
     decode_profile = decoder->last_profile();
+    input_receipt = decoder->last_input_receipt();
     index = std::make_shared<codenib::core::FactQueryIndex>(records);
     index_finished = clock::now();
   }
@@ -405,6 +451,7 @@ py::dict decode_scip_fact_query_index(const std::string &index_file,
   result["native_decode_ns"] = elapsed_ns(decode_started, decode_finished);
   result["native_index_ns"] = elapsed_ns(decode_finished, index_finished);
   result["decode_profile_ns"] = decode_profile_to_dict(decode_profile);
+  result["input_receipt"] = input_receipt_to_dict(input_receipt);
   result["graph_materialized"] = false;
   return result;
 }
@@ -414,6 +461,10 @@ py::dict fact_query_index_contract() {
   result["abi_version"] = codenib::core::FACT_QUERY_INDEX_ABI_VERSION;
   result["format"] = codenib::core::FACT_QUERY_INDEX_FORMAT;
   result["requires_anchored_references"] = true;
+  result["input_receipt_schema_version"] =
+      codenib::core::SCIP_INPUT_RECEIPT_SCHEMA_VERSION;
+  result["filter_identity_proof_schema_version"] =
+      codenib::core::FILTER_IDENTITY_PROOF_SCHEMA_VERSION;
   result["capabilities"] = fact_query_capabilities();
   return result;
 }
@@ -609,6 +660,21 @@ PYBIND11_MODULE(codenib_core, m) {
           &codenib::core::FactQueryIndex::requires_anchored_references)
       .def_property_readonly("snapshot_id",
                              &codenib::core::FactQueryIndex::snapshot_id)
+      .def(
+          "prove_filter_identity",
+          [](const codenib::core::FactQueryIndex &index,
+             const std::vector<std::string> &allowed_files,
+             const std::string &expected_query_surface_sha256) {
+            codenib::core::FactQueryIndex::FilterIdentityProof proof;
+            {
+              py::gil_scoped_release release;
+              proof = index.prove_filter_identity(
+                  allowed_files, expected_query_surface_sha256);
+            }
+            return filter_identity_proof_to_dict(proof);
+          },
+          py::arg("allowed_files"), py::arg("expected_query_surface_sha256"),
+          R"pbdoc(Prove that repository filtering preserves every native fact.)pbdoc")
       .def("has_symbol", &codenib::core::FactQueryIndex::has_symbol)
       .def("get_node_info_by_name",
            [](const codenib::core::FactQueryIndex &index,

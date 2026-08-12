@@ -126,6 +126,35 @@ make fact-query-profile \
   FACT_QUERY_PROFILE_OUTPUT=/tmp/fact-query-report.json
 ```
 
+The low-level decode payload also exposes an `input_receipt` for the exact
+`index.decoded` bytes consumed by C++. Rust receipts additionally enumerate
+the exact root/member `Cargo.toml` inputs and the resulting internal-crate
+set. `FactQueryIndex.prove_filter_identity(allowed_files,
+expected_query_surface_sha256)` requires canonical, UTF-8 bytewise-sorted
+unique paths and performs a read-only O(F+V+E) scan over the file set and
+immutable records: every structural path, definition, and reference anchor
+must already belong to the supplied repository surface. It never deletes or
+renumbers a row, so a proof cannot change ambiguity resolution, ordering, or
+`top_k` behavior. The required digest comes from the trusted serial-writer
+receipt; the proof independently returns its order-sensitive digest over every
+immutable vertex and edge so both surfaces must agree on identity, fields, and
+insertion order rather than counts alone.
+
+Consumer code should use
+`codenib.scip_interface.scip_query.load_fact_query_candidate(...)`, not the
+raw binding. That graph-free facade binds the native receipt and filter proof
+to a current single-language compiler manifest, source fingerprint, builder
+and filter policy, resolved project root, persisted graph-writer receipt, and
+query-surface digest. Receipt capture is an explicit compiler-build opt-in;
+ordinary `run_pipeline()` callers retain the default path without the extra
+artifact scans. Incremental, partial, multi-language, source-coverage fallback,
+mutated, or otherwise unproven inputs reject the whole candidate. A
+reference-only external target is retained only when it is part of the exact
+serial filtered query-surface digest and every incoming reference has an
+allowed source anchor; it is never inferred from the native index alone. The
+first candidate contract admits Python and Rust only. This admission layer
+does not enable an MCP route or make an end-to-end performance claim.
+
 ## Native clangd Symbol, Position, And Route Queries
 
 For C and C++ projects with an existing project-local clangd index,

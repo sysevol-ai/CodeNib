@@ -58,6 +58,10 @@ struct Subgraph {
   };
 
   std::unordered_map<std::string, Node> nodes;
+  // First-insertion order within this document. The map keeps O(1) updates,
+  // while this sequence lets the parent merge reproduce the serial decoder's
+  // stable vertex ids after workers finish out of order.
+  std::vector<std::string> node_order;
   std::vector<Edge> edges;
 };
 

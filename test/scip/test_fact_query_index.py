@@ -84,6 +84,8 @@ def test_compiled_contract_and_capabilities_are_explicit() -> None:
         "abi_version": 1,
         "format": "fact-query-index-v1",
         "requires_anchored_references": True,
+        "filter_identity_proof_schema_version": 1,
+        "input_receipt_schema_version": 1,
         "capabilities": {
             "definition_by_symbol": True,
             "references_by_symbol": True,

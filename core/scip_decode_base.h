@@ -18,6 +18,28 @@
 
 namespace codenib::core {
 
+inline constexpr std::uint32_t SCIP_INPUT_RECEIPT_SCHEMA_VERSION = 1;
+
+// Content receipt for a file that the native decoder actually read. Paths in
+// ``metadata_inputs`` are canonical project-root-relative POSIX paths. The
+// index path is the resolved absolute path of the caller-supplied artifact.
+struct SCIPInputFileReceipt {
+  std::string path;
+  std::uint64_t size_bytes{0};
+  std::string sha256;
+};
+
+// Native-only portion of the consumer receipt. Language, repository, source
+// snapshot, and filter policy are bound by the graph-free Python facade.
+struct SCIPInputReceipt {
+  std::uint32_t schema_version{SCIP_INPUT_RECEIPT_SCHEMA_VERSION};
+  SCIPInputFileReceipt index;
+  std::string metadata_kind{"none"};
+  bool metadata_complete{true};
+  std::vector<SCIPInputFileReceipt> metadata_inputs;
+  std::vector<std::string> internal_crates;
+};
+
 struct SCIPDecodeProfile {
   std::uint64_t load_metadata_ns{0};
   std::uint64_t file_read_ns{0};
@@ -54,6 +76,9 @@ public:
   CodeGraph decode();
   SCIPDecodedRecords decode_records();
   const SCIPDecodeProfile &last_profile() const { return last_profile_; }
+  const SCIPInputReceipt &last_input_receipt() const {
+    return last_input_receipt_;
+  }
 
 protected:
   virtual Subgraph
@@ -76,6 +101,10 @@ protected:
   SCIPDecodedRecords
   merge_subgraphs(const std::vector<Subgraph> &subgraphs) const;
 
+  void set_metadata_receipt(std::string kind, bool complete,
+                            std::vector<SCIPInputFileReceipt> inputs = {},
+                            std::vector<std::string> internal_crates = {});
+
   std::string index_file_path_;
   std::optional<std::string> project_root_;
   CodeGraph code_graph_;
@@ -84,6 +113,7 @@ protected:
 private:
   SCIPDecodedRecords decode_records_impl();
   void log_profile() const;
+  SCIPInputReceipt last_input_receipt_;
 };
 
 // Shared helpers — brace-matching block extractor and integer-list regex.

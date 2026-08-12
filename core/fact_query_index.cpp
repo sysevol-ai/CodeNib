@@ -6,11 +6,14 @@
 
 #include "fact_query_index.h"
 
+#include "content_digest.h"
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
@@ -29,6 +32,159 @@ bool has_definition(const CodeGraph::VertexData &vertex) {
     return *vertex.has_definition;
   return is_symbol_type(vertex.type) && vertex.file.has_value() &&
          vertex.start_line.has_value() && vertex.end_line.has_value();
+}
+
+bool is_valid_utf8(const std::string &value) {
+  const auto *bytes = reinterpret_cast<const unsigned char *>(value.data());
+  std::size_t index = 0;
+  while (index < value.size()) {
+    const auto lead = bytes[index];
+    if (lead <= 0x7fU) {
+      ++index;
+      continue;
+    }
+    std::size_t width = 0;
+    std::uint32_t code_point = 0;
+    if (lead >= 0xc2U && lead <= 0xdfU) {
+      width = 2;
+      code_point = lead & 0x1fU;
+    } else if (lead >= 0xe0U && lead <= 0xefU) {
+      width = 3;
+      code_point = lead & 0x0fU;
+    } else if (lead >= 0xf0U && lead <= 0xf4U) {
+      width = 4;
+      code_point = lead & 0x07U;
+    } else {
+      return false;
+    }
+    if (index + width > value.size())
+      return false;
+    for (std::size_t offset = 1; offset < width; ++offset) {
+      const auto continuation = bytes[index + offset];
+      if ((continuation & 0xc0U) != 0x80U)
+        return false;
+      code_point = (code_point << 6U) | (continuation & 0x3fU);
+    }
+    const bool overlong = (width == 2 && code_point < 0x80U) ||
+                          (width == 3 && code_point < 0x800U) ||
+                          (width == 4 && code_point < 0x10000U);
+    if (overlong || (code_point >= 0xd800U && code_point <= 0xdfffU) ||
+        code_point > 0x10ffffU) {
+      return false;
+    }
+    index += width;
+  }
+  return true;
+}
+
+bool is_canonical_repository_path(const std::string &path) {
+  if (path.empty() || !is_valid_utf8(path) ||
+      path.find('\\') != std::string::npos ||
+      path.find('\0') != std::string::npos || path.front() == '/' ||
+      (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) &&
+       path[1] == ':')) {
+    return false;
+  }
+  std::size_t start = 0;
+  while (start <= path.size()) {
+    const auto slash = path.find('/', start);
+    const auto end = slash == std::string::npos ? path.size() : slash;
+    const auto component = path.substr(start, end - start);
+    if (component.empty() || component == "." || component == "..")
+      return false;
+    if (end == path.size())
+      break;
+    start = end + 1;
+  }
+  return true;
+}
+
+bool is_known_symbol_type(const std::string &type) {
+  return type == NODE_TYPE_SYMBOL || type == NODE_TYPE_CLASS ||
+         type == NODE_TYPE_FUNCTION || type == NODE_TYPE_METHOD ||
+         type == NODE_TYPE_FIELD;
+}
+
+bool is_known_edge_type(const std::string &type) {
+  return type == EDGE_TYPE_CONTAIN || type == EDGE_TYPE_REFERENCE ||
+         type == EDGE_TYPE_IMPORT || type == EDGE_TYPE_TYPE_USE;
+}
+
+bool bytewise_less(const std::string &left, const std::string &right) {
+  return std::lexicographical_compare(
+      left.begin(), left.end(), right.begin(), right.end(),
+      [](char left_byte, char right_byte) {
+        return static_cast<unsigned char>(left_byte) <
+               static_cast<unsigned char>(right_byte);
+      });
+}
+
+void append_u32_be(Sha256 &digest, std::uint32_t value) {
+  std::uint8_t bytes[4];
+  for (std::size_t index = 0; index < 4; ++index) {
+    bytes[3 - index] = static_cast<std::uint8_t>(value & 0xffU);
+    value >>= 8U;
+  }
+  digest.update(bytes, sizeof(bytes));
+}
+
+void append_u64_be(Sha256 &digest, std::uint64_t value) {
+  std::uint8_t bytes[8];
+  for (std::size_t index = 0; index < 8; ++index) {
+    bytes[7 - index] = static_cast<std::uint8_t>(value & 0xffU);
+    value >>= 8U;
+  }
+  digest.update(bytes, sizeof(bytes));
+}
+
+void append_i64_be(Sha256 &digest, std::int64_t value) {
+  const auto encoded = value >= 0
+                           ? static_cast<std::uint64_t>(value)
+                           : std::numeric_limits<std::uint64_t>::max() -
+                                 static_cast<std::uint64_t>(-(value + 1));
+  append_u64_be(digest, encoded);
+}
+
+void append_present_string(Sha256 &digest, const std::string &value) {
+  if (!is_valid_utf8(value)) {
+    throw std::invalid_argument(
+        "FactQueryIndex query surface contains invalid UTF-8");
+  }
+  constexpr std::uint8_t PRESENT = 1;
+  digest.update(&PRESENT, 1);
+  append_u64_be(digest, static_cast<std::uint64_t>(value.size()));
+  digest.update(value);
+}
+
+void append_optional_string(Sha256 &digest,
+                            const std::optional<std::string> &value) {
+  if (!value.has_value()) {
+    constexpr std::uint8_t ABSENT = 0;
+    digest.update(&ABSENT, 1);
+    return;
+  }
+  append_present_string(digest, *value);
+}
+
+void append_present_i64(Sha256 &digest, std::int64_t value) {
+  constexpr std::uint8_t PRESENT = 1;
+  digest.update(&PRESENT, 1);
+  append_i64_be(digest, value);
+}
+
+void append_optional_int(Sha256 &digest, const std::optional<int> &value) {
+  if (!value.has_value()) {
+    constexpr std::uint8_t ABSENT = 0;
+    digest.update(&ABSENT, 1);
+    return;
+  }
+  append_present_i64(digest, static_cast<std::int64_t>(*value));
+}
+
+void append_optional_bool(Sha256 &digest, const std::optional<bool> &value) {
+  const std::uint8_t encoded =
+      !value.has_value() ? 0 : static_cast<std::uint8_t>(*value ? 2 : 1);
+  digest.update(&encoded, 1);
 }
 
 bool has_suffix(const std::string &value, const std::string &suffix) {
@@ -315,6 +471,275 @@ FactQueryIndex::FactQueryIndex(std::shared_ptr<const DecodedRecords> records,
       postings.prefix_max_end.push_back(maximum);
     }
   }
+}
+
+FactQueryIndex::FilterIdentityProof FactQueryIndex::prove_filter_identity(
+    const std::vector<std::string> &allowed_files,
+    const std::string &expected_query_surface_sha256) const {
+  if (!records_->query_resolution_order.empty() ||
+      !records_->route_vertex_order.empty() ||
+      records_->route_adjacency_complete || !records_->occurrences.empty()) {
+    throw std::invalid_argument(
+        "FactQueryIndex filter proof v1 rejects unbound query metadata");
+  }
+  if (expected_query_surface_sha256.size() != 64 ||
+      !std::all_of(expected_query_surface_sha256.begin(),
+                   expected_query_surface_sha256.end(), [](char character) {
+                     return (character >= '0' && character <= '9') ||
+                            (character >= 'a' && character <= 'f');
+                   })) {
+    throw std::invalid_argument(
+        "FactQueryIndex filter proof requires a lowercase SHA-256 surface "
+        "digest");
+  }
+
+  std::unordered_set<std::string> allowed;
+  allowed.reserve(allowed_files.size());
+  Sha256 allowed_digest;
+  constexpr char NUL = '\0';
+  for (std::size_t index = 0; index < allowed_files.size(); ++index) {
+    const auto &path = allowed_files[index];
+    if (!is_canonical_repository_path(path)) {
+      throw std::invalid_argument(
+          "FactQueryIndex filter proof requires canonical relative POSIX "
+          "allowed paths");
+    }
+    if (!allowed.insert(path).second) {
+      throw std::invalid_argument(
+          "FactQueryIndex filter proof rejects duplicate allowed paths");
+    }
+    if (index != 0 && !bytewise_less(allowed_files[index - 1], path)) {
+      throw std::invalid_argument(
+          "FactQueryIndex filter proof requires bytewise-sorted allowed "
+          "paths");
+    }
+    allowed_digest.update(path);
+    allowed_digest.update(&NUL, 1);
+  }
+
+  Sha256 query_surface_digest;
+  constexpr std::string_view QUERY_SURFACE_DOMAIN = "CodeNib-FactQuery-Surface";
+  query_surface_digest.update(QUERY_SURFACE_DOMAIN);
+  query_surface_digest.update(&NUL, 1);
+  append_u32_be(query_surface_digest, FILTER_IDENTITY_PROOF_SCHEMA_VERSION);
+  append_u64_be(query_surface_digest,
+                static_cast<std::uint64_t>(records_->vertices.size()));
+
+  std::unordered_set<std::string> allowed_directories;
+  allowed_directories.reserve(allowed_files.size());
+  for (const auto &path : allowed_files) {
+    auto slash = path.find('/');
+    while (slash != std::string::npos) {
+      allowed_directories.insert(path.substr(0, slash));
+      slash = path.find('/', slash + 1);
+    }
+  }
+
+  enum class ProvenVertex : std::uint8_t {
+    root,
+    directory,
+    file,
+    definition,
+    reference_only,
+  };
+  std::vector<ProvenVertex> vertex_kinds;
+  vertex_kinds.reserve(records_->vertices.size());
+  std::vector<bool> reference_only_target_observed(records_->vertices.size(),
+                                                   false);
+  FilterIdentityProof proof;
+  proof.allowed_file_count = allowed_files.size();
+  proof.allowed_files_sha256 = allowed_digest.hex_digest();
+  proof.record_count = records_->vertices.size();
+  proof.edge_count = records_->edges.size();
+  proof.occurrence_count = records_->occurrences.size();
+
+  std::size_t root_count = 0;
+  for (const auto &vertex : records_->vertices) {
+    constexpr char VERTEX_TAG = 'V';
+    query_surface_digest.update(&VERTEX_TAG, 1);
+    append_present_string(query_surface_digest, vertex.name);
+    append_present_string(query_surface_digest, vertex.type);
+    append_optional_string(query_surface_digest, vertex.file);
+    append_optional_int(query_surface_digest, vertex.start_line);
+    append_optional_int(query_surface_digest, vertex.end_line);
+    append_optional_int(query_surface_digest, vertex.selection_line);
+    append_optional_string(query_surface_digest, vertex.unified_name);
+    append_optional_string(query_surface_digest, vertex.symbol_kind);
+    append_optional_bool(query_surface_digest, vertex.has_definition);
+    const auto structural_attributes_absent = [&]() {
+      return !vertex.file.has_value() && !vertex.start_line.has_value() &&
+             !vertex.end_line.has_value() &&
+             !vertex.selection_line.has_value() &&
+             !vertex.symbol_kind.has_value() &&
+             !vertex.has_definition.has_value();
+    };
+    if (vertex.type == "root") {
+      if (vertex.name != ROOT_NODE || !structural_attributes_absent() ||
+          vertex.unified_name.has_value()) {
+        throw std::invalid_argument(
+            "FactQueryIndex filter proof rejected an invalid root record");
+      }
+      ++root_count;
+      vertex_kinds.push_back(ProvenVertex::root);
+      continue;
+    }
+    if (vertex.type == NODE_TYPE_DIRECTORY) {
+      if (!is_canonical_repository_path(vertex.name) ||
+          allowed_directories.find(vertex.name) == allowed_directories.end() ||
+          !structural_attributes_absent() ||
+          (vertex.unified_name.has_value() &&
+           *vertex.unified_name != vertex.name)) {
+        throw std::invalid_argument(
+            "FactQueryIndex filter proof rejected an unproven directory");
+      }
+      ++proof.directory_count;
+      vertex_kinds.push_back(ProvenVertex::directory);
+      continue;
+    }
+    if (vertex.type == NODE_TYPE_FILE) {
+      if (!is_canonical_repository_path(vertex.name) ||
+          allowed.find(vertex.name) == allowed.end() ||
+          !structural_attributes_absent() ||
+          (vertex.unified_name.has_value() &&
+           *vertex.unified_name != vertex.name)) {
+        throw std::invalid_argument(
+            "FactQueryIndex filter proof rejected an unproven file");
+      }
+      ++proof.file_count;
+      vertex_kinds.push_back(ProvenVertex::file);
+      continue;
+    }
+    if (!is_known_symbol_type(vertex.type)) {
+      throw std::invalid_argument(
+          "FactQueryIndex filter proof rejected an unknown vertex type");
+    }
+    if (!vertex.has_definition.has_value()) {
+      throw std::invalid_argument(
+          "FactQueryIndex filter proof requires explicit symbol provenance");
+    }
+    if (!*vertex.has_definition) {
+      if (vertex.start_line.has_value() || vertex.end_line.has_value() ||
+          vertex.selection_line.has_value()) {
+        throw std::invalid_argument(
+            "FactQueryIndex reference-only symbol carries a definition "
+            "range");
+      }
+      ++proof.reference_only_count;
+      vertex_kinds.push_back(ProvenVertex::reference_only);
+      continue;
+    }
+    if (!vertex.file.has_value() ||
+        !is_canonical_repository_path(*vertex.file) ||
+        allowed.find(*vertex.file) == allowed.end() ||
+        !vertex.start_line.has_value() || !vertex.end_line.has_value() ||
+        *vertex.start_line < 0 || *vertex.end_line < *vertex.start_line ||
+        (vertex.selection_line.has_value() && *vertex.selection_line < 0)) {
+      throw std::invalid_argument(
+          "FactQueryIndex filter proof requires every symbol to have an "
+          "allowed definition");
+    }
+    if (vertex.unified_name.has_value()) {
+      const auto separator = vertex.unified_name->find(':');
+      if (separator == std::string::npos ||
+          vertex.unified_name->substr(0, separator) != *vertex.file) {
+        throw std::invalid_argument(
+            "FactQueryIndex filter proof rejected an unproven unified path");
+      }
+    }
+    ++proof.definition_count;
+    vertex_kinds.push_back(ProvenVertex::definition);
+  }
+  if (root_count != 1 || records_->vertices.empty() ||
+      vertex_kinds.front() != ProvenVertex::root) {
+    throw std::invalid_argument(
+        "FactQueryIndex filter proof requires one leading root record");
+  }
+  if (proof.record_count != root_count + proof.directory_count +
+                                proof.file_count + proof.definition_count +
+                                proof.reference_only_count) {
+    throw std::logic_error(
+        "FactQueryIndex filter proof record partition is inconsistent");
+  }
+  if (proof.definition_count != symbol_count()) {
+    throw std::logic_error(
+        "FactQueryIndex filter proof definition count disagrees with index");
+  }
+
+  append_u64_be(query_surface_digest,
+                static_cast<std::uint64_t>(records_->edges.size()));
+  for (const auto &edge : records_->edges) {
+    if (edge.source < 0 || edge.target < 0 ||
+        static_cast<std::size_t>(edge.source) >= vertex_kinds.size() ||
+        static_cast<std::size_t>(edge.target) >= vertex_kinds.size()) {
+      throw std::invalid_argument(
+          "FactQueryIndex filter proof rejected an unproven edge endpoint");
+    }
+    constexpr char EDGE_TAG = 'E';
+    query_surface_digest.update(&EDGE_TAG, 1);
+    append_present_i64(query_surface_digest,
+                       static_cast<std::int64_t>(edge.source));
+    append_present_i64(query_surface_digest,
+                       static_cast<std::int64_t>(edge.target));
+    append_present_string(query_surface_digest, edge.type);
+    append_optional_string(query_surface_digest, edge.anchor_file);
+    append_optional_int(query_surface_digest, edge.anchor_line);
+    if (!is_known_edge_type(edge.type)) {
+      throw std::invalid_argument(
+          "FactQueryIndex filter proof rejected an unknown edge type");
+    }
+    const auto source_kind =
+        vertex_kinds[static_cast<std::size_t>(edge.source)];
+    const auto target_kind =
+        vertex_kinds[static_cast<std::size_t>(edge.target)];
+    if (source_kind == ProvenVertex::reference_only ||
+        (target_kind == ProvenVertex::reference_only &&
+         edge.type != EDGE_TYPE_REFERENCE)) {
+      throw std::invalid_argument(
+          "FactQueryIndex reference-only symbol must only be the target of a "
+          "reference edge");
+    }
+    if (edge.type == EDGE_TYPE_REFERENCE) {
+      if ((source_kind != ProvenVertex::definition &&
+           source_kind != ProvenVertex::file) ||
+          (target_kind != ProvenVertex::definition &&
+           target_kind != ProvenVertex::reference_only) ||
+          !edge.anchor_file.has_value() || !edge.anchor_line.has_value() ||
+          *edge.anchor_line < 0 ||
+          !is_canonical_repository_path(*edge.anchor_file) ||
+          allowed.find(*edge.anchor_file) == allowed.end()) {
+        throw std::invalid_argument(
+            "FactQueryIndex filter proof rejected an unproven reference");
+      }
+      if (target_kind == ProvenVertex::reference_only) {
+        reference_only_target_observed[static_cast<std::size_t>(edge.target)] =
+            true;
+      }
+      ++proof.reference_count;
+    } else if (edge.anchor_file.has_value() || edge.anchor_line.has_value()) {
+      throw std::invalid_argument(
+          "FactQueryIndex filter proof rejected an anchored non-reference");
+    }
+  }
+
+  if (proof.reference_count != reference_count_) {
+    throw std::logic_error(
+        "FactQueryIndex filter proof reference count disagrees with index");
+  }
+  for (std::size_t index = 0; index < vertex_kinds.size(); ++index) {
+    if (vertex_kinds[index] == ProvenVertex::reference_only &&
+        !reference_only_target_observed[index]) {
+      throw std::invalid_argument(
+          "FactQueryIndex reference-only symbol lacks a proven incoming "
+          "reference");
+    }
+  }
+  proof.query_surface_sha256 = query_surface_digest.hex_digest();
+  if (proof.query_surface_sha256 != expected_query_surface_sha256) {
+    throw std::invalid_argument(
+        "FactQueryIndex native query surface does not match the trusted "
+        "serial-writer receipt");
+  }
+  return proof;
 }
 
 bool FactQueryIndex::has_symbol(const std::string &name) const {

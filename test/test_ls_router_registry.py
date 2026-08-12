@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from codenib import ls_router
@@ -152,6 +154,29 @@ def test_ls_indexer_passes_decoder_backend_only_to_scip(tmp_path):
 
     assert cpp_indexer._delegate.__class__.__name__ == "ClangdIndexer"
     assert not hasattr(cpp_indexer._delegate, "decoder_backend")
+
+
+def test_ls_indexer_artifact_receipt_capture_is_default_off(tmp_path, monkeypatch):
+    indexer = LSIndexer(
+        tmp_path / "repo",
+        language="python",
+        output_dir=tmp_path / "out",
+    )
+    graph = CodeGraph(str(tmp_path / "repo"))
+    graph.add_root_node("root")
+    monkeypatch.setattr(
+        indexer._delegate,
+        "run_pipeline",
+        lambda **_kwargs: graph,
+    )
+    monkeypatch.setattr(
+        ls_router,
+        "_regular_file_receipt",
+        lambda *_args, **_kwargs: pytest.fail("unexpected artifact fingerprint"),
+    )
+
+    assert indexer.run_pipeline(skip_level=None) is graph
+    assert indexer.graph_output_receipt is None
 
 
 @pytest.mark.parametrize(
@@ -538,6 +563,13 @@ def test_build_graph_for_languages_reports_index_generation(tmp_path, monkeypatc
 
         def __init__(self, project_root, **_kwargs):
             self.project_root = project_root
+            self.output_dir = Path(_kwargs["output_dir"])
+            self.graph_output_receipt = None
+            self.decoded_input_receipt = {
+                "path": str(tmp_path / "out" / "index.decoded"),
+                "size": 12,
+                "sha256": "a" * 64,
+            }
             self.index_generation_report = {
                 "status": "partial",
                 "complete": False,
@@ -550,6 +582,16 @@ def test_build_graph_for_languages_reports_index_generation(tmp_path, monkeypatc
             graph = CodeGraph(str(self.project_root))
             graph.add_file_node("partial.py")
             graph.build_range_indexes()
+            graph_path = self.output_dir / "graph.pkl"
+            graph_path.parent.mkdir(parents=True, exist_ok=True)
+            graph.save_graph(graph_path)
+            from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
+
+            self.graph_output_receipt = {
+                "path": str(graph_path.resolve()),
+                **regular_file_fingerprint(graph_path),
+                "query_surface_sha256": "c" * 64,
+            }
             return graph
 
     monkeypatch.setattr(ls_router, "LSIndexer", FakeIndexer)
@@ -560,6 +602,7 @@ def test_build_graph_for_languages_reports_index_generation(tmp_path, monkeypatc
         languages=["python"],
         skip_level=None,
         allow_partial_index=True,
+        capture_artifact_receipts=True,
     )
 
     assert result.graph is not None
@@ -570,4 +613,17 @@ def test_build_graph_for_languages_reports_index_generation(tmp_path, monkeypatc
             "partial": True,
             "document_count": 3,
         }
+    }
+    assert result.decoded_input_receipts == {
+        "python": {
+            "path": str(tmp_path / "out" / "index.decoded"),
+            "size": 12,
+            "sha256": "a" * 64,
+        }
+    }
+    assert result.graph_output_receipt == {
+        "path": str((tmp_path / "out" / "graph.pkl").resolve()),
+        "size": (tmp_path / "out" / "graph.pkl").stat().st_size,
+        "sha256": result.graph_output_receipt["sha256"],
+        "query_surface_sha256": "c" * 64,
     }

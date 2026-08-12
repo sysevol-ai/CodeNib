@@ -9,7 +9,6 @@ Base class for SCIP indexers across different languages.
 """
 from __future__ import annotations
 
-import fnmatch
 import os
 import subprocess
 from abc import ABC, abstractmethod
@@ -20,6 +19,7 @@ from ..log_utils import get_logger
 from ..paths import temp_state_dir
 from ..profiler import Profiler
 from ..types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, ROOT_NODE, is_symbol_node
+from .scip_filter import definition_path, normalize_scip_path, scip_path_is_allowed
 
 if TYPE_CHECKING:
     from ..graph.code_graph import CodeGraph
@@ -88,34 +88,6 @@ def extract_symbol(text: str) -> Optional[str]:
             i += 1
         return None
     return None
-
-
-def _normalize_rel_path(path: str | Path | None) -> str | None:
-    if path is None:
-        return None
-    normalized = Path(str(path).strip().replace("\\", "/")).as_posix().strip("/")
-    return normalized or None
-
-
-def _definition_path(attrs: dict) -> str | None:
-    unified_name = attrs.get("unified_name")
-    if isinstance(unified_name, str) and ":" in unified_name:
-        return unified_name.split(":", 1)[0]
-    return None
-
-
-def _matches_any(path: str, patterns: list[str]) -> bool:
-    for pattern in patterns:
-        normalized = _normalize_rel_path(pattern)
-        if normalized is None:
-            continue
-        if fnmatch.fnmatch(path, normalized):
-            return True
-        if normalized.endswith("/**"):
-            prefix = normalized[:-3]
-            if path == prefix or path.startswith(f"{prefix}/"):
-                return True
-    return False
 
 
 def extract_scip_blocks(text: str, keyword: str) -> List[str]:
@@ -231,6 +203,9 @@ class SCIPIndexerBase(ABC):
         self.lsp_index_file = self.output_dir / "lsp_index.pkl"
         self.exclude_patterns = exclude_patterns if exclude_patterns else []
         self._target_dir: str | None = None
+        self.decoded_input_receipt: dict[str, object] | None = None
+        self.graph_output_receipt: dict[str, object] | None = None
+        self._capture_artifact_receipts = False
         self.profiler = profiler or Profiler(f"scip_{language}_indexer")
 
         # Path to the scip.proto file (shared across all indexers)
@@ -408,11 +383,18 @@ class SCIPIndexerBase(ABC):
         Returns:
             CodeGraph: Processed graph object
         """
+        self.decoded_input_receipt = None
+        self.graph_output_receipt = None
         if not self.decoded_file.exists():
             logger.error(f"Decoded index file not found at {self.decoded_file}")
             return None
 
         try:
+            if self._capture_artifact_receipts:
+                from ..compiler.artifact_fingerprints import regular_file_fingerprint
+
+                decoded_path = self.decoded_file.resolve(strict=True)
+                decoded_before = regular_file_fingerprint(self.decoded_file)
             logger.info(
                 f"Starting SCIP index processing (backend={self.decoder_backend})..."
             )
@@ -436,6 +418,16 @@ class SCIPIndexerBase(ABC):
                     ),
                 )
             graph.lsp_occurrence_index = occurrence_index
+            if self._capture_artifact_receipts:
+                decoded_after = regular_file_fingerprint(self.decoded_file)
+                if decoded_after != decoded_before:
+                    raise RuntimeError(
+                        "decoded SCIP input changed while graph consumers read it"
+                    )
+                self.decoded_input_receipt = {
+                    "path": str(decoded_path),
+                    **decoded_before,
+                }
 
             # Build line-range indexes once the graph is fully assembled.
             # Must happen before save_graph so the indexes are persisted.
@@ -446,6 +438,15 @@ class SCIPIndexerBase(ABC):
                 with self.profiler.section("process_index.save_graph") as save_section:
                     output_path = Path(output_file)
                     graph.save_graph(str(output_path))
+                    if self._capture_artifact_receipts:
+                        from .query_surface import query_surface_sha256
+
+                        graph_fingerprint = regular_file_fingerprint(output_path)
+                        self.graph_output_receipt = {
+                            "path": str(output_path.resolve(strict=True)),
+                            **graph_fingerprint,
+                            "query_surface_sha256": query_surface_sha256(graph),
+                        }
                     occurrence_index.save(output_path.with_name("lsp_index.pkl"))
                 save_duration = save_section.duration
                 logger.info(f"Saved processed SCIP index to {output_path}")
@@ -465,6 +466,8 @@ class SCIPIndexerBase(ABC):
             return graph
 
         except Exception as e:
+            self.decoded_input_receipt = None
+            self.graph_output_receipt = None
             logger.error(f"Error processing SCIP index: {e}")
             return None
 
@@ -495,9 +498,15 @@ class SCIPIndexerBase(ABC):
             CodeGraph: Processed graph object
         """
         # Use default graph file if output_file not specified
+        self.decoded_input_receipt = None
+        self.graph_output_receipt = None
+        capture_artifact_receipts = kwargs.pop("capture_artifact_receipts", False)
+        if type(capture_artifact_receipts) is not bool:
+            raise ValueError("capture_artifact_receipts must be a boolean")
+        self._capture_artifact_receipts = capture_artifact_receipts
         if output_file is None:
             output_file = str(self.graph_file)
-        self._target_dir = _normalize_rel_path(kwargs.pop("target_dir", None))
+        self._target_dir = normalize_scip_path(kwargs.pop("target_dir", None))
 
         # Check graph cache if skip_level is 'graph'
         if skip_level == "graph" and self.graph_file.exists():
@@ -604,6 +613,7 @@ class SCIPIndexerBase(ABC):
 
             return graph
         finally:
+            self._capture_artifact_receipts = False
             if report_profile:
                 self.profiler.report(reset=reset_profiler)
 
@@ -708,21 +718,14 @@ class SCIPIndexerBase(ABC):
         if node_type in {NODE_TYPE_DIRECTORY, NODE_TYPE_FILE}:
             return self._path_allowed(str(name), allow_target_ancestor=True)
         if is_symbol_node(node_type):
-            path = _definition_path(attrs) or attrs.get("file")
+            path = definition_path(attrs) or attrs.get("file")
             return bool(path and self._path_allowed(str(path)))
         return True
 
     def _path_allowed(self, path: str, *, allow_target_ancestor: bool = False) -> bool:
-        rel_path = _normalize_rel_path(path)
-        if not rel_path:
-            return False
-        if self._target_dir:
-            in_target = rel_path == self._target_dir or rel_path.startswith(
-                f"{self._target_dir}/"
-            )
-            is_target_ancestor = allow_target_ancestor and self._target_dir.startswith(
-                f"{rel_path}/"
-            )
-            if not in_target and not is_target_ancestor:
-                return False
-        return not _matches_any(rel_path, self.exclude_patterns)
+        return scip_path_is_allowed(
+            path,
+            target_dir=self._target_dir,
+            exclude_patterns=self.exclude_patterns,
+            allow_target_ancestor=allow_target_ancestor,
+        )

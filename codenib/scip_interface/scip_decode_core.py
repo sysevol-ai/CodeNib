@@ -21,12 +21,20 @@ import hashlib
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Optional
 
 from ..graph.code_graph import CodeGraph
 from ..languages import core_decoder_languages, normalize_language
 from ..log_utils import get_logger
 from .fact_batch_buffer import FactBatchBufferView, validate_compiled_contract
+from .scip_query import (
+    FACT_QUERY_ABI_VERSION,
+    FACT_QUERY_CAPABILITIES,
+    FACT_QUERY_FORMAT,
+    FACT_QUERY_PROMOTED_LANGUAGES,
+    decode_native_fact_query_index,
+    validate_fact_query_contract,
+)
 
 logger = get_logger(__name__)
 
@@ -59,15 +67,10 @@ _FACT_QUERY_ENV = "CODENIB_NATIVE_FACT_QUERY_INDEX"
 _FACT_QUERY_OFF = frozenset({"0", "false", "no", "off", "disabled"})
 _FACT_QUERY_AUTO = frozenset({"", "1", "true", "yes", "on", "auto"})
 _FACT_QUERY_REQUIRED = frozenset({"required", "strict"})
-_FACT_QUERY_PROMOTED_LANGUAGES = frozenset({"python", "rust"})
-_FACT_QUERY_ABI_VERSION = 1
-_FACT_QUERY_FORMAT = "fact-query-index-v1"
-_FACT_QUERY_CAPABILITIES = {
-    "definition_by_symbol": True,
-    "references_by_symbol": True,
-    "position_queries": False,
-    "route_queries": False,
-}
+_FACT_QUERY_PROMOTED_LANGUAGES = FACT_QUERY_PROMOTED_LANGUAGES
+_FACT_QUERY_ABI_VERSION = FACT_QUERY_ABI_VERSION
+_FACT_QUERY_FORMAT = FACT_QUERY_FORMAT
+_FACT_QUERY_CAPABILITIES = FACT_QUERY_CAPABILITIES
 
 
 def _ensure_available() -> None:
@@ -191,24 +194,7 @@ def _fact_query_mode() -> str:
     )
 
 
-def _validate_fact_query_contract(contract: Mapping[str, Any]) -> None:
-    abi_version = contract.get("abi_version")
-    if type(abi_version) is not int or abi_version != _FACT_QUERY_ABI_VERSION:
-        raise RuntimeError(
-            "compiled FactQueryIndex contract mismatch: "
-            f"expected ABI {_FACT_QUERY_ABI_VERSION}, got {abi_version!r}"
-        )
-    if contract.get("format") != _FACT_QUERY_FORMAT:
-        raise RuntimeError(
-            "compiled FactQueryIndex contract mismatch: "
-            f"expected format {_FACT_QUERY_FORMAT!r}"
-        )
-    if contract.get("requires_anchored_references") is not True:
-        raise RuntimeError(
-            "compiled FactQueryIndex must fail closed on unanchored references"
-        )
-    if contract.get("capabilities") != _FACT_QUERY_CAPABILITIES:
-        raise RuntimeError("compiled FactQueryIndex capabilities do not match v1")
+_validate_fact_query_contract = validate_fact_query_contract
 
 
 class SCIPDecoderCore:
@@ -316,58 +302,13 @@ class SCIPDecoderCore:
     def _decode_native_fact_query_index(
         self,
     ) -> tuple[Any, dict[str, float | int]]:
-        if not hasattr(_cpp, "decode_scip_fact_query_index") or not hasattr(
-            _cpp, "fact_query_index_contract"
-        ):
-            raise RuntimeError("compiled core does not expose FactQueryIndex v1")
-        _validate_fact_query_contract(_cpp.fact_query_index_contract())
-
-        started = time.perf_counter()
-        payload = _cpp.decode_scip_fact_query_index(
+        result = decode_native_fact_query_index(
             index_file=self.index_file_path,
             project_root=self.project_root,
             language=self.language,
+            core_module=_cpp,
         )
-        binding_seconds = time.perf_counter() - started
-        if not isinstance(payload, Mapping):
-            raise RuntimeError("native FactQueryIndex returned a non-mapping payload")
-        if payload.get("format") != _FACT_QUERY_FORMAT:
-            raise RuntimeError("native FactQueryIndex returned an unknown format")
-        if payload.get("graph_materialized") is not False:
-            raise RuntimeError(
-                "native FactQueryIndex unexpectedly materialized a graph"
-            )
-
-        index = payload.get("index")
-        if index is None or getattr(index, "fact_query_index", None) is not True:
-            raise RuntimeError("native FactQueryIndex payload is missing its index")
-        if getattr(index, "materializes_graph", None) is not False:
-            raise RuntimeError(
-                "native FactQueryIndex does not guarantee graph-free use"
-            )
-        if getattr(index, "capabilities", None) != _FACT_QUERY_CAPABILITIES:
-            raise RuntimeError("native FactQueryIndex capabilities do not match v1")
-
-        native_decode = int(payload.get("native_decode_ns") or 0) / 1_000_000_000
-        native_index = int(payload.get("native_index_ns") or 0) / 1_000_000_000
-        timings: dict[str, float | int] = {
-            "core_decode": binding_seconds,
-            "native_decode": native_decode,
-            "native_fact_query_index": native_index,
-            "boundary_transport_residual": max(
-                0.0, binding_seconds - native_decode - native_index
-            ),
-            "node_count": int(getattr(index, "record_count", 0)),
-            "edge_count": int(getattr(index, "edge_count", 0)),
-            "definition_symbol_count": int(getattr(index, "symbol_count", 0)),
-            "reference_count": int(getattr(index, "reference_count", 0)),
-        }
-        for name, nanoseconds in (payload.get("decode_profile_ns") or {}).items():
-            if name in {"worker_count", "document_count"}:
-                timings[f"native_{name}"] = int(nanoseconds)
-            else:
-                timings[f"native_{name}"] = int(nanoseconds) / 1_000_000_000
-        return index, timings
+        return result.index, result.timings
 
     def decode_query_index(self) -> Any:
         """Return a graph-free symbol index or a compatible CodeGraph fallback.

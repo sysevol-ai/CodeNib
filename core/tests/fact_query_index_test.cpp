@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <future>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -353,6 +354,261 @@ void assert_compact_route_adjacency() {
   }
 }
 
+constexpr const char *BASE_FILTER_SURFACE =
+    "0112871fe1aafef3930d910a15c12b7632f73803fd55f5620f219c9dd87d64df";
+constexpr const char *ROOT_FILTER_SURFACE =
+    "5f22cb22ddb5647ecd8b9a58c611f32fc5b67c5ad63bf0db4f5977f2a4f80179";
+constexpr const char *EXTERNAL_FILTER_SURFACE =
+    "f719c83c8abe745e9473aa287ce64a19865e8dac5691f6ce2c8ca2f5881b2e77";
+
+std::shared_ptr<DecodedRecords> make_filter_proof_records() {
+  auto records = std::make_shared<DecodedRecords>();
+  CodeGraph::VertexData root;
+  root.name = codenib::core::ROOT_NODE;
+  root.type = "root";
+  CodeGraph::VertexData directory;
+  directory.name = "src";
+  directory.type = codenib::core::NODE_TYPE_DIRECTORY;
+  directory.unified_name = "src";
+  CodeGraph::VertexData file;
+  file.name = "src/main.py";
+  file.type = codenib::core::NODE_TYPE_FILE;
+  file.unified_name = "src/main.py";
+  records->vertices = {
+      root,
+      directory,
+      file,
+      definition("canonical-caller", "src/main.py:caller()", 8),
+      definition("canonical-target", "src/main.py:target()", 2),
+  };
+  records->edges = {
+      {0, 1, codenib::core::EDGE_TYPE_CONTAIN, std::nullopt, std::nullopt},
+      {1, 2, codenib::core::EDGE_TYPE_CONTAIN, std::nullopt, std::nullopt},
+      {2, 3, codenib::core::EDGE_TYPE_CONTAIN, std::nullopt, std::nullopt},
+      {3, 4, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", 9},
+  };
+  return records;
+}
+
+void assert_filter_identity_proof() {
+  FactQueryIndex index(make_filter_proof_records());
+  const auto proof = index.prove_filter_identity(
+      {"src/helper.py", "src/main.py"}, BASE_FILTER_SURFACE);
+  assert(proof.schema_version == 1);
+  assert(proof.identity);
+  assert(proof.allowed_file_count == 2);
+  assert(proof.allowed_files_sha256 ==
+         "eba6f15171dd9ec7a051c2e9d51b0d72989bf55c6b0c1108d11fd929c636f6b3");
+  assert(proof.query_surface_sha256 ==
+         "0112871fe1aafef3930d910a15c12b7632f73803fd55f5620f219c9dd87d64df");
+  assert(proof.record_count == 5);
+  assert(proof.directory_count == 1);
+  assert(proof.file_count == 1);
+  assert(proof.definition_count == 2);
+  assert(proof.reference_only_count == 0);
+  assert(proof.edge_count == 4);
+  assert(proof.reference_count == 1);
+  assert(proof.occurrence_count == 0);
+  std::vector<std::future<FactQueryIndex::FilterIdentityProof>> concurrent;
+  for (int worker = 0; worker < 4; ++worker) {
+    concurrent.emplace_back(std::async(std::launch::async, [&index]() {
+      return index.prove_filter_identity({"src/helper.py", "src/main.py"},
+                                         BASE_FILTER_SURFACE);
+    }));
+  }
+  for (auto &result : concurrent)
+    assert(result.get().query_surface_sha256 == proof.query_surface_sha256);
+  const auto narrower =
+      index.prove_filter_identity({"src/main.py"}, BASE_FILTER_SURFACE);
+  assert(narrower.allowed_files_sha256 != proof.allowed_files_sha256);
+  assert(narrower.query_surface_sha256 == proof.query_surface_sha256);
+
+  auto changed_selection = make_filter_proof_records();
+  changed_selection->vertices[4].selection_line = 3;
+  const auto changed_selection_proof =
+      FactQueryIndex(changed_selection)
+          .prove_filter_identity({"src/main.py"},
+                                 "f9605a33aeabcc7a9dc8217df0cf2799eab9e2e5c762d"
+                                 "16f98a8a2bf979e9365");
+  assert(changed_selection_proof.record_count == proof.record_count);
+  assert(changed_selection_proof.edge_count == proof.edge_count);
+  assert(changed_selection_proof.query_surface_sha256 !=
+         proof.query_surface_sha256);
+
+  auto changed_anchor = make_filter_proof_records();
+  changed_anchor->edges.back().anchor_line = 10;
+  const auto changed_anchor_proof =
+      FactQueryIndex(changed_anchor)
+          .prove_filter_identity({"src/main.py"},
+                                 "4843be465daee641c550915a75873739879b5e89f0814"
+                                 "c932a964ef5713106cd");
+  assert(changed_anchor_proof.record_count == proof.record_count);
+  assert(changed_anchor_proof.edge_count == proof.edge_count);
+  assert(changed_anchor_proof.query_surface_sha256 !=
+         proof.query_surface_sha256);
+
+  auto root_only = std::make_shared<DecodedRecords>();
+  CodeGraph::VertexData root;
+  root.name = codenib::core::ROOT_NODE;
+  root.type = "root";
+  root_only->vertices.push_back(root);
+  const auto empty =
+      FactQueryIndex(root_only).prove_filter_identity({}, ROOT_FILTER_SURFACE);
+  assert(empty.allowed_file_count == 0);
+  assert(empty.allowed_files_sha256 ==
+         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  const auto unicode = FactQueryIndex(root_only).prove_filter_identity(
+      {"src/a.py", "src/\xc3\xa9.py"}, ROOT_FILTER_SURFACE);
+  assert(unicode.allowed_files_sha256 ==
+         "d2d8f5e99942bf3b1dde637675b3b908e1b68e0c78bda25fe9ef6eb197a9aed8");
+
+  auto rejects = [](std::shared_ptr<DecodedRecords> records,
+                    std::vector<std::string> allowed_files,
+                    const std::string &expected_surface = BASE_FILTER_SURFACE) {
+    try {
+      (void)FactQueryIndex(std::move(records))
+          .prove_filter_identity(allowed_files, expected_surface);
+      assert(false && "unsafe filter proof must fail closed");
+    } catch (const std::invalid_argument &) {
+    }
+  };
+
+  rejects(make_filter_proof_records(), {"src/main.py"}, std::string(64, '0'));
+  rejects(make_filter_proof_records(), {"src/main.py"}, "invalid");
+  rejects(make_filter_proof_records(), {"src/main.py"}, std::string(64, 'A'));
+
+  rejects(make_filter_proof_records(), {"src/main.py", "src/main.py"});
+  rejects(make_filter_proof_records(), {"src/main.py", "src/helper.py"});
+  for (const auto &path :
+       {std::string{}, std::string{"/src/main.py"}, std::string{"src\\main.py"},
+        std::string{"src/./main.py"}, std::string{"src/../main.py"},
+        std::string{"src//main.py"}, std::string{"src/main.py/"},
+        std::string{"C:/src/main.py"}, std::string{"src/ma\0in.py", 13},
+        std::string{"src/"
+                    "\xc0\xaf"
+                    "main.py"}}) {
+    rejects(make_filter_proof_records(), {path});
+  }
+  rejects(make_filter_proof_records(), {"src/helper.py"});
+
+  auto filtered_anchor = make_filter_proof_records();
+  filtered_anchor->edges.back().anchor_file = "vendor/main.py";
+  rejects(filtered_anchor, {"src/main.py"});
+
+  auto occurrence_metadata = make_filter_proof_records();
+  occurrence_metadata->occurrences = {
+      occurrence(9, 2, 8, codenib::core::OCCURRENCE_ROLE_REFERENCE, 4, 3),
+  };
+  rejects(occurrence_metadata, {"src/main.py"});
+
+  auto query_order_metadata = make_filter_proof_records();
+  query_order_metadata->query_resolution_order = {0, 1, 2, 3, 4};
+  rejects(query_order_metadata, {"src/main.py"});
+
+  auto route_order_metadata = make_filter_proof_records();
+  route_order_metadata->route_vertex_order = {0, 1, 2, 3, 4};
+  rejects(route_order_metadata, {"src/main.py"});
+
+  auto route_adjacency_metadata = make_filter_proof_records();
+  route_adjacency_metadata->route_adjacency_complete = true;
+  rejects(route_adjacency_metadata, {"src/main.py"});
+
+  auto external = make_filter_proof_records();
+  external->vertices.push_back(
+      reference_only("external-target", "vendor/lib.py:external()"));
+  external->edges.push_back(
+      {3, 5, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", 10});
+  const auto external_proof = FactQueryIndex(external).prove_filter_identity(
+      {"src/main.py"}, EXTERNAL_FILTER_SURFACE);
+  assert(external_proof.reference_only_count == 1);
+  assert(external_proof.query_surface_sha256 == EXTERNAL_FILTER_SURFACE);
+
+  auto reference_without_provenance = make_filter_proof_records();
+  auto null_reference =
+      reference_only("external-target", "vendor/lib.py:external()");
+  null_reference.has_definition.reset();
+  reference_without_provenance->vertices.push_back(null_reference);
+  reference_without_provenance->edges.push_back(
+      {3, 5, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", 10});
+  rejects(reference_without_provenance, {"src/main.py"},
+          "7c5301fc83aae5751d1414c2db1ee527d887f778a2bdd6d41978fa92e16cf72f");
+
+  auto ranged_reference = make_filter_proof_records();
+  auto invalid_reference =
+      reference_only("external-target", "vendor/lib.py:external()");
+  invalid_reference.start_line = 1;
+  invalid_reference.end_line = 2;
+  invalid_reference.selection_line = 1;
+  ranged_reference->vertices.push_back(invalid_reference);
+  ranged_reference->edges.push_back(
+      {3, 5, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", 10});
+  rejects(ranged_reference, {"src/main.py"},
+          "841dca4d50387287e714ae580c4a406ca3b98cc749ddc90a97554c45a6e73c03");
+
+  auto orphan_reference = make_filter_proof_records();
+  orphan_reference->vertices.push_back(
+      reference_only("external-target", "vendor/lib.py:external()"));
+  rejects(orphan_reference, {"src/main.py"});
+
+  auto reference_source = make_filter_proof_records();
+  reference_source->vertices.push_back(
+      reference_only("external-target", "vendor/lib.py:external()"));
+  reference_source->edges.push_back(
+      {5, 4, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", 10});
+  rejects(reference_source, {"src/main.py"});
+
+  auto structural_reference_target = make_filter_proof_records();
+  structural_reference_target->vertices.push_back(
+      reference_only("external-target", "vendor/lib.py:external()"));
+  structural_reference_target->edges.push_back(
+      {3, 5, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", 10});
+  structural_reference_target->edges.push_back(
+      {2, 5, codenib::core::EDGE_TYPE_CONTAIN, std::nullopt, std::nullopt});
+  rejects(structural_reference_target, {"src/main.py"});
+
+  auto unknown_edge = make_filter_proof_records();
+  unknown_edge->edges.push_back({3, 4, "unknown", std::nullopt, std::nullopt});
+  rejects(unknown_edge, {"src/main.py"});
+
+  auto unknown_vertex = make_filter_proof_records();
+  CodeGraph::VertexData unknown;
+  unknown.name = "unknown-record";
+  unknown.type = "unknown";
+  unknown_vertex->vertices.push_back(unknown);
+  rejects(unknown_vertex, {"src/main.py"});
+
+  auto root_reference = make_filter_proof_records();
+  root_reference->edges.push_back(
+      {0, 4, codenib::core::EDGE_TYPE_REFERENCE, "src/main.py", 11});
+  rejects(root_reference, {"src/main.py"});
+
+  auto mismatched_unified = make_filter_proof_records();
+  mismatched_unified->vertices[4].unified_name = "vendor/main.py:target()";
+  rejects(mismatched_unified, {"src/main.py"});
+
+  auto invalid_utf8_name = make_filter_proof_records();
+  invalid_utf8_name->vertices[4].name = "symbol-\xc0\xaf";
+  rejects(invalid_utf8_name, {"src/main.py"});
+
+  auto anchored_containment = make_filter_proof_records();
+  anchored_containment->edges.front().anchor_file = "src/main.py";
+  anchored_containment->edges.front().anchor_line = 1;
+  rejects(anchored_containment, {"src/main.py"});
+
+  auto colon_path = std::make_shared<DecodedRecords>();
+  CodeGraph::VertexData colon_file;
+  colon_file.name = "a:b.py";
+  colon_file.type = codenib::core::NODE_TYPE_FILE;
+  auto colon_definition = definition("colon-symbol", "a:b.py:thing()", 1);
+  colon_definition.file = "a:b.py";
+  colon_path->vertices = {root, colon_file, colon_definition};
+  colon_path->edges = {
+      {0, 1, codenib::core::EDGE_TYPE_CONTAIN, std::nullopt, std::nullopt},
+      {1, 2, codenib::core::EDGE_TYPE_CONTAIN, std::nullopt, std::nullopt},
+  };
+  rejects(colon_path, {"a:b.py"});
+}
+
 } // namespace
 
 int main() {
@@ -361,6 +617,7 @@ int main() {
   assert_exact_occurrence_ranges_and_fallbacks();
   assert_invalid_occurrences_fail_closed();
   assert_compact_route_adjacency();
+  assert_filter_identity_proof();
   std::cout << "fact_query_index_test: OK\n";
   return 0;
 }

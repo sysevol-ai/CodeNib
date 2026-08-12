@@ -92,6 +92,7 @@ Subgraph::Node &SubgraphBuilder::ensure_node(const std::string &name) {
   Subgraph::Node record;
   record.data.name = name;
   auto inserted = subgraph_.nodes.emplace(name, std::move(record));
+  subgraph_.node_order.push_back(name);
   return inserted.first->second;
 }
 
@@ -240,6 +241,11 @@ void SubgraphBuilder::add_edge(const std::string &source,
                                const std::string &edge_type,
                                std::optional<std::string> anchor_file,
                                std::optional<int> anchor_line) {
+  // Python CodeGraph._add_edge creates missing endpoints immediately. Record
+  // those insertions here as well so a later document update preserves the
+  // same global vertex id and first-seen semantics.
+  (void)ensure_node(source);
+  (void)ensure_node(target);
   subgraph_.edges.push_back(Subgraph::Edge{
       source, target, edge_type, std::move(anchor_file), anchor_line});
 }

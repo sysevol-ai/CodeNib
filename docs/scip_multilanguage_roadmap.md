@@ -1124,6 +1124,23 @@ new, ordered program rather than extending the archived Phase 0--6 queue:
    repository call with bounded native workers and an ordered flat buffer. A
    failed gate removes the POC implementation and retains only the receipt.
 
+M1 implementation status ([#597](https://github.com/sysevol-ai/CodeNib/issues/597)):
+the candidate boundary is deliberately split into two proofs. C++ records the
+exact decoded-index and Rust Cargo bytes it consumed and performs an
+O(F+V+E) filter-identity scan without deleting or remapping facts. The
+order-sensitive native query-surface digest must exactly equal the compiler's
+serial graph digest. The graph-free Python facade binds that evidence to a
+current builder-schema-v4 compiler manifest, source fingerprint, repository
+filter policy, resolved root, and graph-writer artifact receipt. Only the
+publishing compiler build opts into the additional receipt scans; ordinary
+graph pipelines retain their default behavior. Incremental, partial,
+multi-language, source-coverage fallback, mutated, or otherwise unproven inputs
+are rejected atomically. Reference-only external targets are retained only
+when the exact serial filtered surface contains them and every incoming
+reference has an allowed source anchor. The first admitted languages are
+Python and Rust. This is safety/admission work only: it does not enable an MCP
+route and does not replace the M2 consumer-boundary measurement in #598.
+
 Production integration and additional FactQueryIndex languages get focused
 issues only after #598 passes for the relevant language. Warm-session
 incremental parse-tree reuse is timeboxed only after #600 records the bounded

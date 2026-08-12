@@ -723,13 +723,14 @@ class SymbolGraphBuilder:
     def artifact_identity(self) -> Dict[str, Any]:
         graph_languages = self.languages or [self.language]
         return {
-            "builder_schema": 3,
+            "builder_schema": 4,
             "languages": list(graph_languages),
             "graph_route": self.graph_route,
             "exclude_patterns": sorted(self.exclude_patterns),
             "allow_partial_languages": self.allow_partial_languages,
             "allow_partial_index": self.allow_partial_index,
             "source_coverage_fallback": self.source_coverage_fallback,
+            "target_dir": None,
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
 
@@ -745,6 +746,12 @@ class SymbolGraphBuilder:
         output_dir: str = kwargs["output_dir"]
 
         from ..ls_router import build_graph_for_languages_with_report
+        from ..scip_interface.query_surface import query_surface_sha256
+        from .artifact_fingerprints import (
+            graph_output_artifact_fingerprint,
+            regular_file_fingerprint,
+            scip_decoded_artifact_fingerprints,
+        )
 
         os.makedirs(output_dir, exist_ok=True)
         graph_languages = self.languages or [self.language]
@@ -754,6 +761,7 @@ class SymbolGraphBuilder:
             "skip_level": None,
             "exclude_patterns": self.exclude_patterns,
             "graph_route": self.graph_route,
+            "capture_artifact_receipts": True,
         }
         if self.allow_partial_index:
             build_kwargs["allow_partial_index"] = True
@@ -763,6 +771,7 @@ class SymbolGraphBuilder:
             allow_partial=self.allow_partial_languages,
             **build_kwargs,
         )
+        graph_output_receipt = result.graph_output_receipt
 
         graph = result.graph
         compiler_graph_available = graph is not None and hasattr(graph, "graph")
@@ -838,9 +847,16 @@ class SymbolGraphBuilder:
                 "compiler_edges": compiler_edge_count,
                 **coverage_report,
             }
-            graph.save_graph(os.path.join(output_dir, "graph.pkl"))
+            graph_output_path = os.path.join(output_dir, "graph.pkl")
+            graph.save_graph(graph_output_path)
+            graph_output_receipt = {
+                "path": os.path.realpath(graph_output_path),
+                **regular_file_fingerprint(graph_output_path),
+                "query_surface_sha256": query_surface_sha256(graph),
+            }
 
         node_count = len(graph.graph.vs)
+        edge_count = len(graph.graph.es)
         if node_count == 0:
             raise RuntimeError("symbol graph builder returned an empty graph")
         available_languages = (
@@ -848,6 +864,23 @@ class SymbolGraphBuilder:
             if fallback_report is not None
             else result.available_languages
         )
+        scip_decoded_artifacts = scip_decoded_artifact_fingerprints(
+            output_dir,
+            receipts=result.decoded_input_receipts,
+            languages=list(result.available_languages),
+            multi_language_layout=len(graph_languages) != 1,
+        )
+        graph_artifact_receipt = graph_output_artifact_fingerprint(
+            output_dir,
+            receipt=graph_output_receipt,
+        )
+        writer_query_surface = graph_artifact_receipt.pop("query_surface_sha256")
+        observed_query_surface = query_surface_sha256(graph)
+        if writer_query_surface != observed_query_surface:
+            raise ValueError(
+                "symbol graph query surface changed after its writer returned"
+            )
+        graph_artifact = graph_artifact_receipt
 
         return IndexStatus(
             index_type="symbol_graph",
@@ -859,10 +892,15 @@ class SymbolGraphBuilder:
             metadata={
                 **self.artifact_identity(),
                 "node_count": node_count,
+                "edge_count": edge_count,
                 "language": available_languages[0],
                 "available_languages": available_languages,
                 "compiler_available_languages": result.available_languages,
                 "index_generation_reports": result.index_generation_reports,
+                "scip_decoded_artifacts": scip_decoded_artifacts,
+                "graph_artifact": graph_artifact,
+                "query_surface_sha256": observed_query_surface,
+                "update_mode": "full_rebuild",
                 "partial_index": bool(compiler_partial_languages),
                 "failed_languages": result.failed_languages,
                 "partial": result.partial,

@@ -18,6 +18,7 @@ from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
+from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
 from codenib.compiler.index_builders import (
     BM25IndexBuilder,
     IndexBuilderRegistry,
@@ -51,6 +52,22 @@ from codenib.repository_filters import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _write_fake_graph_artifact(output_dir: str | Path) -> Path:
+    path = Path(output_dir) / "graph.pkl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"test-symbol-graph\n")
+    return path
+
+
+def _fake_graph_output_receipt(output_dir: str | Path) -> dict:
+    path = _write_fake_graph_artifact(output_dir)
+    return {
+        "path": str(path.resolve()),
+        **regular_file_fingerprint(path),
+        "query_surface_sha256": "c" * 64,
+    }
 
 
 def _mock_builder(index_type: str = "mock", file_count: int = 42):
@@ -557,6 +574,13 @@ class TestVectorIndexBuilder:
 
 
 class TestSymbolGraphBuilder:
+    @pytest.fixture(autouse=True)
+    def _stable_query_surface_digest(self, monkeypatch):
+        monkeypatch.setattr(
+            "codenib.scip_interface.query_surface.query_surface_sha256",
+            lambda _graph: "c" * 64,
+        )
+
     def test_build_returns_status(self, monkeypatch, tmp_path):
         from codenib import ls_router
 
@@ -566,11 +590,17 @@ class TestSymbolGraphBuilder:
 
         def fake_build_graph_for_languages(*args, **kwargs):
             calls.append((args, kwargs))
+            graph_receipt = _fake_graph_output_receipt(args[1])
+            (Path(args[1]) / "index.decoded").write_text(
+                "post-hoc artifact without a consumed receipt",
+                encoding="utf-8",
+            )
             return GraphBuildResult(
                 graph=mock_graph,
                 requested_languages=["python"],
                 available_languages=["python"],
                 failed_languages={},
+                graph_output_receipt=graph_receipt,
             )
 
         monkeypatch.setattr(
@@ -590,8 +620,19 @@ class TestSymbolGraphBuilder:
         assert status.index_type == "symbol_graph"
         assert status.state == IndexState.FRESH
         assert status.metadata["node_count"] == 50
+        assert status.metadata["edge_count"] == 0
         assert status.metadata["language"] == "python"
         assert status.metadata["languages"] == ["python"]
+        assert status.metadata["builder_schema"] == 4
+        assert status.metadata["target_dir"] is None
+        assert status.metadata["update_mode"] == "full_rebuild"
+        assert status.metadata["scip_decoded_artifacts"] == {}
+        assert status.metadata["graph_artifact"] == {
+            "relative_path": "graph.pkl",
+            "size": len(b"test-symbol-graph\n"),
+            "sha256": regular_file_fingerprint(Path(output) / "graph.pkl")["sha256"],
+        }
+        assert status.metadata["query_surface_sha256"] == "c" * 64
         assert calls == [
             (
                 ("/fake/repo", output),
@@ -602,9 +643,112 @@ class TestSymbolGraphBuilder:
                     "skip_level": None,
                     "exclude_patterns": default_exclude_patterns(),
                     "graph_route": "active",
+                    "capture_artifact_receipts": True,
                 },
             )
         ]
+
+    def test_build_records_existing_decoded_scip_artifact(self, monkeypatch, tmp_path):
+        from codenib import ls_router
+        from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
+
+        mock_graph = MagicMock()
+        mock_graph.graph.vs = [MagicMock()]
+        output = tmp_path / "graph"
+        output.mkdir()
+        graph_receipt = _fake_graph_output_receipt(output)
+        decoded = output / "index.decoded"
+        decoded.write_text("documents {}\n", encoding="utf-8")
+        decoded_receipt = {
+            "path": str(decoded.resolve()),
+            **regular_file_fingerprint(decoded),
+        }
+
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages_with_report",
+            lambda *args, **kwargs: GraphBuildResult(
+                graph=mock_graph,
+                requested_languages=["python"],
+                available_languages=["python"],
+                failed_languages={},
+                decoded_input_receipts={"python": decoded_receipt},
+                graph_output_receipt=graph_receipt,
+            ),
+        )
+
+        status = SymbolGraphBuilder(language="python").build(
+            scope="current_repo",
+            repo_path="/fake/repo",
+            output_dir=str(output),
+        )
+
+        assert status.metadata["scip_decoded_artifacts"] == {
+            "python": {
+                "relative_path": "index.decoded",
+                **regular_file_fingerprint(decoded),
+            }
+        }
+
+    def test_build_rejects_graph_replaced_after_writer_receipt(
+        self, monkeypatch, tmp_path
+    ):
+        from codenib import ls_router
+
+        mock_graph = MagicMock()
+        mock_graph.graph.vs = [MagicMock()]
+        mock_graph.graph.es = []
+        output = tmp_path / "graph"
+        graph_receipt = _fake_graph_output_receipt(output)
+        (output / "graph.pkl").write_bytes(b"replacement graph\n")
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages_with_report",
+            lambda *args, **kwargs: GraphBuildResult(
+                graph=mock_graph,
+                requested_languages=["python"],
+                available_languages=["python"],
+                failed_languages={},
+                graph_output_receipt=graph_receipt,
+            ),
+        )
+
+        with pytest.raises(ValueError, match="changed after its writer"):
+            SymbolGraphBuilder(language="python").build(
+                scope="current_repo",
+                repo_path="/fake/repo",
+                output_dir=str(output),
+            )
+
+    def test_build_rejects_same_count_query_surface_mutation(
+        self, monkeypatch, tmp_path
+    ):
+        from codenib import ls_router
+
+        mock_graph = MagicMock()
+        mock_graph.graph.vs = [MagicMock()]
+        mock_graph.graph.es = []
+        output = tmp_path / "graph"
+        graph_receipt = _fake_graph_output_receipt(output)
+        graph_receipt["query_surface_sha256"] = "d" * 64
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages_with_report",
+            lambda *args, **kwargs: GraphBuildResult(
+                graph=mock_graph,
+                requested_languages=["python"],
+                available_languages=["python"],
+                failed_languages={},
+                graph_output_receipt=graph_receipt,
+            ),
+        )
+
+        with pytest.raises(ValueError, match="query surface changed"):
+            SymbolGraphBuilder(language="python").build(
+                scope="current_repo",
+                repo_path="/fake/repo",
+                output_dir=str(output),
+            )
 
     def test_build_rejects_none_graph(self, monkeypatch, tmp_path):
         from codenib import ls_router
@@ -742,11 +886,13 @@ class TestSymbolGraphBuilder:
 
         def fake_build_graph_for_languages(*args, **kwargs):
             calls.append((args, kwargs))
+            graph_receipt = _fake_graph_output_receipt(args[1])
             return GraphBuildResult(
                 graph=mock_graph,
                 requested_languages=["python", "go"],
                 available_languages=["python", "go"],
                 failed_languages={},
+                graph_output_receipt=graph_receipt,
             )
 
         monkeypatch.setattr(
@@ -777,11 +923,13 @@ class TestSymbolGraphBuilder:
 
         def fake_build_graph_for_languages(*args, **kwargs):
             calls.append((args, kwargs))
+            graph_receipt = _fake_graph_output_receipt(args[1])
             return GraphBuildResult(
                 graph=mock_graph,
                 requested_languages=["java"],
                 available_languages=["java"],
                 failed_languages={},
+                graph_output_receipt=graph_receipt,
             )
 
         monkeypatch.setattr(
@@ -807,6 +955,9 @@ class TestSymbolGraphBuilder:
         mock_graph = MagicMock()
         mock_graph.graph.vs = [MagicMock()]
         mock_graph.graph.es = []
+        mock_graph.save_graph.side_effect = lambda path: Path(path).write_bytes(
+            b"test-symbol-graph\n"
+        )
         calls = []
         report = {
             "coverage_before": 0.5,
@@ -887,11 +1038,13 @@ class TestSymbolGraphBuilder:
 
         def fake_build(*args, **kwargs):
             calls.append((args, kwargs))
+            graph_receipt = _fake_graph_output_receipt(args[1])
             return GraphBuildResult(
                 graph=mock_graph,
                 requested_languages=["python", "cpp"],
                 available_languages=["python"],
                 failed_languages={"cpp": "compilation database missing"},
+                graph_output_receipt=graph_receipt,
             )
 
         monkeypatch.setattr(
@@ -2094,6 +2247,7 @@ class TestSymbolGraphIncremental:
         assert status.metadata["verification_details"] == {
             "method": "empty-relevant-diff"
         }
+        assert "scip_decoded_artifacts" not in status.metadata
         graph.save_graph.assert_called_once_with(str(out / "graph.pkl"))
 
     def test_contract_rebuild_is_requested_before_lsp_start(
