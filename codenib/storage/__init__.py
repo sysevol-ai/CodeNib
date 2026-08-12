@@ -49,6 +49,7 @@ from .protocols import (
     ReceiptVerifyingObjectStore,
     RetainedImportCatalog,
     RetainedImportObjectStore,
+    RetainedSnapshotCatalog,
     StreamingObjectStore,
 )
 from .sqlite_catalog import (
@@ -71,8 +72,10 @@ from .view_bundle import (
     ViewBundleRecord,
     build_view_bundle,
     consume_planned_view_bundle,
+    consume_verified_view_bundle_stream,
     materialize_view_bundle,
     plan_view_bundle_reader,
+    retry_retained_verified_bundle_stream_cleanup,
     validate_view_bundle_physical_size,
     verify_view_bundle,
 )
@@ -117,6 +120,7 @@ __all__ = [
     "RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS",
     "RetainedImportCatalog",
     "RetainedImportObjectStore",
+    "RetainedSnapshotCatalog",
     "RepositoryIdentity",
     "SQLiteCatalog",
     "SnapshotView",
@@ -137,9 +141,11 @@ __all__ = [
     "build_view_bundle",
     "canonical_utc_timestamp",
     "consume_planned_view_bundle",
+    "consume_verified_view_bundle_stream",
     "materialize_view_bundle",
     "normalize_view_generation_metadata",
     "plan_view_bundle_reader",
+    "retry_retained_verified_bundle_stream_cleanup",
     "view_generation_member_digests",
     "validate_view_bundle_physical_size",
     "verify_view_bundle",

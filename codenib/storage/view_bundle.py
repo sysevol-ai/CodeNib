@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import io
 import json
 import logging
 import os
@@ -23,6 +24,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path, PurePosixPath
+from threading import RLock
 from typing import Any, BinaryIO, Callable, Iterable, Iterator, Mapping, TypeVar
 
 from .._atomic_directory import (
@@ -752,6 +754,449 @@ def verify_view_bundle(
             max_metadata_bytes=max_metadata_bytes,
         )
         return record
+
+
+@dataclass(slots=True)
+class _CallbackScopedVerifiedBundleLifetime:
+    active: bool = True
+    process_id: int = dataclass_field(default_factory=os.getpid)
+
+
+class _CallbackScopedVerifiedBundleFile:
+    """Revocable callback facade over one owned anonymous temporary file.
+
+    The facade deliberately delegates operations through methods that re-check
+    its lease instead of exposing bound methods from the underlying file.  A
+    failed physical close can therefore retain the real file for an explicit
+    retry without leaving a callback-retained facade usable.
+    """
+
+    __slots__ = (
+        "_archive",
+        "_cleanup_attempts",
+        "_first_cleanup_error",
+        "_lifetime",
+        "_primary_error",
+    )
+
+    def __init__(self, archive: BinaryIO) -> None:
+        self._archive = archive
+        self._cleanup_attempts = 0
+        self._first_cleanup_error: BaseException | None = None
+        self._lifetime = _CallbackScopedVerifiedBundleLifetime()
+        self._primary_error: BaseException | None = None
+
+    @property
+    def closed(self) -> bool:
+        return (
+            self._lifetime.process_id != os.getpid()
+            or not self._lifetime.active
+            or self._archive_is_closed()
+        )
+
+    def _archive_is_closed(self) -> bool:
+        # ``closed`` belongs to the actual tempfile object and is the safe
+        # completion boundary for its arbitrary ``close`` implementation.  Do
+        # not close a captured integer fd behind a still-open Python file: a
+        # later file-object close could otherwise target a reused descriptor.
+        return self._archive.closed is True
+
+    def _cleanup_complete(self) -> bool:
+        return not self._lifetime.active and self._archive_is_closed()
+
+    def _require_active(self) -> None:
+        if self._lifetime.process_id != os.getpid() or not self._lifetime.active:
+            raise ValueError("I/O operation on closed file.")
+
+    def _invoke(self, name: str, *args: Any, **kwargs: Any) -> Any:
+        self._require_active()
+        method = getattr(self._archive, name)
+        result = method(*args, **kwargs)
+        self._require_active()
+        return result
+
+    @staticmethod
+    def _exact_integer(value: object, *, label: str) -> int:
+        if type(value) is not int:
+            raise TypeError(f"verified view-bundle {label} must be an exact integer")
+        return value
+
+    def read(self, size: int = -1) -> bytes:
+        return self._invoke("read", self._exact_integer(size, label="read size"))
+
+    def read1(self, size: int = -1) -> bytes:
+        return self._invoke("read1", self._exact_integer(size, label="read1 size"))
+
+    def readinto(self, buffer: Any) -> int | None:
+        del buffer
+        raise io.UnsupportedOperation(
+            "verified view-bundle stream does not expose mutable read buffers"
+        )
+
+    def readinto1(self, buffer: Any) -> int | None:
+        del buffer
+        raise io.UnsupportedOperation(
+            "verified view-bundle stream does not expose mutable read buffers"
+        )
+
+    def readline(self, size: int = -1) -> bytes:
+        return self._invoke("readline", self._exact_integer(size, label="line size"))
+
+    def readlines(self, hint: int = -1) -> list[bytes]:
+        return self._invoke("readlines", self._exact_integer(hint, label="line hint"))
+
+    def write(self, data: bytes) -> int:
+        del data
+        raise io.UnsupportedOperation("verified view-bundle stream is read-only")
+
+    def writelines(self, lines: Iterable[bytes]) -> None:
+        del lines
+        raise io.UnsupportedOperation("verified view-bundle stream is read-only")
+
+    def seek(self, offset: int, whence: int = os.SEEK_SET) -> int:
+        return self._invoke(
+            "seek",
+            self._exact_integer(offset, label="seek offset"),
+            self._exact_integer(whence, label="seek whence"),
+        )
+
+    def tell(self) -> int:
+        return self._invoke("tell")
+
+    def truncate(self, size: int | None = None) -> int:
+        del size
+        raise io.UnsupportedOperation("verified view-bundle stream is read-only")
+
+    def flush(self) -> None:
+        self._invoke("flush")
+
+    def fileno(self) -> int:
+        raise io.UnsupportedOperation(
+            "verified view-bundle stream does not expose a descriptor"
+        )
+
+    def isatty(self) -> bool:
+        return self._invoke("isatty")
+
+    def readable(self) -> bool:
+        return self._invoke("readable")
+
+    def writable(self) -> bool:
+        self._require_active()
+        return False
+
+    def seekable(self) -> bool:
+        return self._invoke("seekable")
+
+    def __iter__(self) -> _CallbackScopedVerifiedBundleFile:
+        self._require_active()
+        return self
+
+    def __next__(self) -> bytes:
+        return self._invoke("__next__")
+
+    def __enter__(self) -> _CallbackScopedVerifiedBundleFile:
+        self._require_active()
+        return self
+
+    def __copy__(self) -> _CallbackScopedVerifiedBundleFile:
+        return self
+
+    def __deepcopy__(self, _memo: dict[int, Any]) -> _CallbackScopedVerifiedBundleFile:
+        return self
+
+    def __reduce_ex__(self, _protocol: int) -> object:
+        raise TypeError("verified view-bundle streams cannot be serialized")
+
+    def __reduce__(self) -> object:
+        raise TypeError("verified view-bundle streams cannot be serialized")
+
+    def __getstate__(self) -> object:
+        raise TypeError("verified view-bundle stream state is private")
+
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        _exc: BaseException | None,
+        _traceback: object,
+    ) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if not self._lifetime.active:
+            return
+        self._close_for_cleanup()
+
+    def _close_for_cleanup(self) -> None:
+        # Revoke callback authority before entering arbitrary file-object close
+        # code.  Even a persistent close failure then leaves only this private
+        # cleanup owner with access to the real tempfile.
+        self._lifetime.active = False
+        try:
+            self._archive.close()
+        except BaseException as error:  # noqa: B036 - cleanup boundary
+            if isinstance(error, (GeneratorExit, KeyboardInterrupt, SystemExit)):
+                raise
+            raise StorageIntegrityError(
+                "temporary view-bundle stream close failed"
+            ) from error
+        if not self._archive_is_closed():
+            raise StorageIntegrityError(
+                "temporary view-bundle stream close did not complete"
+            )
+        _forget_verified_bundle_stream_cleanup_owner(self)
+
+    def _prepare_cleanup(self) -> None:
+        self._cleanup_attempts = 0
+        self._first_cleanup_error = None
+
+    def _remember_primary(self, error: BaseException) -> None:
+        if self._primary_error is None:
+            self._primary_error = error
+
+    def _retry_incomplete_cleanup(self, error: BaseException | None) -> bool:
+        self._cleanup_attempts += 1
+        if error is not None and self._first_cleanup_error is None:
+            self._first_cleanup_error = error
+        if self._cleanup_complete():
+            return False
+        if self._cleanup_attempts < _BUNDLE_STREAM_CLOSE_RECOVERY_LIMIT:
+            return True
+        primary = (
+            self._primary_error
+            if self._primary_error is not None
+            else self._first_cleanup_error
+        )
+        if primary is not None:
+            _register_verified_bundle_stream_cleanup_owner(self)
+        return False
+
+    def retry_cleanup(self) -> None:
+        """Retry a retained physical tempfile close after failure recovery."""
+
+        self._prepare_cleanup()
+        action = _verified_bundle_stream_close_action(self)
+        with _run_context_with_cleanup_actions(lambda: (action,)):
+            pass
+
+
+_RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS: list[
+    _CallbackScopedVerifiedBundleFile
+] = []
+_RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK = RLock()
+_RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_PID = os.getpid()
+
+
+def _synchronize_verified_bundle_stream_cleanup_process() -> None:
+    global _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK
+    global _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_PID
+    process_id = os.getpid()
+    if process_id == _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_PID:
+        return
+    _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK = RLock()
+    _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_PID = process_id
+
+
+def _register_verified_bundle_stream_cleanup_owner(
+    cleanup_owner: _CallbackScopedVerifiedBundleFile,
+) -> None:
+    _synchronize_verified_bundle_stream_cleanup_process()
+    with _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK:
+        if not any(
+            owner is cleanup_owner
+            for owner in _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS
+        ):
+            _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS.append(cleanup_owner)
+
+
+def _forget_verified_bundle_stream_cleanup_owner(
+    cleanup_owner: _CallbackScopedVerifiedBundleFile,
+) -> None:
+    _synchronize_verified_bundle_stream_cleanup_process()
+    with _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK:
+        _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS[:] = [
+            owner
+            for owner in _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS
+            if owner is not cleanup_owner
+        ]
+
+
+def retry_retained_verified_bundle_stream_cleanup() -> None:
+    """Retry physical closes retained after verified callback-stream failure."""
+
+    _synchronize_verified_bundle_stream_cleanup_process()
+    with _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK:
+        owners = tuple(_RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS)
+    primary: BaseException | None = None
+    for owner in owners:
+        try:
+            owner.retry_cleanup()
+        except BaseException as error:  # noqa: B036 - keep trying later owners
+            if primary is None:
+                primary = error
+            else:
+                _annotate_secondary_error(
+                    primary,
+                    "additional retained verified stream cleanup failed",
+                    error,
+                )
+    if primary is not None:
+        raise primary
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(
+        after_in_child=_synchronize_verified_bundle_stream_cleanup_process
+    )
+
+
+def _verified_bundle_stream_close_action(
+    stream: _CallbackScopedVerifiedBundleFile,
+) -> _OrderedAction:
+    return _OrderedAction(
+        label="temporary view-bundle stream close also failed",
+        action=stream._close_for_cleanup,
+        complete=stream._cleanup_complete,
+        retry_incomplete=stream._retry_incomplete_cleanup,
+    )
+
+
+def consume_verified_view_bundle_stream(
+    source: BinaryIO,
+    operation: Callable[[BinaryIO, ViewBundleRecord], _T],
+    *,
+    expected_view_type: str,
+    expected_digest: str,
+    expected_size: int,
+    max_files: int = DEFAULT_MAX_BUNDLE_FILES,
+    max_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    max_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+) -> _T:
+    """Authenticate one stream and synchronously consume its canonical bundle.
+
+    ``source`` remains caller-owned and is never closed here. The callback gets
+    a callback-scoped seekable facade only after the expected byte count,
+    SHA-256 identity, canonical ZIP layout, and member inventory have all been
+    verified. The facade is revoked before physical tempfile cleanup begins,
+    so a callback cannot retain working byte authority through the public stream
+    API, including when physical close needs an explicit retained retry.
+    """
+
+    if (
+        type(expected_view_type) is not str
+        or type(expected_digest) is not str
+        or type(expected_size) is not int
+        or type(max_files) is not int
+        or type(max_bytes) is not int
+        or type(max_metadata_bytes) is not int
+    ):
+        raise StorageValidationError(
+            "view bundle stream identity and limits must use exact scalar types"
+        )
+    _validate_limits(max_files, max_bytes, max_metadata_bytes)
+    view_type = _validate_view_type(expected_view_type)
+    digest = normalize_digest(expected_digest)
+    byte_size = _validate_expected_size(expected_size)
+    assert byte_size is not None
+    validate_view_bundle_physical_size(
+        byte_size,
+        max_files=max_files,
+        max_bytes=max_bytes,
+        max_metadata_bytes=max_metadata_bytes,
+    )
+    if not callable(operation):
+        raise TypeError("view bundle stream operation must be callable")
+    try:
+        read = source.read
+    except Exception as exc:
+        raise StorageIntegrityError("view bundle stream cannot be read") from exc
+    if not callable(read):
+        raise StorageIntegrityError("view bundle stream cannot be read")
+
+    try:
+        archive = tempfile.TemporaryFile(mode="w+b")
+    except Exception as exc:
+        raise StorageIntegrityError(
+            "view bundle temporary copy could not be opened"
+        ) from exc
+    callback_file = _CallbackScopedVerifiedBundleFile(archive)
+    callback_file._prepare_cleanup()
+    close_action = _verified_bundle_stream_close_action(callback_file)
+    with _run_context_with_cleanup_actions(lambda: (close_action,)):
+        try:
+            observed = hashlib.sha256()
+            remaining = byte_size
+            while remaining:
+                try:
+                    block = read(min(_COPY_CHUNK_BYTES, remaining))
+                except BaseException as error:  # noqa: B036 - stream boundary
+                    if isinstance(
+                        error,
+                        (GeneratorExit, KeyboardInterrupt, SystemExit),
+                    ):
+                        raise
+                    raise StorageIntegrityError(
+                        "view bundle stream read failed"
+                    ) from error
+                if type(block) is not bytes or not block:
+                    raise StorageIntegrityError("view bundle stream was truncated")
+                if len(block) > remaining:
+                    raise StorageIntegrityError(
+                        "view bundle stream exceeded its receipt"
+                    )
+                observed.update(block)
+                try:
+                    written = archive.write(block)
+                except Exception as exc:
+                    raise StorageIntegrityError(
+                        "view bundle temporary copy write failed"
+                    ) from exc
+                if written != len(block):
+                    raise StorageIntegrityError(
+                        "view bundle temporary copy was truncated"
+                    )
+                remaining -= len(block)
+            try:
+                extra = read(1)
+            except BaseException as error:  # noqa: B036 - stream boundary
+                if isinstance(
+                    error,
+                    (GeneratorExit, KeyboardInterrupt, SystemExit),
+                ):
+                    raise
+                raise StorageIntegrityError("view bundle stream read failed") from error
+            if type(extra) is not bytes or extra:
+                raise StorageIntegrityError("view bundle stream exceeded its receipt")
+            if observed.hexdigest() != digest:
+                raise StorageIntegrityError("view bundle stream digest does not match")
+            try:
+                archive.flush()
+                archive.seek(0)
+                record, _manifest = _verify_archive_handle(
+                    archive,
+                    Path("<authenticated-view-bundle-stream>"),
+                    expected_view_type=view_type,
+                    archive_digest=digest,
+                    archive_size=byte_size,
+                    max_files=max_files,
+                    max_bytes=max_bytes,
+                    max_metadata_bytes=max_metadata_bytes,
+                )
+                archive.seek(0)
+            except StorageIntegrityError:
+                raise
+            except StorageValidationError as exc:
+                raise StorageIntegrityError(
+                    "view bundle stream is not a canonical archive"
+                ) from exc
+            except Exception as exc:
+                raise StorageIntegrityError(
+                    "view bundle temporary verification failed"
+                ) from exc
+            return operation(callback_file, record)
+        except BaseException as error:  # noqa: B036 - preserve first primary
+            callback_file._remember_primary(error)
+            raise
 
 
 def materialize_view_bundle(
@@ -4337,8 +4782,10 @@ __all__ = [
     "ViewBundleRecord",
     "build_view_bundle",
     "consume_planned_view_bundle",
+    "consume_verified_view_bundle_stream",
     "materialize_view_bundle",
     "plan_view_bundle_reader",
+    "retry_retained_verified_bundle_stream_cleanup",
     "validate_view_bundle_physical_size",
     "verify_view_bundle",
 ]
