@@ -8,7 +8,16 @@ import hashlib
 
 import pytest
 
-from codenib.storage import StreamingObjectStore
+from codenib.storage import (
+    RETAINED_IMPORT_CATALOG_CONTRACT,
+    RETAINED_IMPORT_RESPONSE_MAX_DEPTH,
+    RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS,
+    RETAINED_IMPORT_RESPONSE_MAX_NODES,
+    RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS,
+    RetainedImportCatalog,
+    RetainedImportObjectStore,
+    StreamingObjectStore,
+)
 from codenib.storage.cas import BlobInfo, LocalCAS
 from codenib.storage.models import (
     ObjectRecord,
@@ -37,10 +46,55 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
         assert isinstance(object_store, ObjectStore)
         assert isinstance(object_store, ReceiptVerifyingObjectStore)
         assert isinstance(object_store, StreamingObjectStore)
+        assert isinstance(object_store, RetainedImportObjectStore)
         assert isinstance(catalog, IndexCatalog)
+        assert isinstance(catalog, RetainedImportCatalog)
+        assert catalog.retained_import_contract() == RETAINED_IMPORT_CATALOG_CONTRACT
         assert isinstance(catalog, JobCatalog)
     finally:
         catalog.close()
+
+
+def test_retained_import_response_budgets_are_public_capability_contracts() -> None:
+    assert RETAINED_IMPORT_RESPONSE_MAX_DEPTH == 64
+    assert RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS == 4_096
+    assert RETAINED_IMPORT_RESPONSE_MAX_NODES == 250_000
+    assert RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS == 64 * 1024 * 1024
+
+
+def test_retained_import_catalog_requires_explicit_contract_opt_in() -> None:
+    class LegacyCatalog:
+        def create_namespace(self, name):
+            raise NotImplementedError
+
+        def create_repository(self, repository_key, *, namespace_id):
+            raise NotImplementedError
+
+        def create_source_revision(self, repository_id, **kwargs):
+            raise NotImplementedError
+
+        def create_view_profile(self, view_type, config=None, *, name="default"):
+            raise NotImplementedError
+
+        def register_object(self, digest, **kwargs):
+            raise NotImplementedError
+
+        def stage_view_generation(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def publish_snapshot(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def resolve_ref(self, repository_id, ref_name="main"):
+            raise NotImplementedError
+
+        def get_manifest_summary(self, snapshot_id):
+            raise NotImplementedError
+
+    legacy = LegacyCatalog()
+
+    assert isinstance(legacy, IndexCatalog)
+    assert not isinstance(legacy, RetainedImportCatalog)
 
 
 def test_receipt_verification_is_an_additive_object_store_capability() -> None:
@@ -104,6 +158,41 @@ def test_streaming_is_additive_to_receipt_verifying_object_store() -> None:
     assert isinstance(receipt_only, ObjectStore)
     assert isinstance(receipt_only, ReceiptVerifyingObjectStore)
     assert not isinstance(receipt_only, StreamingObjectStore)
+    assert not isinstance(receipt_only, RetainedImportObjectStore)
+
+
+def test_retained_import_capability_requires_streaming_and_receipt_checks() -> None:
+    class StreamingOnlyObjectStore:
+        def put_bytes(self, data):
+            raise NotImplementedError
+
+        def put_file(self, source):
+            raise NotImplementedError
+
+        def has(self, digest):
+            raise NotImplementedError
+
+        def open(self, digest):
+            raise NotImplementedError
+
+        def read_bytes(self, digest):
+            raise NotImplementedError
+
+        def verify(self, digest):
+            raise NotImplementedError
+
+        def materialize(self, digest, destination):
+            raise NotImplementedError
+
+        def put_chunks(self, chunks, expected_digest, expected_size):
+            raise NotImplementedError
+
+    streaming_only = StreamingOnlyObjectStore()
+
+    assert isinstance(streaming_only, ObjectStore)
+    assert isinstance(streaming_only, StreamingObjectStore)
+    assert not isinstance(streaming_only, ReceiptVerifyingObjectStore)
+    assert not isinstance(streaming_only, RetainedImportObjectStore)
 
 
 def test_streaming_object_store_protocol_executes_expected_identity_put(

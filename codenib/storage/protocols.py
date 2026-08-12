@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import (
     Any,
@@ -18,7 +19,88 @@ from typing import (
 )
 
 from .cas import BlobInfo
-from .models import IndexJobCompletion, IndexJobRecord, IndexJobViewRecord, RefJobLease
+from .models import (
+    IndexJobCompletion,
+    IndexJobRecord,
+    IndexJobViewRecord,
+    RefJobLease,
+    StorageIntegrityError,
+)
+
+RETAINED_IMPORT_RESPONSE_MAX_DEPTH = 64
+RETAINED_IMPORT_RESPONSE_MAX_NODES = 250_000
+RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS = 64 * 1024 * 1024
+RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS = 4_096
+RETAINED_IMPORT_CATALOG_CONTRACT = "codenib.retained-import-catalog.v1"
+
+
+def snapshot_retained_import_response(value: object, *, label: str) -> Any:
+    """Detach and enforce the public exact-JSON retained response budget."""
+
+    nodes = 0
+    text_size = 0
+
+    def snapshot(current: object, depth: int) -> Any:
+        nonlocal nodes, text_size
+        nodes += 1
+        if nodes > RETAINED_IMPORT_RESPONSE_MAX_NODES:
+            raise StorageIntegrityError(f"{label} exceeds its node limit")
+        if depth > RETAINED_IMPORT_RESPONSE_MAX_DEPTH:
+            raise StorageIntegrityError(f"{label} exceeds its depth limit")
+        if current is None or type(current) is bool:
+            return current
+        if type(current) is str:
+            text_size += len(current)
+            if text_size > RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS or "\x00" in current:
+                raise StorageIntegrityError(f"{label} contains invalid text")
+            return current
+        if type(current) is int:
+            if not -(2**63) <= current < 2**63:
+                raise StorageIntegrityError(f"{label} contains an invalid integer")
+            return current
+        if type(current) is float:
+            if not math.isfinite(current):
+                raise StorageIntegrityError(f"{label} contains a non-finite number")
+            return current
+        if type(current) is list:
+            if len(current) > RETAINED_IMPORT_RESPONSE_MAX_NODES - nodes:
+                raise StorageIntegrityError(f"{label} exceeds its node limit")
+            return [snapshot(child, depth + 1) for child in current]
+        if type(current) is dict:
+            if len(current) > RETAINED_IMPORT_RESPONSE_MAX_NODES - nodes:
+                raise StorageIntegrityError(f"{label} exceeds its node limit")
+            result: dict[str, Any] = {}
+            try:
+                for key, child in current.items():
+                    if (
+                        type(key) is not str
+                        or not key
+                        or len(key) > RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS
+                    ):
+                        raise StorageIntegrityError(
+                            f"{label} contains an invalid object key"
+                        )
+                    text_size += len(key)
+                    if (
+                        text_size > RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS
+                        or "\x00" in key
+                    ):
+                        raise StorageIntegrityError(
+                            f"{label} contains an invalid object key"
+                        )
+                    result[key] = snapshot(child, depth + 1)
+            except StorageIntegrityError:
+                raise
+            except Exception as exc:
+                raise StorageIntegrityError(
+                    f"{label} could not be snapshotted"
+                ) from exc
+            if len(result) != len(current):
+                raise StorageIntegrityError(f"{label} changed while snapshotted")
+            return result
+        raise StorageIntegrityError(f"{label} contains a non-exact JSON value")
+
+    return snapshot(value, 1)
 
 
 @runtime_checkable
@@ -91,22 +173,45 @@ class StreamingObjectStore(ObjectStore, Protocol):
 
 
 @runtime_checkable
+class RetainedImportObjectStore(
+    StreamingObjectStore,
+    ReceiptVerifyingObjectStore,
+    Protocol,
+):
+    """Capabilities required by retained artifact import coordinators.
+
+    This intersection remains additive: neither capability is added to the
+    baseline :class:`ObjectStore`, so existing adapters keep their runtime
+    protocol shape until they explicitly implement retained imports.
+    """
+
+    pass
+
+
+@runtime_checkable
 class IndexCatalog(Protocol):
     """Transactional identities and publication, excluding query engines.
 
     Object registration is a metadata operation, not a byte upload.  A
     coordinator must first obtain and verify the corresponding ``ObjectStore``
     receipt and must compare digest, size, and storage key before publication.
+
     """
 
-    def create_namespace(self, name: str) -> str: ...
+    def create_namespace(self, name: str) -> str:
+        """Return the backend-neutral :class:`NamespaceIdentity` ID."""
+
+        ...
 
     def create_repository(
         self,
         repository_key: str,
         *,
         namespace_id: str,
-    ) -> str: ...
+    ) -> str:
+        """Return the exact backend-neutral :class:`RepositoryIdentity` ID."""
+
+        ...
 
     def create_source_revision(
         self,
@@ -116,7 +221,10 @@ class IndexCatalog(Protocol):
         tree_sha: str | None = None,
         dirty: bool = False,
         source_fingerprint: str | None = None,
-    ) -> str: ...
+    ) -> str:
+        """Return the exact backend-neutral :class:`SourceRevision` ID."""
+
+        ...
 
     def create_view_profile(
         self,
@@ -124,7 +232,10 @@ class IndexCatalog(Protocol):
         config: Mapping[str, Any] | None = None,
         *,
         name: str = "default",
-    ) -> str: ...
+    ) -> str:
+        """Return the exact backend-neutral :class:`ViewProfile` ID."""
+
+        ...
 
     def register_object(
         self,
@@ -133,7 +244,10 @@ class IndexCatalog(Protocol):
         storage_key: str,
         byte_size: int,
         media_type: str = "application/octet-stream",
-    ) -> str: ...
+    ) -> str:
+        """Return the exact canonical digest of the registered object."""
+
+        ...
 
     def stage_view_generation(
         self,
@@ -146,7 +260,10 @@ class IndexCatalog(Protocol):
         schema_version: str,
         metadata: Mapping[str, Any] | None = None,
         member_object_digests: Sequence[str] = (),
-    ) -> str: ...
+    ) -> str:
+        """Return the exact backend-neutral :class:`ViewGeneration` ID."""
+
+        ...
 
     def publish_snapshot(
         self,
@@ -163,6 +280,10 @@ class IndexCatalog(Protocol):
         it already targets the fully validated desired snapshot.  Otherwise,
         ``expected_generation`` is a compare-and-swap precondition and a
         successful advance returns ``changed=True``.
+
+        The returned mapping contains core fields ``snapshot_id``,
+        ``repository_id``, ``ref_name``, ``generation``, ``updated_at``, and
+        ``changed``.
         """
 
         ...
@@ -171,10 +292,66 @@ class IndexCatalog(Protocol):
         self,
         repository_id: str,
         ref_name: str = "main",
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any]:
+        """Return the ref core plus its identity-closed manifest.
+
+        Ref generations are positive, monotonic signed 64-bit integers.
+        For one repository/ref, ``publish_snapshot`` and ``resolve_ref`` are
+        linearizable: a resolve after publish observes that publication or a
+        strictly newer generation, never an older generation.
+        """
+
+        ...
 
     def get_manifest_summary(self, snapshot_id: str) -> dict[str, Any]:
-        """Return a ready snapshot with namespace/repository identity closure."""
+        """Return a ready snapshot with namespace/repository identity closure.
+
+        Identity-bearing core fields and ordered member lists are required.
+        """
+
+        ...
+
+
+@runtime_checkable
+class RetainedImportCatalog(IndexCatalog, Protocol):
+    """Catalog response contract required by retained import attestation.
+
+    Every response uses exact built-in JSON values with finite floats and
+    signed 64-bit integers. Keys are nonempty, NUL-free text no longer than
+    ``RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS`` and all text is NUL-free. One
+    response is bounded by ``RETAINED_IMPORT_RESPONSE_MAX_DEPTH`` levels,
+    ``RETAINED_IMPORT_RESPONSE_MAX_NODES`` values, and
+    ``RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS`` aggregate key/value characters,
+    including extensions. Backends may add fields outside the core below;
+    consumers ignore extensions only after authenticating exact core types and
+    identities.
+
+    ``publish_snapshot`` returns ``snapshot_id``, ``repository_id``,
+    ``ref_name``, positive ``generation``, exact ``changed`` boolean, and
+    ``updated_at`` accepted by :func:`codenib.storage.canonical_utc_timestamp`.
+    ``resolve_ref`` repeats repository/ref/snapshot/generation/updated_at and
+    has a ``manifest`` with the summary shape below. For one repository/ref,
+    publish and resolve are linearizable: a later resolve sees that generation
+    or a strictly newer, valid identity-closed ref.
+
+    A manifest summary contains ``snapshot_id``, ``repository_id``, ``status``
+    (``ready``), canonical ``published_at``, ``namespace``
+    (``namespace_id``, ``name``), ``repository`` (``namespace_id``,
+    ``repository_key``), ``source`` (``source_revision_id``, ``kind``,
+    nullable ``commit_sha``/``tree_sha``, nonempty ``source_fingerprint``), and
+    ``views``.
+    Each view contains ``view_generation_id``, ``schema_version``, exact
+    ``metadata``, ``profile`` (``profile_id``, ``name``, exact ``config``),
+    ``object``, and ordered ``member_objects``. Object summaries contain
+    ``digest``, ``storage_key``, integer ``byte_size``, and ``media_type``.
+    The summary returned directly and the one nested in ``resolve_ref`` repeat
+    the same immutable snapshot ``published_at``. Generation membership is
+    bounded by :data:`codenib.storage.MAX_VIEW_GENERATION_MEMBERS`, keeping its
+    canonical metadata plus object envelopes inside the response node budget.
+    """
+
+    def retained_import_contract(self) -> str:
+        """Opt in to the exact retained-import response contract above."""
 
         ...
 
@@ -235,5 +412,13 @@ __all__ = [
     "JobCatalog",
     "ObjectStore",
     "ReceiptVerifyingObjectStore",
+    "RETAINED_IMPORT_CATALOG_CONTRACT",
+    "RETAINED_IMPORT_RESPONSE_MAX_DEPTH",
+    "RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS",
+    "RETAINED_IMPORT_RESPONSE_MAX_NODES",
+    "RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS",
+    "RetainedImportCatalog",
+    "RetainedImportObjectStore",
+    "snapshot_retained_import_response",
     "StreamingObjectStore",
 ]

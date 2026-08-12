@@ -12,6 +12,7 @@ from threading import Barrier
 
 import pytest
 
+import codenib.storage.protocols as storage_protocols
 from codenib.storage.cas import LocalCAS
 from codenib.storage.models import (
     ObjectRecord,
@@ -492,6 +493,136 @@ def test_compound_generation_members_are_identity_bound_and_immutable(tmp_path):
                 """,
                 (view_id, member_one),
             )
+
+
+def test_publish_rejects_aggregate_retained_response_over_budget_and_rolls_back(
+    tmp_path,
+    monkeypatch,
+):
+    def json_nodes(value):
+        if type(value) is list:
+            return 1 + sum(json_nodes(child) for child in value)
+        if type(value) is dict:
+            return 1 + sum(json_nodes(child) for child in value.values())
+        return 1
+
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id = catalog.create_repository("owner/aggregate-budget")
+        source_revision_id = _source(catalog, repository_id)
+        bm25_profile = catalog.create_view_profile("bm25", {})
+        vector_profile = catalog.create_view_profile("vector", {})
+        bm25 = _stage(
+            catalog,
+            repository_id,
+            source_revision_id,
+            bm25_profile,
+            _object(catalog, "a"),
+        )
+        first = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            (bm25,),
+            expected_generation=0,
+        )
+        first_summary = catalog.get_manifest_summary(first["snapshot_id"])
+        vector = _stage(
+            catalog,
+            repository_id,
+            source_revision_id,
+            vector_profile,
+            _object(catalog, "b"),
+            view_type="vector",
+        )
+
+        original_limit = storage_protocols.RETAINED_IMPORT_RESPONSE_MAX_NODES
+        monkeypatch.setattr(
+            storage_protocols,
+            "RETAINED_IMPORT_RESPONSE_MAX_NODES",
+            json_nodes(first_summary),
+        )
+        with pytest.raises(CatalogValidationError, match="response bounds"):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                (bm25, vector),
+                expected_generation=1,
+            )
+        monkeypatch.setattr(
+            storage_protocols,
+            "RETAINED_IMPORT_RESPONSE_MAX_NODES",
+            original_limit,
+        )
+
+        ref = catalog.resolve_ref(repository_id)
+        assert ref["snapshot_id"] == first["snapshot_id"]
+        assert ref["generation"] == 1
+        assert (
+            catalog._connection.execute(
+                "SELECT status FROM view_generations WHERE view_generation_id = ?",
+                (vector,),
+            ).fetchone()["status"]
+            == "staged"
+        )
+        assert (
+            catalog._connection.execute(
+                "SELECT COUNT(*) FROM snapshots WHERE snapshot_id != ?",
+                (first["snapshot_id"],),
+            ).fetchone()[0]
+            == 0
+        )
+
+
+def test_publish_budgets_complete_ref_response_before_moving_ref(
+    tmp_path,
+    monkeypatch,
+):
+    def json_nodes(value):
+        if type(value) is list:
+            return 1 + sum(json_nodes(child) for child in value)
+        if type(value) is dict:
+            return 1 + sum(json_nodes(child) for child in value.values())
+        return 1
+
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+        first = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            (view_id,),
+            expected_generation=0,
+        )
+        summary = catalog.get_manifest_summary(first["snapshot_id"])
+        original_limit = storage_protocols.RETAINED_IMPORT_RESPONSE_MAX_NODES
+        monkeypatch.setattr(
+            storage_protocols,
+            "RETAINED_IMPORT_RESPONSE_MAX_NODES",
+            json_nodes(summary),
+        )
+
+        with pytest.raises(CatalogValidationError, match="response bounds"):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                (view_id,),
+                ref_name="copy",
+                expected_generation=0,
+            )
+        with pytest.raises(CatalogValidationError, match="response bounds"):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                (view_id,),
+                expected_generation=0,
+            )
+
+        monkeypatch.setattr(
+            storage_protocols,
+            "RETAINED_IMPORT_RESPONSE_MAX_NODES",
+            original_limit,
+        )
+        assert catalog.resolve_ref(repository_id)["snapshot_id"] == first["snapshot_id"]
+        with pytest.raises(CatalogNotFoundError, match="ref not found"):
+            catalog.resolve_ref(repository_id, "copy")
 
 
 @pytest.mark.parametrize(

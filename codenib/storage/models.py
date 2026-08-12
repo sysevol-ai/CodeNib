@@ -11,6 +11,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Mapping, Sequence
@@ -20,8 +21,14 @@ from .._secret_fields import assert_no_secret_fields as _assert_no_secret_fields
 
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _CATALOG_INT64_MAX = 9_223_372_036_854_775_807
+DEFAULT_NAMESPACE_ID = "ns_default"
+DEFAULT_NAMESPACE_NAME = "default"
 INDEX_JOB_REQUEST_CONTRACT = "codenib.index-job-request.v1"
 VIEW_GENERATION_MEMBERS_METADATA_KEY = "_codenib_member_object_digests"
+# One retained-import summary represents every member twice: once in canonical
+# generation metadata and once as its identity-closed object envelope. Keep
+# this producer bound comfortably below the 250k-node response capability.
+MAX_VIEW_GENERATION_MEMBERS = 32_768
 
 
 class StorageError(RuntimeError):
@@ -42,6 +49,26 @@ class StorageNotFound(StorageError):
 
 class StorageValidationError(StorageError, ValueError):
     """Input cannot form a valid storage identity."""
+
+
+def canonical_utc_timestamp(value: object, field: str = "timestamp") -> str:
+    """Require the exact timezone-aware UTC ISO-8601 storage representation."""
+
+    if type(value) is not str:
+        raise StorageValidationError(f"{field} must be a canonical UTC timestamp")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise StorageValidationError(
+            f"{field} must be a canonical UTC timestamp"
+        ) from exc
+    if (
+        parsed.tzinfo is None
+        or parsed.utcoffset() != timezone.utc.utcoffset(parsed)
+        or parsed.isoformat() != value
+    ):
+        raise StorageValidationError(f"{field} must be a canonical UTC timestamp")
+    return value
 
 
 def canonical_json(value: Mapping[str, Any]) -> str:
@@ -126,6 +153,8 @@ def normalize_view_generation_metadata(
         raise StorageValidationError("member object digests must be a sequence")
     normalized_members_list: list[str] = []
     for value in member_object_digests:
+        if len(normalized_members_list) >= MAX_VIEW_GENERATION_MEMBERS:
+            raise StorageValidationError("view generation has too many member objects")
         if type(value) is not str:
             raise StorageValidationError("member object digests must be exact strings")
         normalized_members_list.append(normalize_digest(value))
@@ -165,6 +194,8 @@ def view_generation_member_digests(
         raise StorageValidationError(
             "view generation member metadata must be a nonempty digest list"
         )
+    if len(raw_members) > MAX_VIEW_GENERATION_MEMBERS:
+        raise StorageValidationError("view generation has too many member objects")
     if any(type(value) is not str for value in raw_members):
         raise StorageValidationError(
             "view generation member metadata must contain exact digest strings"
@@ -286,6 +317,31 @@ class IndexJobCompletion(str, Enum):
     REQUEUE = "requeue"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True, slots=True)
+class NamespaceIdentity:
+    """Backend-neutral stable identity for one logical namespace name."""
+
+    name: str
+
+    def __post_init__(self) -> None:
+        if type(self) is not NamespaceIdentity or type(self.name) is not str:
+            raise StorageValidationError(
+                "namespace identity must use exact model and text types"
+            )
+        if str.__len__(self.name) > 32_768 or "\x00" in self.name:
+            raise StorageValidationError("namespace name is out of bounds")
+        normalized = str.strip(self.name)
+        if not normalized:
+            raise StorageValidationError("namespace name must not be empty")
+        object.__setattr__(self, "name", normalized)
+
+    @property
+    def namespace_id(self) -> str:
+        if self.name == DEFAULT_NAMESPACE_NAME:
+            return DEFAULT_NAMESPACE_ID
+        return content_id("ns", {"name": self.name})
 
 
 @dataclass(frozen=True, slots=True)
@@ -1072,13 +1128,17 @@ class RefState:
 
 __all__ = [
     "ArtifactMember",
+    "DEFAULT_NAMESPACE_ID",
+    "DEFAULT_NAMESPACE_NAME",
     "INDEX_JOB_REQUEST_CONTRACT",
+    "MAX_VIEW_GENERATION_MEMBERS",
     "IndexJobCompletion",
     "IndexJobRecord",
     "IndexJobRequest",
     "IndexJobRequestedMode",
     "IndexJobStatus",
     "IndexJobViewRecord",
+    "NamespaceIdentity",
     "ObjectRecord",
     "PublishConflict",
     "PublishedSnapshot",
@@ -1095,6 +1155,7 @@ __all__ = [
     "ViewGeneration",
     "ViewProfile",
     "assert_no_secret_fields",
+    "canonical_utc_timestamp",
     "canonical_json",
     "content_id",
     "normalize_digest",

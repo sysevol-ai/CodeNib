@@ -10,8 +10,12 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from codenib.storage.models import (
+    DEFAULT_NAMESPACE_ID,
+    DEFAULT_NAMESPACE_NAME,
+    MAX_VIEW_GENERATION_MEMBERS,
     VIEW_GENERATION_MEMBERS_METADATA_KEY,
     ArtifactMember,
+    NamespaceIdentity,
     ObjectRecord,
     PublishedSnapshot,
     RepositoryIdentity,
@@ -22,8 +26,48 @@ from codenib.storage.models import (
     ViewProfile,
     assert_no_secret_fields,
     canonical_json,
+    canonical_utc_timestamp,
     normalize_view_generation_metadata,
 )
+
+
+def test_canonical_utc_timestamp_requires_exact_utc_iso_text() -> None:
+    value = "2026-08-12T12:34:56.123456+00:00"
+    assert canonical_utc_timestamp(value) == value
+
+    for invalid in (
+        "now",
+        "2026-08-12T12:34:56",
+        "2026-08-12T05:34:56-07:00",
+        "2026-08-12T12:34:56Z",
+        str.__new__(type("DerivedText", (str,), {}), value),
+    ):
+        with pytest.raises(StorageValidationError, match="canonical UTC"):
+            canonical_utc_timestamp(invalid)
+
+
+def test_namespace_identity_is_backend_neutral_and_canonical() -> None:
+    default = NamespaceIdentity(DEFAULT_NAMESPACE_NAME)
+    custom = NamespaceIdentity("team")
+
+    assert default.namespace_id == DEFAULT_NAMESPACE_ID
+    assert custom.namespace_id.startswith("ns_")
+    assert custom.namespace_id == NamespaceIdentity(" team ").namespace_id
+    assert custom.namespace_id != default.namespace_id
+
+
+def test_namespace_identity_rejects_hostile_subclasses() -> None:
+    class DerivedNamespace(NamespaceIdentity):
+        pass
+
+    class HostileText(str):
+        def strip(self, *_args, **_kwargs):
+            raise AssertionError("hostile namespace strip executed")
+
+    with pytest.raises(StorageValidationError, match="exact model"):
+        DerivedNamespace("team")
+    with pytest.raises(StorageValidationError, match="exact model"):
+        NamespaceIdentity(HostileText("team"))
 
 
 @pytest.mark.parametrize(
@@ -438,3 +482,29 @@ def test_compound_generation_member_normalization_rejects_ambiguous_inputs(
                     {VIEW_GENERATION_MEMBERS_METADATA_KEY: raw}
                 ),
             )
+
+
+def test_compound_generation_members_are_bounded_for_summary_closure() -> None:
+    too_many = (f"{value:064x}" for value in range(MAX_VIEW_GENERATION_MEMBERS + 1))
+    with pytest.raises(StorageValidationError, match="too many member"):
+        normalize_view_generation_metadata(
+            "f" * 64,
+            member_object_digests=too_many,
+        )
+
+    with pytest.raises(StorageValidationError, match="too many member"):
+        ViewGeneration(
+            repository_id="repo_id",
+            source_revision_id="source_id",
+            profile=ViewProfile.create("portable_context", {}),
+            object_digest="f" * 64,
+            schema_version="1",
+            metadata_json=canonical_json(
+                {
+                    VIEW_GENERATION_MEMBERS_METADATA_KEY: [
+                        f"{value:064x}"
+                        for value in range(MAX_VIEW_GENERATION_MEMBERS + 1)
+                    ]
+                }
+            ),
+        )

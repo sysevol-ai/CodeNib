@@ -23,11 +23,14 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
 from .models import (
+    DEFAULT_NAMESPACE_ID,
+    DEFAULT_NAMESPACE_NAME,
     IndexJobCompletion,
     IndexJobRecord,
     IndexJobRequest,
     IndexJobStatus,
     IndexJobViewRecord,
+    NamespaceIdentity,
     ObjectRecord,
     PublishConflict,
     RefJobLease,
@@ -38,15 +41,18 @@ from .models import (
     StorageNotFound,
     StorageValidationError,
     canonical_json,
+    canonical_utc_timestamp,
     content_id,
     normalize_digest,
     normalize_view_generation_metadata,
     view_generation_member_digests,
 )
+from .protocols import (
+    RETAINED_IMPORT_CATALOG_CONTRACT,
+    snapshot_retained_import_response,
+)
 
 LATEST_SCHEMA_VERSION = 4
-DEFAULT_NAMESPACE_ID = "ns_default"
-DEFAULT_NAMESPACE_NAME = "default"
 
 CatalogError = StorageError
 CatalogConflictError = PublishConflict
@@ -104,21 +110,10 @@ def _persisted_positive_int64(value: object, field: str) -> int:
 
 def _persisted_utc_timestamp(value: object, field: str) -> str:
     """Require the exact UTC ISO-8601 representation emitted by ``_now``."""
-    if not isinstance(value, str):
-        raise CatalogConflictError(f"{field} must be a canonical UTC timestamp")
     try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError as exc:
-        raise CatalogConflictError(
-            f"{field} must be a canonical UTC timestamp"
-        ) from exc
-    if (
-        parsed.tzinfo is None
-        or parsed.utcoffset() != timezone.utc.utcoffset(parsed)
-        or parsed.isoformat() != value
-    ):
-        raise CatalogConflictError(f"{field} must be a canonical UTC timestamp")
-    return value
+        return canonical_utc_timestamp(value, field)
+    except StorageValidationError as exc:
+        raise CatalogConflictError(str(exc)) from exc
 
 
 _SCHEMA_V1 = (
@@ -1034,6 +1029,11 @@ _MIGRATIONS: dict[int, tuple[str, ...]] = {
 class SQLiteCatalog:
     """Transactional SQLite catalog for immutable index snapshots."""
 
+    def retained_import_contract(self) -> str:
+        """Declare support for exact retained-import response attestation."""
+
+        return RETAINED_IMPORT_CATALOG_CONTRACT
+
     def __init__(
         self,
         path: str | Path,
@@ -1907,11 +1907,9 @@ class SQLiteCatalog:
 
     def create_namespace(self, name: str) -> str:
         """Create an idempotent logical namespace and return its stable ID."""
-        normalized = _required_text(name, "namespace name")
-        if normalized == DEFAULT_NAMESPACE_NAME:
-            namespace_id = DEFAULT_NAMESPACE_ID
-        else:
-            namespace_id = content_id("ns", {"name": normalized})
+        namespace = NamespaceIdentity(name)
+        normalized = namespace.name
+        namespace_id = namespace.namespace_id
         with self._transaction():
             self._connection.execute(
                 """
@@ -2415,6 +2413,15 @@ class SQLiteCatalog:
                     members=members,
                     view_rows=rows,
                 )
+                summary = self._manifest_summary(snapshot_id)
+                self._validate_retained_ref_response_bounds(
+                    repository_id=repository,
+                    ref_name=normalized_ref,
+                    snapshot_id=snapshot_id,
+                    generation=current_generation,
+                    updated_at=current_ref["updated_at"],
+                    manifest=summary,
+                )
                 result = {
                     "snapshot_id": snapshot_id,
                     "repository_id": repository,
@@ -2500,6 +2507,15 @@ class SQLiteCatalog:
             if current_generation == _SQLITE_INT64_MAX:
                 raise CatalogConflictError("ref generation cannot be incremented")
             next_generation = current_generation + 1
+            summary = self._manifest_summary(snapshot_id)
+            self._validate_retained_ref_response_bounds(
+                repository_id=repository,
+                ref_name=normalized_ref,
+                snapshot_id=snapshot_id,
+                generation=next_generation,
+                updated_at=published_at,
+                manifest=summary,
+            )
             if current_ref is None:
                 self._connection.execute(
                     """
@@ -2545,6 +2561,33 @@ class SQLiteCatalog:
             "changed": True,
         }
 
+    @staticmethod
+    def _validate_retained_ref_response_bounds(
+        *,
+        repository_id: str,
+        ref_name: str,
+        snapshot_id: str,
+        generation: int,
+        updated_at: str,
+        manifest: dict[str, Any],
+    ) -> None:
+        try:
+            snapshot_retained_import_response(
+                {
+                    "repository_id": repository_id,
+                    "ref_name": ref_name,
+                    "snapshot_id": snapshot_id,
+                    "generation": generation,
+                    "updated_at": updated_at,
+                    "manifest": manifest,
+                },
+                label="retained ref resolution",
+            )
+        except StorageIntegrityError as exc:
+            raise CatalogValidationError(
+                "snapshot exceeds retained-import response bounds"
+            ) from exc
+
     def _validate_repository_source_identity(
         self, repository_row: sqlite3.Row, source_row: sqlite3.Row
     ) -> None:
@@ -2554,11 +2597,7 @@ class SQLiteCatalog:
         )
         try:
             namespace_name = _required_text(namespace_row["name"], "namespace name")
-            expected_namespace_id = (
-                DEFAULT_NAMESPACE_ID
-                if namespace_name == DEFAULT_NAMESPACE_NAME
-                else content_id("ns", {"name": namespace_name})
-            )
+            expected_namespace_id = NamespaceIdentity(namespace_name).namespace_id
             repository_identity = RepositoryIdentity(
                 namespace_id=repository_row["namespace_id"],
                 repository_key=repository_row["repository_key"],
@@ -2841,7 +2880,7 @@ class SQLiteCatalog:
                 raise CatalogConflictError(
                     f"ref {normalized_ref!r} targets another repository"
                 )
-            return {
+            response = {
                 "repository_id": repository,
                 "ref_name": normalized_ref,
                 "snapshot_id": row["snapshot_id"],
@@ -2849,12 +2888,30 @@ class SQLiteCatalog:
                 "updated_at": updated_at,
                 "manifest": manifest,
             }
+            try:
+                return snapshot_retained_import_response(
+                    response,
+                    label="retained ref resolution",
+                )
+            except StorageIntegrityError as exc:
+                raise CatalogConflictError(
+                    "ref response exceeds retained-import bounds"
+                ) from exc
 
     def get_manifest_summary(self, snapshot_id: str) -> dict[str, Any]:
         """Return the identity-closed summary for a published, ready snapshot."""
         normalized_snapshot = _required_text(snapshot_id, "snapshot ID")
         with self._transaction(immediate=False):
-            return self._manifest_summary(normalized_snapshot)
+            summary = self._manifest_summary(normalized_snapshot)
+            try:
+                return snapshot_retained_import_response(
+                    summary,
+                    label="retained snapshot summary",
+                )
+            except StorageIntegrityError as exc:
+                raise CatalogConflictError(
+                    "snapshot response exceeds retained-import bounds"
+                ) from exc
 
     def _manifest_summary(self, snapshot_id: str) -> dict[str, Any]:
         snapshot = self._require_record("snapshots", "snapshot_id", snapshot_id)
