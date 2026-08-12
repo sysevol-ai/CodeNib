@@ -12,6 +12,7 @@ match the repository and filter identity recorded by the manifest.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib
 import json
@@ -156,6 +157,24 @@ class FactQueryCandidate:
         """Preserve the FactQueryIndex query protocol for existing consumers."""
 
         return getattr(self.index, name)
+
+
+_FACT_QUERY_RECEIPT_KEYS = frozenset(
+    {
+        "schema_version",
+        "language",
+        "project_root",
+        "manifest",
+        "index",
+        "graph",
+        "fact_query",
+        "source",
+        "filters",
+        "native_input",
+        "filter_identity",
+        "receipt_sha256",
+    }
+)
 
 
 def _reject(message: str) -> FactQueryCandidateRejected:
@@ -1301,6 +1320,246 @@ def load_fact_query_candidate(
     return FactQueryCandidate(index=native.index, receipt=receipt, timings=timings)
 
 
+def observe_fact_query_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Re-observe every mutable input bound by one admitted receipt.
+
+    The observer deliberately remains graph-free.  A lazy consumer calls it
+    immediately before and after loading the already-persisted ``graph.pkl``;
+    equality of the two returned observations proves that the graph, decoded
+    index, manifest, checkout, filter surface, and language metadata stayed on
+    one generation throughout publication.
+    """
+
+    receipt = _mapping(value, label="FactQuery candidate receipt")
+    _require_exact_keys(
+        receipt,
+        _FACT_QUERY_RECEIPT_KEYS,
+        label="FactQuery candidate receipt",
+    )
+    if (
+        type(receipt.get("schema_version")) is not int
+        or receipt["schema_version"] != FACT_QUERY_RECEIPT_SCHEMA_VERSION
+    ):
+        raise _reject("FactQuery candidate receipt schema is not v1")
+    recorded_digest = _sha256(
+        receipt.get("receipt_sha256"), label="FactQuery receipt_sha256"
+    )
+    unsigned = {
+        key: copy.deepcopy(item)
+        for key, item in receipt.items()
+        if key != "receipt_sha256"
+    }
+    if _canonical_json_digest(unsigned) != recorded_digest:
+        raise _reject("FactQuery candidate receipt digest does not match its fields")
+
+    raw_language = receipt.get("language")
+    if type(raw_language) is not str:
+        raise _reject("FactQuery candidate receipt language is malformed")
+    language = normalize_language(raw_language)
+    if language not in FACT_QUERY_PROMOTED_LANGUAGES or (
+        receipt.get("language") != language
+    ):
+        raise _reject("FactQuery candidate receipt language is not canonical")
+    project_root_value = receipt.get("project_root")
+    if type(project_root_value) is not str or not project_root_value:
+        raise _reject("FactQuery candidate project root is malformed")
+    try:
+        project_root = Path(project_root_value).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise _reject("FactQuery candidate project root is unavailable") from exc
+    if not project_root.is_dir() or str(project_root) != project_root_value:
+        raise _reject("FactQuery candidate project root is not canonical")
+
+    manifest = _mapping(receipt.get("manifest"), label="FactQuery manifest receipt")
+    manifest_path_value = manifest.get("path")
+    if type(manifest_path_value) is not str or not manifest_path_value:
+        raise _reject("FactQuery manifest receipt path is malformed")
+    raw_manifest_path = Path(manifest_path_value)
+    if raw_manifest_path.is_symlink():
+        raise _reject("FactQuery manifest receipt must name a regular file")
+    try:
+        manifest_path = raw_manifest_path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise _reject("FactQuery manifest receipt is unavailable") from exc
+    if not manifest_path.is_file() or str(manifest_path) != manifest_path_value:
+        raise _reject("FactQuery manifest receipt path is not canonical")
+    manifest_size = _nonnegative_int(
+        manifest.get("size_bytes"), label="FactQuery manifest size_bytes"
+    )
+    manifest_digest = _sha256(manifest.get("sha256"), label="FactQuery manifest sha256")
+    try:
+        observed_manifest = regular_file_fingerprint(manifest_path)
+    except (OSError, ValueError) as exc:
+        raise _reject("FactQuery manifest changed after candidate admission") from exc
+    if observed_manifest != {"size": manifest_size, "sha256": manifest_digest}:
+        raise _reject("FactQuery manifest changed after candidate admission")
+
+    commit = manifest.get("commit")
+    if type(commit) is not str or (commit and _GIT_COMMIT.fullmatch(commit) is None):
+        raise _reject("FactQuery manifest commit is malformed")
+    checkout_head = _checkout_head(project_root)
+    if checkout_head != commit:
+        raise _reject("live repository commit changed after candidate admission")
+
+    entry_path_value = manifest.get("entry_path")
+    if type(entry_path_value) is not str or not entry_path_value:
+        raise _reject("FactQuery manifest entry path is malformed")
+    expected_entry_path = manifest_path.parent / "symbol_graph"
+    if Path(entry_path_value) != expected_entry_path:
+        raise _reject("FactQuery manifest entry path changed after admission")
+    try:
+        entry_path = Path(entry_path_value).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise _reject("FactQuery symbol graph view is unavailable") from exc
+    if not entry_path.is_dir() or entry_path != expected_entry_path:
+        raise _reject("FactQuery symbol graph view is not canonical")
+
+    index = _mapping(receipt.get("index"), label="FactQuery decoded index receipt")
+    index_relative = _canonical_relative_path(
+        index.get("relative_path"), label="FactQuery decoded index relative_path"
+    )
+    if index_relative != "index.decoded":
+        raise _reject("FactQuery decoded index must be index.decoded")
+    index_size = _nonnegative_int(
+        index.get("size_bytes"), label="FactQuery decoded index size_bytes"
+    )
+    index_digest = _sha256(index.get("sha256"), label="FactQuery decoded index sha256")
+    graph = _mapping(receipt.get("graph"), label="FactQuery graph receipt")
+    graph_relative = _canonical_relative_path(
+        graph.get("relative_path"), label="FactQuery graph relative_path"
+    )
+    if graph_relative != "graph.pkl":
+        raise _reject("FactQuery graph receipt must name graph.pkl")
+    graph_size = _nonnegative_int(
+        graph.get("size_bytes"), label="FactQuery graph size_bytes"
+    )
+    graph_digest = _sha256(graph.get("sha256"), label="FactQuery graph sha256")
+    graph_query_digest = _sha256(
+        graph.get("query_surface_sha256"),
+        label="FactQuery graph query_surface_sha256",
+    )
+
+    index_path = entry_path / index_relative
+    graph_path = entry_path / graph_relative
+    try:
+        observed_index = regular_file_fingerprint(index_path)
+        observed_graph = regular_file_fingerprint(graph_path)
+    except (OSError, ValueError) as exc:
+        raise _reject("FactQuery artifact changed after candidate admission") from exc
+    if observed_index != {"size": index_size, "sha256": index_digest}:
+        raise _reject("FactQuery decoded index changed after candidate admission")
+    if observed_graph != {"size": graph_size, "sha256": graph_digest}:
+        raise _reject("FactQuery graph changed after candidate admission")
+
+    native_input = _validate_input_receipt(
+        receipt.get("native_input"),
+        index_path=index_path,
+        project_root=project_root,
+        language=language,
+    )
+    if native_input["index"] != {
+        "path": str(index_path),
+        "size_bytes": index_size,
+        "sha256": index_digest,
+    }:
+        raise _reject("FactQuery native input no longer matches the decoded index")
+
+    source = _mapping(receipt.get("source"), label="FactQuery source receipt")
+    source_fingerprint = source.get("fingerprint")
+    if (
+        type(source_fingerprint) is not str
+        or _SOURCE_FINGERPRINT.fullmatch(source_fingerprint) is None
+    ):
+        raise _reject("FactQuery source fingerprint is malformed")
+    source_file_count = _nonnegative_int(
+        source.get("file_count"), label="FactQuery source file_count"
+    )
+    filters = _mapping(receipt.get("filters"), label="FactQuery filter receipt")
+    patterns = filters.get("exclude_patterns")
+    if type(patterns) is not list or not all(type(item) is str for item in patterns):
+        raise _reject("FactQuery exclude patterns are malformed")
+    observed_source, allowed_files = _source_and_allowed_files(
+        project_root,
+        cache_root=manifest_path.parent,
+        exclude_patterns=patterns,
+        target_dir=None,
+    )
+    if (
+        observed_source.value != source_fingerprint
+        or observed_source.file_count != source_file_count
+    ):
+        raise _reject("FactQuery repository source changed after candidate admission")
+    allowed_count = _nonnegative_int(
+        filters.get("allowed_file_count"),
+        label="FactQuery filter allowed_file_count",
+    )
+    allowed_digest = _sha256(
+        filters.get("allowed_files_sha256"),
+        label="FactQuery filter allowed_files_sha256",
+    )
+    if len(allowed_files) != allowed_count or (
+        _allowed_files_digest(allowed_files) != allowed_digest
+    ):
+        raise _reject("FactQuery allowed file set changed after candidate admission")
+    if manifest.get("source_fingerprint") != source_fingerprint or (
+        manifest.get("file_count") != source_file_count
+    ):
+        raise _reject("FactQuery manifest/source receipt fields disagree")
+    if manifest.get("query_surface_sha256") != graph_query_digest:
+        raise _reject("FactQuery graph query surface receipt fields disagree")
+
+    try:
+        final_manifest = regular_file_fingerprint(manifest_path)
+        final_index = regular_file_fingerprint(index_path)
+        final_graph = regular_file_fingerprint(graph_path)
+    except (OSError, ValueError) as exc:
+        raise _reject("FactQuery inputs changed during snapshot observation") from exc
+    final_source = fingerprint_repository(
+        project_root,
+        exclude_roots=(manifest_path.parent,),
+    )
+    final_checkout_head = _checkout_head(project_root)
+    if (
+        final_manifest != observed_manifest
+        or final_index != observed_index
+        or final_graph != observed_graph
+        or final_source != observed_source
+        or final_checkout_head != checkout_head
+    ):
+        raise _reject("FactQuery inputs changed during snapshot observation")
+
+    return {
+        "schema_version": FACT_QUERY_RECEIPT_SCHEMA_VERSION,
+        "receipt_sha256": recorded_digest,
+        "language": language,
+        "project_root": str(project_root),
+        "checkout_head": checkout_head,
+        "manifest": {
+            "path": str(manifest_path),
+            "size_bytes": observed_manifest["size"],
+            "sha256": observed_manifest["sha256"],
+        },
+        "index": {
+            "path": str(index_path),
+            "size_bytes": observed_index["size"],
+            "sha256": observed_index["sha256"],
+        },
+        "graph": {
+            "path": str(graph_path),
+            "size_bytes": observed_graph["size"],
+            "sha256": observed_graph["sha256"],
+            "query_surface_sha256": graph_query_digest,
+        },
+        "source": {
+            "fingerprint": observed_source.value,
+            "file_count": observed_source.file_count,
+            "allowed_file_count": len(allowed_files),
+            "allowed_files_sha256": allowed_digest,
+        },
+        "native_metadata": copy.deepcopy(native_input["metadata"]),
+    }
+
+
 __all__ = [
     "FACT_QUERY_ABI_VERSION",
     "FACT_QUERY_CAPABILITIES",
@@ -1314,5 +1573,6 @@ __all__ = [
     "NativeFactQueryIndex",
     "decode_native_fact_query_index",
     "load_fact_query_candidate",
+    "observe_fact_query_snapshot",
     "validate_fact_query_contract",
 ]

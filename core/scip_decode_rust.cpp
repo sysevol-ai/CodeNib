@@ -113,6 +113,32 @@ std::string strip_comment(std::string value) {
   return value;
 }
 
+bool proven_unrelated_array_table(const std::string &raw_section) {
+  const auto section = trim(raw_section);
+  if (section.empty())
+    return false;
+
+  std::size_t start = 0;
+  while (start <= section.size()) {
+    const auto dot = section.find('.', start);
+    const auto end = dot == std::string::npos ? section.size() : dot;
+    const auto component = section.substr(start, end - start);
+    if (component.empty() || component == "package" ||
+        component == "workspace" ||
+        !std::all_of(component.begin(), component.end(), [](char character) {
+          const auto byte = static_cast<unsigned char>(character);
+          return std::isalnum(byte) != 0 || character == '_' ||
+                 character == '-';
+        })) {
+      return false;
+    }
+    if (dot == std::string::npos)
+      break;
+    start = dot + 1;
+  }
+  return true;
+}
+
 bool parse_basic_string(const std::string &raw, std::string &output) {
   const auto value = trim(raw);
   if (value.size() < 2 || value.front() != '"')
@@ -176,6 +202,21 @@ MinimalCargoToml parse_cargo_toml(const std::string &content) {
     std::string trimmed = trim(strip_comment(line));
     if (trimmed.empty())
       continue;
+
+    if (trimmed.rfind("[[", 0) == 0) {
+      if (trimmed.size() < 5 ||
+          trimmed.compare(trimmed.size() - 2, 2, "]]") != 0) {
+        result.complete = false;
+      } else {
+        const auto array_section = trimmed.substr(2, trimmed.size() - 4);
+        if (!proven_unrelated_array_table(array_section))
+          result.complete = false;
+      }
+      // Keys in a proven-unrelated array-of-tables must not be interpreted as
+      // package or workspace metadata.
+      section = "__unrelated_array_table__";
+      continue;
+    }
 
     if (trimmed.front() == '[') {
       auto close = trimmed.find(']');

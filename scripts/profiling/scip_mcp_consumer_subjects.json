@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "subjects": [
+    {
+      "id": "python-codenib",
+      "language": "python",
+      "repository": "https://github.com/sysevol-ai/CodeNib.git",
+      "revision": "6cf61b08310e165574c52fa217c66f0b6ae2a36d"
+    },
+    {
+      "id": "rust-ruff",
+      "language": "rust",
+      "repository": "https://github.com/astral-sh/ruff.git",
+      "revision": "75a24bbc67aa31b825b6326cfb6e6afdf3ca90d5"
+    }
+  ]
+}

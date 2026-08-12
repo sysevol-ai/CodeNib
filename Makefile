@@ -98,6 +98,12 @@ CLANGD_WORKLOAD_GATE_SUBJECT_MANIFEST ?= scripts/profiling/clangd_workload_subje
 CLANGD_WORKLOAD_GATE_SUBJECT_ID ?=
 CLANGD_WORKLOAD_GATE_GENERATION_SECONDS ?=
 CLANGD_WORKLOAD_GATE_EXTRA_ARGS ?=
+SCIP_MCP_CONSUMER_GATE_MANIFEST ?=
+SCIP_MCP_CONSUMER_GATE_PROJECT_ROOT ?=
+SCIP_MCP_CONSUMER_GATE_SUBJECT_ID ?=
+SCIP_MCP_CONSUMER_GATE_SUBJECT_MANIFEST ?= scripts/profiling/scip_mcp_consumer_subjects.json
+SCIP_MCP_CONSUMER_GATE_OUTPUT ?= $(CODENIB_RESULTS_DIR)/scip-mcp-consumer-gate.json
+SCIP_MCP_CONSUMER_GATE_EXTRA_ARGS ?=
 CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR ?=
 CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT ?=
 CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS ?=
@@ -207,7 +213,7 @@ endef
 .PHONY: active-scip-tools active-lsp-tools active-scip-env active-system-deps-ubuntu
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
-.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate clangd-fact-generation-profile
+.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate scip-mcp-consumer-gate clangd-fact-generation-profile
 .PHONY: core-chunk-poc-build core-chunk-poc-test core-chunk-poc-profile
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
@@ -441,10 +447,12 @@ core-test: core-build
 		test/scip/test_fact_batch_buffer.py \
 		test/scip/test_fact_query_index.py \
 		test/scip/test_scip_query.py \
+		test/scip/test_scip_query_provider.py \
 		test/facts/test_model.py \
 		test/facts/test_adapters.py \
 		test/scripts/test_profile_fact_batch_buffer.py \
 		test/scripts/test_profile_fact_query_index.py \
+		test/scripts/test_profile_scip_mcp_consumer.py \
 		test/ls_index/test_clangd_fact_query.py
 
 fact-buffer-profile: core-build
@@ -491,6 +499,21 @@ clangd-workload-gate: core-build
 		$(if $(CLANGD_WORKLOAD_GATE_GENERATION_SECONDS),--clangd-generation-seconds "$(CLANGD_WORKLOAD_GATE_GENERATION_SECONDS)",) \
 		--output-json "$(CLANGD_WORKLOAD_GATE_OUTPUT)" \
 		$(CLANGD_WORKLOAD_GATE_EXTRA_ARGS)
+
+scip-mcp-consumer-gate: core-build
+	@test -n "$(SCIP_MCP_CONSUMER_GATE_MANIFEST)" || { echo "Set SCIP_MCP_CONSUMER_GATE_MANIFEST=/path/to/repo_manifest.json" >&2; exit 1; }
+	@test -n "$(SCIP_MCP_CONSUMER_GATE_PROJECT_ROOT)" || { echo "Set SCIP_MCP_CONSUMER_GATE_PROJECT_ROOT=/path/to/repository" >&2; exit 1; }
+	@test -n "$(SCIP_MCP_CONSUMER_GATE_SUBJECT_ID)" || { echo "Set SCIP_MCP_CONSUMER_GATE_SUBJECT_ID=<fixed-subject-id>" >&2; exit 1; }
+	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
+		test/scip/test_scip_query_provider.py \
+		test/scripts/test_profile_scip_mcp_consumer.py
+	PYTHONPATH="build/core:$$PYTHONPATH" python scripts/profiling/profile_scip_mcp_consumer.py \
+		--manifest "$(SCIP_MCP_CONSUMER_GATE_MANIFEST)" \
+		--project-root "$(SCIP_MCP_CONSUMER_GATE_PROJECT_ROOT)" \
+		--subject-id "$(SCIP_MCP_CONSUMER_GATE_SUBJECT_ID)" \
+		--subject-manifest "$(SCIP_MCP_CONSUMER_GATE_SUBJECT_MANIFEST)" \
+		--output "$(SCIP_MCP_CONSUMER_GATE_OUTPUT)" \
+		$(SCIP_MCP_CONSUMER_GATE_EXTRA_ARGS)
 
 clangd-fact-generation-profile: core-build
 	@test -n "$(CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR)" || { echo "Set CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR=/path/to/.cache/clangd/index" >&2; exit 1; }

@@ -468,11 +468,14 @@ int main(int argc, char **argv) {
   std::filesystem::create_directories(rust_root / "crates/b", rust_error);
   assert(!rust_error);
   write_text_file(rust_root / "Cargo.toml",
-                  "[workspace]\nmembers = [\n  \"crates/*\",\n]\n");
+                  "[workspace]\nmembers = [\n  \"crates/*\",\n]\n"
+                  "[[bench]]\nname = \"workspace-bench\"\n");
   write_text_file(rust_root / "crates/a/Cargo.toml",
-                  "[package]\nname = \"alpha\"\n");
+                  "[package]\nname = \"alpha\"\n"
+                  "[[bench]]\nname = \"alpha-bench\"\n");
   write_text_file(rust_root / "crates/b/Cargo.toml",
-                  "[package]\nname = \"beta\"\n");
+                  "[package]\nname = \"beta\"\n"
+                  "[[test]]\nname = \"beta-test\"\n");
   codenib::core::SCIPRustDecoder rust_decoder(index_path.string(),
                                               rust_root.string());
   (void)rust_decoder.decode_records();
@@ -530,6 +533,24 @@ int main(int argc, char **argv) {
 
   write_text_file(rust_root / "Cargo.toml",
                   "[\"workspace\"]\nmembers = [\"crates/a\"]\n");
+  (void)rust_decoder.decode_records();
+  assert(!rust_decoder.last_input_receipt().metadata_complete);
+
+  write_text_file(rust_root / "Cargo.toml",
+                  "[workspace]\nmembers = [\"crates/a\"]\n"
+                  "[[workspace]]\nmembers = [\"crates/b\"]\n");
+  (void)rust_decoder.decode_records();
+  assert(!rust_decoder.last_input_receipt().metadata_complete);
+
+  write_text_file(rust_root / "Cargo.toml",
+                  "[workspace]\nmembers = [\"crates/a\"]\n"
+                  "[[package.metadata]]\nname = \"ambiguous\"\n");
+  (void)rust_decoder.decode_records();
+  assert(!rust_decoder.last_input_receipt().metadata_complete);
+
+  write_text_file(rust_root / "Cargo.toml",
+                  "[workspace]\nmembers = [\"crates/a\"]\n"
+                  "[[bench]\nname = \"malformed\"\n");
   (void)rust_decoder.decode_records();
   assert(!rust_decoder.last_input_receipt().metadata_complete);
 
