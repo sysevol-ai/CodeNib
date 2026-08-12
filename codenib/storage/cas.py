@@ -64,7 +64,12 @@ _CASResult = TypeVar("_CASResult")
 
 @dataclass(frozen=True, slots=True)
 class BlobInfo:
-    """Identity and location of one immutable CAS object."""
+    """Point-in-time identity receipt for one immutable CAS object.
+
+    This value is not a retention lease.  Revalidate it at each later metadata
+    boundary and authenticate bytes inside the actual read operation until an
+    explicit pin contract exists.
+    """
 
     digest: str
     byte_size: int
@@ -554,6 +559,43 @@ class LocalCAS:
             return self._blob_info(digest, byte_size)
 
         return self._run_strict_operation(verify_object)
+
+    def verify_receipt(self, expected: BlobInfo) -> BlobInfo:
+        """Revalidate an exact object receipt without claiming a retention pin.
+
+        The full digest/size/storage-key tuple is compared after one backend
+        verification.  This is deliberately a point-in-time validation gate:
+        future pin- and lease-aware GC must provide any longer-lived retention
+        guarantee.
+        """
+
+        if (
+            type(expected) is not BlobInfo
+            or type(expected.digest) is not str
+            or type(expected.byte_size) is not int
+            or type(expected.storage_key) is not str
+        ):
+            raise TypeError("expected object receipt must be BlobInfo")
+        digest = _validate_digest(expected.digest)
+        if isinstance(expected.byte_size, bool) or not isinstance(
+            expected.byte_size, int
+        ):
+            raise StorageValidationError(
+                "object receipt byte size must be a nonnegative integer"
+            )
+        if expected.byte_size < 0:
+            raise StorageValidationError(
+                "object receipt byte size must be a nonnegative integer"
+            )
+        canonical = self._blob_info(digest, expected.byte_size)
+        if expected != canonical:
+            raise StorageValidationError("object receipt is not canonical")
+        observed = self.verify(digest)
+        if observed != expected:
+            raise StorageIntegrityError(
+                f"verified CAS object receipt does not match expected receipt: {digest}"
+            )
+        return observed
 
     def materialize(self, digest: str, destination: str | Path) -> Path:
         """Atomically copy a verified object to a regular destination path."""

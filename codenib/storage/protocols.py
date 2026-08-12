@@ -15,7 +15,17 @@ from .models import IndexJobCompletion, IndexJobRecord, IndexJobViewRecord, RefJ
 
 @runtime_checkable
 class ObjectStore(Protocol):
-    """Immutable byte-object operations required by artifact publication."""
+    """Immutable byte-object operations required by artifact publication.
+
+    ``BlobInfo`` is an immutable identity receipt, not a retention pin.  A
+    receipt says which bytes were durably observed at one completed operation;
+    it does not promise that a future GC cannot remove an unleased object.
+    Consumers that require exact receipt revalidation can additionally require
+    :class:`ReceiptVerifyingObjectStore` without breaking existing object-store
+    implementations.  A separate ``open`` after verification is not pinned by
+    that earlier result.  This protocol gains a longer lifetime only with an
+    explicit pin or lease.
+    """
 
     def put_bytes(self, data: bytes) -> BlobInfo: ...
 
@@ -23,13 +33,32 @@ class ObjectStore(Protocol):
 
     def has(self, digest: str) -> bool: ...
 
-    def open(self, digest: str) -> BinaryIO: ...
+    def open(self, digest: str) -> BinaryIO:
+        """Open an unverified stream whose bytes the caller must authenticate."""
 
-    def read_bytes(self, digest: str) -> bytes: ...
+        ...
+
+    def read_bytes(self, digest: str) -> bytes:
+        """Return bytes authenticated against the digest during this read."""
+
+        ...
 
     def verify(self, digest: str) -> BlobInfo: ...
 
-    def materialize(self, digest: str, destination: str | Path) -> Path: ...
+    def materialize(self, digest: str, destination: str | Path) -> Path:
+        """Materialize bytes authenticated during the copy; return a locator."""
+
+        ...
+
+
+@runtime_checkable
+class ReceiptVerifyingObjectStore(ObjectStore, Protocol):
+    """Additive capability for exact point-in-time receipt revalidation."""
+
+    def verify_receipt(self, expected: BlobInfo) -> BlobInfo:
+        """Revalidate one exact digest/size/storage-key receipt."""
+
+        ...
 
 
 @runtime_checkable
@@ -115,7 +144,10 @@ class IndexCatalog(Protocol):
         ref_name: str = "main",
     ) -> dict[str, Any]: ...
 
-    def get_manifest_summary(self, snapshot_id: str) -> dict[str, Any]: ...
+    def get_manifest_summary(self, snapshot_id: str) -> dict[str, Any]:
+        """Return a ready snapshot with namespace/repository identity closure."""
+
+        ...
 
 
 @runtime_checkable
@@ -169,4 +201,9 @@ class JobCatalog(Protocol):
     ) -> IndexJobRecord: ...
 
 
-__all__ = ["IndexCatalog", "JobCatalog", "ObjectStore"]
+__all__ = [
+    "IndexCatalog",
+    "JobCatalog",
+    "ObjectStore",
+    "ReceiptVerifyingObjectStore",
+]
