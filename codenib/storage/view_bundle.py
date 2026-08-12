@@ -7,33 +7,43 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import os
 import re
 import stat
 import struct
+import sys
 import tempfile
 import unicodedata
 import zipfile
+import zlib
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO, Callable, Iterable, Iterator, Mapping
+from typing import Any, BinaryIO, Callable, Iterable, Iterator, Mapping, TypeVar
 
 from .._atomic_directory import (
     DirectoryOrphan,
     PublicationDirectoryReader,
+    TreeFileRecord,
+    _annotate_secondary_error,
     _directory_identity,
     _linux_mount_points,
+    _OrderedAction,
     _path_is_mount_point,
+    _run_callback_with_post_validations,
+    _run_context_with_cleanup_actions,
+    _TreeOwnership,
     capture_directory_ownership,
     directory_ownership_entry_identities,
     directory_ownership_file_records,
     directory_ownership_inventory,
     directory_ownership_root_identity,
     discard_owned_directory,
+    project_directory_ownership_subtree,
     publish_staged_directory,
 )
 from .models import (
@@ -85,6 +95,8 @@ _MAX_ZIP_ENTRY_OVERHEAD = 2 * _MAX_ZIP_MEMBER_NAME_BYTES + 256
 _MAX_ZIP_ENVELOPE_BYTES = 1024 * 1024
 _ZIP64_LIMIT = (1 << 31) - 1
 _ZIP_FILECOUNT_LIMIT = (1 << 16) - 1
+_BUNDLE_STREAM_CLOSE_RECOVERY_LIMIT = 64
+_BUNDLE_STREAM_REVOKE_RECOVERY_LIMIT = 64
 _FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 _VIEW_TYPE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z", re.ASCII)
 _WINDOWS_RESERVED_NAMES = frozenset(
@@ -105,6 +117,7 @@ _SAFE_DIRECTORY_FDS = (
     and os.stat in os.supports_follow_symlinks
     and os.scandir in os.supports_fd
 )
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +129,67 @@ class ViewBundleRecord:
     digest: str
     byte_size: int
     members: tuple[ArtifactMember, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _PlannedZipMember:
+    """One fully laid-out canonical ZIP member."""
+
+    archive_name: str
+    encoded_name: bytes
+    source_relative: PurePosixPath | None
+    inline_payload: bytes | None
+    mode: int
+    byte_size: int
+    crc32: int
+    flags: int
+    header_offset: int
+    local_extra: bytes
+    central_extra: bytes
+    local_version: int
+    central_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class _PlannedViewBundleReceipt:
+    """Private binding between public plan fields and reader authority."""
+
+    publication: PublicationDirectoryReader = dataclass_field(
+        repr=False,
+        compare=False,
+    )
+    prefix: PurePosixPath
+    outer_ownership: object
+    source_ownership: object
+    view_type: str
+    digest: str
+    byte_size: int
+    members: tuple[ArtifactMember, ...]
+    manifest_bytes: bytes
+    zip_members: tuple[_PlannedZipMember, ...]
+    central_offset: int
+    central_size: int
+    envelope_bytes: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedViewBundle:
+    """Canonical bundle bytes bound to one exact publication subtree.
+
+    The ownership values are identity tokens, not path locators.  Bytes may be
+    consumed only through :func:`consume_planned_view_bundle` while a matching
+    :class:`PublicationDirectoryReader` callback is active.
+    """
+
+    view_type: str
+    digest: str
+    byte_size: int
+    members: tuple[ArtifactMember, ...]
+    source_ownership: object = dataclass_field(repr=False, compare=False)
+    _receipt: _PlannedViewBundleReceipt = dataclass_field(
+        repr=False,
+        compare=False,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,6 +434,259 @@ def build_view_bundle(
     finally:
         if temporary_identity is not None:
             _remove_owned_temporary_file(temporary, temporary_identity)
+
+
+def plan_view_bundle_reader(
+    publication: PublicationDirectoryReader,
+    prefix: str | PurePosixPath,
+    expected_source_ownership: object,
+    *,
+    view_type: str,
+    max_files: int = DEFAULT_MAX_BUNDLE_FILES,
+    max_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    max_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+) -> PlannedViewBundle:
+    """Plan exact canonical bundle bytes from one authenticated subtree.
+
+    Planning performs the complete source read twice: once to compute the CRCs
+    committed by ZIP headers and once to hash the resulting canonical archive.
+    Both passes use the callback-scoped reader.  The full outer ownership and
+    its exact ``prefix`` projection are checked before and after those reads.
+    """
+
+    if type(publication) is not PublicationDirectoryReader:
+        raise TypeError("view bundle planning requires a publication reader")
+    normalized_prefix = _publication_subtree_prefix(prefix)
+    normalized_view_type = _validate_view_type(view_type)
+    _validate_limits(max_files, max_bytes, max_metadata_bytes)
+    _validate_expected_subtree_ownership(expected_source_ownership)
+
+    outer_before = publication.capture_ownership()
+    _require_publication_subtree_projection(
+        outer_before,
+        normalized_prefix,
+        expected_source_ownership,
+    )
+
+    def plan() -> PlannedViewBundle:
+        source_inventory = tuple(
+            directory_ownership_inventory(expected_source_ownership)  # type: ignore[arg-type]
+        )
+        source_directories = sum(
+            1 for _path, kind in source_inventory if kind == "directory"
+        )
+        if source_directories > max_files:
+            raise StorageValidationError(
+                f"view bundle source exceeds {max_files + 1} directories"
+            )
+        if len(source_inventory) > 2 * max_files + 1:
+            raise StorageValidationError("view bundle source has too many entries")
+        records = tuple(
+            directory_ownership_file_records(expected_source_ownership)  # type: ignore[arg-type]
+        )
+        if not records:
+            raise StorageValidationError(
+                "view bundle payload must contain at least one file"
+            )
+        if len(records) > max_files:
+            raise StorageValidationError(
+                f"view bundle payload exceeds {max_files} files"
+            )
+        members = tuple(
+            ArtifactMember(
+                path=record.path,
+                digest=record.sha256,
+                byte_size=record.size,
+                mode=0o755 if record.mode & 0o111 else 0o644,
+            )
+            for record in records
+        )
+        _validate_member_paths(members, max_files=max_files)
+        total_bytes = sum(member.byte_size for member in members)
+        if total_bytes > max_bytes:
+            raise StorageValidationError(
+                f"view bundle exceeds {max_bytes} expanded bytes"
+            )
+
+        manifest_bytes = _manifest_bytes(normalized_view_type, members)
+        if len(manifest_bytes) > max_metadata_bytes:
+            raise StorageValidationError(
+                f"view bundle metadata exceeds {max_metadata_bytes} bytes"
+            )
+        payload_crcs = tuple(
+            _publication_file_crc32(
+                publication,
+                normalized_prefix / record.path,
+                record,
+            )
+            for record in records
+        )
+        receipt = _plan_canonical_zip(
+            publication=publication,
+            prefix=normalized_prefix,
+            outer_ownership=outer_before,
+            source_ownership=expected_source_ownership,
+            view_type=normalized_view_type,
+            members=members,
+            manifest_bytes=manifest_bytes,
+            payload_crcs=payload_crcs,
+        )
+        validate_view_bundle_physical_size(
+            receipt.byte_size,
+            max_files=max_files,
+            max_bytes=max_bytes,
+            max_metadata_bytes=max_metadata_bytes,
+        )
+        planning_chunks = _CallbackScopedBundleChunks(
+            publication,
+            receipt,
+            expected_digest=None,
+        )
+
+        def hash_planned_bytes() -> None:
+            try:
+                planning_chunks._drain()
+            except BaseException as error:  # noqa: B036 - retain cleanup owner
+                planning_chunks._remember_primary(error)
+                raise
+
+        _run_bundle_stream_callback(
+            hash_planned_bytes,
+            planning_chunks,
+            (
+                (
+                    "planned view bundle hashing completeness validation also failed",
+                    planning_chunks._require_complete,
+                ),
+            ),
+        )
+        receipt = _PlannedViewBundleReceipt(
+            publication=receipt.publication,
+            prefix=receipt.prefix,
+            outer_ownership=receipt.outer_ownership,
+            source_ownership=receipt.source_ownership,
+            view_type=receipt.view_type,
+            digest=planning_chunks._observed_digest(),
+            byte_size=receipt.byte_size,
+            members=receipt.members,
+            manifest_bytes=receipt.manifest_bytes,
+            zip_members=receipt.zip_members,
+            central_offset=receipt.central_offset,
+            central_size=receipt.central_size,
+            envelope_bytes=receipt.envelope_bytes,
+        )
+        return PlannedViewBundle(
+            view_type=receipt.view_type,
+            digest=receipt.digest,
+            byte_size=receipt.byte_size,
+            members=receipt.members,
+            source_ownership=receipt.source_ownership,
+            _receipt=receipt,
+        )
+
+    def validate_after_namespace() -> None:
+        outer_after = publication.capture_ownership()
+        if outer_after != outer_before:
+            raise RuntimeError("view bundle publication tree changed while planning")
+        _require_publication_subtree_projection(
+            outer_after,
+            normalized_prefix,
+            expected_source_ownership,
+        )
+
+    return _run_callback_with_post_validations(
+        plan,
+        (
+            (
+                "view bundle planning namespace validation also failed",
+                validate_after_namespace,
+            ),
+            (
+                "view bundle planning reader validity validation also failed",
+                publication._require_valid,
+            ),
+        ),
+    )
+
+
+def consume_planned_view_bundle(
+    publication: PublicationDirectoryReader,
+    plan: PlannedViewBundle,
+    consumer: Callable[[Iterable[bytes]], _T],
+) -> _T:
+    """Synchronously consume exact planned bytes through the source authority.
+
+    The iterable is one-shot and inactive after ``consumer`` returns or raises.
+    After a normal return this function synchronously drains any unread tail,
+    which keeps object-store deduplication from skipping source authentication.
+    A consumer failure is never followed by another producer read.  Cleanup,
+    reader validity, and final namespace checks are always attempted while
+    preserving the first callback failure as primary.
+    """
+
+    if type(publication) is not PublicationDirectoryReader:
+        raise TypeError("planned view bundle consumption requires a publication reader")
+    if type(plan) is not PlannedViewBundle:
+        raise TypeError("planned view bundle must use the exact plan type")
+    if not callable(consumer):
+        raise TypeError("planned view bundle consumer must be callable")
+    receipt = _require_planned_view_bundle(plan)
+    if publication is not receipt.publication:
+        raise RuntimeError(
+            "planned view bundle must be consumed in its planning reader callback"
+        )
+
+    outer_before = publication.capture_ownership()
+    if outer_before != receipt.outer_ownership:
+        raise RuntimeError("planned view bundle outer ownership changed")
+    _require_publication_subtree_projection(
+        outer_before,
+        receipt.prefix,
+        receipt.source_ownership,
+    )
+    chunks = _CallbackScopedBundleChunks(
+        publication,
+        receipt,
+        expected_digest=receipt.digest,
+    )
+
+    def consume() -> _T:
+        try:
+            result = consumer(chunks)
+            chunks._drain()
+            return result
+        except BaseException as error:  # noqa: B036 - retain cleanup reachability
+            chunks._remember_primary(error)
+            raise
+
+    def validate_after_namespace() -> None:
+        outer_after = publication.capture_ownership()
+        if outer_after != outer_before:
+            raise RuntimeError("view bundle publication tree changed while consumed")
+        _require_publication_subtree_projection(
+            outer_after,
+            receipt.prefix,
+            receipt.source_ownership,
+        )
+
+    return _run_bundle_stream_callback(
+        consume,
+        chunks,
+        (
+            (
+                "planned view bundle completeness validation also failed",
+                chunks._require_complete,
+            ),
+            (
+                "planned view bundle namespace validation also failed",
+                validate_after_namespace,
+            ),
+            (
+                "planned view bundle reader validity validation also failed",
+                publication._require_valid,
+            ),
+        ),
+    )
 
 
 def verify_view_bundle(
@@ -808,6 +1135,820 @@ def _trie_contains_directory(
         if spelling != part:
             return False
     return node in trie.directory_nodes
+
+
+def _publication_subtree_prefix(
+    value: str | PurePosixPath,
+) -> PurePosixPath:
+    if isinstance(value, PurePosixPath):
+        raw = value.as_posix()
+    elif isinstance(value, str):
+        raw = value
+    else:
+        raise TypeError("view bundle subtree prefix must be a relative path")
+    normalized = PurePosixPath(raw)
+    try:
+        encoded = raw.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise StorageValidationError(
+            "view bundle subtree prefix is not valid Unicode"
+        ) from exc
+    if (
+        not raw
+        or not normalized.parts
+        or raw != normalized.as_posix()
+        or normalized.is_absolute()
+        or any(part in {"", ".", ".."} for part in normalized.parts)
+        or "\\" in raw
+        or "\x00" in raw
+        or any(ord(character) < 32 or ord(character) == 127 for character in raw)
+        or len(encoded) > _MAX_MEMBER_PATH_BYTES
+        or len(normalized.parts) > _MAX_MEMBER_DEPTH
+    ):
+        raise StorageValidationError("view bundle subtree prefix is not canonical")
+    return normalized
+
+
+def _validate_expected_subtree_ownership(ownership: object) -> None:
+    """Type-check one opaque ownership through its required public accessors."""
+
+    if type(ownership) is not _TreeOwnership:
+        raise TypeError("view bundle subtree ownership must be an exact token")
+    directory_ownership_inventory(ownership)  # type: ignore[arg-type]
+    directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+
+
+def _require_publication_subtree_projection(
+    outer_ownership: object,
+    prefix: PurePosixPath,
+    expected_source_ownership: object,
+) -> None:
+    """Match a public atomic projection to the exact expected subtree token."""
+
+    _validate_expected_subtree_ownership(expected_source_ownership)
+    projected = project_directory_ownership_subtree(  # type: ignore[arg-type]
+        outer_ownership,
+        prefix,
+    )
+    if projected != expected_source_ownership:
+        raise RuntimeError("view bundle subtree root or contents differ from expected")
+
+
+def _publication_file_crc32(
+    publication: PublicationDirectoryReader,
+    relative: PurePosixPath,
+    expected: TreeFileRecord,
+) -> int:
+    observed_size = 0
+    checksum = 0
+    with publication.iter_authenticated_chunks(
+        relative,
+        max_bytes=expected.size,
+        chunk_size=_COPY_CHUNK_BYTES,
+    ) as chunks:
+        for chunk in chunks:
+            observed_size += len(chunk)
+            checksum = zlib.crc32(chunk, checksum)
+    if observed_size != expected.size:
+        raise StorageIntegrityError(
+            f"view bundle source size changed while planning: {expected.path}"
+        )
+    return checksum & 0xFFFFFFFF
+
+
+def _zip_member_local_extra(byte_size: int, *, guarded: bool) -> bytes:
+    zip64 = (
+        struct.pack("<HHQQ", 1, 16, byte_size, byte_size)
+        if byte_size * 1.05 > _ZIP64_LIMIT
+        else b""
+    )
+    return zip64 + (_ZIP_GUARD_EXTRA if guarded else b"")
+
+
+def _zip_member_central_extra(
+    byte_size: int,
+    header_offset: int,
+    *,
+    guarded: bool,
+) -> bytes:
+    values: list[int] = []
+    if byte_size > _ZIP64_LIMIT:
+        values.extend((byte_size, byte_size))
+    if header_offset > _ZIP64_LIMIT:
+        values.append(header_offset)
+    zip64 = (
+        struct.pack(f"<HH{len(values)}Q", 1, 8 * len(values), *values)
+        if values
+        else b""
+    )
+    return zip64 + (_ZIP_GUARD_EXTRA if guarded else b"")
+
+
+def _zip_envelope_bytes(
+    member_count: int,
+    central_size: int,
+    central_offset: int,
+) -> bytes:
+    requires_zip64 = (
+        member_count > _ZIP_FILECOUNT_LIMIT
+        or central_size > _ZIP64_LIMIT
+        or central_offset > _ZIP64_LIMIT
+    )
+    result = bytearray()
+    classic_count = member_count
+    classic_size = central_size
+    classic_offset = central_offset
+    if requires_zip64:
+        zip64_offset = central_offset + central_size
+        result.extend(
+            struct.pack(
+                "<4sQ2H2L4Q",
+                b"PK\x06\x06",
+                44,
+                45,
+                45,
+                0,
+                0,
+                member_count,
+                member_count,
+                central_size,
+                central_offset,
+            )
+        )
+        result.extend(struct.pack("<4sLQL", b"PK\x06\x07", 0, zip64_offset, 1))
+        classic_count = min(member_count, 0xFFFF)
+        classic_size = min(central_size, 0xFFFFFFFF)
+        classic_offset = min(central_offset, 0xFFFFFFFF)
+    result.extend(
+        struct.pack(
+            "<4s4H2LH",
+            b"PK\x05\x06",
+            0,
+            0,
+            classic_count,
+            classic_count,
+            classic_size,
+            classic_offset,
+            0,
+        )
+    )
+    return bytes(result)
+
+
+def _plan_canonical_zip(
+    *,
+    publication: PublicationDirectoryReader,
+    prefix: PurePosixPath,
+    outer_ownership: object,
+    source_ownership: object,
+    view_type: str,
+    members: tuple[ArtifactMember, ...],
+    manifest_bytes: bytes,
+    payload_crcs: tuple[int, ...],
+) -> _PlannedViewBundleReceipt:
+    if len(payload_crcs) != len(members):
+        raise RuntimeError("view bundle CRC inventory is incomplete")
+    raw_members: list[
+        tuple[str, PurePosixPath | None, bytes | None, int, int, int, bool]
+    ] = [
+        (
+            VIEW_BUNDLE_MANIFEST,
+            None,
+            manifest_bytes,
+            0o644,
+            len(manifest_bytes),
+            zlib.crc32(manifest_bytes) & 0xFFFFFFFF,
+            False,
+        )
+    ]
+    raw_members.extend(
+        (
+            f"{VIEW_BUNDLE_PAYLOAD}/{member.path}",
+            PurePosixPath(member.path),
+            None,
+            member.mode,
+            member.byte_size,
+            checksum,
+            index == len(members) - 1,
+        )
+        for index, (member, checksum) in enumerate(
+            zip(members, payload_crcs, strict=True)
+        )
+    )
+
+    header_offset = 0
+    planned: list[_PlannedZipMember] = []
+    for (
+        archive_name,
+        source_relative,
+        inline_payload,
+        mode,
+        byte_size,
+        checksum,
+        guarded,
+    ) in raw_members:
+        encoded_name = _encoded_zip_name(archive_name)
+        flags = 0 if archive_name.isascii() else 0x800
+        local_extra = _zip_member_local_extra(byte_size, guarded=guarded)
+        central_extra = _zip_member_central_extra(
+            byte_size,
+            header_offset,
+            guarded=guarded,
+        )
+        local_version = 45 if byte_size * 1.05 > _ZIP64_LIMIT else 20
+        central_version = (
+            45
+            if local_version == 45
+            or central_extra != (_ZIP_GUARD_EXTRA if guarded else b"")
+            else 20
+        )
+        planned.append(
+            _PlannedZipMember(
+                archive_name=archive_name,
+                encoded_name=encoded_name,
+                source_relative=source_relative,
+                inline_payload=inline_payload,
+                mode=mode,
+                byte_size=byte_size,
+                crc32=checksum,
+                flags=flags,
+                header_offset=header_offset,
+                local_extra=local_extra,
+                central_extra=central_extra,
+                local_version=local_version,
+                central_version=central_version,
+            )
+        )
+        header_offset += 30 + len(encoded_name) + len(local_extra) + byte_size
+
+    central_offset = header_offset
+    central_size = sum(
+        46 + len(member.encoded_name) + len(member.central_extra) for member in planned
+    )
+    envelope = _zip_envelope_bytes(len(planned), central_size, central_offset)
+    return _PlannedViewBundleReceipt(
+        publication=publication,
+        prefix=prefix,
+        outer_ownership=outer_ownership,
+        source_ownership=source_ownership,
+        view_type=view_type,
+        digest="",
+        byte_size=central_offset + central_size + len(envelope),
+        members=members,
+        manifest_bytes=manifest_bytes,
+        zip_members=tuple(planned),
+        central_offset=central_offset,
+        central_size=central_size,
+        envelope_bytes=envelope,
+    )
+
+
+def _local_zip_header(member: _PlannedZipMember) -> bytes:
+    zip64 = member.local_version == 45
+    stored_size = 0xFFFFFFFF if zip64 else member.byte_size
+    return struct.pack(
+        "<4s5H3L2H",
+        b"PK\x03\x04",
+        member.local_version,
+        member.flags,
+        zipfile.ZIP_STORED,
+        0,
+        33,
+        member.crc32,
+        stored_size,
+        stored_size,
+        len(member.encoded_name),
+        len(member.local_extra),
+    )
+
+
+def _central_zip_header(member: _PlannedZipMember) -> bytes:
+    zip64_size = member.byte_size > _ZIP64_LIMIT
+    stored_size = 0xFFFFFFFF if zip64_size else member.byte_size
+    stored_offset = (
+        0xFFFFFFFF if member.header_offset > _ZIP64_LIMIT else member.header_offset
+    )
+    return struct.pack(
+        "<4s4B4HL2L5H2L",
+        b"PK\x01\x02",
+        member.central_version,
+        3,
+        member.central_version,
+        0,
+        member.flags,
+        zipfile.ZIP_STORED,
+        0,
+        33,
+        member.crc32,
+        stored_size,
+        stored_size,
+        len(member.encoded_name),
+        len(member.central_extra),
+        0,
+        0,
+        0,
+        (stat.S_IFREG | member.mode) << 16,
+        stored_offset,
+    )
+
+
+def _iter_planned_view_bundle_bytes(
+    publication: PublicationDirectoryReader,
+    receipt: _PlannedViewBundleReceipt,
+) -> Iterator[bytes]:
+    for member in receipt.zip_members:
+        yield _local_zip_header(member)
+        yield member.encoded_name
+        if member.local_extra:
+            yield member.local_extra
+        if member.inline_payload is not None:
+            if len(member.inline_payload) != member.byte_size:
+                raise RuntimeError("planned inline bundle member changed")
+            yield member.inline_payload
+            continue
+        if member.source_relative is None:
+            raise RuntimeError("planned bundle member has no byte source")
+        observed_size = 0
+        checksum = 0
+        source = receipt.prefix / member.source_relative
+        with publication.iter_authenticated_chunks(
+            source,
+            max_bytes=member.byte_size,
+            chunk_size=_COPY_CHUNK_BYTES,
+        ) as chunks:
+            for chunk in chunks:
+                observed_size += len(chunk)
+                checksum = zlib.crc32(chunk, checksum)
+                yield chunk
+        if observed_size != member.byte_size or checksum & 0xFFFFFFFF != member.crc32:
+            raise StorageIntegrityError(
+                f"planned view bundle source changed: {member.source_relative}"
+            )
+
+    for member in receipt.zip_members:
+        yield _central_zip_header(member)
+        yield member.encoded_name
+        if member.central_extra:
+            yield member.central_extra
+    yield receipt.envelope_bytes
+
+
+def _require_planned_view_bundle(
+    plan: PlannedViewBundle,
+) -> _PlannedViewBundleReceipt:
+    if type(plan) is not PlannedViewBundle:
+        raise TypeError("planned view bundle must use the exact plan type")
+    if type(plan.members) is not tuple or not all(
+        type(member) is ArtifactMember for member in plan.members
+    ):
+        raise TypeError("planned view bundle members must be artifact records")
+    if type(plan.view_type) is not str or type(plan.digest) is not str:
+        raise StorageValidationError("planned view bundle text fields are invalid")
+    view_type = _validate_view_type(plan.view_type)
+    digest = normalize_digest(plan.digest)
+    if digest != plan.digest:
+        raise StorageValidationError("planned view bundle digest is not canonical")
+    if type(plan.byte_size) is not int:
+        raise StorageValidationError("planned view bundle size is invalid")
+    if plan.byte_size < 0:
+        raise StorageValidationError("planned view bundle size is invalid")
+    _validate_expected_subtree_ownership(plan.source_ownership)
+    receipt = plan._receipt
+    if type(receipt) is not _PlannedViewBundleReceipt:
+        raise StorageIntegrityError("planned view bundle has no authority receipt")
+    if type(receipt.publication) is not PublicationDirectoryReader:
+        raise StorageIntegrityError("planned view bundle reader binding is invalid")
+    if (
+        receipt.view_type != view_type
+        or receipt.digest != digest
+        or receipt.byte_size != plan.byte_size
+        or receipt.members is not plan.members
+        or receipt.source_ownership is not plan.source_ownership
+    ):
+        raise StorageIntegrityError(
+            "planned view bundle fields differ from their authority receipt"
+        )
+    _require_valid_planned_layout(receipt)
+    return receipt
+
+
+def _require_valid_planned_layout(receipt: _PlannedViewBundleReceipt) -> None:
+    if (
+        type(receipt.prefix) is not PurePosixPath
+        or type(receipt.view_type) is not str
+        or type(receipt.digest) is not str
+        or type(receipt.byte_size) is not int
+        or type(receipt.members) is not tuple
+        or any(type(member) is not ArtifactMember for member in receipt.members)
+        or type(receipt.manifest_bytes) is not bytes
+        or type(receipt.zip_members) is not tuple
+        or any(type(member) is not _PlannedZipMember for member in receipt.zip_members)
+        or type(receipt.central_offset) is not int
+        or type(receipt.central_size) is not int
+        or type(receipt.envelope_bytes) is not bytes
+    ):
+        raise StorageIntegrityError("planned view bundle layout types are invalid")
+    if not receipt.zip_members or len(receipt.zip_members) != len(receipt.members) + 1:
+        raise StorageIntegrityError("planned view bundle ZIP inventory is incomplete")
+    if receipt.manifest_bytes != _manifest_bytes(
+        receipt.view_type,
+        receipt.members,
+    ):
+        raise StorageIntegrityError("planned view bundle manifest binding is invalid")
+    for member in receipt.zip_members:
+        if (
+            type(member.archive_name) is not str
+            or type(member.encoded_name) is not bytes
+            or (
+                member.source_relative is not None
+                and type(member.source_relative) is not PurePosixPath
+            )
+            or (
+                member.inline_payload is not None
+                and type(member.inline_payload) is not bytes
+            )
+            or any(
+                type(value) is not int
+                for value in (
+                    member.mode,
+                    member.byte_size,
+                    member.crc32,
+                    member.flags,
+                    member.header_offset,
+                    member.local_version,
+                    member.central_version,
+                )
+            )
+            or type(member.local_extra) is not bytes
+            or type(member.central_extra) is not bytes
+            or member.byte_size < 0
+            or member.crc32 < 0
+            or member.crc32 > 0xFFFFFFFF
+        ):
+            raise StorageIntegrityError("planned view bundle ZIP member is invalid")
+
+    first = receipt.zip_members[0]
+    if (
+        first.archive_name != VIEW_BUNDLE_MANIFEST
+        or first.source_relative is not None
+        or first.inline_payload != receipt.manifest_bytes
+        or first.header_offset != 0
+        or first.mode != 0o644
+    ):
+        raise StorageIntegrityError("planned view bundle metadata layout is invalid")
+    rebuilt = _plan_canonical_zip(
+        publication=receipt.publication,
+        prefix=receipt.prefix,
+        outer_ownership=receipt.outer_ownership,
+        source_ownership=receipt.source_ownership,
+        view_type=receipt.view_type,
+        members=receipt.members,
+        manifest_bytes=receipt.manifest_bytes,
+        payload_crcs=tuple(member.crc32 for member in receipt.zip_members[1:]),
+    )
+    if (
+        receipt.zip_members != rebuilt.zip_members
+        or receipt.central_offset != rebuilt.central_offset
+        or receipt.central_size != rebuilt.central_size
+        or receipt.envelope_bytes != rebuilt.envelope_bytes
+        or receipt.byte_size != rebuilt.byte_size
+    ):
+        raise StorageIntegrityError(
+            "planned view bundle canonical layout is inconsistent"
+        )
+
+
+class _CallbackScopedBundleChunks:
+    """One-shot iterable revoked synchronously after its consumer callback."""
+
+    __slots__ = (
+        "_active",
+        "_ambient_error",
+        "_closed",
+        "_complete",
+        "_digest",
+        "_error",
+        "_expected_digest",
+        "_iterator",
+        "_primary_error",
+        "_publication",
+        "_receipt",
+        "_size",
+    )
+
+    def __init__(
+        self,
+        publication: PublicationDirectoryReader,
+        receipt: _PlannedViewBundleReceipt,
+        *,
+        expected_digest: str | None,
+    ) -> None:
+        self._active = True
+        self._ambient_error = sys.exc_info()[1]
+        self._closed = False
+        self._complete = False
+        self._digest = hashlib.sha256()
+        self._error: BaseException | None = None
+        self._expected_digest = expected_digest
+        self._iterator: Iterator[bytes] | None = None
+        self._primary_error: BaseException | None = None
+        self._publication = publication
+        self._receipt = receipt
+        self._size = 0
+
+    def __iter__(self) -> _CallbackScopedBundleChunks:
+        self._require_active()
+        return self
+
+    def __next__(self) -> bytes:
+        self._require_active()
+        if self._closed:
+            raise RuntimeError("planned view bundle stream is closed")
+        if self._complete:
+            raise StopIteration
+        if self._iterator is None:
+            self._iterator = _iter_planned_view_bundle_bytes(
+                self._publication,
+                self._receipt,
+            )
+        try:
+            chunk = next(self._iterator)
+        except StopIteration:
+            self._complete = True
+            raise
+        except BaseException as error:  # noqa: B036 - remember suppressed failure
+            if self._error is None:
+                self._error = error
+            raise
+        if not isinstance(chunk, bytes) or not chunk:
+            invalid_chunk_error = RuntimeError(
+                "planned view bundle yielded an invalid chunk"
+            )
+            if self._error is None:
+                self._error = invalid_chunk_error
+            raise invalid_chunk_error
+        self._digest.update(chunk)
+        self._size += len(chunk)
+        return chunk
+
+    def _require_active(self) -> None:
+        if not self._active:
+            raise RuntimeError("planned view bundle stream is no longer active")
+
+    def _close(self) -> None:
+        if self._closed:
+            return
+        iterator = self._iterator
+        if iterator is None:
+            self._closed = True
+            return
+        deferred: BaseException | None = None
+        for _attempt in range(_BUNDLE_STREAM_CLOSE_RECOVERY_LIMIT):
+            try:
+                terminal = _bundle_iterator_is_terminal(iterator)
+            except BaseException as error:  # noqa: B036 - bounded reconciliation
+                if deferred is None:
+                    deferred = error
+                continue
+            if terminal:
+                self._closed = True
+                if deferred is not None:
+                    raise deferred.with_traceback(deferred.__traceback__)
+                return
+            try:
+                _close_bundle_iterator(iterator)
+            except BaseException as error:  # noqa: B036 - reconcile before retry
+                if deferred is None:
+                    deferred = error
+
+        try:
+            terminal = _bundle_iterator_is_terminal(iterator)
+        except BaseException as error:  # noqa: B036 - final bounded probe
+            if deferred is None:
+                deferred = error
+        else:
+            if terminal:
+                self._closed = True
+                if deferred is not None:
+                    raise deferred.with_traceback(deferred.__traceback__)
+                return
+
+        cleanup_error = _BundleStreamCleanupError(self)
+        primary = self._primary_error
+        if primary is None:
+            active = sys.exc_info()[1]
+            if active is not None and active is not self._ambient_error:
+                primary = active
+        if primary is not None:
+            _retain_bundle_stream_cleanup_owner(primary, self)
+        if deferred is not None:
+            raise cleanup_error from deferred
+        raise cleanup_error
+
+    def _deactivate(self) -> None:
+        deferred: BaseException | None = None
+        for _attempt in range(_BUNDLE_STREAM_REVOKE_RECOVERY_LIMIT):
+            try:
+                inactive = _bundle_stream_is_inactive(self)
+            except BaseException as error:  # noqa: B036 - bounded reconciliation
+                deferred = _retain_bundle_stream_error(
+                    deferred,
+                    "additional bundle stream revocation probe failed",
+                    error,
+                )
+                continue
+            if inactive:
+                if deferred is not None:
+                    raise deferred.with_traceback(deferred.__traceback__)
+                return
+            try:
+                _revoke_bundle_stream(self)
+            except BaseException as error:  # noqa: B036 - reconcile before retry
+                deferred = _retain_bundle_stream_error(
+                    deferred,
+                    "additional bundle stream revocation failed",
+                    error,
+                )
+
+        try:
+            inactive = _bundle_stream_is_inactive(self)
+        except BaseException as error:  # noqa: B036 - final bounded probe
+            deferred = _retain_bundle_stream_error(
+                deferred,
+                "additional bundle stream revocation probe failed",
+                error,
+            )
+        else:
+            if inactive:
+                if deferred is not None:
+                    raise deferred.with_traceback(deferred.__traceback__)
+                return
+
+        cleanup_error = _BundleStreamRevocationError(self)
+        primary = self._primary_error
+        if primary is None:
+            active = sys.exc_info()[1]
+            if active is not None and active is not self._ambient_error:
+                primary = active
+        if primary is not None:
+            _retain_bundle_stream_cleanup_owner(primary, self)
+        if deferred is not None:
+            raise cleanup_error from deferred
+        raise cleanup_error
+
+    def _remember_primary(self, error: BaseException) -> None:
+        if self._primary_error is None:
+            self._primary_error = error
+
+    def _drain(self) -> None:
+        for _chunk in self:
+            pass
+
+    def retry_cleanup(self) -> None:
+        """Retry terminal close after a reported persistent cleanup failure."""
+
+        with _run_context_with_cleanup_actions(
+            (_bundle_stream_revoke_action(self, retry=True),)
+        ):
+            self._close()
+
+    def _observed_digest(self) -> str:
+        self._require_complete()
+        return self._digest.hexdigest()
+
+    def _require_complete(self) -> None:
+        if self._error is not None:
+            raise RuntimeError(
+                "planned view bundle consumer suppressed a stream failure"
+            ) from self._error
+        if not self._complete:
+            raise RuntimeError("planned view bundle consumer did not read through EOF")
+        if self._size != self._receipt.byte_size:
+            raise StorageIntegrityError(
+                "consumed view bundle bytes differ from their plan"
+            )
+        if (
+            self._expected_digest is not None
+            and self._digest.hexdigest() != self._expected_digest
+        ):
+            raise StorageIntegrityError(
+                "consumed view bundle bytes differ from their plan"
+            )
+
+
+class _BundleStreamCleanupError(RuntimeError):
+    """Persistent stream close failure retaining its retry owner."""
+
+    def __init__(self, cleanup_owner: _CallbackScopedBundleChunks) -> None:
+        super().__init__("planned view bundle stream cleanup did not converge")
+        self.cleanup_owner = cleanup_owner
+
+
+class _BundleStreamRevocationError(RuntimeError):
+    """Persistent stream revocation failure retaining its retry owner."""
+
+    def __init__(self, cleanup_owner: _CallbackScopedBundleChunks) -> None:
+        super().__init__("planned view bundle stream revocation did not converge")
+        self.cleanup_owner = cleanup_owner
+
+
+def _retain_bundle_stream_error(
+    primary_error: BaseException | None,
+    label: str,
+    error: BaseException,
+) -> BaseException:
+    if primary_error is None:
+        return error
+    _annotate_secondary_error(primary_error, label, error)
+    return primary_error
+
+
+def _retain_bundle_stream_cleanup_owner(
+    primary_error: BaseException,
+    cleanup_owner: _CallbackScopedBundleChunks,
+) -> None:
+    owners = list(getattr(primary_error, "_codenib_bundle_stream_cleanup_owners", ()))
+    if not any(owner is cleanup_owner for owner in owners):
+        owners.append(cleanup_owner)
+    primary_error._codenib_bundle_stream_cleanup_owners = tuple(owners)  # type: ignore[attr-defined]
+
+
+def _bundle_iterator_is_terminal(iterator: Iterator[bytes]) -> bool:
+    if inspect.isgenerator(iterator):
+        return inspect.getgeneratorstate(iterator) == inspect.GEN_CLOSED
+    return bool(getattr(iterator, "closed", False))
+
+
+def _close_bundle_iterator(iterator: Iterator[bytes]) -> None:
+    close = getattr(iterator, "close", None)
+    if close is None:
+        raise RuntimeError("planned view bundle iterator has no close operation")
+    close()
+
+
+def _bundle_stream_is_inactive(stream: _CallbackScopedBundleChunks) -> bool:
+    return not stream._active
+
+
+def _revoke_bundle_stream(stream: _CallbackScopedBundleChunks) -> None:
+    stream._active = False
+
+
+def _bundle_stream_is_closed(stream: _CallbackScopedBundleChunks) -> bool:
+    return stream._closed
+
+
+def _bundle_stream_close_action(
+    stream: _CallbackScopedBundleChunks,
+    *,
+    planning: bool,
+) -> _OrderedAction:
+    scope = "planned view bundle hashing" if planning else "planned view bundle"
+    return _OrderedAction(
+        label=f"{scope} stream close also failed",
+        action=stream._close,
+        complete=lambda: _bundle_stream_is_closed(stream),
+        retry_incomplete="cancellation",
+    )
+
+
+def _bundle_stream_revoke_action(
+    stream: _CallbackScopedBundleChunks,
+    *,
+    planning: bool = False,
+    retry: bool = False,
+) -> _OrderedAction:
+    if retry:
+        label = "planned view bundle stream revocation retry also failed"
+    elif planning:
+        label = "planned view bundle hashing stream revocation also failed"
+    else:
+        label = "planned view bundle stream revocation also failed"
+    return _OrderedAction(
+        label=label,
+        action=stream._deactivate,
+        complete=lambda: _bundle_stream_is_inactive(stream),
+        retry_incomplete="cancellation",
+    )
+
+
+def _run_bundle_stream_callback(
+    callback: Callable[[], _T],
+    stream: _CallbackScopedBundleChunks,
+    post_validations: tuple[tuple[str, Callable[[], None]], ...],
+) -> _T:
+    planning = stream._expected_digest is None
+
+    def run() -> _T:
+        with _run_context_with_cleanup_actions(
+            (
+                _bundle_stream_close_action(stream, planning=planning),
+                _bundle_stream_revoke_action(stream, planning=planning),
+            )
+        ):
+            return callback()
+
+    return _run_callback_with_post_validations(run, post_validations)
 
 
 def _manifest_value(
@@ -3103,13 +4244,16 @@ __all__ = [
     "DEFAULT_MAX_BUNDLE_FILES",
     "DEFAULT_MAX_BUNDLE_METADATA_BYTES",
     "MaterializedViewBundle",
+    "PlannedViewBundle",
     "VIEW_BUNDLE_MANIFEST",
     "VIEW_BUNDLE_MEDIA_TYPE",
     "VIEW_BUNDLE_PAYLOAD",
     "VIEW_BUNDLE_SCHEMA",
     "ViewBundleRecord",
     "build_view_bundle",
+    "consume_planned_view_bundle",
     "materialize_view_bundle",
+    "plan_view_bundle_reader",
     "validate_view_bundle_physical_size",
     "verify_view_bundle",
 ]
