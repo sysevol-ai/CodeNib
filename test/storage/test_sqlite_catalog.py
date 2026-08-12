@@ -194,13 +194,11 @@ def test_commit_failure_rolls_back_and_leaves_connection_reusable(tmp_path):
 
         with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
             with catalog._transaction():
-                catalog._connection.execute(
-                    """
+                catalog._connection.execute("""
                     INSERT INTO repositories(
                         repository_id, namespace_id, repository_key, created_at
                     ) VALUES ('invalid-repo', 'missing-namespace', 'invalid', 'now')
-                    """
-                )
+                    """)
 
         assert catalog._connection.in_transaction is False
         assert (
@@ -415,6 +413,28 @@ def test_compound_generation_members_are_identity_bound_and_immutable(tmp_path):
             metadata={"unit_count": 2},
             member_object_digests=(member_two, member_one),
         )
+        source = SourceRevision.clean(
+            repository_id,
+            commit_sha="a" * 40,
+            tree_sha="a" * 64,
+        )
+        profile = ViewProfile.create("semantic_facts", {})
+        primary_record = ObjectRecord(
+            digest=primary,
+            byte_size=12,
+            storage_key=f"sha256/{primary[:2]}/{primary[2:]}",
+        )
+        assert (
+            ViewGeneration.create(
+                source,
+                profile,
+                primary_record,
+                schema_version="1",
+                metadata={"unit_count": 2},
+                member_object_digests=(member_two, member_one),
+            ).view_generation_id
+            == view_id
+        )
         assert (
             catalog.stage_view_generation(
                 repository_id,
@@ -469,6 +489,81 @@ def test_compound_generation_members_are_identity_bound_and_immutable(tmp_path):
                 WHERE view_generation_id = ? AND object_digest = ?
                 """,
                 (view_id, member_one),
+            )
+
+
+@pytest.mark.parametrize(
+    ("column", "corrupt"),
+    [
+        ("digest", lambda value: value.upper()),
+        ("storage_key", lambda value: f" {value} "),
+        ("media_type", lambda value: f" {value} "),
+    ],
+)
+def test_publish_rejects_noncanonical_compound_member_object_metadata(
+    tmp_path,
+    column,
+    corrupt,
+):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id = catalog.create_repository("owner/corrupt-compound")
+        source_revision_id = _source(catalog, repository_id)
+        profile_id = catalog.create_view_profile("semantic_facts", {})
+        primary = _object(catalog, "a")
+        member = _object(catalog, "b")
+        view_id = catalog.stage_view_generation(
+            repository_id,
+            source_revision_id,
+            profile_id,
+            "semantic_facts",
+            primary,
+            schema_version="1",
+            member_object_digests=(member,),
+        )
+        original = catalog._connection.execute(
+            "SELECT * FROM objects WHERE digest = ?",
+            (member,),
+        ).fetchone()
+        assert original is not None
+        catalog._connection.execute("DROP TRIGGER objects_are_immutable")
+        if column == "digest":
+            catalog._connection.execute(
+                "DROP TRIGGER view_generation_objects_are_immutable"
+            )
+            catalog._connection.execute(
+                """
+                INSERT INTO objects(
+                    digest, storage_key, byte_size, media_type, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    corrupt(original["digest"]),
+                    "corrupt/member-object",
+                    original["byte_size"],
+                    original["media_type"],
+                    original["created_at"],
+                ),
+            )
+            catalog._connection.execute(
+                """
+                UPDATE view_generation_objects SET object_digest = ?
+                WHERE view_generation_id = ? AND object_digest = ?
+                """,
+                (corrupt(member), view_id, member),
+            )
+        else:
+            catalog._connection.execute(
+                f"UPDATE objects SET {column} = ? WHERE digest = ?",
+                (corrupt(original[column]), member),
+            )
+        catalog._connection.commit()
+
+        with pytest.raises(CatalogConflictError, match="member object metadata"):
+            catalog.publish_snapshot(
+                repository_id,
+                source_revision_id,
+                (view_id,),
+                expected_generation=0,
             )
 
 
@@ -1858,12 +1953,10 @@ def test_direct_sql_cannot_seal_invalid_or_expose_building_snapshots(tmp_path):
             (ready_view,),
         )
         with pytest.raises(sqlite3.IntegrityError, match="snapshot seal"):
-            catalog._connection.execute(
-                """
+            catalog._connection.execute("""
                 UPDATE snapshots SET status = 'ready', published_at = 'now'
                 WHERE snapshot_id = 'cross-source'
-                """
-            )
+                """)
 
         catalog._connection.execute(
             """
@@ -1882,12 +1975,10 @@ def test_direct_sql_cannot_seal_invalid_or_expose_building_snapshots(tmp_path):
             (staged_view,),
         )
         with pytest.raises(sqlite3.IntegrityError, match="snapshot seal"):
-            catalog._connection.execute(
-                """
+            catalog._connection.execute("""
                 UPDATE snapshots SET status = 'ready', published_at = 'now'
                 WHERE snapshot_id = 'staged-view'
-                """
-            )
+                """)
 
         catalog._connection.execute(
             """
@@ -1899,12 +1990,10 @@ def test_direct_sql_cannot_seal_invalid_or_expose_building_snapshots(tmp_path):
             (repository_two, source_two),
         )
         with pytest.raises(sqlite3.IntegrityError, match="snapshot seal"):
-            catalog._connection.execute(
-                """
+            catalog._connection.execute("""
                 UPDATE snapshots SET status = 'ready', published_at = 'now'
                 WHERE snapshot_id = 'empty'
-                """
-            )
+                """)
         with pytest.raises(CatalogValidationError, match="not ready"):
             catalog.get_manifest_summary("empty")
 
@@ -1951,15 +2040,13 @@ def test_late_ref_failure_rolls_back_building_snapshot_and_view_seal(tmp_path):
             profile_id,
             _object(catalog, "a"),
         )
-        catalog._connection.execute(
-            """
+        catalog._connection.execute("""
             CREATE TRIGGER fail_ref_publication
             BEFORE INSERT ON refs
             BEGIN
                 SELECT RAISE(ABORT, 'simulated ref failure');
             END
-            """
-        )
+            """)
 
         with pytest.raises(sqlite3.IntegrityError, match="simulated ref failure"):
             catalog.publish_snapshot(

@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePosixPath
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .._secret_fields import SecretFieldError
 from .._secret_fields import assert_no_secret_fields as _assert_no_secret_fields
@@ -21,6 +21,7 @@ from .._secret_fields import assert_no_secret_fields as _assert_no_secret_fields
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _CATALOG_INT64_MAX = 9_223_372_036_854_775_807
 INDEX_JOB_REQUEST_CONTRACT = "codenib.index-job-request.v1"
+VIEW_GENERATION_MEMBERS_METADATA_KEY = "_codenib_member_object_digests"
 
 
 class StorageError(RuntimeError):
@@ -102,6 +103,84 @@ def normalize_digest(value: str) -> str:
     if _DIGEST_RE.fullmatch(normalized) is None:
         raise StorageValidationError(
             "digest must be 64 lowercase hexadecimal characters"
+        )
+    return normalized
+
+
+def normalize_view_generation_metadata(
+    object_digest: str,
+    metadata: Mapping[str, Any] | None = None,
+    *,
+    member_object_digests: Sequence[str] = (),
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Return canonical metadata and reachability members for one generation.
+
+    The reserved member list is identity-bearing catalog metadata.  Keeping
+    this normalization beside :class:`ViewGeneration` lets planners compute
+    the exact schema-v4 generation ID without reproducing SQLite-private
+    behavior.
+    """
+
+    primary = normalize_digest(object_digest)
+    if isinstance(member_object_digests, (str, bytes)):
+        raise StorageValidationError("member object digests must be a sequence")
+    normalized_members_list: list[str] = []
+    for value in member_object_digests:
+        if type(value) is not str:
+            raise StorageValidationError("member object digests must be exact strings")
+        normalized_members_list.append(normalize_digest(value))
+    normalized_members = tuple(sorted(normalized_members_list))
+    if len(normalized_members) != len(set(normalized_members)):
+        raise StorageValidationError("duplicate member object digests")
+    if primary in normalized_members:
+        raise StorageValidationError(
+            "the primary object must not also be a member object"
+        )
+    if metadata is not None and not isinstance(metadata, Mapping):
+        raise StorageValidationError("view generation metadata must be a mapping")
+    normalized_metadata = dict(metadata or {})
+    if VIEW_GENERATION_MEMBERS_METADATA_KEY in normalized_metadata:
+        raise StorageValidationError(
+            f"{VIEW_GENERATION_MEMBERS_METADATA_KEY} is reserved catalog metadata"
+        )
+    if normalized_members:
+        normalized_metadata[VIEW_GENERATION_MEMBERS_METADATA_KEY] = list(
+            normalized_members
+        )
+    # Round-trip through the shared canonicalizer so callers receive detached,
+    # JSON-compatible values rather than references to mutable input objects.
+    return json.loads(canonical_json(normalized_metadata)), normalized_members
+
+
+def view_generation_member_digests(
+    object_digest: str,
+    metadata: Mapping[str, Any],
+) -> tuple[str, ...]:
+    if not isinstance(metadata, Mapping):
+        raise StorageValidationError("view generation metadata must be a mapping")
+    if VIEW_GENERATION_MEMBERS_METADATA_KEY not in metadata:
+        return ()
+    raw_members = metadata[VIEW_GENERATION_MEMBERS_METADATA_KEY]
+    if not isinstance(raw_members, list) or not raw_members:
+        raise StorageValidationError(
+            "view generation member metadata must be a nonempty digest list"
+        )
+    if any(type(value) is not str for value in raw_members):
+        raise StorageValidationError(
+            "view generation member metadata must contain exact digest strings"
+        )
+    normalized = tuple(normalize_digest(value) for value in raw_members)
+    if tuple(raw_members) != normalized:
+        raise StorageValidationError(
+            "view generation member metadata must use canonical bare digests"
+        )
+    if normalized != tuple(sorted(set(normalized))):
+        raise StorageValidationError(
+            "view generation member metadata must be sorted and unique"
+        )
+    if normalize_digest(object_digest) in normalized:
+        raise StorageValidationError(
+            "the primary object must not also be a member object"
         )
     return normalized
 
@@ -461,6 +540,7 @@ class ViewGeneration:
             raise StorageValidationError("view metadata must be valid JSON") from exc
         if not isinstance(metadata, dict):
             raise StorageValidationError("view metadata must be a JSON object")
+        view_generation_member_digests(self.object_digest, metadata)
         object.__setattr__(self, "metadata_json", canonical_json(metadata))
 
     @classmethod
@@ -472,14 +552,20 @@ class ViewGeneration:
         *,
         schema_version: str,
         metadata: Mapping[str, Any] | None = None,
+        member_object_digests: Sequence[str] = (),
     ) -> ViewGeneration:
+        normalized_metadata, _members = normalize_view_generation_metadata(
+            object_record.digest,
+            metadata,
+            member_object_digests=member_object_digests,
+        )
         return cls(
             repository_id=source.repository_id,
             source_revision_id=source.source_revision_id,
             profile=profile,
             object_digest=object_record.digest,
             schema_version=schema_version,
-            metadata_json=canonical_json(metadata or {}),
+            metadata_json=canonical_json(normalized_metadata),
         )
 
     @property
@@ -489,6 +575,13 @@ class ViewGeneration:
     @property
     def view_type(self) -> str:
         return self.profile.view_type
+
+    @property
+    def member_object_digests(self) -> tuple[str, ...]:
+        return view_generation_member_digests(
+            self.object_digest,
+            json.loads(self.metadata_json),
+        )
 
     @property
     def view_generation_id(self) -> str:
@@ -998,10 +1091,13 @@ __all__ = [
     "StorageIntegrityError",
     "StorageNotFound",
     "StorageValidationError",
+    "VIEW_GENERATION_MEMBERS_METADATA_KEY",
     "ViewGeneration",
     "ViewProfile",
     "assert_no_secret_fields",
     "canonical_json",
     "content_id",
     "normalize_digest",
+    "normalize_view_generation_metadata",
+    "view_generation_member_digests",
 ]

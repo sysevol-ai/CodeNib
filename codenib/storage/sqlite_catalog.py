@@ -40,13 +40,13 @@ from .models import (
     canonical_json,
     content_id,
     normalize_digest,
+    normalize_view_generation_metadata,
+    view_generation_member_digests,
 )
 
 LATEST_SCHEMA_VERSION = 4
 DEFAULT_NAMESPACE_ID = "ns_default"
 DEFAULT_NAMESPACE_NAME = "default"
-
-_GENERATION_MEMBERS_METADATA_KEY = "_codenib_member_object_digests"
 
 CatalogError = StorageError
 CatalogConflictError = PublishConflict
@@ -1113,14 +1113,12 @@ class SQLiteCatalog:
 
     def _migrate(self) -> None:
         with self._transaction():
-            self._connection.execute(
-                """
+            self._connection.execute("""
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version INTEGER PRIMARY KEY,
                     applied_at TEXT NOT NULL
                 )
-                """
-            )
+                """)
             rows = self._connection.execute(
                 "SELECT version FROM schema_migrations ORDER BY version"
             ).fetchall()
@@ -2161,27 +2159,14 @@ class SQLiteCatalog:
         normalized_schema_version = _required_text(
             schema_version, "view schema version"
         )
-        if isinstance(member_object_digests, (str, bytes)):
-            raise CatalogValidationError("member object digests must be a sequence")
-        normalized_members = [
-            normalize_digest(value) for value in member_object_digests
-        ]
-        if len(normalized_members) != len(set(normalized_members)):
-            raise CatalogValidationError("duplicate member object digests")
-        normalized_members.sort()
-        if digest in normalized_members:
-            raise CatalogValidationError(
-                "the primary object must not also be a member object"
+        normalized_metadata, normalized_member_tuple = (
+            normalize_view_generation_metadata(
+                digest,
+                metadata,
+                member_object_digests=member_object_digests,
             )
-        if metadata is not None and not isinstance(metadata, Mapping):
-            raise CatalogValidationError("view generation metadata must be a mapping")
-        normalized_metadata = dict(metadata or {})
-        if _GENERATION_MEMBERS_METADATA_KEY in normalized_metadata:
-            raise CatalogValidationError(
-                f"{_GENERATION_MEMBERS_METADATA_KEY} is reserved catalog metadata"
-            )
-        if normalized_members:
-            normalized_metadata[_GENERATION_MEMBERS_METADATA_KEY] = normalized_members
+        )
+        normalized_members = list(normalized_member_tuple)
         metadata_json = canonical_json(normalized_metadata)
         identity = {
             "repository_id": repository,
@@ -2669,25 +2654,9 @@ class SQLiteCatalog:
                     "view generation metadata must be a JSON object"
                 )
             canonical_metadata = canonical_json(metadata)
-            encoded_members = metadata.get(_GENERATION_MEMBERS_METADATA_KEY)
-            if encoded_members is None:
-                expected_member_digests: list[str] = []
-            else:
-                if not isinstance(encoded_members, list) or not encoded_members:
-                    raise CatalogValidationError(
-                        "view generation member metadata must be a non-empty list"
-                    )
-                expected_member_digests = [
-                    normalize_digest(value) for value in encoded_members
-                ]
-                if (
-                    expected_member_digests != sorted(expected_member_digests)
-                    or len(expected_member_digests) != len(set(expected_member_digests))
-                    or row["object_digest"] in expected_member_digests
-                ):
-                    raise CatalogValidationError(
-                        "view generation member metadata is not canonical"
-                    )
+            expected_member_digests = list(
+                view_generation_member_digests(row["object_digest"], metadata)
+            )
         except (TypeError, json.JSONDecodeError, CatalogValidationError) as exc:
             raise CatalogConflictError("view generation identity conflicts") from exc
         member_objects = self._generation_member_objects(row["view_generation_id"])
@@ -2746,14 +2715,27 @@ class SQLiteCatalog:
                     raise CatalogValidationError(
                         "view generation member object join is inconsistent"
                     )
-                records.append(
-                    ObjectRecord(
-                        digest=joined["digest"],
-                        storage_key=joined["storage_key"],
-                        byte_size=joined["byte_size"],
-                        media_type=joined["media_type"],
-                    )
+                record = ObjectRecord(
+                    digest=joined["digest"],
+                    storage_key=joined["storage_key"],
+                    byte_size=joined["byte_size"],
+                    media_type=joined["media_type"],
                 )
+                if (
+                    record.digest,
+                    record.storage_key,
+                    record.byte_size,
+                    record.media_type,
+                ) != (
+                    joined["digest"],
+                    joined["storage_key"],
+                    joined["byte_size"],
+                    joined["media_type"],
+                ):
+                    raise CatalogValidationError(
+                        "view generation member object metadata is not canonical"
+                    )
+                records.append(record)
         except CatalogValidationError as exc:
             raise CatalogConflictError(
                 "view generation member object metadata conflicts"

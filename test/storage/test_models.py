@@ -4,11 +4,13 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import FrozenInstanceError
 
 import pytest
 
 from codenib.storage.models import (
+    VIEW_GENERATION_MEMBERS_METADATA_KEY,
     ArtifactMember,
     ObjectRecord,
     PublishedSnapshot,
@@ -20,6 +22,7 @@ from codenib.storage.models import (
     ViewProfile,
     assert_no_secret_fields,
     canonical_json,
+    normalize_view_generation_metadata,
 )
 
 
@@ -347,3 +350,91 @@ def test_generation_derives_view_identity_from_profile() -> None:
             "a" * 64,
             "1",
         )
+
+
+def test_compound_generation_members_are_publicly_identity_bound() -> None:
+    repository_id = RepositoryIdentity("default", "owner/repo").repository_id
+    source = SourceRevision.clean(
+        repository_id,
+        commit_sha="a" * 40,
+        tree_sha="b" * 64,
+    )
+    profile = ViewProfile.create("portable_context", {})
+    primary = _object("a")
+    first = ViewGeneration.create(
+        source,
+        profile,
+        primary,
+        schema_version="1",
+        metadata={"view_count": 2},
+        member_object_digests=("c" * 64, "b" * 64),
+    )
+    second = ViewGeneration.create(
+        source,
+        profile,
+        primary,
+        schema_version="1",
+        metadata={"view_count": 2},
+        member_object_digests=("b" * 64, "c" * 64),
+    )
+
+    assert first.view_generation_id == second.view_generation_id
+    assert json.loads(first.metadata_json) == {
+        VIEW_GENERATION_MEMBERS_METADATA_KEY: ["b" * 64, "c" * 64],
+        "view_count": 2,
+    }
+    assert first.member_object_digests == ("b" * 64, "c" * 64)
+    legacy = ViewGeneration.create(
+        source,
+        profile,
+        primary,
+        schema_version="1",
+        metadata={"view_count": 2},
+    )
+    assert legacy.view_generation_id != first.view_generation_id
+    assert legacy.member_object_digests == ()
+
+
+@pytest.mark.parametrize(
+    ("members", "match"),
+    [
+        (("b" * 64, "b" * 64), "duplicate"),
+        (("a" * 64,), "primary object"),
+        ("b" * 64, "must be a sequence"),
+    ],
+)
+def test_compound_generation_member_normalization_rejects_ambiguous_inputs(
+    members: object,
+    match: str,
+) -> None:
+    with pytest.raises(StorageValidationError, match=match):
+        normalize_view_generation_metadata(
+            "a" * 64,
+            member_object_digests=members,  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(StorageValidationError, match="reserved"):
+        normalize_view_generation_metadata(
+            "a" * 64,
+            {VIEW_GENERATION_MEMBERS_METADATA_KEY: []},
+        )
+
+    for raw in (
+        None,
+        [],
+        ["b" * 64, "b" * 64],
+        ["c" * 64, "b" * 64],
+        ["B" * 64],
+        ["sha256:" + "b" * 64],
+    ):
+        with pytest.raises(StorageValidationError, match="member metadata"):
+            ViewGeneration(
+                repository_id="repo_id",
+                source_revision_id="source_id",
+                profile=ViewProfile.create("portable_context", {}),
+                object_digest="a" * 64,
+                schema_version="1",
+                metadata_json=canonical_json(
+                    {VIEW_GENERATION_MEMBERS_METADATA_KEY: raw}
+                ),
+            )
