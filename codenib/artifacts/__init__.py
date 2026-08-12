@@ -22,6 +22,7 @@ from .mcp_config import MCP_CONFIG_HOSTS, render_artifact_mcp_config
 from .portable_views import (
     SourceTrust,
     normalize_owned_query_view,
+    validate_content_bound_portable_query_view_reader,
     validate_portable_query_view,
 )
 from .runtime import (
@@ -37,6 +38,13 @@ from .strict_bm25 import (
     plan_bm25_view_strict,
     publish_planned_bm25_view_strict,
 )
+from .strict_context import (
+    PlannedContextArtifact,
+    PlannedContextView,
+    plan_context_artifact_strict,
+    publish_planned_context_artifact_strict,
+    stage_context_artifact_strict,
+)
 
 __all__ = [
     "CONTEXT_ARTIFACT_MANIFEST",
@@ -48,6 +56,8 @@ __all__ = [
     "GitHubArtifactRecord",
     "MCP_CONFIG_HOSTS",
     "PlannedBm25View",
+    "PlannedContextArtifact",
+    "PlannedContextView",
     "SourceTrust",
     "VerifiedContextArtifact",
     "bind_context_artifact",
@@ -56,11 +66,15 @@ __all__ = [
     "normalize_owned_query_view",
     "normalize_owned_query_view_strict",
     "plan_bm25_view_strict",
+    "plan_context_artifact_strict",
     "publish_planned_bm25_view_strict",
+    "publish_planned_context_artifact_strict",
     "query_context_artifact",
     "validate_portable_query_view",
     "resolve_github_context_artifact",
     "render_artifact_mcp_config",
     "stage_context_artifact",
+    "stage_context_artifact_strict",
+    "validate_content_bound_portable_query_view_reader",
     "verify_context_artifact",
 ]
