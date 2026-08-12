@@ -343,6 +343,21 @@ profile or durable job payload. No production provider, compiler integration,
 or whole-context producer is wired to the strict contract yet, so M1 remains in
 progress and the M2 BM25 profile adapter is still outstanding.
 
+Strict whole-context publication can now aggregate already-normalized BM25 and
+vector generations retained by active workspace receipt owners. The plan binds
+the portable `RepoManifest` projection, repository source-fingerprint-v2
+authority, every input generation plan and exact file record, and the complete
+context output inventory. Replay copies authenticated source bytes into one
+missing-only workspace generation; staged and published callbacks repeat the
+content-bound portable-view, credential/path, context-manifest, and exact-tree
+checks before the caller receives a durable output receipt. Large canonical
+documents remain element-streamed, and vector indexes stay authenticated but
+native-inert throughout context assembly. This slice does not normalize native
+vector state, provision a production workspace provider, route compiler output,
+import legacy manifests into the catalog, or publish the resulting receipt as
+an M2 generation. Those adapters remain outstanding, so M1 and M2 remain in
+progress.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
