@@ -44,7 +44,8 @@ class _FakeWindowsApi:
         self.next_handle = 100
         self.open_by_id_calls: list[tuple[int, int, int, bool]] = []
         self.rename_calls: list[tuple[int, int, str]] = []
-        self.root_id = self.add_directory()
+        self.volume_root_id = self.add_directory()
+        self.root_id = self.add_directory(self.volume_root_id, "authority")
 
     def add_directory(self, parent: int | None = None, name: str = "") -> int:
         file_id = self.next_file_id
@@ -82,8 +83,30 @@ class _FakeWindowsApi:
         self.offsets[handle] = 0
         return handle
 
-    def create_directory_handle(self, _path: Path) -> int:
-        return self._new_handle(self.root_id)
+    def create_directory_handle(self, path: Path) -> int:
+        normalized = str(path).replace("/", "\\").rstrip("\\").casefold()
+        file_id = self.volume_root_id if normalized == "c:" else self.root_id
+        return self._new_handle(file_id)
+
+    def open_relative(
+        self,
+        parent_handle: int,
+        name: str,
+        *,
+        desired_access: int,
+        is_directory: bool,
+        allow_reparse: bool,
+    ) -> int:
+        del desired_access, allow_reparse
+        parent = self.nodes[self.handles[parent_handle]]
+        children = parent["children"]
+        assert isinstance(children, dict)
+        try:
+            file_id = children[name]
+        except KeyError as exc:
+            raise FileNotFoundError(name) from exc
+        assert self.nodes[file_id]["directory"] is is_directory
+        return self._new_handle(file_id)
 
     def duplicate_handle(self, handle: int) -> int:
         return self._new_handle(self.handles[handle])
@@ -108,17 +131,15 @@ class _FakeWindowsApi:
             st_ctime_ns=version,
             st_nlink=int(node.get("nlink", 1)),
             st_file_attributes=attributes,
+            file_id_128=self.handles[handle].to_bytes(16, "little"),
         )
 
-    def enumerate_directory(
-        self,
-        handle: int,
-    ) -> tuple[object, ...]:
+    def iter_directory(self, handle: int):
         node = self.nodes[self.handles[handle]]
         children = node["children"]
         assert isinstance(children, dict)
-        return tuple(
-            atomic_module._WindowsDirectoryEntry(
+        for name, file_id in children.items():
+            yield atomic_module._WindowsDirectoryEntry(
                 name=name,
                 file_id=file_id,
                 attributes=(
@@ -126,9 +147,14 @@ class _FakeWindowsApi:
                     if self.nodes[file_id]["directory"]
                     else 0
                 ),
+                file_id_128=file_id.to_bytes(16, "little"),
             )
-            for name, file_id in children.items()
-        )
+
+    def enumerate_directory(
+        self,
+        handle: int,
+    ) -> tuple[object, ...]:
+        return tuple(self.iter_directory(handle))
 
     def open_by_id(
         self,
@@ -3622,24 +3648,51 @@ def _call_with_interrupt_after_store(
     assert predicate is None or callable(predicate)
     code = function.__code__
     instructions = tuple(dis.get_instructions(function))
-    offsets_after_store = {
-        instructions[index + 1].offset
+    result_store_indexes = {
+        index
         for index, instruction in enumerate(instructions[:-1])
-        if instruction.opname == "STORE_FAST" and instruction.argval == local_name
+        if instruction.opname == "STORE_FAST"
+        and instruction.argval == local_name
+        and index > 0
+        and instructions[index - 1].opname.startswith("CALL")
     }
+    opcode_offsets_after_store = {
+        instructions[index + 1].offset for index in result_store_indexes
+    }
+    result_store_offsets = {
+        instructions[index].offset for index in result_store_indexes
+    }
+    line_offsets_after_store = {
+        instruction.offset
+        for instruction in instructions
+        if instruction.starts_line is not None
+        and any(
+            instruction.offset > store_offset for store_offset in result_store_offsets
+        )
+    }
+    assert result_store_indexes
     previous_trace = sys.gettrace()
+    injected = False
 
     def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
         if event == "call" and frame.f_code is code:
             frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
             return trace
         if (
-            event == "opcode"
-            and frame.f_code is code
-            and frame.f_lasti in offsets_after_store
+            frame.f_code is code
+            and (
+                (
+                    event == "opcode"
+                    and frame.f_lasti in opcode_offsets_after_store
+                )
+                or (event == "line" and frame.f_lasti in line_offsets_after_store)
+            )
             and int(frame.f_locals.get(local_name, -1)) >= 0
             and (predicate is None or predicate(frame.f_locals))
         ):
+            injected = True
             sys.settrace(None)
             raise error
         return trace
@@ -3649,6 +3702,7 @@ def _call_with_interrupt_after_store(
         callback()
     finally:
         sys.settrace(previous_trace)
+        assert injected, f"failed to inject after {local_name} result store"
 
 
 def _posix_authority_resources(
