@@ -331,8 +331,8 @@ class IndexCatalog(Protocol):
 
 
 @runtime_checkable
-class RetainedImportCatalog(IndexCatalog, Protocol):
-    """Catalog response contract required by retained import attestation.
+class RetainedSnapshotCatalog(Protocol):
+    """Read-only catalog surface for retained snapshot attestation.
 
     Every response uses exact built-in JSON values with finite floats and
     signed 64-bit integers. Keys are nonempty, NUL-free text no longer than
@@ -344,13 +344,9 @@ class RetainedImportCatalog(IndexCatalog, Protocol):
     consumers ignore extensions only after authenticating exact core types and
     identities.
 
-    ``publish_snapshot`` returns ``snapshot_id``, ``repository_id``,
-    ``ref_name``, positive ``generation``, exact ``changed`` boolean, and
-    ``updated_at`` accepted by :func:`codenib.storage.canonical_utc_timestamp`.
-    ``resolve_ref`` repeats repository/ref/snapshot/generation/updated_at and
-    has a ``manifest`` with the summary shape below. For one repository/ref,
-    publish and resolve are linearizable: a later resolve sees that generation
-    or a strictly newer, valid identity-closed ref.
+    ``resolve_ref`` returns repository/ref/snapshot/generation/updated_at and
+    has a ``manifest`` with the summary shape below. Ref generations are
+    positive, monotonic signed 64-bit integers.
 
     A manifest summary contains ``snapshot_id``, ``repository_id``, ``status``
     (``ready``), canonical ``published_at``, ``namespace``
@@ -372,6 +368,29 @@ class RetainedImportCatalog(IndexCatalog, Protocol):
         """Opt in to the exact retained-import response contract above."""
 
         ...
+
+    def resolve_ref(
+        self,
+        repository_id: str,
+        ref_name: str = "main",
+    ) -> dict[str, Any]: ...
+
+    def get_manifest_summary(self, snapshot_id: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class RetainedImportCatalog(IndexCatalog, RetainedSnapshotCatalog, Protocol):
+    """Mutation-capable retained import catalog.
+
+    In addition to the read-only retained snapshot contract, publication
+    results use exact ``snapshot_id``, ``repository_id``, ``ref_name``,
+    positive ``generation``, exact ``changed`` boolean, and canonical
+    ``updated_at``. For one repository/ref, ``publish_snapshot`` and
+    ``resolve_ref`` are linearizable: a later resolve sees that publication or
+    a strictly newer valid identity-closed ref.
+    """
+
+    pass
 
 
 @runtime_checkable
@@ -437,6 +456,7 @@ __all__ = [
     "RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS",
     "RetainedImportCatalog",
     "RetainedImportObjectStore",
+    "RetainedSnapshotCatalog",
     "snapshot_retained_import_response",
     "StreamingObjectStore",
 ]

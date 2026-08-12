@@ -25,7 +25,6 @@ import inspect
 import json
 import os
 import re
-import struct
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -84,14 +83,24 @@ from .manifest_storage import (
     ViewImportIntent,
     ViewSelection,
 )
-
-REPO_MANIFEST_IMPORT_GENERATION_CONTRACT = "codenib.repo-manifest-import-generation.v2"
-REPO_MANIFEST_PROJECTION_VIEW = "codenib.internal.repo-manifest"
-REPO_MANIFEST_PROJECTION_SCHEMA = "codenib.internal.repo-manifest.v2"
-REPO_MANIFEST_PROJECTION_MEDIA_TYPE = (
-    "application/vnd.codenib.repo-manifest-projection.v2+json"
+from .retained_manifest_contract import (
+    REPO_MANIFEST_IMPORT_GENERATION_CONTRACT,
+    REPO_MANIFEST_PROJECTION_MEDIA_TYPE,
+    REPO_MANIFEST_PROJECTION_PROFILE_NAME,
+    REPO_MANIFEST_PROJECTION_SCHEMA,
+    REPO_MANIFEST_PROJECTION_VIEW,
 )
-REPO_MANIFEST_PROJECTION_PROFILE_NAME = "canonical"
+from .retained_manifest_contract import (
+    repo_manifest_generation_metadata as _generation_metadata,
+)
+from .retained_manifest_contract import (
+    repo_manifest_projection_profile as _projection_profile,
+)
+from .retained_snapshot import (
+    attest_detached_retained_snapshot as _attest_detached_retained_snapshot,
+)
+from .retained_snapshot import has_exact_json_core as _has_exact_json_core
+from .retained_snapshot import same_exact_json as _same_exact_json
 
 DEFAULT_REF_NAME = "main"
 DEFAULT_MAX_CONTEXT_FILES = 100_000
@@ -253,57 +262,6 @@ def _exact_backend_id(value: object, expected: str, label: str) -> None:
 def _snapshot_backend_json(value: object, *, label: str) -> Any:
     """Detach one bounded exact-JSON backend response without virtual equality."""
     return snapshot_retained_import_response(value, label=label)
-
-
-def _same_exact_json(left: object, right: object) -> bool:
-    """Compare detached JSON without Python's bool/int/float coercions."""
-
-    if type(left) is not type(right):
-        return False
-    if type(left) is dict:
-        if left.keys() != right.keys():  # type: ignore[union-attr]
-            return False
-        return all(
-            _same_exact_json(value, right[key])  # type: ignore[index]
-            for key, value in left.items()  # type: ignore[union-attr]
-        )
-    if type(left) is list:
-        if len(left) != len(right):  # type: ignore[arg-type]
-            return False
-        return all(
-            _same_exact_json(left_value, right_value)
-            for left_value, right_value in zip(  # type: ignore[arg-type]
-                left, right, strict=True
-            )
-        )
-    if type(left) is float:
-        return struct.pack(">d", left) == struct.pack(">d", right)  # type: ignore[arg-type]
-    return left == right
-
-
-def _has_exact_json_core(observed: object, expected: object) -> bool:
-    """Match identity fields exactly while allowing additive object fields."""
-
-    if type(observed) is not type(expected):
-        return False
-    if type(expected) is dict:
-        return all(
-            key in observed  # type: ignore[operator]
-            and _has_exact_json_core(observed[key], value)  # type: ignore[index]
-            for key, value in expected.items()  # type: ignore[union-attr]
-        )
-    if type(expected) is list:
-        if len(observed) != len(expected):  # type: ignore[arg-type]
-            return False
-        return all(
-            _has_exact_json_core(observed_value, expected_value)
-            for observed_value, expected_value in zip(  # type: ignore[arg-type]
-                observed,
-                expected,
-                strict=True,
-            )
-        )
-    return _same_exact_json(observed, expected)
 
 
 def _positive_limit(value: object, label: str) -> int:
@@ -508,30 +466,6 @@ def _snapshot_workspace_plan_digest(receipt: PublishedWorkspaceReceipt) -> str:
 
 def _expected_namespace_id(name: str) -> str:
     return NamespaceIdentity(name).namespace_id
-
-
-def _projection_profile() -> ViewProfile:
-    return ViewProfile.create(
-        REPO_MANIFEST_PROJECTION_VIEW,
-        {
-            "contract": REPO_MANIFEST_PROJECTION_SCHEMA,
-            "builder_schema": REPO_MANIFEST_PROJECTION_SCHEMA,
-            "artifact_schema": REPO_MANIFEST_PROJECTION_SCHEMA,
-        },
-        name=REPO_MANIFEST_PROJECTION_PROFILE_NAME,
-    )
-
-
-def _generation_metadata(intent: ViewImportIntent) -> dict[str, Any]:
-    return {
-        "contract": REPO_MANIFEST_IMPORT_GENERATION_CONTRACT,
-        "manifest_version": MANIFEST_VERSION,
-        "generation_record_digest": intent.generation_record_digest,
-        "verification_scope": "content-bytes",
-        "native_execution": (
-            "inert" if intent.view_type == "vector" else "not-required"
-        ),
-    }
 
 
 def _exact_blob_object(
@@ -1005,182 +939,13 @@ def _validate_catalog_publication(
     return generation, changed, updated_at
 
 
-def _identity_closed_object(value: object, *, label: str) -> ObjectRecord:
-    required = {"digest", "storage_key", "byte_size", "media_type"}
-    if type(value) is not dict or not required <= set(value):
-        raise StorageIntegrityError(f"{label} shape is invalid")
-    try:
-        record = ObjectRecord(
-            digest=value["digest"],
-            storage_key=value["storage_key"],
-            byte_size=value["byte_size"],
-            media_type=value["media_type"],
-        )
-    except StorageValidationError as exc:
-        raise StorageIntegrityError(f"{label} identity is invalid") from exc
-    if not _same_exact_json(
-        value,
-        {
-            **value,
-            "digest": record.digest,
-            "storage_key": record.storage_key,
-            "byte_size": record.byte_size,
-            "media_type": record.media_type,
-        },
-    ):
-        raise StorageIntegrityError(f"{label} identity is not canonical")
-    return record
-
-
 def _validate_identity_closed_summary(summary: object) -> str:
     """Rebuild every backend-neutral identity in one ready summary."""
 
-    required = {
-        "snapshot_id",
-        "repository_id",
-        "namespace",
-        "repository",
-        "status",
-        "published_at",
-        "source",
-        "views",
-    }
-    if type(summary) is not dict or not required <= set(summary):
-        raise StorageIntegrityError("published ref manifest shape is invalid")
-    namespace_value = summary["namespace"]
-    repository_value = summary["repository"]
-    source_value = summary["source"]
-    views_value = summary["views"]
-    if (
-        type(namespace_value) is not dict
-        or not {"namespace_id", "name"} <= set(namespace_value)
-        or type(repository_value) is not dict
-        or not {"namespace_id", "repository_key"} <= set(repository_value)
-        or type(source_value) is not dict
-        or not {
-            "source_revision_id",
-            "kind",
-            "commit_sha",
-            "tree_sha",
-            "source_fingerprint",
-        }
-        <= set(source_value)
-        or type(views_value) is not dict
-        or not views_value
-        or summary["status"] != "ready"
-    ):
-        raise StorageIntegrityError("published ref manifest core is invalid")
-    try:
-        namespace = NamespaceIdentity(namespace_value["name"])
-        repository = RepositoryIdentity(
-            namespace_id=namespace_value["namespace_id"],
-            repository_key=repository_value["repository_key"],
-        )
-        source = SourceRevision(
-            repository_id=summary["repository_id"],
-            source_kind=source_value["kind"],
-            commit_sha=source_value["commit_sha"],
-            tree_sha=source_value["tree_sha"],
-            source_fingerprint=source_value["source_fingerprint"],
-        )
-        published_at = canonical_utc_timestamp(
-            summary["published_at"],
-            "published ref manifest published_at",
-        )
-    except StorageValidationError as exc:
-        raise StorageIntegrityError(
-            "published ref manifest identity is invalid"
-        ) from exc
-    if (
-        namespace_value["name"] != namespace.name
-        or namespace_value["namespace_id"] != namespace.namespace_id
-        or repository_value["namespace_id"] != namespace.namespace_id
-        or repository_value["repository_key"] != repository.repository_key
-        or summary["repository_id"] != repository.repository_id
-        or source.repository_id != repository.repository_id
-        or source_value["source_revision_id"] != source.source_revision_id
-        or source_value["kind"] != source.source_kind
-        or source_value["commit_sha"] != source.commit_sha
-        or source_value["tree_sha"] != source.tree_sha
-        or source_value["source_fingerprint"] != source.source_fingerprint
-    ):
-        raise StorageIntegrityError("published ref manifest identity is inconsistent")
-
-    snapshot_views: list[SnapshotView] = []
-    for view_type, value in views_value.items():
-        view_required = {
-            "view_generation_id",
-            "schema_version",
-            "metadata",
-            "profile",
-            "object",
-            "member_objects",
-        }
-        if (
-            type(view_type) is not str
-            or type(value) is not dict
-            or not view_required <= set(value)
-            or type(value["metadata"]) is not dict
-            or type(value["profile"]) is not dict
-            or not {"profile_id", "name", "config"} <= set(value["profile"])
-            or type(value["profile"]["config"]) is not dict
-            or type(value["member_objects"]) is not list
-        ):
-            raise StorageIntegrityError("published ref view shape is invalid")
-        try:
-            profile = ViewProfile.create(
-                view_type,
-                value["profile"]["config"],
-                name=value["profile"]["name"],
-            )
-            primary = _identity_closed_object(
-                value["object"],
-                label=f"published {view_type!r} primary object",
-            )
-            generation = ViewGeneration(
-                repository_id=repository.repository_id,
-                source_revision_id=source.source_revision_id,
-                profile=profile,
-                object_digest=primary.digest,
-                schema_version=value["schema_version"],
-                metadata_json=canonical_json(value["metadata"]),
-            )
-            members = tuple(
-                _identity_closed_object(
-                    member,
-                    label=f"published {view_type!r} member object",
-                )
-                for member in value["member_objects"]
-            )
-        except StorageValidationError as exc:
-            raise StorageIntegrityError(
-                f"published {view_type!r} identity is invalid"
-            ) from exc
-        if (
-            profile.view_type != view_type
-            or value["profile"]["name"] != profile.name
-            or value["profile"]["profile_id"] != profile.profile_id
-            or not _same_exact_json(value["profile"]["config"], profile.config)
-            or value["schema_version"] != generation.schema_version
-            or value["view_generation_id"] != generation.view_generation_id
-            or tuple(member.digest for member in members)
-            != generation.member_object_digests
-        ):
-            raise StorageIntegrityError(
-                f"published {view_type!r} identity is inconsistent"
-            )
-        snapshot_views.append(SnapshotView(generation))
-    try:
-        snapshot = PublishedSnapshot(
-            repository.repository_id,
-            source.source_revision_id,
-            tuple(snapshot_views),
-        )
-    except StorageValidationError as exc:
-        raise StorageIntegrityError("published ref snapshot is invalid") from exc
-    if summary["snapshot_id"] != snapshot.snapshot_id:
-        raise StorageIntegrityError("published ref snapshot identity is inconsistent")
-    return published_at
+    return _attest_detached_retained_snapshot(
+        summary,
+        label="published ref manifest",
+    ).published_at
 
 
 def _validate_ref_resolution(
