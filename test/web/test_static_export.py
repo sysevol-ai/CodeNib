@@ -1281,6 +1281,49 @@ def test_static_export_rejects_index_root_overlap(export_setup) -> None:
         )
 
 
+def test_static_export_rejects_manifest_directory_alias_overlap(
+    export_setup,
+) -> None:
+    setup = export_setup
+    before = _tree_bytes(setup.artifact)
+    manifest_root_alias = setup.artifact.with_name("artifact-alias")
+    manifest_root_alias.symlink_to(setup.artifact, target_is_directory=True)
+    aliased_manifest = manifest_root_alias / setup.manifest_path.name
+    output = setup.artifact / "directory-alias-site"
+
+    with pytest.raises(ValueError, match="outside the index root"):
+        export_static_wiki(
+            setup.repo,
+            aliased_manifest,
+            output,
+            frontend_dir=setup.frontend,
+        )
+
+    assert manifest_root_alias.is_symlink()
+    assert not output.exists()
+    assert _tree_bytes(setup.artifact) == before
+
+
+def test_static_export_rejects_manifest_file_alias_overlap(export_setup) -> None:
+    setup = export_setup
+    before = _tree_bytes(setup.artifact)
+    manifest_alias = setup.artifact.parent / "manifest-alias.json"
+    manifest_alias.symlink_to(setup.manifest_path)
+    output = setup.artifact / "file-alias-site"
+
+    with pytest.raises(ValueError, match="outside the index root"):
+        export_static_wiki(
+            setup.repo,
+            manifest_alias,
+            output,
+            frontend_dir=setup.frontend,
+        )
+
+    assert manifest_alias.is_symlink()
+    assert not output.exists()
+    assert _tree_bytes(setup.artifact) == before
+
+
 def test_static_export_rejects_absolute_citation_paths(
     export_setup, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -4,11 +4,9 @@
 
 from __future__ import annotations
 
-import dis
 import hashlib
 import os
 import signal
-import sys
 import threading
 from pathlib import Path
 from typing import Callable
@@ -44,36 +42,32 @@ def _plan() -> WorkspacePlan:
 def _interrupt_before_store_attr(
     callback: Callable[[], object],
     *,
-    target_code: object,
+    target_type: type[object],
     attribute: str,
     error: BaseException,
+    injected: list[bool],
 ) -> None:
-    instructions = {
-        instruction.offset: instruction
-        for instruction in dis.get_instructions(target_code)
-    }
-    previous_trace = sys.gettrace()
+    inherited_setattr = target_type.__setattr__
+    had_local_setattr = "__setattr__" in target_type.__dict__
+    local_setattr = target_type.__dict__.get("__setattr__")
+    was_injected = False
 
-    def trace(frame, event, _arg):
-        if event == "call" and frame.f_code is target_code:
-            frame.f_trace_opcodes = True
-            return trace
-        if event == "opcode" and frame.f_code is target_code:
-            instruction = instructions.get(frame.f_lasti)
-            if (
-                instruction is not None
-                and instruction.opname == "STORE_ATTR"
-                and instruction.argval == attribute
-            ):
-                sys.settrace(None)
-                raise error
-        return trace
+    def interrupt_store(instance, name, value):
+        nonlocal was_injected
+        if name == attribute and not was_injected and hasattr(instance, attribute):
+            was_injected = True
+            raise error
+        inherited_setattr(instance, name, value)
 
-    sys.settrace(trace)
+    target_type.__setattr__ = interrupt_store  # type: ignore[method-assign]
     try:
         callback()
     finally:
-        sys.settrace(previous_trace)
+        if had_local_setattr:
+            target_type.__setattr__ = local_setattr  # type: ignore[method-assign]
+        else:
+            del target_type.__setattr__
+        injected.append(was_injected)
 
 
 class _TestProvider:
@@ -285,6 +279,271 @@ def test_provider_runs_one_callback_scoped_validated_publication(
             escaped[0].publish_validated(lambda _reader: None)
     finally:
         owner.close()
+
+
+def test_provider_cannot_substitute_the_callback_result(tmp_path: Path) -> None:
+    request = StrictWorkspaceRequest("test", tmp_path / "published", _plan())
+    delegate = _TestProvider()
+    owner = PublishedWorkspaceReceiptOwner()
+
+    class SubstitutingProvider:
+        def require_support(self) -> None:
+            return None
+
+        def run_workspace(self, request, *, receipt_owner, operation):
+            delegate.run_workspace(
+                request,
+                receipt_owner=receipt_owner,
+                operation=operation,
+            )
+            return b"provider-substitution"
+
+    def operation(session: StrictWorkspaceSession) -> bytes:
+        session.write_file("payload.bin", (b"owned",))
+        session.publish_validated(lambda _reader: None)
+        return b"callback-result"
+
+    try:
+        assert (
+            run_strict_workspace(
+                SubstitutingProvider(),
+                request,
+                receipt_owner=owner,
+                operation=operation,
+            )
+            == b"callback-result"
+        )
+        assert owner.active
+    finally:
+        if owner.active:
+            owner.close()
+
+
+@pytest.mark.parametrize(
+    "primary_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_provider_cannot_swallow_the_callback_primary(
+    tmp_path: Path,
+    primary_type: type[BaseException],
+) -> None:
+    request = StrictWorkspaceRequest("test", tmp_path / "published", _plan())
+    delegate = _TestProvider()
+    owner = PublishedWorkspaceReceiptOwner()
+    primary = primary_type("callback-primary")
+
+    class SwallowingProvider:
+        def require_support(self) -> None:
+            return None
+
+        def run_workspace(self, request, *, receipt_owner, operation):
+            try:
+                delegate.run_workspace(
+                    request,
+                    receipt_owner=receipt_owner,
+                    operation=operation,
+                )
+            except BaseException:  # noqa: B036 - exercise a broken provider
+                return b"provider-swallowed-callback"
+            raise AssertionError("callback primary was not raised")
+
+    def operation(session: StrictWorkspaceSession) -> None:
+        session.write_file("payload.bin", (b"owned",))
+        session.publish_validated(lambda _reader: None)
+        raise primary
+
+    try:
+        with pytest.raises(primary_type, match="callback-primary") as caught:
+            run_strict_workspace(
+                SwallowingProvider(),
+                request,
+                receipt_owner=owner,
+                operation=operation,
+            )
+
+        assert caught.value is primary
+        assert owner.active
+        assert request.destination.joinpath("payload.bin").read_bytes() == b"owned"
+    finally:
+        if owner.active:
+            owner.close()
+
+
+def test_callback_primary_survives_a_provider_secondary(tmp_path: Path) -> None:
+    request = StrictWorkspaceRequest("test", tmp_path / "published", _plan())
+    delegate = _TestProvider()
+    owner = PublishedWorkspaceReceiptOwner()
+    primary = KeyboardInterrupt("callback-primary")
+    secondary = SystemExit("provider-secondary")
+
+    class FailingProvider:
+        def require_support(self) -> None:
+            return None
+
+        def run_workspace(self, request, *, receipt_owner, operation):
+            try:
+                delegate.run_workspace(
+                    request,
+                    receipt_owner=receipt_owner,
+                    operation=operation,
+                )
+            except BaseException:  # noqa: B036 - exercise a broken provider
+                raise secondary
+            raise AssertionError("callback primary was not raised")
+
+    def operation(session: StrictWorkspaceSession) -> None:
+        session.write_file("payload.bin", (b"owned",))
+        session.publish_validated(lambda _reader: None)
+        raise primary
+
+    try:
+        with pytest.raises(KeyboardInterrupt, match="callback-primary") as caught:
+            run_strict_workspace(
+                FailingProvider(),
+                request,
+                receipt_owner=owner,
+                operation=operation,
+            )
+
+        assert caught.value is primary
+        assert any(
+            "provider also failed after its callback" in note
+            and "provider-secondary" in note
+            for note in _notes(primary)
+        )
+        assert owner.active
+    finally:
+        if owner.active:
+            owner.close()
+
+
+def test_callback_outcome_commit_preserves_the_callback_primary(
+    tmp_path: Path,
+) -> None:
+    request = StrictWorkspaceRequest("test", tmp_path / "published", _plan())
+    delegate = _TestProvider()
+    owner = PublishedWorkspaceReceiptOwner()
+    primary = KeyboardInterrupt("callback-primary")
+    transition = SystemExit("outcome-commit-interruption")
+
+    class SwallowingProvider:
+        def require_support(self) -> None:
+            return None
+
+        def run_workspace(self, request, *, receipt_owner, operation):
+            try:
+                delegate.run_workspace(
+                    request,
+                    receipt_owner=receipt_owner,
+                    operation=operation,
+                )
+            except BaseException:  # noqa: B036 - exercise a broken provider
+                return b"provider-swallowed-callback"
+            raise AssertionError("callback primary was not raised")
+
+    def operation(session: StrictWorkspaceSession) -> None:
+        session.write_file("payload.bin", (b"owned",))
+        session.publish_validated(lambda _reader: None)
+        raise primary
+
+    def run() -> object:
+        return run_strict_workspace(
+            SwallowingProvider(),
+            request,
+            receipt_owner=owner,
+            operation=operation,
+        )
+
+    injected: list[bool] = []
+    try:
+        with pytest.raises(KeyboardInterrupt, match="callback-primary") as caught:
+            _interrupt_before_store_attr(
+                run,
+                target_type=workspace_provider._ProviderOperationGate,
+                attribute="_operation_outcome",
+                error=transition,
+                injected=injected,
+            )
+
+        assert caught.value is primary
+        assert injected == [True]
+        assert any(
+            "outcome commit also failed" in note
+            and "outcome-commit-interruption" in note
+            for note in _notes(primary)
+        )
+        assert owner.active
+    finally:
+        if owner.active:
+            owner.close()
+
+
+def test_callback_outcome_read_preserves_the_callback_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = StrictWorkspaceRequest("test", tmp_path / "published", _plan())
+    delegate = _TestProvider()
+    owner = PublishedWorkspaceReceiptOwner()
+    primary = KeyboardInterrupt("callback-primary")
+    interruption = SystemExit("outcome-read-interruption")
+    outcome_property = workspace_provider._ProviderOperationGate.operation_outcome
+    outcome_getter = outcome_property.fget
+    assert outcome_getter is not None
+    reads = 0
+
+    def interrupted_outcome(self):
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            raise interruption
+        return outcome_getter(self)
+
+    monkeypatch.setattr(
+        workspace_provider._ProviderOperationGate,
+        "operation_outcome",
+        property(interrupted_outcome),
+    )
+
+    class SwallowingProvider:
+        def require_support(self) -> None:
+            return None
+
+        def run_workspace(self, request, *, receipt_owner, operation):
+            try:
+                delegate.run_workspace(
+                    request,
+                    receipt_owner=receipt_owner,
+                    operation=operation,
+                )
+            except BaseException:  # noqa: B036 - exercise a broken provider
+                return b"provider-swallowed-callback"
+            raise AssertionError("callback primary was not raised")
+
+    def operation(session: StrictWorkspaceSession) -> None:
+        session.write_file("payload.bin", (b"owned",))
+        session.publish_validated(lambda _reader: None)
+        raise primary
+
+    try:
+        with pytest.raises(KeyboardInterrupt, match="callback-primary") as caught:
+            run_strict_workspace(
+                SwallowingProvider(),
+                request,
+                receipt_owner=owner,
+                operation=operation,
+            )
+
+        assert caught.value is primary
+        assert reads == 2
+        assert any(
+            "outcome read also failed" in note and "outcome-read-interruption" in note
+            for note in _notes(primary)
+        )
+        assert owner.active
+    finally:
+        if owner.active:
+            owner.close()
 
 
 def test_operation_return_without_publish_fails_and_provider_closes(
@@ -605,14 +864,17 @@ def test_session_revocation_recovers_from_store_cancellation(
             operation=operation,
         )
 
+    injected: list[bool] = []
     with pytest.raises(KeyboardInterrupt, match="session revoke"):
         _interrupt_before_store_attr(
             run,
-            target_code=workspace_provider._AdoptedWorkspaceSession._deactivate.__code__,
+            target_type=workspace_provider._AdoptedWorkspaceSession,
             attribute="_active",
             error=KeyboardInterrupt("injected session revoke"),
+            injected=injected,
         )
 
+    assert injected == [True]
     assert owner.state == "empty"
     assert provider.last_workspace is not None
     assert provider.last_workspace.state == "closed"
@@ -644,15 +906,18 @@ def test_operation_primary_survives_session_revocation_failure(
             operation=operation,
         )
 
+    injected: list[bool] = []
     with pytest.raises(primary_type, match="operation-primary") as caught:
         _interrupt_before_store_attr(
             run,
-            target_code=workspace_provider._AdoptedWorkspaceSession._deactivate.__code__,
+            target_type=workspace_provider._AdoptedWorkspaceSession,
             attribute="_active",
             error=RuntimeError("session-revocation-secondary"),
+            injected=injected,
         )
 
     assert caught.value is primary
+    assert injected == [True]
     assert any(
         "session revocation also failed" in note
         and "session-revocation-secondary" in note
@@ -686,15 +951,18 @@ def test_provider_primary_survives_callback_revocation_failure(
             operation=lambda _session: None,
         )
 
+    injected: list[bool] = []
     with pytest.raises(primary_type, match="provider-primary") as caught:
         _interrupt_before_store_attr(
             run,
-            target_code=workspace_provider._ProviderOperationGate._deactivate.__code__,
+            target_type=workspace_provider._ProviderOperationGate,
             attribute="_active",
             error=RuntimeError("provider-revocation-secondary"),
+            injected=injected,
         )
 
     assert caught.value is primary
+    assert injected == [True]
     assert any(
         "provider callback revocation also failed" in note
         and "provider-revocation-secondary" in note
