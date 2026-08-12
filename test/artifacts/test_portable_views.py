@@ -10,7 +10,7 @@ import os
 import pickle
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
 import pytest
@@ -2068,6 +2068,175 @@ def test_normalize_rejects_level_config_semantic_drift(tmp_path: Path) -> None:
             view_type="vector",
             view_config=_VECTOR_CONFIG,
         )
+
+
+def test_normalize_uses_initial_inventory_for_level_config_presence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    level_config = vector / "l2" / f"config_{_MODEL_SUFFIX}.json"
+    level_config.write_text(
+        json.dumps(
+            {
+                "embedding_model": "test/model",
+                "embedding_provider": "huggingface",
+                "embedding_revision": None,
+                "dimension": 4,
+                "index_type": "flat",
+                "index_metric": "l2",
+                "level": "l2",
+                "num_documents": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    real_exists = Path.exists
+
+    def temporarily_hidden(path: Path) -> bool:
+        if path == level_config:
+            return False
+        return real_exists(path)
+
+    monkeypatch.setattr(Path, "exists", temporarily_hidden)
+
+    with pytest.raises(ValueError, match="l2 persistence index_metric"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=_VECTOR_CONFIG,
+        )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_normalize_level_config_symlink_race_cannot_write_external_victim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    level_config = vector / "l2" / f"config_{_MODEL_SUFFIX}.json"
+    level_payload = {
+        "embedding_model": "test/model",
+        "embedding_provider": "huggingface",
+        "embedding_revision": None,
+        "dimension": 4,
+        "index_type": "flat",
+        "index_metric": "ip",
+        "level": "l2",
+        "num_documents": 1,
+    }
+    level_config.write_text(json.dumps(level_payload), encoding="utf-8")
+    victim = tmp_path / "external-victim.json"
+    victim_payload = b"external victim must remain unchanged\n"
+    victim.write_bytes(victim_payload)
+    import codenib.artifacts.portable_views as portable_views_module
+
+    real_write_all = portable_views_module._OwnedViewReader._write_all
+    raced = False
+
+    def write_then_swap(descriptor: int, payload: bytes) -> None:
+        nonlocal raced
+        real_write_all(descriptor, payload)
+        if not raced:
+            raced = True
+            level_config.unlink()
+            level_config.symlink_to(victim)
+
+    monkeypatch.setattr(
+        portable_views_module._OwnedViewReader,
+        "_write_all",
+        staticmethod(write_then_swap),
+    )
+
+    with pytest.raises(RuntimeError, match="replacement target changed"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=_VECTOR_CONFIG,
+        )
+
+    assert raced
+    assert victim.read_bytes() == victim_payload
+    assert level_config.is_symlink()
+    assert not list(level_config.parent.glob(".codenib-canonical-*.tmp"))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_normalize_rejects_same_inode_mutation_after_canonical_readback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _source = _repository(tmp_path)
+    vector = _vector_view(tmp_path, repo, document_format="json")
+    level_config = vector / "l2" / f"config_{_MODEL_SUFFIX}.json"
+    level_config.write_text(
+        json.dumps(
+            {
+                "embedding_model": "test/model",
+                "embedding_provider": "huggingface",
+                "embedding_revision": None,
+                "dimension": 4,
+                "index_type": "flat",
+                "index_metric": "ip",
+                "level": "l2",
+                "num_documents": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    import codenib.artifacts.portable_views as portable_views_module
+
+    real_read_exact = portable_views_module._OwnedViewReader._read_exact
+    injected = False
+    target_reads = 0
+
+    def read_then_mutate(
+        descriptor: int,
+        opened: os.stat_result,
+        *,
+        relative: PurePosixPath,
+        max_bytes: int | None,
+    ) -> bytearray:
+        nonlocal injected, target_reads
+        payload = real_read_exact(
+            descriptor,
+            opened,
+            relative=relative,
+            max_bytes=max_bytes,
+        )
+        if relative == PurePosixPath("l2", level_config.name):
+            target_reads += 1
+        if target_reads == 2 and not injected:
+            injected = True
+            mutated = bytes(payload).replace(
+                b'"index_metric": "ip"', b'"index_metric": "l2"'
+            )
+            assert len(mutated) == len(payload)
+            assert mutated != bytes(payload)
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            portable_views_module._OwnedViewReader._write_all(descriptor, mutated)
+            os.fsync(descriptor)
+        return payload
+
+    monkeypatch.setattr(
+        portable_views_module._OwnedViewReader,
+        "_read_exact",
+        staticmethod(read_then_mutate),
+    )
+
+    with pytest.raises(RuntimeError, match="canonical replacement changed"):
+        normalize_owned_query_view(
+            vector,
+            repo_path=repo,
+            view_type="vector",
+            view_config=_VECTOR_CONFIG,
+        )
+
+    assert injected
 
 
 def test_normalize_rejects_persisted_route_identity_drift(tmp_path: Path) -> None:

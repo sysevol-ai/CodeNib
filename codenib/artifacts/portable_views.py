@@ -13,6 +13,7 @@ import json
 import os
 import re
 import stat
+import sys
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Literal, Mapping
 
@@ -70,6 +71,28 @@ def _view_file_identity(metadata: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _view_binding_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    """Identify one directory entry without cache-sensitive timestamps."""
+
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_size,
+        metadata.st_nlink,
+        getattr(metadata, "st_file_attributes", 0),
+    )
+
+
+def _view_directory_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        getattr(metadata, "st_file_attributes", 0),
+    )
+
+
 class _OwnedViewReader:
     """Read one captured view through a pinned no-follow root descriptor."""
 
@@ -83,6 +106,7 @@ class _OwnedViewReader:
         self._descriptor = -1
         self._cached_payloads: dict[PurePosixPath, bytearray] = {}
         self._authenticated_files: dict[PurePosixPath, tuple[int, os.stat_result]] = {}
+        self._replacement_targets: dict[PurePosixPath, tuple[int, os.stat_result]] = {}
         try:
             flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
             flags |= getattr(os, "O_CLOEXEC", 0)
@@ -108,6 +132,12 @@ class _OwnedViewReader:
             except OSError:
                 pass
         self._authenticated_files.clear()
+        for descriptor, _metadata in self._replacement_targets.values():
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        self._replacement_targets.clear()
         if self._descriptor >= 0:
             try:
                 os.close(self._descriptor)
@@ -145,9 +175,8 @@ class _OwnedViewReader:
             raise ValueError(f"portable view path is invalid: {value}")
         return relative
 
-    def _open_file(self, relative: PurePosixPath) -> tuple[int, os.stat_result]:
+    def _open_parent(self, relative: PurePosixPath) -> int:
         directory_descriptor = os.dup(self._descriptor)
-        source_descriptor = -1
         try:
             directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
             directory_flags |= getattr(os, "O_CLOEXEC", 0)
@@ -174,7 +203,20 @@ class _OwnedViewReader:
                     raise ValueError(f"portable view directory changed: {relative}")
                 os.close(directory_descriptor)
                 directory_descriptor = child
+            owned = directory_descriptor
+            directory_descriptor = -1
+            return owned
+        finally:
+            if directory_descriptor >= 0:
+                os.close(directory_descriptor)
 
+    @staticmethod
+    def _open_private_file(
+        directory_descriptor: int,
+        relative: PurePosixPath,
+    ) -> tuple[int, os.stat_result]:
+        source_descriptor = -1
+        try:
             name = relative.parts[-1]
             before = os.stat(
                 name,
@@ -202,6 +244,34 @@ class _OwnedViewReader:
             owned = source_descriptor
             source_descriptor = -1
             return owned, opened
+        finally:
+            if source_descriptor >= 0:
+                os.close(source_descriptor)
+
+    def _open_file(self, relative: PurePosixPath) -> tuple[int, os.stat_result]:
+        replacement_target = self._replacement_targets.get(relative)
+        directory_descriptor = -1
+        source_descriptor = -1
+        try:
+            directory_descriptor = (
+                os.dup(replacement_target[0])
+                if replacement_target is not None
+                else self._open_parent(relative)
+            )
+            source_descriptor, opened = self._open_private_file(
+                directory_descriptor,
+                relative,
+            )
+            if replacement_target is not None and _view_file_identity(
+                opened
+            ) != _view_file_identity(replacement_target[1]):
+                raise ValueError(
+                    f"portable view replacement target changed: {relative}"
+                )
+
+            owned = source_descriptor
+            source_descriptor = -1
+            return owned, opened
         except OSError as exc:
             raise ValueError(
                 f"portable view file is not safely readable: {relative}"
@@ -209,7 +279,258 @@ class _OwnedViewReader:
         finally:
             if source_descriptor >= 0:
                 os.close(source_descriptor)
-            os.close(directory_descriptor)
+            if directory_descriptor >= 0:
+                os.close(directory_descriptor)
+
+    def pin_replacement_target(self, path: Path) -> None:
+        """Pin a target's parent and identity before validating its contents."""
+
+        relative = self._relative(path.relative_to(self.root))
+        if relative in self._replacement_targets:
+            return
+        directory_descriptor = -1
+        source_descriptor = -1
+        try:
+            directory_descriptor = self._open_parent(relative)
+            source_descriptor, opened = self._open_private_file(
+                directory_descriptor,
+                relative,
+            )
+            self._replacement_targets[relative] = (directory_descriptor, opened)
+            directory_descriptor = -1
+        except OSError as exc:
+            raise ValueError(
+                f"portable view replacement target is not safely writable: {relative}"
+            ) from exc
+        finally:
+            if source_descriptor >= 0:
+                os.close(source_descriptor)
+            if directory_descriptor >= 0:
+                os.close(directory_descriptor)
+
+    def _verify_replacement_parent(
+        self,
+        relative: PurePosixPath,
+        pinned_descriptor: int,
+    ) -> None:
+        current_descriptor = -1
+        try:
+            current_descriptor = self._open_parent(relative)
+            if _view_directory_identity(
+                os.fstat(current_descriptor)
+            ) != _view_directory_identity(os.fstat(pinned_descriptor)):
+                raise RuntimeError(
+                    f"portable view replacement parent changed: {relative.parent}"
+                )
+        except OSError as exc:
+            raise RuntimeError(
+                f"portable view replacement parent changed: {relative.parent}"
+            ) from exc
+        finally:
+            if current_descriptor >= 0:
+                os.close(current_descriptor)
+
+    @staticmethod
+    def _write_all(descriptor: int, payload: bytes) -> None:
+        written = 0
+        while written < len(payload):
+            count = os.write(descriptor, payload[written:])
+            if count <= 0:
+                raise OSError("portable view temporary file write made no progress")
+            written += count
+
+    @staticmethod
+    def _remove_owned_temporary(
+        directory_descriptor: int,
+        name: str,
+        descriptor: int,
+    ) -> None:
+        try:
+            observed = os.stat(
+                name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or _view_binding_identity(observed) != _view_binding_identity(opened)
+        ):
+            raise RuntimeError(
+                "portable view canonicalization temporary file changed before cleanup"
+            )
+        os.unlink(name, dir_fd=directory_descriptor)
+        os.fsync(directory_descriptor)
+
+    def replace_bytes(self, path: Path, payload: bytes) -> None:
+        """Atomically replace a validated file through its pinned parent."""
+
+        relative = self._relative(path.relative_to(self.root))
+        replacement_target = self._replacement_targets.get(relative)
+        if replacement_target is None:
+            raise RuntimeError(
+                f"portable view replacement target is not pinned: {relative}"
+            )
+        directory_descriptor, expected = replacement_target
+        temporary_descriptor = -1
+        temporary_name: str | None = None
+        replaced = False
+        try:
+            self.verify_root()
+            self._verify_replacement_parent(relative, directory_descriptor)
+            current = os.stat(
+                relative.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+            if _view_file_identity(current) != _view_file_identity(expected):
+                raise RuntimeError(
+                    f"portable view replacement target changed: {relative}"
+                )
+
+            flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+            flags |= getattr(os, "O_CLOEXEC", 0)
+            for _attempt in range(128):
+                candidate = (
+                    f".codenib-canonical-{os.getpid()}-" f"{os.urandom(16).hex()}.tmp"
+                )
+                try:
+                    temporary_descriptor = os.open(
+                        candidate,
+                        flags,
+                        stat.S_IMODE(expected.st_mode),
+                        dir_fd=directory_descriptor,
+                    )
+                except FileExistsError:
+                    continue
+                temporary_name = candidate
+                break
+            if temporary_name is None:
+                raise RuntimeError(
+                    "portable view canonicalization could not reserve a temporary file"
+                )
+
+            created = os.fstat(temporary_descriptor)
+            observed_created = os.stat(
+                temporary_name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISREG(created.st_mode)
+                or created.st_nlink != 1
+                or _view_binding_identity(observed_created)
+                != _view_binding_identity(created)
+            ):
+                raise RuntimeError(
+                    "portable view canonicalization temporary file is not private"
+                )
+            self._write_all(temporary_descriptor, payload)
+            os.fchmod(temporary_descriptor, stat.S_IMODE(expected.st_mode))
+            os.fsync(temporary_descriptor)
+            temporary_metadata = os.fstat(temporary_descriptor)
+            observed_temporary = os.stat(
+                temporary_name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISREG(temporary_metadata.st_mode)
+                or temporary_metadata.st_nlink != 1
+                or _view_binding_identity(observed_temporary)
+                != _view_binding_identity(temporary_metadata)
+            ):
+                raise RuntimeError(
+                    "portable view canonicalization temporary file changed"
+                )
+
+            current = os.stat(
+                relative.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+            if _view_file_identity(current) != _view_file_identity(expected):
+                raise RuntimeError(
+                    f"portable view replacement target changed: {relative}"
+                )
+            os.replace(
+                temporary_name,
+                relative.name,
+                src_dir_fd=directory_descriptor,
+                dst_dir_fd=directory_descriptor,
+            )
+            replaced = True
+            installed = os.stat(
+                relative.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+            installed_descriptor = os.fstat(temporary_descriptor)
+            if _view_binding_identity(installed) != _view_binding_identity(
+                temporary_metadata
+            ) or _view_binding_identity(installed) != _view_binding_identity(
+                installed_descriptor
+            ):
+                raise RuntimeError(
+                    f"portable view canonical replacement changed: {relative}"
+                )
+            os.lseek(temporary_descriptor, 0, os.SEEK_SET)
+            installed_payload = self._read_exact(
+                temporary_descriptor,
+                installed_descriptor,
+                relative=relative,
+                max_bytes=len(payload),
+            )
+            installed_after_read = os.stat(
+                relative.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+            descriptor_after_read = os.fstat(temporary_descriptor)
+            if (
+                installed_payload != payload
+                or _view_file_identity(installed_after_read)
+                != _view_file_identity(installed_descriptor)
+                or _view_file_identity(descriptor_after_read)
+                != _view_file_identity(installed_descriptor)
+            ):
+                raise RuntimeError(
+                    f"portable view canonical replacement changed: {relative}"
+                )
+            os.fsync(directory_descriptor)
+            self._verify_replacement_parent(relative, directory_descriptor)
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(
+                f"portable view could not canonicalize safely: {relative}"
+            ) from exc
+        finally:
+            cleanup_error: Exception | None = None
+            if (
+                temporary_name is not None
+                and temporary_descriptor >= 0
+                and not replaced
+            ):
+                try:
+                    self._remove_owned_temporary(
+                        directory_descriptor,
+                        temporary_name,
+                        temporary_descriptor,
+                    )
+                except Exception as exc:
+                    cleanup_error = exc
+            if temporary_descriptor >= 0:
+                try:
+                    os.close(temporary_descriptor)
+                except OSError as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+            if cleanup_error is not None and sys.exc_info()[1] is None:
+                raise RuntimeError(
+                    "portable view canonicalization temporary cleanup failed closed"
+                ) from cleanup_error
 
     @staticmethod
     def _read_exact(
@@ -1030,6 +1351,7 @@ def _faiss_contract(
 def _validate_level_semantics(
     path: Path,
     *,
+    present: bool,
     level: str,
     model: str,
     provider: str,
@@ -1041,8 +1363,14 @@ def _validate_level_semantics(
     canonicalize: bool = True,
     reader: _OwnedViewReader | None = None,
 ) -> None:
-    if not path.exists():
+    if not present:
         return
+    if canonicalize:
+        if reader is None:
+            raise RuntimeError(
+                "portable vector level canonicalization requires an owned reader"
+            )
+        reader.pin_replacement_target(path)
     config = _load_json_object(
         path,
         label=f"portable vector {level} config",
@@ -1092,7 +1420,8 @@ def _validate_level_semantics(
     if persisted_provider != provider:
         raise ValueError(f"portable vector {level} persistence provider does not match")
     if canonicalize:
-        path.write_bytes(_json_bytes(config))
+        assert reader is not None
+        reader.replace_bytes(path, _json_bytes(config))
 
 
 def _validate_vector_layout(
@@ -1250,8 +1579,10 @@ def _validate_vector_layout(
             raise ValueError(
                 f"portable vector active IVF index is untrained in {level}"
             )
+        level_config_path = level_path / f"config_{model_suffix}.json"
         _validate_level_semantics(
-            level_path / f"config_{model_suffix}.json",
+            level_config_path,
+            present=level_config_path in inventory_files,
             level=level,
             model=expected_model,
             provider=expected_provider,

@@ -15,9 +15,7 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Mapping
 
-from .._secret_fields import (
-    SecretFieldError,
-)
+from .._secret_fields import SecretFieldError
 from .._secret_fields import assert_no_secret_fields as _assert_no_secret_fields
 
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
