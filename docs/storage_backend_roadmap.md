@@ -393,8 +393,9 @@ and Git commit text remains display provenance rather than source authority.
 Planning performs no source or artifact reads, native parsing, CAS/catalog
 operation, receipt minting, or ref publication. Execution is a separate
 authority-bearing API, so inspecting or serializing a plan cannot publish it.
-Equivalent v1.1 export and runtime wiring remain outstanding, so M1 and M2
-remain in progress.
+The retained exporter described below now supplies equivalent canonical v1.1
+bytes. Retained filesystem materialization and production runtime wiring remain
+outstanding, so M1 and M2 remain in progress.
 
 The retained-import foundation now also exposes schema-v4 compound-generation
 identity as one backend-neutral model rule, including the canonical member
@@ -456,6 +457,23 @@ job-success transaction. Retained
 materialization/export, production compiler/runtime wiring, and a production
 GC implementation and policy remain outstanding, so M1 remains in progress.
 
+The first read-only retained `RepoManifest` exporter now closes the data-only
+round trip without introducing path authority. It accepts the additive
+`RetainedSnapshotCatalog` capability plus a receipt-verifying object store,
+either resolves one ref exactly once or reads one explicit immutable snapshot,
+and rebuilds the complete namespace, repository, source, profile, generation,
+member, and snapshot identity closure before object access. It authenticates
+the internal v2 projection, re-plans the complete portable manifest and its
+selection, cross-binds every schema-v4 dependency envelope, and verifies each
+canonical bundle plus every per-file receipt. BM25 and vector payload semantics
+are checked source-free while native vector indexes remain inert. Unselected
+entries are omitted from the emitted manifest, unknown capability extensions
+are preserved, and the built-in sparse/dense/hybrid/symbol capabilities are
+recomputed from the retained selection. A final receipt sweep precedes return
+of canonical `RepoManifest` v1.1 bytes and a point-in-time observation receipt.
+That receipt is neither a GC pin nor a materialization/native-load authority;
+filesystem output and runtime activation remain separate future boundaries.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
@@ -463,9 +481,9 @@ per-ref leases.  Catalog reads revalidate the normalized view rows against the
 canonical request; the M2 publication transaction must repeat that gate before
 associating outputs.  An explicit acquire may atomically retire an expired
 holder while taking over its slot; this slice adds no background reaper and is
-not wired to the compiler or Web workers. Retained equivalent export and
-production runtime wiring remain the outstanding M1 deliverables; fenced job
-publication remains M2 work.
+not wired to the compiler or Web workers. Retained materialization and
+production compiler/runtime wiring remain the outstanding M1 deliverables;
+fenced job publication remains M2 work.
 
 The shared compiler-cache lock is a cooperative serialization boundary for
 compiler and importer processes using a cache namespace private to one OS
