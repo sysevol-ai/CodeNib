@@ -66,8 +66,9 @@ the Python `igraph` wheel.
 
 `make core-test` is also the maintained native gate used by trusted full CI.
 It runs every C++ test executable, verifies that the built extension exports
-the required clangd query ABI, and then runs the SCIP, Fact, clangd, and
-profiling-contract Python tests with `build/core` first on `PYTHONPATH`.
+the required clangd query ABI, and then runs the SCIP, Fact, lazy SCIP provider,
+consumer-profiler, clangd, and profiling-contract Python tests with
+`build/core` first on `PYTHONPATH`.
 
 Some parity tests use generated SCIP integration fixtures and are skipped when
 those caches are absent. Always inspect the skip report from `make core-test`.
@@ -154,6 +155,36 @@ serial filtered query-surface digest and every incoming reference has an
 allowed source anchor; it is never inferred from the native index alone. The
 first candidate contract admits Python and Rust only. This admission layer
 does not enable an MCP route or make an end-to-end performance claim.
+
+### SCIP MCP Consumer Experiment
+
+`load_scip_query_provider()` keeps admitted symbol definition/reference calls
+on `FactQueryIndex` and atomically lazy-loads the bound persisted graph for
+position and route calls. Invalid shapes do not load the graph, concurrent
+first fallback publishes one complete provider, later symbol calls stay
+native, and snapshot or loader failures are terminal. Canonically normalized
+public MCP JSON remains identical to the persisted-graph provider; physical
+routing is diagnostic-only. The gate compares complete tool-result payloads,
+not raw JSON-RPC transport envelopes.
+
+The experimental selector is not connected to production `ServerContext`.
+`CODENIB_SCIP_FACT_QUERY_PROVIDER` defaults to `off`; `auto` is limited to a
+separate consumer-promoted language set and `required` fails closed. The fixed
+Python and Rust consumer gates preserved exact behavior and all safety gates,
+but both missed the required 20% p50 and p95 improvement. The promoted set
+therefore remains empty and production routing is unchanged. Reproduce one
+fixed subject at a time with:
+
+```bash
+make scip-mcp-consumer-gate \
+  SCIP_MCP_CONSUMER_GATE_MANIFEST=/path/to/repo_manifest.json \
+  SCIP_MCP_CONSUMER_GATE_PROJECT_ROOT=/path/to/clean/checkout \
+  SCIP_MCP_CONSUMER_GATE_SUBJECT_ID=python-codenib \
+  SCIP_MCP_CONSUMER_GATE_OUTPUT=/tmp/scip-mcp-python.json
+```
+
+Use `rust-ruff` and the corresponding Ruff paths for the Rust run. The durable
+multi-language roadmap records exact timings, revisions, and receipts.
 
 ## Native clangd Symbol, Position, And Route Queries
 

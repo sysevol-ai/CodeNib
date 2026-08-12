@@ -177,6 +177,54 @@ metadata contracts remain future work. The legacy `decode()` graph path
 remains unchanged, and this candidate is not a production MCP route until the
 separate consumer-boundary gate passes exact parity and the required speedup.
 
+### Lazy SCIP MCP consumer gate
+
+`load_scip_query_provider()` wraps one admitted Python or Rust
+`FactQueryIndex` with the existing persisted-graph provider. Symbol-shaped
+definition and reference requests stay native. Position-shaped definition and
+reference requests plus route requests revalidate the bound snapshot and
+lazily publish `graph.pkl` through one
+`NATIVE_READY -> GRAPH_LOADING -> GRAPH_READY | FAILED` condition state
+machine. Invalid request shapes fail before graph loading, concurrent first
+fallback materializes the graph once, and successful symbol calls remain
+native after publication. Loader and receipt failures are sticky, while
+`MemoryError` propagates unchanged. Public backend, fallback, snapshot,
+result, error, order, ambiguity, and metadata remain identical to the
+persisted-graph provider under canonical JSON serialization of the complete
+MCP tool-result payload. The gate does not claim raw JSON-RPC envelope byte
+parity; physical routing and counters are available only through diagnostics.
+
+`select_scip_query_provider()` is an experimental selector and is not wired
+into production `ServerContext`. `CODENIB_SCIP_FACT_QUERY_PROVIDER=off`, the
+default, selects the legacy provider. `auto` may fall back only during
+candidate startup and only for the independent consumer-promoted language
+set; `required` fails closed during startup. Once a candidate is published,
+later snapshot or lazy-load failures always fail closed. The consumer-promoted
+set remains empty because neither fixed subject passed the consumer-boundary
+performance gate, so production MCP and agent routing is unchanged.
+
+The fixed gate runs 20 measured samples per arm after four warmups, uses a
+fresh process for every balanced ABBA sample, and exercises 100 symbol seeds.
+Only symbol-only p50 and nearest-rank p95 participate in the 20% performance
+decision. Position-first, route-first, mixed, and 16-thread first-fallback
+workloads are correctness gates. Run each fixed subject separately:
+
+```bash
+make scip-mcp-consumer-gate \
+  SCIP_MCP_CONSUMER_GATE_MANIFEST=/path/to/repo_manifest.json \
+  SCIP_MCP_CONSUMER_GATE_PROJECT_ROOT=/path/to/clean/checkout \
+  SCIP_MCP_CONSUMER_GATE_SUBJECT_ID=python-codenib \
+  SCIP_MCP_CONSUMER_GATE_OUTPUT=/tmp/scip-mcp-python.json
+```
+
+Repeat with the Ruff paths, `SCIP_MCP_CONSUMER_GATE_SUBJECT_ID=rust-ruff`, and
+a distinct output file. The versioned subject manifest pins both repositories
+to full commits. Rust admission accepts syntactically proven unrelated Cargo
+array tables such as `[[bench]]` and `[[test]]`; malformed or
+package/workspace-relevant array tables still make the receipt incomplete and
+fail closed. Exact measurements and artifact receipts are recorded in the
+multi-language roadmap.
+
 ## Native clangd Symbol, Position, And Route Queries
 
 The C/C++ query-specific path starts from an existing project-local clangd

@@ -1141,11 +1141,79 @@ reference has an allowed source anchor. The first admitted languages are
 Python and Rust. This is safety/admission work only: it does not enable an MCP
 route and does not replace the M2 consumer-boundary measurement in #598.
 
-Production integration and additional FactQueryIndex languages get focused
-issues only after #598 passes for the relevant language. Warm-session
-incremental parse-tree reuse is timeboxed only after #600 records the bounded
-batch decision, especially if batching fails its gate. Storage RFC #199 and
-Guardian #309 remain independent programs.
+M2 implementation and gate status
+([#598](https://github.com/sysevol-ai/CodeNib/issues/598)): the experimental
+provider keeps symbol-shaped definitions and references on the admitted native
+index and revalidates the bound snapshot before atomically lazy-loading the
+existing `graph.pkl` for position and route calls. One condition state machine
+publishes a complete graph provider once; invalid shapes do not trigger the
+loader, concurrent callers reuse the publication, and symbol calls remain
+native afterward. Snapshot and loader failures are sticky, `MemoryError`
+propagates unchanged, and canonically normalized public payloads and
+persisted-graph metadata remain identical across arms.
+The independent runtime mode defaults to `off`; the selector is not connected
+to production `ServerContext`.
+
+The formal `scip_mcp_consumer_gate_v1` run on August 11, 2026 used benchmark
+commit `d7dab128ca3ed320111f7ac293bf43902abb4c7e`, 20 measured samples per arm
+after four warmups, a fresh process for every balanced ABBA sample, and 100
+seeds: 17 each canonical, display, bare, and quoted, plus 16 each ambiguous
+and missing. Each seed issued one definition and both reference declaration modes.
+The promotion rule independently required candidate symbol-only p50 and
+nearest-rank p95 to be no more than 80% of legacy. Position-first, route-first,
+mixed, and 16-thread concurrent first-fallback workloads were correctness-only
+gates. Filesystem page cache remained uncontrolled.
+
+| Subject | Legacy p50 / p95 | Candidate p50 / p95 | p50 / p95 improvement | Decision |
+| --- | ---: | ---: | ---: | --- |
+| CodeNib Python `6cf61b08310e165574c52fa217c66f0b6ae2a36d` | 1.417629s / 2.009662s | 2.456498s / 2.569240s | -73.282% / -27.844% | reject promotion |
+| Ruff Rust `75a24bbc67aa31b825b6326cfb6e6afdf3ca90d5` | 2.217309s / 2.702742s | 6.545577s / 7.005324s | -195.204% / -159.193% | reject promotion |
+
+Negative improvement denotes a regression. The exact artifact identities were:
+
+- CodeNib: 19,200 vertices and 90,102 edges; 82,776,883-byte
+  `index.decoded` SHA-256
+  `bcaebd3d5a053d0a9bcc70f840bb7fdc7c0ed3eafb64beb515cb5e7236e3f548`;
+  6,099,865-byte `graph.pkl` SHA-256
+  `7de7b0dde8c8d63cf44ebd2678922255867540edc757531c86b17b2e5262f870`;
+  query-surface SHA-256
+  `8f006b89bb41cdfbefae65a1efd118ca9c73c8ece50f92a9899f23aed255ab8b`;
+  candidate receipt
+  `4e601db58e7a5d3b6d988ccf5494956dc551dd58c565160dace29acd6dbb3ad9`;
+  raw report SHA-256
+  `af8404dcc2b64547279cdb27fb3241977c3957a0580c36e55750567bedb2ff4b`.
+- Ruff: 31,837 vertices and 231,458 edges; 130,542,689-byte
+  `index.decoded` SHA-256
+  `9f17e90da1ac0cdecb1754e235c525cad0f95dfe1aae9ce29180f8545edaa40d`;
+  13,388,156-byte `graph.pkl` SHA-256
+  `6dc1743e39a201d7fd0aa65495240fe3478c7b3834645db9cb7f642088e30d36`;
+  query-surface SHA-256
+  `5870b26c99e76186d64bd321650c3c4cec5921e110e76b93e4044e7ad128d28b`;
+  candidate receipt
+  `1d3ec1bfc6cd9f00e78743453c0b3ea574c696a81ca3f0aa59236c6ae94975bc`;
+  raw report SHA-256
+  `aff1dc4e6dcfa581a540a574223d6e0aba9b414ca8b9153ee344010d7a1e82c7`.
+
+For both languages, exact public result, error, order, ambiguity, and metadata
+parity passed under canonical JSON serialization of the complete MCP
+tool-result payload; raw JSON-RPC envelope byte parity was not claimed.
+Symbol-only candidate runs imported no Python igraph and recorded zero graph
+loads and fallbacks. Position-first,
+route-first, mixed, 16-thread exactly-once publication, immutable input and
+benchmark receipts, clean before/after identities, canonical protocol, and
+process isolation all passed. Only the multiplicative p50 and p95 gates failed.
+The raw machine JSON is not versioned; the report hashes above and the #598
+issue record identify it.
+
+Python and Rust are decided independently, but neither qualified. The
+consumer-promoted set therefore remains empty, production `ServerContext`, MCP,
+and agent routing for these Python/Rust SCIP paths stay on persisted
+`CodeGraph`, and #598 is a measured negative promotion decision rather than
+unfinished integration work. The ordered next issue is
+[#599](https://github.com/sysevol-ai/CodeNib/issues/599), which defines the
+repository-level chunk successor gate without adding a C++ batch implementation
+or production route. #600 remains the bounded repository-native implementation
+experiment. Storage RFC #199 and Guardian #309 remain independent programs.
 
 ## PR And Issue Flow
 
@@ -1182,6 +1250,8 @@ Current issue triage notes through August 11, 2026:
   explore/session ledger merged.
 - #558 is closed with exact parity but a negative per-file native chunking
   result; repository batching is tracked separately by #599/#600.
+- #598 is resolved with exact parity and safety but negative Python and Rust
+  consumer performance gates. No language is promoted; #599 is next.
 - #601 is the open tracker for consumer-boundary acceleration follow-up work.
 - #133 is closed. Its query-time skill-selection runtime landed through #149
   and the subsequent agent-runtime refactor; the original fitted A0--A6 table
