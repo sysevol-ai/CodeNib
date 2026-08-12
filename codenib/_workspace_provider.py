@@ -402,6 +402,7 @@ class _ProviderOperationGate:
         "_called",
         "_lock",
         "_operation",
+        "_operation_outcome",
         "_owner_pid",
         "_request",
     )
@@ -415,6 +416,9 @@ class _ProviderOperationGate:
         self._called = False
         self._lock = _CancellationSafeRLock()
         self._operation = operation
+        self._operation_outcome: tuple[object, BaseException | None] | object = (
+            _UNSET_RESULT
+        )
         self._owner_pid = os.getpid()
         self._request = request
 
@@ -448,7 +452,13 @@ class _ProviderOperationGate:
                 consume=True,
             )
             self._called = True
-            return self._operation(session)
+            try:
+                result = self._operation(session)
+                self._record_operation_outcome(result, None)
+                return result
+            except BaseException as operation_error:  # noqa: B036
+                self._record_operation_outcome(_UNSET_RESULT, operation_error)
+                raise
 
         return self._lock.run(invoke)
 
@@ -490,6 +500,70 @@ class _ProviderOperationGate:
     def called(self) -> bool:
         self._require_owner_pid()
         return self._lock.run(lambda: self._called)
+
+    def _record_operation_outcome(
+        self,
+        result: object,
+        operation_error: BaseException | None,
+    ) -> None:
+        """Commit one callback outcome before allowing it to escape the gate."""
+
+        primary_error = operation_error
+        outcome = (result, operation_error)
+        for _attempt in range(_SESSION_RECOVERY_LIMIT):
+            try:
+                self._operation_outcome = outcome
+                if self._operation_outcome is not outcome:
+                    raise RuntimeError(
+                        "strict workspace callback outcome changed during commit"
+                    )
+            except BaseException as transition_error:  # noqa: B036
+                if primary_error is None:
+                    primary_error = transition_error
+                    outcome = (_UNSET_RESULT, primary_error)
+                elif transition_error is not primary_error:
+                    try:
+                        _annotate_secondary_error(
+                            primary_error,
+                            "strict workspace callback outcome commit also failed",
+                            transition_error,
+                        )
+                    except BaseException:  # noqa: B036 - diagnostic is best-effort
+                        pass
+                continue
+            if primary_error is not None:
+                raise primary_error.with_traceback(primary_error.__traceback__)
+            return
+
+        recovery_error = RuntimeError(
+            "strict workspace callback outcome commit did not converge"
+        )
+        if primary_error is not None:
+            try:
+                _annotate_secondary_error(
+                    primary_error,
+                    "strict workspace callback outcome recovery also failed",
+                    recovery_error,
+                )
+            except BaseException:  # noqa: B036 - diagnostic is best-effort
+                pass
+            raise primary_error.with_traceback(primary_error.__traceback__)
+        raise recovery_error
+
+    @property
+    def operation_outcome(self) -> tuple[bool, object, BaseException | None]:
+        """Return the exact user-callback outcome recorded by this gate."""
+
+        self._require_owner_pid()
+
+        def read() -> tuple[bool, object, BaseException | None]:
+            outcome = self._operation_outcome
+            if outcome is _UNSET_RESULT:
+                return False, _UNSET_RESULT, None
+            result, operation_error = outcome  # type: ignore[misc]
+            return True, result, operation_error
+
+        return self._lock.run(read)
 
     def _deactivate(self) -> None:
         self._require_owner_pid()
@@ -656,18 +730,97 @@ def run_strict_workspace(
                 "strict workspace provider callback revocation also failed",
                 revoke_error,
             )
+    outcome_read_error: BaseException | None = None
+    for _attempt in range(_SESSION_RECOVERY_LIMIT):
+        try:
+            callback_completed, callback_result, callback_error = (
+                operation_gate.operation_outcome
+            )
+        except BaseException as read_error:  # noqa: B036 - recover exact outcome
+            if outcome_read_error is None:
+                outcome_read_error = read_error
+            elif read_error is not outcome_read_error:
+                try:
+                    _annotate_secondary_error(
+                        outcome_read_error,
+                        "strict workspace callback outcome read failed again",
+                        read_error,
+                    )
+                except BaseException:  # noqa: B036 - diagnostic is best-effort
+                    pass
+            continue
+        break
+    else:
+        recovery_error = RuntimeError(
+            "strict workspace callback outcome read did not converge"
+        )
+        if primary_error is not None:
+            try:
+                _annotate_secondary_error(
+                    primary_error,
+                    "strict workspace callback outcome recovery also failed",
+                    outcome_read_error or recovery_error,
+                )
+            except BaseException:  # noqa: B036 - diagnostic is best-effort
+                pass
+            raise primary_error.with_traceback(primary_error.__traceback__)
+        if outcome_read_error is not None:
+            try:
+                _annotate_secondary_error(
+                    outcome_read_error,
+                    "strict workspace callback outcome recovery also failed",
+                    recovery_error,
+                )
+            except BaseException:  # noqa: B036 - diagnostic is best-effort
+                pass
+            raise outcome_read_error.with_traceback(outcome_read_error.__traceback__)
+        raise recovery_error
+
+    if callback_error is not None:
+        if primary_error is not None and primary_error is not callback_error:
+            try:
+                _annotate_secondary_error(
+                    callback_error,
+                    "strict workspace provider also failed after its callback",
+                    primary_error,
+                )
+            except BaseException:  # noqa: B036 - diagnostic is best-effort
+                pass
+        if outcome_read_error is not None and outcome_read_error is not callback_error:
+            try:
+                _annotate_secondary_error(
+                    callback_error,
+                    "strict workspace callback outcome read also failed",
+                    outcome_read_error,
+                )
+            except BaseException:  # noqa: B036 - diagnostic is best-effort
+                pass
+        raise callback_error.with_traceback(callback_error.__traceback__)
     if primary_error is not None:
+        if outcome_read_error is not None and outcome_read_error is not primary_error:
+            try:
+                _annotate_secondary_error(
+                    primary_error,
+                    "strict workspace callback outcome read also failed",
+                    outcome_read_error,
+                )
+            except BaseException:  # noqa: B036 - diagnostic is best-effort
+                pass
         raise primary_error.with_traceback(primary_error.__traceback__)
-    if result is _UNSET_RESULT:
-        raise RuntimeError("strict workspace provider returned no result")
+    if outcome_read_error is not None:
+        raise outcome_read_error.with_traceback(outcome_read_error.__traceback__)
     if not operation_gate.called:
         raise RuntimeError("strict workspace provider did not invoke its operation")
+    if not callback_completed:
+        raise RuntimeError("strict workspace provider callback returned no outcome")
+    if result is _UNSET_RESULT:
+        raise RuntimeError("strict workspace provider returned no result")
     if not receipt_owner.active:
         raise RuntimeError("strict workspace provider returned without a receipt")
     receipt = receipt_owner.receipt
     if receipt.path != request.destination or receipt.plan != request.plan:
         raise RuntimeError("strict workspace provider published the wrong request")
-    return result  # type: ignore[return-value]
+    return callback_result  # type: ignore[return-value]
 
 
 __all__ = [

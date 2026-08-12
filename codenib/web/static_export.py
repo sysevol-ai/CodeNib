@@ -780,14 +780,14 @@ def _file_inventory(ownership: object) -> list[dict[str, Any]]:
     ]
 
 
-def _validated_output(
+def _reject_output_overlap(
+    output_dir: Path,
+    *,
     repo_path: Path,
     manifest_root: Path,
-    output_dir: Path,
-) -> Path:
-    repo_path = lexical_repository_path(repo_path)
-    manifest_root = lexical_directory_path(manifest_root)
-    output_dir = lexical_directory_path(output_dir)
+) -> None:
+    """Reject either direction of overlap with a protected source root."""
+
     for source, label in (
         (repo_path, "target repository"),
         (manifest_root, "index root"),
@@ -796,6 +796,41 @@ def _validated_output(
             raise ValueError(f"static export output must be outside the {label}")
         if output_dir in source.parents:
             raise ValueError(f"static export output must not contain the {label}")
+
+
+def _validated_output(
+    repo_path: Path,
+    manifest_path: Path,
+    output_dir: Path,
+) -> Path:
+    repo_path = lexical_repository_path(repo_path)
+    manifest_path = Path(os.path.abspath(os.fspath(manifest_path.expanduser())))
+    manifest_root = lexical_directory_path(manifest_path.parent)
+    output_dir = lexical_directory_path(output_dir)
+    _reject_output_overlap(
+        output_dir,
+        repo_path=repo_path,
+        manifest_root=manifest_root,
+    )
+
+    # Canonical names are a rejection-only cross-check for symlink aliases. The
+    # lexical paths above remain the paths used for every later read, authority
+    # capture, and publication; a resolved name never grants access or redirects
+    # the output. Resolve the manifest file itself so both a directory alias and
+    # a terminal manifest-file alias identify the physical index root.
+    try:
+        physical_repo_path = repo_path.resolve(strict=True)
+        physical_manifest_root = manifest_path.resolve(strict=True).parent
+        physical_output_dir = output_dir.resolve(strict=False)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError(
+            "static export paths could not be checked for physical overlap"
+        ) from exc
+    _reject_output_overlap(
+        physical_output_dir,
+        repo_path=physical_repo_path,
+        manifest_root=physical_manifest_root,
+    )
     return output_dir
 
 
@@ -849,7 +884,7 @@ def export_static_wiki(
     output_dir = lexical_directory_path(output_dir)
     output_dir = _validated_output(
         repo_path,
-        manifest_path.parent,
+        manifest_path,
         output_dir,
     )
     base_path = normalize_base_path(base_path)

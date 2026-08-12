@@ -58,6 +58,7 @@ SOURCE_FINGERPRINT_VERSION = 2
 
 _SOURCE_FINGERPRINT_V1_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SOURCE_FINGERPRINT_V2_RE = re.compile(r"^sha256-v2:[0-9a-f]{64}$")
+_SOURCE_NEWLINE_RE = re.compile(rb"[\r\n]")
 _V2_MAGIC = b"codenib-source-fingerprint\x00\x02"
 _MAX_FRAME_BYTES = (1 << 64) - 1
 _MAX_SOURCE_COMPONENTS = 256
@@ -347,6 +348,7 @@ class _AuthenticatedLineRange:
         "_end_line",
         "_limit",
         "_line_number",
+        "_pending_cr",
         "_start_line",
     )
 
@@ -359,27 +361,64 @@ class _AuthenticatedLineRange:
         self._end_line = end_line
         self._limit = limit
         self._line_number = 1
+        self._pending_cr = False
+
+    def _retain(self, payload: bytes, start: int, stop: int) -> None:
+        if not (
+            stop > start and self._start_line <= self._line_number <= self._end_line
+        ):
+            return
+        remaining = self._limit - len(self.payload)
+        segment_size = stop - start
+        if segment_size > remaining:
+            if remaining > 0:
+                self.payload.extend(payload[start : start + remaining])
+            self.overflow = True
+        elif remaining > 0:
+            self.payload.extend(payload[start:stop])
 
     def update(self, payload: bytes) -> None:
         self.byte_count += len(payload)
         self.digest.update(payload)
 
         offset = 0
-        while offset < len(payload):
-            newline = payload.find(b"\n", offset)
-            stop = len(payload) if newline < 0 else newline + 1
-            if self._start_line <= self._line_number <= self._end_line:
-                segment = payload[offset:stop]
-                remaining = self._limit - len(self.payload)
-                if len(segment) > remaining:
-                    if remaining > 0:
-                        self.payload.extend(segment[:remaining])
-                    self.overflow = True
-                elif remaining > 0:
-                    self.payload.extend(segment)
-            if newline >= 0:
+        if self._pending_cr:
+            if not payload:
+                return
+            self._pending_cr = False
+            if payload.startswith(b"\n"):
+                self._retain(payload, 0, 1)
                 self._line_number += 1
-            offset = stop
+                offset = 1
+            else:
+                self._line_number += 1
+
+        segment_start = offset
+        for match in _SOURCE_NEWLINE_RE.finditer(payload, offset):
+            boundary = match.start()
+            if boundary < offset:
+                continue
+            value = payload[boundary]
+            if value == 0x0A:
+                offset = boundary + 1
+                self._retain(payload, segment_start, offset)
+                self._line_number += 1
+                segment_start = offset
+                continue
+
+            offset = boundary + 1
+            if offset == len(payload):
+                self._retain(payload, segment_start, offset)
+                self._pending_cr = True
+                segment_start = offset
+                continue
+            if payload[offset] == 0x0A:
+                offset += 1
+            self._retain(payload, segment_start, offset)
+            self._line_number += 1
+            segment_start = offset
+
+        self._retain(payload, segment_start, len(payload))
 
 
 class RepositorySourceBinding:
@@ -778,20 +817,62 @@ class RepositorySourceBinding:
                 raise TypeError("repository source path must be text")
             if not path or "\x00" in path:
                 return None
-            candidate = path.replace("\\", os.sep).replace("/", os.sep)
-            if os.path.isabs(candidate):
-                lexical = Path(os.path.abspath(candidate))
+
+            current_root_label = os.fspath(self.root)
+            current_root_bytes = os.fsencode(current_root_label)
+            label_byte_limit = len(current_root_bytes) + 1 + _MAX_SOURCE_PATH_BYTES
+            if len(path) > label_byte_limit:
+                return None
+            try:
+                encoded_path = os.fsencode(path)
+            except UnicodeError:
+                return None
+            if len(encoded_path) > label_byte_limit:
+                return None
+
+            portable = path.replace("\\", "/")
+            drive, tail = ntpath.splitdrive(portable)
+            # Python 3.13 no longer treats one leading slash as absolute in
+            # ntpath. POSIX-rooted persisted paths remain absolute regardless
+            # of the host running this compatibility lookup.
+            absolute = portable.startswith("/") or ntpath.isabs(portable)
+            if drive and not absolute:
+                return None
+
+            native_candidate = portable.replace("/", os.sep)
+            native_exact = os.path.isabs(native_candidate) and (
+                os.name != "nt" or bool(drive)
+            )
+            if native_exact:
+                lexical = Path(os.path.abspath(native_candidate))
                 try:
                     relative_path = lexical.relative_to(self.root)
                 except ValueError:
-                    return None
-                parts = relative_path.parts
-            else:
-                parts = Path(candidate).parts
+                    pass
+                else:
+                    relative = PurePosixPath(*relative_path.parts).as_posix()
+                    return relative if relative in self._records else None
+
+            component_text = tail.lstrip("/") if absolute else tail
+            parts = tuple(component_text.split("/"))
             if not parts or any(part in {"", ".", ".."} for part in parts):
                 return None
-            relative = PurePosixPath(*parts).as_posix()
-            return relative if relative in self._records else None
+
+            if (
+                len(encoded_path) > _MAX_SOURCE_PATH_BYTES
+                or len(parts) > _MAX_SOURCE_COMPONENTS
+            ):
+                return None
+
+            if not absolute:
+                relative = PurePosixPath(*parts).as_posix()
+                return relative if relative in self._records else None
+
+            for offset in range(len(parts)):
+                relative = PurePosixPath(*parts[offset:]).as_posix()
+                if relative in self._records:
+                    return relative
+            return None
 
     def borrow_reader(self) -> RepositorySourceReader:
         """Return a non-owning reader that becomes unusable when this closes."""

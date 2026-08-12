@@ -208,6 +208,117 @@ def test_repository_source_binding_maps_only_captured_paths_and_reads_prefix(
         assert binding.read_prefix("pkg/source.py", max_bytes=6) == b"prefix"
 
 
+def test_repository_source_binding_reroots_only_frozen_absolute_suffixes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    for relative in (
+        "source.py",
+        "pkg/source.py",
+        "src/a.py",
+        "repo/src/a.py",
+        "one/shared.py",
+        "two/shared.py",
+    ):
+        source = repo / relative
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(relative, encoding="utf-8")
+
+    with capture_repository_source(repo) as binding:
+        with monkeypatch.context() as no_filesystem:
+            no_filesystem.setattr(
+                os.path,
+                "exists",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    AssertionError("captured path lookup consulted the live filesystem")
+                ),
+            )
+            no_filesystem.setattr(
+                Path,
+                "exists",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    AssertionError("captured path lookup consulted a Path")
+                ),
+            )
+            observed = (
+                binding.captured_relative_path("/old/build/machine/repo/pkg/source.py"),
+                binding.captured_relative_path(
+                    r"D:\agent\workspace\repo\pkg\source.py"
+                ),
+                binding.captured_relative_path(str(repo / "src/a.py")),
+                binding.captured_relative_path(f"{repo}/pkg/./source.py"),
+                binding.captured_relative_path(f"{repo}/pkg//source.py"),
+                binding.captured_relative_path(f"{repo}/pkg/../pkg/source.py"),
+                binding.captured_relative_path(f"{repo}/../repo/pkg/source.py"),
+                binding.captured_relative_path("prefix/pkg/source.py"),
+                binding.captured_relative_path("/old/pkg/../pkg/source.py"),
+                binding.captured_relative_path(r"C:pkg\source.py"),
+                binding.captured_relative_path("/old/build/missing.py"),
+                binding.captured_relative_path("/old/build/shared.py"),
+                binding.captured_relative_path("pkg/source.py\x00ignored"),
+                binding.captured_relative_path("\ud800"),
+                binding.captured_relative_path(
+                    "/" + "/".join(("part",) * 257) + "/pkg/source.py"
+                ),
+                binding.captured_relative_path("/" + ("x" * 4096) + "/pkg/source.py"),
+            )
+
+        assert observed == (
+            "pkg/source.py",
+            "pkg/source.py",
+            "src/a.py",
+            "pkg/source.py",
+            "pkg/source.py",
+            "pkg/source.py",
+            "pkg/source.py",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        with monkeypatch.context() as bounded_label:
+            bounded_label.setattr(
+                source_fingerprint_module.ntpath,
+                "splitdrive",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    AssertionError("oversized source label reached path parsing")
+                ),
+            )
+            bounded_result = binding.captured_relative_path(
+                "/" + ("x" * (len(os.fsencode(repo)) + 4097))
+            )
+
+        assert bounded_result is None
+
+
+def test_repository_source_binding_keeps_deep_current_root_absolute_paths(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    relative = Path(*(("d",) * 255), "source.py")
+    source = repo / relative
+    source.parent.mkdir(parents=True)
+    source.write_text("deep", encoding="utf-8")
+
+    with capture_repository_source(repo) as binding:
+        expected = relative.as_posix()
+        assert len(relative.parts) == 256
+        assert binding.captured_relative_path(expected) == expected
+        assert binding.captured_relative_path(str(source)) == expected
+        assert (
+            binding.captured_relative_path(
+                "\\\\server\\share\\" + str(relative).replace("/", "\\")
+            )
+            == expected
+        )
+
+
 def test_repository_source_prefix_authenticates_bytes_beyond_returned_prefix(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -267,6 +378,128 @@ def test_repository_source_reader_streams_far_line_range_and_is_borrowed(
     binding.close()
     with pytest.raises(RuntimeError, match="closed|poisoned"):
         reader.captured_relative_path("source.py")
+
+
+@pytest.mark.parametrize(
+    ("separator", "expected"),
+    [
+        (b"\n", b"two\n"),
+        (b"\r\n", b"two\r\n"),
+        (b"\r", b"two\r"),
+    ],
+)
+def test_repository_source_line_range_supports_universal_newlines(
+    tmp_path: Path,
+    separator: bytes,
+    expected: bytes,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_bytes(separator.join((b"one", b"two", b"three")))
+
+    with capture_repository_source(repo) as binding:
+        assert (
+            binding.read_line_range(
+                "source.py",
+                start_line=2,
+                end_line=2,
+                max_bytes=32,
+            )
+            == expected
+        )
+
+
+def test_authenticated_line_range_handles_crlf_across_chunks() -> None:
+    chunks = (b"one\r", b"\ntwo\r", b"three\n")
+    authenticated = source_fingerprint_module._AuthenticatedLineRange(2, 2, 32)
+
+    for chunk in chunks:
+        authenticated.update(chunk)
+
+    payload = b"".join(chunks)
+    assert bytes(authenticated.payload) == b"two\r"
+    assert authenticated.byte_count == len(payload)
+    assert authenticated.digest.hexdigest() == hashlib.sha256(payload).hexdigest()
+
+
+@pytest.mark.parametrize("separator", [b"\n", b"\r"])
+def test_authenticated_line_range_scans_dense_newlines_once(
+    separator: bytes,
+) -> None:
+    class NoRepeatedFind(bytes):
+        def find(self, *_args, **_kwargs):
+            raise AssertionError("universal-newline scan repeated a suffix search")
+
+    line_count = 4096
+    payload = NoRepeatedFind((b"x" + separator) * line_count + b"target\r")
+    authenticated = source_fingerprint_module._AuthenticatedLineRange(
+        line_count + 1,
+        line_count + 1,
+        32,
+    )
+
+    authenticated.update(payload)
+
+    assert bytes(authenticated.payload) == b"target\r"
+    assert authenticated.byte_count == len(payload)
+    assert authenticated.digest.hexdigest() == hashlib.sha256(payload).hexdigest()
+
+
+def test_repository_source_line_range_preserves_mixed_and_trailing_cr(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_bytes(b"one\rtwo\r\nthree\nfour\r")
+
+    with capture_repository_source(repo) as binding:
+        assert (
+            binding.read_line_range(
+                "source.py",
+                start_line=2,
+                end_line=3,
+                max_bytes=32,
+            )
+            == b"two\r\nthree\n"
+        )
+        assert (
+            binding.read_line_range(
+                "source.py",
+                start_line=4,
+                end_line=4,
+                max_bytes=32,
+            )
+            == b"four\r"
+        )
+
+
+def test_repository_source_crlf_limit_does_not_poison_binding(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_bytes(b"one\r\ntwo\r\n")
+    binding = capture_repository_source(repo)
+
+    with pytest.raises(ValueError, match="bounded read limit"):
+        binding.read_line_range(
+            "source.py",
+            start_line=1,
+            end_line=1,
+            max_bytes=4,
+        )
+
+    assert binding.usable
+    assert (
+        binding.read_line_range(
+            "source.py",
+            start_line=2,
+            end_line=2,
+            max_bytes=5,
+        )
+        == b"two\r\n"
+    )
+    binding.close()
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
