@@ -392,6 +392,22 @@ operation, receipt minting, or ref publication. The retained reader adapter,
 object upload, atomic snapshot/ref transaction, and equivalent v1.1 export are
 still outstanding, so M1 and M2 remain in progress.
 
+The retained-import foundation now also exposes schema-v4 compound-generation
+identity as one backend-neutral model rule, including the canonical member
+object set that participates in both the generation ID and catalog
+reachability. `StreamingObjectStore` is an additive capability, so existing
+object-store implementations remain compatible while `LocalCAS` can accept a
+bounded expected-digest stream, authenticate it before publication, and reuse
+an already durable exact object without consuming the producer. Publication
+readers can project an authenticated child subtree without filesystem I/O and
+share one process-bound lifetime across every facade and opened stream. Streams
+that escape a callback are drained and authenticated on success, aborted
+without further source reads on failure or cancellation, and retained for
+explicit cleanup retry if a descriptor or HANDLE cannot close. These are
+authority and transport prerequisites only: no view-bundle replay plan,
+manifest import transaction, materialized export owner, or ref update is added
+here, so M1 remains in progress.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
