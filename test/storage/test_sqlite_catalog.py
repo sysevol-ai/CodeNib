@@ -13,6 +13,15 @@ from threading import Barrier
 import pytest
 
 from codenib.storage.cas import LocalCAS
+from codenib.storage.models import (
+    ObjectRecord,
+    PublishedSnapshot,
+    RepositoryIdentity,
+    SnapshotView,
+    SourceRevision,
+    ViewGeneration,
+    ViewProfile,
+)
 from codenib.storage.sqlite_catalog import (
     DEFAULT_NAMESPACE_ID,
     LATEST_SCHEMA_VERSION,
@@ -509,6 +518,24 @@ def test_publish_resolves_complete_pinned_manifest(tmp_path):
         assert published["updated_at"] == resolved["updated_at"]
         assert resolved["manifest"] == direct
         assert direct["status"] == "ready"
+        assert direct["namespace"] == {
+            "namespace_id": DEFAULT_NAMESPACE_ID,
+            "name": "default",
+        }
+        assert direct["repository"] == {
+            "namespace_id": DEFAULT_NAMESPACE_ID,
+            "repository_key": "owner/repo",
+        }
+        repository_identity = RepositoryIdentity(**direct["repository"])
+        assert repository_identity.repository_id == direct["repository_id"]
+        source_identity = SourceRevision(
+            repository_id=direct["repository_id"],
+            source_kind=direct["source"]["kind"],
+            commit_sha=direct["source"]["commit_sha"],
+            tree_sha=direct["source"]["tree_sha"],
+            source_fingerprint=direct["source"]["source_fingerprint"],
+        )
+        assert source_identity.source_revision_id == source_revision_id
         assert direct["source"]["source_revision_id"] == source_revision_id
         assert direct["source"]["kind"] == "clean"
         assert direct["views"]["bm25"]["profile"] == {
@@ -524,11 +551,79 @@ def test_publish_resolves_complete_pinned_manifest(tmp_path):
         assert list(direct["views"]) == ["bm25", "vector"]
         assert direct["views"]["bm25"]["object"]["byte_size"] == 20
         assert direct["views"]["vector"]["object"]["byte_size"] == 30
+        snapshot_views = []
+        for view_type, raw in direct["views"].items():
+            profile = ViewProfile.create(
+                view_type,
+                raw["profile"]["config"],
+                name=raw["profile"]["name"],
+            )
+            assert profile.profile_id == raw["profile"]["profile_id"]
+            generation = ViewGeneration.create(
+                source_identity,
+                profile,
+                ObjectRecord(
+                    digest=raw["object"]["digest"],
+                    storage_key=raw["object"]["storage_key"],
+                    byte_size=raw["object"]["byte_size"],
+                    media_type=raw["object"]["media_type"],
+                ),
+                schema_version=raw["schema_version"],
+                metadata=raw["metadata"],
+            )
+            assert generation.view_generation_id == raw["view_generation_id"]
+            snapshot_views.append(SnapshotView(generation))
+        assert (
+            PublishedSnapshot(
+                direct["repository_id"],
+                source_revision_id,
+                tuple(snapshot_views),
+            ).snapshot_id
+            == direct["snapshot_id"]
+        )
 
         statuses = catalog._connection.execute(
             "SELECT DISTINCT status FROM view_generations"
         ).fetchall()
         assert [row["status"] for row in statuses] == ["ready"]
+
+
+def test_manifest_summary_closes_custom_namespace_and_repository_identity(tmp_path):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        namespace_id = catalog.create_namespace("team-one")
+        repository_id = catalog.create_repository(
+            "owner/repo",
+            namespace_id=namespace_id,
+        )
+        source_revision_id = _source(catalog, repository_id)
+        profile_id = catalog.create_view_profile("bm25")
+        generation_id = _stage(
+            catalog,
+            repository_id,
+            source_revision_id,
+            profile_id,
+            _object(catalog, "c"),
+        )
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [generation_id],
+            expected_generation=0,
+        )
+
+        summary = catalog.get_manifest_summary(published["snapshot_id"])
+
+        assert summary["namespace"] == {
+            "namespace_id": namespace_id,
+            "name": "team-one",
+        }
+        assert summary["repository"] == {
+            "namespace_id": namespace_id,
+            "repository_key": "owner/repo",
+        }
+        assert (
+            RepositoryIdentity(**summary["repository"]).repository_id == repository_id
+        )
 
 
 def test_publish_retry_for_current_snapshot_is_desired_state_idempotent(tmp_path):

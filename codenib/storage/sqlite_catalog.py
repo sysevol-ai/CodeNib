@@ -2867,7 +2867,7 @@ class SQLiteCatalog:
             }
 
     def get_manifest_summary(self, snapshot_id: str) -> dict[str, Any]:
-        """Return the immutable summary for a published, ready snapshot."""
+        """Return the identity-closed summary for a published, ready snapshot."""
         normalized_snapshot = _required_text(snapshot_id, "snapshot ID")
         with self._transaction(immediate=False):
             return self._manifest_summary(normalized_snapshot)
@@ -2881,6 +2881,9 @@ class SQLiteCatalog:
         _persisted_utc_timestamp(snapshot["published_at"], "snapshot published_at")
         repository = self._require_record(
             "repositories", "repository_id", snapshot["repository_id"]
+        )
+        namespace = self._require_record(
+            "namespaces", "namespace_id", repository["namespace_id"]
         )
         source = self._require_record(
             "source_revisions", "source_revision_id", snapshot["source_revision_id"]
@@ -3018,6 +3021,14 @@ class SQLiteCatalog:
         return {
             "snapshot_id": snapshot["snapshot_id"],
             "repository_id": snapshot["repository_id"],
+            "namespace": {
+                "namespace_id": namespace["namespace_id"],
+                "name": namespace["name"],
+            },
+            "repository": {
+                "namespace_id": repository["namespace_id"],
+                "repository_key": repository["repository_key"],
+            },
             "status": snapshot["status"],
             "published_at": snapshot["published_at"],
             "source": {

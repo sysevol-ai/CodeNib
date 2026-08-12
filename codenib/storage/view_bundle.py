@@ -392,7 +392,7 @@ def verify_view_bundle(
             raise StorageIntegrityError(
                 "view bundle archive size does not match the expected object"
             )
-        _validate_archive_physical_size(
+        validate_view_bundle_physical_size(
             signature[3],
             max_files=max_files,
             max_bytes=max_bytes,
@@ -496,7 +496,7 @@ def materialize_view_bundle(
                     raise StorageIntegrityError(
                         "view bundle archive size does not match the expected object"
                     )
-                _validate_archive_physical_size(
+                validate_view_bundle_physical_size(
                     signature[3],
                     max_files=max_files,
                     max_bytes=max_bytes,
@@ -643,20 +643,37 @@ def _validate_expected_size(value: int | None) -> int | None:
     return value
 
 
-def _validate_archive_physical_size(
+def validate_view_bundle_physical_size(
     byte_size: int,
     *,
     max_files: int,
     max_bytes: int,
     max_metadata_bytes: int,
 ) -> None:
+    """Reject an archive receipt that cannot fit configured bundle limits.
+
+    Callers that start from catalog or object metadata must execute this gate
+    before ``ObjectStore.verify``, ``open``, or ``materialize`` so an oversized
+    physical object is rejected before backend byte access.
+    """
+
+    _validate_limits(max_files, max_bytes, max_metadata_bytes)
+    if byte_size is None:
+        raise StorageValidationError(
+            "view bundle archive size must be a nonnegative integer"
+        )
+    normalized_size = _validate_expected_size(byte_size)
+    if normalized_size is None:  # pragma: no cover - guarded above for type narrowing
+        raise StorageValidationError(
+            "view bundle archive size must be a nonnegative integer"
+        )
     maximum = (
         max_bytes
         + max_metadata_bytes
         + (max_files + 1) * _MAX_ZIP_ENTRY_OVERHEAD
         + _MAX_ZIP_ENVELOPE_BYTES
     )
-    if byte_size > maximum:
+    if normalized_size > maximum:
         raise StorageValidationError(
             f"view bundle archive exceeds its {maximum}-byte physical limit"
         )
@@ -3093,5 +3110,6 @@ __all__ = [
     "ViewBundleRecord",
     "build_view_bundle",
     "materialize_view_bundle",
+    "validate_view_bundle_physical_size",
     "verify_view_bundle",
 ]

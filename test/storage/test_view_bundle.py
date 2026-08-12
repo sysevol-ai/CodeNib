@@ -26,6 +26,7 @@ from codenib.storage import (
     StorageValidationError,
     build_view_bundle,
     materialize_view_bundle,
+    validate_view_bundle_physical_size,
     verify_view_bundle,
 )
 from codenib.storage.models import canonical_json
@@ -41,6 +42,33 @@ def _source(root: Path) -> Path:
     executable.write_bytes(b"immutable shard")
     executable.chmod(0o751)
     return source
+
+
+def test_public_physical_size_gate_rejects_before_archive_access() -> None:
+    validate_view_bundle_physical_size(
+        1,
+        max_files=1,
+        max_bytes=1,
+        max_metadata_bytes=1,
+    )
+    with pytest.raises(StorageValidationError, match="physical limit"):
+        validate_view_bundle_physical_size(
+            2 * 1024 * 1024,
+            max_files=1,
+            max_bytes=1,
+            max_metadata_bytes=1,
+        )
+
+
+@pytest.mark.parametrize("byte_size", [None, True, -1, 1.5, "1"])
+def test_public_physical_size_gate_rejects_malformed_size(byte_size: object) -> None:
+    with pytest.raises(StorageValidationError, match="nonnegative integer"):
+        validate_view_bundle_physical_size(
+            byte_size,  # type: ignore[arg-type]
+            max_files=1,
+            max_bytes=1,
+            max_metadata_bytes=1,
+        )
 
 
 def _moved_publication_root(destination: Path) -> Path:

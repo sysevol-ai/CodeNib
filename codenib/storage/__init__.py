@@ -29,7 +29,12 @@ from .models import (
     ViewGeneration,
     ViewProfile,
 )
-from .protocols import IndexCatalog, JobCatalog, ObjectStore
+from .protocols import (
+    IndexCatalog,
+    JobCatalog,
+    ObjectStore,
+    ReceiptVerifyingObjectStore,
+)
 from .sqlite_catalog import (
     DEFAULT_NAMESPACE_ID,
     CatalogConflictError,
@@ -50,6 +55,7 @@ from .view_bundle import (
     ViewBundleRecord,
     build_view_bundle,
     materialize_view_bundle,
+    validate_view_bundle_physical_size,
     verify_view_bundle,
 )
 
@@ -81,6 +87,7 @@ __all__ = [
     "PublishedSnapshot",
     "RefJobLease",
     "RefState",
+    "ReceiptVerifyingObjectStore",
     "RepositoryIdentity",
     "SQLiteCatalog",
     "SnapshotView",
@@ -98,5 +105,6 @@ __all__ = [
     "ViewProfile",
     "build_view_bundle",
     "materialize_view_bundle",
+    "validate_view_bundle_physical_size",
     "verify_view_bundle",
 ]
