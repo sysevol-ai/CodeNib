@@ -935,6 +935,24 @@ class _CallbackScopedVerifiedBundleFile:
         try:
             self._archive.close()
         except BaseException as error:  # noqa: B036 - cleanup boundary
+            try:
+                physically_closed = self._archive_is_closed()
+            except BaseException as completion_error:  # noqa: B036 - keep first
+                _annotate_secondary_error(
+                    error,
+                    "temporary view-bundle stream close observation also failed",
+                    completion_error,
+                )
+            else:
+                if physically_closed:
+                    try:
+                        _forget_verified_bundle_stream_cleanup_owner(self)
+                    except BaseException as retention_error:  # noqa: B036
+                        _annotate_secondary_error(
+                            error,
+                            "verified view-bundle cleanup registry release also failed",
+                            retention_error,
+                        )
             if isinstance(error, (GeneratorExit, KeyboardInterrupt, SystemExit)):
                 raise
             raise StorageIntegrityError(
@@ -974,10 +992,15 @@ class _CallbackScopedVerifiedBundleFile:
     def retry_cleanup(self) -> None:
         """Retry a retained physical tempfile close after failure recovery."""
 
+        if self._cleanup_complete():
+            _forget_verified_bundle_stream_cleanup_owner(self)
+            return
         self._prepare_cleanup()
         action = _verified_bundle_stream_close_action(self)
         with _run_context_with_cleanup_actions(lambda: (action,)):
             pass
+        if self._cleanup_complete():
+            _forget_verified_bundle_stream_cleanup_owner(self)
 
 
 _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS: list[
@@ -1027,19 +1050,19 @@ def retry_retained_verified_bundle_stream_cleanup() -> None:
     _synchronize_verified_bundle_stream_cleanup_process()
     with _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK:
         owners = tuple(_RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS)
-    primary: BaseException | None = None
-    for owner in owners:
-        try:
-            owner.retry_cleanup()
-        except BaseException as error:  # noqa: B036 - keep trying later owners
-            if primary is None:
-                primary = error
-            else:
-                _annotate_secondary_error(
-                    primary,
-                    "additional retained verified stream cleanup failed",
-                    error,
-                )
+        primary: BaseException | None = None
+        for owner in owners:
+            try:
+                owner.retry_cleanup()
+            except BaseException as error:  # noqa: B036 - keep trying later owners
+                if primary is None:
+                    primary = error
+                else:
+                    _annotate_secondary_error(
+                        primary,
+                        "additional retained verified stream cleanup failed",
+                        error,
+                    )
     if primary is not None:
         raise primary
 

@@ -15,6 +15,7 @@ import shutil
 import stat
 import struct
 import sys
+import threading
 import tracemalloc
 import warnings
 import zipfile
@@ -3288,6 +3289,7 @@ def test_verified_stream_persistent_close_failure_is_fail_closed_and_retained(
         def __init__(self) -> None:
             self._handle = real_temporary_file(mode="w+b")
             self.allow_close = False
+            self.raise_after_close = False
             self.close_attempts = 0
 
         def __getattr__(self, name: str) -> object:
@@ -3298,6 +3300,8 @@ def test_verified_stream_persistent_close_failure_is_fail_closed_and_retained(
             if not self.allow_close:
                 raise OSError(errno.EIO, "persistent stream close failure")
             self._handle.close()
+            if self.raise_after_close:
+                raise OSError(errno.EIO, "post-close stream failure")
 
     created: list[PersistentCloseFailure] = []
 
@@ -3351,9 +3355,109 @@ def test_verified_stream_persistent_close_failure_is_fail_closed_and_retained(
         ]
 
         created[0].allow_close = True
-        retry_retained_verified_bundle_stream_cleanup()
+        created[0].raise_after_close = True
+        with pytest.raises(StorageIntegrityError, match="stream close failed"):
+            retry_retained_verified_bundle_stream_cleanup()
         assert created[0]._handle.closed
         assert not bundle_module._RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS
+        retry_retained_verified_bundle_stream_cleanup()
     finally:
         created[0].allow_close = True
         created[0]._handle.close()
+
+
+def test_retained_verified_stream_cleanup_serializes_concurrent_retries() -> None:
+    first_entered = threading.Event()
+    second_entered = threading.Event()
+    release_first = threading.Event()
+    errors: list[BaseException] = []
+
+    class Owner:
+        calls = 0
+
+        def retry_cleanup(self) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                first_entered.set()
+                assert release_first.wait(5)
+            else:
+                second_entered.set()
+            bundle_module._forget_verified_bundle_stream_cleanup_owner(self)
+
+    owner = Owner()
+    with bundle_module._RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK:
+        assert not bundle_module._RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS
+        bundle_module._RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS.append(owner)
+
+    def retry() -> None:
+        try:
+            retry_retained_verified_bundle_stream_cleanup()
+        except BaseException as error:  # noqa: B036 - thread result capture
+            errors.append(error)
+
+    first = threading.Thread(target=retry)
+    second = threading.Thread(target=retry)
+    try:
+        first.start()
+        assert first_entered.wait(5)
+        second.start()
+        assert not second_entered.wait(0.1)
+        release_first.set()
+        first.join(5)
+        second.join(5)
+        assert not first.is_alive()
+        assert not second.is_alive()
+        assert owner.calls == 1
+        assert not errors
+        assert not bundle_module._RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS
+    finally:
+        release_first.set()
+        first.join(5)
+        second.join(5)
+        with bundle_module._RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK:
+            bundle_module._RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS.clear()
+
+
+def test_retained_verified_stream_cleanup_preserves_close_primary_when_forget_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = KeyboardInterrupt("physical close primary")
+    secondary = SystemExit("registry release interruption")
+
+    class CloseThenInterrupt:
+        closed = False
+        calls = 0
+
+        def close(self) -> None:
+            self.calls += 1
+            self.closed = True
+            raise primary
+
+    archive = CloseThenInterrupt()
+    owner = bundle_module._CallbackScopedVerifiedBundleFile(archive)
+    bundle_module._register_verified_bundle_stream_cleanup_owner(owner)
+    real_forget = bundle_module._forget_verified_bundle_stream_cleanup_owner
+
+    def interrupt_forget(_owner: object) -> None:
+        raise secondary
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_forget_verified_bundle_stream_cleanup_owner",
+        interrupt_forget,
+    )
+    with pytest.raises(KeyboardInterrupt) as captured:
+        owner.retry_cleanup()
+
+    assert captured.value is primary
+    assert archive.calls == 1
+    assert owner in bundle_module._RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS
+    assert "registry release" in "\n".join(_exception_notes(primary))
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_forget_verified_bundle_stream_cleanup_owner",
+        real_forget,
+    )
+    retry_retained_verified_bundle_stream_cleanup()
+    assert not bundle_module._RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS
