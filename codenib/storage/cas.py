@@ -1500,11 +1500,50 @@ class _ValidatedObjectChunks(Iterator[bytes]):
         return block
 
     def close(self) -> None:
-        """Close the acquired iterator at most once on every terminal path."""
+        """Terminally stop iteration and close its producer at most once.
 
-        if self._closed:
-            return
-        self._closed = True
+        ``_closed`` is only the iteration-terminal marker.  The retained
+        ``_iterator`` is the close authority: an interruption after the marker
+        changes must not make a later cleanup attempt believe that the producer
+        was already handled.  Converge the marker first, retaining its first
+        interruption, and then hand off the producer exactly once.
+
+        Detaching ``_iterator`` is the arbitrary-callback boundary.  Dynamic
+        ``close`` lookup and invocation can run producer code which commits a
+        side effect before raising, so neither operation may be replayed after
+        that handoff.
+        """
+
+        transition_error: BaseException | None = None
+        while not self._closed:
+            try:
+                self._closed = True
+            except BaseException as error:  # noqa: B036 - finish transition
+                if transition_error is None:
+                    transition_error = error
+                else:
+                    _atomic._annotate_secondary_error(
+                        transition_error,
+                        "CAS chunk iterator terminal transition also failed",
+                        error,
+                    )
+
+        try:
+            self._close_producer_once()
+        except BaseException as close_error:  # noqa: B036 - keep first error
+            if transition_error is None:
+                raise
+            _atomic._annotate_secondary_error(
+                transition_error,
+                "CAS chunk producer cleanup also failed",
+                close_error,
+            )
+        if transition_error is not None:
+            raise transition_error
+
+    def _close_producer_once(self) -> None:
+        """Consume retained producer-close authority without replaying it."""
+
         iterator = self._iterator
         self._iterator = None
         self._chunks = None

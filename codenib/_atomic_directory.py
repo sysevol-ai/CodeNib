@@ -154,6 +154,7 @@ class PublicationAuthenticatedFile:
         "_digest",
         "_record",
         "_closed",
+        "_finalized",
         "_pid",
         "_lifetime",
     )
@@ -176,6 +177,7 @@ class PublicationAuthenticatedFile:
         self._digest = hashlib.sha256()
         self._record: TreeFileRecord | None = None
         self._closed = False
+        self._finalized = False
         self._pid = os.getpid()
         self._lifetime: _PublicationReaderLifetime | None = None
 
@@ -242,9 +244,11 @@ class PublicationAuthenticatedFile:
             yield self.read(min(chunk_size, self._remaining))
 
     def _finalize(self) -> None:
-        if self._closed:
+        if self._finalized:
             return
         try:
+            if self._closed:
+                return
             while self._remaining:
                 self.read(min(_OWNERSHIP_COPY_BYTES, self._remaining))
             extra = self._read_callback(1)
@@ -257,8 +261,12 @@ class PublicationAuthenticatedFile:
                 size=self.size,
                 sha256=self._digest.hexdigest(),
             )
-        finally:
+        except BaseException:
             self._closed = True
+            raise
+        else:
+            self._closed = True
+            self._finalized = True
 
     def _abort(self) -> None:
         """Terminate a failed consumer stream without reading more source bytes."""
@@ -276,6 +284,43 @@ class _PublicationReaderLifetime:
         self.active = True
         self.authentication_failed = False
         self.open_files: list[_PublicationAuthenticatedFileContext] = []
+
+
+class _PublicationAuthenticatedFileBackendContext:
+    """Expose the at-most-once handoff into one backend context exit.
+
+    ``exit_handed_off`` records delegation, not backend completion.  Production
+    backends register their descriptors or HANDLEs with the retained
+    publication authority before yielding, so an interruption at the nested
+    ``__exit__`` call can safely defer physical cleanup to that owner.  A
+    directly supplied custom context remains responsible for its own resources
+    after the handoff; this adapter cannot manufacture ownership for it.
+    """
+
+    __slots__ = ("_context", "exit_handed_off")
+
+    def __init__(
+        self,
+        context: ContextManager[PublicationAuthenticatedFile],
+    ) -> None:
+        self._context = context
+        self.exit_handed_off = False
+
+    def __enter__(self) -> PublicationAuthenticatedFile:
+        return self._context.__enter__()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: object,
+    ) -> bool | None:
+        # Mark the at-most-once handoff before the nested CALL.  An interruption
+        # at that CALL is indistinguishable in pure Python from one just inside
+        # an arbitrary context's ``__exit__``.  Authority-backed production
+        # contexts remain physically owned even when this call never begins.
+        self.exit_handed_off = True
+        return self._context.__exit__(exc_type, exc, traceback)
 
 
 class _PublicationAuthenticatedFileContext:
@@ -310,9 +355,7 @@ class _PublicationAuthenticatedFileContext:
         self._max_bytes = max_bytes
         self._expected = expected
         self._authority_expected = authority_expected
-        self._backend_context: ContextManager[PublicationAuthenticatedFile] | None = (
-            None
-        )
+        self._backend_context: _PublicationAuthenticatedFileBackendContext | None = None
         self._authenticated: PublicationAuthenticatedFile | None = None
         self._entered = False
         self._finished = False
@@ -323,12 +366,14 @@ class _PublicationAuthenticatedFileContext:
         self._reader._require_active()
         self._entered = True
         self._reader._register_open_file(self)
-        context: ContextManager[PublicationAuthenticatedFile] | None = None
+        context: _PublicationAuthenticatedFileBackendContext | None = None
         try:
-            context = self._reader._open_file(
-                self._authority_relative,
-                self._max_bytes,
-                self._authority_expected,
+            context = _PublicationAuthenticatedFileBackendContext(
+                self._reader._open_file(
+                    self._authority_relative,
+                    self._max_bytes,
+                    self._authority_expected,
+                )
             )
             self._backend_context = context
             authenticated = context.__enter__()
@@ -369,8 +414,9 @@ class _PublicationAuthenticatedFileContext:
                             "publication authenticated file entry cleanup also failed",
                             cleanup_error,
                         )
-            self._finished = True
-            self._reader._forget_open_file(self)
+            if context is None or context.exit_handed_off:
+                self._reader._forget_open_file(self)
+                self._finished = True
             raise
 
     def __exit__(
@@ -379,7 +425,17 @@ class _PublicationAuthenticatedFileContext:
         exc: BaseException | None,
         traceback: object,
     ) -> Literal[False]:
-        self._finish(exc, exc_type=exc_type, traceback=traceback)
+        try:
+            self._finish(exc, exc_type=exc_type, traceback=traceback)
+        except BaseException as cleanup_error:  # noqa: B036 - keep body primary
+            if exc is None:
+                raise
+            if cleanup_error is not exc:
+                _annotate_secondary_error(
+                    exc,
+                    "publication authenticated file exit also failed",
+                    cleanup_error,
+                )
         return False
 
     def _finish(
@@ -397,8 +453,12 @@ class _PublicationAuthenticatedFileContext:
         context = self._backend_context
         authenticated = self._authenticated
         if context is None:
-            self._finished = True
             self._reader._forget_open_file(self)
+            self._finished = True
+            return
+        if context.exit_handed_off:
+            self._reader._forget_open_file(self)
+            self._finished = True
             return
         if primary_error is not None:
             self._reader._mark_authentication_failed()
@@ -422,8 +482,9 @@ class _PublicationAuthenticatedFileContext:
             self._reader._mark_authentication_failed()
             raise
         finally:
-            self._finished = True
-            self._reader._forget_open_file(self)
+            if context.exit_handed_off:
+                self._reader._forget_open_file(self)
+                self._finished = True
 
     def _abort_and_close(self) -> None:
         """Abort an escaped stream and close it without authenticating more bytes."""
@@ -432,6 +493,10 @@ class _PublicationAuthenticatedFileContext:
             return
         authenticated = self._authenticated
         context = self._backend_context
+        if context is not None and context.exit_handed_off:
+            self._reader._forget_open_file(self)
+            self._finished = True
+            return
         if authenticated is not None:
             authenticated._abort()
         try:
@@ -441,12 +506,19 @@ class _PublicationAuthenticatedFileContext:
             self._reader._mark_authentication_failed()
             raise
         finally:
-            self._finished = True
-            self._reader._forget_open_file(self)
+            if context is None or context.exit_handed_off:
+                self._reader._forget_open_file(self)
+                self._finished = True
 
 
 class PublicationDirectoryReader:
-    """A child tree that is usable only during an authority-owned callback."""
+    """A child tree that is usable only during an authority-owned callback.
+
+    Direct construction with a custom ``open_file`` context is a testing and
+    integration seam.  Such a provider owns its resources independently: if
+    exit delegation is interrupted, it must retain and eventually release
+    them just as the built-in publication-authority backends do.
+    """
 
     __slots__ = (
         "_diagnostic_path",
@@ -577,9 +649,11 @@ class PublicationDirectoryReader:
 
     def _close_open_files(self, primary_error: BaseException | None) -> None:
         actions = tuple(
-            (
-                "publication escaped authenticated file cleanup also failed",
-                lambda context=context: context._finish(primary_error),
+            _OrderedAction(
+                label=("publication escaped authenticated file cleanup also failed"),
+                action=lambda context=context: context._finish(primary_error),
+                complete=lambda context=context: context._finished,
+                retry_incomplete="cancellation",
             )
             for context in reversed(tuple(self._lifetime.open_files))
         )
@@ -596,9 +670,11 @@ class PublicationDirectoryReader:
 
     def _abort_open_files(self) -> None:
         actions = tuple(
-            (
-                "publication escaped authenticated file abort also failed",
-                context._abort_and_close,
+            _OrderedAction(
+                label="publication escaped authenticated file abort also failed",
+                action=context._abort_and_close,
+                complete=lambda context=context: context._finished,
+                retry_incomplete="cancellation",
             )
             for context in reversed(tuple(self._lifetime.open_files))
         )
@@ -895,9 +971,13 @@ class PublicationDirectoryReader:
         if self._lifetime.open_files:
             self._mark_authentication_failed()
         failures.actions = (
-            (
-                "publication reader escaped stream abort also failed",
-                self._abort_open_files,
+            _OrderedAction(
+                label="publication reader escaped stream abort also failed",
+                action=self._abort_open_files,
+                complete=lambda: all(
+                    context._finished for context in self._lifetime.open_files
+                ),
+                retry_incomplete="cancellation",
             ),
         )
         _run_ordered_actions(failures)
@@ -1531,9 +1611,13 @@ def _run_publication_reader_callback(
             primary_error = active_error
         failures = _OrderedActionState(
             actions=(
-                (
-                    "publication reader escaped file cleanup also failed",
-                    lambda: reader._close_open_files(primary_error),
+                _OrderedAction(
+                    label="publication reader escaped file cleanup also failed",
+                    action=lambda: reader._close_open_files(primary_error),
+                    complete=lambda: all(
+                        context._finished for context in reader._lifetime.open_files
+                    ),
+                    retry_incomplete="cancellation",
                 ),
                 (
                     "publication reader validity validation also failed",
@@ -2320,7 +2404,13 @@ class _PublicationAuthorityOwner:
         _register_publication_authority_owner(self)
         self._authority = authority
 
-    def close(self) -> None:
+    def close(
+        self,
+        *,
+        _attempt_started: Callable[[], None] | None = None,
+    ) -> None:
+        if _attempt_started is not None:
+            _attempt_started()
         _synchronize_retained_publication_process()
         with _RETAINED_PUBLICATION_AUTHORITY_LOCK:
             authority = self._authority
@@ -2433,18 +2523,59 @@ def _forget_publication_authority_owner(
         ]
 
 
+def _publication_authority_owner_released(
+    owner: _PublicationAuthorityOwner,
+) -> bool:
+    return owner.authority is None and not any(
+        retained is owner for retained in _RETAINED_PUBLICATION_AUTHORITY_OWNERS
+    )
+
+
+@dataclass(slots=True)
+class _RetainedAuthorityCloseAttempt:
+    """Expose whether a retained owner accepted one close attempt."""
+
+    owner: _PublicationAuthorityOwner
+    entered: bool = False
+
+    def _mark_entered(self) -> None:
+        self.entered = True
+
+    def __call__(self) -> None:
+        self.owner.close(_attempt_started=self._mark_entered)
+
+    def retry_incomplete(self, error: BaseException | None) -> bool:
+        """Retry pre-handoff cancellation and interrupted registry release."""
+
+        if error is None or isinstance(error, Exception):
+            return False
+        if not self.entered:
+            return True
+        return self.owner.authority is None and not (
+            _publication_authority_owner_released(self.owner)
+        )
+
+
 def retry_retained_publication_cleanup() -> None:
     """Retry every retained authority close after publication work is quiescent."""
 
     _synchronize_retained_publication_process()
     with _RETAINED_PUBLICATION_AUTHORITY_LOCK:
+        attempts = tuple(
+            _RetainedAuthorityCloseAttempt(owner)
+            for owner in tuple(_RETAINED_PUBLICATION_AUTHORITY_OWNERS)
+        )
         failures = _OrderedActionState(
             actions=tuple(
-                (
-                    "additional retained publication authority cleanup failed",
-                    owner.close,
+                _OrderedAction(
+                    label=("additional retained publication authority cleanup failed"),
+                    action=attempt,
+                    complete=lambda attempt=attempt: (
+                        _publication_authority_owner_released(attempt.owner)
+                    ),
+                    retry_incomplete=attempt.retry_incomplete,
                 )
-                for owner in tuple(_RETAINED_PUBLICATION_AUTHORITY_OWNERS)
+                for attempt in attempts
             ),
             iteration_failure_label=(
                 "retained publication cleanup iteration also failed"
@@ -2913,9 +3044,11 @@ def _open_posix_publication_authority(
                     reader._deactivate()
 
             cleanup_actions = (
-                (
-                    "publication reader deactivation also failed",
-                    deactivate_reader,
+                _OrderedAction(
+                    label="publication reader deactivation also failed",
+                    action=deactivate_reader,
+                    complete=lambda: reader is None or not reader._lifetime.active,
+                    retry_incomplete="cancellation",
                 ),
                 _OrderedAction(
                     label="publication child descriptor cleanup also failed",
@@ -4059,6 +4192,7 @@ def _open_windows_publication_authority(
             if opened_child is None:
                 return None
             handle, metadata = opened_child
+            child_record = resources.record_for_cleanup(handle)
             primary_error: BaseException | None = None
             try:
                 if metadata.st_dev != opened.st_dev:
@@ -4073,7 +4207,7 @@ def _open_windows_publication_authority(
                 raise
             finally:
                 try:
-                    resources.close_handle(handle)
+                    resources.close_record(child_record)
                 except BaseException as close_error:  # noqa: B036
                     if primary_error is None:
                         raise
@@ -4099,8 +4233,9 @@ def _open_windows_publication_authority(
             if opened_child is None:
                 raise RuntimeError(f"{label} disappeared: {display_path}")
             handle, metadata = opened_child
+            child_record = resources.record_for_cleanup(handle)
             if metadata.st_dev != opened.st_dev:
-                resources.close_handle(handle)
+                resources.close_record(child_record)
                 raise RuntimeError("publication child crosses a volume")
             handle_record = resources.record_for_cleanup(handle)
             handle_owner = resources._exact_record_cleanup_owner(handle_record)
@@ -4111,9 +4246,11 @@ def _open_windows_publication_authority(
                     reader._deactivate()
 
             cleanup_actions = (
-                (
-                    "Windows publication reader deactivation also failed",
-                    deactivate_reader,
+                _OrderedAction(
+                    label="Windows publication reader deactivation also failed",
+                    action=deactivate_reader,
+                    complete=lambda: reader is None or not reader._lifetime.active,
+                    retry_incomplete="cancellation",
                 ),
                 _OrderedAction(
                     label="Windows reader HANDLE cleanup also failed",
@@ -4173,6 +4310,7 @@ def _open_windows_publication_authority(
             if opened_source is None:
                 raise FileNotFoundError(source)
             source_handle, _metadata = opened_source
+            source_record = resources.record_for_cleanup(source_handle)
             primary_error: BaseException | None = None
             try:
                 api.rename_noreplace(
@@ -4185,7 +4323,7 @@ def _open_windows_publication_authority(
                 raise
             finally:
                 try:
-                    resources.close_handle(source_handle)
+                    resources.close_record(source_record)
                 except BaseException as close_error:  # noqa: B036
                     if primary_error is None:
                         raise
@@ -4204,6 +4342,7 @@ def _open_windows_publication_authority(
             rebound_handle = resources.acquire(
                 lambda: api.create_directory_handle(path)
             )
+            rebound_record = resources.record_for_cleanup(rebound_handle)
             primary_error: BaseException | None = None
             try:
                 if _directory_inode_identity(api.metadata(rebound_handle)) != identity:
@@ -4213,7 +4352,7 @@ def _open_windows_publication_authority(
                 raise
             finally:
                 try:
-                    resources.close_handle(rebound_handle)
+                    resources.close_record(rebound_record)
                 except BaseException as close_error:  # noqa: B036
                     if primary_error is None:
                         raise

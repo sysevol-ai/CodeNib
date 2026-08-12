@@ -9787,3 +9787,546 @@ def test_fake_windows_reader_deactivation_interrupt_rejects_handle_aba(
             real_close(target)
 
     assert api.handles == {}
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux publication authority",
+)
+def test_posix_reader_deactivation_retries_repeated_pre_call_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload")
+    ownership = capture_directory_ownership(directory)
+    saved: list[atomic_module.PublicationDirectoryReader] = []
+    first = KeyboardInterrupt("first reader cancellation")
+    events = _interrupt_ordered_action_before_call(
+        monkeypatch,
+        label="publication reader deactivation also failed",
+        errors=(first, SystemExit("second reader cancellation")),
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            lambda reader: saved.append(reader),
+        )
+
+    assert caught.value is first
+    assert events == ["KeyboardInterrupt", "SystemExit"]
+    assert saved and not saved[0]._lifetime.active
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved[0].inventory()
+
+
+def test_fake_windows_reader_deactivation_retries_repeated_pre_call_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    owned_id = api.add_directory(api.root_id, "owned")
+    api.add_file(owned_id, "payload.bin", b"payload")
+    handle = api._new_handle(owned_id)
+    try:
+        ownership = atomic_module._capture_windows_directory_handle(
+            api,
+            handle,
+            Path("C:/authority/owned"),
+            required_root_file=None,
+            allow_empty_root=False,
+            entry_policy=None,
+        )
+    finally:
+        api.close(handle)
+    saved: list[atomic_module.PublicationDirectoryReader] = []
+    first = KeyboardInterrupt("first Windows reader cancellation")
+    events = _interrupt_ordered_action_before_call(
+        monkeypatch,
+        label="Windows publication reader deactivation also failed",
+        errors=(first, SystemExit("second Windows reader cancellation")),
+    )
+    _install_fake_windows_api(monkeypatch, api)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        atomic_module.reopen_authenticated_directory(
+            Path("C:/authority/owned"),
+            ownership,
+            lambda reader: saved.append(reader),
+        )
+
+    assert caught.value is first
+    assert events == ["KeyboardInterrupt", "SystemExit"]
+    assert saved and not saved[0]._lifetime.active
+    assert api.handles == {}
+
+
+def test_retained_cleanup_retries_registry_release_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    closed = False
+
+    def close_resource(_resource: int) -> None:
+        nonlocal closed
+        closed = True
+
+    authority = atomic_module._PublicationAuthority(
+        display_parent=Path("/authority"),
+        identity=(1, 2),
+        backend_tag="test",
+        resource=7,
+        close_callback=close_resource,
+        metadata_callback=lambda *_args: None,
+        reader_callback=lambda *_args: None,
+        rename_callback=lambda *_args: None,
+        verify_callback=lambda: None,
+        close_complete_callback=lambda: closed,
+    )
+    owner = atomic_module._PublicationAuthorityOwner()
+    owner.install(authority)
+    real_forget = atomic_module._forget_publication_authority_owner
+    errors = [
+        KeyboardInterrupt("first registry release"),
+        SystemExit("second registry release"),
+    ]
+
+    def interrupt_forget(candidate: object) -> None:
+        if candidate is owner and errors:
+            raise errors.pop(0)
+        real_forget(candidate)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_forget_publication_authority_owner",
+        interrupt_forget,
+    )
+    with pytest.raises(KeyboardInterrupt):
+        atomic_module.retry_retained_publication_cleanup()
+
+    assert closed
+    assert errors == []
+    assert owner.authority is None
+    assert all(
+        retained is not owner
+        for retained in atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS
+    )
+
+
+def _interrupt_retained_owner_close_call(
+    callback: object,
+    *,
+    error: BaseException,
+) -> None:
+    assert callable(callback)
+    function = atomic_module._RetainedAuthorityCloseAttempt.__call__
+    code = function.__code__
+    source, first_line = inspect.getsourcelines(function)
+    call_lines = {
+        first_line + offset
+        for offset, line in enumerate(source)
+        if "self.owner.close(" in line
+    }
+    assert len(call_lines) == 1
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and frame.f_code is code
+            and event == "line"
+            and frame.f_lineno in call_lines
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to inject before retained owner close call"
+
+
+def test_retained_cleanup_retries_owner_close_call_cancellation() -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    closed = False
+    cancellation = KeyboardInterrupt("owner close cancellation")
+
+    def close_resource(_resource: int) -> None:
+        nonlocal closed
+        closed = True
+
+    authority = atomic_module._PublicationAuthority(
+        display_parent=Path("/authority"),
+        identity=(1, 2),
+        backend_tag="test",
+        resource=7,
+        close_callback=close_resource,
+        metadata_callback=lambda *_args: None,
+        reader_callback=lambda *_args: None,
+        rename_callback=lambda *_args: None,
+        verify_callback=lambda: None,
+        close_complete_callback=lambda: closed,
+    )
+    owner = atomic_module._PublicationAuthorityOwner()
+    owner.install(authority)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_retained_owner_close_call(
+            atomic_module.retry_retained_publication_cleanup,
+            error=cancellation,
+        )
+
+    assert caught.value is cancellation
+    assert closed
+    assert owner.authority is None
+    assert all(
+        retained is not owner
+        for retained in atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS
+    )
+
+
+def test_retained_cleanup_does_not_spin_on_persistent_close_cancellation() -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    cancellation = KeyboardInterrupt("persistent retained close cancellation")
+    calls = 0
+
+    def fail_close(_resource: int) -> None:
+        nonlocal calls
+        calls += 1
+        raise cancellation
+
+    authority = atomic_module._PublicationAuthority(
+        display_parent=Path("/authority"),
+        identity=(1, 2),
+        backend_tag="test",
+        resource=7,
+        close_callback=fail_close,
+        metadata_callback=lambda *_args: None,
+        reader_callback=lambda *_args: None,
+        rename_callback=lambda *_args: None,
+        verify_callback=lambda: None,
+        close_complete_callback=lambda: False,
+    )
+    owner = atomic_module._PublicationAuthorityOwner()
+    owner.install(authority)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            atomic_module.retry_retained_publication_cleanup()
+
+        assert caught.value is cancellation
+        assert calls == 1
+        assert owner.authority is authority
+        assert any(
+            retained is owner
+            for retained in atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS
+        )
+    finally:
+        authority._close_callback = lambda _resource: None
+        authority._close_complete_callback = lambda: True
+        atomic_module.retry_retained_publication_cleanup()
+
+
+def _call_with_interrupt_at_context_boundary(
+    function: object,
+    callback: object,
+    *,
+    source_fragment: str,
+    select_last: bool = False,
+    error: BaseException,
+) -> None:
+    """Inject at an exact source-line boundary in a context cleanup method."""
+
+    assert callable(function)
+    assert callable(callback)
+    code = function.__code__
+    source, first_line = inspect.getsourcelines(function)
+    matching_lines = sorted(
+        first_line + offset
+        for offset, line in enumerate(source)
+        if source_fragment in line
+    )
+    if select_last:
+        assert matching_lines
+        target_line = matching_lines[-1]
+    else:
+        assert len(matching_lines) == 1
+        target_line = matching_lines[0]
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and frame.f_code is code
+            and event == "line"
+            and frame.f_lineno == target_line
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to inject at the context cleanup boundary"
+
+
+@pytest.mark.parametrize("boundary", ["wrapper-exit-call", "forget"])
+@pytest.mark.parametrize("operation", ["finish", "abort"])
+def test_authenticated_file_outer_exit_retries_real_boundary_cancellation(
+    operation: str,
+    boundary: str,
+) -> None:
+    record = atomic_module.TreeFileRecord(
+        path="payload.bin",
+        mode=0o644,
+        size=0,
+        sha256=hashlib.sha256(b"").hexdigest(),
+    )
+    ownership = atomic_module._TreeOwnership(
+        root_identity=(1, 2),
+        root_version_identity=(1, 2, 3),
+        digest="test",
+        entries=1,
+        byte_count=0,
+        metadata_bytes=0,
+        inventory=(("payload.bin", "file"),),
+        file_records=(record,),
+        entry_identities=(("payload.bin", "file", (3, 4)),),
+    )
+    authenticated = atomic_module.PublicationAuthenticatedFile(
+        path=record.path,
+        mode=record.mode,
+        size=record.size,
+        read_callback=lambda _size: b"",
+        verify_callback=lambda: None,
+    )
+    backend_error = (
+        SystemExit(f"persistent {operation} backend exit")
+        if boundary == "wrapper-exit-call"
+        else None
+    )
+
+    class BackendContext:
+        def __init__(self) -> None:
+            self.exit_calls = 0
+
+        def __enter__(self) -> atomic_module.PublicationAuthenticatedFile:
+            return authenticated
+
+        def __exit__(
+            self,
+            _exc_type: type[BaseException] | None,
+            _exc: BaseException | None,
+            _traceback: object,
+        ) -> bool:
+            self.exit_calls += 1
+            authenticated._record = record
+            authenticated._closed = True
+            authenticated._finalized = True
+            if backend_error is not None:
+                raise backend_error
+            return False
+
+    backend = BackendContext()
+    reader = atomic_module.PublicationDirectoryReader(
+        Path("/authority/owned"),
+        ownership.root_identity,
+        lambda *_args: ownership,
+        lambda *_args: backend,
+        ownership,
+    )
+    context = reader.open_authenticated_file("payload.bin", max_bytes=0)
+    assert context.__enter__() is authenticated
+    cancellation = KeyboardInterrupt(f"pre-{operation} backend exit")
+
+    def finish() -> None:
+        reader._close_open_files(None)
+
+    if operation == "finish":
+        function = atomic_module._PublicationAuthenticatedFileContext._finish
+        callback = finish
+    else:
+        function = atomic_module._PublicationAuthenticatedFileContext._abort_and_close
+        callback = reader._abort_open_files
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_at_context_boundary(
+            function,
+            callback,
+            source_fragment=(
+                "context.__exit__("
+                if boundary == "wrapper-exit-call"
+                else "self._reader._forget_open_file(self)"
+            ),
+            select_last=boundary == "forget",
+            error=cancellation,
+        )
+
+    assert caught.value is cancellation
+    assert backend.exit_calls == 1
+    assert context._finished
+    assert reader._lifetime.open_files == []
+    notes = _exception_notes(cancellation)
+    if backend_error is not None:
+        # A cancellation at the nested Python call boundary can replace an
+        # exception raised by the delegated context before its caller can
+        # observe that value. The handoff remains at-most-once and the retained
+        # authority still owns the physical resource.
+        assert not any(repr(backend_error) in note for note in notes)
+
+
+def test_authenticated_file_nested_exit_handoff_keeps_body_primary() -> None:
+    record = atomic_module.TreeFileRecord(
+        path="payload.bin",
+        mode=0o644,
+        size=0,
+        sha256=hashlib.sha256(b"").hexdigest(),
+    )
+    ownership = atomic_module._TreeOwnership(
+        root_identity=(1, 2),
+        root_version_identity=(1, 2, 3),
+        digest="test",
+        entries=1,
+        byte_count=0,
+        metadata_bytes=0,
+        inventory=(("payload.bin", "file"),),
+        file_records=(record,),
+        entry_identities=(("payload.bin", "file", (3, 4)),),
+    )
+    authenticated = atomic_module.PublicationAuthenticatedFile(
+        path=record.path,
+        mode=record.mode,
+        size=record.size,
+        read_callback=lambda _size: b"",
+        verify_callback=lambda: None,
+    )
+
+    class BackendContext:
+        def __init__(self) -> None:
+            self.exit_calls = 0
+
+        def __enter__(self) -> atomic_module.PublicationAuthenticatedFile:
+            return authenticated
+
+        def __exit__(self, *_exc: object) -> bool:
+            self.exit_calls += 1
+            raise AssertionError("nested backend exit must remain at-most-once")
+
+    backend = BackendContext()
+    reader = atomic_module.PublicationDirectoryReader(
+        Path("/authority/owned"),
+        ownership.root_identity,
+        lambda *_args: ownership,
+        lambda *_args: backend,
+        ownership,
+    )
+    context = reader.open_authenticated_file("payload.bin", max_bytes=0)
+    assert context.__enter__() is authenticated
+    body_error = ValueError("body primary")
+    cancellation = KeyboardInterrupt("nested backend exit handoff")
+    results: list[bool] = []
+
+    _call_with_interrupt_at_context_boundary(
+        atomic_module._PublicationAuthenticatedFileBackendContext.__exit__,
+        lambda: results.append(
+            context.__exit__(type(body_error), body_error, body_error.__traceback__)
+        ),
+        source_fragment="return self._context.__exit__",
+        error=cancellation,
+    )
+
+    assert results == [False]
+    assert backend.exit_calls == 0
+    assert context._backend_context is not None
+    assert context._backend_context.exit_handed_off
+    assert context._finished
+    assert reader._authentication_failed
+    assert reader._lifetime.open_files == []
+    assert any(repr(cancellation) in note for note in _exception_notes(body_error))
+
+    # The handoff is deliberately at-most-once.  A later public exit cannot
+    # guess that the arbitrary custom backend never entered its delegate.
+    assert context.__exit__(type(body_error), body_error, None) is False
+    assert backend.exit_calls == 0
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+def test_posix_nested_exit_handoff_defers_cleanup_to_authority(
+    tmp_path: Path,
+) -> None:
+    atomic_module.retry_retained_publication_cleanup()
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    (directory / "payload.bin").write_bytes(b"payload")
+    ownership = capture_directory_ownership(directory)
+    body_error = ValueError("body primary")
+    cancellation = KeyboardInterrupt("nested POSIX backend exit handoff")
+    owners: list[atomic_module._PosixResourceOwner] = []
+    authority_owners: list[atomic_module._PublicationAuthorityOwner] = []
+    file_records: list[atomic_module._PosixDescriptorRecord] = []
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        matches = [
+            cell.cell_contents
+            for cell in (reader._open_file.__closure__ or ())
+            if isinstance(cell.cell_contents, atomic_module._PosixResourceOwner)
+        ]
+        assert len(matches) == 1
+        owner = matches[0]
+        owners.append(owner)
+        retained = tuple(atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS)
+        assert len(retained) == 1
+        assert retained[0].authority is not None
+        assert _posix_authority_resources(retained[0].authority) is owner
+        authority_owners.append(retained[0])
+        with reader.open_authenticated_file(
+            "payload.bin",
+            max_bytes=64,
+        ) as authenticated:
+            assert authenticated.read(1) == b"p"
+            file_record = owner._records[-1]
+            assert file_record.descriptor >= 0
+            file_records.append(file_record)
+            raise body_error
+
+    with pytest.raises(ValueError) as caught:
+        _call_with_interrupt_at_context_boundary(
+            atomic_module._PublicationAuthenticatedFileBackendContext.__exit__,
+            lambda: atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                consume,
+            ),
+            source_fragment="return self._context.__exit__",
+            error=cancellation,
+        )
+
+    assert caught.value is body_error
+    assert any(repr(cancellation) in note for note in _exception_notes(body_error))
+    assert len(owners) == len(authority_owners) == len(file_records) == 1
+    assert file_records[0].descriptor < 0
+    assert owners[0].closed
+    assert authority_owners[0].authority is None
+    assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []

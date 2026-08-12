@@ -44,6 +44,37 @@ def _exception_notes(error: BaseException) -> tuple[str, ...]:
     )
 
 
+def _call_with_interrupt_after_validated_close_store(
+    callback: object,
+    *,
+    monkeypatch: pytest.MonkeyPatch,
+    error: BaseException,
+) -> None:
+    """Interrupt after ``_closed`` is stored but before producer handoff."""
+
+    assert callable(callback)
+    chunks_type = cas_module._ValidatedObjectChunks
+    real_setattr = chunks_type.__setattr__
+    injected = False
+
+    def interrupt_after_setattr(
+        chunks: object,
+        name: str,
+        value: object,
+    ) -> None:
+        nonlocal injected
+        real_setattr(chunks, name, value)
+        if not injected and name == "_closed" and value is True:
+            injected = True
+            raise error
+
+    monkeypatch.setattr(chunks_type, "__setattr__", interrupt_after_setattr)
+    try:
+        callback()
+    finally:
+        assert injected, "failed to interrupt after _closed STORE_ATTR"
+
+
 class _UnconsumableChunks:
     def __init__(self) -> None:
         self.iter_calls = 0
@@ -621,6 +652,65 @@ def test_validated_chunks_never_reads_again_after_iterator_failure() -> None:
     assert producer.close_calls == 1
 
 
+@pytest.mark.parametrize(
+    "exception_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_put_chunks_close_store_interruption_still_closes_producer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exception_type: type[BaseException],
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"terminal close transition"
+    digest = hashlib.sha256(payload).hexdigest()
+    producer = _ClosableChunks([payload])
+    interruption = exception_type("after validated close marker store")
+
+    with pytest.raises(exception_type) as caught:
+        _call_with_interrupt_after_validated_close_store(
+            lambda: store.put_chunks(producer, digest, len(payload)),
+            monkeypatch=monkeypatch,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert producer.close_calls == 1
+    assert not store._object_path(digest).exists()
+
+
+@pytest.mark.parametrize(
+    "exception_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_put_chunks_close_store_interruption_keeps_iteration_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exception_type: type[BaseException],
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"unproduced payload"
+    digest = hashlib.sha256(payload).hexdigest()
+    primary = OSError(errno.EIO, "producer read failed")
+    interruption = exception_type("after validated close marker store")
+    producer = _ClosableChunks([], iteration_error=primary)
+
+    with pytest.raises(OSError) as caught:
+        _call_with_interrupt_after_validated_close_store(
+            lambda: store.put_chunks(producer, digest, len(payload)),
+            monkeypatch=monkeypatch,
+            error=interruption,
+        )
+
+    assert caught.value is primary
+    assert producer.close_calls == 1
+    assert any(
+        "after validated close marker store" in note
+        for note in _exception_notes(primary)
+    )
+    assert not store._object_path(digest).exists()
+
+
 def test_put_chunks_identity_failure_keeps_primary_over_close_property_fault(
     tmp_path: Path,
 ) -> None:
@@ -629,6 +719,7 @@ def test_put_chunks_identity_failure_keeps_primary_over_close_property_fault(
     class ClosePropertyFault:
         def __init__(self) -> None:
             self._blocks = iter([b"short"])
+            self.close_get_calls = 0
 
         def __iter__(self) -> ClosePropertyFault:
             return self
@@ -638,17 +729,20 @@ def test_put_chunks_identity_failure_keeps_primary_over_close_property_fault(
 
         @property
         def close(self):
+            self.close_get_calls += 1
             raise secondary
 
     store = LocalCAS(tmp_path / "objects")
     digest = hashlib.sha256(b"short plus more").hexdigest()
 
+    producer = ClosePropertyFault()
     with pytest.raises(StorageIntegrityError, match="size does not match") as caught:
-        store.put_chunks(ClosePropertyFault(), digest, len(b"short plus more"))
+        store.put_chunks(producer, digest, len(b"short plus more"))
 
     assert any(
         "close property interrupted" in note for note in _exception_notes(caught.value)
     )
+    assert producer.close_get_calls == 1
     assert not store._object_path(digest).exists()
 
 
@@ -657,6 +751,9 @@ def test_put_chunks_identity_failure_keeps_primary_over_close_property_fault(
     [
         OSError(errno.EIO, "iterator close failed"),
         StopIteration("iterator close stopped"),
+        KeyboardInterrupt("iterator close interrupted"),
+        SystemExit("iterator close exited"),
+        GeneratorExit("iterator close terminated"),
     ],
 )
 def test_put_chunks_close_failure_prevents_final_publication(
@@ -668,7 +765,9 @@ def test_put_chunks_close_failure_prevents_final_publication(
     digest = hashlib.sha256(payload).hexdigest()
     producer = _ClosableChunks([payload], close_error=close_error)
 
-    expected_type = RuntimeError if isinstance(close_error, StopIteration) else OSError
+    expected_type = (
+        RuntimeError if isinstance(close_error, StopIteration) else type(close_error)
+    )
     with pytest.raises(expected_type) as caught:
         store.put_chunks(producer, digest, len(payload))
 
