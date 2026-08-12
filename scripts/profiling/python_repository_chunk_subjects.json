@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "repository_filter_policy": 3,
+  "configurations": [
+    "continuity_l2_exclusive_unsplit",
+    "bm25_v8_l2_exclusive_headers_300"
+  ],
+  "subjects": [
+    {
+      "id": "codenib",
+      "repository": "https://github.com/sysevol-ai/CodeNib.git",
+      "revision": "a33bb13118e3a04f8d3d76eabcfb2602f785477a",
+      "selected_sources": {
+        "continuity_l2_exclusive_unsplit": {
+          "selected_source_sha256": "sha256:65e2ba3a8106cff5ba39a568d3bcad5f279f54f4aaabcf5cba5167d69cc21b09",
+          "contract_sha256": "sha256:f458d0dc87bb6ee29cc5364c5c97d2f18ac4a4d8846b6bbfc89f6a9cbf419601",
+          "file_count": 520,
+          "total_bytes": 6630346,
+          "first_path": "codenib/__init__.py",
+          "last_path": "setup.py"
+        },
+        "bm25_v8_l2_exclusive_headers_300": {
+          "selected_source_sha256": "sha256:2b3e1d607d9627d928b51b09af93d1cd5a02b224fca10ffd4840ba64f3bf7e29",
+          "contract_sha256": "sha256:28818b0d1a112cb56413e2172ad80f5c7ab7afe7f96b59a73738992144614bf6",
+          "file_count": 520,
+          "total_bytes": 6630346,
+          "first_path": "codenib/__init__.py",
+          "last_path": "setup.py"
+        }
+      }
+    },
+    {
+      "id": "httpie",
+      "repository": "https://github.com/httpie/cli.git",
+      "revision": "2105caa49bae87c5809c274e407619a0de2639d1",
+      "selected_sources": {
+        "continuity_l2_exclusive_unsplit": {
+          "selected_source_sha256": "sha256:d5feafe737d7d3bdfdb54b92883168fe32a255886fbb8fccbc140f6a43aa12a9",
+          "contract_sha256": "sha256:f458d0dc87bb6ee29cc5364c5c97d2f18ac4a4d8846b6bbfc89f6a9cbf419601",
+          "file_count": 89,
+          "total_bytes": 338976,
+          "first_path": "docs/contributors/fetch.py",
+          "last_path": "setup.py"
+        },
+        "bm25_v8_l2_exclusive_headers_300": {
+          "selected_source_sha256": "sha256:645911e349ec6bda45cb8a34688de74e0b3833a216a7dc29f09ed4a358840192",
+          "contract_sha256": "sha256:28818b0d1a112cb56413e2172ad80f5c7ab7afe7f96b59a73738992144614bf6",
+          "file_count": 89,
+          "total_bytes": 338976,
+          "first_path": "docs/contributors/fetch.py",
+          "last_path": "setup.py"
+        }
+      }
+    }
+  ]
+}

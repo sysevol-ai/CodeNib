@@ -452,6 +452,75 @@ Python tree-sitter already performs parsing in native code, so the next
 experiment should amortize work through incremental parse-tree reuse or
 repository-level batching rather than repeat the same per-file boundary.
 
+## Python Repository-Batch Rejection Gate
+
+[#599](https://github.com/sysevol-ai/CodeNib/issues/599) adds only the
+repository-successor controller and fail-closed contract. It adds no C++
+successor, does not reuse the #558 per-file span route, and does not expose a
+standard or production API. The only accepted candidate is the private #600
+adapter
+`codenib.code_chunking.python_repository_batch_poc.run_python_repository_batch`
+under `CODENIB_NATIVE_PYTHON_CHUNK_BATCH=required`. If that adapter or its
+contract is absent, the controller still writes an atomic diagnostic report
+and exits nonzero; legacy-versus-legacy substitution is forbidden.
+
+The manifest pins CodeNib
+`a33bb13118e3a04f8d3d76eabcfb2602f785477a` and HTTPie
+`2105caa49bae87c5809c274e407619a0de2639d1`, including canonical remotes and
+ordered selected-source receipts. Each repository is tested in both the
+`continuity_l2_exclusive_unsplit` and
+`bm25_v8_l2_exclusive_headers_300` configurations. Both use Python, filter
+policy v3, excluded tests, strict processing, non-skeleton depth 2, and
+L2-exclusive output; the latter additionally enables header/epilogue output
+and the schema-v8 300-line cap.
+
+For every subject/configuration cell, worker counts 1, 2, and 4 receive four
+warmups and 20 measured samples per arm. Samples run in fresh processes and
+paired order alternates AB/BA. The clock covers the entire cold repository
+consumer boundary: adapter/chunker construction, discovery and filtering,
+minified inspection, reads, parser/worker setup, binding, native batch work,
+ordered merge, buffer decode, Python chunk materialization, and node
+materialization. Identity checks occur before timing, while parity, receipt
+observation, backend verification, telemetry aggregation, and report writing
+occur afterward. Filesystem page cache is intentionally uncontrolled.
+
+The controller requires the complete ordered seven-field `CodeChunk` sequence
+to match for every warmup and measured pair. Canonical node parity compares
+sorted unique symbolic IDs because the existing `CodeChunker.nodes` list is
+derived from set iteration; it never normalizes chunk ordering. It computes
+median p50 and nearest-rank p95 from raw repository-total wall samples and
+nearest-rank p95 from each process's absolute peak RSS.
+
+Promotion requires one global worker count to pass all four cells:
+
+```text
+candidate_p50 <= established_p50 * 0.80
+candidate_p95 <= established_p95 * 0.80
+candidate_peak_rss_p95 <= established_peak_rss_p95 * 1.25
+```
+
+Exact chunk and canonical-node parity, backend
+`native-repository-batch-poc`, one batch call, zero fallbacks, unique PIDs,
+canonical 20/4 protocol, and stable clean subject/source plus
+benchmark/adapter/binary/contract receipts are also mandatory. Multiple
+qualifying worker variants resolve to the smallest worker count; per-cell
+selection is not allowed. Any changed sample count, threshold, subject,
+configuration, or worker set makes the run noncanonical and ineligible.
+
+Run the local/manual gate with both fixed checkouts:
+
+```bash
+make python-repository-chunk-gate \
+  CODENIB_CHUNK_GATE_CODENIB_ROOT=/path/to/CodeNib \
+  CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
+```
+
+The default report path is
+`/tmp/codenib-python-repository-chunk-gate.json`. A missing #600 adapter is an
+expected negative pre-implementation result, not candidate performance
+evidence. No p50, p95, RSS, or promotion claim is published until the fixed
+adapter completes the canonical four-cell gate.
+
 ## Verify
 
 ```bash

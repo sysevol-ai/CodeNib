@@ -1215,6 +1215,61 @@ repository-level chunk successor gate without adding a C++ batch implementation
 or production route. #600 remains the bounded repository-native implementation
 experiment. Storage RFC #199 and Guardian #309 remain independent programs.
 
+M3 gate implementation status
+([#599](https://github.com/sysevol-ai/CodeNib/issues/599)): this issue is the
+fail-closed controller and benchmark contract only. It contains no C++
+successor, does not reuse or retune the negative #558 per-file route, and
+cannot publish candidate performance before #600 supplies the fixed private
+`run_python_repository_batch` adapter. In that pre-adapter state, the command
+validates both pinned subjects and configurations, exercises the complete
+controller through deterministic fake adapters in unit tests, writes an atomic
+negative report, and exits nonzero rather than measuring legacy against itself.
+
+The manifest fixes clean detached checkouts of CodeNib
+`a33bb13118e3a04f8d3d76eabcfb2602f785477a` and HTTPie
+`2105caa49bae87c5809c274e407619a0de2639d1`, their canonical remotes, and
+ordered selected-source receipts. The four cells combine those subjects with
+`continuity_l2_exclusive_unsplit` and
+`bm25_v8_l2_exclusive_headers_300`. Both configurations use Python, repository
+filter policy v3, excluded tests, strict processing, non-skeleton depth 2, and
+L2-exclusive chunks; the BM25 cell additionally enables headers/epilogues and
+the builder-schema-v8 300-line cap.
+
+Candidate worker counts are exactly 1, 2, and 4. Each arm receives four
+warmups and 20 measured fresh-process samples in alternating paired AB/BA
+order, with symmetric GC treatment and uncontrolled filesystem page cache.
+The clock spans cold construction, repository discovery/filtering and
+minified-source inspection, reads, parser/worker setup, binding and native
+batch work, ordered merge, decode, complete chunk construction, and node
+materialization. Identity validation is outside the front of the stopwatch;
+parity, backend checks, stage aggregation, receipt observation, and report
+serialization are outside its end.
+
+Every warmup and measured pair requires exact ordered parity for all seven
+`CodeChunk` fields. Canonical node parity compares sorted unique symbolic IDs
+because raw `CodeChunker.nodes` ordering is unstable across fresh processes;
+chunk ordering is never normalized. Wall gates use median p50 and nearest-rank
+p95, each requiring a candidate result no greater than 80% of established;
+nearest-rank p95 absolute peak RSS may be no greater than 125%. Backend
+identity, one batch call, zero fallback, unique PIDs, immutable clean receipts,
+and the canonical protocol are also hard gates. A single worker count must
+pass every cell, with the smallest qualifying count selected; per-cell tuning
+or threshold averaging is forbidden.
+
+Run the local/manual preflight with:
+
+```bash
+make python-repository-chunk-gate \
+  CODENIB_CHUNK_GATE_CODENIB_ROOT=/path/to/CodeNib \
+  CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
+```
+
+The raw JSON remains local at
+`/tmp/codenib-python-repository-chunk-gate.json`. Once #600 supplies the fixed
+adapter, the same command and frozen contract become the formal four-cell gate.
+No repository-batch speed, tail-latency, RSS, or promotion result has been
+recorded yet.
+
 ## PR And Issue Flow
 
 For this roadmap, a PR is merge-ready only when its own gate is complete and
@@ -1252,6 +1307,9 @@ Current issue triage notes through August 11, 2026:
   result; repository batching is tracked separately by #599/#600.
 - #598 is resolved with exact parity and safety but negative Python and Rust
   consumer performance gates. No language is promoted; #599 is next.
+- #599 is the active fail-closed repository-successor gate. Its harness does
+  not contain a C++ candidate; formal performance waits for the fixed #600
+  adapter.
 - #601 is the open tracker for consumer-boundary acceleration follow-up work.
 - #133 is closed. Its query-time skill-selection runtime landed through #149
   and the subsequent agent-runtime refactor; the original fitted A0--A6 table
@@ -1298,6 +1356,9 @@ make graph-route-alignment \
 make core-chunk-poc-test
 make core-chunk-poc-profile \
   PYTHON_CHUNK_PROFILE_REPO=/path/to/python/repository
+make python-repository-chunk-gate \
+  CODENIB_CHUNK_GATE_CODENIB_ROOT=/path/to/CodeNib \
+  CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
 python -m mkdocs build --strict
 ```
 

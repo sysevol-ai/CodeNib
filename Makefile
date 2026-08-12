@@ -104,6 +104,12 @@ SCIP_MCP_CONSUMER_GATE_SUBJECT_ID ?=
 SCIP_MCP_CONSUMER_GATE_SUBJECT_MANIFEST ?= scripts/profiling/scip_mcp_consumer_subjects.json
 SCIP_MCP_CONSUMER_GATE_OUTPUT ?= $(CODENIB_RESULTS_DIR)/scip-mcp-consumer-gate.json
 SCIP_MCP_CONSUMER_GATE_EXTRA_ARGS ?=
+CODENIB_CHUNK_GATE_CODENIB_ROOT ?=
+CODENIB_CHUNK_GATE_HTTPIE_ROOT ?=
+CODENIB_CHUNK_GATE_SUBJECT_MANIFEST ?= scripts/profiling/python_repository_chunk_subjects.json
+CODENIB_CHUNK_GATE_BUILD_DIR ?= build/core-chunk-batch-poc
+CODENIB_CHUNK_GATE_OUTPUT ?= /tmp/codenib-python-repository-chunk-gate.json
+CODENIB_CHUNK_GATE_EXTRA_ARGS ?=
 CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR ?=
 CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT ?=
 CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS ?=
@@ -213,7 +219,7 @@ endef
 .PHONY: active-scip-tools active-lsp-tools active-scip-env active-system-deps-ubuntu
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
-.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate scip-mcp-consumer-gate clangd-fact-generation-profile
+.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate scip-mcp-consumer-gate python-repository-chunk-gate clangd-fact-generation-profile
 .PHONY: core-chunk-poc-build core-chunk-poc-test core-chunk-poc-profile
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
@@ -514,6 +520,18 @@ scip-mcp-consumer-gate: core-build
 		--subject-manifest "$(SCIP_MCP_CONSUMER_GATE_SUBJECT_MANIFEST)" \
 		--output "$(SCIP_MCP_CONSUMER_GATE_OUTPUT)" \
 		$(SCIP_MCP_CONSUMER_GATE_EXTRA_ARGS)
+
+python-repository-chunk-gate:
+	@test -n "$(CODENIB_CHUNK_GATE_CODENIB_ROOT)" || { echo "Set CODENIB_CHUNK_GATE_CODENIB_ROOT=/path/to/detached/CodeNib" >&2; exit 1; }
+	@test -n "$(CODENIB_CHUNK_GATE_HTTPIE_ROOT)" || { echo "Set CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/detached/httpie" >&2; exit 1; }
+	python -m pytest -q test/scripts/test_profile_python_repository_chunk_gate.py
+	python scripts/profiling/profile_python_repository_chunk_gate.py \
+		--subject-root "codenib=$(CODENIB_CHUNK_GATE_CODENIB_ROOT)" \
+		--subject-root "httpie=$(CODENIB_CHUNK_GATE_HTTPIE_ROOT)" \
+		--subject-manifest "$(CODENIB_CHUNK_GATE_SUBJECT_MANIFEST)" \
+		--candidate-build-dir "$(CODENIB_CHUNK_GATE_BUILD_DIR)" \
+		--output "$(CODENIB_CHUNK_GATE_OUTPUT)" \
+		$(CODENIB_CHUNK_GATE_EXTRA_ARGS)
 
 clangd-fact-generation-profile: core-build
 	@test -n "$(CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR)" || { echo "Set CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR=/path/to/.cache/clangd/index" >&2; exit 1; }

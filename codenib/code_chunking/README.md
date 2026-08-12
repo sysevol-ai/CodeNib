@@ -226,6 +226,71 @@ This target remains local/manual only and is not part of required CI. The next
 candidate should test incremental parse-tree reuse or repository-level batching
 instead of another per-file language-boundary crossing.
 
+## Repository-Batch Successor Gate
+
+[#599](https://github.com/sysevol-ai/CodeNib/issues/599) defines the rejection
+gate for one repository-level successor without adding that successor. It does
+not reuse or retune the #558 per-file candidate, add C++ code, or change a
+production chunking route. The candidate is the fixed private #600 adapter
+`codenib.code_chunking.python_repository_batch_poc.run_python_repository_batch`
+with `CODENIB_NATIVE_PYTHON_CHUNK_BATCH=required`. Until that adapter exists,
+the controller validates the complete benchmark contract, writes its report
+atomically, and exits nonzero instead of comparing the established arm with
+itself.
+
+The versioned manifest fixes clean detached checkouts of CodeNib
+`a33bb13118e3a04f8d3d76eabcfb2602f785477a` and HTTPie
+`2105caa49bae87c5809c274e407619a0de2639d1`. It also fixes two Python-only
+repository configurations. Both exclude tests, use filter policy v3,
+`strict=True`, depth 2, non-skeleton output, and L2-exclusive chunks:
+
+- `continuity_l2_exclusive_unsplit` has no header/epilogue and no line cap.
+- `bm25_v8_l2_exclusive_headers_300` enables the header/epilogue and a
+  300-line cap for the current BM25 builder-schema-v8 consumer shape.
+
+The established arm calls the current `CodeChunker.chunk_repository()` path
+with `CODENIB_NATIVE_PYTHON_CHUNKER=off` and asserts the Python backend. The
+candidate worker counts are exactly 1, 2, and 4. One worker count must pass all
+four subject/configuration cells; if several pass, the smallest is selected.
+Per-cell worker tuning and threshold averaging are forbidden.
+
+Each arm receives four warmups and 20 measured samples in fresh, unique
+processes. Each pair contains one established and one candidate sample; pair
+order alternates AB then BA, GC treatment is symmetric, and filesystem page
+cache is uncontrolled. The stopwatch starts
+before cold adapter or chunker construction and includes discovery and
+filtering, minified-source inspection, reads, parser/worker setup, the native
+binding and ordered merge, buffer decode, complete `CodeChunk` construction,
+and node materialization. Contract and receipt checks happen before timing;
+parity, backend checks, stage aggregation, and report serialization happen
+after timing.
+
+Every warmup and measured pair must preserve the complete ordered seven-field
+`CodeChunk` sequence, including content and node IDs. Because
+`CodeChunker.nodes` is accumulated through set iteration, node parity uses the
+sorted unique symbolic IDs; the raw list is diagnostic and chunk order is
+never normalized. The hard performance gates require candidate median p50 and
+nearest-rank p95 to be at most 80% of the established values, and candidate
+nearest-rank p95 absolute peak RSS to be at most 125%. Exact chunk/node parity,
+one native batch call, zero fallbacks, the expected backend, fresh PIDs, the
+canonical protocol, and unchanged clean subject/source and benchmark/candidate
+receipts must also pass in every cell.
+
+Run the local/manual controller with both pinned checkouts:
+
+```bash
+make python-repository-chunk-gate \
+  CODENIB_CHUNK_GATE_CODENIB_ROOT=/path/to/CodeNib \
+  CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
+```
+
+The default report is
+`/tmp/codenib-python-repository-chunk-gate.json`. Before #600 supplies the
+adapter, the expected result is a complete fail-closed report and a nonzero
+exit. After #600 connects it, the unchanged command becomes the formal
+four-cell performance gate. Raw machine reports remain local; only their hash
+and durable decision belong in the issue and roadmap.
+
 ## File Extension Mapping
 
 Used by `gt_locate.py` to select the correct chunker:
