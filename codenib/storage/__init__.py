@@ -7,6 +7,7 @@
 from .cas import BlobInfo, LocalCAS
 from .models import (
     INDEX_JOB_REQUEST_CONTRACT,
+    VIEW_GENERATION_MEMBERS_METADATA_KEY,
     ArtifactMember,
     IndexJobCompletion,
     IndexJobRecord,
@@ -28,12 +29,15 @@ from .models import (
     StorageValidationError,
     ViewGeneration,
     ViewProfile,
+    normalize_view_generation_metadata,
+    view_generation_member_digests,
 )
 from .protocols import (
     IndexCatalog,
     JobCatalog,
     ObjectStore,
     ReceiptVerifyingObjectStore,
+    StreamingObjectStore,
 )
 from .sqlite_catalog import (
     DEFAULT_NAMESPACE_ID,
@@ -96,6 +100,8 @@ __all__ = [
     "StorageIntegrityError",
     "StorageNotFound",
     "StorageValidationError",
+    "StreamingObjectStore",
+    "VIEW_GENERATION_MEMBERS_METADATA_KEY",
     "VIEW_BUNDLE_MANIFEST",
     "VIEW_BUNDLE_MEDIA_TYPE",
     "VIEW_BUNDLE_PAYLOAD",
@@ -105,6 +111,8 @@ __all__ = [
     "ViewProfile",
     "build_view_bundle",
     "materialize_view_bundle",
+    "normalize_view_generation_metadata",
+    "view_generation_member_digests",
     "validate_view_bundle_physical_size",
     "verify_view_bundle",
 ]

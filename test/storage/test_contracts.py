@@ -4,8 +4,11 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 
+from codenib.storage import StreamingObjectStore
 from codenib.storage.cas import BlobInfo, LocalCAS
 from codenib.storage.models import (
     ObjectRecord,
@@ -33,6 +36,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
     try:
         assert isinstance(object_store, ObjectStore)
         assert isinstance(object_store, ReceiptVerifyingObjectStore)
+        assert isinstance(object_store, StreamingObjectStore)
         assert isinstance(catalog, IndexCatalog)
         assert isinstance(catalog, JobCatalog)
     finally:
@@ -66,6 +70,57 @@ def test_receipt_verification_is_an_additive_object_store_capability() -> None:
 
     assert isinstance(legacy, ObjectStore)
     assert not isinstance(legacy, ReceiptVerifyingObjectStore)
+    assert not isinstance(legacy, StreamingObjectStore)
+
+
+def test_streaming_is_additive_to_receipt_verifying_object_store() -> None:
+    class ReceiptOnlyObjectStore:
+        def put_bytes(self, data):
+            raise NotImplementedError
+
+        def put_file(self, source):
+            raise NotImplementedError
+
+        def has(self, digest):
+            raise NotImplementedError
+
+        def open(self, digest):
+            raise NotImplementedError
+
+        def read_bytes(self, digest):
+            raise NotImplementedError
+
+        def verify(self, digest):
+            raise NotImplementedError
+
+        def materialize(self, digest, destination):
+            raise NotImplementedError
+
+        def verify_receipt(self, expected):
+            raise NotImplementedError
+
+    receipt_only = ReceiptOnlyObjectStore()
+
+    assert isinstance(receipt_only, ObjectStore)
+    assert isinstance(receipt_only, ReceiptVerifyingObjectStore)
+    assert not isinstance(receipt_only, StreamingObjectStore)
+
+
+def test_streaming_object_store_protocol_executes_expected_identity_put(
+    tmp_path,
+) -> None:
+    object_store: StreamingObjectStore = LocalCAS(tmp_path / "objects")
+    payload = b"protocol streamed object"
+    digest = hashlib.sha256(payload).hexdigest()
+
+    receipt = object_store.put_chunks(
+        iter((payload[:8], payload[8:])),
+        digest,
+        len(payload),
+    )
+
+    assert receipt.digest == digest
+    assert object_store.read_bytes(digest) == payload
 
 
 def test_object_receipt_revalidation_is_executable_and_does_not_pin_lifetime(

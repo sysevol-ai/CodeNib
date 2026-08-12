@@ -7,7 +7,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, BinaryIO, Mapping, Protocol, Sequence, runtime_checkable
+from typing import (
+    Any,
+    BinaryIO,
+    Iterable,
+    Mapping,
+    Protocol,
+    Sequence,
+    runtime_checkable,
+)
 
 from .cas import BlobInfo
 from .models import IndexJobCompletion, IndexJobRecord, IndexJobViewRecord, RefJobLease
@@ -57,6 +65,27 @@ class ReceiptVerifyingObjectStore(ObjectStore, Protocol):
 
     def verify_receipt(self, expected: BlobInfo) -> BlobInfo:
         """Revalidate one exact digest/size/storage-key receipt."""
+
+        ...
+
+
+@runtime_checkable
+class StreamingObjectStore(ObjectStore, Protocol):
+    """Additive capability for bounded, expected-identity object ingestion.
+
+    The producer is not part of the baseline :class:`ObjectStore` contract so
+    existing backends remain structurally compatible.  Implementations must
+    validate the expected identity and any reusable object before asking the
+    producer for its first chunk.
+    """
+
+    def put_chunks(
+        self,
+        chunks: Iterable[bytes],
+        expected_digest: str,
+        expected_size: int,
+    ) -> BlobInfo:
+        """Stream bytes that must match the exact expected identity."""
 
         ...
 
@@ -206,4 +235,5 @@ __all__ = [
     "JobCatalog",
     "ObjectStore",
     "ReceiptVerifyingObjectStore",
+    "StreamingObjectStore",
 ]

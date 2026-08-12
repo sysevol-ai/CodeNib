@@ -13,6 +13,7 @@ import stat
 import threading
 from pathlib import Path
 from queue import Empty
+from typing import Iterator
 
 import pytest
 
@@ -41,6 +42,50 @@ def _exception_notes(error: BaseException) -> tuple[str, ...]:
         *tuple(getattr(error, "__notes__", ())),
         *tuple(getattr(error, "_codenib_cleanup_notes", ())),
     )
+
+
+class _UnconsumableChunks:
+    def __init__(self) -> None:
+        self.iter_calls = 0
+
+    def __iter__(self) -> Iterator[bytes]:
+        self.iter_calls += 1
+        raise AssertionError("chunk producer must not be consumed")
+
+
+class _ClosableChunks:
+    def __init__(
+        self,
+        blocks: list[bytes],
+        *,
+        iteration_error: BaseException | None = None,
+        close_error: BaseException | None = None,
+    ) -> None:
+        self._blocks = iter(blocks)
+        self._iteration_error = iteration_error
+        self._close_error = close_error
+        self.next_calls = 0
+        self.close_calls = 0
+
+    def __iter__(self) -> _ClosableChunks:
+        return self
+
+    def __next__(self) -> bytes:
+        self.next_calls += 1
+        try:
+            block = next(self._blocks)
+        except StopIteration:
+            pass
+        else:
+            return block
+        if self._iteration_error is not None:
+            raise self._iteration_error
+        raise StopIteration
+
+    def close(self) -> None:
+        self.close_calls += 1
+        if self._close_error is not None:
+            raise self._close_error
 
 
 def _put_bytes_in_process(
@@ -92,6 +137,573 @@ def test_put_file_stores_regular_file(tmp_path: Path) -> None:
 
     assert info.byte_size == source.stat().st_size
     assert store.read_bytes(info.digest) == source.read_bytes()
+
+
+@pytest.mark.parametrize(
+    "blocks",
+    [
+        [b"reader-", b"native", b"", b" CAS"],
+        [],
+    ],
+)
+def test_put_chunks_streams_exact_identity_and_closes_iterator(
+    tmp_path: Path,
+    blocks: list[bytes],
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"".join(blocks)
+    digest = hashlib.sha256(payload).hexdigest()
+    producer = _ClosableChunks(blocks)
+
+    info = store.put_chunks(producer, digest, len(payload))
+
+    assert info.digest == digest
+    assert info.byte_size == len(payload)
+    assert info.storage_key == f"sha256/{digest[:2]}/{digest[2:]}"
+    assert store.read_bytes(digest) == payload
+    assert producer.close_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("expected_digest", "expected_size", "message"),
+    [
+        ("not-a-digest", 0, "64 lowercase hexadecimal"),
+        (hashlib.sha256(b"").hexdigest(), True, "nonnegative integer"),
+        (hashlib.sha256(b"").hexdigest(), -1, "nonnegative integer"),
+        (
+            hashlib.sha256(b"").hexdigest(),
+            cas_module._MAX_OBJECT_BYTES + 1,
+            "byte limit",
+        ),
+    ],
+)
+def test_put_chunks_validates_expected_identity_before_producer_use(
+    tmp_path: Path,
+    expected_digest: str,
+    expected_size: int,
+    message: str,
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    producer = _UnconsumableChunks()
+
+    with pytest.raises(StorageValidationError, match=message):
+        store.put_chunks(producer, expected_digest, expected_size)
+
+    assert producer.iter_calls == 0
+
+
+def test_put_chunks_iterator_acquisition_stopiteration_never_publishes(
+    tmp_path: Path,
+) -> None:
+    class StoppedBeforeIteration:
+        def __init__(self) -> None:
+            self.iter_calls = 0
+
+        def __iter__(self):
+            self.iter_calls += 1
+            raise StopIteration("iterator acquisition stopped")
+
+    store = LocalCAS(tmp_path / "objects")
+    digest = hashlib.sha256(b"").hexdigest()
+    producer = StoppedBeforeIteration()
+
+    with pytest.raises(RuntimeError, match="acquisition") as caught:
+        store.put_chunks(producer, digest, 0)
+
+    assert isinstance(caught.value.__cause__, StopIteration)
+    assert producer.iter_calls == 1
+    assert not store._object_path(digest).exists()
+
+
+def test_put_chunks_rejects_identity_subclasses_before_producer_use(
+    tmp_path: Path,
+) -> None:
+    class ForgedDigest(str):
+        pass
+
+    class ForgedSize(int):
+        pass
+
+    store = LocalCAS(tmp_path / "objects")
+    digest = hashlib.sha256(b"").hexdigest()
+
+    for expected_digest, expected_size, message in (
+        (ForgedDigest(digest), 0, "64 lowercase hexadecimal"),
+        (digest, ForgedSize(0), "nonnegative integer"),
+    ):
+        producer = _UnconsumableChunks()
+        with pytest.raises(StorageValidationError, match=message):
+            store.put_chunks(producer, expected_digest, expected_size)
+        assert producer.iter_calls == 0
+
+
+def test_put_chunks_accepts_the_64_gib_identity_boundary(tmp_path: Path) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    digest = hashlib.sha256(b"").hexdigest()
+    producer = _UnconsumableChunks()
+
+    with pytest.raises(AssertionError, match="must not be consumed"):
+        store.put_chunks(producer, digest, cas_module._MAX_OBJECT_BYTES)
+
+    assert producer.iter_calls == 1
+    assert not store._object_path(digest).exists()
+
+
+def test_put_chunks_support_gate_precedes_producer_use(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"unsupported producer"
+    digest = hashlib.sha256(payload).hexdigest()
+    producer = _UnconsumableChunks()
+    destination = store._object_path(digest)
+    monkeypatch.setattr(cas_module, "_SAFE_DIRECTORY_FDS", False)
+
+    with pytest.raises(RuntimeError, match="directory-fd support"):
+        store.put_chunks(producer, digest, len(payload))
+
+    assert producer.iter_calls == 0
+    assert not destination.exists()
+
+
+def test_put_chunks_strict_identity_gate_precedes_producer_use(
+    tmp_path: Path,
+) -> None:
+    store = LocalCAS.provision(tmp_path / "objects")
+    payload = b"strict generation"
+    digest = hashlib.sha256(payload).hexdigest()
+    shard = store.root / "sha256" / digest[:2]
+    previous = shard.with_name(f"{shard.name}-previous")
+    shard.rename(previous)
+    shard.mkdir()
+    producer = _UnconsumableChunks()
+
+    with pytest.raises(StorageIntegrityError, match="generation changed"):
+        store.put_chunks(producer, digest, len(payload))
+
+    assert producer.iter_calls == 0
+    assert list(shard.iterdir()) == []
+
+
+@pytest.mark.parametrize("conflict", [False, True], ids=["reuse", "conflict"])
+def test_put_chunks_reuse_or_conflict_precedes_producer_use(
+    tmp_path: Path,
+    conflict: bool,
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"existing canonical object"
+    expected = store.put_bytes(payload)
+    destination = store.root / expected.storage_key
+    if conflict:
+        destination.write_bytes(b"x" * len(payload))
+    producer = _UnconsumableChunks()
+
+    if conflict:
+        with pytest.raises(StorageIntegrityError, match="failed integrity"):
+            store.put_chunks(producer, expected.digest, expected.byte_size)
+    else:
+        assert (
+            store.put_chunks(producer, expected.digest, expected.byte_size) == expected
+        )
+
+    assert producer.iter_calls == 0
+    assert list(destination.parent.glob(".codenib-file-*")) == []
+
+
+def test_put_chunks_observed_object_disappearing_before_open_is_a_conflict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"observed before open"
+    expected = store.put_bytes(payload)
+    destination = store.root / expected.storage_key
+    producer = _UnconsumableChunks()
+    real_open = cas_module._open_regular_at
+    removed = False
+
+    def remove_then_open(*args, **kwargs):
+        nonlocal removed
+        if not removed and kwargs.get("label") == "CAS object":
+            removed = True
+            destination.unlink()
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(cas_module, "_open_regular_at", remove_then_open)
+
+    with pytest.raises(StorageIntegrityError, match="failed integrity"):
+        store.put_chunks(producer, expected.digest, expected.byte_size)
+
+    assert removed
+    assert producer.iter_calls == 0
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NONBLOCK"), reason="POSIX open flag")
+def test_cas_regular_file_opens_are_nonblocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    payload = root / "payload"
+    payload.write_bytes(b"payload")
+    directory_descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    real_open = cas_module.os.open
+    observed: list[int] = []
+
+    def record_open(path, flags, *args, **kwargs):
+        if path == "payload" or path == payload:
+            observed.append(flags)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(cas_module.os, "open", record_open)
+    try:
+        with cas_module._open_regular_at(
+            directory_descriptor,
+            root,
+            "payload",
+            label="test object",
+        ) as source:
+            assert source.read() == b"payload"
+        with cas_module._open_regular_file(payload, label="test source") as source:
+            assert source.read() == b"payload"
+    finally:
+        os.close(directory_descriptor)
+
+    assert len(observed) == 2
+    assert all(flags & os.O_NONBLOCK for flags in observed)
+
+
+def test_put_chunks_reuse_fsyncs_object_then_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = LocalCAS.provision(tmp_path / "objects")
+    payload = b"durably reusable object"
+    expected = store.put_bytes(payload)
+    destination = store.root / expected.storage_key
+    object_metadata = destination.stat()
+    shard_metadata = destination.parent.stat()
+    identities = {
+        (object_metadata.st_dev, object_metadata.st_ino): "object",
+        (shard_metadata.st_dev, shard_metadata.st_ino): "shard",
+    }
+    real_fsync = cas_module.os.fsync
+    events: list[str] = []
+
+    def record_fsync(descriptor: int) -> None:
+        metadata = os.fstat(descriptor)
+        label = identities.get((metadata.st_dev, metadata.st_ino))
+        if label is not None:
+            events.append(label)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(cas_module.os, "fsync", record_fsync)
+    producer = _UnconsumableChunks()
+
+    assert store.put_chunks(producer, expected.digest, expected.byte_size) == expected
+    assert events == ["object", "shard"]
+    assert producer.iter_calls == 0
+
+
+@pytest.mark.parametrize("layer", ["object", "shard"])
+@pytest.mark.parametrize("exception_type", [OSError, KeyboardInterrupt, SystemExit])
+def test_put_chunks_reuse_fsync_cancellation_returns_no_receipt_and_replays(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    layer: str,
+    exception_type: type[BaseException],
+) -> None:
+    store = LocalCAS.provision(tmp_path / "objects")
+    payload = f"reuse-{layer}-{exception_type.__name__}".encode()
+    expected = store.put_bytes(payload)
+    destination = store.root / expected.storage_key
+    object_metadata = destination.stat()
+    shard_metadata = destination.parent.stat()
+    identities = {
+        "object": (object_metadata.st_dev, object_metadata.st_ino),
+        "shard": (shard_metadata.st_dev, shard_metadata.st_ino),
+    }
+    real_fsync = cas_module.os.fsync
+    error = (
+        OSError(errno.EIO, f"{layer} fsync failure")
+        if exception_type is OSError
+        else exception_type(f"{layer} fsync cancellation")
+    )
+    interrupted = False
+
+    def interrupt_fsync(descriptor: int) -> None:
+        nonlocal interrupted
+        metadata = os.fstat(descriptor)
+        if not interrupted and (metadata.st_dev, metadata.st_ino) == identities[layer]:
+            interrupted = True
+            real_fsync(descriptor)
+            raise error
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(cas_module.os, "fsync", interrupt_fsync)
+    producer = _UnconsumableChunks()
+    with pytest.raises(exception_type) as caught:
+        store.put_chunks(producer, expected.digest, expected.byte_size)
+
+    assert caught.value is error
+    assert interrupted
+    assert producer.iter_calls == 0
+
+    events: list[str] = []
+
+    def record_retry(descriptor: int) -> None:
+        metadata = os.fstat(descriptor)
+        identity = (metadata.st_dev, metadata.st_ino)
+        for label, expected_identity in identities.items():
+            if identity == expected_identity:
+                events.append(label)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(cas_module.os, "fsync", record_retry)
+    assert store.put_chunks(producer, expected.digest, expected.byte_size) == expected
+    assert events == ["object", "shard"]
+    assert producer.iter_calls == 0
+
+
+@pytest.mark.parametrize("layer", ["object", "shard"])
+def test_put_chunks_reuse_rejects_rebinding_across_durability_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    layer: str,
+) -> None:
+    store = LocalCAS.provision(tmp_path / "objects")
+    payload = f"replace-after-{layer}-fsync".encode()
+    expected = store.put_bytes(payload)
+    destination = store.root / expected.storage_key
+    object_metadata = destination.stat()
+    shard_metadata = destination.parent.stat()
+    target_identity = (
+        (object_metadata.st_dev, object_metadata.st_ino)
+        if layer == "object"
+        else (shard_metadata.st_dev, shard_metadata.st_ino)
+    )
+    real_fsync = cas_module.os.fsync
+    replaced = False
+
+    def replace_after_fsync(descriptor: int) -> None:
+        nonlocal replaced
+        real_fsync(descriptor)
+        metadata = os.fstat(descriptor)
+        if not replaced and (metadata.st_dev, metadata.st_ino) == target_identity:
+            replaced = True
+            destination.unlink()
+            destination.write_bytes(payload)
+            destination.chmod(0o600)
+
+    monkeypatch.setattr(cas_module.os, "fsync", replace_after_fsync)
+    producer = _UnconsumableChunks()
+
+    with pytest.raises(StorageIntegrityError, match="failed integrity"):
+        store.put_chunks(producer, expected.digest, expected.byte_size)
+
+    assert replaced
+    assert producer.iter_calls == 0
+
+
+@pytest.mark.parametrize("mismatch", ["digest", "short", "long"])
+def test_put_chunks_identity_mismatch_never_publishes_final_object(
+    tmp_path: Path,
+    mismatch: str,
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"identity-bound stream"
+    digest = hashlib.sha256(payload).hexdigest()
+    expected_digest = hashlib.sha256(b"different bytes").hexdigest()
+    expected_size = len(payload)
+    if mismatch == "short":
+        expected_digest = digest
+        expected_size -= 1
+    elif mismatch == "long":
+        expected_digest = digest
+        expected_size += 1
+    destination = store._object_path(expected_digest)
+
+    with pytest.raises(StorageIntegrityError, match="chunk producer"):
+        store.put_chunks([payload], expected_digest, expected_size)
+
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize(
+    "invalid_chunk",
+    [bytearray(b"suffix"), memoryview(b"suffix"), "suffix", 1],
+)
+def test_put_chunks_rejects_non_bytes_without_publishing(
+    tmp_path: Path,
+    invalid_chunk: object,
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    expected = b"prefix-suffix"
+    digest = hashlib.sha256(expected).hexdigest()
+    destination = store._object_path(digest)
+
+    with pytest.raises(TypeError, match="must yield bytes"):
+        store.put_chunks(
+            [b"prefix-", invalid_chunk],  # type: ignore[list-item]
+            digest,
+            len(expected),
+        )
+
+    assert not destination.exists()
+
+
+def test_put_chunks_rejects_bytes_subclass_length_forgery(tmp_path: Path) -> None:
+    class ForgedBytes(bytes):
+        def __len__(self) -> int:
+            return 0
+
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"forged-length"
+    digest = hashlib.sha256(payload).hexdigest()
+
+    with pytest.raises(TypeError, match="must yield bytes"):
+        store.put_chunks([ForgedBytes(payload)], digest, 0)
+
+    assert not store._object_path(digest).exists()
+
+
+@pytest.mark.parametrize(
+    "primary",
+    [
+        OSError(errno.EIO, "iterator failed"),
+        KeyboardInterrupt("iterator cancelled"),
+        SystemExit("iterator exited"),
+        GeneratorExit("iterator closed"),
+    ],
+)
+def test_put_chunks_iterator_failure_is_terminal_and_keeps_first_primary(
+    tmp_path: Path,
+    primary: BaseException,
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    secondary = RuntimeError("iterator close failed")
+    producer = _ClosableChunks(
+        [],
+        iteration_error=primary,
+        close_error=secondary,
+    )
+    digest = hashlib.sha256(b"expected bytes").hexdigest()
+
+    with pytest.raises(type(primary)) as caught:
+        store.put_chunks(producer, digest, len(b"expected bytes"))
+
+    assert caught.value is primary
+    assert producer.next_calls == 1
+    assert producer.close_calls == 1
+    assert any("iterator close failed" in note for note in _exception_notes(primary))
+    assert not store._object_path(digest).exists()
+
+
+def test_validated_chunks_never_reads_again_after_iterator_failure() -> None:
+    primary = OSError(errno.EIO, "producer read failed")
+    producer = _ClosableChunks([], iteration_error=primary)
+    chunks = cas_module._ValidatedObjectChunks(
+        producer,
+        expected_digest=hashlib.sha256(b"expected").hexdigest(),
+        expected_size=len(b"expected"),
+    )
+
+    with pytest.raises(OSError) as caught:
+        next(chunks)
+    assert caught.value is primary
+    assert producer.next_calls == 1
+
+    with pytest.raises(StopIteration):
+        next(chunks)
+    assert producer.next_calls == 1
+    assert producer.close_calls == 1
+
+
+def test_put_chunks_identity_failure_keeps_primary_over_close_property_fault(
+    tmp_path: Path,
+) -> None:
+    secondary = SystemExit("close property interrupted")
+
+    class ClosePropertyFault:
+        def __init__(self) -> None:
+            self._blocks = iter([b"short"])
+
+        def __iter__(self) -> ClosePropertyFault:
+            return self
+
+        def __next__(self) -> bytes:
+            return next(self._blocks)
+
+        @property
+        def close(self):
+            raise secondary
+
+    store = LocalCAS(tmp_path / "objects")
+    digest = hashlib.sha256(b"short plus more").hexdigest()
+
+    with pytest.raises(StorageIntegrityError, match="size does not match") as caught:
+        store.put_chunks(ClosePropertyFault(), digest, len(b"short plus more"))
+
+    assert any(
+        "close property interrupted" in note for note in _exception_notes(caught.value)
+    )
+    assert not store._object_path(digest).exists()
+
+
+@pytest.mark.parametrize(
+    "close_error",
+    [
+        OSError(errno.EIO, "iterator close failed"),
+        StopIteration("iterator close stopped"),
+    ],
+)
+def test_put_chunks_close_failure_prevents_final_publication(
+    tmp_path: Path,
+    close_error: BaseException,
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"complete before close"
+    digest = hashlib.sha256(payload).hexdigest()
+    producer = _ClosableChunks([payload], close_error=close_error)
+
+    expected_type = RuntimeError if isinstance(close_error, StopIteration) else OSError
+    with pytest.raises(expected_type) as caught:
+        store.put_chunks(producer, digest, len(payload))
+
+    if isinstance(close_error, StopIteration):
+        assert caught.value.__cause__ is close_error
+    else:
+        assert caught.value is close_error
+    assert producer.close_calls == 1
+    assert not store._object_path(digest).exists()
+
+
+def test_put_chunks_publication_cancellation_closes_and_keeps_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = LocalCAS(tmp_path / "objects")
+    payload = b"cancel while writing"
+    digest = hashlib.sha256(payload).hexdigest()
+    primary = KeyboardInterrupt("publication write cancelled")
+    secondary = SystemExit("producer close cancelled")
+    producer = _ClosableChunks([payload], close_error=secondary)
+
+    def interrupt_write(_descriptor: int, _data: object) -> int:
+        raise primary
+
+    monkeypatch.setattr(owned_file_module.os, "write", interrupt_write)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        store.put_chunks(producer, digest, len(payload))
+
+    assert caught.value is primary
+    assert producer.next_calls == 1
+    assert producer.close_calls == 1
+    assert any("producer close cancelled" in note for note in _exception_notes(primary))
+    assert not store._object_path(digest).exists()
 
 
 def test_existing_corrupt_object_is_rejected_instead_of_replaced(

@@ -31,6 +31,7 @@ from .models import StorageIntegrityError, StorageValidationError
 
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _COPY_BUFFER_SIZE = 1024 * 1024
+_MAX_OBJECT_BYTES = 64 << 30
 _SAFE_DIRECTORY_FDS = (
     hasattr(os, "O_DIRECTORY")
     and hasattr(os, "O_NOFOLLOW")
@@ -498,6 +499,38 @@ class LocalCAS:
 
         return self._run_strict_operation(put)
 
+    def put_chunks(
+        self,
+        chunks: Iterable[bytes],
+        expected_digest: str,
+        expected_size: int,
+    ) -> BlobInfo:
+        """Stream one expected-identity object into the CAS.
+
+        Platform support, the expected identity, and any existing canonical
+        object are checked before the producer is iterated.  Reuse therefore
+        performs no producer reads.  New bytes are bounded and authenticated
+        while the owned publication stage is written, before its final name
+        can be installed.
+        """
+
+        if type(expected_digest) is not str:
+            raise StorageValidationError(
+                "digest must be 64 lowercase hexadecimal characters"
+            )
+        digest = _validate_digest(expected_digest)
+        byte_size = _validate_expected_object_size(expected_size)
+        _require_local_cas_support()
+        reused = self._reuse_expected_object(digest, byte_size)
+        if reused is not None:
+            return reused
+        validated_chunks = _ValidatedObjectChunks(
+            chunks,
+            expected_digest=digest,
+            expected_size=byte_size,
+        )
+        return self._publish_object(digest, byte_size, validated_chunks)
+
     def has(self, digest: str) -> bool:
         """Return whether a regular object exists for *digest*.
 
@@ -946,6 +979,102 @@ class LocalCAS:
                 shard_path / destination_name,
             )
 
+    def _reuse_expected_object(
+        self,
+        digest: str,
+        byte_size: int,
+    ) -> BlobInfo | None:
+        """Authenticate and durably rebind an existing canonical object."""
+
+        shard_opened = False
+        try:
+            with self._open_shard(digest) as (shard_descriptor, shard_path):
+                shard_opened = True
+                if shard_descriptor is None:
+                    raise RuntimeError(
+                        "strict CAS reuse requires an anchored shard descriptor"
+                    )
+                name = digest[2:]
+                destination = shard_path / name
+                try:
+                    before = os.stat(
+                        name,
+                        dir_fd=shard_descriptor,
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    return None
+                if not _is_canonical_object(before, expected_size=byte_size):
+                    raise _existing_object_conflict(destination)
+
+                try:
+                    handle = _open_regular_at(
+                        shard_descriptor,
+                        shard_path,
+                        name,
+                        label="CAS object",
+                    )
+                except FileNotFoundError as exc:
+                    raise _existing_object_conflict(destination) from exc
+                with _close_binary_handle(handle):
+                    opened = os.fstat(handle.fileno())
+                    signature = _canonical_object_signature(opened)
+                    if signature != _canonical_object_signature(before):
+                        raise _existing_object_conflict(destination)
+
+                    observed = hashlib.sha256()
+                    remaining = byte_size
+                    while remaining:
+                        block = handle.read(min(_COPY_BUFFER_SIZE, remaining))
+                        if not block or len(block) > remaining:
+                            raise _existing_object_conflict(destination)
+                        observed.update(block)
+                        remaining -= len(block)
+                    if handle.read(1):
+                        raise _existing_object_conflict(destination)
+                    if observed.hexdigest() != digest:
+                        raise _existing_object_conflict(destination)
+                    if (
+                        _canonical_object_signature(os.fstat(handle.fileno()))
+                        != signature
+                    ):
+                        raise _existing_object_conflict(destination)
+
+                    # A prior publication may have committed before reporting
+                    # an fsync failure. Replay both the object and directory
+                    # durability boundaries before issuing a reuse receipt.
+                    os.fsync(handle.fileno())
+                    if (
+                        _canonical_object_signature(os.fstat(handle.fileno()))
+                        != signature
+                    ):
+                        raise _existing_object_conflict(destination)
+                    rebound = os.stat(
+                        name,
+                        dir_fd=shard_descriptor,
+                        follow_symlinks=False,
+                    )
+                    if _canonical_object_signature(rebound) != signature:
+                        raise _existing_object_conflict(destination)
+                    os.fsync(shard_descriptor)
+                    if (
+                        _canonical_object_signature(os.fstat(handle.fileno()))
+                        != signature
+                    ):
+                        raise _existing_object_conflict(destination)
+                    durable_rebound = os.stat(
+                        name,
+                        dir_fd=shard_descriptor,
+                        follow_symlinks=False,
+                    )
+                    if _canonical_object_signature(durable_rebound) != signature:
+                        raise _existing_object_conflict(destination)
+        except FileNotFoundError:
+            if shard_opened:
+                raise
+            return None
+        return self._blob_info(digest, byte_size)
+
     def _consume_object(
         self,
         digest: str,
@@ -1259,7 +1388,7 @@ def _open_regular_at(
             f"{label} is not a regular file: {directory_path / name}"
         )
 
-    flags = os.O_RDONLY | os.O_NOFOLLOW
+    flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY
     if hasattr(os, "O_CLOEXEC"):
@@ -1300,12 +1429,193 @@ def _unlink_portable(directory_path: Path, name: str) -> None:
         pass
 
 
+class _ValidatedObjectChunks(Iterator[bytes]):
+    """One-shot producer adapter with exact terminal identity validation."""
+
+    __slots__ = (
+        "_byte_size",
+        "_chunks",
+        "_closed",
+        "_expected_digest",
+        "_expected_size",
+        "_iterator",
+        "_observed",
+    )
+
+    def __init__(
+        self,
+        chunks: Iterable[bytes],
+        *,
+        expected_digest: str,
+        expected_size: int,
+    ) -> None:
+        self._chunks: Iterable[bytes] | None = chunks
+        self._iterator: Iterator[bytes] | None = None
+        self._expected_digest = expected_digest
+        self._expected_size = expected_size
+        self._observed = hashlib.sha256()
+        self._byte_size = 0
+        self._closed = False
+
+    def __iter__(self) -> _ValidatedObjectChunks:
+        return self
+
+    def __next__(self) -> bytes:
+        if self._closed:
+            raise StopIteration
+        try:
+            iterator = self._start()
+        except BaseException as primary_error:  # noqa: B036 - acquisition failed
+            self._close_preserving(primary_error)
+            if isinstance(primary_error, StopIteration):
+                raise RuntimeError(
+                    "CAS chunk iterator acquisition raised StopIteration"
+                ) from primary_error
+            raise
+        try:
+            block = next(iterator)
+        except StopIteration:
+            completion_error = self._completion_error()
+            if completion_error is not None:
+                self._close_preserving(completion_error)
+                raise completion_error
+            self.close()
+            raise
+        except BaseException as primary_error:  # noqa: B036 - close producer
+            self._close_preserving(primary_error)
+            raise
+
+        try:
+            if type(block) is not bytes:
+                raise TypeError("CAS chunk producer must yield bytes")
+            if len(block) > self._expected_size - self._byte_size:
+                raise StorageIntegrityError(
+                    "CAS chunk producer exceeds its expected object size"
+                )
+            self._observed.update(block)
+            self._byte_size += len(block)
+        except BaseException as primary_error:  # noqa: B036 - close producer
+            self._close_preserving(primary_error)
+            raise
+        return block
+
+    def close(self) -> None:
+        """Close the acquired iterator at most once on every terminal path."""
+
+        if self._closed:
+            return
+        self._closed = True
+        iterator = self._iterator
+        self._iterator = None
+        self._chunks = None
+        if iterator is None:
+            return
+        try:
+            close = getattr(iterator, "close", None)
+            if callable(close):
+                close()
+        except StopIteration as exc:
+            raise RuntimeError(
+                "CAS chunk iterator cleanup raised StopIteration"
+            ) from exc
+
+    def _start(self) -> Iterator[bytes]:
+        iterator = self._iterator
+        if iterator is not None:
+            return iterator
+        chunks = self._chunks
+        if chunks is None:
+            self._closed = True
+            raise RuntimeError("CAS chunk producer is no longer available")
+        try:
+            iterator = iter(chunks)
+        except BaseException:  # noqa: B036 - make iterator acquisition terminal
+            self._closed = True
+            self._chunks = None
+            raise
+        self._iterator = iterator
+        self._chunks = None
+        return iterator
+
+    def _completion_error(self) -> StorageIntegrityError | None:
+        if self._byte_size != self._expected_size:
+            return StorageIntegrityError(
+                "CAS chunk producer size does not match its expected object size"
+            )
+        if self._observed.hexdigest() != self._expected_digest:
+            return StorageIntegrityError(
+                "CAS chunk producer digest does not match its expected digest"
+            )
+        return None
+
+    def _close_preserving(self, primary_error: BaseException) -> None:
+        try:
+            self.close()
+        except BaseException as close_error:  # noqa: B036 - keep first primary
+            _atomic._annotate_secondary_error(
+                primary_error,
+                "CAS chunk iterator cleanup also failed",
+                close_error,
+            )
+
+
+@contextmanager
+def _close_binary_handle(handle: BinaryIO) -> Iterator[None]:
+    """Close one opened object while retaining an earlier verification error."""
+
+    try:
+        yield
+    except BaseException as primary_error:  # noqa: B036 - retain first primary
+        try:
+            handle.close()
+        except BaseException as close_error:  # noqa: B036 - diagnostic only
+            _atomic._annotate_secondary_error(
+                primary_error,
+                "CAS object handle cleanup also failed",
+                close_error,
+            )
+        raise
+    else:
+        handle.close()
+
+
 def _validate_digest(digest: str) -> str:
     if not isinstance(digest, str) or _DIGEST_RE.fullmatch(digest) is None:
         raise StorageValidationError(
             "digest must be 64 lowercase hexadecimal characters"
         )
     return digest
+
+
+def _validate_expected_object_size(value: object) -> int:
+    if type(value) is not int or value < 0:
+        raise StorageValidationError(
+            "expected object size must be a nonnegative integer"
+        )
+    if value > _MAX_OBJECT_BYTES:
+        raise StorageValidationError(
+            f"expected object size exceeds the {_MAX_OBJECT_BYTES}-byte limit"
+        )
+    return value
+
+
+def _is_canonical_object(
+    metadata: os.stat_result,
+    *,
+    expected_size: int,
+) -> bool:
+    return (
+        stat.S_ISREG(metadata.st_mode)
+        and metadata.st_nlink == 1
+        and stat.S_IMODE(metadata.st_mode) == _CAS_OBJECT_MODE
+        and metadata.st_size == expected_size
+    )
+
+
+def _existing_object_conflict(destination: Path) -> StorageIntegrityError:
+    return StorageIntegrityError(
+        f"existing CAS object failed integrity validation: {destination}"
+    )
 
 
 def _require_local_cas_support() -> None:
@@ -1379,7 +1689,7 @@ def _open_regular_file(path: Path, *, label: str) -> BinaryIO:
     if not stat.S_ISREG(metadata.st_mode):
         raise StorageIntegrityError(f"{label} is not a regular file: {path}")
 
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY
     if hasattr(os, "O_NOFOLLOW"):
@@ -1467,6 +1777,20 @@ def _object_signature(metadata: os.stat_result) -> tuple[int, ...]:
         metadata.st_mode,
         metadata.st_size,
         metadata.st_mtime_ns,
+    )
+
+
+def _canonical_object_signature(metadata: os.stat_result) -> tuple[int, ...]:
+    """Exact metadata required throughout canonical-object reuse."""
+
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_nlink,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
     )
 
 
