@@ -374,6 +374,24 @@ ordinary dataclass is treated as that authority. These gates do not yet plan or
 execute a legacy `RepoManifest` import, upload retained view bytes, or advance a
 ref, so M1 remains in progress.
 
+A pure retained-manifest planning layer now closes the data-only side of that
+boundary for current portable `RepoManifest` v1.1 projections. It accepts only
+bounded, unambiguous, BOM-free UTF-8 JSON; rejects unknown shape, non-finite or
+over-complex values, credential data, diagnostic data, and forged storage or
+filesystem authority claims; and selects only current BM25/vector entries whose
+artifact-relative paths are exactly `views/bm25` or `views/vector`. Required
+views fail closed while optional incompatibilities are recorded explicitly.
+Every current builder compatibility field participates in a versioned
+`ViewProfile`, unknown or missing fields fail closed, and the vector profile
+also records the artifact-safe resolved model revision/trust policy without
+filesystem or ambient-environment discovery. Source-fingerprint v1 remains
+diagnostic and inert; v2 is merely eligible for a later retained-source check,
+and Git commit text remains display provenance rather than source authority.
+Planning performs no source or artifact reads, native parsing, CAS/catalog
+operation, receipt minting, or ref publication. The retained reader adapter,
+object upload, atomic snapshot/ref transaction, and equivalent v1.1 export are
+still outstanding, so M1 and M2 remain in progress.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
