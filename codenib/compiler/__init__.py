@@ -29,6 +29,10 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     from codenib.compiler.index_builders import IndexBuilderRegistry
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from codenib.compiler.manifest import ManifestIndexStateStore, RepoManifest
+    from codenib.compiler.manifest_import import (
+        RepoManifestImportResult,
+        import_retained_repo_manifest,
+    )
     from codenib.compiler.manifest_storage import (
         RepoManifestImportPlan,
         SourceIntent,
@@ -65,6 +69,10 @@ _EXPORTS = {
         "codenib.compiler.manifest",
         "ManifestIndexStateStore",
     ),
+    "RepoManifestImportResult": (
+        "codenib.compiler.manifest_import",
+        "RepoManifestImportResult",
+    ),
     "RepoManifestImportPlan": (
         "codenib.compiler.manifest_storage",
         "RepoManifestImportPlan",
@@ -82,6 +90,10 @@ _EXPORTS = {
     "plan_repo_manifest_import_bytes": (
         "codenib.compiler.manifest_storage",
         "plan_repo_manifest_import_bytes",
+    ),
+    "import_retained_repo_manifest": (
+        "codenib.compiler.manifest_import",
+        "import_retained_repo_manifest",
     ),
     "ResourceResolver": ("codenib.compiler.resources", "ResourceResolver"),
     "ResourcePlan": ("codenib.compiler.resources", "ResourcePlan"),
@@ -112,12 +124,14 @@ __all__ = [
     # Manifest
     "RepoManifest",
     "ManifestIndexStateStore",
+    "RepoManifestImportResult",
     "RepoManifestImportPlan",
     "SourceIntent",
     "ViewImportIntent",
     "ViewSelection",
     "plan_repo_manifest_import",
     "plan_repo_manifest_import_bytes",
+    "import_retained_repo_manifest",
     # Resources
     "ResourceResolver",
     "ResourcePlan",
