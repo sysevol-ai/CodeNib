@@ -1113,12 +1113,14 @@ class SQLiteCatalog:
 
     def _migrate(self) -> None:
         with self._transaction():
-            self._connection.execute("""
+            self._connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version INTEGER PRIMARY KEY,
                     applied_at TEXT NOT NULL
                 )
-                """)
+                """
+            )
             rows = self._connection.execute(
                 "SELECT version FROM schema_migrations ORDER BY version"
             ).fetchall()

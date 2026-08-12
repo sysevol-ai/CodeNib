@@ -194,11 +194,13 @@ def test_commit_failure_rolls_back_and_leaves_connection_reusable(tmp_path):
 
         with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
             with catalog._transaction():
-                catalog._connection.execute("""
+                catalog._connection.execute(
+                    """
                     INSERT INTO repositories(
                         repository_id, namespace_id, repository_key, created_at
                     ) VALUES ('invalid-repo', 'missing-namespace', 'invalid', 'now')
-                    """)
+                    """
+                )
 
         assert catalog._connection.in_transaction is False
         assert (
@@ -1953,10 +1955,12 @@ def test_direct_sql_cannot_seal_invalid_or_expose_building_snapshots(tmp_path):
             (ready_view,),
         )
         with pytest.raises(sqlite3.IntegrityError, match="snapshot seal"):
-            catalog._connection.execute("""
+            catalog._connection.execute(
+                """
                 UPDATE snapshots SET status = 'ready', published_at = 'now'
                 WHERE snapshot_id = 'cross-source'
-                """)
+                """
+            )
 
         catalog._connection.execute(
             """
@@ -1975,10 +1979,12 @@ def test_direct_sql_cannot_seal_invalid_or_expose_building_snapshots(tmp_path):
             (staged_view,),
         )
         with pytest.raises(sqlite3.IntegrityError, match="snapshot seal"):
-            catalog._connection.execute("""
+            catalog._connection.execute(
+                """
                 UPDATE snapshots SET status = 'ready', published_at = 'now'
                 WHERE snapshot_id = 'staged-view'
-                """)
+                """
+            )
 
         catalog._connection.execute(
             """
@@ -1990,10 +1996,12 @@ def test_direct_sql_cannot_seal_invalid_or_expose_building_snapshots(tmp_path):
             (repository_two, source_two),
         )
         with pytest.raises(sqlite3.IntegrityError, match="snapshot seal"):
-            catalog._connection.execute("""
+            catalog._connection.execute(
+                """
                 UPDATE snapshots SET status = 'ready', published_at = 'now'
                 WHERE snapshot_id = 'empty'
-                """)
+                """
+            )
         with pytest.raises(CatalogValidationError, match="not ready"):
             catalog.get_manifest_summary("empty")
 
@@ -2040,13 +2048,15 @@ def test_late_ref_failure_rolls_back_building_snapshot_and_view_seal(tmp_path):
             profile_id,
             _object(catalog, "a"),
         )
-        catalog._connection.execute("""
+        catalog._connection.execute(
+            """
             CREATE TRIGGER fail_ref_publication
             BEFORE INSERT ON refs
             BEGIN
                 SELECT RAISE(ABORT, 'simulated ref failure');
             END
-            """)
+            """
+        )
 
         with pytest.raises(sqlite3.IntegrityError, match="simulated ref failure"):
             catalog.publish_snapshot(
