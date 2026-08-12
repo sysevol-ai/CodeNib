@@ -4383,24 +4383,48 @@ def _call_with_interrupt_after_store(
     assert predicate is None or callable(predicate)
     code = function.__code__
     instructions = tuple(dis.get_instructions(function))
-    offsets_after_store = {
-        instructions[index + 1].offset
+    result_store_indexes = {
+        index
         for index, instruction in enumerate(instructions[:-1])
-        if instruction.opname == "STORE_FAST" and instruction.argval == local_name
+        if instruction.opname == "STORE_FAST"
+        and instruction.argval == local_name
+        and index > 0
+        and instructions[index - 1].opname.startswith("CALL")
     }
+    opcode_offsets_after_store = {
+        instructions[index + 1].offset for index in result_store_indexes
+    }
+    result_store_offsets = {
+        instructions[index].offset for index in result_store_indexes
+    }
+    line_offsets_after_store = {
+        instruction.offset
+        for instruction in instructions
+        if instruction.starts_line is not None
+        and any(
+            instruction.offset > store_offset for store_offset in result_store_offsets
+        )
+    }
+    assert result_store_indexes
     previous_trace = sys.gettrace()
+    injected = False
 
     def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
         if event == "call" and frame.f_code is code:
             frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
             return trace
         if (
-            event == "opcode"
-            and frame.f_code is code
-            and frame.f_lasti in offsets_after_store
+            frame.f_code is code
+            and (
+                (event == "opcode" and frame.f_lasti in opcode_offsets_after_store)
+                or (event == "line" and frame.f_lasti in line_offsets_after_store)
+            )
             and int(frame.f_locals.get(local_name, -1)) >= 0
             and (predicate is None or predicate(frame.f_locals))
         ):
+            injected = True
             sys.settrace(None)
             raise error
         return trace
@@ -4410,6 +4434,67 @@ def _call_with_interrupt_after_store(
         callback()
     finally:
         sys.settrace(previous_trace)
+        assert injected, f"failed to inject after {local_name} result store"
+
+
+def _call_with_interrupt_at_back_edge(
+    function: object,
+    callback: object,
+    *,
+    predicate: object,
+    error: BaseException,
+) -> None:
+    assert callable(function)
+    assert callable(callback)
+    assert callable(predicate)
+    code = function.__code__
+    instructions = tuple(dis.get_instructions(function))
+    back_edges = tuple(
+        instruction
+        for instruction in instructions
+        if "JUMP" in instruction.opname
+        and isinstance(instruction.argval, int)
+        and instruction.argval < instruction.offset
+    )
+    assert back_edges
+    # The ordered runner may also have a handler-local back-edge.  Select the
+    # outer action-loop edge (the earliest destination) so a 3.12 line event
+    # cannot inject at handler fallthrough before the real normal back-edge.
+    loop_destination = min(instruction.argval for instruction in back_edges)
+    opcode_offsets = {
+        instruction.offset
+        for instruction in back_edges
+        if instruction.argval == loop_destination
+    }
+    line_offsets = {loop_destination}
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
+            return trace
+        if (
+            frame.f_code is code
+            and (
+                (event == "opcode" and frame.f_lasti in opcode_offsets)
+                or (event == "line" and frame.f_lasti in line_offsets)
+            )
+            and predicate(frame.f_locals)
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to inject at an ordered-action back-edge"
 
 
 def _posix_authority_resources(
@@ -4429,6 +4514,316 @@ def _assert_descriptor_closed(descriptor: int) -> None:
     with pytest.raises(OSError) as caught:
         os.fstat(descriptor)
     assert caught.value.errno == errno.EBADF
+
+
+@pytest.mark.parametrize("callback_fails", [True, False], ids=["primary", "return"])
+def test_ordered_post_validations_resume_after_back_edge_cancellation(
+    callback_fails: bool,
+) -> None:
+    callback_error = ValueError("callback primary")
+    interruption = KeyboardInterrupt("post-validation back-edge")
+    final_error = OSError(errno.EIO, "final validation failure")
+    calls: list[str] = []
+
+    def callback() -> int:
+        if callback_fails:
+            raise callback_error
+        return 7
+
+    def first_validation() -> None:
+        calls.append("first")
+
+    def final_validation() -> None:
+        calls.append("final")
+        raise final_error
+
+    def invoke() -> None:
+        atomic_module._run_callback_with_post_validations(
+            callback,
+            (
+                ("first post-validation also failed", first_validation),
+                ("final post-validation also failed", final_validation),
+            ),
+        )
+
+    with pytest.raises(BaseException) as caught:
+        _call_with_interrupt_at_back_edge(
+            atomic_module._run_ordered_actions,
+            invoke,
+            predicate=lambda local: (
+                local["state"].next_index == 1 and calls == ["first"]
+            ),
+            error=interruption,
+        )
+
+    expected_primary = callback_error if callback_fails else interruption
+    assert caught.value is expected_primary
+    assert calls == ["first", "final"]
+    notes = _exception_notes(expected_primary)
+    expected_fragments = (
+        *(
+            ("publication callback post-validation iteration also failed",)
+            if callback_fails
+            else ()
+        ),
+        "final post-validation also failed",
+    )
+    positions = [
+        next(index for index, note in enumerate(notes) if fragment in note)
+        for fragment in expected_fragments
+    ]
+    assert positions == sorted(positions)
+
+
+def test_ordered_post_validations_protect_back_edge_after_action_error() -> None:
+    callback_error = ValueError("callback primary")
+    first_error = OSError(errno.EIO, "first validation failure")
+    interruption = SystemExit("validation error-handler back-edge")
+    calls: list[str] = []
+
+    def first_validation() -> None:
+        calls.append("first")
+        raise first_error
+
+    def final_validation() -> None:
+        calls.append("final")
+
+    def invoke() -> None:
+        atomic_module._run_callback_with_post_validations(
+            lambda: (_ for _ in ()).throw(callback_error),
+            (
+                ("first post-validation also failed", first_validation),
+                ("final post-validation also failed", final_validation),
+            ),
+        )
+
+    with pytest.raises(ValueError) as caught:
+        _call_with_interrupt_at_back_edge(
+            atomic_module._run_ordered_actions,
+            invoke,
+            predicate=lambda local: (
+                local["state"].next_index == 1 and calls == ["first"]
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is callback_error
+    assert calls == ["first", "final"]
+    notes = _exception_notes(callback_error)
+    first_position = next(
+        index
+        for index, note in enumerate(notes)
+        if "first post-validation also failed" in note
+    )
+    interruption_position = next(
+        index
+        for index, note in enumerate(notes)
+        if "post-validation iteration also failed" in note
+    )
+    assert first_position < interruption_position
+
+
+@pytest.mark.parametrize("body_fails", [True, False], ids=["primary", "return"])
+def test_ordered_cleanup_resumes_after_back_edge_cancellation(
+    body_fails: bool,
+) -> None:
+    body_error = ValueError("context body primary")
+    interruption = KeyboardInterrupt("cleanup back-edge")
+    final_error = OSError(errno.EIO, "final cleanup failure")
+    calls: list[str] = []
+
+    def first_cleanup() -> None:
+        calls.append("first")
+
+    def final_cleanup() -> None:
+        calls.append("final")
+        raise final_error
+
+    def invoke() -> None:
+        with atomic_module._run_context_with_cleanup_actions(
+            lambda: (
+                ("first cleanup also failed", first_cleanup),
+                ("final cleanup also failed", final_cleanup),
+            )
+        ):
+            if body_fails:
+                raise body_error
+
+    with pytest.raises(BaseException) as caught:
+        _call_with_interrupt_at_back_edge(
+            atomic_module._run_ordered_actions,
+            invoke,
+            predicate=lambda local: (
+                local["state"].next_index == 1 and calls == ["first"]
+            ),
+            error=interruption,
+        )
+
+    expected_primary = body_error if body_fails else interruption
+    assert caught.value is expected_primary
+    assert calls == ["first", "final"]
+    notes = _exception_notes(expected_primary)
+    expected_fragments = (
+        *(
+            ("publication authenticated cleanup iteration also failed",)
+            if body_fails
+            else ()
+        ),
+        "final cleanup also failed",
+    )
+    positions = [
+        next(index for index, note in enumerate(notes) if fragment in note)
+        for fragment in expected_fragments
+    ]
+    assert positions == sorted(positions)
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX descriptors",
+)
+def test_cleanup_back_edge_cancellation_closes_remaining_posix_descriptors() -> None:
+    first_read, first_write = os.pipe()
+    final_read, final_write = os.pipe()
+    all_descriptors = (first_read, first_write, final_read, final_write)
+    body_error = ValueError("context body primary")
+    interruption = KeyboardInterrupt("descriptor cleanup back-edge")
+    calls: list[str] = []
+
+    def close_first() -> None:
+        os.close(first_read)
+        calls.append("first")
+
+    def close_final() -> None:
+        os.close(final_read)
+        calls.append("final")
+
+    def invoke() -> None:
+        with atomic_module._run_context_with_cleanup_actions(
+            lambda: (
+                ("first descriptor cleanup also failed", close_first),
+                ("final descriptor cleanup also failed", close_final),
+            )
+        ):
+            raise body_error
+
+    try:
+        with pytest.raises(ValueError) as caught:
+            _call_with_interrupt_at_back_edge(
+                atomic_module._run_ordered_actions,
+                invoke,
+                predicate=lambda local: (
+                    local["state"].next_index == 1 and calls == ["first"]
+                ),
+                error=interruption,
+            )
+
+        assert caught.value is body_error
+        assert calls == ["first", "final"]
+        _assert_descriptor_closed(first_read)
+        _assert_descriptor_closed(final_read)
+    finally:
+        for descriptor in all_descriptors:
+            try:
+                os.close(descriptor)
+            except OSError as error:
+                if error.errno != errno.EBADF:
+                    raise
+
+
+def test_cleanup_back_edge_cancellation_closes_remaining_windows_handles() -> None:
+    api = _FakeWindowsApi()
+    first_handle = api.create_directory_handle(Path("C:/authority"))
+    final_handle = api.duplicate_handle(first_handle)
+    body_error = ValueError("context body primary")
+    interruption = KeyboardInterrupt("HANDLE cleanup back-edge")
+    calls: list[str] = []
+
+    def close_first() -> None:
+        api.close(first_handle)
+        calls.append("first")
+
+    def close_final() -> None:
+        api.close(final_handle)
+        calls.append("final")
+
+    def invoke() -> None:
+        with atomic_module._run_context_with_cleanup_actions(
+            lambda: (
+                ("first HANDLE cleanup also failed", close_first),
+                ("final HANDLE cleanup also failed", close_final),
+            )
+        ):
+            raise body_error
+
+    try:
+        with pytest.raises(ValueError) as caught:
+            _call_with_interrupt_at_back_edge(
+                atomic_module._run_ordered_actions,
+                invoke,
+                predicate=lambda local: (
+                    local["state"].next_index == 1 and calls == ["first"]
+                ),
+                error=interruption,
+            )
+
+        assert caught.value is body_error
+        assert calls == ["first", "final"]
+        assert api.handles == {}
+    finally:
+        for handle in tuple(api.handles):
+            api.close(handle)
+
+
+@pytest.mark.parametrize("surface", ["post-validation", "cleanup"])
+def test_hostile_add_note_cannot_replace_primary_or_skip_actions(
+    surface: str,
+) -> None:
+    class HostilePrimary(BaseException):
+        def __init__(self) -> None:
+            super().__init__("hostile primary")
+            self.override_calls = 0
+
+        def add_note(self, _note: str) -> None:
+            self.override_calls += 1
+            raise RuntimeError("hostile add_note override")
+
+    primary = HostilePrimary()
+    secondary = OSError(errno.EIO, "secondary action failure")
+    calls: list[str] = []
+
+    def first_action() -> None:
+        calls.append("first")
+        raise secondary
+
+    def final_action() -> None:
+        calls.append("final")
+
+    def invoke() -> None:
+        actions = (
+            ("first ordered action also failed", first_action),
+            ("final ordered action also failed", final_action),
+        )
+        if surface == "post-validation":
+            atomic_module._run_callback_with_post_validations(
+                lambda: (_ for _ in ()).throw(primary),
+                actions,
+            )
+        else:
+            with atomic_module._run_context_with_cleanup_actions(lambda: actions):
+                raise primary
+
+    with pytest.raises(HostilePrimary) as caught:
+        invoke()
+
+    assert caught.value is primary
+    assert primary.override_calls == 0
+    assert calls == ["first", "final"]
+    assert any(
+        "first ordered action also failed" in note
+        and "secondary action failure" in note
+        for note in _exception_notes(primary)
+    )
 
 
 def test_reopen_interrupt_after_callback_result_store_runs_post_capture(

@@ -297,6 +297,16 @@ publish after it escapes. The gate records the exact callback result or
 callback failure. No production provider or BM25/context producer is wired to
 that strict contract yet, so M1 remains in progress.
 
+Callback-scoped directory results are likewise provisional until ordered
+reader-validity, exact-ownership, child-namespace, and parent-authority
+postconditions have been processed after callback success, failure, or
+cancellation. Authenticated-file exit continues through finalization and every
+remaining descriptor or HANDLE cleanup action when an action or loop transition
+fails. The first local callback, postflight, or cleanup failure stays primary;
+later failures are diagnostic only. This closes the Python-owned callback-result
+and action-loop back-edge seams without completing M1 producer wiring or the
+documented native-owner work for raw resource-return P2 gaps.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced

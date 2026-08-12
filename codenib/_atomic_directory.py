@@ -475,15 +475,39 @@ def _annotate_secondary_error(
     label: str,
     secondary_error: BaseException,
 ) -> None:
-    message = f"{label}: {secondary_error!r}"
-    if hasattr(primary_error, "add_note"):
-        primary_error.add_note(message)
+    """Best-effort diagnostics that can never replace the primary error."""
+
+    try:
+        message = f"{label}: {secondary_error!r}"
+        add_note = getattr(BaseException, "add_note", None)
+        if add_note is not None:
+            # Bypass a hostile BaseException subclass override.  Diagnostics
+            # must not execute code supplied by the exception being preserved.
+            add_note(primary_error, message)
+            return
+
+        try:
+            notes = BaseException.__getattribute__(
+                primary_error,
+                "_codenib_cleanup_notes",
+            )
+        except AttributeError:
+            notes = ()
+        if not isinstance(notes, tuple):
+            notes = ()
+        BaseException.__setattr__(
+            primary_error,
+            "_codenib_cleanup_notes",
+            (*notes, message),
+        )
+        if BaseException.__getattribute__(primary_error, "__cause__") is None:
+            BaseException.__setattr__(
+                primary_error,
+                "__cause__",
+                secondary_error,
+            )
+    except BaseException:  # noqa: B036 - diagnostics are strictly non-primary
         return
-    notes = list(getattr(primary_error, "_codenib_cleanup_notes", ()))
-    notes.append(message)
-    primary_error._codenib_cleanup_notes = tuple(notes)  # type: ignore[attr-defined]
-    if primary_error.__cause__ is None:
-        primary_error.__cause__ = secondary_error
 
 
 def _retain_first_error(
@@ -495,6 +519,44 @@ def _retain_first_error(
         return secondary_error
     _annotate_secondary_error(primary_error, label, secondary_error)
     return primary_error
+
+
+@dataclass(slots=True)
+class _OrderedActionState:
+    actions: tuple[tuple[str, Callable[[], None]], ...]
+    iteration_failure_label: str
+    primary_error: BaseException | None
+    next_index: int = 0
+
+    def retain(self, label: str, error: BaseException) -> None:
+        if self.primary_error is None:
+            self.primary_error = error
+            return
+        _annotate_secondary_error(self.primary_error, label, error)
+
+
+def _run_ordered_actions(state: _OrderedActionState) -> None:
+    """Run claimed actions in order and resume after a loop-edge interruption.
+
+    The outer exception region includes the normal loop back-edge and the
+    back-edge after an action failure is retained.  A transition interruption
+    therefore becomes another first-primary candidate instead of escaping and
+    skipping all remaining actions.  Claiming before invocation keeps cleanup
+    actions at-most-once when a close succeeds before raising.
+    """
+
+    try:
+        for index in range(state.next_index, len(state.actions)):
+            label, action = state.actions[index]
+            state.next_index = index + 1
+            try:
+                action()
+            except BaseException as action_error:  # noqa: B036 - keep first
+                state.retain(label, action_error)
+    except BaseException as iteration_error:  # noqa: B036 - resume remaining
+        state.retain(state.iteration_failure_label, iteration_error)
+        if state.next_index < len(state.actions):
+            _run_ordered_actions(state)
 
 
 @contextmanager
@@ -526,26 +588,24 @@ def _run_context_with_cleanup_actions(
         primary_error = context_error
         if primary_error is None and locally_unwinding:
             primary_error = active_error
+        failures = _OrderedActionState(
+            actions=(),
+            iteration_failure_label=(
+                "publication authenticated cleanup iteration also failed"
+            ),
+            primary_error=primary_error,
+        )
         try:
-            actions = cleanup_actions()
+            failures.actions = cleanup_actions()
         except BaseException as action_error:  # noqa: B036 - keep first primary
-            primary_error = _retain_first_error(
-                primary_error,
+            failures.retain(
                 "publication authenticated cleanup planning also failed",
                 action_error,
             )
         else:
-            for label, cleanup in actions:
-                try:
-                    cleanup()
-                except BaseException as cleanup_error:  # noqa: B036 - keep first
-                    primary_error = _retain_first_error(
-                        primary_error,
-                        label,
-                        cleanup_error,
-                    )
-        if not locally_unwinding and primary_error is not None:
-            raise primary_error
+            _run_ordered_actions(failures)
+        if not locally_unwinding and failures.primary_error is not None:
+            raise failures.primary_error
 
 
 def _run_callback_with_post_validations(
@@ -591,20 +651,16 @@ def _run_callback_with_post_validations(
         primary_error = callback_error
         if primary_error is None and locally_unwinding:
             primary_error = active_error
-        for label, validation in post_validations:
-            try:
-                validation()
-            except BaseException as validation_error:  # noqa: B036 - keep first
-                if primary_error is None:
-                    primary_error = validation_error
-                else:
-                    _annotate_secondary_error(
-                        primary_error,
-                        label,
-                        validation_error,
-                    )
-        if not locally_unwinding and primary_error is not None:
-            raise primary_error
+        failures = _OrderedActionState(
+            actions=post_validations,
+            iteration_failure_label=(
+                "publication callback post-validation iteration also failed"
+            ),
+            primary_error=primary_error,
+        )
+        _run_ordered_actions(failures)
+        if not locally_unwinding and failures.primary_error is not None:
+            raise failures.primary_error
 
 
 def _run_publication_reader_callback(
