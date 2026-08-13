@@ -2166,9 +2166,10 @@ def test_normalize_level_config_symlink_race_cannot_write_external_victim(
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
-def test_normalize_rejects_same_inode_mutation_after_canonical_readback(
+def test_normalize_rejects_same_inode_mutation_when_ctime_advances(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    filesystem_ctime_tick,
 ) -> None:
     repo, _source = _repository(tmp_path)
     vector = _vector_view(tmp_path, repo, document_format="json")
@@ -2217,9 +2218,11 @@ def test_normalize_rejects_same_inode_mutation_after_canonical_readback(
             )
             assert len(mutated) == len(payload)
             assert mutated != bytes(payload)
+            filesystem_ctime_tick(opened.st_ctime_ns)
             os.lseek(descriptor, 0, os.SEEK_SET)
             portable_views_module._OwnedViewReader._write_all(descriptor, mutated)
             os.fsync(descriptor)
+            assert os.fstat(descriptor).st_ctime_ns != opened.st_ctime_ns
         return payload
 
     monkeypatch.setattr(

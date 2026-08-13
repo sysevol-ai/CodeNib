@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import stat
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -309,8 +310,9 @@ def test_entry_policy_rejects_before_file_bytes_are_hashed(
         capture_directory_ownership(root, entry_policy=reject_large)
 
 
-def test_captured_reader_rejects_identical_nested_a_b_a_replacement(
+def test_captured_reader_rejects_nested_a_b_a_when_ctime_advances(
     tmp_path: Path,
+    filesystem_ctime_tick,
 ) -> None:
     root = tmp_path / "root"
     nested = root / "nested"
@@ -321,7 +323,15 @@ def test_captured_reader_rejects_identical_nested_a_b_a_replacement(
     reader = CapturedDirectoryReader(root, ownership)
     saved = tmp_path / "saved-nested"
 
+    captured_ctime_ns = nested.stat().st_ctime_ns
+    if sys.platform != "win32":
+        # POSIX endpoint checks do not provide a namespace event history. Make
+        # the metadata-version signal deterministic without mutating the target.
+        filesystem_ctime_tick(captured_ctime_ns)
+
     nested.rename(saved)
+    if sys.platform != "win32":
+        assert saved.stat().st_ctime_ns != captured_ctime_ns
     nested.mkdir()
     (nested / "payload").write_bytes(b"same bytes")
     replacement = tmp_path / "replacement-nested"

@@ -3141,9 +3141,10 @@ def test_reader_callbacks_survive_reversible_parent_swap(
 
 
 @pytest.mark.parametrize("window", ["stage", "moved", "published"])
-def test_reader_callbacks_survive_reversible_root_swap(
+def test_reader_callbacks_survive_root_swap_when_ctime_advances(
     tmp_path: Path,
     window: str,
+    filesystem_ctime_tick,
 ) -> None:
     parent = tmp_path / "authority"
     parent.mkdir()
@@ -3168,7 +3169,14 @@ def test_reader_callbacks_survive_reversible_root_swap(
                 active = next(parent.glob(".published.previous-*"))
             else:
                 active = destination
+            captured_ctime_ns = active.stat().st_ctime_ns
+            if sys.platform != "win32":
+                # Exercise the versioned endpoint check after a real clock tick;
+                # the reader itself remains bound to the original open inode.
+                filesystem_ctime_tick(captured_ctime_ns)
             active.rename(held)
+            if sys.platform != "win32":
+                assert held.stat().st_ctime_ns != captured_ctime_ns
             _write_tree(active, "foreign.txt", "foreign")
             observed.append(reader.read_bytes(expected_name, max_bytes=16))
             active.rename(foreign)
@@ -3346,8 +3354,9 @@ def test_reopen_authenticated_directory_freshly_matches_before_and_after(
         saved_readers[0].inventory()
 
 
-def test_reopen_authenticated_directory_rejects_reversible_root_swap(
+def test_reopen_authenticated_directory_rejects_root_swap_when_ctime_advances(
     tmp_path: Path,
+    filesystem_ctime_tick,
 ) -> None:
     directory = tmp_path / "existing"
     _write_tree(directory, "payload.txt", "payload")
@@ -3358,7 +3367,14 @@ def test_reopen_authenticated_directory_rejects_reversible_root_swap(
 
     def consume(reader: object) -> None:
         assert isinstance(reader, atomic_module.PublicationDirectoryReader)
+        captured_ctime_ns = directory.stat().st_ctime_ns
+        if sys.platform != "win32":
+            # POSIX endpoint checks do not provide a namespace event history.
+            # Wait for a deterministic metadata-version signal before swapping.
+            filesystem_ctime_tick(captured_ctime_ns)
         directory.rename(held)
+        if sys.platform != "win32":
+            assert held.stat().st_ctime_ns != captured_ctime_ns
         _write_tree(directory, "payload.txt", "foreign")
         try:
             observed.append(reader.read_bytes("payload.txt", max_bytes=16))

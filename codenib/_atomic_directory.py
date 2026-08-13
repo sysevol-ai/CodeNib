@@ -2881,7 +2881,10 @@ def _ownership_binding_identity(metadata: os.stat_result) -> tuple[int, ...]:
 
 
 def _ownership_version_identity(metadata: os.stat_result) -> tuple[int, ...]:
-    """Detect mutation between observations made through one open descriptor."""
+    """Detect metadata-visible mutation through one open descriptor.
+
+    This is an endpoint version check, not a portable namespace event history.
+    """
 
     return (
         *_ownership_binding_identity(metadata),

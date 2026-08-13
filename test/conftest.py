@@ -8,6 +8,7 @@
 
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,31 @@ ARRAYVEC_REPO_REF = "0.7.4"
 GJSON_REPO_URL = "https://github.com/tidwall/gjson.git"
 GJSON_REPO_PATH = Path("/tmp/tidwall_gjson_test_repo")
 GJSON_REPO_REF = "v1.17.1"
+
+
+@pytest.fixture
+def filesystem_ctime_tick(tmp_path):
+    """Wait until this filesystem can publish a ctime unlike ``baseline``."""
+
+    probe = tmp_path / ".codenib-filesystem-clock-probe"
+
+    def wait_after(baseline: int) -> None:
+        deadline = time.monotonic_ns() + 2_000_000_000
+        while True:
+            probe.mkdir()
+            try:
+                observed = probe.stat().st_ctime_ns
+            finally:
+                probe.rmdir()
+            if observed != baseline:
+                return
+            if time.monotonic_ns() >= deadline:
+                pytest.fail(
+                    "filesystem timestamps did not advance during ABA test setup"
+                )
+            time.sleep(0.001)
+
+    return wait_after
 
 
 def ensure_repo_checkout(repo_url: str, repo_path: Path, ref: str) -> Path:
