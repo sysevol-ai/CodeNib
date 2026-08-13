@@ -130,6 +130,66 @@ def _candidate_receipt() -> dict[str, Any]:
     }
 
 
+@pytest.mark.parametrize(
+    ("contents", "expected"),
+    [
+        ("Name:\tpython\nVmHWM:\t123 kB\n", 123 * 1024),
+        ("VmHWM:\t0 kB\n", None),
+        ("VmHWM:\t-1 kB\n", None),
+        ("VmHWM:\tnot-an-int kB\n", None),
+        ("VmHWM:\t123 bytes\n", None),
+        ("VmHWM:\t123 kB extra\n", None),
+        ("VmRSS:\t123 kB\n", None),
+    ],
+)
+def test_linux_peak_rss_reads_current_process_vmhwm(
+    tmp_path: Path, contents: str, expected: int | None
+) -> None:
+    status = tmp_path / "status"
+    status.write_text(contents, encoding="ascii")
+
+    assert profiler._linux_peak_rss_bytes(status) == expected
+
+
+def test_linux_peak_rss_does_not_fall_back_to_inherited_getrusage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(profiler.sys, "platform", "linux")
+    monkeypatch.setattr(profiler, "_linux_peak_rss_bytes", lambda: None)
+
+    assert profiler._peak_rss_bytes() is None
+    assert profiler._peak_rss_source() == "proc-self-status-vmhwm-kib-v1"
+
+
+def test_canonical_protocol_requires_process_scoped_linux_peak_rss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = {
+        "manifest": {"repository_filter_policy": 3},
+        "subjects": [{"id": "codenib"}, {"id": "httpie"}],
+    }
+    monkeypatch.setattr(
+        profiler,
+        "_peak_rss_source",
+        lambda: "getrusage-self-ru-maxrss-kib-v1",
+    )
+
+    protocol = profiler._canonical_protocol(
+        prepared,
+        iterations=profiler.DEFAULT_ITERATIONS,
+        warmups=profiler.DEFAULT_WARMUPS,
+        threshold=profiler.DEFAULT_PROMOTION_THRESHOLD,
+        rss_ratio_limit=profiler.DEFAULT_RSS_RATIO_LIMIT,
+        worker_counts=profiler.DEFAULT_WORKER_COUNTS,
+    )
+
+    assert protocol["passed"] is False
+    assert protocol["expected"]["peak_rss_source"] == ("proc-self-status-vmhwm-kib-v1")
+    assert protocol["observed"]["peak_rss_source"] == (
+        "getrusage-self-ru-maxrss-kib-v1"
+    )
+
+
 def _fake_sample_runner(
     *,
     candidate_ratio: float = 0.75,
@@ -380,9 +440,14 @@ def test_arm_order_is_one_pair_per_round_and_alternates() -> None:
 
 
 def test_complete_four_cell_matrix_selects_smallest_global_worker(
-    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     manifest, roots = _write_manifest(tmp_path)
+    monkeypatch.setattr(
+        profiler,
+        "_peak_rss_source",
+        lambda: profiler.CANONICAL_PEAK_RSS_SOURCE,
+    )
 
     report = profiler.profile_python_repository_chunk_gate(
         subject_roots=roots,
@@ -457,8 +522,15 @@ def test_noncanonical_green_matrix_is_never_promotion_eligible(
         assert cell["decision"]["gates"]["canonical_protocol"] is False
 
 
-def test_canonical_slow_matrix_is_not_promotion_eligible(tmp_path: Path) -> None:
+def test_canonical_slow_matrix_is_not_promotion_eligible(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     manifest, roots = _write_manifest(tmp_path)
+    monkeypatch.setattr(
+        profiler,
+        "_peak_rss_source",
+        lambda: profiler.CANONICAL_PEAK_RSS_SOURCE,
+    )
 
     report = profiler.profile_python_repository_chunk_gate(
         subject_roots=roots,
