@@ -108,6 +108,17 @@ def test_stable_release_notes_describe_the_codegraph_product_path() -> None:
     assert "--index-url" not in notes
 
 
+def test_020_release_notes_retain_pages_permission_contract() -> None:
+    root = Path(__file__).resolve().parents[1]
+    notes = (root / "docs" / "releases" / "0.2.0.md").read_text(encoding="utf-8")
+
+    assert '"codenib[semantic]==0.2.0"' in notes
+    assert '"codenib[mcp,semantic]==0.2.0"' in notes
+    assert "sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.0" in notes
+    for permission in ("contents: read", "pages: write", "id-token: write"):
+        assert permission in notes
+
+
 @pytest.mark.parametrize(
     "relative_path",
     (
