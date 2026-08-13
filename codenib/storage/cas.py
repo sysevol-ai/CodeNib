@@ -64,6 +64,30 @@ class BlobInfo:
     storage_key: str
 
 
+def _install_strict_state(
+    store: LocalCAS,
+    *,
+    require_preprovisioned: bool,
+    strict_root_identity: tuple[int, ...] | None,
+    strict_sha256_identity: tuple[int, ...] | None,
+    strict_shard_identities: dict[str, tuple[int, ...]],
+    strict_resources: _atomic._PosixResourceOwner,
+    strict_root_descriptor: int | None,
+    strict_sha256_descriptor: int | None,
+    strict_shard_descriptors: dict[str, int],
+) -> None:
+    """Transfer constructor-local strict resources to a LocalCAS instance."""
+
+    store._strict_root_identity = strict_root_identity
+    store._strict_sha256_identity = strict_sha256_identity
+    store._strict_shard_identities = strict_shard_identities
+    store._strict_resources = strict_resources if require_preprovisioned else None
+    store._strict_root_descriptor = strict_root_descriptor
+    store._strict_sha256_descriptor = strict_sha256_descriptor
+    store._strict_shard_descriptors = strict_shard_descriptors
+    store._owner_pid = os.getpid()
+
+
 class LocalCAS:
     """A SHA-256 content-addressed store backed by regular local files.
 
@@ -213,16 +237,17 @@ class LocalCAS:
             # until every retained descriptor is reachable from ``self``.
             # Otherwise cancellation after the last shard is retained but before
             # the first attribute store can strand all 258 strict anchors.
-            self._strict_root_identity = strict_root_identity
-            self._strict_sha256_identity = strict_sha256_identity
-            self._strict_shard_identities = strict_shard_identities
-            self._strict_resources = (
-                strict_resources if require_preprovisioned else None
+            _install_strict_state(
+                self,
+                require_preprovisioned=require_preprovisioned,
+                strict_root_identity=strict_root_identity,
+                strict_sha256_identity=strict_sha256_identity,
+                strict_shard_identities=strict_shard_identities,
+                strict_resources=strict_resources,
+                strict_root_descriptor=strict_root_descriptor,
+                strict_sha256_descriptor=strict_sha256_descriptor,
+                strict_shard_descriptors=strict_shard_descriptors,
             )
-            self._strict_root_descriptor = strict_root_descriptor
-            self._strict_sha256_descriptor = strict_sha256_descriptor
-            self._strict_shard_descriptors = strict_shard_descriptors
-            self._owner_pid = os.getpid()
         except FileNotFoundError as exc:
             _close_posix_resources(strict_resources, primary_error=exc)
             if require_preprovisioned:

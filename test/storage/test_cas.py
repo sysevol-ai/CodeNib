@@ -4,13 +4,11 @@
 
 from __future__ import annotations
 
-import dis
 import errno
 import hashlib
 import multiprocessing
 import os
 import stat
-import sys
 from pathlib import Path
 from queue import Empty
 
@@ -41,47 +39,6 @@ def _exception_notes(error: BaseException) -> tuple[str, ...]:
         *tuple(getattr(error, "__notes__", ())),
         *tuple(getattr(error, "_codenib_cleanup_notes", ())),
     )
-
-
-def _interrupt_before_store_attr(
-    function: object,
-    attribute: str,
-    callback: object,
-    *,
-    error: BaseException,
-) -> None:
-    """Raise before one constructor attribute handoff opcode executes."""
-
-    assert callable(function)
-    assert callable(callback)
-    code = function.__code__
-    store_offsets = {
-        instruction.offset
-        for instruction in dis.get_instructions(function)
-        if instruction.opname == "STORE_ATTR" and instruction.argval == attribute
-    }
-    assert store_offsets
-    previous_trace = sys.gettrace()
-
-    def trace(frame: object, event: str, _arg: object) -> object:
-        if event == "call" and frame.f_code is code:
-            frame.f_trace_opcodes = True
-            return trace
-        if (
-            event == "opcode"
-            and frame.f_code is code
-            and frame.f_lasti in store_offsets
-        ):
-            assert len(frame.f_locals["strict_shard_descriptors"]) == 256
-            sys.settrace(None)
-            raise error
-        return trace
-
-    sys.settrace(trace)
-    try:
-        callback()
-    finally:
-        sys.settrace(previous_trace)
 
 
 def _put_bytes_in_process(
@@ -659,15 +616,22 @@ def test_strict_constructor_cancellation_during_resource_handoff_closes_all(
 
     monkeypatch.setattr(cas_module, "_retain_directory_descriptor", retain)
     interruption = KeyboardInterrupt("strict resource handoff cancellation")
+
+    def interrupt_handoff(store, **state) -> None:
+        assert store.root == root
+        assert state["require_preprovisioned"] is True
+        assert state["strict_root_descriptor"] is not None
+        assert state["strict_sha256_descriptor"] is not None
+        assert len(state["strict_shard_identities"]) == 256
+        assert len(state["strict_shard_descriptors"]) == 256
+        assert not state["strict_resources"].closed
+        raise interruption
+
+    monkeypatch.setattr(cas_module, "_install_strict_state", interrupt_handoff)
     before = _descriptor_count()
 
     with pytest.raises(KeyboardInterrupt) as caught:
-        _interrupt_before_store_attr(
-            LocalCAS.__init__,
-            "_strict_root_identity",
-            lambda: LocalCAS(root, require_preprovisioned=True),
-            error=interruption,
-        )
+        LocalCAS(root, require_preprovisioned=True)
 
     assert caught.value is interruption
     assert len(retained) == 258
