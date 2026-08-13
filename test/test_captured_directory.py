@@ -35,6 +35,7 @@ from codenib._captured_directory import (
     WorkspaceDirectory,
     WorkspaceFile,
     WorkspacePlan,
+    require_owned_workspace_publication_support,
 )
 
 
@@ -1216,6 +1217,92 @@ def test_workspace_plan_uses_exact_ownership_scanner_budgets(
         )
 
 
+def test_owned_workspace_publication_support_gate_is_side_effect_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capability_checks: list[str] = []
+
+    def forbid_provisioning(*_args, **_kwargs) -> None:
+        raise AssertionError("support check attempted workspace provisioning")
+
+    monkeypatch.setattr(captured_directory.sys, "platform", "linux")
+    monkeypatch.setattr(captured_directory, "_SAFE_OWNERSHIP_DIRECTORY_FDS", True)
+    monkeypatch.setattr(
+        captured_directory,
+        "_require_rename_noreplace_platform",
+        lambda: capability_checks.append("rename-noreplace"),
+    )
+    monkeypatch.setattr(
+        captured_directory,
+        "_open_publication_authority",
+        forbid_provisioning,
+    )
+
+    assert require_owned_workspace_publication_support() is None
+    assert capability_checks == ["rename-noreplace"]
+    assert "require_owned_workspace_publication_support" in captured_directory.__all__
+
+
+@pytest.mark.parametrize("platform", ["darwin", "win32", "freebsd14"])
+def test_owned_workspace_publication_support_rejects_non_linux_before_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    platform: str,
+) -> None:
+    def forbidden_probe() -> None:
+        raise AssertionError("unsupported platform reached rename capability probe")
+
+    monkeypatch.setattr(captured_directory.sys, "platform", platform)
+    monkeypatch.setattr(
+        captured_directory,
+        "_require_rename_noreplace_platform",
+        forbidden_probe,
+    )
+
+    with pytest.raises(UnsupportedWorkspaceCreation, match="Linux"):
+        require_owned_workspace_publication_support()
+
+
+def test_owned_workspace_publication_support_requires_anchored_directory_fds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_probe() -> None:
+        raise AssertionError("unsafe directory-fd host reached rename capability probe")
+
+    monkeypatch.setattr(captured_directory.sys, "platform", "linux")
+    monkeypatch.setattr(captured_directory, "_SAFE_OWNERSHIP_DIRECTORY_FDS", False)
+    monkeypatch.setattr(
+        captured_directory,
+        "_require_rename_noreplace_platform",
+        forbidden_probe,
+    )
+
+    with pytest.raises(UnsupportedWorkspaceCreation, match="directory-fd"):
+        require_owned_workspace_publication_support()
+
+
+def test_owned_workspace_publication_support_wraps_missing_rename_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unsupported_rename() -> None:
+        raise RuntimeError("renameat2 is missing")
+
+    monkeypatch.setattr(captured_directory.sys, "platform", "linux")
+    monkeypatch.setattr(captured_directory, "_SAFE_OWNERSHIP_DIRECTORY_FDS", True)
+    monkeypatch.setattr(
+        captured_directory,
+        "_require_rename_noreplace_platform",
+        unsupported_rename,
+    )
+
+    with pytest.raises(
+        UnsupportedWorkspaceCreation,
+        match="no-replace rename",
+    ) as raised:
+        require_owned_workspace_publication_support()
+
+    assert isinstance(raised.value.__cause__, RuntimeError)
+
+
 @pytest.mark.parametrize(
     ("directories", "files", "message"),
     [
@@ -1276,11 +1363,11 @@ def test_preopened_workspace_writes_only_planned_files_without_mkdir(
             plan=plan,
             expected_destination=None,
         )
-        workspace.write_file("root.bin", [b"root"])
-        workspace.write_file("nested/payload.bin", [b"payload"])
+        root_record = workspace.write_file("root.bin", [b"root"])
+        nested_record = workspace.write_file("nested/payload.bin", [b"payload"])
         ownership = workspace.seal()
 
-        assert directory_ownership_file_records(ownership) == (
+        expected_records = (
             atomic_directory.TreeFileRecord(
                 path="nested/payload.bin",
                 mode=0o644,
@@ -1298,6 +1385,8 @@ def test_preopened_workspace_writes_only_planned_files_without_mkdir(
                 ),
             ),
         )
+        assert (nested_record, root_record) == expected_records
+        assert directory_ownership_file_records(ownership) == expected_records
         assert os.lseek(parent_fd, 0, os.SEEK_CUR) == 37
         assert os.lseek(root_fd, 0, os.SEEK_CUR) == 37
         assert (stage / "nested" / "payload.bin").read_bytes() == b"payload"
@@ -1813,6 +1902,40 @@ def test_preopened_workspace_record_install_interruption_terminally_fails(
             workspace.seal()
 
 
+def test_preopened_workspace_record_construction_interruption_terminally_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="a" * 64,
+        files=(WorkspaceFile("payload", max_bytes=4),),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            expected_destination=None,
+        )
+
+        def interrupt_record(*_args, **_kwargs):
+            raise KeyboardInterrupt("record construction interruption")
+
+        monkeypatch.setattr(captured_directory, "TreeFileRecord", interrupt_record)
+        with pytest.raises(KeyboardInterrupt, match="record construction interruption"):
+            workspace.write_file("payload", [b"safe"])
+
+        assert workspace.state == "closed"
+        assert (stage / "payload").read_bytes() == b"safe"
+        with pytest.raises(RuntimeError, match="cannot seal while closed"):
+            workspace.seal()
+
+
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
 def test_owned_workspace_child_closes_inherited_resources_without_parent_effect(
     tmp_path: Path,
@@ -2047,6 +2170,114 @@ def test_owned_workspace_publish_installs_fresh_durable_receipt(
         receipt_owner.close()
         assert receipt_owner.closed
         assert receipt.closed
+
+
+def test_owned_workspace_publish_runs_staged_and_published_validators(
+    tmp_path: Path,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="3" * 64,
+        files=(WorkspaceFile("payload", max_bytes=9),),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            expected_destination=None,
+        )
+        record = workspace.write_file("payload", [b"validated"])
+        workspace.seal()
+        receipt_owner = PublishedWorkspaceReceiptOwner()
+        observed: list[tuple[str, tuple[atomic_directory.TreeFileRecord, ...]]] = []
+
+        def validate_staged(
+            reader: atomic_directory.PublicationDirectoryReader,
+        ) -> None:
+            assert stage.is_dir()
+            assert not destination.exists()
+            assert reader.read_bytes("payload", max_bytes=9) == b"validated"
+            observed.append(("staged", reader.file_records()))
+
+        def validate_published(
+            reader: atomic_directory.PublicationDirectoryReader,
+        ) -> None:
+            assert not stage.exists()
+            assert destination.is_dir()
+            assert reader.read_bytes("payload", max_bytes=9) == b"validated"
+            observed.append(("published", reader.file_records()))
+
+        workspace.publish_into(
+            receipt_owner,
+            validate_staged_directory=validate_staged,
+            validate_published_destination=validate_published,
+        )
+
+        assert observed == [
+            ("staged", (record,)),
+            ("published", (record,)),
+        ]
+        assert receipt_owner.active
+        receipt_owner.close()
+
+
+@pytest.mark.parametrize(
+    ("validator_name", "message"),
+    [
+        ("validate_staged_directory", "staged workspace validator"),
+        ("validate_published_destination", "published workspace validator"),
+    ],
+)
+def test_owned_workspace_rejects_noncallable_validator_before_transfer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    validator_name: str,
+    message: str,
+) -> None:
+    plan = WorkspacePlan(subject_digest="3" * 64)
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            expected_destination=None,
+        )
+        workspace.seal()
+        receipt_owner = PublishedWorkspaceReceiptOwner()
+
+        def forbidden_publish(*_args, **_kwargs) -> None:
+            raise AssertionError("noncallable validator reached atomic publication")
+
+        monkeypatch.setattr(
+            captured_directory,
+            "_publish_staged_directory_with_authority",
+            forbidden_publish,
+        )
+
+        with pytest.raises(TypeError, match=message):
+            workspace.publish_into(
+                receipt_owner,
+                **{validator_name: object()},
+            )
+
+        assert workspace.state == "sealed"
+        assert workspace._publication_transfer is None
+        assert workspace._resources_transferred is False
+        assert receipt_owner.state == "empty"
+        assert stage.is_dir()
+        assert not destination.exists()
+        workspace.close()
+        receipt_owner.close()
 
 
 def test_owned_workspace_detaches_caller_and_public_plan_mutation(

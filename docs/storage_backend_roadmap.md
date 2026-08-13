@@ -256,8 +256,12 @@ provisioning fail before filesystem I/O. The current strict implementation is
 POSIX-only, requires callers to close the store to release its generation
 anchors, and does not make ordinary same-UID writable files immutable after
 publication. Preopened workspace publication applies the same ownership model
-to exact, scanner-bounded directory plans and returns a caller-owned receipt
-whose authenticated reader remains pinned through synchronous consumption.
+to exact, scanner-bounded directory plans. Its side-effect-free capability
+probe fails before provisioning on unsupported hosts; descriptor-bound writes
+return the authenticated file record, and staged and published validators run
+inside the same atomic publication boundary. The caller-owned receipt keeps its
+authenticated reader pinned through synchronous consumption. This remains a
+provider-neutral foundation: no compiler or context producer is wired to it.
 
 Callback-scoped directory results are likewise provisional until ordered
 reader-validity, exact-ownership, child-namespace, and parent-authority

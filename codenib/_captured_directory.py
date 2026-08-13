@@ -27,6 +27,7 @@ except ImportError:  # pragma: no cover - Windows fails closed when requested
 from . import _windows_fs_authority as _windows_fs
 from ._atomic_directory import (
     _MAX_OWNERSHIP_COMPONENT_BYTES,
+    _SAFE_OWNERSHIP_DIRECTORY_FDS,
     DirectoryOrphan,
     PublicationDirectoryReader,
     TreeFileRecord,
@@ -38,6 +39,7 @@ from ._atomic_directory import (
     _publish_staged_directory_with_authority,
     _rename_noreplace_at,
     _require_matching_ownership,
+    _require_rename_noreplace_platform,
     _validate_ownership_inventory_budget,
     directory_ownership_entry_identities,
     directory_ownership_file_records,
@@ -597,6 +599,25 @@ def _snapshot_workspace_plan(plan: object) -> WorkspacePlan:
 
 class UnsupportedWorkspaceCreation(RuntimeError):
     """Strict workspace creation is unavailable without a native creator."""
+
+
+def require_owned_workspace_publication_support() -> None:
+    """Fail before provisioning when strict workspace publication is unavailable."""
+
+    if not sys.platform.startswith("linux"):
+        raise UnsupportedWorkspaceCreation(
+            "strict workspace publication requires a supported Linux host"
+        )
+    if not _SAFE_OWNERSHIP_DIRECTORY_FDS:
+        raise UnsupportedWorkspaceCreation(
+            "strict workspace publication requires anchored directory-fd support"
+        )
+    try:
+        _require_rename_noreplace_platform()
+    except (OSError, RuntimeError) as exc:
+        raise UnsupportedWorkspaceCreation(
+            "strict workspace publication requires atomic no-replace rename support"
+        ) from exc
 
 
 @dataclass(slots=True)
@@ -2293,16 +2314,16 @@ class OwnedWorkspaceAuthority:
         self,
         relative: str | Path | PurePosixPath,
         chunks: Iterable[bytes],
-    ) -> None:
+    ) -> TreeFileRecord:
         self._require_owner_pid()
         self._reject_reentrant("write")
-        self._lock.run(lambda: self._write_file_locked(relative, chunks))
+        return self._lock.run(lambda: self._write_file_locked(relative, chunks))
 
     def _write_file_locked(
         self,
         relative: str | Path | PurePosixPath,
         chunks: Iterable[bytes],
-    ) -> None:
+    ) -> TreeFileRecord:
         self._require_owner_pid()
         if self._state not in {"adopted", "writing"}:
             raise RuntimeError(f"owned workspace cannot write while {self._state}")
@@ -2431,12 +2452,19 @@ class OwnedWorkspaceAuthority:
         assert record is not None
         try:
             self._written_files[path] = record
+            public_record = TreeFileRecord(
+                path=path,
+                mode=record[1],
+                size=record[2],
+                sha256=record[3],
+            )
             self._refresh_locked(require_complete=False)
             self._state = "writing"
         except BaseException as transition_error:
             self._state = "failed"
             self._close_resources_after_error_locked(transition_error)
             raise
+        return public_record
 
     def seal(self) -> object:
         self._require_owner_pid()
@@ -2473,13 +2501,31 @@ class OwnedWorkspaceAuthority:
         for path in ordered_paths:
             os.fsync(self._directory_descriptors[path])
 
-    def publish_into(self, receipt_owner: PublishedWorkspaceReceiptOwner) -> None:
+    def publish_into(
+        self,
+        receipt_owner: PublishedWorkspaceReceiptOwner,
+        *,
+        validate_staged_directory: (
+            Callable[[PublicationDirectoryReader], None] | None
+        ) = None,
+        validate_published_destination: (
+            Callable[[PublicationDirectoryReader], None] | None
+        ) = None,
+    ) -> None:
         """Durably publish and install ownership in a pre-created caller slot."""
 
         self._require_owner_pid()
         self._reject_reentrant("publish")
         if not isinstance(receipt_owner, PublishedWorkspaceReceiptOwner):
             raise TypeError("receipt_owner must be a PublishedWorkspaceReceiptOwner")
+        if validate_staged_directory is not None and not callable(
+            validate_staged_directory
+        ):
+            raise TypeError("staged workspace validator must be callable")
+        if validate_published_destination is not None and not callable(
+            validate_published_destination
+        ):
+            raise TypeError("published workspace validator must be callable")
         transfer = _WorkspacePublicationTransfer(self)
         reservation = _WorkspaceReservation(transfer)
         try:
@@ -2488,6 +2534,8 @@ class OwnedWorkspaceAuthority:
                     receipt_owner,
                     transfer,
                     reservation,
+                    validate_staged_directory,
+                    validate_published_destination,
                 )
             )
         except BaseException as primary_error:  # noqa: B036 - reconcile owners
@@ -2504,6 +2552,10 @@ class OwnedWorkspaceAuthority:
         receipt_owner: PublishedWorkspaceReceiptOwner,
         transfer: _WorkspacePublicationTransfer,
         reservation: _WorkspaceReservation,
+        validate_staged_directory: Callable[[PublicationDirectoryReader], None] | None,
+        validate_published_destination: (
+            Callable[[PublicationDirectoryReader], None] | None
+        ),
     ) -> None:
         self._require_owner_pid()
         if self._state != "sealed" or self._sealed_ownership is None:
@@ -2559,6 +2611,8 @@ class OwnedWorkspaceAuthority:
             self._destination,
             expected_stage_root_ownership=sealed_ownership,
             expected_destination_ownership=self._expected_destination,
+            validate_staged_directory=validate_staged_directory,
+            validate_published_destination=validate_published_destination,
             commit_callback=install_receipt,
         )
 
@@ -3752,4 +3806,5 @@ __all__ = [
     "WorkspaceDirectory",
     "WorkspaceFile",
     "WorkspacePlan",
+    "require_owned_workspace_publication_support",
 ]
