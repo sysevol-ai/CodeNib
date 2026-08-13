@@ -39,10 +39,12 @@ also deferred.
 ``Qwen3_5ForConditionalGeneration`` with a ``vision_config`` — maps cleanly:
 ``transformers`` (>= 5.2) registers ``Qwen3_5ForCausalLM`` in the causal-LM
 auto-mapping, so ``AutoModelForCausalLM.from_pretrained`` returns the text model
-directly (verified on transformers 5.12). For any model the causal-LM mapping
-genuinely rejects, pass an explicit ``model_class`` (e.g.
-``AutoModelForImageTextToText``, whose ``input_ids``-only forward also emits
-next-token text ``.logits``); ``RealModelVerifier`` forwards it to :func:`_load_lm`.
+directly (verified on transformers 5.12). A model outside that mapping loads
+only if its ``model_type`` is in :data:`VERIFIED_NON_CAUSAL_MODEL_TYPES` — an
+allowlist of architectures whose ``input_ids``-only forward is known to emit
+causal-LM ``.logits`` — and each registry load is validated with a one-token
+text forward before serving. Anything else fails loudly; the ``model_class``
+parameter remains as the explicit escape hatch (and is how tests inject stubs).
 
 torch/transformers are imported lazily so this module (and ``best_linear_path``)
 stay importable without the ``bench`` extra installed.
@@ -73,6 +75,80 @@ def best_linear_path(tree: DraftTree) -> List[TokenId]:
     return path
 
 
+#: ``model_type`` values that live outside the transformers causal-LM
+#: auto-mapping but whose ``input_ids``-only forward is verified to emit
+#: causal-LM ``.logits``. Values name the auto-class attribute on
+#: ``transformers`` (resolved lazily, so this module imports without the
+#: serving extra). Add a type here only after checking its text-only forward;
+#: every registry load is additionally validated by
+#: :func:`_validate_text_logits` at startup.
+VERIFIED_NON_CAUSAL_MODEL_TYPES = {
+    "muse_glimmer": "AutoModelForImageTextToText",
+}
+
+
+def _resolve_model_class(model_name: str):
+    """Pick the auto-class for ``model_name`` from its config ``model_type``.
+
+    Resolution is fail-closed, mirroring how the compiler picks index builders
+    from :class:`~codenib.compiler.index_builders.IndexBuilderRegistry`: the
+    causal-LM auto-mapping wins, then the
+    :data:`VERIFIED_NON_CAUSAL_MODEL_TYPES` allowlist (the returned marker makes
+    the caller run the one-token forward validation), and an unknown type raises
+    rather than guessing — a class that merely *loads* can still verify
+    speculation against the wrong logits.
+
+    Returns:
+        ``(auto_class, needs_validation)``.
+    """
+    import transformers
+    from transformers import AutoConfig, AutoModelForCausalLM
+    from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+
+    model_type = getattr(AutoConfig.from_pretrained(model_name), "model_type", None)
+    if model_type in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES:
+        return AutoModelForCausalLM, False
+    registered = VERIFIED_NON_CAUSAL_MODEL_TYPES.get(model_type)
+    if registered is not None:
+        return getattr(transformers, registered), True
+    raise RuntimeError(
+        f"model_type {model_type!r} of {model_name!r} is neither in the "
+        "transformers causal-LM auto-mapping nor in "
+        "VERIFIED_NON_CAUSAL_MODEL_TYPES; verify its text-only forward emits "
+        "causal-LM logits, then add it to the registry (or pass an explicit "
+        "model_class)"
+    )
+
+
+def _validate_text_logits(model, model_name: str) -> None:
+    """Assert ``model`` emits ``[batch, seq, vocab]`` logits from a text forward.
+
+    Turns the registry's behavioral assumption into a startup invariant: a
+    registry-listed class that needs pixel inputs, or that routes text through a
+    head with different logits semantics, fails here — before the server binds a
+    port — instead of silently corrupting speculation verification. One token on
+    the load-time device; for large models this is a one-off startup cost.
+    """
+    import torch
+
+    token = getattr(model.config, "bos_token_id", None) or 0
+    try:
+        with torch.no_grad():
+            out = model(input_ids=torch.tensor([[token]], dtype=torch.long))
+    except Exception as exc:
+        raise RuntimeError(
+            f"{model_name!r} rejected a text-only forward; its registry entry "
+            "in VERIFIED_NON_CAUSAL_MODEL_TYPES is wrong for this checkpoint"
+        ) from exc
+    logits = getattr(out, "logits", None)
+    if logits is None or getattr(logits, "ndim", None) != 3:
+        raise RuntimeError(
+            f"text-only forward of {model_name!r} did not return "
+            "[batch, seq, vocab] logits; the model cannot back greedy "
+            "speculation verification"
+        )
+
+
 def _load_lm(
     model_name: str,
     *,
@@ -82,29 +158,33 @@ def _load_lm(
 ):
     """Load a model that exposes causal-LM ``.logits`` from a text-only forward.
 
-    Uses ``AutoModelForCausalLM`` by default (covers every target we run,
-    including ``Qwen/Qwen3.5-4B`` — its ``Qwen3_5ForCausalLM`` is in the causal-LM
-    auto-mapping on transformers >= 5.2). For a model that mapping genuinely
-    rejects, pass an explicit ``model_class`` (e.g. ``AutoModelForImageTextToText``,
-    whose ``input_ids``-only forward also emits next-token text logits) — it wins
-    over the default. Either way the result returns ``.logits`` from a text-only
-    forward, which is all :meth:`RealModelVerifier.verify` needs.
+    The auto-class comes from :func:`_resolve_model_class`: the causal-LM
+    auto-mapping (covers every target we run, including ``Qwen/Qwen3.5-4B`` —
+    its ``Qwen3_5ForCausalLM`` is in that mapping on transformers >= 5.2), then
+    the :data:`VERIFIED_NON_CAUSAL_MODEL_TYPES` allowlist, whose loads are
+    validated with a one-token text forward. An explicit ``model_class`` skips
+    both resolution and validation — the caller asserts the class is right
+    (tests use this to inject stubs).
 
     Extra ``from_pretrained_kwargs`` are forwarded verbatim, so callers with
     stricter loading needs can pass them through — e.g. the tree engine loads
     with ``attn_implementation="eager"`` (see :meth:`HFTreeEngine.from_pretrained`).
     """
-    from transformers import AutoModelForCausalLM
-
-    cls = model_class if model_class is not None else AutoModelForCausalLM
+    if model_class is not None:
+        cls, needs_validation = model_class, False
+    else:
+        cls, needs_validation = _resolve_model_class(model_name)
     # ``torch_dtype`` is supported by the oldest transformers version in the
     # serving extra (4.44).  The shorter ``dtype`` spelling was added later and
     # is forwarded to model constructors by older releases, where it fails.
-    return cls.from_pretrained(
+    model = cls.from_pretrained(
         model_name,
         torch_dtype=dtype,
         **from_pretrained_kwargs,
     )
+    if needs_validation:
+        _validate_text_logits(model, model_name)
+    return model
 
 
 class RealModelVerifier(Verifier):

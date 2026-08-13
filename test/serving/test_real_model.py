@@ -45,58 +45,106 @@ def test_best_linear_path_picks_highest_scored_branch():
     assert best_linear_path(tree) == [9, 8]
 
 
-def _fake_transformers(*, causal_raises: bool):
-    """A stand-in ``transformers`` module recording which auto-class was used.
+class _CallableModelStub:
+    """Model stand-in: records nothing, answers a text forward with logits."""
 
-    ``AutoModelForCausalLM`` raises ``ValueError`` (mimicking an unmapped
-    architecture) when ``causal_raises``, else returns a sentinel string tagging
-    the class that loaded.
+    def __init__(self, logits_ndim=3):
+        self.config = types.SimpleNamespace(bos_token_id=1)
+        self._ndim = logits_ndim
+
+    def __call__(self, **kwargs):
+        return types.SimpleNamespace(logits=types.SimpleNamespace(ndim=self._ndim))
+
+
+def _fake_transformers(monkeypatch, *, model_type, vlm_result=None):
+    """Install stand-in ``transformers`` modules for auto-class resolution.
+
+    ``AutoConfig`` reports ``model_type`` for every model name; the causal-LM
+    mapping contains only ``"mapped_causal"``. ``AutoModelForImageTextToText``
+    returns ``vlm_result`` (default: a validation-passing model stub).
     """
     mod = types.ModuleType("transformers")
 
     class _CausalLM:
         @staticmethod
-        def from_pretrained(name, torch_dtype=None):
-            if causal_raises:
-                raise ValueError("architecture not mapped for causal LM")
+        def from_pretrained(name, torch_dtype=None, **kwargs):
             return f"causal:{name}:{torch_dtype}"
 
+    class _AutoConfig:
+        @staticmethod
+        def from_pretrained(name, **kwargs):
+            return types.SimpleNamespace(model_type=model_type)
+
+    class _ImageTextToText:
+        @staticmethod
+        def from_pretrained(name, torch_dtype=None, **kwargs):
+            return vlm_result if vlm_result is not None else _CallableModelStub()
+
     mod.AutoModelForCausalLM = _CausalLM
+    mod.AutoConfig = _AutoConfig
+    mod.AutoModelForImageTextToText = _ImageTextToText
+
+    auto_mod = types.ModuleType("transformers.models.auto.modeling_auto")
+    auto_mod.MODEL_FOR_CAUSAL_LM_MAPPING_NAMES = {"mapped_causal": "FakeForCausalLM"}
+    monkeypatch.setitem(sys.modules, "transformers", mod)
+    monkeypatch.setitem(sys.modules, "transformers.models.auto.modeling_auto", auto_mod)
+
+    fake_torch = types.ModuleType("torch")
+    fake_torch.long = object()
+    fake_torch.tensor = lambda *args, **kwargs: object()
+    fake_torch.no_grad = nullcontext
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
     return mod
 
 
-def test_load_lm_uses_causal_lm_by_default(monkeypatch):
+def test_load_lm_uses_causal_lm_for_mapped_model_type(monkeypatch):
     # Every target we run — including Qwen3.5-4B, whose Qwen3_5ForCausalLM is in
-    # the causal-LM auto-mapping on transformers >= 5.2 — loads this way.
-    monkeypatch.setitem(
-        sys.modules, "transformers", _fake_transformers(causal_raises=False)
-    )
+    # the causal-LM auto-mapping on transformers >= 5.2 — resolves this way, with
+    # no validation forward.
+    _fake_transformers(monkeypatch, model_type="mapped_causal")
     assert (
         _load_lm("some/causal-model", dtype="bf16") == "causal:some/causal-model:bf16"
     )
 
 
-def test_load_lm_does_not_silently_fall_back(monkeypatch):
-    # If the causal-LM mapping genuinely rejects a model, the error propagates —
-    # there is no automatic multimodal fallback; callers pass an explicit
-    # model_class instead (see test below).
-    monkeypatch.setitem(
-        sys.modules, "transformers", _fake_transformers(causal_raises=True)
+def test_load_lm_resolves_registry_model_type_and_validates(monkeypatch):
+    # muse_glimmer is outside the causal-LM mapping but allowlisted in
+    # VERIFIED_NON_CAUSAL_MODEL_TYPES; it loads via AutoModelForImageTextToText
+    # and must pass the one-token text-forward validation.
+    _fake_transformers(monkeypatch, model_type="muse_glimmer")
+    model = _load_lm("meta-models/Muse-Glimmer-30B", dtype=None)
+    assert isinstance(model, _CallableModelStub)
+
+
+def test_load_lm_registry_load_failing_validation_raises(monkeypatch):
+    # A registry entry whose checkpoint does not emit [batch, seq, vocab] logits
+    # from a text-only forward is rejected at load time, not at verify time.
+    _fake_transformers(
+        monkeypatch,
+        model_type="muse_glimmer",
+        vlm_result=_CallableModelStub(logits_ndim=2),
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError, match="logits"):
+        _load_lm("meta-models/Muse-Glimmer-30B", dtype=None)
+
+
+def test_load_lm_unknown_model_type_fails_closed(monkeypatch):
+    # No blind fallback: a model_type outside both the causal-LM mapping and the
+    # registry raises with the remediation named, instead of guessing a class
+    # that might load but verify against the wrong logits.
+    _fake_transformers(monkeypatch, model_type="novel_arch")
+    with pytest.raises(RuntimeError, match="VERIFIED_NON_CAUSAL_MODEL_TYPES"):
         _load_lm("x/y", dtype=None)
 
 
 def test_load_lm_honours_explicit_model_class(monkeypatch):
-    # Explicit override wins over the causal-LM default and is used even when the
-    # causal-LM mapping would have rejected the model.
-    monkeypatch.setitem(
-        sys.modules, "transformers", _fake_transformers(causal_raises=True)
-    )
+    # Explicit override wins without touching resolution or validation — the
+    # caller asserts the class is right (this is also how tests inject stubs).
+    _fake_transformers(monkeypatch, model_type="novel_arch")
 
     class _Forced:
         @staticmethod
-        def from_pretrained(name, torch_dtype=None):
+        def from_pretrained(name, torch_dtype=None, **kwargs):
             return f"forced:{name}:{torch_dtype}"
 
     assert _load_lm("x/y", dtype="fp32", model_class=_Forced) == "forced:x/y:fp32"
