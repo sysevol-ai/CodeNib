@@ -491,6 +491,34 @@ def test_scip_ruby_indexer_builds_registered_command(tmp_path, monkeypatch):
     assert indexer._get_decoder_class() is SCIPRubyGraphDecoder
 
 
+def test_read_only_scip_ruby_generation_skips_bundle_preparation(tmp_path, monkeypatch):
+    import codenib.scip_interface.scip_indexer_ruby as ruby_module
+
+    (tmp_path / "Gemfile").write_text(
+        'source "https://rubygems.org"\ngem "scip-ruby"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODENIB_RUBY_SCIP_CMD", "bundle exec scip-ruby")
+    indexer = SCIPRubyIndexer(tmp_path, output_dir=tmp_path / "out")
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+    monkeypatch.setattr(
+        indexer,
+        "_prepare_bundle",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("read-only onboarding must not run Bundler preparation")
+        ),
+    )
+
+    def run(_command, **_kwargs):
+        indexer.index_file.write_text("scip\n", encoding="utf-8")
+
+    monkeypatch.setattr(ruby_module.subprocess, "run", run)
+
+    assert indexer.generate_index(allow_project_preparation=False)
+    assert not (tmp_path / ".bundle").exists()
+    assert not (tmp_path / "vendor").exists()
+
+
 def test_ruby_hybrid_indexer_uses_lsp_without_prepared_scip_bundle(tmp_path):
     (tmp_path / "Gemfile").write_text(
         'source "https://rubygems.org"\ngem "rake"\n',

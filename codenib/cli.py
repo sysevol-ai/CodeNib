@@ -14,6 +14,7 @@ import re
 import shlex
 import shutil
 import stat
+import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -380,6 +381,8 @@ def index_repository(
     embedding_dimension: int | None = None,
     embedding_endpoint: str | None = None,
     embedding_credential_env: str | None = None,
+    allow_graph_project_preparation: bool = True,
+    allow_partial_graph_languages: bool = True,
 ):
     """Build or update the requested repository views."""
     from .toolchains import activate_managed_toolchain
@@ -407,7 +410,8 @@ def index_repository(
         ),
         embedding_endpoint=embedding_endpoint,
         embedding_credential_env=embedding_credential_env,
-        allow_partial_graph_languages=True,
+        allow_partial_graph_languages=allow_partial_graph_languages,
+        allow_graph_project_preparation=allow_graph_project_preparation,
     )
     compiler = IndexCompiler(
         registry,
@@ -1764,6 +1768,613 @@ def _run_toolchain_install(args: argparse.Namespace) -> int:
     return 0 if refreshed.ready else 1
 
 
+def _codegraph_error(exc: BaseException) -> CLIError:
+    return CLIError(str(exc))
+
+
+def _codegraph_spec_for_args(repo_path: Path, args: argparse.Namespace):
+    from .codegraph_onboarding import (
+        CodeGraphOnboardingError,
+        load_codegraph_receipt,
+        make_server_spec,
+        resolve_codenib_command,
+    )
+
+    try:
+        receipt = load_codegraph_receipt(repo_path)
+        explicit = getattr(args, "server_command", None)
+        if receipt is not None and explicit is None:
+            return receipt.server, receipt
+        command, prefix = resolve_codenib_command(explicit)
+        server = make_server_spec(
+            repo_path,
+            command=command,
+            command_prefix=prefix,
+        )
+        if receipt is not None and receipt.server != server:
+            raise CodeGraphOnboardingError(
+                "--command differs from the managed MCP registration; run "
+                "`codenib codegraph uninstall` before changing it"
+            )
+        return server, receipt
+    except (CodeGraphOnboardingError, OSError) as exc:
+        raise _codegraph_error(exc) from exc
+
+
+def _codegraph_clients_for_init(args: argparse.Namespace) -> tuple[str, ...]:
+    from .codegraph_onboarding import (
+        CodeGraphOnboardingError,
+        resolve_requested_clients,
+    )
+
+    try:
+        return resolve_requested_clients(args.agent)
+    except (CodeGraphOnboardingError, OSError) as exc:
+        raise _codegraph_error(exc) from exc
+
+
+def _codegraph_languages_for_init(
+    repo_path: Path,
+    args: argparse.Namespace,
+    receipt,
+) -> tuple[str, ...]:
+    if args.language or receipt is None:
+        return tuple(_selected_languages(repo_path, args.language))
+
+    from .compiler.manifest import MANIFEST_FILENAME, RepoManifest
+    from .paths import repo_index_dir
+
+    try:
+        manifest = RepoManifest.load(repo_index_dir(repo_path) / MANIFEST_FILENAME)
+        if manifest.languages:
+            return tuple(manifest.languages)
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        pass
+    return tuple(_selected_languages(repo_path, ()))
+
+
+def _codegraph_preflight_clients(
+    repo_path: Path,
+    clients: Sequence[str],
+    server,
+    receipt,
+) -> dict[str, object]:
+    from .codegraph_onboarding import (
+        CodeGraphOnboardingError,
+        inspect_client_registration,
+    )
+
+    observed = {}
+    try:
+        for client in clients:
+            inspection = inspect_client_registration(client, server, repo_path)
+            observed[client] = inspection
+            managed = receipt is not None and receipt.client(client) is not None
+            if inspection.exists and not managed:
+                raise CodeGraphOnboardingError(
+                    f"{client} already has an unmanaged MCP server named "
+                    f"{server.name}; remove or rename it before continuing"
+                )
+            if inspection.exists and not inspection.matches:
+                raise CodeGraphOnboardingError(
+                    f"{client} MCP server {server.name} differs from the CodeNib "
+                    "receipt; inspect it before using --force with uninstall"
+                )
+        return observed
+    except (CodeGraphOnboardingError, OSError) as exc:
+        raise _codegraph_error(exc) from exc
+
+
+def _codegraph_toolchain_plan(repo_path: Path, languages: Sequence[str]):
+    from .toolchains import plan_repository_toolchain
+
+    return plan_repository_toolchain(repo_path, languages, scopes=("graph",))
+
+
+def _codegraph_plan_detail(plan) -> str:
+    details = [f"{item.display_name}: {item.executable}" for item in plan.missing]
+    details.extend(note for note in plan.notes if note.startswith("MISSING:"))
+    return "; ".join(details) or "unknown graph prerequisite"
+
+
+def _codegraph_checkout_snapshot(repo_path: Path) -> bytes:
+    """Return the exact Git worktree status used by the onboarding transaction."""
+
+    command = [
+        "git",
+        "-C",
+        str(repo_path),
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+    ]
+    try:
+        result = subprocess.run(command, check=False, capture_output=True)
+    except OSError as exc:
+        raise CLIError("CodeGraph initialization requires Git on PATH") from exc
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        suffix = f": {detail}" if detail else ""
+        raise CLIError("CodeGraph initialization requires a Git working tree" + suffix)
+    return bytes(result.stdout)
+
+
+def _require_unchanged_codegraph_checkout(
+    repo_path: Path,
+    expected: bytes,
+    *,
+    stage: str,
+) -> None:
+    observed = _codegraph_checkout_snapshot(repo_path)
+    if observed != expected:
+        raise CLIError(
+            f"CodeGraph {stage} changed the target checkout; inspect `git status` "
+            "and restore or commit the affected files before retrying"
+        )
+
+
+def _run_codegraph_init(args: argparse.Namespace) -> int:
+    from .codegraph_onboarding import (
+        CodeGraphOnboardingError,
+        CodeGraphReceipt,
+        add_client_registration,
+        inspect_client_registration,
+        inspect_server_command,
+        write_codegraph_receipt,
+    )
+    from .toolchains import install_requirements
+
+    repo_path = resolve_repo_path(args.repo)
+    server, receipt = _codegraph_spec_for_args(repo_path, args)
+    try:
+        server_inspection = inspect_server_command(server, repo_path)
+    except CodeGraphOnboardingError as exc:
+        raise _codegraph_error(exc) from exc
+    if not server_inspection.ready:
+        raise CLIError(
+            "CodeGraph MCP command is not this CodeNib runtime: "
+            + server_inspection.detail
+        )
+    languages = _codegraph_languages_for_init(repo_path, args, receipt)
+    clients = _codegraph_clients_for_init(args)
+    observed = _codegraph_preflight_clients(
+        repo_path,
+        clients,
+        server,
+        receipt,
+    )
+    checkout_snapshot = _codegraph_checkout_snapshot(repo_path)
+    if checkout_snapshot:
+        raise CLIError(
+            "CodeGraph initialization requires a clean Git checkout; commit or "
+            "stash tracked and untracked changes before retrying"
+        )
+    plan = _codegraph_toolchain_plan(repo_path, languages)
+
+    if args.dry_run:
+        try:
+            commands, manual = install_requirements(
+                plan.missing,
+                root=plan.root,
+                dry_run=True,
+            )
+        except RuntimeError as exc:
+            raise CLIError(str(exc)) from exc
+        print(f"Repository: {repo_path}")
+        print(f"Languages:  {', '.join(languages)}")
+        print("Planned CodeGraph actions:")
+        for command in commands:
+            print(f"  toolchain: {shlex.join(command)}")
+        for item in manual:
+            print(f"  prerequisite: {item}")
+        print("  index: bm25, symbol_graph")
+        for client in clients:
+            action = "reuse" if observed[client].matches else "add"
+            print(f"  {client}: {action} {server.name}")
+        print("Dry run complete; no tools, indexes, receipts, or clients changed.")
+        return 0
+
+    _require_modules(
+        ("igraph", "google.protobuf", "mcp"),
+        extra="graph,mcp",
+        feature="CodeGraph agent onboarding",
+    )
+    if plan.missing:
+        try:
+            commands, manual = install_requirements(plan.missing, root=plan.root)
+        except RuntimeError as exc:
+            raise CLIError(str(exc)) from exc
+        if commands:
+            print("Installed graph tools:")
+            for command in commands:
+                print(f"  {shlex.join(command)}")
+        if manual:
+            raise CLIError("CodeGraph needs manual prerequisites: " + "; ".join(manual))
+        plan = _codegraph_toolchain_plan(repo_path, languages)
+    if not plan.ready:
+        raise CLIError(
+            "CodeGraph toolchain is not ready: " + _codegraph_plan_detail(plan)
+        )
+    _require_unchanged_codegraph_checkout(
+        repo_path,
+        checkout_snapshot,
+        stage="toolchain setup",
+    )
+
+    _check_view_dependencies(("bm25", "symbol_graph"))
+    try:
+        manifest, failed = index_repository(
+            repo_path,
+            languages=languages,
+            views=("bm25", "symbol_graph"),
+            rebuild=args.rebuild,
+            allow_graph_project_preparation=False,
+            allow_partial_graph_languages=False,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        _require_unchanged_codegraph_checkout(
+            repo_path,
+            checkout_snapshot,
+            stage="indexing",
+        )
+        raise CLIError(str(exc)) from exc
+    _require_unchanged_codegraph_checkout(
+        repo_path,
+        checkout_snapshot,
+        stage="indexing",
+    )
+    _print_index_summary(manifest, ("bm25", "symbol_graph"))
+    if failed:
+        raise CLIError("CodeGraph indexing failed for: " + ", ".join(failed))
+
+    managed = receipt or CodeGraphReceipt(repo_path, server, ())
+    for client in clients:
+        if managed.client(client) is None:
+            managed = managed.with_client(client, state="pending")
+    try:
+        write_codegraph_receipt(managed)
+        for client in clients:
+            inspection = inspect_client_registration(client, server, repo_path)
+            if inspection.exists and not inspection.matches:
+                raise CodeGraphOnboardingError(
+                    f"{client} MCP server {server.name} changed during indexing; "
+                    "refusing to overwrite it"
+                )
+            if not inspection.exists:
+                add_client_registration(client, server, repo_path)
+                inspection = inspect_client_registration(client, server, repo_path)
+            if not inspection.matches:
+                raise CodeGraphOnboardingError(
+                    f"{client} did not retain the expected MCP registration"
+                )
+            managed = managed.with_client(client, state="configured")
+            write_codegraph_receipt(managed)
+    except (CodeGraphOnboardingError, OSError) as exc:
+        _require_unchanged_codegraph_checkout(
+            repo_path,
+            checkout_snapshot,
+            stage="agent registration",
+        )
+        raise _codegraph_error(exc) from exc
+    _require_unchanged_codegraph_checkout(
+        repo_path,
+        checkout_snapshot,
+        stage="agent registration",
+    )
+
+    print("\nCodeGraph is ready for coding agents.")
+    print(f"MCP server: {server.name}")
+    print(f"Clients:    {', '.join(clients)}")
+    print(f"Status:     codenib codegraph status {shlex.quote(str(repo_path))}")
+    print(
+        "Try asking your agent to use explore_context before editing and "
+        "dependency_subgraph for impact analysis."
+    )
+    return 0
+
+
+def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
+    from .compiler.checkout_identity import validate_checkout_identity
+    from .compiler.manifest import MANIFEST_FILENAME, RepoManifest
+    from .paths import repo_index_dir
+
+    manifest_path = repo_index_dir(repo_path) / MANIFEST_FILENAME
+    report: dict[str, object] = {
+        "manifest": str(manifest_path),
+        "bm25": False,
+        "symbol_graph": False,
+        "symbol_graph_complete": False,
+        "source_matches": False,
+        "languages": [],
+        "detail": "manifest not found",
+    }
+    try:
+        manifest = RepoManifest.load(manifest_path)
+        report["languages"] = list(manifest.languages)
+        report["bm25"] = manifest.index_is_current("bm25")
+        report["symbol_graph"] = manifest.index_is_current("symbol_graph")
+        graph_entry = manifest.indexes.get("symbol_graph")
+        report["symbol_graph_complete"] = bool(
+            report["symbol_graph"]
+            and graph_entry is not None
+            and graph_entry.config.get("allow_partial_languages") is False
+            and graph_entry.config.get("allow_partial_index") is False
+        )
+        validate_checkout_identity(
+            repo_path,
+            manifest,
+            artifact_root=manifest_path.parent,
+        )
+        report["source_matches"] = True
+        report["detail"] = (
+            "current"
+            if report["symbol_graph_complete"]
+            else "symbol_graph was built with partial-language admission"
+        )
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        report["detail"] = " ".join(str(exc).split())[:400]
+    report["ready"] = bool(
+        report["bm25"] and report["symbol_graph_complete"] and report["source_matches"]
+    )
+    return report
+
+
+def _codegraph_toolchain_report(
+    repo_path: Path,
+    languages: Sequence[str] | None = None,
+) -> dict[str, object]:
+    try:
+        selected = tuple(languages or _selected_languages(repo_path, ()))
+        plan = _codegraph_toolchain_plan(repo_path, selected)
+        return {
+            "ready": plan.ready,
+            "languages": list(selected),
+            "missing": [item.executable for item in plan.missing],
+            "notes": list(plan.notes),
+        }
+    except (CLIError, OSError, RuntimeError, ValueError) as exc:
+        return {
+            "ready": False,
+            "languages": [],
+            "missing": [],
+            "notes": [" ".join(str(exc).split())[:400]],
+        }
+
+
+def _codegraph_status_report(repo_path: Path) -> dict[str, object]:
+    from .codegraph_onboarding import (
+        CodeGraphOnboardingError,
+        codegraph_receipt_path,
+        inspect_client_registration,
+        inspect_server_command,
+        load_codegraph_receipt,
+    )
+
+    index = _codegraph_index_report(repo_path)
+    toolchain = _codegraph_toolchain_report(
+        repo_path,
+        index.get("languages") or None,
+    )
+    try:
+        receipt = load_codegraph_receipt(repo_path)
+    except CodeGraphOnboardingError as exc:
+        return {
+            "repository": str(repo_path),
+            "ready": False,
+            "index": index,
+            "toolchain": toolchain,
+            "server": None,
+            "server_command": {
+                "ready": False,
+                "detail": "integration receipt is invalid",
+            },
+            "clients": [],
+            "receipt_error": str(exc),
+        }
+    clients: list[dict[str, object]] = []
+    server_command = {"ready": False, "detail": "receipt not found"}
+    if receipt is not None:
+        try:
+            inspection = inspect_server_command(receipt.server, repo_path)
+            server_command = {
+                "ready": inspection.ready,
+                "detail": inspection.detail,
+            }
+        except CodeGraphOnboardingError as exc:
+            server_command = {"ready": False, "detail": str(exc)}
+        for managed in receipt.clients:
+            try:
+                inspection = inspect_client_registration(
+                    managed.name,
+                    receipt.server,
+                    repo_path,
+                )
+                clients.append(
+                    {
+                        "name": managed.name,
+                        "scope": managed.scope,
+                        "receipt_state": managed.state,
+                        "installed": inspection.installed,
+                        "configured": inspection.exists,
+                        "matches": inspection.matches,
+                        "detail": inspection.detail,
+                    }
+                )
+            except CodeGraphOnboardingError as exc:
+                clients.append(
+                    {
+                        "name": managed.name,
+                        "scope": managed.scope,
+                        "receipt_state": managed.state,
+                        "installed": True,
+                        "configured": False,
+                        "matches": False,
+                        "detail": str(exc),
+                    }
+                )
+    clients_ready = bool(clients) and all(
+        item["receipt_state"] == "configured" and item["matches"] for item in clients
+    )
+    server = (
+        {
+            "name": receipt.server.name,
+            "command": receipt.server.command,
+            "args": list(receipt.server.args),
+        }
+        if receipt is not None
+        else None
+    )
+    ready = bool(
+        index["ready"]
+        and toolchain["ready"]
+        and server_command["ready"]
+        and clients_ready
+    )
+    return {
+        "repository": str(repo_path),
+        "ready": ready,
+        "index": index,
+        "toolchain": toolchain,
+        "server_command": server_command,
+        "server": server,
+        "clients": clients,
+        "receipt": (
+            str(codegraph_receipt_path(repo_path)) if receipt is not None else None
+        ),
+    }
+
+
+def _run_codegraph_status(args: argparse.Namespace) -> int:
+    repo_path = resolve_repo_path(args.repo)
+    report = _codegraph_status_report(repo_path)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["ready"] else 1
+
+    print(f"CodeGraph:  {'READY' if report['ready'] else 'NOT READY'}")
+    print(f"Repository: {report['repository']}")
+    index = report["index"]
+    print(
+        "Index:      "
+        + (
+            "bm25 + symbol_graph are current"
+            if index["ready"]
+            else str(index["detail"])
+        )
+    )
+    toolchain = report["toolchain"]
+    toolchain_detail = "ready"
+    if not toolchain["ready"]:
+        parts = [*toolchain["missing"], *toolchain["notes"]]
+        toolchain_detail = "; ".join(parts) or "not ready"
+    print("Toolchain:  " + toolchain_detail)
+    server_command = report["server_command"]
+    print(
+        "MCP command: "
+        + ("ready" if server_command["ready"] else str(server_command["detail"]))
+    )
+    if not report["clients"]:
+        print("Clients:    no managed Codex or Claude Code registration")
+    for client in report["clients"]:
+        marker = "OK" if client["matches"] else "MISSING"
+        print(
+            f"  [{marker:<7}] {client['name']}: {client['detail']} "
+            f"({client['scope']})"
+        )
+    return 0 if report["ready"] else 1
+
+
+def _selected_uninstall_clients(
+    values: Sequence[str] | None,
+    receipt,
+) -> tuple[str, ...]:
+    from .codegraph_onboarding import CODEGRAPH_CLIENTS
+
+    requested = tuple(values or ("all",))
+    unknown = sorted(set(requested) - {"all", *CODEGRAPH_CLIENTS})
+    if unknown:
+        raise CLIError(f"unsupported agent client: {', '.join(unknown)}")
+    if "all" in requested and len(requested) != 1:
+        raise CLIError("--agent all cannot be combined with another client")
+    if requested == ("all",):
+        return tuple(item.name for item in receipt.clients)
+    return tuple(name for name in CODEGRAPH_CLIENTS if name in requested)
+
+
+def _run_codegraph_uninstall(args: argparse.Namespace) -> int:
+    from .codegraph_onboarding import (
+        CodeGraphOnboardingError,
+        inspect_client_registration,
+        load_codegraph_receipt,
+        remove_client_registration,
+        remove_codegraph_receipt,
+        write_codegraph_receipt,
+    )
+
+    repo_path = resolve_repo_path(args.repo)
+    try:
+        receipt = load_codegraph_receipt(repo_path)
+        if receipt is None:
+            print("No CodeNib-managed CodeGraph agent registration was found.")
+            return 0
+        selected = _selected_uninstall_clients(args.agent, receipt)
+        for client in selected:
+            managed = receipt.client(client)
+            if managed is None:
+                print(f"{client}: not managed for this repository")
+                continue
+            inspection = inspect_client_registration(
+                client,
+                receipt.server,
+                repo_path,
+            )
+            if not inspection.installed:
+                raise CodeGraphOnboardingError(
+                    f"cannot safely remove {client}: client command not found"
+                )
+            if inspection.exists and not inspection.matches and not args.force:
+                raise CodeGraphOnboardingError(
+                    f"refusing to remove drifted {client} registration "
+                    f"{receipt.server.name}; inspect it or repeat with --force"
+                )
+            if args.dry_run:
+                action = "remove" if inspection.exists else "reconcile missing"
+                print(f"{client}: would {action} {receipt.server.name}")
+                continue
+            if inspection.exists:
+                remove_client_registration(
+                    client,
+                    receipt.server,
+                    repo_path,
+                )
+                after = inspect_client_registration(
+                    client,
+                    receipt.server,
+                    repo_path,
+                )
+                if after.exists:
+                    raise CodeGraphOnboardingError(
+                        f"{client} still reports MCP server {receipt.server.name}"
+                    )
+            receipt = receipt.without_client(client)
+            if receipt.clients:
+                write_codegraph_receipt(receipt)
+            else:
+                remove_codegraph_receipt(receipt)
+            print(f"{client}: removed {receipt.server.name}")
+        if args.dry_run:
+            print("Dry run complete; no client configuration or receipt changed.")
+        elif receipt.clients:
+            print("CodeGraph indexes were preserved for the remaining clients.")
+        else:
+            print("Agent registrations removed; CodeGraph indexes were preserved.")
+        return 0
+    except (CodeGraphOnboardingError, OSError) as exc:
+        raise _codegraph_error(exc) from exc
+
+
 def _add_embedding_route_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--embedding-provider",
@@ -2092,6 +2703,90 @@ def build_parser() -> argparse.ArgumentParser:
         help="MCP tool surface to expose",
     )
     mcp_parser.set_defaults(handler=_run_mcp)
+
+    codegraph_parser = subparsers.add_parser(
+        "codegraph",
+        help="prepare CodeGraph and connect it to coding agents",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    codegraph_subparsers = codegraph_parser.add_subparsers(
+        dest="codegraph_command",
+        required=True,
+    )
+    codegraph_init_parser = codegraph_subparsers.add_parser(
+        "init",
+        help="install graph tools, index a repository, and configure MCP clients",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    codegraph_init_parser.add_argument("repo", nargs="?", default=".")
+    codegraph_init_parser.add_argument(
+        "--language",
+        action="append",
+        default=[],
+        help="source language override; repeat or use a comma-separated list",
+    )
+    codegraph_init_parser.add_argument(
+        "--agent",
+        action="append",
+        choices=("auto", "codex", "claude"),
+        help=(
+            "agent client to configure; repeat for both, or omit to auto-detect "
+            "installed clients"
+        ),
+    )
+    codegraph_init_parser.add_argument(
+        "--command",
+        dest="server_command",
+        help="CodeNib executable recorded in the MCP client configuration",
+    )
+    codegraph_init_parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="rebuild graph views instead of incrementally updating them",
+    )
+    codegraph_init_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show toolchain, index, and client actions without changing state",
+    )
+    codegraph_init_parser.set_defaults(handler=_run_codegraph_init)
+
+    codegraph_status_parser = codegraph_subparsers.add_parser(
+        "status",
+        help="verify the graph index, source identity, toolchain, and clients",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    codegraph_status_parser.add_argument("repo", nargs="?", default=".")
+    codegraph_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print a machine-readable status report",
+    )
+    codegraph_status_parser.set_defaults(handler=_run_codegraph_status)
+
+    codegraph_uninstall_parser = codegraph_subparsers.add_parser(
+        "uninstall",
+        help="remove only CodeNib-managed agent registrations",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    codegraph_uninstall_parser.add_argument("repo", nargs="?", default=".")
+    codegraph_uninstall_parser.add_argument(
+        "--agent",
+        action="append",
+        choices=("all", "codex", "claude"),
+        help="managed client to remove; repeat as needed (default: all)",
+    )
+    codegraph_uninstall_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="remove a managed server even when its native config has drifted",
+    )
+    codegraph_uninstall_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show removals without changing client configuration or receipts",
+    )
+    codegraph_uninstall_parser.set_defaults(handler=_run_codegraph_uninstall)
 
     toolchain_parser = subparsers.add_parser(
         "toolchain",

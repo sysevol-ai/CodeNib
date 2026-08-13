@@ -290,7 +290,7 @@ jobs:
         run: python "$GITHUB_WORKSPACE/scripts/smoke_release_agent.py"
 
   graph-smoke:
-    name: Installed graph and Dependency Map
+    name: Installed CodeGraph and agent onboarding
     if: inputs.full
     needs: build
     runs-on: ubuntu-latest
@@ -315,7 +315,7 @@ jobs:
           name: python-package-distributions
           path: dist
 
-      - name: Install wheel and Python graph runtime
+      - name: Install wheel, Python graph runtime, and MCP
         run: |
           GRAPH_VENV="$RUNNER_TEMP/codenib-release-graph-${{ github.run_id }}-${{ github.run_attempt }}"
           python -m venv "$GRAPH_VENV"
@@ -323,7 +323,7 @@ jobs:
           "$GRAPH_VENV/bin/python" -m pip install --upgrade pip
           WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
           test -n "$WHEEL"
-          "$GRAPH_VENV/bin/python" -m pip install "${WHEEL}[graph]"
+          "$GRAPH_VENV/bin/python" -m pip install "${WHEEL}[graph,mcp]"
 
       - name: Provision the Python SCIP provider
         run: |
@@ -337,7 +337,7 @@ jobs:
           python - <<'PY'
           import importlib.util
 
-          required = ("google.protobuf", "igraph")
+          required = ("google.protobuf", "igraph", "mcp")
           missing = [name for name in required if importlib.util.find_spec(name) is None]
           if missing:
               raise SystemExit(f"missing graph runtimes: {missing}")
@@ -351,6 +351,6 @@ jobs:
               raise SystemExit(f"unexpected non-graph runtimes: {unexpected}")
           PY
 
-      - name: Exercise installed Dependency Map
+      - name: Exercise installed CodeGraph product path
         working-directory: ${{ runner.temp }}
         run: python "$GITHUB_WORKSPACE/scripts/smoke_release_graph.py"

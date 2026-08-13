@@ -211,15 +211,28 @@ class SCIPRubyIndexer(SCIPIndexerBase):
 
         return SCIPRubyGraphDecoder
 
-    def generate_index(self, timeout: Optional[int] = None, **kwargs) -> bool:
+    def generate_index(
+        self,
+        timeout: Optional[int] = None,
+        allow_project_preparation: bool = True,
+        **kwargs,
+    ) -> bool:
+        if type(allow_project_preparation) is not bool:
+            raise ValueError("allow_project_preparation must be a boolean")
         if not self._check_indexer_available():
             return False
         command = self._build_index_command(**kwargs)
         if not command:
             return False
 
-        if not self._prepare_bundle(command, timeout=timeout):
+        if allow_project_preparation and not self._prepare_bundle(
+            command, timeout=timeout
+        ):
             return False
+        if not allow_project_preparation and _bundle_prefix(command):
+            logger.info(
+                "Skipping Bundler preparation for read-only CodeGraph onboarding"
+            )
 
         with self.profiler.section("generate_index") as section:
             try:

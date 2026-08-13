@@ -721,6 +721,10 @@ class SymbolGraphBuilder:
     allow_partial_languages: bool = False
     allow_partial_index: bool = False
     source_coverage_fallback: bool = False
+    # Product onboarding may prohibit package-manager/build-system preparation
+    # inside the target checkout. Existing index callers retain the historical
+    # behavior unless they opt out explicitly.
+    allow_project_preparation: bool = True
     # Admission control for incremental updates. The default proves nothing and
     # says so, which combined with require_verification=True means the builder
     # behaves exactly like a full rebuild until a real verifier is configured.
@@ -774,6 +778,8 @@ class SymbolGraphBuilder:
             "graph_route": self.graph_route,
             "capture_artifact_receipts": True,
         }
+        if not self.allow_project_preparation:
+            build_kwargs["allow_project_preparation"] = False
         if self.allow_partial_index:
             build_kwargs["allow_partial_index"] = True
         result = build_graph_for_languages_with_report(
@@ -1122,6 +1128,7 @@ def register_default_builders(
     allow_partial_graph_languages: bool = False,
     allow_partial_graph_index: bool = False,
     graph_source_coverage_fallback: bool = False,
+    allow_graph_project_preparation: bool = True,
 ) -> None:
     """Register all standard index builders with sensible defaults."""
     langs = languages or ["python"]
@@ -1179,6 +1186,7 @@ def register_default_builders(
             allow_partial_languages=allow_partial_graph_languages,
             allow_partial_index=allow_partial_graph_index,
             source_coverage_fallback=graph_source_coverage_fallback,
+            allow_project_preparation=allow_graph_project_preparation,
             exclude_patterns=(
                 list(exclude_patterns)
                 if exclude_patterns is not None

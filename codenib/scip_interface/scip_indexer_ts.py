@@ -534,6 +534,9 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         # Drop Python-specific kwargs that may be forwarded by callers.
         kwargs.pop("target_dir", None)
         kwargs.pop("cwd", None)
+        allow_project_preparation = kwargs.pop("allow_project_preparation", True)
+        if type(allow_project_preparation) is not bool:
+            raise ValueError("allow_project_preparation must be a boolean")
 
         # Auto-select workspace mode when not explicitly provided.
         workspace_flags = ("yarn_workspaces", "pnpm_workspaces", "npm_workspaces")
@@ -594,7 +597,13 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             needs_generate = False
 
         if needs_generate:
-            self._install_dependencies()
+            if allow_project_preparation:
+                self._install_dependencies()
+            else:
+                logger.info(
+                    "Skipping project dependency installation for read-only "
+                    "CodeGraph onboarding"
+                )
             patched_tsconfig = self._ensure_allow_js()
             if patched_tsconfig is not None:
                 kwargs["patched_tsconfig"] = str(patched_tsconfig)

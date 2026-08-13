@@ -344,6 +344,9 @@ class ClangdIndexer:
         kwargs.pop("project_name", None)
         kwargs.pop("target_dir", None)
         kwargs.pop("cwd", None)
+        allow_project_preparation = kwargs.pop("allow_project_preparation", True)
+        if type(allow_project_preparation) is not bool:
+            raise ValueError("allow_project_preparation must be a boolean")
 
         if output_file is None:
             output_file = str(self.graph_file)
@@ -418,7 +421,7 @@ class ClangdIndexer:
                 and self.compdb_path is not None
                 and not self._is_preferred_compdb(self.compdb_path)
             )
-            if should_regenerate_compdb:
+            if should_regenerate_compdb and allow_project_preparation:
                 existing = self.compdb_path
                 if existing is not None:
                     existing = self._snapshot_compdb(existing, "discovered")
@@ -431,6 +434,11 @@ class ClangdIndexer:
                     logger.warning(
                         "Auto-generated compilation database is invalid: %s", generated
                     )
+            elif should_regenerate_compdb:
+                logger.info(
+                    "Skipping compilation database generation for read-only "
+                    "CodeGraph onboarding"
+                )
             if self.compdb_path is not None:
                 prepared_path = self.output_dir / "compile_commands.json"
                 if prepared_path.resolve() == self.compdb_path.resolve():

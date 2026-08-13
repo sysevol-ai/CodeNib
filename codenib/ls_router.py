@@ -402,6 +402,7 @@ def build_graph_for_languages_with_report(
     allow_partial: bool = False,
     allow_partial_index: bool = False,
     capture_artifact_receipts: bool = False,
+    allow_project_preparation: bool = True,
 ) -> GraphBuildResult:
     """Build a graph and report per-language availability.
 
@@ -420,6 +421,8 @@ def build_graph_for_languages_with_report(
     """
     if type(capture_artifact_receipts) is not bool:
         raise ValueError("capture_artifact_receipts must be a boolean")
+    if type(allow_project_preparation) is not bool:
+        raise ValueError("allow_project_preparation must be a boolean")
     normalized = _normalize_language_sequence(languages, graph_route=graph_route)
     base_output = Path(output_dir)
     pname = project_name or base_output.name
@@ -436,6 +439,8 @@ def build_graph_for_languages_with_report(
         pipeline_kwargs["include_references"] = True
     if capture_artifact_receipts:
         pipeline_kwargs["capture_artifact_receipts"] = True
+    if not allow_project_preparation:
+        pipeline_kwargs["allow_project_preparation"] = False
 
     def run_language(language: str, language_output: Path, language_project: str):
         indexer = LSIndexer(

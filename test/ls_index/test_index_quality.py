@@ -279,3 +279,30 @@ def test_pipeline_rejects_nonempty_but_low_coverage_graph(tmp_path, monkeypatch)
     assert json.loads(report_path.read_text(encoding="utf-8"))["passed"] is False
     assert not indexer.graph_file.exists()
     assert indexer.graph_file.with_name("graph.rejected.pkl").exists()
+
+
+def test_read_only_pipeline_does_not_generate_a_compilation_database(
+    tmp_path, monkeypatch
+):
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+    indexer = ClangdIndexer(project, output_dir=tmp_path / "output")
+    monkeypatch.setattr(
+        indexer,
+        "_auto_generate_compdb",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("read-only onboarding must not run a build system")
+        ),
+    )
+    monkeypatch.setattr(indexer, "generate_index", lambda **_kwargs: False)
+
+    assert (
+        indexer.run_pipeline(
+            report_profile=False,
+            allow_project_preparation=False,
+        )
+        is None
+    )
+    assert not (project / "build").exists()
+    assert not (project / "compile_commands.json").exists()
