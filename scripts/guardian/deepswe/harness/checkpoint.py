@@ -258,7 +258,6 @@ def main() -> int:
             analysis_status = str(status.get("analysis_status") or "unknown")
             exit_reason = str(status.get("exit_reason") or "")
             terminal = bool(status.get("terminal"))
-            review_performed = bool(status.get("review_performed", True))
             submitted = (
                 exit_reason in {"ReportSubmitted", "ReviewCompleted"}
                 and analysis_status in {"complete", "degraded"}
@@ -325,10 +324,6 @@ def main() -> int:
                     file=sys.stderr,
                 )
                 return 9
-            if args.exchange_dir and review_performed:
-                temporary = last_reviewed.with_suffix(".tmp")
-                temporary.write_text(head + "\n", encoding="utf-8")
-                os.replace(temporary, last_reviewed)
             return 0
 
         time.sleep(max(0.1, args.interval))

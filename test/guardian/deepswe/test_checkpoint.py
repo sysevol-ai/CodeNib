@@ -366,7 +366,7 @@ def test_guardian_checkpoint_publishes_bundle_and_reads_response(tmp_path):
 
     assert process.returncode == 0, stderr
     assert "Sandboxed report" in stdout
-    assert (exchange / "last_reviewed_commit").read_text().strip() == head
+    assert not (exchange / "last_reviewed_commit").exists()
 
 
 def test_guardian_checkpoint_does_not_publish_after_terminal_cycle(tmp_path):

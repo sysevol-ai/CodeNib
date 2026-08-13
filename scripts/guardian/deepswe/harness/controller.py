@@ -397,6 +397,23 @@ class GuardianHostController:
                 for path in self.episodes_root.glob("*/status.json")
                 if self._is_completed_review(path)
             )
+            try:
+                reviewed_commit = (
+                    self.exchange_root.joinpath("last_reviewed_commit")
+                    .read_text(encoding="utf-8")
+                    .strip()
+                )
+            except OSError:
+                reviewed_commit = ""
+            reviewed_status = (
+                self.episodes_root / reviewed_commit / "status.json"
+                if reviewed_commit
+                else None
+            )
+            if reviewed_status is not None and self._is_completed_review(
+                reviewed_status
+            ):
+                self._expected_base_commit = reviewed_commit
             self._cycle_state_loaded = True
 
     @staticmethod
@@ -407,6 +424,7 @@ class GuardianHostController:
             return False
         return bool(
             isinstance(status, dict)
+            and status.get("commit") == path.parent.name
             and status.get("review_performed", True)
             and status.get("exit_reason") == "ReviewCompleted"
             and status.get("analysis_status") in {"complete", "degraded"}
@@ -525,6 +543,10 @@ class GuardianHostController:
                 memory_snapshots=len(updated_memory.observed_snapshots),
             )
             if result.status is not ReviewStatus.FAILED:
+                _write_text_atomic(
+                    self.exchange_root / "last_reviewed_commit",
+                    request.candidate_commit + "\n",
+                )
                 self._expected_base_commit = request.candidate_commit
                 self._completed_cycles = cycle_index
 

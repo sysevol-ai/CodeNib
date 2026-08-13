@@ -240,6 +240,25 @@ def test_host_controller_reviews_materialized_snapshot(tmp_path: Path) -> None:
     }
     assert (exchange / "latest" / "findings.md").is_file()
     assert (tmp_path / "episodes" / candidate / "status.json").is_file()
+    assert (exchange / "last_reviewed_commit").read_text().strip() == candidate
+
+
+def test_host_controller_ignores_unverified_persisted_review_head(
+    tmp_path: Path,
+) -> None:
+    exchange, base, candidate = _publish(tmp_path)
+    (exchange / "last_reviewed_commit").write_text(candidate + "\n")
+    requests = []
+    controller = GuardianHostController(
+        exchange_root=exchange,
+        episodes_root=tmp_path / "episodes",
+        config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+        reviewer_factory=lambda _workspace: FakeReviewer(requests),
+        initial_base_commit=base,
+    )
+
+    assert asyncio.run(controller.process_pending()) == 1
+    assert [request.candidate_commit for request in requests] == [candidate]
 
 
 def test_blocking_controller_serves_while_caller_thread_is_blocked(
@@ -330,6 +349,7 @@ def test_host_controller_reports_invalid_bundle_without_review(tmp_path: Path) -
     )
     assert status["analysis_status"] == "failed"
     assert "checksum" in status["error"]
+    assert not (exchange / "last_reviewed_commit").exists()
 
 
 def test_host_controller_exposes_degraded_analysis_warnings(tmp_path: Path) -> None:
@@ -355,6 +375,7 @@ def test_host_controller_exposes_degraded_analysis_warnings(tmp_path: Path) -> N
     assert status["exit_reason"] == "ReviewCompleted"
     assert status["error"] == ""
     assert status["analysis_warnings"] == [validation_error]
+    assert (exchange / "last_reviewed_commit").read_text().strip() == candidate
 
 
 def test_host_controller_labels_failed_review_truthfully(tmp_path: Path) -> None:
@@ -380,6 +401,7 @@ def test_host_controller_labels_failed_review_truthfully(tmp_path: Path) -> None
     assert status["review_performed"] is True
     assert status["error"] == "explorers unavailable"
     assert status["analysis_warnings"] == ["explorers unavailable"]
+    assert not (exchange / "last_reviewed_commit").exists()
 
 
 def test_host_controller_processes_pending_requests_in_commit_order(
@@ -408,8 +430,10 @@ def test_host_controller_processes_pending_requests_in_commit_order(
 
     assert asyncio.run(controller.process_pending()) == 2
     assert [request.candidate_commit for request in requests] == [candidate, revised]
+    assert requests[1].base_commit == candidate
     assert requests[0].memory.observed_snapshots == ()
     assert requests[1].memory.observed_snapshots == (candidate,)
+    assert (exchange / "last_reviewed_commit").read_text().strip() == revised
     memory = json.loads((tmp_path / "guardian_state" / "memory.json").read_text())
     assert memory["observed_snapshots"] == [candidate, revised]
     assert (tmp_path / "guardian_state" / "events.jsonl").read_text().count("\n") == 2
@@ -441,6 +465,7 @@ def test_host_controller_marks_stale_request_superseded_without_replacing_latest
     assert stale_status["termination_reason"] == "stale_base_commit"
     latest_status = json.loads((exchange / "latest" / "status.json").read_text())
     assert latest_status["commit"] == candidate
+    assert (exchange / "last_reviewed_commit").read_text().strip() == candidate
 
 
 def test_host_controller_stops_before_review_beyond_cycle_limit(tmp_path: Path) -> None:
@@ -471,7 +496,7 @@ def test_host_controller_stops_before_review_beyond_cycle_limit(tmp_path: Path) 
         episodes_root=tmp_path / "episodes",
         config=config,
         reviewer_factory=lambda _workspace: FakeReviewer(requests),
-        initial_base_commit=candidate,
+        initial_base_commit=base,
         max_cycles=1,
     )
     assert asyncio.run(restarted.process_pending()) == 1
@@ -484,3 +509,4 @@ def test_host_controller_stops_before_review_beyond_cycle_limit(tmp_path: Path) 
     assert terminal_status["analysis_status"] == "not_run"
     assert terminal_status["exit_reason"] == "ReviewLimitReached"
     assert terminal_status["terminal"] is True
+    assert (exchange / "last_reviewed_commit").read_text().strip() == candidate
