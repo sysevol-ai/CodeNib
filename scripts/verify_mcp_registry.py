@@ -90,7 +90,7 @@ def validate_registry_metadata(root: Path) -> tuple[str, dict[str, Any]]:
                 f"found {package.get(field)!r}"
             )
 
-    expected_extra = f"{PACKAGE_NAME}[mcp]=={version}"
+    expected_extra = f"{PACKAGE_NAME}[graph,mcp]=={version}"
     runtime_arguments = package.get("runtimeArguments")
     if not isinstance(runtime_arguments, list) or not any(
         argument.get("type") == "named"

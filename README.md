@@ -24,6 +24,8 @@ SPDX-License-Identifier: Apache-2.0
     &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/">Documentation</a>
     &nbsp;&middot;&nbsp;
+    <a href="https://docs.codenib.ai/codegraph/">CodeGraph</a>
+    &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/mcp/">MCP</a>
     &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/agent_integrations/">Agent Integrations</a>
@@ -35,22 +37,27 @@ SPDX-License-Identifier: Apache-2.0
     <a href="https://pypi.org/project/codenib/"><img src="https://img.shields.io/pypi/v/codenib.svg" alt="PyPI version"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python 3.10+"></a>
-    <img src="https://img.shields.io/badge/Release-0.2.0-2563EB.svg" alt="CodeNib 0.2.0">
+    <img src="https://img.shields.io/badge/Release-0.2.1-2563EB.svg" alt="CodeNib 0.2.1">
   </p>
 </div>
 
 ```bash
-python -m pip install "codenib[mcp,semantic]==0.2.0"
-codenib wiki /path/to/your/repo
+python -m pip install "codenib[graph,mcp]==0.2.1"
+codenib codegraph init /path/to/your/repo
 ```
 
-Local, open source, and no cloud required. CodeNib combines BM25 and dense code
-search, adds optional SCIP symbol graphs, and incrementally rebuilds repository
-indexes as commits change. The same index powers the Wiki, Dependency Map, Ask,
-and MCP tools instead of making every agent rediscover the codebase.
+That one command detects the repository languages, installs the pinned
+package-level graph providers it can manage, builds BM25 plus a source-linked
+symbol graph, and registers the resulting MCP server with installed Codex and
+Claude Code clients. It is local, open source, requires no model or cloud, and
+does not write configuration or indexes into the target repository.
 
 ## News
 
+- **2026-08-13 — CodeNib 0.2.1 CodeGraph onboarding.** One command prepares a
+  repository graph and connects it to Codex and Claude Code, with idempotent
+  status, safe uninstall, and installed-wheel MCP graph verification.
+  [CodeGraph guide](https://docs.codenib.ai/codegraph/)
 - **2026-08-08 — RepoNavigator Jump adapter.** The published single-tool
   [RepoNavigator](https://arxiv.org/abs/2512.20957v6) contract now resolves
   symbol definitions through a persisted SCIP occurrence or injected LSP
@@ -100,33 +107,38 @@ publishing a partially updated view.
 
 ## Quickstart
 
-Requires Python 3.10+ and Git. The recommended local path includes the pinned
-CodeRankEmbed model and serves hybrid BM25+dense retrieval:
+Requires Python 3.10+ and Git. For an agent-ready CodeGraph with no model or API
+key, install the graph and MCP extras and run one command:
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.0"
-codenib doctor --require core --require wiki
+python -m pip install "codenib[graph,mcp]==0.2.1"
+codenib codegraph init /path/to/repository
+```
+
+`codegraph init` detects Codex and Claude Code, installs only the detected
+languages' package-managed providers, builds reusable `bm25` and
+`symbol_graph` views, and asks each native client CLI to own its configuration.
+Run `codenib codegraph status /path/to/repository` to diagnose the complete
+path or `codenib codegraph uninstall /path/to/repository` to remove only the
+managed client registrations. The index remains reusable.
+
+For a browser Wiki with hybrid BM25+dense retrieval, install the semantic extra:
+
+```bash
+python -m pip install "codenib[semantic]==0.2.1"
 codenib wiki /path/to/repository
 ```
 
-`codenib wiki` selects the semantic route because the installed environment
-contains its dependencies. A smaller `python -m pip install codenib==0.2.0`
-installation selects the deterministic BM25 fallback and downloads no model.
-The [0.2 release notes](https://docs.codenib.ai/releases/0.2.0/) record the
-upgrade boundary and verification evidence.
+Both paths keep reusable state under `~/.codenib/repositories` and leave the
+target checkout unchanged. Set `CODENIB_HOME` to relocate state. The
+[0.2.1 release notes](https://docs.codenib.ai/releases/0.2.1/) record the
+upgrade boundary and installed-product evidence.
 
-CodeNib detects the repository languages, builds a reusable index under
-`~/.codenib/repositories`, launches the local Wiki, and opens
-[http://localhost:3000](http://localhost:3000). The wheel includes the
-production Wiki frontend, so normal use does not require Node.js or npm and
-the target repository stays untouched. This command exercises the same compiler
-and serving runtime used by agents. Set `CODENIB_HOME` to relocate state.
-
-Check the environment or index without opening the Wiki:
+Preview the CodeGraph operations without installing, indexing, or configuring
+an agent:
 
 ```bash
-codenib doctor --require core --require wiki
-codenib index /path/to/repository
+codenib codegraph init /path/to/repository --dry-run
 ```
 
 For a structural view, CodeNib detects the repository languages and manages
@@ -134,7 +146,7 @@ only their package-level providers; operating-system and project prerequisites
 remain explicit:
 
 ```bash
-python -m pip install "codenib[graph]==0.2.0"
+python -m pip install "codenib[graph]==0.2.1"
 codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
 ```
@@ -172,27 +184,21 @@ for ports, advanced indexing, and troubleshooting.
 
 ## Serve An Agent
 
-Install the MCP extra, build once, and serve the same repository manifest over
-stdio:
+The recommended path configures installed Codex and Claude Code clients through
+their native CLIs:
 
 ```bash
-python -m pip install "codenib[mcp,semantic]==0.2.0"
-codenib index /path/to/repository
-codenib mcp /path/to/repository
+python -m pip install "codenib[graph,mcp]==0.2.1"
+codenib codegraph init /path/to/repository
 ```
 
-The MCP server advertises `search_context` as its default ranked entry point,
-then exposes the underlying BM25, vector, graph, and navigation operations for
-explicit control. It uses the compiled manifest to decide which calls have a
-fresh backing view. An agent can therefore reuse
-available repository work instead of rebuilding context through unbounded
-`grep` and `read` loops, while unavailable searches fail explicitly. BM25,
-semantic, regex, Zoekt, dependency, and static-navigation results retain source
-locations for follow-up reads and citations. Large search bodies are projected
-under one aggregate budget without changing rank; the bounded `read_source`
-tool recovers exact source windows from the verified checkout. See
-[MCP Server](https://docs.codenib.ai/mcp/)
-for client configuration and tool contracts.
+Ask the agent to start with `explore_context` for bounded, source-verified
+repository context and use `dependency_subgraph` for caller impact or callee
+dependencies. The MCP server also exposes ranked BM25, regex, definition,
+reference, route, and bounded source-read tools. See the
+[CodeGraph guide](https://docs.codenib.ai/codegraph/) for client scopes,
+diagnostics, uninstall behavior, and language prerequisites, and the
+[MCP Server](https://docs.codenib.ai/mcp/) for the complete tool contract.
 
 The same planner is available directly to Python agents:
 

@@ -6,30 +6,82 @@ SPDX-License-Identifier: Apache-2.0
 
 # Quickstart
 
-This guide turns a local repository into a source-linked CodeNib Wiki. The
-recommended path combines BM25 and dense retrieval through a pinned local
-embedding model, so it needs no API key.
+This guide first connects a source-linked CodeGraph to Codex or Claude Code,
+then covers the browser Wiki and advanced retrieval paths. The CodeGraph path
+uses BM25 plus static symbol relationships and needs no model or API key.
 
 ## Install
 
 - Python 3.10 or newer
 - Git
 
-This documentation tracks the `0.2` feature line. Install the exact release and
-its local semantic dependencies from PyPI:
+Install the exact release with its graph and MCP dependencies from PyPI:
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.0"
+python -m pip install "codenib[graph,mcp]==0.2.1"
 codenib --version
-codenib doctor --require core --require wiki
 ```
 
-The version command must report `codenib 0.2.0`. Exact version pins keep the
-environment reproducible. Install `codenib==0.2.0` without extras when
-a smaller, no-model BM25 fallback is more important than natural-language
-retrieval quality.
+The version command must report `codenib 0.2.1`. Exact version pins keep the
+environment reproducible.
+
+## Connect A CodeGraph To Your Agent
+
+From any directory, point the initializer at the repository:
+
+```bash
+codenib codegraph init /path/to/repository
+```
+
+CodeNib performs five bounded steps:
+
+1. Detects supported source languages.
+2. Installs only package-managed graph providers required by those languages;
+   system and project prerequisites remain explicit.
+3. Builds or updates reusable `bm25` and `symbol_graph` views below
+   `~/.codenib/repositories`.
+4. Detects installed Codex and Claude Code clients and registers a uniquely
+   named stdio MCP server through each client's native CLI.
+5. Writes a private CodeNib management receipt outside the checkout so repeat
+   initialization is idempotent and uninstall can fail closed on drift.
+
+The command does not create `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, or index
+files in the repository. Codex owns its user-level registration; Claude Code
+owns a local-scope registration associated with that repository.
+
+The repository must be a clean Git working tree. The initializer does not run
+project package managers or build systems; it checks the worktree again after
+indexing and registration. Existing language prerequisites such as
+`node_modules`, a Ruby bundle, or `compile_commands.json` remain under project
+owner control.
+
+Preview every planned action without a download or write:
+
+```bash
+codenib codegraph init /path/to/repository --dry-run
+```
+
+Verify the full path, including source freshness and native client
+configuration:
+
+```bash
+codenib codegraph status /path/to/repository
+codenib codegraph status /path/to/repository --json
+```
+
+Ask the agent to use `explore_context` before editing and
+`dependency_subgraph` when evaluating callers, callees, or change impact.
+See [Agent-ready CodeGraph](codegraph.md) for exact tool examples and safe
+uninstall behavior.
 
 ## Launch A Repository Wiki
+
+Install the semantic extra when the browser Wiki should use local dense
+retrieval in addition to BM25:
+
+```bash
+python -m pip install "codenib[semantic]==0.2.1"
+```
 
 ```bash
 codenib wiki /path/to/repository
@@ -158,7 +210,7 @@ To keep embeddings out of the local process, use a BYO OpenAI-compatible
 embedding service:
 
 ```bash
-python -m pip install "codenib[semantic-remote]==0.2.0"
+python -m pip install "codenib[semantic-remote]==0.2.1"
 export EMBEDDING_API_KEY=...
 codenib doctor --require semantic \
   --embedding-provider openai \
@@ -228,7 +280,7 @@ clangd, and live LSP providers are language-specific executables, so CodeNib
 plans them from the detected repository rather than installing every language:
 
 ```bash
-python -m pip install "codenib[graph]==0.2.0"
+python -m pip install "codenib[graph]==0.2.1"
 codenib toolchain status /path/to/repository --scope graph
 codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
@@ -275,7 +327,7 @@ Static Wiki pages are the default. To generate conceptual page narratives
 through a LiteLLM-supported provider:
 
 ```bash
-python -m pip install "codenib[agent,semantic]==0.2.0"
+python -m pip install "codenib[agent,semantic]==0.2.1"
 export OPENAI_API_KEY=...
 codenib doctor --require agent \
   --model openai/gpt-4o-mini --api-key-env OPENAI_API_KEY --probe-model
@@ -306,7 +358,7 @@ codenib wiki . --generate --model anthropic/claude-sonnet-4-5
 Vertex AI additionally requires CodeNib's `vertex` extra:
 
 ```bash
-python -m pip install "codenib[agent,semantic,vertex]==0.2.0"
+python -m pip install "codenib[agent,semantic,vertex]==0.2.1"
 gcloud auth application-default login
 codenib wiki . --generate \
   --model vertex_ai/gemini-2.5-flash \
@@ -361,7 +413,7 @@ continues to work.
 ## Serve The Index Over MCP
 
 ```bash
-python -m pip install "codenib[mcp,semantic]==0.2.0"
+python -m pip install "codenib[mcp,semantic]==0.2.1"
 codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```

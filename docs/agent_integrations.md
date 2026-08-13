@@ -243,7 +243,7 @@ reasoning loop while replacing its repository data plane with
 localization baselines:
 
 ```bash
-python -m pip install "codenib[agent,graph]==0.2.0"
+python -m pip install "codenib[agent,graph]==0.2.1"
 codenib toolchain install /path/to/repository --scope graph
 ```
 

@@ -65,8 +65,8 @@ def test_project_identity_and_tag_match_release_metadata() -> None:
     name, version = project_identity(root / "pyproject.toml")
 
     assert name == "codenib"
-    assert expected_tag(version) == "v0.2.0"
-    validate_tag("v0.2.0", version)
+    assert expected_tag(version) == "v0.2.1"
+    validate_tag("v0.2.1", version)
 
 
 def test_release_tag_must_match_project_version() -> None:
@@ -93,18 +93,19 @@ def test_packaged_readme_requires_mcp_registry_ownership() -> None:
         validate_readme_mcp_ownership("# CodeNib\n")
 
 
-def test_stable_release_notes_use_production_pypi_and_pages_permissions() -> None:
+def test_stable_release_notes_describe_the_codegraph_product_path() -> None:
     root = Path(__file__).resolve().parents[1]
-    notes = (root / "docs" / "releases" / "0.2.0.md").read_text(encoding="utf-8")
+    notes = (root / "docs" / "releases" / "0.2.1.md").read_text(encoding="utf-8")
 
-    assert '"codenib[semantic]==0.2.0"' in notes
-    assert '"codenib[mcp,semantic]==0.2.0"' in notes
-    assert "sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.0" in notes
+    assert '"codenib[graph,mcp]==0.2.1"' in notes
+    assert "codenib codegraph init" in notes
+    assert "explore_context" in notes
+    assert "dependency_subgraph" in notes
+    assert "Codex" in notes
+    assert "Claude Code" in notes
     assert "test-files.pythonhosted.org" not in notes
     assert "--extra-index-url" not in notes
     assert "--index-url" not in notes
-    for permission in ("contents: read", "pages: write", "id-token: write"):
-        assert permission in notes
 
 
 @pytest.mark.parametrize(
@@ -112,6 +113,7 @@ def test_stable_release_notes_use_production_pypi_and_pages_permissions() -> Non
     (
         "README.md",
         "docs/agent_integrations.md",
+        "docs/codegraph.md",
         "docs/index.md",
         "docs/mcp.md",
         "docs/quickstart.md",
@@ -134,7 +136,7 @@ def test_public_install_commands_select_the_current_stable_release(
 
     assert install_lines
     assert "CODENIB_ALPHA_WHEEL=" not in text
-    assert all("==0.2.0" in line for line in install_lines)
+    assert all("==0.2.1" in line for line in install_lines)
 
 
 def test_registry_publishers_use_separate_workflows() -> None:

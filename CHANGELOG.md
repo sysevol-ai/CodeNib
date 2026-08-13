@@ -11,6 +11,30 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-13
+
+### Added
+
+- A one-command `codenib codegraph init` path that installs repository-aware
+  graph providers, builds BM25 and symbol-graph views, and configures installed
+  Codex and Claude Code clients through their native MCP CLIs.
+- Machine-readable CodeGraph status, idempotent client receipts, safe uninstall,
+  and a no-write dry run.
+- Installed-wheel black-box coverage for `explore_context`,
+  `dependency_subgraph`, both client contracts, repeat initialization, and
+  checkout cleanliness.
+
+### Changed
+
+- The primary agent quickstart now leads with the local, model-free CodeGraph;
+  the Wiki and semantic routes remain available as independent product paths.
+
+### Security
+
+- Client setup refuses unmanaged name collisions and drifted managed
+  registrations. Uninstall removes only receipt-owned entries and preserves
+  repository indexes.
+
 ## [0.2.0] - 2026-08-05
 
 ### Added
@@ -132,7 +156,8 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Prepared secretless PyPI publishing through a dedicated GitHub Actions OIDC
   workflow.
 
-[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/sysevol-ai/CodeNib/compare/v0.1.0...v0.2.0
 [0.2.0a2]: https://github.com/sysevol-ai/CodeNib/compare/620a82d...78e12ac
 [0.2.0a1]: https://github.com/sysevol-ai/CodeNib/tree/620a82d

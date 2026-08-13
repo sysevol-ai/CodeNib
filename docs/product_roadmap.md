@@ -2,8 +2,8 @@
 
 ## Objective
 
-CodeNib should turn a local repository into a useful, source-grounded Wiki and
-repository exploration surface without requiring users to understand its
+CodeNib should turn a local repository into useful, source-grounded context for
+both coding agents and humans without requiring users to understand its
 internal index architecture.
 
 The release is ready when a new user can:
@@ -15,10 +15,25 @@ The release is ready when a new user can:
 5. explore dependencies and jump back to source;
 6. use a provider-native or OpenAI-compatible LiteLLM backend;
 7. restart and update the Wiki without rebuilding unrelated views.
+8. connect a source-linked CodeGraph to a supported coding agent without
+   manually editing MCP configuration.
 
 Passing unit tests or publishing a wheel is necessary but not sufficient.
 
 ## North-Star Journey
+
+The 0.2.1 agent path is local, model-free, and one command after installation:
+
+```bash
+pip install "codenib[graph,mcp]"
+codenib codegraph init /path/to/repository
+```
+
+It must keep the checkout clean, delegate client configuration to native CLIs,
+remain idempotent, expose a machine-readable readiness report, and reverse only
+its own registrations.
+
+The browser path remains:
 
 ```bash
 pip install "codenib[semantic]"
@@ -228,10 +243,33 @@ Acceptance evidence on 2026-07-26:
 - The real-repository v24 Overview published eight of eight planned facts from
   five cited source files with 1.0 citation coverage, three dense sections,
   no duplicate prose blocks, and no repair, fallback, or quality warning.
+
 - Desktop (1440x1000), intermediate (1024x900), and mobile (390x844) Wiki
   captures had no horizontal overflow, console errors, or page errors. The
   Dependency Map rendered a real retrieval-pipeline neighborhood with nine
   symbols, eight edges, and the partial-language coverage notice.
+
+### M7: Agent-ready CodeGraph
+
+Status: implementation complete for 0.2.1; installed release acceptance and
+main verification remain before publication.
+
+- Add one command that detects languages and clients, installs the safe managed
+  subset of graph providers, builds BM25 plus `symbol_graph`, and registers the
+  full MCP surface with Codex and Claude Code.
+- Keep agent configuration under native client ownership and CodeNib state
+  outside the target checkout. Do not create repository instruction or MCP
+  files implicitly.
+- Require and preserve a clean Git working tree. Install CodeNib-managed
+  providers outside the repository, but never run project package managers or
+  build-system preparation from the onboarding command.
+- Make repeated initialization a no-op for matching registrations. Fail closed
+  on unmanaged collisions and managed drift.
+- Provide human and JSON status plus receipt-scoped uninstall that preserves the
+  reusable index.
+- Exercise installed `explore_context` and `dependency_subgraph` calls, source
+  verification, both client contracts, idempotency, and uninstall in the
+  release graph smoke.
 
 ## Hosted Distribution Program
 

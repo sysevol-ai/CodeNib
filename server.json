@@ -2,26 +2,26 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "ai.codenib/codenib",
   "title": "CodeNib",
-  "description": "Ranked codebase search and static symbol navigation for coding agents.",
+  "description": "Source-linked CodeGraph exploration, ranked search, and static navigation for coding agents.",
   "websiteUrl": "https://codenib.ai",
   "repository": {
     "url": "https://github.com/sysevol-ai/CodeNib",
     "source": "github"
   },
-  "version": "0.2.0",
+  "version": "0.2.1",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "codenib",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "runtimeHint": "uvx",
       "runtimeArguments": [
         {
           "type": "named",
           "name": "--with",
-          "value": "codenib[mcp]==0.2.0",
-          "description": "Install the version-matched CodeNib MCP runtime extra."
+          "value": "codenib[graph,mcp]==0.2.1",
+          "description": "Install the version-matched CodeNib CodeGraph and MCP runtime."
         }
       ],
       "transport": {
