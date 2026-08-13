@@ -596,17 +596,21 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         elif skip_level in ("graph", "decode", "raw") and self.index_file.exists():
             needs_generate = False
 
+        cleanup_patched_tsconfig = False
         if needs_generate:
             if allow_project_preparation:
                 self._install_dependencies()
+                patched_tsconfig = self._ensure_allow_js()
+                if patched_tsconfig is not None:
+                    kwargs["patched_tsconfig"] = str(patched_tsconfig)
+                    cleanup_patched_tsconfig = True
             else:
                 logger.info(
-                    "Skipping project dependency installation for read-only "
-                    "CodeGraph onboarding"
+                    "Skipping project dependency installation and temporary "
+                    "tsconfig generation for read-only CodeGraph onboarding"
                 )
-            patched_tsconfig = self._ensure_allow_js()
-            if patched_tsconfig is not None:
-                kwargs["patched_tsconfig"] = str(patched_tsconfig)
+                if not (self.project_root / "tsconfig.json").is_file():
+                    kwargs.setdefault("infer_tsconfig", True)
         else:
             logger.info(
                 "Skipping dependency install and tsconfig patching (cached artifacts exist)"
@@ -622,4 +626,5 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                 **kwargs,
             )
         finally:
-            self._cleanup_patched_tsconfig()
+            if cleanup_patched_tsconfig:
+                self._cleanup_patched_tsconfig()
