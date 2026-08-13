@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import asyncio
-import dis
 import hashlib
 import inspect
 import io
@@ -608,58 +607,29 @@ def test_artifact_binding_install_cancellation_closes_claimed_authority(
 
 def test_server_context_install_handoff_cancellation_closes_source(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, artifact, commit = _bm25_artifact(tmp_path)
     binding = bind_context_artifact(artifact, repo, expected_commit=commit)
     source = binding.source_binding
     assert source is not None
-    method = ServerContext.load.__func__
-    source_lines, first_line = inspect.getsourcelines(method)
-    call_line = first_line + next(
-        index
-        for index, line in enumerate(source_lines)
-        if "artifact_binding.install_source_binding(" in line
-    )
-    current_line = None
-    target_offset = None
-    for instruction in dis.get_instructions(method):
-        if instruction.starts_line is not None:
-            current_line = instruction.starts_line
-        if instruction.opname == "POP_TOP" and current_line in range(
-            call_line, call_line + 5
-        ):
-            target_offset = instruction.offset
-            break
-    assert target_offset is not None
     interruption = KeyboardInterrupt("injected after destination install")
-    injected = False
+    binding_type = type(binding)
+    real_install = binding_type.install_source_binding
 
-    def interrupt_after_install(frame, event, _arg):
-        nonlocal injected
-        if (
-            not injected
-            and frame.f_code is method.__code__
-            and event == "opcode"
-            and frame.f_lasti == target_offset
-        ):
-            injected = True
-            raise interruption
-        frame.f_trace_opcodes = True
-        return interrupt_after_install
+    def install_then_interrupt(self, install, **kwargs):
+        real_install(self, install, **kwargs)
+        raise interruption
 
-    sys.settrace(interrupt_after_install)
-    try:
-        with pytest.raises(KeyboardInterrupt) as caught:
-            ServerContext.load(
-                binding.manifest,
-                views=[],
-                artifact_binding=binding,
-            )
-    finally:
-        sys.settrace(None)
+    monkeypatch.setattr(binding_type, "install_source_binding", install_then_interrupt)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        ServerContext.load(
+            binding.manifest,
+            views=[],
+            artifact_binding=binding,
+        )
 
     assert caught.value is interruption
-    assert injected
     assert source.closed
     assert binding.source_bound is False
 
