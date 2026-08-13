@@ -31,10 +31,16 @@ def _result(snapshot: str, finding: GuardianFinding) -> GuardianResult:
     )
 
 
-def _finding(status: FindingStatus, *, memory_id: str = "") -> GuardianFinding:
+def _finding(
+    status: FindingStatus,
+    *,
+    memory_id: str = "",
+    statement: str = "Prediction preserves the fitted feature layout.",
+    condition: str = "when preprocessing expands raw input columns",
+) -> GuardianFinding:
     return GuardianFinding(
-        statement="Prediction preserves the fitted feature layout.",
-        condition="when preprocessing expands raw input columns",
+        statement=statement,
+        condition=condition,
         status=status,
         evidence=(
             Evidence(
@@ -107,3 +113,82 @@ def test_memory_fails_closed_when_materialized_state_is_invalid(
 
     with pytest.raises(ValueError, match="cannot be loaded"):
         store.load(tmp_path)
+
+
+def test_memory_ignores_existing_id_for_a_different_specification(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "repository"
+    workspace.mkdir()
+    (workspace / "feature.py").write_text("enabled = True\n", encoding="utf-8")
+    store = GuardianMemoryStore(tmp_path / "state")
+    first = store.update(
+        _result("b" * 40, _finding(FindingStatus.VIOLATED)),
+        workspace,
+    )
+    original = first.specifications[0]
+
+    rewritten = _finding(
+        FindingStatus.VIOLATED,
+        memory_id=original.memory_id,
+        statement="Prediction preserves the fitted output labels.",
+        condition="when preprocessing expands target columns",
+    )
+    updated = store.update(_result("c" * 40, rewritten), workspace)
+
+    assert len(updated.specifications) == 2
+    by_id = {
+        specification.memory_id: specification
+        for specification in updated.specifications
+    }
+    persisted_original = by_id[original.memory_id]
+    assert persisted_original.statement == original.statement
+    assert persisted_original.condition == original.condition
+    assert persisted_original.assessments == original.assessments
+    added = next(
+        specification
+        for specification in updated.specifications
+        if specification.memory_id != original.memory_id
+    )
+    assert added.statement == rewritten.statement
+    assert added.condition == rewritten.condition
+
+
+def test_memory_keeps_equal_statements_with_distinct_conditions(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "repository"
+    workspace.mkdir()
+    (workspace / "feature.py").write_text("enabled = True\n", encoding="utf-8")
+    store = GuardianMemoryStore(tmp_path / "state")
+    statement = "Prediction preserves the fitted feature layout."
+
+    store.update(
+        _result(
+            "b" * 40,
+            _finding(
+                FindingStatus.VIOLATED,
+                statement=statement,
+                condition="when preprocessing expands raw input columns",
+            ),
+        ),
+        workspace,
+    )
+    updated = store.update(
+        _result(
+            "c" * 40,
+            _finding(
+                FindingStatus.VIOLATED,
+                statement=statement,
+                condition="when preprocessing drops raw input columns",
+            ),
+        ),
+        workspace,
+    )
+
+    assert len(updated.specifications) == 2
+    assert {value.condition for value in updated.specifications} == {
+        "when preprocessing expands raw input columns",
+        "when preprocessing drops raw input columns",
+    }
+    assert len({value.memory_id for value in updated.specifications}) == 2

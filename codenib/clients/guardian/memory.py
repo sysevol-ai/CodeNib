@@ -30,8 +30,12 @@ _MEMORY_ID = re.compile(r"^spec:[0-9a-f]{16}$")
 
 
 def _specification_id(statement: str, condition: str) -> str:
-    value = f"{statement.strip().casefold()}\0{condition.strip().casefold()}"
+    value = "\0".join(_specification_key(statement, condition))
     return f"spec:{hashlib.sha256(value.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _specification_key(statement: str, condition: str) -> tuple[str, str]:
+    return statement.strip().casefold(), condition.strip().casefold()
 
 
 def _blob_sha256(workspace: Path, path: str) -> str:
@@ -204,8 +208,11 @@ class GuardianMemoryStore:
             specification.memory_id: specification
             for specification in memory.specifications
         }
-        by_statement = {
-            specification.statement.strip().casefold(): specification.memory_id
+        by_key = {
+            _specification_key(
+                specification.statement,
+                specification.condition,
+            ): specification.memory_id
             for specification in memory.specifications
         }
         candidate_conditions = {
@@ -217,13 +224,21 @@ class GuardianMemoryStore:
         for finding in assessed:
             statement_key = finding.statement.strip().casefold()
             condition = finding.condition or candidate_conditions.get(statement_key, "")
+            specification_key = _specification_key(finding.statement, condition)
             supplied_id = (
                 finding.memory_id if _MEMORY_ID.fullmatch(finding.memory_id) else ""
             )
-            memory_id = (
+            supplied = by_id.get(supplied_id)
+            matched_supplied_id = (
                 supplied_id
-                if supplied_id in by_id
-                else by_statement.get(statement_key)
+                if supplied is not None
+                and _specification_key(supplied.statement, supplied.condition)
+                == specification_key
+                else ""
+            )
+            memory_id = (
+                matched_supplied_id
+                or by_key.get(specification_key)
                 or _specification_id(finding.statement, condition)
             )
             previous = by_id.get(memory_id)
@@ -247,13 +262,13 @@ class GuardianMemoryStore:
             assessment_history = previous.assessments if previous else ()
             value = RememberedSpecification(
                 memory_id=memory_id,
-                statement=finding.statement,
-                condition=condition or (previous.condition if previous else ""),
+                statement=previous.statement if previous else finding.statement,
+                condition=previous.condition if previous else condition,
                 evidence=evidence_history + remembered_evidence,
                 assessments=assessment_history + (assessment,),
             )
             by_id[memory_id] = value
-            by_statement[statement_key] = memory_id
+            by_key[specification_key] = memory_id
             changed.append(memory_id)
 
         snapshots = memory.observed_snapshots
