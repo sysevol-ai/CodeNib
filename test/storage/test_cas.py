@@ -1026,33 +1026,98 @@ def test_strict_constructor_rejects_incomplete_layout_without_mutation(
     assert marker.read_bytes() == b"unchanged"
 
 
-def test_capability_gate_fails_before_lazy_layout_mutation(
+def test_supported_posix_lazy_path_never_calls_portable_helpers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    try:
+        cas_module._require_local_cas_support()
+    except RuntimeError:
+        pytest.skip("host does not support hardened LocalCAS publication")
+
+    def forbidden_portable_helper(*_args, **_kwargs) -> None:
+        raise AssertionError("supported POSIX CAS called a portable helper")
+
+    for helper_name in (
+        "_open_portable_directory_path",
+        "_open_portable_child_directory",
+        "_open_or_create_portable_child_directory",
+        "_create_portable_temporary_file",
+        "_unlink_portable",
+    ):
+        monkeypatch.setattr(cas_module, helper_name, forbidden_portable_helper)
+    for method_name in (
+        "_publish_portable_object",
+        "_verify_portable_existing",
+        "_publish_portable_temporary",
+    ):
+        monkeypatch.setattr(LocalCAS, method_name, forbidden_portable_helper)
+
+    store = LocalCAS(tmp_path / "objects")
+    info = store.put_bytes(b"hardened POSIX lazy object")
+
+    assert not store._portable_lazy
+    assert store.read_bytes(info.digest) == b"hardened POSIX lazy object"
+
+
+def test_missing_directory_fds_use_portable_lazy_backend(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "objects"
     monkeypatch.setattr(cas_module, "_SAFE_DIRECTORY_FDS", False)
 
+    def forbidden_owned_publication(*_args, **_kwargs) -> None:
+        raise AssertionError("portable lazy CAS used owned publication")
+
+    monkeypatch.setattr(cas_module, "publish_owned_file", forbidden_owned_publication)
+    store = LocalCAS(root)
+    info = store.put_bytes(b"portable directory-fd fallback")
+    destination = tmp_path / "view.bin"
+
+    assert store._portable_lazy
+    assert store.read_bytes(info.digest) == b"portable directory-fd fallback"
+    assert store.materialize(info.digest, destination) == destination
+    assert destination.read_bytes() == b"portable directory-fd fallback"
+
+    strict_root = tmp_path / "strict"
     with pytest.raises(RuntimeError, match="directory-fd support"):
-        LocalCAS(root)
+        LocalCAS(strict_root, require_preprovisioned=True)
+    assert not strict_root.exists()
 
-    assert not root.exists()
 
-
-def test_windows_gate_fails_before_constructor_or_provision_mutation(
+def test_windows_uses_portable_lazy_backend_but_strict_fails_before_io(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(owned_file_module.sys, "platform", "win32")
     lazy_root = tmp_path / "lazy"
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"portable Windows source")
+    destination = tmp_path / "materialized.bin"
+    strict_root = tmp_path / "strict"
     provisioned_root = tmp_path / "provisioned"
 
+    def forbidden_owned_publication(*_args, **_kwargs) -> None:
+        raise AssertionError("portable Windows CAS used owned publication")
+
+    monkeypatch.setattr(cas_module, "publish_owned_file", forbidden_owned_publication)
+    store = LocalCAS(lazy_root)
+    bytes_info = store.put_bytes(b"portable Windows bytes")
+    file_info = store.put_file(source)
+
+    assert store._portable_lazy
+    assert store.read_bytes(bytes_info.digest) == b"portable Windows bytes"
+    assert store.read_bytes(file_info.digest) == source.read_bytes()
+    assert store.materialize(bytes_info.digest, destination) == destination
+    assert destination.read_bytes() == b"portable Windows bytes"
+
     with pytest.raises(RuntimeError, match="unsupported on Windows"):
-        LocalCAS(lazy_root)
+        LocalCAS(strict_root, require_preprovisioned=True)
     with pytest.raises(RuntimeError, match="unsupported on Windows"):
         LocalCAS.provision(provisioned_root)
 
-    assert not lazy_root.exists()
+    assert not strict_root.exists()
     assert not provisioned_root.exists()
 
 

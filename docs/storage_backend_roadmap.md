@@ -249,7 +249,10 @@ requires a fully preprovisioned `sha256` layout and retains anchored authorities
 for the root, hash directory, and every shard for the store lifetime; these
 anchors prevent device/inode reuse from making a replacement generation look
 valid. Lazy directory creation remains a cooperative compatibility mode and is
-not an adversarial generation boundary. The current strict implementation is
+not an adversarial generation boundary. Where owned publication or anchored
+directory descriptors are unavailable, default lazy `LocalCAS` retains its
+path-checked portable hard-link/atomic-replace backend; strict construction and
+provisioning fail before filesystem I/O. The current strict implementation is
 POSIX-only, requires callers to close the store to release its generation
 anchors, and does not make ordinary same-UID writable files immutable after
 publication. Preopened workspace publication applies the same ownership model

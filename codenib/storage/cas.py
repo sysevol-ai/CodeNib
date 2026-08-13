@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import re
 import stat
 import tempfile
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +41,18 @@ _SAFE_DIRECTORY_FDS = (
 _CAS_OBJECT_MODE = 0o600
 _SHARD_NAMES = tuple(f"{value:02x}" for value in range(256))
 _DIRECTORY_CLOSE_RECOVERY_LIMIT = 64
+_PORTABLE_LINK_UNSUPPORTED_ERRNOS = {
+    value
+    for value in (
+        getattr(errno, "ENOSYS", None),
+        getattr(errno, "ENOTSUP", None),
+        getattr(errno, "EOPNOTSUPP", None),
+        getattr(errno, "EPERM", None),
+        getattr(errno, "EXDEV", None),
+    )
+    if value is not None
+}
+_PORTABLE_PUBLISH_LOCKS = tuple(threading.Lock() for _ in range(64))
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +75,9 @@ class LocalCAS:
     directory descriptor and never creates a directory during ``put``. The
     default lazy layout remains a cooperative compatibility mode because POSIX
     cannot bind ``mkdir`` and the following ``open`` into one authority step.
+    Platforms without owned publication retain the pre-existing portable lazy
+    backend with explicit lstat/fstat checks and weaker replacement-race
+    protection; strict mode remains fail-closed there.
     """
 
     def __init__(
@@ -71,11 +88,53 @@ class LocalCAS:
     ) -> None:
         if not isinstance(require_preprovisioned, bool):
             raise TypeError("require_preprovisioned must be a boolean")
-        # This capability check is deliberately before lstat/mkdir.  In
-        # particular, unsupported Windows publication must not create even the
-        # legacy cooperative layout before it fails.
-        _require_local_cas_support()
+        try:
+            _require_local_cas_support()
+        except RuntimeError:
+            if require_preprovisioned:
+                # Strict mode must reject unsupported hosts before even
+                # interpreting or inspecting the requested filesystem path.
+                raise
+            portable_lazy = True
+        else:
+            portable_lazy = False
         requested_root = Path(root).expanduser()
+        self._portable_lazy = portable_lazy
+        if portable_lazy:
+            try:
+                requested_metadata = requested_root.lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                if not stat.S_ISDIR(requested_metadata.st_mode):
+                    raise StorageValidationError(
+                        f"path is not a real directory: {requested_root}"
+                    )
+            self.root = requested_root.resolve()
+            self._require_preprovisioned = False
+            _ensure_directory(self.root)
+            self._sha256_root = self.root / "sha256"
+            with _open_portable_directory_path(
+                self.root,
+                label="CAS root",
+            ) as root_descriptor:
+                with _open_or_create_portable_child_directory(
+                    root_descriptor,
+                    self.root,
+                    "sha256",
+                    label="CAS SHA-256 root",
+                ):
+                    pass
+            self._strict_root_identity = None
+            self._strict_sha256_identity = None
+            self._strict_shard_identities = {}
+            self._strict_resources = None
+            self._strict_root_descriptor = None
+            self._strict_sha256_descriptor = None
+            self._strict_shard_descriptors = {}
+            self._owner_pid = os.getpid()
+            return
+
         self.root = Path(os.path.abspath(os.fspath(requested_root)))
         self._require_preprovisioned = require_preprovisioned
         strict_root_identity: tuple[int, ...] | None = None
@@ -414,6 +473,31 @@ class LocalCAS:
         create: bool = False,
     ) -> Iterator[tuple[int | None, Path]]:
         digest = _validate_digest(digest)
+        if self._portable_lazy:
+            with _open_portable_directory_path(
+                self.root,
+                label="CAS root",
+            ) as root_descriptor:
+                with _open_portable_child_directory(
+                    root_descriptor,
+                    self.root,
+                    "sha256",
+                    label="CAS SHA-256 root",
+                ) as (sha256_descriptor, sha256_path):
+                    open_child = (
+                        _open_or_create_portable_child_directory
+                        if create
+                        else _open_portable_child_directory
+                    )
+                    with open_child(
+                        sha256_descriptor,
+                        sha256_path,
+                        digest[:2],
+                        label="CAS digest shard",
+                    ) as shard:
+                        yield shard
+            return
+
         self._require_strict_anchors(digest[:2])
         with _open_directory_path(self.root, label="CAS root") as root_descriptor:
             _require_directory_generation(
@@ -503,6 +587,9 @@ class LocalCAS:
         byte_size: int,
         chunks: Iterable[bytes] | bytes,
     ) -> BlobInfo:
+        if self._portable_lazy:
+            return self._publish_portable_object(digest, byte_size, chunks)
+
         expected = PublishedFileRecord(
             size=byte_size,
             sha256=digest,
@@ -549,6 +636,117 @@ class LocalCAS:
         # synchronously consumed, and terminally closed the post-directory-fsync
         # receipt.  No descriptor-owning resource crosses this return boundary.
         return self._blob_info(digest, byte_size)
+
+    def _publish_portable_object(
+        self,
+        digest: str,
+        byte_size: int,
+        chunks: Iterable[bytes] | bytes,
+    ) -> BlobInfo:
+        """Publish with the pre-owned-publication compatibility backend."""
+
+        info = self._blob_info(digest, byte_size)
+        with self._open_shard(digest, create=True) as (
+            shard_descriptor,
+            shard_path,
+        ):
+            if shard_descriptor is not None:
+                raise RuntimeError("portable CAS unexpectedly acquired a directory fd")
+            if self._verify_portable_existing(shard_path, info) is not None:
+                _fsync_directory_handle(None, shard_path)
+                return info
+
+            descriptor, temporary_name = _create_portable_temporary_file(
+                shard_path,
+                digest[2:],
+            )
+            try:
+                with os.fdopen(descriptor, "wb") as handle:
+                    if isinstance(chunks, bytes):
+                        handle.write(chunks)
+                    else:
+                        for block in chunks:
+                            handle.write(block)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                self._publish_portable_temporary(
+                    shard_path,
+                    temporary_name,
+                    info,
+                )
+                return info
+            finally:
+                _unlink_portable(shard_path, temporary_name)
+                _fsync_directory_handle(None, shard_path)
+
+    def _verify_portable_existing(
+        self,
+        shard_path: Path,
+        expected: BlobInfo,
+    ) -> BlobInfo | None:
+        path = shard_path / expected.digest[2:]
+        try:
+            with _open_regular_at(
+                None,
+                shard_path,
+                expected.digest[2:],
+                label="existing CAS object",
+            ) as handle:
+                signature = _object_signature(os.fstat(handle.fileno()))
+                observed = hashlib.sha256()
+                byte_size = 0
+                while block := handle.read(_COPY_BUFFER_SIZE):
+                    observed.update(block)
+                    byte_size += len(block)
+                if _object_signature(os.fstat(handle.fileno())) != signature:
+                    raise StorageIntegrityError(
+                        f"existing CAS object changed while read: {path}"
+                    )
+        except FileNotFoundError:
+            return None
+
+        if byte_size != expected.byte_size or observed.hexdigest() != expected.digest:
+            raise StorageIntegrityError(
+                f"existing CAS object failed integrity validation: {path}"
+            )
+        return expected
+
+    def _publish_portable_temporary(
+        self,
+        shard_path: Path,
+        temporary_name: str,
+        info: BlobInfo,
+    ) -> None:
+        destination_name = info.digest[2:]
+        if self._verify_portable_existing(shard_path, info) is not None:
+            return
+
+        try:
+            os.link(
+                shard_path / temporary_name,
+                shard_path / destination_name,
+            )
+            return
+        except FileExistsError:
+            if self._verify_portable_existing(shard_path, info) is None:
+                raise StorageIntegrityError(
+                    f"CAS object disappeared during publication: {info.digest}"
+                ) from None
+            return
+        except OSError as exc:
+            if exc.errno not in _PORTABLE_LINK_UNSUPPORTED_ERRNOS:
+                raise
+
+        lock = _PORTABLE_PUBLISH_LOCKS[
+            int(info.digest[:2], 16) % len(_PORTABLE_PUBLISH_LOCKS)
+        ]
+        with lock:
+            if self._verify_portable_existing(shard_path, info) is not None:
+                return
+            os.replace(
+                shard_path / temporary_name,
+                shard_path / destination_name,
+            )
 
     def _consume_object(
         self,
@@ -690,6 +888,66 @@ def _close_publication_authority_owner(
 
 
 @contextmanager
+def _open_portable_directory_path(
+    path: Path,
+    *,
+    label: str,
+) -> Iterator[int | None]:
+    """Open a directory through the legacy path-only compatibility checks."""
+
+    metadata = path.lstat()
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise StorageIntegrityError(f"{label} is not a real directory: {path}")
+    # Unsupported platforms cannot anchor later child operations to this exact
+    # generation.  Keep this intentionally separate from the POSIX authority
+    # helpers so a supported host never falls through to weaker semantics.
+    yield None
+
+
+@contextmanager
+def _open_portable_child_directory(
+    parent_descriptor: int | None,
+    parent_path: Path,
+    name: str,
+    *,
+    label: str,
+) -> Iterator[tuple[int | None, Path]]:
+    if parent_descriptor is not None:
+        raise RuntimeError("portable CAS unexpectedly acquired a directory fd")
+    path = parent_path / name
+    with _open_portable_directory_path(path, label=label) as descriptor:
+        yield descriptor, path
+
+
+@contextmanager
+def _open_or_create_portable_child_directory(
+    parent_descriptor: int | None,
+    parent_path: Path,
+    name: str,
+    *,
+    label: str,
+) -> Iterator[tuple[int | None, Path]]:
+    if parent_descriptor is not None:
+        raise RuntimeError("portable CAS unexpectedly acquired a directory fd")
+    created = False
+    path = parent_path / name
+    try:
+        path.mkdir()
+        created = True
+    except FileExistsError:
+        pass
+    if created:
+        _fsync_directory(parent_path)
+    with _open_portable_child_directory(
+        None,
+        parent_path,
+        name,
+        label=label,
+    ) as child:
+        yield child
+
+
+@contextmanager
 def _open_directory_path(path: Path, *, label: str) -> Iterator[int | None]:
     authority_owner = _atomic._PublicationAuthorityOwner()
     try:
@@ -823,6 +1081,25 @@ def _open_regular_at(
     except BaseException:
         os.close(descriptor)
         raise
+
+
+def _create_portable_temporary_file(
+    directory_path: Path,
+    object_name: str,
+) -> tuple[int, str]:
+    descriptor, temporary_path = tempfile.mkstemp(
+        dir=str(directory_path),
+        prefix=f".{object_name}.",
+        suffix=".tmp",
+    )
+    return descriptor, Path(temporary_path).name
+
+
+def _unlink_portable(directory_path: Path, name: str) -> None:
+    try:
+        (directory_path / name).unlink()
+    except FileNotFoundError:
+        pass
 
 
 def _validate_digest(digest: str) -> str:
