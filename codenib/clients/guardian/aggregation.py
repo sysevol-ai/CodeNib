@@ -21,6 +21,7 @@ from .normalization import GuardianResponseError, parse_aggregation
 from .prompts import aggregation_prompt
 from .types import (
     CandidateSpecification,
+    ContextFidelity,
     Evidence,
     EvidenceAuthority,
     EvidenceSourceType,
@@ -29,6 +30,7 @@ from .types import (
     SpecificationMemory,
     SpecificationRecord,
     SpecificationStatus,
+    TaskContextSource,
 )
 
 
@@ -73,6 +75,60 @@ def _merge_specification_records(
         by_id[specification_id] = value
         by_key[key] = specification_id
     return tuple(by_id.values())
+
+
+def _materialize_task_evidence(
+    request: GuardianRequest,
+    records: tuple[SpecificationRecord, ...],
+) -> tuple[tuple[SpecificationRecord, ...], tuple[Evidence, ...]]:
+    """Canonicalize direct-task citations and retain their normative source."""
+
+    contexts = {
+        item.context_id: item
+        for item in request.task_context
+        if item.fidelity is ContextFidelity.VERBATIM
+        and item.source is not TaskContextSource.SOLVER_SUMMARY
+    }
+    aliases = {
+        f"EV-TASK-{context_id}": context_id for context_id in contexts
+    }
+    normalized = tuple(
+        replace(
+            record,
+            supporting_evidence=tuple(
+                dict.fromkeys(
+                    aliases.get(evidence_id, evidence_id)
+                    for evidence_id in record.supporting_evidence
+                )
+            ),
+        )
+        for record in records
+    )
+    evidence = []
+    for context_id, context in contexts.items():
+        supported = tuple(
+            record.specification_id
+            for record in normalized
+            if context_id in record.supporting_evidence
+        )
+        if not supported:
+            continue
+        evidence.append(
+            Evidence(
+                evidence_id=context_id,
+                path=context_id,
+                line_start=1,
+                line_end=max(1, context.content.count("\n") + 1),
+                description="Verbatim requirement supplied to the coding system.",
+                source_type=EvidenceSourceType.TASK,
+                authority=EvidenceAuthority.NORMATIVE,
+                quote=context.content,
+                supports=supported,
+                acquired_by="controller",
+                fresh=True,
+            )
+        )
+    return normalized, tuple(evidence)
 
 
 def _evidence_status(
@@ -219,6 +275,7 @@ def _drop_unlinked_references(
 
 
 def _merge_memory(
+    request: GuardianRequest,
     memory: SpecificationMemory,
     records: tuple[SpecificationRecord, ...],
     candidates: tuple[CandidateSpecification, ...],
@@ -229,6 +286,9 @@ def _merge_memory(
     for candidate in candidates:
         for item in candidate.supporting_evidence + candidate.counterevidence:
             evidence_by_id[item.evidence_id] = replace(item, snapshot=snapshot)
+    records, task_evidence = _materialize_task_evidence(request, records)
+    for item in task_evidence:
+        evidence_by_id[item.evidence_id] = replace(item, snapshot=snapshot)
     combined = _merge_specification_records(memory.specifications, records)
     evidence_by_id = _link_official_specifications(evidence_by_id, combined)
     combined = _drop_unlinked_references(combined, evidence_by_id)
@@ -294,6 +354,7 @@ async def aggregate(
     return (
         summary,
         _merge_memory(
+            request,
             memory,
             records,
             candidates,

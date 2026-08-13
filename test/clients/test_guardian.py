@@ -44,6 +44,7 @@ from codenib.clients.guardian import (
     TaskContextSource,
 )
 from codenib.clients.guardian.aggregation import (
+    _materialize_task_evidence,
     _merge_specification_records,
     adjudicate_records,
 )
@@ -766,6 +767,41 @@ def test_aggregation_keeps_equal_statements_under_distinct_conditions() -> None:
         distinct.condition,
     }
     assert len({item.specification_id for item in merged}) == 2
+
+
+def test_aggregation_materializes_verbatim_task_context_as_normative_evidence(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    record = replace(
+        _record(),
+        supporting_evidence=("CTX-task",),
+    )
+
+    records, evidence = _materialize_task_evidence(request, (record,))
+    adjudicated = adjudicate_records(records, evidence)
+
+    assert evidence[0].evidence_id == "CTX-task"
+    assert evidence[0].source_type is EvidenceSourceType.TASK
+    assert evidence[0].authority is EvidenceAuthority.NORMATIVE
+    assert evidence[0].quote == request.task_context[0].content
+    assert evidence[0].supports == (record.specification_id,)
+    assert adjudicated[0].status is SpecificationStatus.SUPPORTED
+
+
+def test_aggregation_canonicalizes_patch_checker_task_evidence_alias(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    record = replace(
+        _record(),
+        supporting_evidence=("EV-TASK-CTX-task",),
+    )
+
+    records, evidence = _materialize_task_evidence(request, (record,))
+
+    assert records[0].supporting_evidence == ("CTX-task",)
+    assert evidence[0].supports == (record.specification_id,)
 
 
 def test_contradictory_candidates_remain_contested() -> None:
