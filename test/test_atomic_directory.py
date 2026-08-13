@@ -4661,6 +4661,189 @@ def _call_with_interrupt_after_store(
         assert injected, f"failed to inject after {local_name} result store"
 
 
+def _call_with_interrupt_after_attribute_store(
+    function: object,
+    attribute_name: str,
+    callback: object,
+    *,
+    predicate: object | None = None,
+    error: BaseException,
+) -> None:
+    """Interrupt immediately after an acquisition owner publishes one field."""
+
+    assert callable(function)
+    assert callable(callback)
+    assert predicate is None or callable(predicate)
+    code = function.__code__
+    instructions = tuple(dis.get_instructions(function))
+    store_indexes = {
+        index
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.opname == "STORE_ATTR" and instruction.argval == attribute_name
+    }
+    assert store_indexes
+    opcode_offsets_after_store = {
+        instructions[index + 1].offset for index in store_indexes
+    }
+    store_offsets = {instructions[index].offset for index in store_indexes}
+    line_offset_candidates = {
+        instruction.offset
+        for instruction in instructions
+        if instruction.starts_line is not None
+        and instruction.offset > max(store_offsets)
+    }
+    assert line_offset_candidates
+    line_offsets_after_store = {min(line_offset_candidates)}
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
+            return trace
+        if (
+            frame.f_code is code
+            and (
+                (event == "opcode" and frame.f_lasti in opcode_offsets_after_store)
+                or (event == "line" and frame.f_lasti in line_offsets_after_store)
+            )
+            and (
+                attribute_name == "identity"
+                and getattr(frame.f_locals.get("record"), "identity", None) is not None
+                or attribute_name == "descriptor"
+                and getattr(frame.f_locals.get("record"), "descriptor", -1) >= 0
+                or attribute_name == "handle"
+                and bool(getattr(frame.f_locals.get("record"), "handle", 0))
+            )
+            and (predicate is None or predicate(frame.f_locals))
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, f"failed to inject after {attribute_name} publication"
+
+
+def _call_with_interrupt_on_source_line(
+    function: object,
+    source_fragment: str,
+    callback: object,
+    *,
+    predicate: object | None = None,
+    error: BaseException,
+) -> None:
+    """Inject before one exact source line across supported trace versions."""
+
+    assert callable(function)
+    assert callable(callback)
+    assert predicate is None or callable(predicate)
+    code = function.__code__
+    source, first_line = inspect.getsourcelines(function)
+    target_lines = {
+        first_line + offset
+        for offset, line in enumerate(source)
+        if line.strip() == source_fragment
+    }
+    assert len(target_lines) == 1
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and frame.f_code is code
+            and event == "line"
+            and frame.f_lineno in target_lines
+            and (predicate is None or predicate(frame.f_locals))
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, f"failed to inject on source line: {source_fragment}"
+
+
+def _call_with_interrupt_after_call_result_store(
+    function: object,
+    local_name: str,
+    callback: object,
+    *,
+    error: BaseException,
+) -> None:
+    """Interrupt after one CALL result is stored in a selected local."""
+
+    assert callable(function)
+    assert callable(callback)
+    code = function.__code__
+    instructions = tuple(dis.get_instructions(function))
+    store_indexes = {
+        index
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.opname == "STORE_FAST"
+        and instruction.argval == local_name
+        and any(
+            candidate.opname.startswith("CALL") for candidate in instructions[:index]
+        )
+    }
+    opcode_offsets_after_store = {
+        instructions[index + 1].offset for index in store_indexes
+    }
+    store_offsets = {instructions[index].offset for index in store_indexes}
+    line_offsets_after_store = {
+        instruction.offset
+        for instruction in instructions
+        if instruction.starts_line is not None
+        and any(instruction.offset > store_offset for store_offset in store_offsets)
+    }
+    assert store_indexes
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
+            return trace
+        if (
+            frame.f_code is code
+            and (
+                (event == "opcode" and frame.f_lasti in opcode_offsets_after_store)
+                or (event == "line" and frame.f_lasti in line_offsets_after_store)
+            )
+            and local_name in frame.f_locals
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, f"failed to inject after {local_name} result store"
+
+
 def _call_with_interrupt_at_back_edge(
     function: object,
     callback: object,
@@ -5477,6 +5660,49 @@ def test_outer_trampoline_entry_failure_retains_pending_owner(
     assert owner.closed
 
 
+def test_context_finalizer_entry_interrupt_has_bound_unwind_state() -> None:
+    primary = OSError(errno.EIO, "context body primary")
+    interruption = KeyboardInterrupt("context finalizer entry")
+    completed = False
+
+    def close_exact_owner() -> None:
+        nonlocal completed
+        completed = True
+
+    owner = atomic_module._ExactResourceCleanupOwner(
+        action=close_exact_owner,
+        complete=lambda: completed,
+    )
+
+    def invoke() -> None:
+        with atomic_module._run_context_with_cleanup_actions(
+            (
+                atomic_module._OrderedAction(
+                    label="exact cleanup also failed",
+                    action=owner.close,
+                    complete=lambda: owner.closed,
+                    incomplete_owner=owner,
+                ),
+            )
+        ):
+            raise primary
+
+    with pytest.raises(OSError) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._run_context_with_cleanup_actions.__wrapped__,
+            "locally_unwinding = context_error is not None",
+            invoke,
+            error=interruption,
+        )
+
+    assert caught.value is primary
+    assert not owner.closed
+    assert primary.publication_cleanup_owners == (owner,)
+    assert any("context finalizer entry" in note for note in _exception_notes(primary))
+    owner.close()
+    assert owner.closed
+
+
 def test_completion_aware_action_retries_real_pre_call_cancellation() -> None:
     interruption = KeyboardInterrupt("action CALL cancellation")
     completed = False
@@ -5740,13 +5966,6 @@ def test_windows_authenticated_cleanup_retries_pre_call_cancellation(
         "close_all",
         capture_owner,
     )
-    monkeypatch.setattr(
-        atomic_module._WindowsResourceOwner,
-        "record_for_cleanup",
-        lambda _owner, _handle: (_ for _ in ()).throw(
-            AssertionError("authenticated cleanup rebuilt a HANDLE plan")
-        ),
-    )
     events = _interrupt_ordered_action_before_call(
         monkeypatch,
         label=(
@@ -5992,7 +6211,7 @@ def test_windows_authenticated_cleanup_retains_owner_after_persistent_eio(
     assert api.handles == {}
 
 
-def test_windows_child_open_retains_local_owner_after_cleanup_failure(
+def test_windows_child_open_retains_exact_owner_after_cleanup_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     api = _FakeWindowsApi()
@@ -6006,7 +6225,11 @@ def test_windows_child_open_retains_local_owner_after_cleanup_failure(
     opened_handle = 0
     metadata_error = OSError(errno.EIO, "post-acquire metadata failure")
     close_error = OSError(errno.EIO, "persistent local HANDLE close failure")
-    retained_owner: atomic_module._WindowsResourceOwner | None = None
+    aggregate = atomic_module._WindowsResourceOwner(api)
+    unrelated_handle = aggregate.acquire(
+        lambda: api.create_directory_handle(Path("C:/unrelated"))
+    )
+    retained_owner: object | None = None
 
     def fail_second_metadata(handle: int) -> object:
         nonlocal metadata_calls, opened_handle
@@ -6033,18 +6256,276 @@ def test_windows_child_open_retains_local_owner_after_cleanup_failure(
                     entry,
                     desired_access=atomic_module._WINDOWS_FILE_READ_DATA,
                     expected_directory=False,
+                    resource_owner=aggregate,
                 )
 
         assert caught.value is metadata_error
         owners = metadata_error.publication_cleanup_owners
         assert len(owners) == 1
         retained_owner = owners[0]
-        assert isinstance(retained_owner, atomic_module._WindowsResourceOwner)
         assert not retained_owner.closed
         assert opened_handle in api.handles
     finally:
         if retained_owner is not None:
             retained_owner.close()
+        assert unrelated_handle in api.handles
+        aggregate.close()
+        real_close(root_handle)
+
+    assert retained_owner is not None and retained_owner.closed
+    assert api.handles == {}
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX descriptors",
+)
+def test_posix_record_cleanup_entry_interrupt_retains_original_exact_owner(
+    tmp_path: Path,
+) -> None:
+    owner = atomic_module._PosixResourceOwner()
+    child = owner.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    unrelated = owner.open(
+        tmp_path,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+    )
+    record = owner.record_for_cleanup(child)
+    primary = OSError(errno.EIO, "POSIX operation primary")
+    interruption = KeyboardInterrupt("POSIX exact cleanup helper entry")
+    retained_owner: object | None = None
+
+    try:
+        _call_with_interrupt_on_source_line(
+            atomic_module._PosixResourceOwner._run_record_cleanup_after_error,
+            "cleanup.primary_error = primary_error",
+            lambda: owner.close_record_after_error(record, primary),
+            predicate=lambda local: local["cleanup"].primary_error is primary,
+            error=interruption,
+        )
+
+        owners = primary.publication_cleanup_owners
+        assert len(owners) == 1
+        retained_owner = owners[0]
+        assert isinstance(retained_owner, atomic_module._ExactResourceCleanupOwner)
+        assert not retained_owner.closed
+        os.fstat(child)
+        os.fstat(unrelated)
+        assert any(
+            "POSIX exact cleanup helper entry" in note
+            for note in _exception_notes(primary)
+        )
+    finally:
+        if retained_owner is not None:
+            retained_owner.close()
+        os.fstat(unrelated)
+        owner.close()
+
+    assert retained_owner is not None and retained_owner.closed
+    _assert_descriptor_closed(child)
+    _assert_descriptor_closed(unrelated)
+
+
+def test_windows_child_cleanup_entry_interrupt_retains_original_exact_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    api.add_file(api.root_id, "payload.txt", b"payload")
+    root_handle = api.create_directory_handle(Path("C:/authority"))
+    entry = atomic_module._windows_find_child(api, root_handle, "payload.txt")
+    assert entry is not None
+    owner = atomic_module._WindowsResourceOwner(api)
+    unrelated = owner.acquire(lambda: api.create_directory_handle(Path("C:/unrelated")))
+    primary = OSError(errno.EIO, "Windows child metadata primary")
+    interruption = SystemExit("Windows exact cleanup helper entry")
+    real_metadata = api.metadata
+    metadata_calls = 0
+    child_handle = 0
+    retained_owner: object | None = None
+
+    def fail_child_recheck(handle: int) -> object:
+        nonlocal metadata_calls, child_handle
+        if handle != root_handle and handle != unrelated:
+            metadata_calls += 1
+            child_handle = handle
+            if metadata_calls == 2:
+                raise primary
+        return real_metadata(handle)
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(api, "metadata", fail_child_recheck)
+            with pytest.raises(OSError) as caught:
+                _call_with_interrupt_on_source_line(
+                    atomic_module._WindowsResourceOwner._run_record_cleanup_after_error,
+                    "cleanup.primary_error = primary_error",
+                    lambda: atomic_module._windows_open_child_by_id(
+                        api,
+                        root_handle,
+                        entry,
+                        desired_access=atomic_module._WINDOWS_FILE_READ_DATA,
+                        expected_directory=False,
+                        resource_owner=owner,
+                    ),
+                    predicate=lambda local: local["cleanup"].primary_error is primary,
+                    error=interruption,
+                )
+
+        assert caught.value is primary
+        owners = primary.publication_cleanup_owners
+        assert len(owners) == 1
+        retained_owner = owners[0]
+        assert isinstance(retained_owner, atomic_module._ExactResourceCleanupOwner)
+        assert not retained_owner.closed
+        assert child_handle in api.handles
+        assert unrelated in api.handles
+        assert any(
+            "Windows exact cleanup helper entry" in note
+            for note in _exception_notes(primary)
+        )
+    finally:
+        if retained_owner is not None:
+            retained_owner.close()
+        assert unrelated in api.handles
+        owner.close()
+        api.close(root_handle)
+
+    assert retained_owner is not None and retained_owner.closed
+    assert api.handles == {}
+
+
+def test_windows_owned_file_read_primary_survives_exact_close_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    api.add_file(api.root_id, "payload.txt", b"payload")
+    root_handle = api.create_directory_handle(Path("C:/authority"))
+    entry = atomic_module._windows_find_child(api, root_handle, "payload.txt")
+    assert entry is not None
+    owner = atomic_module._WindowsResourceOwner(api)
+    unrelated = owner.acquire(lambda: api.create_directory_handle(Path("C:/unrelated")))
+    read_error = OSError(errno.EIO, "Windows ownership file read failure")
+    close_error = OSError(errno.EIO, "Windows ownership file close failure")
+    real_read = api.read
+    real_close = api.close
+    child_handle = 0
+    retained_owner: object | None = None
+
+    def fail_child_read(handle: int, size: int) -> bytes:
+        nonlocal child_handle
+        if handle not in {root_handle, unrelated}:
+            child_handle = handle
+            raise read_error
+        return real_read(handle, size)
+
+    def fail_child_close(handle: int) -> None:
+        if handle == child_handle:
+            raise close_error
+        real_close(handle)
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(api, "read", fail_child_read)
+            faults.setattr(api, "close", fail_child_close)
+            with pytest.raises(OSError) as caught:
+                atomic_module._windows_owned_file_record(
+                    api,
+                    root_handle,
+                    entry,
+                    Path("C:/authority/payload.txt"),
+                    root_device=7,
+                    budget=atomic_module._OwnershipBudget(),
+                    relative="payload.txt",
+                    entry_policy=None,
+                    resource_owner=owner,
+                )
+
+        assert caught.value is read_error
+        owners = read_error.publication_cleanup_owners
+        assert len(owners) == 1
+        retained_owner = owners[0]
+        assert isinstance(retained_owner, atomic_module._ExactResourceCleanupOwner)
+        assert not retained_owner.closed
+        assert child_handle in api.handles
+        assert unrelated in api.handles
+        assert any(
+            "Windows ownership file close failure" in note
+            for note in _exception_notes(read_error)
+        )
+    finally:
+        if retained_owner is not None:
+            retained_owner.close()
+        assert unrelated in api.handles
+        owner.close()
+        real_close(root_handle)
+
+    assert retained_owner is not None and retained_owner.closed
+    assert api.handles == {}
+
+
+def test_windows_owned_directory_scan_primary_survives_exact_close_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    child_id = api.add_directory(api.root_id, "nested")
+    root_handle = api.create_directory_handle(Path("C:/authority"))
+    owner = atomic_module._WindowsResourceOwner(api)
+    unrelated = owner.acquire(lambda: api.create_directory_handle(Path("C:/unrelated")))
+    scan_error = OSError(errno.EIO, "Windows ownership directory scan failure")
+    close_error = OSError(errno.EIO, "Windows ownership directory close failure")
+    real_iter = api.iter_directory
+    real_close = api.close
+    child_handle = 0
+    retained_owner: object | None = None
+
+    def fail_child_scan(handle: int):
+        nonlocal child_handle
+        if api.handles[handle] == child_id:
+            child_handle = handle
+            raise scan_error
+        yield from real_iter(handle)
+
+    def fail_child_close(handle: int) -> None:
+        if handle == child_handle:
+            raise close_error
+        real_close(handle)
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(api, "iter_directory", fail_child_scan)
+            faults.setattr(api, "close", fail_child_close)
+            with pytest.raises(OSError) as caught:
+                atomic_module._scan_windows_owned_directory(
+                    api,
+                    root_handle,
+                    Path("C:/authority"),
+                    (),
+                    root_device=7,
+                    budget=atomic_module._OwnershipBudget(),
+                    inventory=[],
+                    file_records=[],
+                    entry_identities=[],
+                    entry_policy=None,
+                    depth=0,
+                    resource_owner=owner,
+                )
+
+        assert caught.value is scan_error
+        owners = scan_error.publication_cleanup_owners
+        assert len(owners) == 1
+        retained_owner = owners[0]
+        assert isinstance(retained_owner, atomic_module._ExactResourceCleanupOwner)
+        assert not retained_owner.closed
+        assert child_handle in api.handles
+        assert unrelated in api.handles
+        assert any(
+            "Windows ownership directory close failure" in note
+            for note in _exception_notes(scan_error)
+        )
+    finally:
+        if retained_owner is not None:
+            retained_owner.close()
+        assert unrelated in api.handles
+        owner.close()
         real_close(root_handle)
 
     assert retained_owner is not None and retained_owner.closed
@@ -6664,14 +7145,18 @@ def test_reopen_interrupt_after_callback_result_store_runs_post_capture(
     not sys.platform.startswith("linux"),
     reason="requires Linux descriptor semantics",
 )
-def test_posix_owner_recovers_interrupt_after_open_result_store(tmp_path: Path) -> None:
+@pytest.mark.parametrize("attribute", ["descriptor", "identity"])
+def test_posix_owner_recovers_interrupt_after_open_result_store(
+    tmp_path: Path,
+    attribute: str,
+) -> None:
     owner = atomic_module._PosixResourceOwner()
-    error = KeyboardInterrupt("after os.open result store")
+    error = KeyboardInterrupt(f"after owned {attribute} publication")
 
     with pytest.raises(KeyboardInterrupt) as caught:
-        _call_with_interrupt_after_store(
+        _call_with_interrupt_after_attribute_store(
             atomic_module._PosixResourceOwner.open,
-            "descriptor",
+            attribute,
             lambda: owner.open(
                 tmp_path,
                 os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
@@ -6681,6 +7166,322 @@ def test_posix_owner_recovers_interrupt_after_open_result_store(tmp_path: Path) 
 
     assert caught.value is error
     assert owner.closed
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires POSIX descriptor semantics",
+)
+@pytest.mark.parametrize("operation", ["open", "duplicate"])
+def test_posix_owner_publishes_record_before_native_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    owner = atomic_module._PosixResourceOwner()
+    primary = KeyboardInterrupt("record construction interrupted")
+    construction_calls = 0
+    acquired: list[int] = []
+    real_open = atomic_module.os.open
+    real_dup = atomic_module.os.dup
+    source = -1
+
+    def fail_record_construction(_descriptor: int) -> object:
+        nonlocal construction_calls
+        construction_calls += 1
+        raise primary
+
+    def capture_open(*args: object, **kwargs: object) -> int:
+        descriptor = real_open(*args, **kwargs)
+        acquired.append(descriptor)
+        return descriptor
+
+    def capture_duplicate(descriptor: int) -> int:
+        duplicate = real_dup(descriptor)
+        acquired.append(duplicate)
+        return duplicate
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_PosixDescriptorRecord",
+        fail_record_construction,
+    )
+    try:
+        if operation == "open":
+            monkeypatch.setattr(atomic_module.os, "open", capture_open)
+
+            def callback() -> int:
+                return owner.open(
+                    tmp_path,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                )
+
+        else:
+            source = real_open(
+                tmp_path,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            )
+            monkeypatch.setattr(atomic_module.os, "dup", capture_duplicate)
+
+            def callback() -> int:
+                return owner.duplicate(source)
+
+        with pytest.raises(KeyboardInterrupt) as caught:
+            callback()
+
+        assert caught.value is primary
+        assert construction_calls == 1
+        assert acquired == []
+        assert owner.closed
+    finally:
+        for descriptor in acquired:
+            os.close(descriptor)
+        if source >= 0:
+            os.close(source)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires POSIX descriptor semantics",
+)
+@pytest.mark.parametrize("operation", ["open", "duplicate"])
+def test_posix_acquisition_cleanup_retains_primary_and_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    owner = atomic_module._PosixResourceOwner()
+    primary = OSError(errno.EIO, "descriptor identity binding failed")
+    cleanup_interruption = KeyboardInterrupt("descriptor cleanup was interrupted")
+    real_identity = atomic_module._resource_owner_identity
+    identity_calls = 0
+    source = -1
+
+    def fail_binding_then_cleanup(metadata: object) -> tuple[int, ...]:
+        nonlocal identity_calls
+        identity_calls += 1
+        if identity_calls == 1:
+            raise primary
+        raise cleanup_interruption
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_resource_owner_identity",
+        fail_binding_then_cleanup,
+    )
+    try:
+        if operation == "open":
+
+            def callback() -> int:
+                return owner.open(
+                    tmp_path,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                )
+
+        else:
+            source = os.open(
+                tmp_path,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            )
+
+            def callback() -> int:
+                return owner.duplicate(source)
+
+        with pytest.raises(OSError) as caught:
+            callback()
+
+        assert caught.value is primary
+        assert identity_calls > 1
+        retained = BaseException.__getattribute__(
+            primary,
+            "publication_cleanup_owners",
+        )
+        assert len(retained) == 1
+        assert not retained[0].closed
+        live = [
+            record.descriptor for record in owner._records if record.descriptor >= 0
+        ]
+        assert len(live) == 1
+        os.fstat(live[0])
+    finally:
+        monkeypatch.setattr(
+            atomic_module,
+            "_resource_owner_identity",
+            real_identity,
+        )
+        for retry_owner in BaseException.__getattribute__(
+            primary,
+            "publication_cleanup_owners",
+        ):
+            retry_owner.close()
+        if source >= 0:
+            os.close(source)
+
+    assert owner.closed
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires POSIX descriptor semantics",
+)
+@pytest.mark.parametrize("operation", ["open", "duplicate"])
+def test_posix_acquisition_cleanup_contains_result_store_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    owner = atomic_module._PosixResourceOwner()
+    primary = OSError(errno.EIO, "descriptor identity binding failed")
+    close_error = OSError(errno.EIO, "persistent descriptor close failure")
+    interruption = KeyboardInterrupt("after descriptor close result store")
+    real_identity = atomic_module._resource_owner_identity
+    real_close = atomic_module.os.close
+    identity_calls = 0
+    source = -1
+
+    def fail_initial_identity(metadata: object) -> tuple[int, ...]:
+        nonlocal identity_calls
+        identity_calls += 1
+        if identity_calls == 1:
+            raise primary
+        return real_identity(metadata)
+
+    def fail_owned_close(descriptor: int) -> None:
+        if any(record.descriptor == descriptor for record in owner._records):
+            raise close_error
+        real_close(descriptor)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_resource_owner_identity",
+        fail_initial_identity,
+    )
+    monkeypatch.setattr(atomic_module.os, "close", fail_owned_close)
+    try:
+        if operation == "open":
+
+            def callback() -> int:
+                return owner.open(
+                    tmp_path,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                )
+
+        else:
+            source = os.open(
+                tmp_path,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            )
+
+            def callback() -> int:
+                return owner.duplicate(source)
+
+        with pytest.raises(OSError) as caught:
+            _call_with_interrupt_after_call_result_store(
+                atomic_module._PosixResourceOwner.close_record,
+                "close_error",
+                callback,
+                error=interruption,
+            )
+
+        assert caught.value is primary
+        retained = BaseException.__getattribute__(
+            primary,
+            "publication_cleanup_owners",
+        )
+        assert len(retained) == 1
+        live = [
+            record.descriptor for record in owner._records if record.descriptor >= 0
+        ]
+        assert len(live) == 1
+        os.fstat(live[0])
+    finally:
+        monkeypatch.setattr(atomic_module.os, "close", real_close)
+        monkeypatch.setattr(
+            atomic_module,
+            "_resource_owner_identity",
+            real_identity,
+        )
+        for retry_owner in BaseException.__getattribute__(
+            primary,
+            "publication_cleanup_owners",
+        ):
+            retry_owner.close()
+        if source >= 0:
+            real_close(source)
+
+    assert owner.closed
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires POSIX descriptor semantics",
+)
+@pytest.mark.parametrize("operation", ["open", "duplicate"])
+def test_posix_acquisition_cleanup_contains_runner_entry_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    owner = atomic_module._PosixResourceOwner()
+    primary = OSError(errno.EIO, "descriptor identity binding failed")
+    interruption = KeyboardInterrupt("descriptor cleanup runner entry")
+    real_identity = atomic_module._resource_owner_identity
+    source = -1
+    identity_calls = 0
+
+    def fail_initial_identity(metadata: object) -> tuple[int, ...]:
+        nonlocal identity_calls
+        identity_calls += 1
+        if identity_calls == 1:
+            raise primary
+        return real_identity(metadata)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_resource_owner_identity",
+        fail_initial_identity,
+    )
+    observed = _interrupt_ordered_runner_entries(
+        monkeypatch,
+        errors=(interruption,),
+    )
+    try:
+        if operation == "open":
+
+            def callback() -> int:
+                return owner.open(
+                    tmp_path,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                )
+
+        else:
+            source = os.open(
+                tmp_path,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            )
+
+            def callback() -> int:
+                return owner.duplicate(source)
+
+        with pytest.raises(OSError) as caught:
+            callback()
+
+        assert caught.value is primary
+        assert observed == [interruption]
+        assert owner.closed
+        assert any(
+            "descriptor cleanup runner entry" in note
+            for note in _exception_notes(primary)
+        )
+    finally:
+        monkeypatch.setattr(
+            atomic_module,
+            "_resource_owner_identity",
+            real_identity,
+        )
+        owner.close()
+        if source >= 0:
+            os.close(source)
 
 
 @pytest.mark.skipif(
@@ -6774,7 +7575,7 @@ def test_posix_factory_recovers_interrupt_in_child_open_registration(
     error = SystemExit("after child descriptor store")
 
     with pytest.raises(SystemExit) as caught:
-        _call_with_interrupt_after_store(
+        _call_with_interrupt_after_attribute_store(
             atomic_module._PosixResourceOwner.open,
             "descriptor",
             lambda: atomic_module._open_posix_publication_authority(
@@ -6793,15 +7594,19 @@ def test_posix_factory_recovers_interrupt_in_child_open_registration(
     not sys.platform.startswith("linux"),
     reason="requires Linux descriptor semantics",
 )
-def test_posix_owner_recovers_interrupt_after_dup_result_store(tmp_path: Path) -> None:
+@pytest.mark.parametrize("attribute", ["descriptor", "identity"])
+def test_posix_owner_recovers_interrupt_after_dup_result_store(
+    tmp_path: Path,
+    attribute: str,
+) -> None:
     descriptor = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     owner = atomic_module._PosixResourceOwner()
-    error = KeyboardInterrupt("after os.dup result store")
+    error = KeyboardInterrupt(f"after owned {attribute} publication")
     try:
         with pytest.raises(KeyboardInterrupt) as caught:
-            _call_with_interrupt_after_store(
+            _call_with_interrupt_after_attribute_store(
                 atomic_module._PosixResourceOwner.duplicate,
-                "duplicate",
+                attribute,
                 lambda: owner.duplicate(descriptor),
                 error=error,
             )
@@ -7418,15 +8223,18 @@ def test_windows_factory_recovers_interrupt_after_registered_handle_return(
         api.close(external)
 
 
-def test_windows_owner_recovers_interrupt_after_handle_result_store() -> None:
+@pytest.mark.parametrize("attribute", ["handle", "identity"])
+def test_windows_owner_recovers_interrupt_after_handle_result_store(
+    attribute: str,
+) -> None:
     api = _FakeWindowsApi()
     owner = atomic_module._WindowsResourceOwner(api)
-    error = KeyboardInterrupt("after raw HANDLE result store")
+    error = KeyboardInterrupt(f"after owned {attribute} publication")
 
     with pytest.raises(KeyboardInterrupt) as caught:
-        _call_with_interrupt_after_store(
+        _call_with_interrupt_after_attribute_store(
             atomic_module._WindowsResourceOwner.acquire,
-            "handle",
+            attribute,
             lambda: owner.acquire(
                 lambda: api.create_directory_handle(Path("C:/authority"))
             ),
@@ -7435,6 +8243,208 @@ def test_windows_owner_recovers_interrupt_after_handle_result_store() -> None:
 
     assert caught.value is error
     assert owner.closed
+    assert api.handles == {}
+
+
+def test_windows_owner_publishes_record_before_native_acquisition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    owner = atomic_module._WindowsResourceOwner(api)
+    primary = KeyboardInterrupt("record construction interrupted")
+    construction_calls = 0
+    acquisition_calls = 0
+
+    def fail_record_construction(_handle: int) -> object:
+        nonlocal construction_calls
+        construction_calls += 1
+        raise primary
+
+    def acquire_handle() -> int:
+        nonlocal acquisition_calls
+        acquisition_calls += 1
+        return api.create_directory_handle(Path("C:/authority"))
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_WindowsHandleRecord",
+        fail_record_construction,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        owner.acquire(acquire_handle)
+
+    assert caught.value is primary
+    assert construction_calls == 1
+    assert acquisition_calls == 0
+    assert owner.closed
+    assert api.handles == {}
+
+
+def test_windows_acquisition_cleanup_retains_primary_and_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    owner = atomic_module._WindowsResourceOwner(api)
+    primary = OSError(errno.EIO, "HANDLE identity binding failed")
+    cleanup_interruption = SystemExit("HANDLE cleanup was interrupted")
+    real_identity = atomic_module._resource_owner_identity
+    identity_calls = 0
+
+    def fail_binding_then_cleanup(metadata: object) -> tuple[int, ...]:
+        nonlocal identity_calls
+        identity_calls += 1
+        if identity_calls == 1:
+            raise primary
+        raise cleanup_interruption
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_resource_owner_identity",
+        fail_binding_then_cleanup,
+    )
+    try:
+        with pytest.raises(OSError) as caught:
+            owner.acquire(lambda: api.create_directory_handle(Path("C:/authority")))
+
+        assert caught.value is primary
+        assert identity_calls > 1
+        retained = BaseException.__getattribute__(
+            primary,
+            "publication_cleanup_owners",
+        )
+        assert len(retained) == 1
+        assert not retained[0].closed
+        live = [record.handle for record in owner._records if record.handle]
+        assert len(live) == 1
+        assert live[0] in api.handles
+    finally:
+        monkeypatch.setattr(
+            atomic_module,
+            "_resource_owner_identity",
+            real_identity,
+        )
+        for retry_owner in BaseException.__getattribute__(
+            primary,
+            "publication_cleanup_owners",
+        ):
+            retry_owner.close()
+
+    assert owner.closed
+    assert api.handles == {}
+
+
+def test_windows_acquisition_cleanup_contains_result_store_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    owner = atomic_module._WindowsResourceOwner(api)
+    primary = OSError(errno.EIO, "HANDLE identity binding failed")
+    close_error = OSError(errno.EIO, "persistent HANDLE close failure")
+    interruption = SystemExit("after HANDLE close result store")
+    real_identity = atomic_module._resource_owner_identity
+    real_close = api.close
+    identity_calls = 0
+
+    def fail_initial_identity(metadata: object) -> tuple[int, ...]:
+        nonlocal identity_calls
+        identity_calls += 1
+        if identity_calls == 1:
+            raise primary
+        return real_identity(metadata)
+
+    def fail_owned_close(handle: int) -> None:
+        if any(record.handle == handle for record in owner._records):
+            raise close_error
+        real_close(handle)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_resource_owner_identity",
+        fail_initial_identity,
+    )
+    monkeypatch.setattr(api, "close", fail_owned_close)
+    try:
+        with pytest.raises(OSError) as caught:
+            _call_with_interrupt_after_call_result_store(
+                atomic_module._WindowsResourceOwner.close_record,
+                "close_error",
+                lambda: owner.acquire(
+                    lambda: api.create_directory_handle(Path("C:/authority"))
+                ),
+                error=interruption,
+            )
+
+        assert caught.value is primary
+        retained = BaseException.__getattribute__(
+            primary,
+            "publication_cleanup_owners",
+        )
+        assert len(retained) == 1
+        live = [record.handle for record in owner._records if record.handle]
+        assert len(live) == 1
+        assert live[0] in api.handles
+    finally:
+        monkeypatch.setattr(api, "close", real_close)
+        monkeypatch.setattr(
+            atomic_module,
+            "_resource_owner_identity",
+            real_identity,
+        )
+        for retry_owner in BaseException.__getattribute__(
+            primary,
+            "publication_cleanup_owners",
+        ):
+            retry_owner.close()
+
+    assert owner.closed
+    assert api.handles == {}
+
+
+def test_windows_acquisition_cleanup_contains_runner_entry_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    owner = atomic_module._WindowsResourceOwner(api)
+    primary = OSError(errno.EIO, "HANDLE identity binding failed")
+    interruption = SystemExit("HANDLE cleanup runner entry")
+    real_identity = atomic_module._resource_owner_identity
+    identity_calls = 0
+
+    def fail_initial_identity(metadata: object) -> tuple[int, ...]:
+        nonlocal identity_calls
+        identity_calls += 1
+        if identity_calls == 1:
+            raise primary
+        return real_identity(metadata)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_resource_owner_identity",
+        fail_initial_identity,
+    )
+    observed = _interrupt_ordered_runner_entries(
+        monkeypatch,
+        errors=(interruption,),
+    )
+    try:
+        with pytest.raises(OSError) as caught:
+            owner.acquire(lambda: api.create_directory_handle(Path("C:/authority")))
+
+        assert caught.value is primary
+        assert observed == [interruption]
+        assert owner.closed
+        assert any(
+            "HANDLE cleanup runner entry" in note for note in _exception_notes(primary)
+        )
+    finally:
+        monkeypatch.setattr(
+            atomic_module,
+            "_resource_owner_identity",
+            real_identity,
+        )
+        owner.close()
+
     assert api.handles == {}
 
 

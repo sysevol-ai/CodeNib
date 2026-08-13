@@ -928,6 +928,8 @@ def _run_ordered_actions(state: _OrderedActionState) -> None:
 @contextmanager
 def _run_context_with_cleanup_actions(
     cleanup_actions: tuple[_OrderedActionInput, ...],
+    *,
+    cleanup_on_success: bool = True,
 ) -> Iterator[None]:
     """Run every cleanup action without replacing a context-body primary."""
 
@@ -948,16 +950,23 @@ def _run_context_with_cleanup_actions(
     # context body entered while that unrelated exception is being handled.
     ambient_error = sys.exc_info()[1]
     context_error: BaseException | None = None
+    # These values are read after the protected finalizer boundary.  Publish
+    # them before entering the caller's body so an exception injected at the
+    # first finalizer opcode can never expose an unbound local.
+    locally_unwinding = False
+    primary_error: BaseException | None = None
     try:
         yield
     except BaseException as error:  # noqa: B036 - preserve exact local primary
         context_error = error
+        failures.primary_error = error
+        failures.protect_pending_owners()
         raise
     finally:
-        locally_unwinding = context_error is not None
-        primary_error = context_error
-        failures.primary_error = primary_error
         try:
+            locally_unwinding = context_error is not None
+            primary_error = context_error
+            failures.primary_error = primary_error
             active_error = sys.exc_info()[1]
             locally_unwinding = context_error is not None or (
                 active_error is not None and active_error is not ambient_error
@@ -965,9 +974,10 @@ def _run_context_with_cleanup_actions(
             if primary_error is None and locally_unwinding:
                 primary_error = active_error
             failures.primary_error = primary_error
-            failures.protect_pending_owners()
-            _run_ordered_actions(failures)
-            _prune_publication_cleanup_owners(failures.primary_error)
+            if cleanup_on_success or locally_unwinding:
+                failures.protect_pending_owners()
+                _run_ordered_actions(failures)
+                _prune_publication_cleanup_owners(failures.primary_error)
         except BaseException as boundary_error:  # noqa: B036 - retain recovery
             failures.retain_once(
                 "outer-trampoline-entry",
@@ -1073,6 +1083,21 @@ class _PosixDescriptorRecord:
     identity: tuple[int, ...] | None = None
 
 
+@dataclass(slots=True)
+class _ExactResourceCleanupOwner:
+    """Retry one exact resource record without sweeping its aggregate owner."""
+
+    action: Callable[[], None]
+    complete: Callable[[], bool]
+
+    @property
+    def closed(self) -> bool:
+        return self.complete() is True
+
+    def close(self) -> None:
+        self.action()
+
+
 class _PosixResourceOwner:
     """Track POSIX descriptors without removing ownership before close.
 
@@ -1117,73 +1142,53 @@ class _PosixResourceOwner:
         *,
         dir_fd: int | None = None,
     ) -> int:
-        descriptor = -1
-        record: _PosixDescriptorRecord | None = None
-        try:
+        # Publish an empty owner record before the native acquisition.  The
+        # only remaining unowned edge is the documented native-return to first
+        # STORE_ATTR boundary; record construction and registration can no
+        # longer fail after a live descriptor already exists.
+        record = _PosixDescriptorRecord(-1)
+        self._records.append(record)
+        exact_owner = self._exact_record_cleanup_owner(record)
+
+        with _run_context_with_cleanup_actions(
+            (
+                _OrderedAction(
+                    label="descriptor acquisition cleanup also failed",
+                    action=exact_owner.close,
+                    complete=lambda: exact_owner.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=exact_owner,
+                ),
+            ),
+            cleanup_on_success=False,
+        ):
             if dir_fd is None:
-                descriptor = os.open(path, flags, mode)
+                record.descriptor = os.open(path, flags, mode)
             else:
-                descriptor = os.open(path, flags, mode, dir_fd=dir_fd)
-            record = _PosixDescriptorRecord(descriptor)
-            self._records.append(record)
-            record.identity = _resource_owner_identity(os.fstat(descriptor))
-            return descriptor
-        except BaseException as primary_error:
-            if descriptor >= 0:
-                if record is None:
-                    record = _PosixDescriptorRecord(descriptor)
-                if not any(candidate is record for candidate in self._records):
-                    try:
-                        self._records.append(record)
-                    except BaseException as registration_error:  # noqa: B036
-                        _annotate_secondary_error(
-                            primary_error,
-                            "descriptor ownership registration also failed",
-                            registration_error,
-                        )
-                        close_error = self._close_record(record)
-                        if close_error is not None:
-                            _annotate_secondary_error(
-                                primary_error,
-                                "unregistered descriptor cleanup also failed",
-                                close_error,
-                            )
-                        raise primary_error
-                self.close_record_after_error(record, primary_error)
-            raise
+                record.descriptor = os.open(path, flags, mode, dir_fd=dir_fd)
+            record.identity = _resource_owner_identity(os.fstat(record.descriptor))
+            return record.descriptor
 
     def duplicate(self, descriptor: int) -> int:
-        duplicate = -1
-        record: _PosixDescriptorRecord | None = None
-        try:
-            duplicate = os.dup(descriptor)
-            record = _PosixDescriptorRecord(duplicate)
-            self._records.append(record)
-            record.identity = _resource_owner_identity(os.fstat(duplicate))
-            return duplicate
-        except BaseException as primary_error:
-            if duplicate >= 0:
-                if record is None:
-                    record = _PosixDescriptorRecord(duplicate)
-                if not any(candidate is record for candidate in self._records):
-                    try:
-                        self._records.append(record)
-                    except BaseException as registration_error:  # noqa: B036
-                        _annotate_secondary_error(
-                            primary_error,
-                            "descriptor ownership registration also failed",
-                            registration_error,
-                        )
-                        close_error = self._close_record(record)
-                        if close_error is not None:
-                            _annotate_secondary_error(
-                                primary_error,
-                                "unregistered descriptor cleanup also failed",
-                                close_error,
-                            )
-                        raise primary_error
-                self.close_record_after_error(record, primary_error)
-            raise
+        record = _PosixDescriptorRecord(-1)
+        self._records.append(record)
+        exact_owner = self._exact_record_cleanup_owner(record)
+
+        with _run_context_with_cleanup_actions(
+            (
+                _OrderedAction(
+                    label="descriptor duplication cleanup also failed",
+                    action=exact_owner.close,
+                    complete=lambda: exact_owner.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=exact_owner,
+                ),
+            ),
+            cleanup_on_success=False,
+        ):
+            record.descriptor = os.dup(descriptor)
+            record.identity = _resource_owner_identity(os.fstat(record.descriptor))
+            return record.descriptor
 
     def close_descriptor(self, descriptor: int) -> None:
         record = self._record_for(descriptor)
@@ -1209,15 +1214,81 @@ class _PosixResourceOwner:
         record: _PosixDescriptorRecord,
         primary_error: BaseException,
     ) -> None:
-        close_error = self._close_record(record)
-        if close_error is not None:
-            _annotate_secondary_error(
-                primary_error,
-                "descriptor cleanup also failed",
-                close_error,
+        self._run_record_cleanup_after_error(
+            self._record_cleanup_state(record, primary_error),
+            primary_error,
+        )
+
+    def _record_cleanup_complete(self, record: _PosixDescriptorRecord) -> bool:
+        descriptor = record.descriptor
+        if descriptor < 0:
+            return True
+        try:
+            observed = os.fstat(descriptor)
+        except OSError as probe_error:
+            if probe_error.errno == errno.EBADF:
+                record.descriptor = -1
+                return True
+            return False
+        except BaseException:  # noqa: B036 - uncertain ownership stays retained
+            return False
+        try:
+            observed_identity = _resource_owner_identity(observed)
+        except BaseException:  # noqa: B036 - uncertain ownership stays retained
+            return False
+        if record.identity is not None and observed_identity != record.identity:
+            record.descriptor = -1
+            return True
+        return False
+
+    def _record_cleanup_state(
+        self,
+        record: _PosixDescriptorRecord,
+        primary_error: BaseException,
+    ) -> _OrderedActionState:
+        exact_owner = self._exact_record_cleanup_owner(record)
+        cleanup = _OrderedActionState(
+            actions=(
+                _OrderedAction(
+                    label="descriptor cleanup also failed",
+                    action=exact_owner.close,
+                    complete=lambda: exact_owner.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=exact_owner,
+                ),
+            ),
+            iteration_failure_label="descriptor cleanup iteration also failed",
+            primary_error=primary_error,
+        )
+        cleanup.protect_pending_owners()
+        return cleanup
+
+    def _exact_record_cleanup_owner(
+        self,
+        record: _PosixDescriptorRecord,
+    ) -> _ExactResourceCleanupOwner:
+        return _ExactResourceCleanupOwner(
+            action=partial(self.close_record, record),
+            complete=partial(self._record_cleanup_complete, record),
+        )
+
+    @staticmethod
+    def _run_record_cleanup_after_error(
+        cleanup: _OrderedActionState,
+        primary_error: BaseException,
+    ) -> None:
+        try:
+            cleanup.primary_error = primary_error
+            cleanup.protect_pending_owners()
+            _run_ordered_actions(cleanup)
+            _prune_publication_cleanup_owners(primary_error)
+        except BaseException as boundary_error:  # noqa: B036 - keep first
+            cleanup.retain_once(
+                "outer-trampoline-entry",
+                cleanup.iteration_failure_label,
+                boundary_error,
             )
-            if record.descriptor >= 0:
-                _attach_publication_cleanup_owner(primary_error, self)
+            cleanup.protect_pending_owners()
 
     def close_all(self) -> None:
         primary_error: BaseException | None = None
@@ -1360,38 +1431,29 @@ class _WindowsResourceOwner:
         return all(record.handle == 0 for record in self._records)
 
     def acquire(self, callback: Callable[[], int]) -> int:
-        handle = 0
-        record: _WindowsHandleRecord | None = None
-        try:
-            handle = callback()
-            record = _WindowsHandleRecord(handle)
-            self._records.append(record)
-            metadata = self._api.metadata(handle)
+        # As on POSIX, publish the empty record before invoking the native
+        # acquisition callback so Python-side construction/registration cannot
+        # orphan an already returned HANDLE.
+        record = _WindowsHandleRecord(0)
+        self._records.append(record)
+        exact_owner = self._exact_record_cleanup_owner(record)
+
+        with _run_context_with_cleanup_actions(
+            (
+                _OrderedAction(
+                    label="Windows HANDLE acquisition cleanup also failed",
+                    action=exact_owner.close,
+                    complete=lambda: exact_owner.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=exact_owner,
+                ),
+            ),
+            cleanup_on_success=False,
+        ):
+            record.handle = callback()
+            metadata = self._api.metadata(record.handle)
             record.identity = _resource_owner_identity(metadata)
-            return handle
-        except BaseException as primary_error:
-            if handle:
-                if record is None:
-                    record = _WindowsHandleRecord(handle)
-                if not any(candidate is record for candidate in self._records):
-                    try:
-                        self._records.append(record)
-                    except BaseException as registration_error:  # noqa: B036
-                        _annotate_secondary_error(
-                            primary_error,
-                            "HANDLE ownership registration also failed",
-                            registration_error,
-                        )
-                        close_error = self._close_record(record)
-                        if close_error is not None:
-                            _annotate_secondary_error(
-                                primary_error,
-                                "unregistered HANDLE cleanup also failed",
-                                close_error,
-                            )
-                        raise primary_error
-                self.close_record_after_error(record, primary_error)
-            raise
+            return record.handle
 
     def bind_identity(self, handle: int, metadata: _WindowsHandleMetadata) -> None:
         record = self._record_for(handle)
@@ -1432,15 +1494,84 @@ class _WindowsResourceOwner:
         record: _WindowsHandleRecord,
         primary_error: BaseException,
     ) -> None:
-        close_error = self._close_record(record)
-        if close_error is not None:
-            _annotate_secondary_error(
-                primary_error,
-                "Windows HANDLE cleanup also failed",
-                close_error,
+        self._run_record_cleanup_after_error(
+            self._record_cleanup_state(record, primary_error),
+            primary_error,
+        )
+
+    def _record_cleanup_complete(self, record: _WindowsHandleRecord) -> bool:
+        handle = record.handle
+        if not handle:
+            return True
+        try:
+            observed = self._api.metadata(handle)
+        except KeyError:
+            record.handle = 0
+            return True
+        except OSError as probe_error:
+            if _windows_handle_is_invalid_error(probe_error):
+                record.handle = 0
+                return True
+            return False
+        except BaseException:  # noqa: B036 - uncertain ownership stays retained
+            return False
+        try:
+            observed_identity = _resource_owner_identity(observed)
+        except BaseException:  # noqa: B036 - uncertain ownership stays retained
+            return False
+        if record.identity is not None and observed_identity != record.identity:
+            record.handle = 0
+            return True
+        return False
+
+    def _record_cleanup_state(
+        self,
+        record: _WindowsHandleRecord,
+        primary_error: BaseException,
+    ) -> _OrderedActionState:
+        exact_owner = self._exact_record_cleanup_owner(record)
+        cleanup = _OrderedActionState(
+            actions=(
+                _OrderedAction(
+                    label="Windows HANDLE cleanup also failed",
+                    action=exact_owner.close,
+                    complete=lambda: exact_owner.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=exact_owner,
+                ),
+            ),
+            iteration_failure_label=("Windows HANDLE cleanup iteration also failed"),
+            primary_error=primary_error,
+        )
+        cleanup.protect_pending_owners()
+        return cleanup
+
+    def _exact_record_cleanup_owner(
+        self,
+        record: _WindowsHandleRecord,
+    ) -> _ExactResourceCleanupOwner:
+        return _ExactResourceCleanupOwner(
+            action=partial(self.close_record, record),
+            complete=partial(self._record_cleanup_complete, record),
+        )
+
+    @staticmethod
+    def _run_record_cleanup_after_error(
+        cleanup: _OrderedActionState,
+        primary_error: BaseException,
+    ) -> None:
+        try:
+            cleanup.primary_error = primary_error
+            cleanup.protect_pending_owners()
+            _run_ordered_actions(cleanup)
+            _prune_publication_cleanup_owners(primary_error)
+        except BaseException as boundary_error:  # noqa: B036 - keep first
+            cleanup.retain_once(
+                "outer-trampoline-entry",
+                cleanup.iteration_failure_label,
+                boundary_error,
             )
-            if record.handle:
-                _attach_publication_cleanup_owner(primary_error, self)
+            cleanup.protect_pending_owners()
 
     def close_all(self) -> None:
         primary_error: BaseException | None = None
@@ -2738,7 +2869,7 @@ def _windows_open_child_by_id(
     *,
     desired_access: int,
     expected_directory: bool | None,
-    resource_owner: _WindowsResourceOwner | None = None,
+    resource_owner: _WindowsResourceOwner,
 ) -> tuple[int, _WindowsHandleMetadata]:
     if not entry.file_id:
         raise RuntimeError("Windows directory entry has no reliable FILE_ID")
@@ -2747,10 +2878,7 @@ def _windows_open_child_by_id(
     is_directory = bool(entry.attributes & _WINDOWS_FILE_ATTRIBUTE_DIRECTORY)
     if expected_directory is not None and is_directory != expected_directory:
         raise ValueError("Windows publication child has the wrong object type")
-    selected_owner = (
-        _WindowsResourceOwner(api) if resource_owner is None else resource_owner
-    )
-    handle = selected_owner.acquire(
+    handle = resource_owner.acquire(
         lambda: api.open_by_id(
             parent_handle,
             entry.file_id,
@@ -2758,6 +2886,7 @@ def _windows_open_child_by_id(
             is_directory=is_directory,
         )
     )
+    record = resource_owner.record_for_cleanup(handle)
     try:
         metadata = api.metadata(handle)
         if (
@@ -2769,21 +2898,13 @@ def _windows_open_child_by_id(
             or metadata.st_file_attributes & _WINDOWS_FILE_ATTRIBUTE_REPARSE_POINT
         ):
             raise RuntimeError("Windows FILE_ID child changed while it was opened")
-        selected_owner.bind_identity(handle, metadata)
-        if resource_owner is None:
-            selected_owner.release(handle)
+        resource_owner.bind_identity(handle, metadata)
         return handle, metadata
     except BaseException as primary_error:
-        try:
-            selected_owner.close_handle(handle)
-        except BaseException as close_error:  # noqa: B036 - keep primary
-            _annotate_secondary_error(
-                primary_error,
-                "Windows child HANDLE cleanup also failed",
-                close_error,
-            )
-        if selected_owner._record_for(handle) is not None:
-            _attach_publication_cleanup_owner(primary_error, selected_owner)
+        resource_owner._run_record_cleanup_after_error(
+            resource_owner._record_cleanup_state(record, primary_error),
+            primary_error,
+        )
         raise
 
 
@@ -2797,6 +2918,7 @@ def _windows_owned_file_record(
     budget: _OwnershipBudget,
     relative: str,
     entry_policy: DirectoryEntryPolicy | None,
+    resource_owner: _WindowsResourceOwner,
 ) -> tuple[int, str, tuple[int, ...]]:
     handle, opened = _windows_open_child_by_id(
         api,
@@ -2806,8 +2928,21 @@ def _windows_owned_file_record(
         | _WINDOWS_FILE_READ_ATTRIBUTES
         | _WINDOWS_SYNCHRONIZE,
         expected_directory=False,
+        resource_owner=resource_owner,
     )
-    try:
+    record = resource_owner.record_for_cleanup(handle)
+    exact_owner = resource_owner._exact_record_cleanup_owner(record)
+    with _run_context_with_cleanup_actions(
+        (
+            _OrderedAction(
+                label="Windows ownership file HANDLE cleanup also failed",
+                action=exact_owner.close,
+                complete=lambda: exact_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=exact_owner,
+            ),
+        )
+    ):
         if opened.st_dev != root_device:
             raise RuntimeError(f"directory ownership crosses a volume: {path}")
         size = opened.st_size
@@ -2831,8 +2966,6 @@ def _windows_owned_file_record(
         rebound = _windows_find_child(api, parent_handle, entry.name)
         if rebound is None or rebound.file_id != entry.file_id:
             raise RuntimeError(f"directory ownership file changed: {path}")
-    finally:
-        api.close(handle)
     budget.byte_count += size
     return size, digest.hexdigest(), _ownership_version_identity(after)
 
@@ -2989,6 +3122,7 @@ def _scan_windows_owned_directory(
     depth: int,
     required_root_file: str | None = None,
     allow_empty_root: bool = False,
+    resource_owner: _WindowsResourceOwner,
 ) -> bytes:
     if depth > _MAX_SAFE_REMOVAL_DEPTH:
         raise RuntimeError("directory ownership scan exceeds its depth limit")
@@ -3038,8 +3172,23 @@ def _scan_windows_owned_directory(
                 | _WINDOWS_FILE_READ_ATTRIBUTES
                 | _WINDOWS_SYNCHRONIZE,
                 expected_directory=True,
+                resource_owner=resource_owner,
             )
-            try:
+            child_record = resource_owner.record_for_cleanup(child_handle)
+            exact_owner = resource_owner._exact_record_cleanup_owner(child_record)
+            with _run_context_with_cleanup_actions(
+                (
+                    _OrderedAction(
+                        label=(
+                            "Windows ownership directory HANDLE cleanup also failed"
+                        ),
+                        action=exact_owner.close,
+                        complete=lambda exact_owner=exact_owner: exact_owner.closed,
+                        retry_incomplete="cancellation",
+                        incomplete_owner=exact_owner,
+                    ),
+                )
+            ):
                 if opened.st_dev != root_device:
                     raise RuntimeError(
                         f"directory ownership crosses a volume: {child_path}"
@@ -3063,6 +3212,7 @@ def _scan_windows_owned_directory(
                     entry_identities=entry_identities,
                     entry_policy=entry_policy,
                     depth=depth + 1,
+                    resource_owner=resource_owner,
                 )
                 after = api.metadata(child_handle)
                 if _ownership_version_identity(after) != _ownership_version_identity(
@@ -3071,8 +3221,6 @@ def _scan_windows_owned_directory(
                     raise RuntimeError(
                         f"directory ownership directory changed: {child_path}"
                     )
-            finally:
-                api.close(child_handle)
             rebound = _windows_find_child(api, handle, entry.name)
             if rebound is None or rebound.file_id != entry.file_id:
                 raise RuntimeError(
@@ -3096,6 +3244,7 @@ def _scan_windows_owned_directory(
                 budget=budget,
                 relative=relative,
                 entry_policy=entry_policy,
+                resource_owner=resource_owner,
             )
             digest_bytes = bytes.fromhex(digest)
             file_mode = stat.S_IMODE(file_identity[2])
@@ -3133,44 +3282,66 @@ def _capture_windows_directory_handle(
     entry_policy: DirectoryEntryPolicy | None,
 ) -> _TreeOwnership:
     _required_root_file_bytes(required_root_file)
-    opened = api.metadata(handle)
-    if _is_link_or_reparse(opened) or not stat.S_ISDIR(opened.st_mode):
-        raise RuntimeError(f"directory ownership root changed: {path}")
-    if not opened.st_dev or not opened.st_ino:
-        raise RuntimeError("directory ownership root has no reliable FILE_ID identity")
-    budget = _OwnershipBudget()
-    inventory: list[tuple[str, str]] = []
-    file_records: list[TreeFileRecord] = []
-    entry_identities: list[tuple[str, str, tuple[int, ...]]] = []
-    digest = _scan_windows_owned_directory(
-        api,
-        handle,
-        path,
-        (),
-        root_device=opened.st_dev,
-        budget=budget,
-        inventory=inventory,
-        file_records=file_records,
-        entry_identities=entry_identities,
-        entry_policy=entry_policy,
-        depth=0,
-        required_root_file=required_root_file,
-        allow_empty_root=allow_empty_root,
-    )
-    after = api.metadata(handle)
-    if _ownership_version_identity(after) != _ownership_version_identity(opened):
-        raise RuntimeError(f"directory ownership root changed: {path}")
-    return _TreeOwnership(
-        root_identity=_directory_inode_identity(opened),
-        root_version_identity=_ownership_version_identity(opened),
-        digest=digest.hex(),
-        entries=budget.entries,
-        byte_count=budget.byte_count,
-        metadata_bytes=budget.metadata_bytes,
-        inventory=tuple(sorted(inventory)),
-        file_records=tuple(sorted(file_records, key=lambda record: record.path)),
-        entry_identities=tuple(sorted(entry_identities)),
-    )
+    resources = _WindowsResourceOwner(api)
+    cleanup_complete = False
+
+    def close_resources() -> None:
+        nonlocal cleanup_complete
+        resources.close_all()
+        cleanup_complete = True
+
+    with _run_context_with_cleanup_actions(
+        (
+            _OrderedAction(
+                label="Windows ownership scan HANDLE cleanup also failed",
+                action=close_resources,
+                complete=lambda: cleanup_complete,
+                retry_incomplete="cancellation",
+                incomplete_owner=resources,
+            ),
+        )
+    ):
+        opened = api.metadata(handle)
+        if _is_link_or_reparse(opened) or not stat.S_ISDIR(opened.st_mode):
+            raise RuntimeError(f"directory ownership root changed: {path}")
+        if not opened.st_dev or not opened.st_ino:
+            raise RuntimeError(
+                "directory ownership root has no reliable FILE_ID identity"
+            )
+        budget = _OwnershipBudget()
+        inventory: list[tuple[str, str]] = []
+        file_records: list[TreeFileRecord] = []
+        entry_identities: list[tuple[str, str, tuple[int, ...]]] = []
+        digest = _scan_windows_owned_directory(
+            api,
+            handle,
+            path,
+            (),
+            root_device=opened.st_dev,
+            budget=budget,
+            inventory=inventory,
+            file_records=file_records,
+            entry_identities=entry_identities,
+            entry_policy=entry_policy,
+            depth=0,
+            required_root_file=required_root_file,
+            allow_empty_root=allow_empty_root,
+            resource_owner=resources,
+        )
+        after = api.metadata(handle)
+        if _ownership_version_identity(after) != _ownership_version_identity(opened):
+            raise RuntimeError(f"directory ownership root changed: {path}")
+        return _TreeOwnership(
+            root_identity=_directory_inode_identity(opened),
+            root_version_identity=_ownership_version_identity(opened),
+            digest=digest.hex(),
+            entries=budget.entries,
+            byte_count=budget.byte_count,
+            metadata_bytes=budget.metadata_bytes,
+            inventory=tuple(sorted(inventory)),
+            file_records=tuple(sorted(file_records, key=lambda record: record.path)),
+            entry_identities=tuple(sorted(entry_identities)),
+        )
 
 
 def _open_windows_publication_authority(
