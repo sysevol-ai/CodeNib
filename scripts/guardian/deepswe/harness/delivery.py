@@ -7,7 +7,16 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
+
+
+@dataclass(frozen=True, slots=True)
+class CompletedReport:
+    commit: str
+    report: str
+    identifiers: tuple[str, ...]
+    completed_at_ns: int
 
 
 def review_request_commits(exchange_root: Path) -> set[str]:
@@ -34,4 +43,55 @@ def completed_responses(exchange_root: Path, commits: set[str]) -> set[str]:
     return completed
 
 
-__all__ = ["completed_responses", "review_request_commits"]
+def completed_report(exchange_root: Path, commits: set[str]) -> CompletedReport | None:
+    """Load the newest completed commit-addressed review without using ``latest``."""
+
+    reports = []
+    for commit in commits:
+        response = exchange_root / "responses" / commit
+        status_path = response / "status.json"
+        report_path = response / "findings.md"
+        findings_path = response / "findings.json"
+        try:
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+            report = report_path.read_text(encoding="utf-8")
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (
+            not isinstance(status, dict)
+            or status.get("running", False)
+            or status.get("review_performed") is not True
+            or str(status.get("commit") or "").strip() != commit
+        ):
+            continue
+        identifiers = []
+        try:
+            payload = json.loads(findings_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                for key in ("findings", "uncertain_specifications"):
+                    rows = payload.get(key, [])
+                    if isinstance(rows, list):
+                        identifiers.extend(
+                            str(row.get("specification_id") or "").strip()
+                            for row in rows
+                            if isinstance(row, dict)
+                        )
+        except (OSError, json.JSONDecodeError):
+            pass
+        reports.append(
+            CompletedReport(
+                commit=commit,
+                report=report,
+                identifiers=tuple(value for value in identifiers if value),
+                completed_at_ns=status_path.stat().st_mtime_ns,
+            )
+        )
+    return max(reports, key=lambda item: item.completed_at_ns, default=None)
+
+
+__all__ = [
+    "CompletedReport",
+    "completed_report",
+    "completed_responses",
+    "review_request_commits",
+]

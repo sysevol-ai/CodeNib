@@ -56,7 +56,12 @@ from codenib.clients.guardian import GuardianConfig
 
 from .checkpoint import guardian_checkpoint_script
 from .controller import GuardianHostController, sandbox_reviewer_factory
-from .delivery import completed_responses, review_request_commits
+from .delivery import (
+    CompletedReport,
+    completed_report,
+    completed_responses,
+    review_request_commits,
+)
 from .message import guardian_message_script
 from .solver_logs import (
     CodexTurnLog,
@@ -597,10 +602,19 @@ class GuardianCodingAgent(BaseInstalledAgent):
                                 "Guardian host controller failed"
                             ) from controller_errors[0]
                         await asyncio.sleep(0.1)
-                    latest = self._latest_report()
-                    if latest is None:
+                    completed = completed_report(
+                        self._guardian_host_exchange_dir, requested
+                    )
+                    if completed is None and not requested:
+                        latest = self._latest_report()
+                        if latest is not None:
+                            completed = CompletedReport(*latest)
+                    if completed is None:
                         break
-                    commit, report, identifiers, completed_at_ns = latest
+                    commit = completed.commit
+                    report = completed.report
+                    identifiers = completed.identifiers
+                    completed_at_ns = completed.completed_at_ns
                     if not commit or commit in delivered_reviews:
                         break
                     delivered_reviews.add(commit)
