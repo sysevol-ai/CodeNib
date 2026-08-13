@@ -43,7 +43,10 @@ from codenib.clients.guardian import (
     TaskContext,
     TaskContextSource,
 )
-from codenib.clients.guardian.aggregation import adjudicate_records
+from codenib.clients.guardian.aggregation import (
+    _merge_specification_records,
+    adjudicate_records,
+)
 from codenib.clients.guardian.evidence import validate_candidates, validate_evidence
 from codenib.clients.guardian.normalization import parse_explorer_output
 from codenib.clients.guardian.patch_check import check_patch
@@ -723,6 +726,46 @@ def test_aggregation_cannot_attach_unrelated_evidence_by_identifier(
         for item in result.memory.specifications
     )
     assert not result.findings
+
+
+def test_aggregation_cannot_rewrite_existing_specification_through_its_id() -> None:
+    original = _record()
+    rewritten = replace(
+        original,
+        statement="Copied state preserves configured output labels.",
+        condition="when target preprocessing expands columns",
+    )
+
+    merged = _merge_specification_records((original,), (rewritten,))
+
+    assert len(merged) == 2
+    persisted = next(
+        item for item in merged if item.specification_id == original.specification_id
+    )
+    assert persisted.statement == original.statement
+    assert persisted.condition == original.condition
+    added = next(item for item in merged if item is not persisted)
+    assert added.statement == rewritten.statement
+    assert added.condition == rewritten.condition
+    assert added.specification_id != original.specification_id
+
+
+def test_aggregation_keeps_equal_statements_under_distinct_conditions() -> None:
+    original = _record()
+    distinct = replace(
+        original,
+        specification_id="LS-mode-on-reset",
+        condition="when copied state is reset",
+    )
+
+    merged = _merge_specification_records((original,), (distinct,))
+
+    assert len(merged) == 2
+    assert {item.condition for item in merged} == {
+        original.condition,
+        distinct.condition,
+    }
+    assert len({item.specification_id for item in merged}) == 2
 
 
 def test_contradictory_candidates_remain_contested() -> None:

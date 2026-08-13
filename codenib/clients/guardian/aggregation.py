@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 
 from ..execution import (
@@ -29,6 +30,49 @@ from .types import (
     SpecificationRecord,
     SpecificationStatus,
 )
+
+
+def _specification_key(statement: str, condition: str) -> tuple[str, str]:
+    return statement.strip().casefold(), condition.strip().casefold()
+
+
+def _specification_id(statement: str, condition: str) -> str:
+    value = "\0".join(_specification_key(statement, condition))
+    return f"LS-{hashlib.sha256(value.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _merge_specification_records(
+    existing: tuple[SpecificationRecord, ...],
+    incoming: tuple[SpecificationRecord, ...],
+) -> tuple[SpecificationRecord, ...]:
+    """Merge records without allowing model-selected IDs to rewrite identity."""
+
+    by_id = {item.specification_id: item for item in existing}
+    by_key = {
+        _specification_key(item.statement, item.condition): item.specification_id
+        for item in existing
+    }
+    for record in incoming:
+        key = _specification_key(record.statement, record.condition)
+        supplied = by_id.get(record.specification_id)
+        if supplied is not None and _specification_key(
+            supplied.statement, supplied.condition
+        ) != key:
+            specification_id = by_key.get(key) or _specification_id(
+                record.statement, record.condition
+            )
+        else:
+            specification_id = by_key.get(key) or record.specification_id
+        previous = by_id.get(specification_id)
+        value = replace(
+            record,
+            specification_id=specification_id,
+            statement=previous.statement if previous else record.statement,
+            condition=previous.condition if previous else record.condition,
+        )
+        by_id[specification_id] = value
+        by_key[key] = specification_id
+    return tuple(by_id.values())
 
 
 def _evidence_status(
@@ -185,9 +229,7 @@ def _merge_memory(
     for candidate in candidates:
         for item in candidate.supporting_evidence + candidate.counterevidence:
             evidence_by_id[item.evidence_id] = replace(item, snapshot=snapshot)
-    by_id = {item.specification_id: item for item in memory.specifications}
-    by_id.update({item.specification_id: item for item in records})
-    combined = tuple(by_id.values())
+    combined = _merge_specification_records(memory.specifications, records)
     evidence_by_id = _link_official_specifications(evidence_by_id, combined)
     combined = _drop_unlinked_references(combined, evidence_by_id)
     combined = adjudicate_records(combined, tuple(evidence_by_id.values()))
