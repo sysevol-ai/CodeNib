@@ -106,7 +106,7 @@ serving = [
     "numpy>=1.24.0",
     "sse-starlette>=2.0.0",
     "torch>=2.2.0",
-    "transformers>=4.44.0",
+    "transformers>=5.15.0",
 ]
 # Vertex AI backends (``vertex_ai/...`` model strings, via gcloud ADC).
 # Keep the provider SDK coupled to LiteLLM's own compatibility constraint

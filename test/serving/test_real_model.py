@@ -13,12 +13,19 @@ import os
 import sys
 import types
 from contextlib import nullcontext
+from pathlib import Path
 
 import pytest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib
 
 from codenib.serving.server.real_model import (
     RealModelVerifier,
     _load_lm,
+    _resolve_model_class,
     best_linear_path,
 )
 from codenib.serving.types import DraftNode, DraftTree
@@ -56,7 +63,14 @@ class _CallableModelStub:
         return types.SimpleNamespace(logits=types.SimpleNamespace(ndim=self._ndim))
 
 
-def _fake_transformers(monkeypatch, *, model_type, vlm_result=None):
+def _fake_transformers(
+    monkeypatch,
+    *,
+    model_type,
+    vlm_result=None,
+    resolved_config=None,
+    seen=None,
+):
     """Install stand-in ``transformers`` modules for auto-class resolution.
 
     ``AutoConfig`` reports ``model_type`` for every model name; the causal-LM
@@ -64,20 +78,27 @@ def _fake_transformers(monkeypatch, *, model_type, vlm_result=None):
     returns ``vlm_result`` (default: a validation-passing model stub).
     """
     mod = types.ModuleType("transformers")
+    if resolved_config is None:
+        resolved_config = types.SimpleNamespace(model_type=model_type)
+    seen = seen if seen is not None else {}
+    seen["resolved_config"] = resolved_config
 
     class _CausalLM:
         @staticmethod
         def from_pretrained(name, torch_dtype=None, **kwargs):
+            seen["causal_load"] = (name, torch_dtype, kwargs)
             return f"causal:{name}:{torch_dtype}"
 
     class _AutoConfig:
         @staticmethod
         def from_pretrained(name, **kwargs):
-            return types.SimpleNamespace(model_type=model_type)
+            seen["config_load"] = (name, kwargs)
+            return resolved_config
 
     class _ImageTextToText:
         @staticmethod
         def from_pretrained(name, torch_dtype=None, **kwargs):
+            seen["image_text_load"] = (name, torch_dtype, kwargs)
             return vlm_result if vlm_result is not None else _CallableModelStub()
 
     mod.AutoModelForCausalLM = _CausalLM
@@ -105,6 +126,70 @@ def test_load_lm_uses_causal_lm_for_mapped_model_type(monkeypatch):
     assert (
         _load_lm("some/causal-model", dtype="bf16") == "causal:some/causal-model:bf16"
     )
+
+
+def test_load_lm_resolves_and_loads_with_identical_hub_policy(monkeypatch):
+    seen = {}
+    token = object()
+    cache_dir = object()
+    _fake_transformers(
+        monkeypatch,
+        model_type="mapped_causal",
+        seen=seen,
+    )
+
+    _load_lm(
+        "private/revisioned-model",
+        dtype="bf16",
+        revision="pinned-sha",
+        token=token,
+        cache_dir=cache_dir,
+        local_files_only=True,
+        trust_remote_code=False,
+        attn_implementation="eager",
+    )
+
+    config_name, config_kwargs = seen["config_load"]
+    model_name, model_dtype, model_kwargs = seen["causal_load"]
+    assert config_name == model_name == "private/revisioned-model"
+    assert model_dtype == "bf16"
+    for name, value in {
+        "revision": "pinned-sha",
+        "token": token,
+        "cache_dir": cache_dir,
+        "local_files_only": True,
+        "trust_remote_code": False,
+    }.items():
+        assert config_kwargs[name] is value
+        assert model_kwargs[name] is value
+    assert "attn_implementation" not in config_kwargs
+    assert model_kwargs["attn_implementation"] == "eager"
+    assert model_kwargs["config"] is seen["resolved_config"]
+
+
+def test_load_lm_uses_supplied_config_without_resolving_again(monkeypatch):
+    seen = {}
+    config = types.SimpleNamespace(model_type="muse_glimmer")
+    _fake_transformers(
+        monkeypatch,
+        model_type="ignored",
+        resolved_config=types.SimpleNamespace(model_type="novel_arch"),
+        seen=seen,
+    )
+
+    _load_lm(
+        "meta-models/Muse-Glimmer-30B",
+        dtype=None,
+        config=config,
+        revision="pinned-sha",
+        local_files_only=True,
+    )
+
+    assert "config_load" not in seen
+    _, _, model_kwargs = seen["image_text_load"]
+    assert model_kwargs["config"] is config
+    assert model_kwargs["revision"] == "pinned-sha"
+    assert model_kwargs["local_files_only"] is True
 
 
 def test_load_lm_resolves_registry_model_type_and_validates(monkeypatch):
@@ -148,6 +233,46 @@ def test_load_lm_honours_explicit_model_class(monkeypatch):
             return f"forced:{name}:{torch_dtype}"
 
     assert _load_lm("x/y", dtype="fp32", model_class=_Forced) == "forced:x/y:fp32"
+
+
+def test_serving_extra_requires_muse_glimmer_capable_transformers():
+    project_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    with project_path.open("rb") as handle:
+        serving = tomllib.load(handle)["project"]["optional-dependencies"]["serving"]
+
+    assert "transformers>=5.15.0" in serving
+
+
+def test_real_transformers_metadata_registers_muse_glimmer():
+    transformers = pytest.importorskip("transformers")
+    from packaging.version import Version
+
+    if Version(transformers.__version__) < Version("5.15.0"):
+        pytest.skip("the optional serving runtime requires transformers>=5.15.0")
+
+    from transformers import AutoConfig
+    from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
+    from transformers.models.auto.modeling_auto import (
+        MODEL_FOR_CAUSAL_LM_MAPPING_NAMES,
+        MODEL_FOR_IMAGE_TEXT_TO_TEXT_MAPPING_NAMES,
+    )
+
+    assert CONFIG_MAPPING_NAMES["muse_glimmer"] == "MuseGlimmerConfig"
+    assert "muse_glimmer" not in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+    assert (
+        MODEL_FOR_IMAGE_TEXT_TO_TEXT_MAPPING_NAMES["muse_glimmer"]
+        == "MuseGlimmerForConditionalGeneration"
+    )
+
+    config = AutoConfig.for_model("muse_glimmer")
+    cls, needs_validation, resolved_config = _resolve_model_class(
+        "metadata-only/no-download",
+        config=config,
+        local_files_only=True,
+    )
+    assert cls is transformers.AutoModelForImageTextToText
+    assert needs_validation is True
+    assert resolved_config is config
 
 
 def test_real_model_verifier_stops_before_drafted_eos(monkeypatch) -> None:

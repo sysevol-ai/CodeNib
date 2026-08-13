@@ -39,12 +39,14 @@ also deferred.
 ``Qwen3_5ForConditionalGeneration`` with a ``vision_config`` — maps cleanly:
 ``transformers`` (>= 5.2) registers ``Qwen3_5ForCausalLM`` in the causal-LM
 auto-mapping, so ``AutoModelForCausalLM.from_pretrained`` returns the text model
-directly (verified on transformers 5.12). A model outside that mapping loads
-only if its ``model_type`` is in :data:`VERIFIED_NON_CAUSAL_MODEL_TYPES` — an
-allowlist of architectures whose ``input_ids``-only forward is known to emit
-causal-LM ``.logits`` — and each registry load is validated with a one-token
-text forward before serving. Anything else fails loudly; the ``model_class``
-parameter remains as the explicit escape hatch (and is how tests inject stubs).
+directly. The serving extra requires ``transformers>=5.15.0``, the first release
+whose built-in config and image-text auto-model metadata include Muse Glimmer. A
+model outside the causal mapping loads only if its ``model_type`` is in
+:data:`VERIFIED_NON_CAUSAL_MODEL_TYPES` — an allowlist of architectures whose
+``input_ids``-only forward is known to emit causal-LM ``.logits`` — and each
+registry load is validated with a one-token text forward before serving.
+Anything else fails loudly; the ``model_class`` parameter remains as the
+explicit escape hatch (and is how tests inject stubs).
 
 torch/transformers are imported lazily so this module (and ``best_linear_path``)
 stay importable without the ``bench`` extra installed.
@@ -69,6 +71,25 @@ VERIFIED_NON_CAUSAL_MODEL_TYPES = {
     "muse_glimmer": "AutoModelForImageTextToText",
 }
 
+# Arguments that affect which config bytes/classes ``from_pretrained`` resolves.
+# They must be applied to both our preflight config lookup and the subsequent
+# model load. In particular, never let the lookup reach the network when the
+# caller requested ``local_files_only=True`` or resolve a different revision.
+_CONFIG_RESOLUTION_KWARGS = frozenset(
+    {
+        "_commit_hash",
+        "cache_dir",
+        "code_revision",
+        "force_download",
+        "local_files_only",
+        "proxies",
+        "revision",
+        "subfolder",
+        "token",
+        "trust_remote_code",
+    }
+)
+
 
 def best_linear_path(tree: DraftTree) -> List[TokenId]:
     """Flatten a draft tree to one linear branch for single-path verification.
@@ -86,7 +107,12 @@ def best_linear_path(tree: DraftTree) -> List[TokenId]:
     return path
 
 
-def _resolve_model_class(model_name: str):
+def _resolve_model_class(
+    model_name: str,
+    *,
+    config: object = None,
+    **from_pretrained_kwargs,
+):
     """Pick the auto-class for ``model_name`` from its config ``model_type``.
 
     Resolution is fail-closed, mirroring how the compiler picks index builders
@@ -97,19 +123,32 @@ def _resolve_model_class(model_name: str):
     rather than guessing — a class that merely *loads* can still verify
     speculation against the wrong logits.
 
+    A caller-supplied ``config`` is authoritative. Otherwise the config lookup
+    receives the same Hub/security arguments as the model load (revision,
+    token, cache, offline mode, and remote-code policy), and the resolved object
+    is returned so the model loader does not resolve it a second time.
+
     Returns:
-        ``(auto_class, needs_validation)``.
+        ``(auto_class, needs_validation, config)``.
     """
     import transformers
     from transformers import AutoConfig, AutoModelForCausalLM
     from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 
-    model_type = getattr(AutoConfig.from_pretrained(model_name), "model_type", None)
+    if config is None:
+        config_kwargs = {
+            name: value
+            for name, value in from_pretrained_kwargs.items()
+            if name in _CONFIG_RESOLUTION_KWARGS
+        }
+        config = AutoConfig.from_pretrained(model_name, **config_kwargs)
+
+    model_type = getattr(config, "model_type", None)
     if model_type in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES:
-        return AutoModelForCausalLM, False
+        return AutoModelForCausalLM, False, config
     registered = VERIFIED_NON_CAUSAL_MODEL_TYPES.get(model_type)
     if registered is not None:
-        return getattr(transformers, registered), True
+        return getattr(transformers, registered), True, config
     raise RuntimeError(
         f"model_type {model_type!r} of {model_name!r} is neither in the "
         "transformers causal-LM auto-mapping nor in "
@@ -172,10 +211,15 @@ def _load_lm(
     if model_class is not None:
         cls, needs_validation = model_class, False
     else:
-        cls, needs_validation = _resolve_model_class(model_name)
-    # ``torch_dtype`` is supported by the oldest transformers version in the
-    # serving extra (4.44).  The shorter ``dtype`` spelling was added later and
-    # is forwarded to model constructors by older releases, where it fails.
+        cls, needs_validation, config = _resolve_model_class(
+            model_name,
+            **from_pretrained_kwargs,
+        )
+        # Passing the exact object makes config resolution single-shot and pins
+        # class selection and weight loading to the same metadata.
+        from_pretrained_kwargs["config"] = config
+    # Keep ``torch_dtype`` rather than the newer short spelling for explicit
+    # model-class overrides that still implement the established HF argument.
     model = cls.from_pretrained(
         model_name,
         torch_dtype=dtype,
