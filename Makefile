@@ -88,6 +88,7 @@ FACT_BUFFER_PROFILE_PROJECT_ROOT ?=
 FACT_BUFFER_PROFILE_OUTPUT ?=
 FACT_BUFFER_PROFILE_EXTRA_ARGS ?=
 PYTHON_CHUNK_POC_BUILD_DIR ?= build/core-chunk-poc
+PYTHON_CHUNK_BATCH_POC_BUILD_DIR ?= build/core-chunk-batch-poc
 PYTHON_CHUNK_PROFILE_REPO ?=
 PYTHON_CHUNK_PROFILE_OUTPUT ?=
 PYTHON_CHUNK_PROFILE_EXTRA_ARGS ?=
@@ -107,7 +108,7 @@ SCIP_MCP_CONSUMER_GATE_EXTRA_ARGS ?=
 CODENIB_CHUNK_GATE_CODENIB_ROOT ?=
 CODENIB_CHUNK_GATE_HTTPIE_ROOT ?=
 CODENIB_CHUNK_GATE_SUBJECT_MANIFEST ?= scripts/profiling/python_repository_chunk_subjects.json
-CODENIB_CHUNK_GATE_BUILD_DIR ?= build/core-chunk-batch-poc
+CODENIB_CHUNK_GATE_BUILD_DIR ?= $(PYTHON_CHUNK_BATCH_POC_BUILD_DIR)
 CODENIB_CHUNK_GATE_OUTPUT ?= /tmp/codenib-python-repository-chunk-gate.json
 CODENIB_CHUNK_GATE_EXTRA_ARGS ?=
 CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR ?=
@@ -221,6 +222,7 @@ endef
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
 .PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate scip-mcp-consumer-gate python-repository-chunk-gate clangd-fact-generation-profile
 .PHONY: core-chunk-poc-build core-chunk-poc-test core-chunk-poc-profile
+.PHONY: core-chunk-batch-poc-build core-chunk-batch-poc-test core-chunk-batch-poc-gate
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
 .PHONY: scip-jvm-compat-system-deps-ubuntu
@@ -436,7 +438,9 @@ core-python-deps:
 	python -m pip install "pybind11==$(PYBIND11_VERSION)"
 
 core-build: core-python-deps
-	cmake -S core -B build/core -DCODENIB_BUILD_TREE_SITTER_POC=OFF
+	cmake -S core -B build/core \
+		-DCODENIB_BUILD_TREE_SITTER_POC=OFF \
+		-DCODENIB_BUILD_PYTHON_CHUNK_BATCH_POC=OFF
 	cmake --build build/core
 
 core-test: core-build
@@ -446,7 +450,7 @@ core-test: core-build
 	./build/core/content_digest_test
 	./build/core/fact_query_index_test
 	PYTHONPATH="build/core:$$PYTHONPATH" python -c 'import sys; import codenib_core as core; required = ("decode_clangd_fact_query_index", "clangd_fact_query_contract", "clangd_fact_query_snapshot"); missing = [name for name in required if not hasattr(core, name)]; missing and sys.exit(f"codenib_core missing required bindings: {missing}")'
-	PYTHONPATH="build/core:$$PYTHONPATH" python -c 'import sys; import codenib_core as core; forbidden = ("extract_python_chunk_spans", "python_chunk_poc_contract"); present = [name for name in forbidden if hasattr(core, name)]; present and sys.exit(f"default codenib_core unexpectedly exposes experimental APIs: {present}")'
+	PYTHONPATH="build/core:$$PYTHONPATH" python -c 'import sys; import codenib_core as core; forbidden = ("extract_python_chunk_spans", "python_chunk_poc_contract", "extract_python_repository_chunk_spans", "python_chunk_batch_poc_contract"); present = [name for name in forbidden if hasattr(core, name)]; present and sys.exit(f"default codenib_core unexpectedly exposes experimental APIs: {present}")'
 	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
 		test/scip/test_scip_core.py \
 		test/scip/test_scip_core_registry.py \
@@ -550,9 +554,11 @@ clangd-fact-generation-profile: core-build
 
 core-chunk-poc-build: core-python-deps
 	CODENIB_PYTHON_CHUNK_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_POC_BUILD_DIR))" \
-		python -c 'import os, sys; from pathlib import Path; poc = Path(os.environ["CODENIB_PYTHON_CHUNK_POC_BUILD_DIR"]).resolve(); maintained = Path("build/core").resolve(); poc == maintained and sys.exit("PYTHON_CHUNK_POC_BUILD_DIR must not resolve to build/core")'
+		CODENIB_PYTHON_CHUNK_BATCH_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_BATCH_POC_BUILD_DIR))" \
+		python -c 'import os, sys; from pathlib import Path; poc = Path(os.environ["CODENIB_PYTHON_CHUNK_POC_BUILD_DIR"]).resolve(); maintained = Path("build/core").resolve(); batch = Path(os.environ["CODENIB_PYTHON_CHUNK_BATCH_POC_BUILD_DIR"]).resolve(); poc in (maintained, batch) and sys.exit("PYTHON_CHUNK_POC_BUILD_DIR must be distinct from build/core and PYTHON_CHUNK_BATCH_POC_BUILD_DIR")'
 	cmake -S core -B "$(PYTHON_CHUNK_POC_BUILD_DIR)" \
 		-DCODENIB_BUILD_TREE_SITTER_POC=ON \
+		-DCODENIB_BUILD_PYTHON_CHUNK_BATCH_POC=OFF \
 		-DCODENIB_BUILD_PYBIND=ON
 	cmake --build "$(PYTHON_CHUNK_POC_BUILD_DIR)" --target codenib_core_py
 
@@ -574,6 +580,32 @@ core-chunk-poc-profile: core-chunk-poc-build
 			--repo "$(PYTHON_CHUNK_PROFILE_REPO)" \
 			$(if $(PYTHON_CHUNK_PROFILE_OUTPUT),--output-json "$(PYTHON_CHUNK_PROFILE_OUTPUT)",) \
 			$(PYTHON_CHUNK_PROFILE_EXTRA_ARGS)
+
+core-chunk-batch-poc-build: core-python-deps
+	CODENIB_PYTHON_CHUNK_BATCH_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_BATCH_POC_BUILD_DIR))" \
+		CODENIB_PYTHON_CHUNK_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_POC_BUILD_DIR))" \
+		python -c 'import os, sys; from pathlib import Path; batch = Path(os.environ["CODENIB_PYTHON_CHUNK_BATCH_POC_BUILD_DIR"]).resolve(); maintained = Path("build/core").resolve(); old = Path(os.environ["CODENIB_PYTHON_CHUNK_POC_BUILD_DIR"]).resolve(); batch in (maintained, old) and sys.exit("PYTHON_CHUNK_BATCH_POC_BUILD_DIR must be distinct from build/core and PYTHON_CHUNK_POC_BUILD_DIR")'
+	cmake -S core -B "$(PYTHON_CHUNK_BATCH_POC_BUILD_DIR)" \
+		-DCODENIB_BUILD_TREE_SITTER_POC=OFF \
+		-DCODENIB_BUILD_PYTHON_CHUNK_BATCH_POC=ON \
+		-DCODENIB_BUILD_PYBIND=ON
+	cmake --build "$(PYTHON_CHUNK_BATCH_POC_BUILD_DIR)" --target \
+		codenib_core_py python_chunk_batch_poc_test
+
+core-chunk-batch-poc-test: core-chunk-batch-poc-build
+	"$(PYTHON_CHUNK_BATCH_POC_BUILD_DIR)/python_chunk_batch_poc_test"
+	CODENIB_PYTHON_CHUNK_BATCH_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_BATCH_POC_BUILD_DIR))" \
+		PYTHONPATH="$(PYTHON_CHUNK_BATCH_POC_BUILD_DIR):$$PYTHONPATH" \
+		python -c 'import os, sys; from pathlib import Path; import codenib_core as core; expected = Path(os.environ["CODENIB_PYTHON_CHUNK_BATCH_POC_BUILD_DIR"]).resolve(); origin = Path(core.__file__).resolve(); origin.is_relative_to(expected) or sys.exit(f"batch POC codenib_core resolved outside {expected}: {origin}"); required = ("extract_python_repository_chunk_spans", "python_chunk_batch_poc_contract"); missing = [name for name in required if not callable(getattr(core, name, None))]; missing and sys.exit(f"batch POC codenib_core missing callable bindings: {missing}"); forbidden = ("extract_python_chunk_spans", "python_chunk_poc_contract"); present = [name for name in forbidden if hasattr(core, name)]; present and sys.exit(f"batch POC codenib_core unexpectedly exposes old POC bindings: {present}")'
+	CODENIB_PYTHON_CHUNK_BATCH_POC_BUILD_DIR="$(abspath $(PYTHON_CHUNK_BATCH_POC_BUILD_DIR))" \
+		PYTHONPATH="$(PYTHON_CHUNK_BATCH_POC_BUILD_DIR):$$PYTHONPATH" \
+		python -m pytest -q \
+			test/chunker/test_python_repository_batch_poc.py \
+			test/scripts/test_profile_python_repository_chunk_gate.py
+
+core-chunk-batch-poc-gate: core-chunk-batch-poc-test
+	@$(MAKE) --no-print-directory python-repository-chunk-gate \
+		CODENIB_CHUNK_GATE_BUILD_DIR="$(abspath $(PYTHON_CHUNK_BATCH_POC_BUILD_DIR))"
 
 scip-cold-start-tools: scip-java-tool gradle-tool sbt-tool scip-dotnet-tool scip-ruby-tool scip-php-info
 	@$(MAKE) --no-print-directory scip-cold-start-env

@@ -27,12 +27,16 @@
 #include "fact_query_index.h"
 #include "graph_layers.h"
 #include "scip_decode.h"
-#ifdef CODENIB_TREE_SITTER_POC
+#if defined(CODENIB_TREE_SITTER_POC) || defined(CODENIB_PYTHON_CHUNK_BATCH_POC)
 #include "python_chunk_poc.h"
+#endif
+#ifdef CODENIB_PYTHON_CHUNK_BATCH_POC
+#include "python_chunk_batch_poc.h"
 #endif
 
 #include <chrono>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <pybind11/pybind11.h>
@@ -597,6 +601,117 @@ py::dict python_chunk_poc_contract() {
 }
 #endif
 
+#ifdef CODENIB_PYTHON_CHUNK_BATCH_POC
+long long strict_python_integer(const py::object &value, const char *label) {
+  if (!PyLong_Check(value.ptr()) || PyBool_Check(value.ptr()))
+    throw py::type_error(std::string(label) + " must be an integer");
+  const auto converted = PyLong_AsLongLong(value.ptr());
+  if (converted == -1 && PyErr_Occurred()) {
+    if (!PyErr_ExceptionMatches(PyExc_OverflowError))
+      throw py::error_already_set();
+    PyErr_Clear();
+    throw std::overflow_error(std::string(label) +
+                              " exceeds the native integer range");
+  }
+  return converted;
+}
+
+py::dict extract_python_repository_chunk_spans(
+    const py::sequence &sources, const py::object &chunk_depth,
+    const py::object &l2_level_exclusive, const py::object &worker_count) {
+  const auto checked_depth = strict_python_integer(chunk_depth, "chunk_depth");
+  if (checked_depth < std::numeric_limits<int>::min() ||
+      checked_depth > std::numeric_limits<int>::max())
+    throw std::overflow_error("chunk_depth exceeds the native integer range");
+  if (checked_depth != 1 && checked_depth != 2)
+    throw py::value_error("chunk_depth must be 1 or 2");
+  if (!PyBool_Check(l2_level_exclusive.ptr()))
+    throw py::type_error("l2_level_exclusive must be a bool");
+  const auto checked_l2_level_exclusive = l2_level_exclusive.cast<bool>();
+  const auto checked_worker_count =
+      strict_python_integer(worker_count, "worker_count");
+  if (checked_worker_count < 0 ||
+      static_cast<unsigned long long>(checked_worker_count) >
+          std::numeric_limits<std::size_t>::max())
+    throw std::overflow_error("worker_count exceeds the native size range");
+  if (checked_worker_count != 1 && checked_worker_count != 2 &&
+      checked_worker_count != 4)
+    throw py::value_error("worker_count must be 1, 2, or 4");
+
+  if (py::isinstance<py::str>(sources) || py::isinstance<py::bytes>(sources))
+    throw py::type_error("sources must be a sequence of strings");
+  const auto source_count = sources.size();
+  if (source_count < 0 || static_cast<std::size_t>(source_count) >
+                              codenib::core::PYTHON_CHUNK_BATCH_MAX_FILE_COUNT)
+    throw std::overflow_error("native Python repository file cap exceeded");
+
+  std::vector<std::string> copied_sources;
+  copied_sources.reserve(static_cast<std::size_t>(source_count));
+  std::uint64_t source_bytes = 0;
+  for (py::ssize_t index = 0; index < source_count; ++index) {
+    const py::object item = sources[index];
+    if (!py::isinstance<py::str>(item))
+      throw py::type_error("sources must contain only strings");
+    auto source = py::cast<std::string>(item);
+    if (source.size() > codenib::core::PYTHON_CHUNK_BATCH_MAX_SOURCE_BYTES ||
+        source_bytes >
+            codenib::core::PYTHON_CHUNK_BATCH_MAX_SOURCE_BYTES - source.size())
+      throw std::overflow_error("native Python repository source cap exceeded");
+    source_bytes += source.size();
+    copied_sources.push_back(std::move(source));
+  }
+
+  codenib::core::PythonChunkBatchBuffer buffer;
+  {
+    py::gil_scoped_release release;
+    buffer = codenib::core::extract_python_repository_chunk_buffer(
+        copied_sources, static_cast<int>(checked_depth),
+        checked_l2_level_exclusive,
+        static_cast<std::size_t>(checked_worker_count));
+  }
+
+  py::dict result;
+  result["abi_version"] = codenib::core::PYTHON_CHUNK_BATCH_ABI_VERSION;
+  result["file_count"] = buffer.file_count;
+  result["source_bytes"] = buffer.source_bytes;
+  result["row_count"] = buffer.row_count;
+  result["worker_count"] = buffer.worker_count;
+  result["file_rows"] = bytes_from_vector(buffer.file_rows);
+  result["rows"] = bytes_from_vector(buffer.rows);
+  result["arena"] = bytes_from_vector(buffer.arena);
+  result["batch_wall_ns"] = buffer.batch_wall_ns;
+  result["parse_work_ns"] = buffer.parse_work_ns;
+  result["extract_encode_work_ns"] = buffer.extract_encode_work_ns;
+  result["ordered_merge_ns"] = buffer.ordered_merge_ns;
+  return result;
+}
+
+py::dict python_chunk_batch_poc_contract() {
+  py::dict result;
+  result["abi_version"] = codenib::core::PYTHON_CHUNK_BATCH_ABI_VERSION;
+  result["file_row_size"] = codenib::core::PYTHON_CHUNK_BATCH_FILE_ROW_SIZE;
+  result["file_row_format"] = codenib::core::PYTHON_CHUNK_BATCH_FILE_ROW_FORMAT;
+  result["span_row_size"] = codenib::core::PYTHON_CHUNK_BATCH_SPAN_ROW_SIZE;
+  result["span_row_format"] = codenib::core::PYTHON_CHUNK_BATCH_SPAN_ROW_FORMAT;
+  result["grammar"] = codenib::core::PYTHON_CHUNK_GRAMMAR;
+  result["runtime"] = codenib::core::PYTHON_CHUNK_RUNTIME;
+  result["semantic_profile"] = codenib::core::PYTHON_CHUNK_SEMANTIC_PROFILE;
+  result["ordering"] = codenib::core::PYTHON_CHUNK_BATCH_ORDERING;
+  py::list worker_counts;
+  worker_counts.append(1);
+  worker_counts.append(2);
+  worker_counts.append(4);
+  result["supported_worker_counts"] = std::move(worker_counts);
+  result["overflow_policy"] = codenib::core::PYTHON_CHUNK_BATCH_OVERFLOW_POLICY;
+  result["max_file_count"] = codenib::core::PYTHON_CHUNK_BATCH_MAX_FILE_COUNT;
+  result["max_source_bytes"] =
+      codenib::core::PYTHON_CHUNK_BATCH_MAX_SOURCE_BYTES;
+  result["max_row_count"] = codenib::core::PYTHON_CHUNK_BATCH_MAX_ROW_COUNT;
+  result["max_arena_bytes"] = codenib::core::PYTHON_CHUNK_BATCH_MAX_ARENA_BYTES;
+  return result;
+}
+#endif
+
 codenib::core::LayerBuckets
 classify_edge_layers_py(const std::vector<std::string> &edge_types) {
   py::gil_scoped_release release;
@@ -878,6 +993,23 @@ preserved exactly.
 )pbdoc");
   m.def("python_chunk_poc_contract", &python_chunk_poc_contract,
         R"pbdoc(Return the experimental Python chunk buffer contract.)pbdoc");
+#endif
+
+#ifdef CODENIB_PYTHON_CHUNK_BATCH_POC
+  m.def("extract_python_repository_chunk_spans",
+        &extract_python_repository_chunk_spans, py::arg("sources"),
+        py::kw_only(), py::arg("chunk_depth") = 2,
+        py::arg("l2_level_exclusive") = true, py::arg("worker_count") = 1,
+        R"pbdoc(
+Extract one ordered repository batch into compact file/span/name buffers.
+
+Input strings are copied while the GIL is held. One GIL release covers the
+complete bounded native worker set and deterministic ordered merge. Paths and
+CodeChunk construction remain in Python.
+)pbdoc");
+  m.def(
+      "python_chunk_batch_poc_contract", &python_chunk_batch_poc_contract,
+      R"pbdoc(Return the experimental Python repository-batch contract.)pbdoc");
 #endif
 
   m.def("canonical_scip_decoder_languages",

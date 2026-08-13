@@ -295,7 +295,12 @@ def test_full_ci_enforces_the_maintained_native_core_gate() -> None:
     )
     dependency_run = str(dependency_step["run"])
     gate_run = str(gate_step["run"])
+    build_step = next(
+        step for step in steps if step.get("name") == "Build core/ (pybind)"
+    )
+    build_run = str(build_step["run"])
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    core_build_target = makefile.split("\ncore-build:", 1)[1].split("\n\n", 1)[0]
     core_target = makefile.split("\ncore-test:", 1)[1].split("\n\n", 1)[0]
 
     assert "pkg-config --exists zlib" in dependency_run
@@ -311,6 +316,16 @@ def test_full_ci_enforces_the_maintained_native_core_gate() -> None:
     assert "LD_PRELOAD" in gate_run
     assert "decode_clangd_fact_query_index" in core_target
     assert "clangd_fact_query_snapshot" in core_target
+    for target in (build_run, core_build_target):
+        assert "-DCODENIB_BUILD_TREE_SITTER_POC=OFF" in target
+        assert "-DCODENIB_BUILD_PYTHON_CHUNK_BATCH_POC=OFF" in target
+    for api in (
+        "extract_python_chunk_spans",
+        "python_chunk_poc_contract",
+        "extract_python_repository_chunk_spans",
+        "python_chunk_batch_poc_contract",
+    ):
+        assert api in core_target
     for command in (
         "./build/core/scip_decode_test",
         "./build/core/graph_layers_test",
@@ -320,6 +335,49 @@ def test_full_ci_enforces_the_maintained_native_core_gate() -> None:
         "test/ls_index/test_clangd_fact_query.py",
     ):
         assert command in core_target
+
+
+def test_python_chunk_poc_builds_are_mutually_isolated() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    old_build = makefile.split("\ncore-chunk-poc-build:", 1)[1].split("\n\n", 1)[0]
+    batch_build = makefile.split("\ncore-chunk-batch-poc-build:", 1)[1].split(
+        "\n\n", 1
+    )[0]
+    batch_test = makefile.split("\ncore-chunk-batch-poc-test:", 1)[1].split("\n\n", 1)[
+        0
+    ]
+    batch_gate = makefile.split("\ncore-chunk-batch-poc-gate:", 1)[1].split("\n\n", 1)[
+        0
+    ]
+
+    assert "PYTHON_CHUNK_BATCH_POC_BUILD_DIR ?= build/core-chunk-batch-poc" in makefile
+    assert "-DCODENIB_BUILD_TREE_SITTER_POC=ON" in old_build
+    assert "-DCODENIB_BUILD_PYTHON_CHUNK_BATCH_POC=OFF" in old_build
+    assert "PYTHON_CHUNK_POC_BUILD_DIR must be distinct" in old_build
+    assert "-DCODENIB_BUILD_TREE_SITTER_POC=OFF" in batch_build
+    assert "-DCODENIB_BUILD_PYTHON_CHUNK_BATCH_POC=ON" in batch_build
+    assert "PYTHON_CHUNK_BATCH_POC_BUILD_DIR must be distinct" in batch_build
+    assert "codenib_core_py python_chunk_batch_poc_test" in batch_build
+    assert '"$(PYTHON_CHUNK_BATCH_POC_BUILD_DIR)/python_chunk_batch_poc_test"' in (
+        batch_test
+    )
+    assert "origin.is_relative_to(expected)" in batch_test
+    for api in (
+        "extract_python_repository_chunk_spans",
+        "python_chunk_batch_poc_contract",
+        "extract_python_chunk_spans",
+        "python_chunk_poc_contract",
+    ):
+        assert api in batch_test
+    assert "callable(getattr(core, name, None))" in batch_test
+    assert "test/chunker/test_python_repository_batch_poc.py" in batch_test
+    assert "test/scripts/test_profile_python_repository_chunk_gate.py" in batch_test
+    assert "python-repository-chunk-gate" in batch_gate
+    assert (
+        'CODENIB_CHUNK_GATE_BUILD_DIR="$(abspath '
+        '$(PYTHON_CHUNK_BATCH_POC_BUILD_DIR))"'
+    ) in batch_gate
 
 
 def test_clangd_workload_gate_pins_matrix_subjects_and_json_artifact() -> None:

@@ -15,6 +15,17 @@ option(
     "Build the experimental native Python tree-sitter chunk extractor"
     OFF
 )
+option(
+    CODENIB_BUILD_PYTHON_CHUNK_BATCH_POC
+    "Build the experimental native Python repository-batch extractor"
+    OFF
+)
+
+if(CODENIB_BUILD_TREE_SITTER_POC AND CODENIB_BUILD_PYTHON_CHUNK_BATCH_POC)
+    message(FATAL_ERROR
+        "The per-file and repository-batch Python chunk POCs are mutually exclusive"
+    )
+endif()
 
 # -------------------------------------------------------------------------
 # Vendored c-igraph
@@ -48,7 +59,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(igraph)
 
-if(CODENIB_BUILD_TREE_SITTER_POC)
+if(CODENIB_BUILD_TREE_SITTER_POC OR CODENIB_BUILD_PYTHON_CHUNK_BATCH_POC)
     # Keep the proof of concept opt-in until its repository-level benchmark
     # clears the acceleration gate. Both dependencies are immutable commits.
     FetchContent_Declare(
@@ -129,10 +140,22 @@ target_link_libraries(codenib_core
         ZLIB::ZLIB
 )
 
-if(CODENIB_BUILD_TREE_SITTER_POC)
+if(CODENIB_BUILD_TREE_SITTER_POC OR CODENIB_BUILD_PYTHON_CHUNK_BATCH_POC)
     target_sources(codenib_core PRIVATE python_chunk_poc.cpp)
-    target_compile_definitions(codenib_core PUBLIC CODENIB_TREE_SITTER_POC=1)
     target_link_libraries(codenib_core PUBLIC codenib_tree_sitter_python)
+endif()
+
+if(CODENIB_BUILD_TREE_SITTER_POC)
+    target_compile_definitions(codenib_core PUBLIC CODENIB_TREE_SITTER_POC=1)
+endif()
+
+if(CODENIB_BUILD_PYTHON_CHUNK_BATCH_POC)
+    find_package(Threads REQUIRED)
+    target_sources(codenib_core PRIVATE python_chunk_batch_poc.cpp)
+    target_compile_definitions(
+        codenib_core PUBLIC CODENIB_PYTHON_CHUNK_BATCH_POC=1
+    )
+    target_link_libraries(codenib_core PUBLIC Threads::Threads)
 endif()
 
 add_executable(scip_decode_test
@@ -165,6 +188,13 @@ add_executable(fact_query_index_test
 
 target_link_libraries(fact_query_index_test PRIVATE codenib_core)
 
+if(CODENIB_BUILD_PYTHON_CHUNK_BATCH_POC)
+    add_executable(python_chunk_batch_poc_test
+        tests/python_chunk_batch_poc_test.cpp
+    )
+    target_link_libraries(python_chunk_batch_poc_test PRIVATE codenib_core)
+endif()
+
 add_executable(scip_decode_repo
     tests/scip_decode_repo.cpp
 )
@@ -193,6 +223,9 @@ if(CODENIB_ENABLE_O3)
     endif()
     if(TARGET fact_query_index_test)
         target_compile_options(fact_query_index_test PRIVATE -O3)
+    endif()
+    if(TARGET python_chunk_batch_poc_test)
+        target_compile_options(python_chunk_batch_poc_test PRIVATE -O3)
     endif()
 endif()
 
@@ -279,5 +312,10 @@ if(CODENIB_ENABLE_DEBUG)
     if(TARGET fact_query_index_test)
         target_compile_definitions(fact_query_index_test PRIVATE CODENIB_DEBUG=1)
         target_compile_options(fact_query_index_test PRIVATE ${_codenib_debug_flags})
+    endif()
+
+    if(TARGET python_chunk_batch_poc_test)
+        target_compile_definitions(python_chunk_batch_poc_test PRIVATE CODENIB_DEBUG=1)
+        target_compile_options(python_chunk_batch_poc_test PRIVATE ${_codenib_debug_flags})
     endif()
 endif()
