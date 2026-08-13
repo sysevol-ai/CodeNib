@@ -251,8 +251,8 @@ Acceptance evidence on 2026-07-26:
 
 ### M7: Agent-ready CodeGraph
 
-Status: implementation complete for 0.2.1; installed release acceptance and
-main verification remain before publication.
+Status: implemented for 0.2.1. Publication is independently gated by installed
+release acceptance, exact-main verification, and explicit release authorization.
 
 - Add one command that detects languages and clients, installs the safe managed
   subset of graph providers, builds BM25 plus `symbol_graph`, and registers the
