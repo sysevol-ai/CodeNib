@@ -691,6 +691,52 @@ def test_measurement_exception_remains_failed_not_performance_rejected(
     assert report["decision"]["selected_worker_count"] is None
 
 
+def test_late_measurement_failure_clears_partial_worker_qualification(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    manifest, roots = _write_manifest(tmp_path)
+    monkeypatch.setattr(
+        profiler,
+        "_peak_rss_source",
+        lambda: profiler.CANONICAL_PEAK_RSS_SOURCE,
+    )
+    green_sample = _fake_sample_runner()
+    call_count = 0
+
+    def fail_after_first_worker(config: dict[str, Any]) -> dict[str, Any]:
+        nonlocal call_count
+        call_count += 1
+        if call_count > 192:
+            raise TimeoutError("synthetic late worker timeout")
+        return green_sample(config)
+
+    report = profiler.profile_python_repository_chunk_gate(
+        subject_roots=roots,
+        manifest_path=manifest,
+        _sample_runner=fail_after_first_worker,
+        _candidate_observer=_candidate_receipt,
+        _benchmark_observer=_benchmark_receipt,
+    )
+
+    assert report["status"] == "failed"
+    assert report["failure"]["stage"] == "measurement"
+    assert report["process_isolation"] == {
+        "sample_count": 192,
+        "expected_sample_count": 576,
+        "sample_set_complete": False,
+        "unique_process_count": 192,
+        "duplicate_process_ids": [],
+        "passed": False,
+    }
+    assert report["decision"]["qualifying_worker_counts"] == []
+    assert report["decision"]["selected_worker_count"] is None
+    assert report["workers"]["1"]["passed_all_four_cells"] is False
+    assert all(
+        not cell["decision"]["gates"]["process_ids_unique"]
+        for cell in report["workers"]["1"]["cells"].values()
+    )
+
+
 def test_selector_drift_fails_closed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -1681,6 +1681,8 @@ def _base_report(
         "canonical_protocol": None,
         "process_isolation": {
             "sample_count": 0,
+            "expected_sample_count": None,
+            "sample_set_complete": False,
             "unique_process_count": 0,
             "duplicate_process_ids": [],
             "passed": False,
@@ -1897,9 +1899,21 @@ def profile_python_repository_chunk_gate(
     duplicate_process_ids = sorted(
         process_id for process_id, count in pid_counts.items() if count > 1
     )
-    global_process_isolation = bool(all_process_ids and not duplicate_process_ids)
+    expected_sample_count = (
+        len(worker_counts)
+        * len(prepared["subjects"])
+        * len(CONFIGURATIONS)
+        * (iterations + warmups)
+        * len(_ARMS)
+    )
+    sample_set_complete = len(all_process_ids) == expected_sample_count
+    global_process_isolation = bool(
+        expected_sample_count > 0 and sample_set_complete and not duplicate_process_ids
+    )
     report["process_isolation"] = {
         "sample_count": len(all_process_ids),
+        "expected_sample_count": expected_sample_count,
+        "sample_set_complete": sample_set_complete,
         "unique_process_count": len(pid_counts),
         "duplicate_process_ids": duplicate_process_ids,
         "passed": global_process_isolation,
@@ -1918,11 +1932,13 @@ def profile_python_repository_chunk_gate(
             cell["decision"]["passed"] for cell in worker["cells"].values()
         )
 
-    qualifying = [
-        int(worker_count)
-        for worker_count, result in report["workers"].items()
-        if result["passed_all_four_cells"]
-    ]
+    qualifying = []
+    if report["failure"] is None:
+        qualifying = [
+            int(worker_count)
+            for worker_count, result in report["workers"].items()
+            if result["passed_all_four_cells"]
+        ]
     qualifying.sort()
     selected = qualifying[0] if qualifying else None
     passed = bool(
