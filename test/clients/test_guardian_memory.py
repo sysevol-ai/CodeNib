@@ -21,6 +21,7 @@ from codenib.clients.guardian import (
     SpecificationRecord,
     SpecificationStatus,
 )
+from codenib.clients.guardian.memory import memory_from_dict, memory_to_dict
 
 
 def test_persisted_memory_load_revalidates_repository_evidence(tmp_path: Path) -> None:
@@ -83,3 +84,13 @@ def test_persisted_memory_load_revalidates_repository_evidence(tmp_path: Path) -
     assert loaded.evidence[0].fresh is False
     assert loaded.specifications[0].status is SpecificationStatus.PROPOSED
     assert loaded.rounds[0].frontier == ("LS-1",)
+
+
+def test_memory_reader_accepts_pre_probe_protocol_schema() -> None:
+    serialized = memory_to_dict(SpecificationMemory())
+    serialized["schema_version"] = 3
+
+    loaded = memory_from_dict(serialized)
+
+    assert loaded.specifications == ()
+    assert loaded.evidence == ()

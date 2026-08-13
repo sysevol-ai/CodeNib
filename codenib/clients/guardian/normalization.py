@@ -390,19 +390,10 @@ def parse_patch_check(
         if not isinstance(row, dict):
             continue
         spec_id = str(row.get("specification_id", "")).strip()
-        outcome = str(row.get("outcome", "")).strip().lower()
-        command = str(row.get("command", "")).strip()
-        output = str(row.get("output", "")).strip()
+        probe_key = str(row.get("probe_key", "")).strip()
         observation = str(row.get("observation", "")).strip()
         tool_call_id = str(row.get("tool_call_id", "")).strip()
-        if (
-            spec_id not in specs
-            or outcome not in ("passed", "failed")
-            or not command
-            or not output
-            or not observation
-            or not tool_call_id
-        ):
+        if spec_id not in specs or not probe_key or not observation or not tool_call_id:
             continue
         evidence_id = str(row.get("id") or f"EV-PATCH-PROBE-{index}").strip()
         runtime_evidence.append(
@@ -414,12 +405,12 @@ def parse_patch_check(
                 description=observation,
                 source_type=EvidenceSourceType.RUNTIME_PROBE,
                 authority=EvidenceAuthority.BEHAVIORAL,
-                supports=(spec_id,) if outcome == "passed" else (),
-                opposes=(spec_id,) if outcome == "failed" else (),
+                supports=(),
+                opposes=(),
                 acquired_by="patch-checker",
                 round=1,
-                command=command,
-                output=output,
+                probe_key=probe_key,
+                probe_specification_id=spec_id,
             )
         )
     evidence_by_id = {item.evidence_id: item for item in (*evidence, *runtime_evidence)}

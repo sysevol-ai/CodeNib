@@ -32,6 +32,7 @@ from codenib.clients.guardian import (
     GuardianAgent,
     GuardianConfig,
     GuardianRequest,
+    ProbeOutcome,
     ReviewStatus,
     SpecificationMemory,
     SpecificationProvenance,
@@ -1181,21 +1182,19 @@ def test_supported_violation_accepts_linked_runtime_counterevidence(
         "runtime_evidence": [
             {
                 "id": "EV-PROBE-mode",
+                "probe_key": "mode-copy-preserved",
                 "tool_call_id": "item_1",
                 "specification_id": "LS-mode",
-                "outcome": "failed",
-                "command": "focused mode probe",
-                "output": "probe failed",
                 "observation": "A copied state omitted its configured mode.",
             }
         ],
         "findings": [
             {
                 "specification_id": "LS-mode",
-                "status": "violated",
+                "status": "satisfied",
                 "patch_locations": ["contract.py:2"],
                 "evidence_ids": ["EV-PROBE-mode"],
-                "assessment": "The executable copy path drops mode.",
+                "assessment": "The model incorrectly labels the failed probe satisfied.",
                 "recommendation": "Preserve mode on the copy path.",
             }
         ],
@@ -1212,7 +1211,7 @@ def test_supported_violation_accepts_linked_runtime_counterevidence(
                         response,
                         command="python /tmp/probe_mode.py",
                         output="mode key missing; exit=1",
-                        exit_code=0,
+                        exit_code=10,
                     )
                 ]
             ),
@@ -1227,6 +1226,9 @@ def test_supported_violation_accepts_linked_runtime_counterevidence(
     assert findings[0].evidence_ids == (findings[0].evidence[0].evidence_id,)
     assert findings[0].evidence[0].opposes == ("LS-mode",)
     assert findings[0].evidence[0].snapshot == request.candidate_commit
+    assert findings[0].evidence[0].probe_key == "mode-copy-preserved"
+    assert findings[0].evidence[0].probe_outcome is ProbeOutcome.VIOLATED
+    assert findings[0].evidence[0].exit_code == 10
     assert findings[0].evidence[0].command == "python /tmp/probe_mode.py"
     assert findings[0].evidence[0].output == "mode key missing; exit=1"
     assert not uncertainty
@@ -1248,11 +1250,9 @@ def test_unexecuted_runtime_claim_cannot_promote_violation(tmp_path: Path) -> No
         "runtime_evidence": [
             {
                 "id": "EV-PROBE-invented",
+                "probe_key": "mode-copy-preserved",
                 "tool_call_id": "item-missing",
                 "specification_id": "LS-mode",
-                "outcome": "failed",
-                "command": "python /tmp/probe_mode.py",
-                "output": "invented failure",
                 "observation": "This output is absent from the trajectory.",
             }
         ],
@@ -1283,6 +1283,230 @@ def test_unexecuted_runtime_claim_cannot_promote_violation(tmp_path: Path) -> No
     assert not uncertainty[0].evidence_ids
 
 
+def test_probe_marker_recovers_misreported_tool_call_id(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    memory = SpecificationMemory(specifications=(_record(),))
+    response = {
+        "summary": "The assertion falsified the specification.",
+        "runtime_evidence": [
+            {
+                "id": "EV-PROBE-mode",
+                "probe_key": "mode-copy-preserved",
+                "tool_call_id": "item_probe_symbolic",
+                "specification_id": "LS-mode",
+                "observation": "The focused copy assertion failed.",
+            }
+        ],
+        "findings": [
+            {
+                "specification_id": "LS-mode",
+                "status": "violated",
+                "evidence_ids": ["EV-PROBE-mode"],
+                "assessment": "The copy drops mode.",
+                "recommendation": "Preserve mode.",
+            }
+        ],
+        "backlog": [],
+    }
+    command = (
+        "GUARDIAN_PROBE_KEY=mode-copy-preserved "
+        "GUARDIAN_SPECIFICATION_ID=LS-mode python /tmp/probe.py"
+    )
+
+    _, findings, uncertainty, probes, _, error = asyncio.run(
+        check_patch(
+            request,
+            _one_round_config(),
+            ScriptedExecutor(
+                [
+                    _run_with_probe(
+                        response,
+                        command=command,
+                        output="mode missing",
+                        exit_code=10,
+                        tool_call_id="item_13",
+                    )
+                ]
+            ),
+            memory,
+        )
+    )
+
+    assert error is None
+    assert [item.specification_id for item in findings] == ["LS-mode"]
+    assert not uncertainty
+    assert probes[0].command == command
+    assert probes[0].probe_outcome is ProbeOutcome.VIOLATED
+
+
+def test_probe_exit_code_overrides_model_violation_claim(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    task_evidence = replace(
+        _typed_evidence(EvidenceSourceType.TASK, EvidenceAuthority.NORMATIVE),
+        evidence_id="EV-task",
+        supports=("LS-mode",),
+    )
+    memory = SpecificationMemory(
+        specifications=(replace(_record(), supporting_evidence=("EV-task",)),),
+        evidence=(task_evidence,),
+    )
+    response = {
+        "summary": "The model incorrectly calls a passing probe a violation.",
+        "runtime_evidence": [
+            {
+                "id": "EV-PROBE-mode",
+                "probe_key": "mode-copy-preserved",
+                "tool_call_id": "item_1",
+                "specification_id": "LS-mode",
+                "observation": "The focused copy assertion completed.",
+            }
+        ],
+        "findings": [
+            {
+                "specification_id": "LS-mode",
+                "status": "violated",
+                "evidence_ids": ["EV-task", "EV-PROBE-mode"],
+                "assessment": "The model misread the result.",
+                "recommendation": "Change the copy path.",
+            }
+        ],
+        "backlog": [],
+    }
+
+    _, findings, uncertainty, probes, _, error = asyncio.run(
+        check_patch(
+            request,
+            _one_round_config(),
+            ScriptedExecutor(
+                [
+                    _run_with_probe(
+                        response,
+                        command="python /tmp/probe_mode.py",
+                        output="mode preserved",
+                        exit_code=0,
+                    )
+                ]
+            ),
+            memory,
+        )
+    )
+
+    assert error is None
+    assert not findings
+    assert not uncertainty
+    assert probes[0].probe_outcome is ProbeOutcome.SATISFIED
+    assert probes[0].supports == ("LS-mode",)
+
+
+def test_non_protocol_probe_exit_is_inconclusive(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    memory = SpecificationMemory(specifications=(_record(),))
+    response = {
+        "summary": "The probe crashed operationally.",
+        "runtime_evidence": [
+            {
+                "id": "EV-PROBE-mode",
+                "probe_key": "mode-copy-preserved",
+                "tool_call_id": "item_1",
+                "specification_id": "LS-mode",
+                "observation": "The focused copy assertion could not run.",
+            }
+        ],
+        "findings": [
+            {
+                "specification_id": "LS-mode",
+                "status": "violated",
+                "evidence_ids": ["EV-PROBE-mode"],
+                "assessment": "The probe failed to import a dependency.",
+                "recommendation": "Investigate the environment.",
+            }
+        ],
+        "backlog": [],
+    }
+
+    _, findings, uncertainty, probes, _, error = asyncio.run(
+        check_patch(
+            request,
+            _one_round_config(),
+            ScriptedExecutor(
+                [
+                    _run_with_probe(
+                        response,
+                        command="python /tmp/probe_mode.py",
+                        output="ImportError: missing dependency",
+                        exit_code=1,
+                    )
+                ]
+            ),
+            memory,
+        )
+    )
+
+    assert error is None
+    assert not findings
+    assert [item.specification_id for item in uncertainty] == ["LS-mode"]
+    assert probes[0].probe_outcome is ProbeOutcome.INCONCLUSIVE
+    assert not probes[0].supports
+    assert not probes[0].opposes
+
+
+def test_reused_tool_call_invalidates_all_linked_probes(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    memory = SpecificationMemory(specifications=(_record(),))
+    response = {
+        "summary": "One compound command was incorrectly reported twice.",
+        "runtime_evidence": [
+            {
+                "id": "EV-PROBE-mode-a",
+                "probe_key": "mode-copy-preserved",
+                "tool_call_id": "item_1",
+                "specification_id": "LS-mode",
+                "observation": "First interpretation.",
+            },
+            {
+                "id": "EV-PROBE-mode-b",
+                "probe_key": "mode-copy-reloaded",
+                "tool_call_id": "item_1",
+                "specification_id": "LS-mode",
+                "observation": "Second interpretation.",
+            },
+        ],
+        "findings": [
+            {
+                "specification_id": "LS-mode",
+                "status": "violated",
+                "evidence_ids": ["EV-PROBE-mode-a"],
+                "assessment": "The compound command printed a failure.",
+                "recommendation": "Preserve mode.",
+            }
+        ],
+        "backlog": [],
+    }
+
+    _, findings, uncertainty, probes, _, error = asyncio.run(
+        check_patch(
+            request,
+            _one_round_config(),
+            ScriptedExecutor(
+                [
+                    _run_with_probe(
+                        response,
+                        command="python /tmp/compound_probe.py",
+                        output="mixed results",
+                        exit_code=10,
+                    )
+                ]
+            ),
+            memory,
+        )
+    )
+
+    assert error is None
+    assert not findings
+    assert [item.specification_id for item in uncertainty] == ["LS-mode"]
+    assert not probes
+
+
 def test_patch_checker_requires_fresh_directory_persistence_probe(
     tmp_path: Path,
 ) -> None:
@@ -1305,6 +1529,12 @@ def test_patch_checker_requires_fresh_directory_persistence_probe(
     assert "fresh temporary working directory" in instruction
     assert "verify that the expected artifact is actually created" in instruction
     assert "return `uncertain`" in instruction
+    assert "exit 0 only when that specification is satisfied" in instruction
+    assert "exit 10 only when the specification is behaviorally violated" in instruction
+    assert "do not reuse a command execution or probe key" in instruction
+    assert "do not report an outcome, command, or output" in instruction
+    assert "guardian_probe_key=<probe_key>" in instruction
+    assert "guardian_specification_id=<specification_id>" in instruction
 
 
 def test_patch_checker_probe_is_retained_in_cross_cycle_memory(tmp_path: Path) -> None:
@@ -1313,11 +1543,9 @@ def test_patch_checker_probe_is_retained_in_cross_cycle_memory(tmp_path: Path) -
         "runtime_evidence": [
             {
                 "id": "EV-PROBE-mode",
+                "probe_key": "mode-copy-preserved",
                 "tool_call_id": "item_1",
                 "specification_id": "LS-mode",
-                "outcome": "failed",
-                "command": "python /tmp/probe_mode.py",
-                "output": "mode key missing; exit=1",
                 "observation": "A copied state omitted its configured mode.",
             }
         ],
@@ -1343,7 +1571,7 @@ def test_patch_checker_probe_is_retained_in_cross_cycle_memory(tmp_path: Path) -
                 response,
                 command="python /tmp/probe_mode.py",
                 output="mode key missing; exit=1",
-                exit_code=1,
+                exit_code=10,
             ),
         ]
     )
@@ -1364,12 +1592,19 @@ def test_patch_checker_probe_is_retained_in_cross_cycle_memory(tmp_path: Path) -
     )
     assert probe.evidence_id in record.counterevidence
     assert probe.snapshot == result.candidate_commit
+    assert probe.probe_key == "mode-copy-preserved"
+    assert probe.probe_outcome is ProbeOutcome.VIOLATED
+    assert probe.exit_code == 10
     persisted = json.loads((result.artifact_dir / "memory.json").read_text())
     persisted_probe = next(
         item for item in persisted["evidence"] if item["source_type"] == "runtime_probe"
     )
     assert persisted_probe["command"] == "python /tmp/probe_mode.py"
     assert persisted_probe["output"] == "mode key missing; exit=1"
+    assert persisted_probe["probe_key"] == "mode-copy-preserved"
+    assert persisted_probe["probe_specification_id"] == "LS-mode"
+    assert persisted_probe["probe_outcome"] == "violated"
+    assert persisted_probe["exit_code"] == 10
 
 
 def test_current_failed_probe_survives_satisfied_patch_checker_verdict(
@@ -1389,6 +1624,10 @@ def test_current_failed_probe_survives_satisfied_patch_checker_verdict(
         description="The focused mode-preservation test failed.",
         source_type=EvidenceSourceType.RUNTIME_PROBE,
         authority=EvidenceAuthority.BEHAVIORAL,
+        probe_key="mode-copy-preserved",
+        probe_specification_id="LS-mode",
+        probe_outcome=ProbeOutcome.VIOLATED,
+        exit_code=10,
         command="pytest -q test_mode.py",
         output="1 failed",
         opposes=("LS-mode",),
@@ -1448,6 +1687,10 @@ def test_later_successful_run_of_same_probe_clears_failed_probe(
         description="The focused mode-preservation test failed.",
         source_type=EvidenceSourceType.RUNTIME_PROBE,
         authority=EvidenceAuthority.BEHAVIORAL,
+        probe_key="mode-copy-preserved",
+        probe_specification_id="LS-mode",
+        probe_outcome=ProbeOutcome.VIOLATED,
+        exit_code=10,
         command="pytest -q test_mode.py",
         output="1 failed",
         opposes=("LS-mode",),
@@ -1461,6 +1704,8 @@ def test_later_successful_run_of_same_probe_clears_failed_probe(
         output="1 passed",
         supports=("LS-mode",),
         opposes=(),
+        probe_outcome=ProbeOutcome.SATISFIED,
+        exit_code=0,
         round=2,
     )
     record = replace(
@@ -1497,6 +1742,82 @@ def test_later_successful_run_of_same_probe_clears_failed_probe(
 
     assert error is None
     assert not findings
+
+
+def test_current_successful_rerun_clears_retained_failed_probe(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    failed_probe = Evidence(
+        evidence_id="EV-failed-probe",
+        path="runtime-probe:item-old",
+        line_start=1,
+        line_end=1,
+        description="The focused mode-preservation test failed.",
+        source_type=EvidenceSourceType.RUNTIME_PROBE,
+        authority=EvidenceAuthority.BEHAVIORAL,
+        command="python /tmp/probe_mode.py",
+        output="mode missing",
+        probe_key="mode-copy-preserved",
+        probe_specification_id="LS-mode",
+        probe_outcome=ProbeOutcome.VIOLATED,
+        exit_code=10,
+        opposes=("LS-mode",),
+        snapshot=request.candidate_commit,
+        round=1,
+    )
+    record = replace(
+        _record(),
+        supporting_evidence=(),
+        counterevidence=("EV-failed-probe",),
+    )
+    memory = SpecificationMemory(specifications=(record,), evidence=(failed_probe,))
+    response = {
+        "summary": "The corrected path now preserves mode.",
+        "runtime_evidence": [
+            {
+                "id": "EV-PROBE-mode",
+                "probe_key": "mode-copy-preserved",
+                "tool_call_id": "item_1",
+                "specification_id": "LS-mode",
+                "observation": "The same logical assertion now passes.",
+            }
+        ],
+        "findings": [
+            {
+                "specification_id": "LS-mode",
+                "status": "satisfied",
+                "evidence_ids": ["EV-PROBE-mode"],
+                "assessment": "The focused rerun passes.",
+                "recommendation": "",
+            }
+        ],
+        "backlog": [],
+    }
+
+    _, findings, uncertainty, probes, _, error = asyncio.run(
+        check_patch(
+            request,
+            _one_round_config(),
+            ScriptedExecutor(
+                [
+                    _run_with_probe(
+                        response,
+                        command="python /tmp/probe_mode.py",
+                        output="mode preserved",
+                        exit_code=0,
+                    )
+                ]
+            ),
+            memory,
+        )
+    )
+
+    assert error is None
+    assert not findings
+    assert not uncertainty
+    assert probes[0].round == 2
+    assert probes[0].probe_outcome is ProbeOutcome.SATISFIED
 
 
 def test_all_model_and_tool_usage_is_accounted(tmp_path: Path) -> None:

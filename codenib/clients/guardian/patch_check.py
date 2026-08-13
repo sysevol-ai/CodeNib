@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import re
 
 from ..execution import (
     AgentEventKind,
@@ -29,6 +30,7 @@ from .types import (
     GuardianConfig,
     GuardianFinding,
     GuardianRequest,
+    ProbeOutcome,
     SpecificationMemory,
     SpecificationRecord,
     SpecificationStatus,
@@ -62,10 +64,11 @@ def _active_failed_probes(
     request: GuardianRequest,
     memory: SpecificationMemory,
     supported: tuple[SpecificationRecord, ...],
+    current_probes: tuple[Evidence, ...] = (),
 ) -> tuple[GuardianFinding, ...]:
     """Keep current-snapshot failed probes actionable until explicitly cleared."""
 
-    evidence = {item.evidence_id: item for item in memory.evidence}
+    evidence = {item.evidence_id: item for item in (*memory.evidence, *current_probes)}
     values = []
     for specification in supported:
         failures = [
@@ -78,16 +81,23 @@ def _active_failed_probes(
         ]
         active = []
         for failure in failures:
+            clearing_candidates = tuple(
+                candidate
+                for candidate in current_probes
+                if specification.specification_id in candidate.supports
+            ) + tuple(
+                evidence[evidence_id]
+                for evidence_id in specification.supporting_evidence
+                if evidence_id in evidence
+            )
             cleared = any(
                 candidate.fresh
                 and candidate.snapshot == request.candidate_commit
                 and candidate.source_type is EvidenceSourceType.RUNTIME_PROBE
-                and candidate.command
-                and candidate.command == failure.command
+                and candidate.probe_key
+                and candidate.probe_key == failure.probe_key
                 and candidate.round > failure.round
-                for evidence_id in specification.supporting_evidence
-                if evidence_id in evidence
-                for candidate in (evidence[evidence_id],)
+                for candidate in clearing_candidates
             )
             if not cleared:
                 active.append(failure)
@@ -113,9 +123,21 @@ def _active_failed_probes(
     return tuple(values)
 
 
-def _executed_probe(
-    rollout: AgentRunResult, evidence: Evidence
-) -> Evidence | None:
+_PROBE_MARKER = re.compile(
+    r"GUARDIAN_PROBE_KEY=(?P<quote>['\"]?)(?P<key>[A-Za-z0-9_.:-]+)(?P=quote)"
+    r"[ \t]+GUARDIAN_SPECIFICATION_ID=(?P<spec_quote>['\"]?)"
+    r"(?P<spec>[A-Za-z0-9_.:-]+)(?P=spec_quote)"
+)
+
+
+def _command_probe_identity(command: str) -> tuple[str, str] | None:
+    match = _PROBE_MARKER.search(command)
+    if match is None:
+        return None
+    return match.group("key"), match.group("spec")
+
+
+def _executed_probe(rollout: AgentRunResult, evidence: Evidence) -> Evidence | None:
     """Materialize runtime evidence from its authoritative trajectory event."""
 
     prefix = "runtime-probe:"
@@ -123,6 +145,8 @@ def _executed_probe(
         return None
     tool_call_id = evidence.path.removeprefix(prefix)
 
+    exact = []
+    marked = []
     for event in rollout.trajectory:
         if (
             event.kind is not AgentEventKind.TOOL
@@ -132,18 +156,51 @@ def _executed_probe(
         item = event.payload.get("item")
         if not isinstance(item, dict) or item.get("type") != "command_execution":
             continue
-        if item.get("id") != tool_call_id:
-            continue
         command = item.get("command")
         output = item.get("aggregated_output")
         exit_code = item.get("exit_code")
-        if (
+        if not (
             isinstance(command, str)
             and isinstance(output, str)
             and isinstance(exit_code, int)
+            and not isinstance(exit_code, bool)
         ):
-            return replace(evidence, command=command, output=output)
-    return None
+            continue
+        candidate = (command, output, exit_code)
+        if item.get("id") == tool_call_id:
+            exact.append(candidate)
+        if _command_probe_identity(command) == (
+            evidence.probe_key,
+            evidence.probe_specification_id,
+        ):
+            marked.append(candidate)
+    candidates = exact or marked
+    if len(candidates) != 1:
+        return None
+    command, output, exit_code = candidates[0]
+    if exit_code == 0:
+        outcome = ProbeOutcome.SATISFIED
+    elif exit_code == 10:
+        outcome = ProbeOutcome.VIOLATED
+    else:
+        outcome = ProbeOutcome.INCONCLUSIVE
+    return replace(
+        evidence,
+        command=command,
+        output=output,
+        exit_code=exit_code,
+        probe_outcome=outcome,
+        supports=(
+            (evidence.probe_specification_id,)
+            if outcome is ProbeOutcome.SATISFIED
+            else ()
+        ),
+        opposes=(
+            (evidence.probe_specification_id,)
+            if outcome is ProbeOutcome.VIOLATED
+            else ()
+        ),
+    )
 
 
 async def check_patch(
@@ -232,45 +289,108 @@ async def check_patch(
     except GuardianResponseError as exc:
         return "", (), (), (), rollout, f"patch checker: {exc}"
 
+    tool_call_counts = {}
+    probe_key_counts = {}
+    evidence_id_counts = {}
+    for item in runtime_evidence:
+        tool_call_id = item.path.removeprefix("runtime-probe:")
+        tool_call_counts[tool_call_id] = tool_call_counts.get(tool_call_id, 0) + 1
+        probe_key_counts[item.probe_key] = probe_key_counts.get(item.probe_key, 0) + 1
+        evidence_id_counts[item.evidence_id] = (
+            evidence_id_counts.get(item.evidence_id, 0) + 1
+        )
     validated_runtime = {}
     for item in runtime_evidence:
+        tool_call_id = item.path.removeprefix("runtime-probe:")
+        if (
+            tool_call_counts[tool_call_id] != 1
+            or probe_key_counts[item.probe_key] != 1
+            or evidence_id_counts[item.evidence_id] != 1
+        ):
+            continue
         executed = _executed_probe(rollout, item)
         if executed is None:
             continue
+        prior_sequence = max(
+            (
+                evidence.round
+                for evidence in memory.evidence
+                if evidence.source_type is EvidenceSourceType.RUNTIME_PROBE
+                and evidence.probe_key == item.probe_key
+            ),
+            default=0,
+        )
         scoped = replace(
             executed,
             evidence_id=(
                 f"EV-PATCH-{request.candidate_commit[:12]}-{item.evidence_id}"
             ),
             snapshot=request.candidate_commit,
+            round=prior_sequence + 1,
         )
         checked, _ = validate_evidence(request, scoped)
         if checked is not None:
             validated_runtime[item.evidence_id] = checked
     if runtime_evidence:
         runtime_ids = {item.evidence_id for item in runtime_evidence}
-        findings = tuple(
-            replace(
-                item,
-                evidence=tuple(
-                    validated_runtime.get(evidence.evidence_id, evidence)
-                    for evidence in item.evidence
-                    if evidence.source_type is not EvidenceSourceType.RUNTIME_PROBE
-                    or evidence.evidence_id in validated_runtime
-                ),
-                evidence_ids=tuple(
-                    (
-                        validated_runtime[evidence_id].evidence_id
-                        if evidence_id in validated_runtime
-                        else evidence_id
-                    )
-                    for evidence_id in item.evidence_ids
-                    if evidence_id not in runtime_ids
-                    or evidence_id in validated_runtime
-                ),
+        normalized_findings = []
+        for item in findings:
+            claimed_runtime_ids = tuple(
+                evidence_id
+                for evidence_id in item.evidence_ids
+                if evidence_id in runtime_ids
             )
-            for item in findings
-        )
+            valid_probes = tuple(
+                validated_runtime[evidence_id]
+                for evidence_id in claimed_runtime_ids
+                if evidence_id in validated_runtime
+                and item.specification_id
+                in (
+                    validated_runtime[evidence_id].supports
+                    + validated_runtime[evidence_id].opposes
+                )
+            )
+            status = item.status
+            assessment = item.patch_assessment
+            if claimed_runtime_ids:
+                outcomes = {probe.probe_outcome for probe in valid_probes}
+                if not valid_probes:
+                    status = FindingStatus.UNCERTAIN
+                    assessment = (
+                        assessment
+                        + " The cited probe was invalid, duplicated, inconclusive, "
+                        "or not uniquely linked to this specification."
+                    ).strip()
+                elif ProbeOutcome.VIOLATED in outcomes:
+                    status = FindingStatus.VIOLATED
+                elif ProbeOutcome.INCONCLUSIVE in outcomes:
+                    status = FindingStatus.UNCERTAIN
+                else:
+                    status = FindingStatus.SATISFIED
+            normalized_findings.append(
+                replace(
+                    item,
+                    status=status,
+                    patch_assessment=assessment,
+                    evidence=tuple(
+                        validated_runtime.get(evidence.evidence_id, evidence)
+                        for evidence in item.evidence
+                        if evidence.source_type is not EvidenceSourceType.RUNTIME_PROBE
+                        or evidence.evidence_id in validated_runtime
+                    ),
+                    evidence_ids=tuple(
+                        (
+                            validated_runtime[evidence_id].evidence_id
+                            if evidence_id in validated_runtime
+                            else evidence_id
+                        )
+                        for evidence_id in item.evidence_ids
+                        if evidence_id not in runtime_ids
+                        or evidence_id in validated_runtime
+                    ),
+                )
+            )
+        findings = tuple(normalized_findings)
 
     supported_ids = {item.specification_id for item in supported}
     proposed_ids = {item.specification_id for item in proposed}
@@ -296,7 +416,9 @@ async def check_patch(
             cites_task and item.specification_id in supported_ids.union(proposed_ids)
         ):
             admitted.append(item)
-    monotonic = _active_failed_probes(request, memory, supported)
+    monotonic = _active_failed_probes(
+        request, memory, supported, tuple(validated_runtime.values())
+    )
     admitted_by_specification = {item.specification_id: item for item in admitted}
     for item in monotonic:
         admitted_by_specification[item.specification_id] = item

@@ -18,6 +18,7 @@ from .types import (
     EvidenceSourceType,
     ExplorationExperience,
     GuardianResult,
+    ProbeOutcome,
     RoundRecord,
     SpecificationMemory,
     SpecificationProvenance,
@@ -27,7 +28,8 @@ from .types import (
     StageUsage,
 )
 
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
+_READABLE_SCHEMA_VERSIONS = (3, _SCHEMA_VERSION)
 
 
 def evidence_to_dict(value: Evidence) -> dict[str, object]:
@@ -48,6 +50,12 @@ def evidence_to_dict(value: Evidence) -> dict[str, object]:
         "round": value.round,
         "command": value.command,
         "output": value.output,
+        "probe_key": value.probe_key,
+        "probe_specification_id": value.probe_specification_id,
+        "probe_outcome": (
+            value.probe_outcome.value if value.probe_outcome is not None else ""
+        ),
+        "exit_code": value.exit_code,
         "snapshot": value.snapshot,
         "blob_sha256": value.blob_sha256,
         "fresh": value.fresh,
@@ -167,6 +175,14 @@ def _evidence(raw: object) -> Evidence:
         round=int(raw.get("round", 1)),
         command=str(raw.get("command", "")),
         output=str(raw.get("output", "")),
+        probe_key=str(raw.get("probe_key", "")),
+        probe_specification_id=str(raw.get("probe_specification_id", "")),
+        probe_outcome=(
+            ProbeOutcome(str(raw["probe_outcome"]))
+            if raw.get("probe_outcome")
+            else None
+        ),
+        exit_code=(int(raw["exit_code"]) if raw.get("exit_code") is not None else None),
         quote=str(raw.get("quote", "")),
         snapshot=str(raw.get("snapshot", "")),
         blob_sha256=str(raw.get("blob_sha256", "")),
@@ -229,7 +245,10 @@ def _experience(raw: object) -> ExplorationExperience:
 
 
 def memory_from_dict(raw: object) -> SpecificationMemory:
-    if not isinstance(raw, dict) or raw.get("schema_version") != _SCHEMA_VERSION:
+    if (
+        not isinstance(raw, dict)
+        or raw.get("schema_version") not in _READABLE_SCHEMA_VERSIONS
+    ):
         raise ValueError("unsupported Guardian memory schema")
     specifications = raw.get("specifications", [])
     evidence = raw.get("evidence", [])

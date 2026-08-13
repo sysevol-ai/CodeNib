@@ -86,6 +86,12 @@ class EvidenceAuthority(str, Enum):
     DERIVED = "derived"
 
 
+class ProbeOutcome(str, Enum):
+    SATISFIED = "satisfied"
+    VIOLATED = "violated"
+    INCONCLUSIVE = "inconclusive"
+
+
 @dataclass(frozen=True, slots=True)
 class Evidence:
     """An inspectable evidence item with independent source and authority axes."""
@@ -103,6 +109,10 @@ class Evidence:
     round: int = 1
     command: str = ""
     output: str = ""
+    probe_key: str = ""
+    probe_specification_id: str = ""
+    probe_outcome: ProbeOutcome | None = None
+    exit_code: int | None = None
     quote: str = ""
     snapshot: str = ""
     blob_sha256: str = ""
@@ -137,6 +147,14 @@ class Evidence:
         object.__setattr__(self, "evidence_id", evidence_id)
         object.__setattr__(self, "supports", tuple(self.supports))
         object.__setattr__(self, "opposes", tuple(self.opposes))
+        object.__setattr__(self, "probe_key", self.probe_key.strip())
+        object.__setattr__(
+            self, "probe_specification_id", self.probe_specification_id.strip()
+        )
+        if isinstance(self.exit_code, bool):
+            raise ValueError("evidence exit_code must be an integer or None")
+        if self.probe_outcome is not None:
+            object.__setattr__(self, "probe_outcome", ProbeOutcome(self.probe_outcome))
 
     @property
     def observation(self) -> str:

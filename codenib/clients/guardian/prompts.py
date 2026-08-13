@@ -412,12 +412,24 @@ valid configuration in a fresh temporary working directory and verify that the e
 artifact is actually created. If a probe is infeasible, return `uncertain` and explain
 the concrete blocker rather than claiming satisfaction.
 
-Report every executed probe in `runtime_evidence`. Set `tool_call_id` to the exact ID
-of the trajectory's `command_execution` item. The command and output fields may be
-concise descriptions: the controller recovers their authoritative values from that
-trajectory event. Set `outcome` from the observed exit/result, not from code inspection.
-A failed probe must be cited by the corresponding violated finding; a passing probe
-must be cited by the corresponding satisfied finding.
+Each probe must be one self-contained assertion command for exactly one specification.
+It must exit 0 only when that specification is satisfied, exit 10 only when the
+specification is behaviorally violated, and use any other exit code for an operational
+failure or inconclusive experiment. Do not combine several independent assertions in
+one command. Do not reuse a command execution or probe key for another specification.
+Start the assertion portion of every probe command with these two literal environment
+assignments, using the same values reported in `runtime_evidence`:
+`GUARDIAN_PROBE_KEY=<probe_key> GUARDIAN_SPECIFICATION_ID=<specification_id>`.
+Keep probe keys limited to letters, digits, `.`, `_`, `:`, and `-`. These markers let
+the controller recover the authoritative trajectory event even if an opaque tool-call
+ID is copied incorrectly.
+
+Report every executed probe in `runtime_evidence`. Give it a stable, descriptive
+`probe_key` that can identify the same logical experiment after a later solver commit,
+and set `tool_call_id` to the exact ID of the trajectory's `command_execution` item.
+Do not report an outcome, command, or output: the controller derives them from the
+trajectory and exit code. Cite the probe from the corresponding finding. If its exit
+code is neither 0 nor 10, report the finding as uncertain.
 
 Direct verbatim task contract:
 {json.dumps(direct_task_context, indent=2)}
@@ -445,9 +457,8 @@ Candidate patch:
 
 Return only JSON:
 {{"summary":"...","runtime_evidence":[{{"id":"EV-PROBE-...",
-"tool_call_id":"item_...","specification_id":"LS-...",
-"outcome":"passed|failed","command":"...",
-"output":"...","observation":"..."}}],
+"probe_key":"schema-artifact-after-fit","tool_call_id":"item_...",
+"specification_id":"LS-...","observation":"..."}}],
 "findings":[{{"specification_id":"LS-...",
 "status":"violated|satisfied|uncertain","patch_locations":["path:line"],
 "evidence_ids":["EV-..."],"assessment":"...","recommendation":"..."}}],
