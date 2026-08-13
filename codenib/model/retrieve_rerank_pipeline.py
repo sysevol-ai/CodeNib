@@ -12,6 +12,10 @@ from typing import Dict, List, Optional, Sequence, Set
 from ..code_chunker import CodeChunker, RepoChunkingConfig
 from ..graph.code_graph import CodeGraph
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
+from ..index.embedding._lifecycle import close_vector_after_failure
+from ..index.embedding.artifact_integrity import (
+    _mint_trusted_local_vector_authorization,
+)
 from ..index.embedding.model_policy import resolve_embedding_load_policy_from_options
 from ..index.rerank.cross_encoder import build_reranker
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
@@ -804,6 +808,19 @@ class RetrieveRerankPipeline:
         embedding_dimension: int,
         embedding_kwargs: Dict[str, object],
     ) -> CodeVectorStore:
+        model_suffix = embedding_model.replace("/", "__")
+        config_file = self.index_path / f"config_{model_suffix}.json"
+        l0_path = self.index_path / "l0"
+        l2_path = self.index_path / "l2"
+
+        cache_exists = config_file.exists() or (l0_path.exists() and l2_path.exists())
+        native_authorization = None
+        if cache_exists:
+            native_authorization = _mint_trusted_local_vector_authorization(
+                self.index_path,
+                {},
+                evidence=("retrieve-rerank-local-vector-cache",),
+            )
         vector_store = CodeVectorStore(
             embedding_model=embedding_model,
             embedding_provider=embedding_provider,
@@ -811,33 +828,34 @@ class RetrieveRerankPipeline:
             store_path=str(self.index_path),
             **embedding_kwargs,
         )
-        model_suffix = embedding_model.replace("/", "__")
-        config_file = self.index_path / f"config_{model_suffix}.json"
-        l0_path = self.index_path / "l0"
-        l2_path = self.index_path / "l2"
-
-        cache_exists = config_file.exists() or (l0_path.exists() and l2_path.exists())
         if cache_exists:
             logger.info(
                 "Loading hierarchical vector store from cache.",
                 extra={"index_path": str(self.index_path)},
             )
-            vector_store.load(str(self.index_path))
-            missing_levels = []
-            if not vector_store.l0_documents:
-                missing_levels.append("l0")
-            if self.retrieval_level == "l2" and not vector_store.l2_documents:
-                missing_levels.append("l2")
+            try:
+                vector_store.load(
+                    str(self.index_path),
+                    native_index_authorization=native_authorization,
+                )
+                missing_levels = []
+                if not vector_store.l0_documents:
+                    missing_levels.append("l0")
+                if self.retrieval_level == "l2" and not vector_store.l2_documents:
+                    missing_levels.append("l2")
 
-            if not missing_levels:
-                return vector_store
+                if not missing_levels:
+                    return vector_store
 
-            logger.info(
-                "Cached vector store missing required levels %s; rebuilding.",
-                missing_levels,
-                extra={"index_path": str(self.index_path)},
-            )
-            vector_store.clear()
+                logger.info(
+                    "Cached vector store missing required levels %s; rebuilding.",
+                    missing_levels,
+                    extra={"index_path": str(self.index_path)},
+                )
+                vector_store.clear()
+            except BaseException as primary:  # noqa: B036 - close partial state
+                close_vector_after_failure(vector_store, primary)
+                raise
 
         logger.info("Building hierarchical vector store index.")
         vector_store = build_hierarchical_vector_store(

@@ -469,7 +469,9 @@ class VectorIndexBuilder:
         output_dir: str = kwargs["output_dir"]
         last_commit: str = kwargs.get("last_commit", "")
 
+        from ..index.embedding._lifecycle import close_vector_after_failure
         from ..index.embedding.artifact_integrity import (
+            _mint_trusted_local_vector_authorization,
             begin_vector_view_update,
             finish_vector_view_update,
             require_complete_vector_view,
@@ -525,6 +527,11 @@ class VectorIndexBuilder:
             if previous_artifact is not None
             else artifact_identity
         )
+        native_authorization = _mint_trusted_local_vector_authorization(
+            output_dir,
+            load_identity,
+            evidence=("compiler-incremental-vector-view",),
+        )
         vector_store = CodeVectorStore(
             embedding_model=artifact_identity["embedding_model"],
             embedding_provider=artifact_identity["embedding_provider"],
@@ -534,8 +541,15 @@ class VectorIndexBuilder:
             artifact_metadata=load_identity,
             **self._embedding_call_kwargs(),
         )
-        self._validate_vector_dimension(vector_store)
-        vector_store.load(output_dir)
+        try:
+            self._validate_vector_dimension(vector_store)
+            vector_store.load(
+                output_dir,
+                native_index_authorization=native_authorization,
+            )
+        except BaseException as primary:  # noqa: B036 - close partial native state
+            close_vector_after_failure(vector_store, primary)
+            raise
 
         chunk_store = IncrementalChunkStore.load(chunk_store_path)
         embeddings_cache = EmbeddingsCache.load(embeddings_cache_path)

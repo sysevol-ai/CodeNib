@@ -22,6 +22,7 @@ Environment variable CODENIB_INDEX_PATH can override the cache location:
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
@@ -54,54 +55,81 @@ EMBEDDING_INDEX_PATH = "/tmp/embedding_e2e_index"
 def vector_store(httpie_cli_repo):
     """Build or load a CodeVectorStore for the httpie/cli repo."""
     from codenib.index.embedding import CodeVectorStore, build_hierarchical_vector_store
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
 
     repo_path = str(httpie_cli_repo)
     store_root = Path(EMBEDDING_INDEX_PATH)
     l0_dir = store_root / "l0"
     l2_dir = store_root / "l2"
 
-    if l0_dir.exists() and l2_dir.exists():
-        print(f"\n[e2e] Loading cached index from {EMBEDDING_INDEX_PATH}")
-        vs = CodeVectorStore(
-            embedding_model=DEFAULT_EMBEDDING_MODEL,
-            embedding_provider=DEFAULT_EMBEDDING_PROVIDER,
-            dimension=DEFAULT_EMBEDDING_DIM,
-            store_path=EMBEDDING_INDEX_PATH,
-            model_kwargs={
-                "trust_remote_code": True,
-                "device": "cuda",
-                "model_kwargs": {"torch_dtype": "float16"},
-            },
-            encode_kwargs={
-                "batch_size": 4,
-                "normalize_embeddings": True,
-            },
-        )
-        vs.load(EMBEDDING_INDEX_PATH)
-    else:
-        print(f"\n[e2e] Building index for {repo_path} into {EMBEDDING_INDEX_PATH}")
-        store_root.mkdir(parents=True, exist_ok=True)
-        vs = build_hierarchical_vector_store(
-            repo_path=repo_path,
-            index_path=EMBEDDING_INDEX_PATH,
-            languages=["python"],
-            embedding_model=DEFAULT_EMBEDDING_MODEL,
-            embedding_provider=DEFAULT_EMBEDDING_PROVIDER,
-            embedding_dimension=DEFAULT_EMBEDDING_DIM,
-            embedding_kwargs={
-                "model_kwargs": {
+    with ExitStack() as resources:
+        if l0_dir.exists() and l2_dir.exists():
+            print(f"\n[e2e] Loading cached index from {EMBEDDING_INDEX_PATH}")
+            artifact_contract = {}
+            with capture_authenticated_vector_view(store_root) as vector_view:
+                authorization = _mint_trusted_local_admin_authorization(
+                    vector_view.ownership,
+                    view_type="vector",
+                    semantic_contract=artifact_contract,
+                    evidence=(
+                        "embedding-e2e-local-vector-view",
+                        "captured-vector-tree-subject",
+                    ),
+                )
+            vs = CodeVectorStore(
+                embedding_model=DEFAULT_EMBEDDING_MODEL,
+                embedding_provider=DEFAULT_EMBEDDING_PROVIDER,
+                dimension=DEFAULT_EMBEDDING_DIM,
+                store_path=EMBEDDING_INDEX_PATH,
+                artifact_metadata=artifact_contract,
+                model_kwargs={
                     "trust_remote_code": True,
                     "device": "cuda",
                     "model_kwargs": {"torch_dtype": "float16"},
                 },
-                "encode_kwargs": {
+                encode_kwargs={
                     "batch_size": 4,
                     "normalize_embeddings": True,
                 },
-            },
-        )
+            )
+            resources.callback(vs.close)
+            vs.load(
+                EMBEDDING_INDEX_PATH,
+                native_index_authorization=authorization,
+            )
+        else:
+            print(
+                f"\n[e2e] Building index for {repo_path} into "
+                f"{EMBEDDING_INDEX_PATH}"
+            )
+            store_root.mkdir(parents=True, exist_ok=True)
+            vs = build_hierarchical_vector_store(
+                repo_path=repo_path,
+                index_path=EMBEDDING_INDEX_PATH,
+                languages=["python"],
+                embedding_model=DEFAULT_EMBEDDING_MODEL,
+                embedding_provider=DEFAULT_EMBEDDING_PROVIDER,
+                embedding_dimension=DEFAULT_EMBEDDING_DIM,
+                embedding_kwargs={
+                    "model_kwargs": {
+                        "trust_remote_code": True,
+                        "device": "cuda",
+                        "model_kwargs": {"torch_dtype": "float16"},
+                    },
+                    "encode_kwargs": {
+                        "batch_size": 4,
+                        "normalize_embeddings": True,
+                    },
+                },
+            )
+            resources.callback(vs.close)
 
-    return vs
+        yield vs
 
 
 @pytest.fixture(scope="session")

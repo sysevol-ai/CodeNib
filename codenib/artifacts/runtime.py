@@ -1072,16 +1072,17 @@ def bind_context_artifact(
         # attested by any finite sequence of path reads, so it never gates the
         # retained content authority or native trust.
         actual_commit = checkout_commit(repo)
-        source.verify_snapshot()
-        if source.fingerprint != artifact.source_fingerprint:
+        source_identity = source.authenticated_identity_snapshot()
+        authenticated_repo = source_identity.root
+        if source_identity.fingerprint != artifact.source_fingerprint:
             raise ValueError(
                 "repository source files do not match the context artifact fingerprint"
             )
-        if source.file_count != artifact.manifest.file_count:
+        if source_identity.file_count != artifact.manifest.file_count:
             raise ValueError(
                 "repository file count does not match the context artifact manifest"
             )
-        source_records = {record.path for record in source.file_records}
+        source_records = {record.path for record in source_identity.file_records}
         missing_source_paths = sorted(set(artifact.source_paths) - source_records)
         if missing_source_paths:
             raise ValueError(
@@ -1090,7 +1091,7 @@ def bind_context_artifact(
             )
 
         manifest_data = artifact.manifest.to_dict()
-        manifest_data["repo"]["path"] = str(repo)
+        manifest_data["repo"]["path"] = str(authenticated_repo)
         for view, entry in manifest_data["indexes"].items():
             entry["path"] = str(
                 _artifact_path(
@@ -1102,7 +1103,7 @@ def bind_context_artifact(
         manifest = RepoManifest.from_dict(manifest_data)
         return ContextArtifactBinding(
             artifact=artifact,
-            repo_path=repo,
+            repo_path=authenticated_repo,
             manifest=manifest,
             checkout_commit_observed=actual_commit or None,
             _source_binding=source,
@@ -1115,18 +1116,39 @@ def bind_context_artifact(
             bind,
         )
     except BaseException as exc:  # noqa: B036 - cleanup before propagation
+        cleanup_failure: BaseException | None = None
         try:
             cleanup_owner.close()
-        except BaseException:  # noqa: B036 - preserve primary, retain owner
-            _attach_source_cleanup_owner(exc, cleanup_owner)
+        except BaseException as failure:  # noqa: B036 - shared priority below
+            cleanup_failure = failure
+        pending_owner = (
+            cleanup_owner if _source_cleanup_owner_is_pending(cleanup_owner) else None
+        )
         if isinstance(exc, ValueError):
+            if cleanup_failure is not None or pending_owner is not None:
+                _raise_source_cleanup_failure(
+                    exc,
+                    cleanup_failure,
+                    pending_owner,
+                )
             raise
         if not isinstance(exc, (OSError, RuntimeError)):
+            if cleanup_failure is not None or pending_owner is not None:
+                _raise_source_cleanup_failure(
+                    exc,
+                    cleanup_failure,
+                    pending_owner,
+                )
             raise
         translated = ValueError(
             "context artifact changed between verification and source binding"
         )
-        _attach_source_cleanup_owner(translated, cleanup_owner)
+        if cleanup_failure is not None or pending_owner is not None:
+            _raise_source_cleanup_failure(
+                translated,
+                cleanup_failure,
+                pending_owner,
+            )
         raise translated from exc
 
 

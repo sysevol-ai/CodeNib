@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import dis
 import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -235,3 +237,97 @@ class TestSearcherStartPreconditions:
             ZoektUnavailableError, match="index directory does not exist"
         ):
             s.start()
+
+
+class TestSearcherLifecycle:
+    def test_stop_retains_failed_process_and_visits_all_cleanup(self, tmp_path) -> None:
+        searcher = ZoektSearcher(index_dir=str(tmp_path))
+        proc = MagicMock()
+        proc.poll.return_value = None
+        terminate_failure = RuntimeError("terminate failed")
+        proc.terminate.side_effect = terminate_failure
+        proc.wait.side_effect = [
+            RuntimeError("wait failed"),
+            RuntimeError("wait failed"),
+        ]
+        proc.kill.side_effect = RuntimeError("kill failed")
+        searcher._proc = proc
+
+        with pytest.raises(RuntimeError) as caught:
+            searcher.stop()
+
+        assert caught.value is terminate_failure
+        assert caught.value.zoekt_cleanup_owner is searcher
+        assert searcher._proc is proc
+        proc.terminate.assert_called_once_with()
+        proc.kill.assert_called_once_with()
+        assert proc.wait.call_count == 2
+
+        proc.terminate.side_effect = None
+        proc.wait.side_effect = None
+        proc.wait.return_value = 0
+        proc.kill.side_effect = None
+        searcher.stop()
+        assert searcher._proc is None
+
+    def test_start_retains_popen_result_at_first_python_handoff(
+        self,
+        tmp_path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import codenib.index.trigram.zoekt_searcher as zoekt_module
+
+        binary = tmp_path / "zoekt-webserver"
+        binary.write_bytes(b"")
+        searcher = ZoektSearcher(index_dir=str(tmp_path), binary=str(binary))
+        proc = MagicMock()
+        proc.poll.return_value = None
+        proc.wait.return_value = 0
+
+        def spawn(owner, *_args, **_kwargs):
+            owner.retain(proc)
+            return proc
+
+        monkeypatch.setattr(zoekt_module, "_OwnedZoektProcess", spawn)
+
+        instructions = list(dis.get_instructions(ZoektSearcher.start))
+        load_index = next(
+            index
+            for index, instruction in enumerate(instructions)
+            if instruction.opname == "LOAD_GLOBAL"
+            and instruction.argval == "_OwnedZoektProcess"
+        )
+        handoff_offset = next(
+            instruction.offset
+            for instruction in instructions[load_index:]
+            if instruction.opname == "POP_TOP"
+        )
+        interruption = KeyboardInterrupt("injected after Popen return")
+        injected = False
+
+        def trace(frame, event, _arg):
+            nonlocal injected
+            if frame.f_code is ZoektSearcher.start.__code__ and event == "call":
+                frame.f_trace_opcodes = True
+            if (
+                not injected
+                and frame.f_code is ZoektSearcher.start.__code__
+                and event == "opcode"
+                and frame.f_lasti == handoff_offset
+            ):
+                injected = True
+                raise interruption
+            return trace
+
+        sys.settrace(trace)
+        try:
+            with pytest.raises(KeyboardInterrupt) as caught:
+                searcher.start()
+        finally:
+            sys.settrace(None)
+
+        assert caught.value is interruption
+        assert injected
+        proc.terminate.assert_called_once_with()
+        proc.wait.assert_called_once_with(timeout=5)
+        assert searcher._proc is None

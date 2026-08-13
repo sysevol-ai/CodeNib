@@ -23,7 +23,8 @@ import urllib.request
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -339,6 +340,40 @@ def test_verify_and_bind_artifact_before_loading_bm25(tmp_path: Path) -> None:
     results = context.bm25.search("value", return_code_content=True)
     assert results[0].file == "sample.py"
     assert "VALUE = 1" in (results[0].content or "")
+
+
+def test_bind_uses_one_detached_repository_identity_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    probe = capture_repository_source(repo, exclude_roots=(artifact,))
+    source_type = type(probe)
+    real_snapshot = source_type.authenticated_identity_snapshot
+    probe.close()
+    substituted_root = tmp_path / "substituted"
+
+    def snapshot_then_replace_public_projection(source):
+        snapshot = real_snapshot(source)
+        source.root = substituted_root
+        source.fingerprint = "sha256-v2:" + ("0" * 64)
+        source.file_count = 0
+        source.file_records = ()
+        return snapshot
+
+    monkeypatch.setattr(
+        source_type,
+        "authenticated_identity_snapshot",
+        snapshot_then_replace_public_projection,
+    )
+
+    binding = bind_context_artifact(artifact, repo, expected_commit=commit)
+    try:
+        assert binding.repo_path == repo
+        assert binding.manifest.repo_path == str(repo)
+        assert binding.source_bound
+    finally:
+        binding.close()
 
 
 def test_bound_source_reads_poison_after_checkout_changes(tmp_path: Path) -> None:
@@ -725,6 +760,43 @@ def test_bind_persistent_close_failure_exposes_retryable_source_owner(
     monkeypatch.setattr(source_type, "close", real_close)
     owner.close()
     assert owner.closed
+    assert captured[0].closed
+
+
+def test_bind_promotes_source_cleanup_cancellation_over_value_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    captured = []
+    real_capture = runtime_module.capture_repository_source
+    cleanup_interruption = KeyboardInterrupt("source cleanup interrupted")
+
+    def capture(*args, **kwargs):
+        source = real_capture(*args, **kwargs)
+        captured.append(source)
+        source.fingerprint = "sha256-v2:" + ("0" * 64)
+        return source
+
+    monkeypatch.setattr(runtime_module, "capture_repository_source", capture)
+    probe = capture_repository_source(repo, exclude_roots=(artifact,))
+    source_type = type(probe)
+    probe.close()
+    real_close = source_type.close
+
+    def interrupt_close(source) -> None:
+        if source in captured:
+            raise cleanup_interruption
+        real_close(source)
+
+    monkeypatch.setattr(source_type, "close", interrupt_close)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        bind_context_artifact(artifact, repo, expected_commit=commit)
+
+    assert caught.value is cleanup_interruption
+    assert caught.value.source_cleanup_owner.pending_sources == (captured[0],)
+    monkeypatch.setattr(source_type, "close", real_close)
+    caught.value.source_cleanup_owner.close()
     assert captured[0].closed
 
 
@@ -1218,6 +1290,341 @@ def test_archive_snapshot_allows_sibling_mutation_but_rejects_parent_rebind(
             held.rename(anchor)
 
 
+def test_archive_snapshot_applies_independent_compressed_input_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.artifacts import archive as archive_module
+
+    archive = tmp_path / "oversized.zip"
+    archive.write_bytes(b"x" * 1025)
+    monkeypatch.setattr(
+        archive_module,
+        "_create_archive_snapshot",
+        lambda: pytest.fail("oversized archive must fail before allocating a memfd"),
+    )
+
+    with pytest.raises(ValueError, match="bounded regular file"):
+        with archive_module._authenticated_archive_snapshot(
+            archive,
+            max_files=100,
+            max_bytes=64 * 1024 * 1024 * 1024,
+            max_archive_bytes=1024,
+        ):
+            pytest.fail("oversized archive snapshot must not be yielded")
+
+
+def test_posix_archive_snapshot_close_retry_does_not_close_reused_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.artifacts import archive as archive_module
+
+    archive = tmp_path / "artifact.zip"
+    archive.write_bytes(b"snapshot")
+    replacement_path = tmp_path / "replacement"
+    replacement_path.write_bytes(b"foreign")
+    real_fdopen = os.fdopen
+    snapshot_descriptor = -1
+    interruption = KeyboardInterrupt("snapshot wrapper close interrupted")
+
+    class InterruptingSnapshot:
+        def __init__(self, wrapped) -> None:
+            self.wrapped = wrapped
+            self.interrupt = True
+
+        @property
+        def closed(self) -> bool:
+            return self.wrapped.closed
+
+        def __getattr__(self, name: str):
+            return getattr(self.wrapped, name)
+
+        def close(self) -> None:
+            if self.interrupt:
+                self.interrupt = False
+                raise interruption
+            self.wrapped.close()
+
+    wrapper: InterruptingSnapshot | None = None
+
+    def interrupting_fdopen(descriptor: int, mode: str, *, closefd: bool):
+        nonlocal snapshot_descriptor, wrapper
+        assert closefd is False
+        snapshot_descriptor = descriptor
+        wrapper = InterruptingSnapshot(real_fdopen(descriptor, mode, closefd=closefd))
+        return wrapper
+
+    monkeypatch.setattr(archive_module.os, "fdopen", interrupting_fdopen)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        with archive_module._authenticated_archive_snapshot(
+            archive,
+            max_files=1,
+            max_bytes=1024,
+        ) as (_display, snapshot):
+            assert snapshot.read() == b"snapshot"
+
+    assert caught.value is interruption
+    assert wrapper is not None
+    replacement = os.open(replacement_path, os.O_RDONLY)
+    if replacement != snapshot_descriptor:
+        os.dup2(replacement, snapshot_descriptor)
+        os.close(replacement)
+        replacement = snapshot_descriptor
+    try:
+        caught.value.archive_cleanup_owner.close()
+        assert os.read(replacement, 7) == b"foreign"
+    finally:
+        os.close(replacement)
+
+
+def test_archive_snapshot_routes_windows_through_handle_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.artifacts import archive as archive_module
+
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w") as archive:
+        archive.writestr(CONTEXT_ARTIFACT_MANIFEST, "{}")
+    observed = {}
+
+    @contextmanager
+    def fake_windows_snapshot(lexical: Path, *, physical_limit: int):
+        observed.update(lexical=lexical, physical_limit=physical_limit)
+        with archive_module._ImmutableArchiveSnapshot((payload.getvalue(),)) as source:
+            yield source
+
+    monkeypatch.setattr(archive_module, "_archive_os_name", lambda: "nt")
+    monkeypatch.setattr(
+        archive_module,
+        "_authenticated_windows_archive_snapshot",
+        fake_windows_snapshot,
+    )
+
+    path = tmp_path / "artifact.zip"
+    with archive_module._authenticated_archive_snapshot(
+        path,
+        max_files=1,
+        max_bytes=1024,
+        max_archive_bytes=2048,
+    ) as (display, snapshot):
+        with zipfile.ZipFile(snapshot) as archive:
+            assert archive.namelist() == [CONTEXT_ARTIFACT_MANIFEST]
+        with pytest.raises(io.UnsupportedOperation):
+            snapshot.write(b"tamper")
+
+    assert display == path
+    assert observed == {"lexical": path, "physical_limit": 2048}
+
+
+def test_windows_archive_snapshot_reads_pinned_handle_and_closes_authorities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib import _windows_fs_authority as windows_fs
+    from codenib.artifacts import archive as archive_module
+
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w") as archive:
+        archive.writestr(CONTEXT_ARTIFACT_MANIFEST, "{}")
+    archive_bytes = payload.getvalue()
+    file_id = b"f" * 16
+    metadata = windows_fs.WindowsHandleMetadata(
+        st_dev=7,
+        st_ino=1,
+        st_mode=stat.S_IFREG | 0o444,
+        st_size=len(archive_bytes),
+        st_mtime_ns=1,
+        st_ctime_ns=1,
+        st_nlink=1,
+        st_file_attributes=0,
+        file_id_128=file_id,
+    )
+    entry = windows_fs.WindowsDirectoryEntry(
+        name="artifact.zip",
+        file_id=1,
+        attributes=0,
+        file_id_128=file_id,
+    )
+
+    class Api:
+        def __init__(self) -> None:
+            self.offset = 0
+            self.open_handles = {200}
+
+        def enumerate_directory(self, handle):
+            assert handle == 100
+            return (entry,)
+
+        def open_relative(self, parent, name, **kwargs):
+            assert (parent, name) == (100, "artifact.zip")
+            assert kwargs["allow_reparse"] is False
+            self.open_handles.add(200)
+            return 200
+
+        def metadata(self, handle):
+            if handle not in self.open_handles:
+                raise KeyError(handle)
+            return metadata
+
+        def read(self, handle, size):
+            assert handle == 200
+            block = archive_bytes[self.offset : self.offset + size]
+            self.offset += len(block)
+            return block
+
+        def close(self, handle):
+            self.open_handles.remove(handle)
+
+    api = Api()
+    authority = SimpleNamespace(
+        api=api,
+        handle=100,
+        verify=MagicMock(),
+        close=MagicMock(),
+    )
+    monkeypatch.setattr(
+        archive_module._windows_fs,
+        "open_lexical_directory_authority",
+        lambda _parent, *, cleanup_slot: (cleanup_slot.own(authority) or authority),
+    )
+
+    with archive_module._authenticated_windows_archive_snapshot(
+        tmp_path / "artifact.zip",
+        physical_limit=len(archive_bytes),
+    ) as snapshot:
+        with zipfile.ZipFile(snapshot) as archive:
+            assert archive.namelist() == [CONTEXT_ARTIFACT_MANIFEST]
+
+    assert api.open_handles == set()
+    assert authority.verify.call_count == 2
+    authority.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize("interruption_stage", ["authority", "child"])
+def test_windows_archive_snapshot_closes_interrupted_handle_handoffs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interruption_stage: str,
+) -> None:
+    from codenib import _windows_fs_authority as windows_fs
+    from codenib.artifacts import archive as archive_module
+
+    file_id = b"f" * 16
+    metadata = windows_fs.WindowsHandleMetadata(
+        st_dev=7,
+        st_ino=1,
+        st_mode=stat.S_IFREG | 0o444,
+        st_size=1,
+        st_mtime_ns=1,
+        st_ctime_ns=1,
+        st_nlink=1,
+        st_file_attributes=0,
+        file_id_128=file_id,
+    )
+    entry = windows_fs.WindowsDirectoryEntry(
+        name="artifact.zip",
+        file_id=1,
+        attributes=0,
+        file_id_128=file_id,
+    )
+
+    class _Api:
+        def __init__(self) -> None:
+            self.open_handles: set[int] = set()
+
+        def enumerate_directory(self, _handle):
+            return (entry,)
+
+        def open_relative(self, _parent, _name, **_kwargs):
+            self.open_handles.add(200)
+            return 200
+
+        def metadata(self, handle):
+            if handle not in self.open_handles:
+                raise KeyError(handle)
+            return metadata
+
+        def close(self, handle):
+            self.open_handles.remove(handle)
+
+    api = _Api()
+    authority = SimpleNamespace(
+        api=api,
+        handle=100,
+        verify=MagicMock(),
+        close=MagicMock(),
+    )
+    interruption = KeyboardInterrupt(f"injected {interruption_stage} handoff")
+
+    def open_authority(_parent, *, cleanup_slot):
+        cleanup_slot.own(authority)
+        if interruption_stage == "authority":
+            raise interruption
+        return authority
+
+    monkeypatch.setattr(
+        archive_module._windows_fs,
+        "open_lexical_directory_authority",
+        open_authority,
+    )
+    if interruption_stage == "child":
+        real_append = windows_fs._append_owned_windows_handle
+        interrupted = False
+
+        def interrupt_after_append(handles, handle, deferred=None):
+            nonlocal interrupted
+            result = real_append(handles, handle, deferred)
+            if not interrupted:
+                interrupted = True
+                raise interruption
+            return result
+
+        monkeypatch.setattr(
+            archive_module._windows_fs,
+            "_append_owned_windows_handle",
+            interrupt_after_append,
+        )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        with archive_module._authenticated_windows_archive_snapshot(
+            tmp_path / "artifact.zip",
+            physical_limit=1,
+        ):
+            pytest.fail("interrupted archive snapshot must not be yielded")
+
+    assert caught.value is interruption
+    assert api.open_handles == set()
+    authority.close.assert_called_once_with()
+
+
+def test_windows_archive_entry_uses_exact_unicode_name() -> None:
+    from codenib import _windows_fs_authority as windows_fs
+    from codenib.artifacts import archive as archive_module
+
+    exact = windows_fs.WindowsDirectoryEntry(
+        name="ss.zip",
+        file_id=1,
+        attributes=0,
+        file_id_128=b"1" * 16,
+    )
+    near = windows_fs.WindowsDirectoryEntry(
+        name="ß.zip",
+        file_id=2,
+        attributes=0,
+        file_id_128=b"2" * 16,
+    )
+    authority = SimpleNamespace(
+        handle=100,
+        api=SimpleNamespace(enumerate_directory=lambda _handle: (near, exact)),
+    )
+
+    assert archive_module._windows_archive_entry(authority, "ss.zip") is exact
+    with pytest.raises(ValueError, match="missing or ambiguous"):
+        archive_module._windows_archive_entry(authority, "SS.zip")
+
+
 def test_extract_archive_reads_one_pinned_generation_during_path_aba(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1238,6 +1645,17 @@ def test_extract_archive_reads_one_pinned_generation_during_path_aba(
         if not swapped:
             swapped = True
             archive.rename(saved)
+            # Some filesystems do not advance ctime for a rapid rename-away/
+            # rename-back cycle. Force a distinct retained-file version so the
+            # version-bound snapshot check remains deterministic there too.
+            saved_metadata = saved.stat()
+            os.utime(
+                saved,
+                ns=(
+                    saved_metadata.st_atime_ns,
+                    saved_metadata.st_mtime_ns + 1_000_000_000,
+                ),
+            )
             foreign.rename(archive)
             try:
                 return real_read(descriptor, size)
@@ -1524,6 +1942,89 @@ def test_extract_archive_limits_directory_entries(tmp_path: Path) -> None:
             tmp_path / "directory-output",
             max_files=1,
         )
+
+
+def test_extract_archive_checks_member_count_before_zipfile_allocates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.artifacts import archive as archive_module
+
+    source = tmp_path / "oversized-envelope.zip"
+    with zipfile.ZipFile(source, "w") as bundle:
+        bundle.writestr(CONTEXT_ARTIFACT_MANIFEST, "{}")
+    payload = bytearray(source.read_bytes())
+    end = payload.rfind(b"PK\x05\x06")
+    assert end >= 0
+    excessive_count = 67  # max_files=1 permits at most 66 raw entries.
+    payload[end + 8 : end + 10] = excessive_count.to_bytes(2, "little")
+    payload[end + 10 : end + 12] = excessive_count.to_bytes(2, "little")
+    source.write_bytes(payload)
+
+    def should_not_parse(*_args, **_kwargs):
+        raise AssertionError("ZipFile allocated entries before envelope validation")
+
+    monkeypatch.setattr(archive_module.zipfile, "ZipFile", should_not_parse)
+    with pytest.raises(ValueError, match="exceeds 66 entries"):
+        extract_context_artifact_archive(
+            source,
+            tmp_path / "output",
+            max_files=1,
+        )
+
+
+def test_extract_archive_rejects_lying_member_count_before_zipfile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.artifacts import archive as archive_module
+
+    source = tmp_path / "lying-count.zip"
+    with zipfile.ZipFile(source, "w") as bundle:
+        bundle.writestr(CONTEXT_ARTIFACT_MANIFEST, "{}")
+        bundle.writestr("one.txt", "one")
+        bundle.writestr("two.txt", "two")
+    payload = bytearray(source.read_bytes())
+    end = payload.rfind(b"PK\x05\x06")
+    assert end >= 0
+    payload[end + 8 : end + 10] = (1).to_bytes(2, "little")
+    payload[end + 10 : end + 12] = (1).to_bytes(2, "little")
+    source.write_bytes(payload)
+
+    def should_not_parse(*_args, **_kwargs):
+        raise AssertionError("ZipFile parsed a lying central-directory count")
+
+    monkeypatch.setattr(archive_module.zipfile, "ZipFile", should_not_parse)
+    with pytest.raises(ValueError, match="not a valid ZIP"):
+        extract_context_artifact_archive(
+            source,
+            tmp_path / "output",
+            max_files=1,
+        )
+
+
+def test_extract_archive_transfers_pending_owner_from_bad_zip_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.artifacts import archive as archive_module
+
+    source = tmp_path / "malformed.zip"
+    with zipfile.ZipFile(source, "w") as bundle:
+        bundle.writestr(CONTEXT_ARTIFACT_MANIFEST, "{}")
+    owner = object()
+    malformed = zipfile.BadZipFile("injected malformed central directory")
+    malformed.archive_cleanup_owner = owner
+
+    def fail_parse(*_args, **_kwargs):
+        raise malformed
+
+    monkeypatch.setattr(archive_module.zipfile, "ZipFile", fail_parse)
+    with pytest.raises(ValueError, match="not a valid ZIP") as caught:
+        extract_context_artifact_archive(source, tmp_path / "output")
+
+    assert caught.value.archive_cleanup_owner is owner
+    assert caught.value.__cause__ is malformed
 
 
 def _github_record(
@@ -1872,6 +2373,19 @@ def test_render_artifact_mcp_host_commands_are_shell_safe(tmp_path: Path) -> Non
             separators=(",", ":"),
         ),
     ]
+
+
+def test_render_artifact_mcp_config_closes_source_authority(tmp_path: Path) -> None:
+    descriptor_root = Path("/proc/self/fd")
+    if not descriptor_root.is_dir():
+        pytest.skip("descriptor accounting needs /proc/self/fd")
+    repo, artifact, _commit = _bm25_artifact(tmp_path)
+    before = len(tuple(descriptor_root.iterdir()))
+
+    for _ in range(20):
+        render_artifact_mcp_config(artifact, repo, host="json")
+
+    assert len(tuple(descriptor_root.iterdir())) <= before + 1
 
 
 def test_mcp_server_starts_from_verified_artifact(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ Uses pre-built indexes from the configured CodeNib prebuilt root.
 """
 
 import asyncio
+from contextlib import ExitStack
 
 import pytest
 
@@ -57,20 +58,43 @@ class TestSearchSemanticIntegration:
         )
 
         # Manually load vector store (since we're bypassing ServerContext.load)
+        resources = ExitStack()
         ctx = ServerContext(manifest=manifest)
+        resources.callback(ctx.close)
 
+        from codenib.index.embedding.artifact_integrity import (
+            capture_authenticated_vector_view,
+        )
         from codenib.index.embedding.vector_store import CodeVectorStore
+        from codenib.native_index_authorization import (
+            _mint_trusted_local_admin_authorization,
+        )
 
+        artifact_contract = dict(manifest.indexes["vector"].config)
+        with capture_authenticated_vector_view(TEST_REPO_PATH) as vector_view:
+            authorization = _mint_trusted_local_admin_authorization(
+                vector_view.ownership,
+                view_type="vector",
+                semantic_contract=artifact_contract,
+                evidence=(
+                    "semantic-integration-local-vector-view",
+                    "captured-vector-tree-subject",
+                ),
+            )
         ctx.vector = CodeVectorStore(
             embedding_model="jinaai/jina-code-embeddings-1.5b",
             embedding_provider="huggingface",
             dimension=1536,
             index_metric="ip",
             store_path=str(TEST_REPO_PATH),  # Parent directory
+            artifact_metadata=artifact_contract,
         )
-        ctx.vector.load()
+        ctx.vector.load(native_index_authorization=authorization)
 
-        return ctx
+        try:
+            yield ctx
+        finally:
+            resources.close()
 
     def test_search_semantic_real_query(self, real_context):
         """Test semantic search with a real query on astropy code."""

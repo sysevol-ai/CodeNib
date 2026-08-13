@@ -138,14 +138,7 @@ def normalize_target(prefix, target):
     if not target or '\0' in target or len(os.fsencode(target)) > 4096:
         raise SystemExit('source symlink target is invalid')
     if os.path.isabs(target):
-        try:
-            relative_target = pathlib.Path(os.path.normpath(target)).relative_to(
-                source_root
-            )
-        except ValueError:
-            raise SystemExit('source symlink resolves outside the repository')
-        target = relative_target.as_posix()
-        resolved = []
+        raise SystemExit('source symlink target must be relative')
     else:
         resolved = list(prefix)
     for part in target.split('/'):

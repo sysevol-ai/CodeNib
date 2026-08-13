@@ -21,6 +21,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import RepoManifest
+from ..index.embedding._lifecycle import close_vector_after_failure
+from ..index.embedding.artifact_integrity import (
+    _mint_trusted_local_vector_authorization,
+)
 from ..log_utils import get_logger
 from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_route
 from ..repository_summary import read_repository_summary
@@ -448,6 +452,13 @@ class RepoRegistry:
             client_kwargs = route.client_kwargs()
         embedding_kwargs.update(client_kwargs)
 
+        native_authorization = _mint_trusted_local_vector_authorization(
+            vec_entry.path,
+            artifact_config,
+            evidence=("web-repository-local-vector-view",),
+        )
+        missing_embedding = object()
+        previous_embedding = self._embeddings.get(cache_key, missing_embedding)
         vector_store = _vector_store_type()(
             embedding_model=route.model,
             embedding_provider=route.provider,
@@ -458,9 +469,30 @@ class RepoRegistry:
             artifact_metadata=artifact_config,
             **embedding_kwargs,
         )
-        self._embeddings[cache_key] = vector_store.embedding
-        vector_store.load(vec_entry.path)
-        return vector_store
+        candidate_embedding = missing_embedding
+        try:
+            candidate_embedding = vector_store.embedding
+            vector_store.load(
+                vec_entry.path,
+                native_index_authorization=native_authorization,
+            )
+            # Publish the reusable client only after the authenticated vector
+            # view loaded successfully.  The exception handler below rolls
+            # this handoff back if cancellation lands before the return.
+            self._embeddings[cache_key] = candidate_embedding
+            return vector_store
+        except BaseException as primary:  # noqa: B036 - close partial state
+            if (
+                candidate_embedding is not missing_embedding
+                and self._embeddings.get(cache_key, missing_embedding)
+                is candidate_embedding
+            ):
+                if previous_embedding is missing_embedding:
+                    self._embeddings.pop(cache_key, None)
+                else:
+                    self._embeddings[cache_key] = previous_embedding
+            close_vector_after_failure(vector_store, primary)
+            raise
 
     def _create_ask_llm(self) -> "LiteLLMChat":
         """Create the interactive model without mutating process-wide config."""

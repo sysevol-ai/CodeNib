@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 from ...code_chunker import CodeChunker, RepoChunkingConfig
 from ...log_utils import get_logger
 from ...profiler import Profiler
+from ._lifecycle import close_vector_after_failure
+from .artifact_integrity import _mint_trusted_local_vector_authorization
 from .vector_store import CodeVectorStore
 
 logger = get_logger(__name__)
@@ -99,6 +101,12 @@ def build_hierarchical_vector_store(
                 "(pass force_rebuild=True to override).",
                 store_path,
             )
+            artifact_contract = dict(artifact_metadata or {})
+            native_authorization = _mint_trusted_local_vector_authorization(
+                store_path,
+                artifact_contract,
+                evidence=("hierarchical-vector-builder-cache",),
+            )
             vector_store = CodeVectorStore(
                 embedding_model=embedding_model,
                 embedding_provider=embedding_provider,
@@ -110,11 +118,18 @@ def build_hierarchical_vector_store(
                 store_path=str(store_path),
                 profiler=profiler,
                 embedding=embedding,
-                artifact_metadata=artifact_metadata,
+                artifact_metadata=artifact_contract,
                 **(embedding_kwargs or {}),
             )
-            vector_store.load(str(store_path))
-            return vector_store
+            try:
+                vector_store.load(
+                    str(store_path),
+                    native_index_authorization=native_authorization,
+                )
+                return vector_store
+            except BaseException as primary:  # noqa: B036 - close partial state
+                close_vector_after_failure(vector_store, primary)
+                raise
 
     languages = languages or ["python"]
     build_levels = normalized_levels

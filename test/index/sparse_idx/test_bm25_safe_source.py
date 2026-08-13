@@ -232,6 +232,42 @@ def test_bound_search_reads_each_source_file_once_per_query(
         binding.close()
 
 
+def test_bind_repository_source_uses_one_detached_identity_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
+    indexer = _indexer(None, "source.py")
+    binding = capture_repository_source(repo)
+    binding_type = type(binding)
+    real_snapshot = binding_type.authenticated_identity_snapshot
+    substituted_root = tmp_path / "substituted"
+
+    def snapshot_then_replace_public_projection(source):
+        snapshot = real_snapshot(source)
+        source.root = substituted_root
+        source.fingerprint = "sha256-v2:" + ("0" * 64)
+        source.file_count = 0
+        source.file_records = ()
+        return snapshot
+
+    monkeypatch.setattr(
+        binding_type,
+        "authenticated_identity_snapshot",
+        snapshot_then_replace_public_projection,
+    )
+
+    try:
+        indexer.bind_repository_source(binding)
+
+        assert indexer.project_root == str(repo)
+        assert indexer.source_mode == bm25_module.SOURCE_MODE_BOUND_REPOSITORY
+    finally:
+        binding.close()
+
+
 def test_absolute_source_beneath_root_is_accepted(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     source = repo / "pkg" / "source.py"
@@ -302,7 +338,7 @@ def test_source_on_a_different_windows_drive_is_rejected(tmp_path: Path) -> None
     )
 
 
-def test_absolute_contained_final_source_symlink_is_accepted(tmp_path: Path) -> None:
+def test_absolute_contained_final_source_symlink_is_rejected(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     target = repo / "real.py"
@@ -311,7 +347,7 @@ def test_absolute_contained_final_source_symlink_is_accepted(tmp_path: Path) -> 
 
     indexer = _indexer(repo, "source.py", node_type=NODE_TYPE_FILE)
 
-    assert _content(indexer) == "contained alias target\n"
+    assert _content(indexer) is None
 
 
 def test_relative_final_source_symlink_inside_root_is_accepted(tmp_path: Path) -> None:

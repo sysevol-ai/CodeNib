@@ -9,12 +9,14 @@ from __future__ import annotations
 import errno
 import ntpath
 import os
+import secrets
 import stat
 import sys
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Iterator, Sequence
+from pathlib import Path, PurePosixPath
+from typing import Iterable, Iterator, Sequence
 
 from ._windows_fs_authority import (
     FILE_ATTRIBUTE_DIRECTORY as _WINDOWS_FILE_ATTRIBUTE_DIRECTORY,
@@ -57,6 +59,19 @@ _MAX_RELATIVE_PATH_BYTES = 4_096
 _MAX_SYMLINKS = 40
 _MAX_SYMLINK_TARGET_BYTES = 4_096
 _READ_CHUNK_BYTES = 1024 * 1024
+_CLOSE_COOKIE_FLOOR = 1 << 20
+_CLOSE_COOKIE_SPAN = 1 << 30
+_CLOSE_COOKIE_LOCK = threading.Lock()
+_CLOSE_COOKIE_COUNTS: dict[int, int] = {}
+
+
+def _reset_close_cookie_lock_after_fork() -> None:
+    global _CLOSE_COOKIE_LOCK
+    _CLOSE_COOKIE_LOCK = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_close_cookie_lock_after_fork)
 SECURE_CONTAINED_SYMLINKS = (
     os.name == "posix"
     and hasattr(os, "O_DIRECTORY")
@@ -120,23 +135,39 @@ class _SourceCleanupSlot:
 class _PosixDescriptorCleanup:
     """Retryable owner for descriptors acquired during contained resolution."""
 
-    __slots__ = ("descriptors", "expected_identities")
+    __slots__ = ("descriptors", "expected_identities", "close_cookies")
 
     def __init__(self) -> None:
         self.descriptors: list[int] = []
         self.expected_identities: dict[int, tuple[int, ...]] = {}
+        self.close_cookies: dict[int, int] = {}
 
     @property
     def closed(self) -> bool:
         return not self.descriptors
 
-    def retain(self, descriptor: int) -> int:
+    def retain(
+        self,
+        descriptor: int,
+        metadata: os.stat_result | None = None,
+    ) -> int:
+        if (
+            isinstance(descriptor, bool)
+            or not isinstance(descriptor, int)
+            or descriptor < 0
+        ):
+            raise ValueError("source cleanup descriptor is invalid")
         if descriptor not in self.descriptors:
             self.descriptors.append(descriptor)
+        if descriptor not in self.expected_identities:
+            opened = os.fstat(descriptor) if metadata is None else metadata
+            self.expected_identities[descriptor] = _descriptor_ownership_identity(
+                opened
+            )
         return descriptor
 
     def remember_identity(self, descriptor: int, metadata: os.stat_result) -> None:
-        self.expected_identities[descriptor] = _binding_identity(metadata)
+        self.expected_identities[descriptor] = _descriptor_ownership_identity(metadata)
 
     def open(self, path: str | Path, flags: int, *, dir_fd: int | None = None) -> int:
         descriptor = -1
@@ -176,13 +207,32 @@ class _PosixDescriptorCleanup:
             try:
                 before = os.fstat(descriptor)
                 expected = self.expected_identities.get(descriptor)
-                if expected is not None and _binding_identity(before) != expected:
+                close_cookie = self.close_cookies.get(descriptor)
+                if (
+                    expected is not None
+                    and _descriptor_ownership_identity(before) != expected
+                ):
+                    deferred = deferred or RuntimeError(
+                        "source descriptor ownership changed"
+                    )
+                    closed = True
+                elif close_cookie is not None and not _descriptor_has_close_cookie(
+                    descriptor,
+                    close_cookie,
+                ):
                     deferred = deferred or RuntimeError(
                         "source descriptor ownership changed"
                     )
                     closed = True
                 else:
                     try:
+                        if close_cookie is None:
+                            close_cookie = _arm_or_reuse_descriptor_close_cookie(
+                                descriptor,
+                                self.close_cookies.values(),
+                            )
+                            if close_cookie is not None:
+                                self.close_cookies[descriptor] = close_cookie
                         os.close(descriptor)
                         closed = True
                     except BaseException as exc:  # noqa: B036 - probe close result
@@ -197,7 +247,15 @@ class _PosixDescriptorCleanup:
                         except BaseException as probe:  # noqa: B036
                             deferred = deferred or probe
                         else:
-                            if _binding_identity(visible) != _binding_identity(before):
+                            if _descriptor_ownership_identity(
+                                visible
+                            ) != _descriptor_ownership_identity(before) or (
+                                close_cookie is not None
+                                and not _descriptor_has_close_cookie(
+                                    descriptor,
+                                    close_cookie,
+                                )
+                            ):
                                 closed = True
             except OSError as exc:
                 if exc.errno == errno.EBADF:
@@ -210,6 +268,7 @@ class _PosixDescriptorCleanup:
                 while descriptor in self.descriptors:
                     self.descriptors.remove(descriptor)
                 self.expected_identities.pop(descriptor, None)
+                _discard_descriptor_close_cookie(self.close_cookies, descriptor)
         return deferred
 
     def close_descriptor(self, descriptor: int) -> None:
@@ -346,6 +405,87 @@ def _binding_identity(metadata: os.stat_result) -> tuple[int, ...]:
         metadata.st_size if stat.S_ISREG(metadata.st_mode) else 0,
         getattr(metadata, "st_file_attributes", 0),
     )
+
+
+def _descriptor_ownership_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    """Stable identity for deciding whether an fd number is still ours."""
+
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        getattr(metadata, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT,
+    )
+
+
+def _arm_descriptor_close_cookie(descriptor: int) -> int | None:
+    """Bind a retryable close to this exact open-file description."""
+
+    cookie = _CLOSE_COOKIE_FLOOR + secrets.randbelow(_CLOSE_COOKIE_SPAN)
+    try:
+        observed = os.lseek(descriptor, cookie, os.SEEK_SET)
+    except OSError as exc:
+        if exc.errno in {errno.EINVAL, errno.ESPIPE, getattr(errno, "ENOTSUP", -1)}:
+            return None
+        raise
+    if observed != cookie or os.lseek(descriptor, 0, os.SEEK_CUR) != cookie:
+        raise RuntimeError("could not arm source descriptor close ownership")
+    return cookie
+
+
+def _arm_or_reuse_descriptor_close_cookie(
+    descriptor: int,
+    active_cookies: Iterable[int],
+) -> int | None:
+    """Reuse a process-wide cookie shared by dup aliases, or arm one."""
+
+    with _CLOSE_COOKIE_LOCK:
+        try:
+            position = os.lseek(descriptor, 0, os.SEEK_CUR)
+        except OSError as exc:
+            if exc.errno in {
+                errno.EINVAL,
+                errno.ESPIPE,
+                getattr(errno, "ENOTSUP", -1),
+            }:
+                return None
+            raise
+        candidates = set(active_cookies).union(_CLOSE_COOKIE_COUNTS)
+        for cookie in candidates:
+            if type(cookie) is int and position == cookie:
+                _CLOSE_COOKIE_COUNTS[cookie] = _CLOSE_COOKIE_COUNTS.get(cookie, 0) + 1
+                return cookie
+        cookie = _arm_descriptor_close_cookie(descriptor)
+        if cookie is not None:
+            _CLOSE_COOKIE_COUNTS[cookie] = _CLOSE_COOKIE_COUNTS.get(cookie, 0) + 1
+        return cookie
+
+
+def _release_descriptor_close_cookie(cookie: int) -> None:
+    with _CLOSE_COOKIE_LOCK:
+        count = _CLOSE_COOKIE_COUNTS.get(cookie, 0)
+        if count <= 1:
+            _CLOSE_COOKIE_COUNTS.pop(cookie, None)
+        else:
+            _CLOSE_COOKIE_COUNTS[cookie] = count - 1
+
+
+def _discard_descriptor_close_cookie(
+    close_cookies: dict[int, int],
+    descriptor: int,
+) -> None:
+    cookie = close_cookies.pop(descriptor, None)
+    if cookie is not None:
+        _release_descriptor_close_cookie(cookie)
+
+
+def _descriptor_has_close_cookie(descriptor: int, cookie: int) -> bool:
+    try:
+        return os.lseek(descriptor, 0, os.SEEK_CUR) == cookie
+    except OSError as exc:
+        if exc.errno == errno.EBADF:
+            return False
+        raise
 
 
 def _version_identity(metadata: os.stat_result) -> tuple[int, ...]:
@@ -694,6 +834,7 @@ def _open_secure(
     parts: tuple[str, ...],
     *,
     expected_final_identity: tuple[int, ...] | None = None,
+    expected_final_link_target: str | None = None,
     allow_stable_unresolved: bool = False,
     allow_absolute_symlinks: bool = False,
     pinned_root_descriptor: int | None = None,
@@ -872,6 +1013,14 @@ def _open_secure(
                     raise ValueError("source symlink resolution exceeds its limit")
                 link_identity = (before.st_dev, before.st_ino)
                 target = os.readlink(name, dir_fd=current_descriptor)
+                if (
+                    is_lexical_final
+                    and expected_final_link_target is not None
+                    and target != expected_final_link_target
+                ):
+                    raise ValueError(
+                        "source symlink target differs from its initial observation"
+                    )
                 after = os.stat(
                     name,
                     dir_fd=current_descriptor,
@@ -1169,22 +1318,6 @@ def _windows_open_child(
         _raise_with_cleanup(primary, selected_cleanup)
 
 
-def _strip_windows_namespace(path: str) -> str:
-    if path.startswith("\\??\\UNC\\"):
-        return "\\\\" + path[8:]
-    if path.startswith("\\??\\"):
-        return path[4:]
-    if path.startswith("\\\\?\\UNC\\"):
-        return "\\\\" + path[8:]
-    if path.startswith("\\\\?\\"):
-        return path[4:]
-    return path
-
-
-def _windows_path_parts(path: str) -> tuple[str, ...]:
-    return tuple(PureWindowsPath(ntpath.normpath(path)).parts)
-
-
 def _normalize_windows_link_target(
     root: Path,
     prefix: tuple[str, ...],
@@ -1207,22 +1340,7 @@ def _normalize_windows_link_target(
         resolved: list[str] = list(prefix)
         target_parts = target.replace("\\", "/").split("/")
     else:
-        target = _strip_windows_namespace(target)
-        if not ntpath.isabs(target):
-            raise ValueError("Windows absolute symlink has a relative target")
-        root_parts = _windows_path_parts(str(root))
-        target_parts_absolute = _windows_path_parts(target)
-        if len(target_parts_absolute) < len(root_parts) or any(
-            observed.casefold() != expected.casefold()
-            for observed, expected in zip(
-                target_parts_absolute,
-                root_parts,
-                strict=False,
-            )
-        ):
-            raise ValueError("Windows source symlink resolves outside the repository")
-        resolved = []
-        target_parts = list(target_parts_absolute[len(root_parts) :])
+        raise ValueError("Windows source symlink target must be relative")
 
     for part in target_parts:
         if part in {"", "."}:
@@ -1584,6 +1702,7 @@ def _open_windows_resolution_at(
     *,
     expected_root_identity: tuple[object, ...],
     expected_final_identity: tuple[object, ...] | None,
+    expected_final_link_target: str | None = None,
     allow_stable_unresolved: bool,
     api: _WindowsKernelApi,
     owns_root_authority: bool = False,
@@ -1681,6 +1800,14 @@ def _open_windows_resolution_at(
                 point = api.query_reparse_point(opened_handle)
                 if point.tag != _WINDOWS_IO_REPARSE_TAG_SYMLINK:
                     raise ValueError("Windows source reparse tag changed while opening")
+                if (
+                    is_lexical_final
+                    and expected_final_link_target is not None
+                    and _windows_link_target_text(point) != expected_final_link_target
+                ):
+                    raise ValueError(
+                        "Windows source symlink target differs from its initial observation"
+                    )
             observation = _WindowsPathObservation(
                 parent_handle=current_handle,
                 parent_identity=parent_identity,
@@ -1803,6 +1930,7 @@ def _resolved_windows_repository_file_at(
     *,
     expected_root_identity: tuple[object, ...],
     expected_final_identity: tuple[object, ...],
+    expected_final_link_target: str | None = None,
     api: _WindowsKernelApi | None = None,
 ) -> Iterator[_WindowsResolutionBinding]:
     """Resolve one source entry through a caller-owned pinned Windows root."""
@@ -1816,6 +1944,7 @@ def _resolved_windows_repository_file_at(
         parts,
         expected_root_identity=expected_root_identity,
         expected_final_identity=expected_final_identity,
+        expected_final_link_target=expected_final_link_target,
         allow_stable_unresolved=True,
         api=selected,
         cleanup_slot=cleanup_slot,
@@ -1838,6 +1967,7 @@ def _open_windows_repository_file(
     parts: tuple[str, ...],
     *,
     expected_final_identity: tuple[object, ...] | None = None,
+    expected_final_link_target: str | None = None,
     allow_stable_unresolved: bool = False,
 ) -> _WindowsResolutionBinding:
     cleanup_slot = _SourceCleanupSlot()
@@ -1851,6 +1981,7 @@ def _open_windows_repository_file(
         parts,
         expected_root_identity=root_identity,
         expected_final_identity=expected_final_identity,
+        expected_final_link_target=expected_final_link_target,
         allow_stable_unresolved=allow_stable_unresolved,
         api=api,
         owns_root_authority=True,
@@ -2049,6 +2180,7 @@ def _resolved_repository_file_at(
     *,
     expected_root_identity: tuple[int, ...],
     expected_final_identity: tuple[int, ...],
+    expected_final_link_target: str | None = None,
 ) -> Iterator[
     _BoundRepositoryFile | _BoundRepositoryDirectory | _StableUnresolvedRepositoryFile
 ]:
@@ -2065,6 +2197,7 @@ def _resolved_repository_file_at(
         repository,
         parts,
         expected_final_identity=expected_final_identity,
+        expected_final_link_target=expected_final_link_target,
         allow_stable_unresolved=True,
         pinned_root_descriptor=root_descriptor,
         expected_root_identity=expected_root_identity,

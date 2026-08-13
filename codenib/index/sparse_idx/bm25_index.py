@@ -1032,11 +1032,9 @@ class BM25CodeIndexer:
     def bind_repository_source(self, binding: RepositorySourceBinding) -> None:
         """Attach a retained source authority chosen by the runtime caller."""
 
-        if binding.fingerprint is None:  # pragma: no cover - structural contract
-            raise TypeError("repository source binding is invalid")
-        binding.verify_snapshot()
+        source_identity = binding.authenticated_identity_snapshot()
         self._source_binding = binding
-        self.project_root = str(binding.root)
+        self.project_root = str(source_identity.root)
         self.source_mode = SOURCE_MODE_BOUND_REPOSITORY
 
     def _read_result_source(self, file_path: object) -> Optional[str]:

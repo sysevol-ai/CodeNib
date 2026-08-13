@@ -10,6 +10,7 @@ from the configured CodeNib prebuilt root.
 """
 
 import asyncio
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -37,9 +38,15 @@ class TestMCPServerE2E:
     @pytest.fixture(autouse=True)
     def reset_server_context(self):
         """Reset global server context before each test."""
+        previous_context = server_module._ctx
         server_module._ctx = None
+        if previous_context is not None:
+            previous_context.close()
         yield
+        current_context = server_module._ctx
         server_module._ctx = None
+        if current_context is not None:
+            current_context.close()
 
     @pytest.fixture
     def test_manifest_path(self, tmp_path):
@@ -146,52 +153,80 @@ class TestMCPServerE2E:
 
         Ensures MCP protocol layer adds no transformation overhead.
         """
+        from codenib.index.embedding.artifact_integrity import (
+            capture_authenticated_vector_view,
+        )
         from codenib.index.embedding.vector_store import CodeVectorStore
+        from codenib.native_index_authorization import (
+            _mint_trusted_local_admin_authorization,
+        )
 
         # Direct vector store call
-        vector_store = CodeVectorStore(
-            embedding_model="jinaai/jina-code-embeddings-1.5b",
-            embedding_provider="huggingface",
-            dimension=1536,
-            index_metric="ip",
-            store_path=str(TEST_REPO_PATH),
-        )
-        vector_store.load()
-
-        query = "coordinate transformation"
-        top_k = 5
-
-        direct_results = vector_store.search_with_content(
-            query=query, top_k=top_k, level="l2"
-        )
-
-        # MCP server call
-        mock_mcp = MagicMock()
-        with patch.object(server_module, "MCPServer", return_value=mock_mcp):
-            with patch.object(server_module, "mcp", mock_mcp):
-                server_module.init_server(test_manifest_path)
-
-        mcp_results = asyncio.run(
-            server_module.semantic_search(query=query, top_k=top_k, level="l2")
-        )
-
-        # Should have same number of results
-        assert len(mcp_results) == len(direct_results)
-
-        # Scores should match (within floating point tolerance)
-        for i in range(len(direct_results)):
-            direct_score = float(direct_results[i].score)
-            mcp_score = float(mcp_results[i]["score"])
-
-            assert abs(direct_score - mcp_score) < 1e-6, (
-                f"Score mismatch at position {i}: "
-                f"direct={direct_score:.6f}, mcp={mcp_score:.6f}"
+        artifact_contract = {
+            "embedding_model": "jinaai/jina-code-embeddings-1.5b",
+            "embedding_provider": "huggingface",
+            "dimension": 1536,
+            "index_metric": "ip",
+        }
+        with capture_authenticated_vector_view(TEST_REPO_PATH) as vector_view:
+            native_authorization = _mint_trusted_local_admin_authorization(
+                vector_view.ownership,
+                view_type="vector",
+                semantic_contract=artifact_contract,
+                evidence=(
+                    "mcp-e2e-direct-vector-view",
+                    "captured-vector-tree-subject",
+                ),
             )
 
-        print("\n=== MCP Layer Equivalence ===")
-        print(f"Results: {len(mcp_results)}")
-        print("Scores match: ✓")
-        print("MCP adds no transformation overhead: ✓")
+        with ExitStack() as resources:
+            vector_store = CodeVectorStore(
+                embedding_model="jinaai/jina-code-embeddings-1.5b",
+                embedding_provider="huggingface",
+                dimension=1536,
+                index_metric="ip",
+                store_path=str(TEST_REPO_PATH),
+                artifact_metadata=artifact_contract,
+            )
+            resources.callback(vector_store.close)
+            vector_store.load(
+                native_index_authorization=native_authorization,
+            )
+
+            query = "coordinate transformation"
+            top_k = 5
+
+            direct_results = vector_store.search_with_content(
+                query=query, top_k=top_k, level="l2"
+            )
+
+            # MCP server call
+            mock_mcp = MagicMock()
+            with patch.object(server_module, "MCPServer", return_value=mock_mcp):
+                with patch.object(server_module, "mcp", mock_mcp):
+                    server_module.init_server(test_manifest_path)
+
+            mcp_results = asyncio.run(
+                server_module.semantic_search(query=query, top_k=top_k, level="l2")
+            )
+
+            # Should have same number of results
+            assert len(mcp_results) == len(direct_results)
+
+            # Scores should match (within floating point tolerance)
+            for i in range(len(direct_results)):
+                direct_score = float(direct_results[i].score)
+                mcp_score = float(mcp_results[i]["score"])
+
+                assert abs(direct_score - mcp_score) < 1e-6, (
+                    f"Score mismatch at position {i}: "
+                    f"direct={direct_score:.6f}, mcp={mcp_score:.6f}"
+                )
+
+            print("\n=== MCP Layer Equivalence ===")
+            print(f"Results: {len(mcp_results)}")
+            print("Scores match: ✓")
+            print("MCP adds no transformation overhead: ✓")
 
     def test_mcp_server_status(self, test_manifest_path):
         """Test server_status resource returns correct info."""

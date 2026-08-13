@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -128,6 +129,12 @@ def build_vector_store(
 ):
     """Build (or load) hierarchical embedding index."""
     from codenib.index.embedding import CodeVectorStore, build_hierarchical_vector_store
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
 
     store_path = Path(index_path)
     store_path.mkdir(parents=True, exist_ok=True)
@@ -136,15 +143,33 @@ def build_vector_store(
     l2 = store_path / "l2"
     if l0.exists() and l2.exists():
         print("  Embedding: loading cached index")
-        vs = CodeVectorStore(
-            embedding_model=embedding_model,
-            embedding_provider="huggingface",
-            dimension=embedding_dimension,
-            store_path=str(store_path),
-        )
-        vs.load(str(store_path))
-        if vs.l0_documents and vs.l2_documents:
-            return vs
+        artifact_contract: Dict[str, Any] = {}
+        with capture_authenticated_vector_view(store_path) as vector_view:
+            native_authorization = _mint_trusted_local_admin_authorization(
+                vector_view.ownership,
+                view_type="vector",
+                semantic_contract=artifact_contract,
+                evidence=(
+                    "skill-agent-cached-vector-view",
+                    "captured-vector-tree-subject",
+                ),
+            )
+        with ExitStack() as resources:
+            vs = CodeVectorStore(
+                embedding_model=embedding_model,
+                embedding_provider="huggingface",
+                dimension=embedding_dimension,
+                store_path=str(store_path),
+                artifact_metadata=artifact_contract,
+            )
+            resources.callback(vs.close)
+            vs.load(
+                str(store_path),
+                native_index_authorization=native_authorization,
+            )
+            if vs.l0_documents and vs.l2_documents:
+                resources.pop_all()
+                return vs
         print("  Embedding: cache incomplete, rebuilding")
 
     print("  Embedding: building hierarchical index (may take a minute)...")
@@ -302,7 +327,13 @@ def run_agent(args: argparse.Namespace) -> None:
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from codenib.compiler.manifest import RepoManifest
     from codenib.index.embedding import CodeVectorStore
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
     from codenib.llm.litellm_chat import LiteLLMChat
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
 
     repo_path = os.path.abspath(args.repo)
     cache_dir = args.index_path or str(repo_index_dir(repo_path))
@@ -364,88 +395,110 @@ def run_agent(args: argparse.Namespace) -> None:
     manifest = RepoManifest.load(manifest_path)
     print(f"  Loaded manifest: {len(manifest.indexes)} indexes")
 
-    # Load actual index objects from manifest paths
-    bm25_index = None
-    vector_store = None
+    # Load actual index objects from manifest paths.  Register native resources
+    # before loading so both partial-load failures and normal completion close.
+    with ExitStack() as resources:
+        bm25_index = None
+        vector_store = None
 
-    if "bm25" in manifest.indexes and manifest.indexes["bm25"].status == "fresh":
-        bm25_index = BM25CodeIndexer()
-        bm25_index.load_index(manifest.indexes["bm25"].path)
-        print(f"  Loaded BM25 from {manifest.indexes['bm25'].path}")
+        if "bm25" in manifest.indexes and manifest.indexes["bm25"].status == "fresh":
+            bm25_index = BM25CodeIndexer()
+            bm25_index.load_index(manifest.indexes["bm25"].path)
+            print(f"  Loaded BM25 from {manifest.indexes['bm25'].path}")
 
-    if "vector" in manifest.indexes and manifest.indexes["vector"].status == "fresh":
-        emb_model = manifest.indexes["vector"].config.get(
-            "embedding_model", args.embedding_model
+        if (
+            "vector" in manifest.indexes
+            and manifest.indexes["vector"].status == "fresh"
+        ):
+            entry = manifest.indexes["vector"]
+            artifact_contract = dict(entry.config)
+            emb_model = artifact_contract.get("embedding_model", args.embedding_model)
+            emb_dim = artifact_contract.get(
+                "embedding_dimension", args.embedding_dimension
+            )
+            with capture_authenticated_vector_view(entry.path) as vector_view:
+                native_authorization = _mint_trusted_local_admin_authorization(
+                    vector_view.ownership,
+                    view_type="vector",
+                    semantic_contract=artifact_contract,
+                    evidence=(
+                        "skill-agent-manifest-vector-view",
+                        "captured-vector-tree-subject",
+                    ),
+                )
+            vector_store = CodeVectorStore(
+                embedding_model=emb_model,
+                embedding_provider="huggingface",
+                dimension=emb_dim,
+                store_path=entry.path,
+                artifact_metadata=artifact_contract,
+            )
+            resources.callback(vector_store.close)
+            vector_store.load(
+                entry.path,
+                native_index_authorization=native_authorization,
+            )
+            print(f"  Loaded vector store from {entry.path}")
+
+        # Create contexts and load skills
+        retrieve_ctx = RetrieveContext(
+            bm25=bm25_index,
+            vector_store=vector_store,
+            default_top_k=args.top_k,
+            default_level="l2",
         )
-        emb_dim = manifest.indexes["vector"].config.get(
-            "embedding_dimension", args.embedding_dimension
+        contexts: Dict[str, Any] = {"retrieve": retrieve_ctx}
+        if vector_store:
+            contexts["rerank"] = RerankContext(embedding_store=vector_store)
+
+        skills_dir = os.path.join(_PROJECT_ROOT, "codenib", "agent", "skills")
+        loader = SkillLoader()
+        loaded = loader.load_all(skills_dir, contexts=contexts)
+        print(f"  Loaded {len(loaded)} skills: {[s.skill_id for s in loaded]}")
+
+        # Session context for parameter scaling
+        session_ctx = SessionContext(
+            repo_path=repo_path,
+            repo_size=manifest.file_count,
+            primary_language=(
+                manifest.languages[0] if manifest.languages else "python"
+            ),
         )
-        vector_store = CodeVectorStore(
-            embedding_model=emb_model,
-            embedding_provider="huggingface",
-            dimension=emb_dim,
-            store_path=manifest.indexes["vector"].path,
+
+        # Create LLM and AgentRunner
+        llm = LiteLLMChat(
+            model=args.model,
+            temperature=0.0,
+            max_tokens=1024,
         )
-        vector_store.load(manifest.indexes["vector"].path)
-        print(f"  Loaded vector store from {manifest.indexes['vector'].path}")
 
-    # Create contexts and load skills
-    retrieve_ctx = RetrieveContext(
-        bm25=bm25_index,
-        vector_store=vector_store,
-        default_top_k=args.top_k,
-        default_level="l2",
-    )
-    contexts: Dict[str, Any] = {"retrieve": retrieve_ctx}
-    if vector_store:
-        contexts["rerank"] = RerankContext(embedding_store=vector_store)
+        runner = AgentRunner(
+            llm=llm,
+            registry=SkillRegistry(),
+            max_turns=5,
+            manifest=manifest,
+            session_ctx=session_ctx,
+        )
 
-    skills_dir = os.path.join(_PROJECT_ROOT, "codenib", "agent", "skills")
-    loader = SkillLoader()
-    loaded = loader.load_all(skills_dir, contexts=contexts)
-    print(f"  Loaded {len(loaded)} skills: {[s.skill_id for s in loaded]}")
+        print("\n--- Running agent (max 5 turns) ---")
+        result = runner.run(args.query)
 
-    # Session context for parameter scaling
-    session_ctx = SessionContext(
-        repo_path=repo_path,
-        repo_size=manifest.file_count,
-        primary_language=manifest.languages[0] if manifest.languages else "python",
-    )
+        print("\n=== Agent Result ===")
+        print(f"  Turns: {result.total_turns}")
+        print(f"  Tool calls: {len(result.tool_calls)}")
+        for tc in result.tool_calls:
+            print(f"    - {tc.skill_id}({tc.arguments})")
 
-    # Create LLM and AgentRunner
-    llm = LiteLLMChat(
-        model=args.model,
-        temperature=0.0,
-        max_tokens=1024,
-    )
+        # Collect results from tool call outputs
+        all_results = []
+        for tc in result.tool_calls:
+            if isinstance(tc.result, list):
+                all_results.extend(tc.result)
 
-    runner = AgentRunner(
-        llm=llm,
-        registry=SkillRegistry(),
-        max_turns=5,
-        manifest=manifest,
-        session_ctx=session_ctx,
-    )
-
-    print(f"\n--- Running agent (max 5 turns) ---")
-    result = runner.run(args.query)
-
-    print(f"\n=== Agent Result ===")
-    print(f"  Turns: {result.total_turns}")
-    print(f"  Tool calls: {len(result.tool_calls)}")
-    for tc in result.tool_calls:
-        print(f"    - {tc.skill_id}({tc.arguments})")
-
-    # Collect results from tool call outputs
-    all_results = []
-    for tc in result.tool_calls:
-        if isinstance(tc.result, list):
-            all_results.extend(tc.result)
-
-    if all_results:
-        print_results(all_results, args.top_k)
-    else:
-        print(f"\nAgent response: {result.final_answer}")
+        if all_results:
+            print_results(all_results, args.top_k)
+        else:
+            print(f"\nAgent response: {result.final_answer}")
 
 
 # ---------------------------------------------------------------------------

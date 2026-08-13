@@ -13,9 +13,11 @@ import inspect
 import json
 import os
 import pickle
+import sys
 import tempfile
 from collections.abc import Mapping
 from contextlib import contextmanager, nullcontext
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple
 
@@ -23,6 +25,7 @@ import faiss
 import numpy as np
 
 from ... import compat_pickle
+from ..._atomic_directory import _annotate_secondary_error
 from ..._bounded_json import iter_bounded_json_array
 from ..._captured_directory import AuthenticatedSnapshotReader
 from ...log_utils import get_logger
@@ -38,6 +41,7 @@ from .artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
     VECTOR_VIEW_UPDATE_MARKER,
     AuthenticatedVectorView,
+    _attach_vector_view_cleanup_owner,
     capture_authenticated_vector_view,
     vector_level_artifact_records,
 )
@@ -228,6 +232,77 @@ class _Document:
     def __repr__(self) -> str:
         name = self.metadata.get("name", "")
         return f"_Document(name={name!r}, len={len(self.page_content)})"
+
+
+@dataclass(slots=True)
+class _LoadedVectorState:
+    """Temporary replacement state committed only after final authentication."""
+
+    l0_index: Any
+    l0_documents: List[_Document]
+    l2_index: Any
+    l2_documents: List[_Document]
+    artifact_metadata: Dict[str, Any]
+    store_path: Path | None
+
+
+class _VectorIndexCleanupOwner:
+    """Retryable aggregate owner for unpublished or superseded FAISS indices."""
+
+    __slots__ = ("indices",)
+
+    def __init__(self, indices: tuple[Any, ...]) -> None:
+        seen: set[int] = set()
+        self.indices: list[Any] = []
+        for index in indices:
+            if index is None or id(index) in seen:
+                continue
+            seen.add(id(index))
+            self.indices.append(index)
+
+    @property
+    def closed(self) -> bool:
+        return not self.indices
+
+    def close(self) -> None:
+        pending: list[Any] = []
+        failure: BaseException | None = None
+        for index in self.indices:
+            reset = getattr(index, "reset", None)
+            if not callable(reset):
+                continue
+            try:
+                reset()
+            except BaseException as exc:  # noqa: B036 - visit every index
+                pending.append(index)
+                if failure is None:
+                    failure = exc
+                else:
+                    _annotate_secondary_error(
+                        failure,
+                        "additional FAISS index cleanup also failed",
+                        exc,
+                    )
+        self.indices = pending
+        if failure is not None:
+            try:
+                failure.vector_index_cleanup_owner = self  # type: ignore[attr-defined]
+            except BaseException:  # noqa: B036 - traceback still retains owner
+                pass
+            raise failure
+
+
+def _attach_vector_index_cleanup_owner(
+    primary: BaseException,
+    cleanup_error: BaseException,
+) -> None:
+    owner = getattr(cleanup_error, "vector_index_cleanup_owner", None)
+    if owner is None:
+        return
+    try:
+        primary.vector_index_cleanup_owner = owner  # type: ignore[attr-defined]
+    except BaseException:  # noqa: B036 - traceback still retains cleanup error
+        pass
 
 
 class _HuggingFaceEmbeddingWrapper:
@@ -519,6 +594,63 @@ class CodeVectorStore:
     - L2: Function/method-level chunks for fine-grained retrieval (default)
     """
 
+    def _state_for_update(self) -> _LoadedVectorState:
+        """Return the current state, lazily supporting lightweight test stores."""
+
+        state = getattr(self, "_loaded_state", None)
+        if state is None:
+            state = _LoadedVectorState(None, [], None, [], {}, None)
+            self._loaded_state = state
+        return state
+
+    @property
+    def l0_index(self) -> Any:
+        return self._loaded_state.l0_index
+
+    @l0_index.setter
+    def l0_index(self, value: Any) -> None:
+        self._state_for_update().l0_index = value
+
+    @property
+    def l0_documents(self) -> List[_Document]:
+        return self._loaded_state.l0_documents
+
+    @l0_documents.setter
+    def l0_documents(self, value: List[_Document]) -> None:
+        self._state_for_update().l0_documents = value
+
+    @property
+    def l2_index(self) -> Any:
+        return self._loaded_state.l2_index
+
+    @l2_index.setter
+    def l2_index(self, value: Any) -> None:
+        self._state_for_update().l2_index = value
+
+    @property
+    def l2_documents(self) -> List[_Document]:
+        return self._loaded_state.l2_documents
+
+    @l2_documents.setter
+    def l2_documents(self, value: List[_Document]) -> None:
+        self._state_for_update().l2_documents = value
+
+    @property
+    def artifact_metadata(self) -> Dict[str, Any]:
+        return self._loaded_state.artifact_metadata
+
+    @artifact_metadata.setter
+    def artifact_metadata(self, value: Dict[str, Any]) -> None:
+        self._state_for_update().artifact_metadata = value
+
+    @property
+    def store_path(self) -> Path | None:
+        return self._loaded_state.store_path
+
+    @store_path.setter
+    def store_path(self, value: Path | None) -> None:
+        self._state_for_update().store_path = value
+
     def __init__(
         self,
         embedding_model: str = "text-embedding-ada-002",
@@ -591,9 +723,9 @@ class CodeVectorStore:
             )
         self.ivf_nlist = max(1, int(ivf_nlist))
         self.ivf_nprobe = max(1, int(ivf_nprobe))
-        self.store_path = Path(store_path) if store_path else None
+        initial_store_path = Path(store_path) if store_path else None
         self.profiler = profiler
-        self.artifact_metadata = dict(artifact_metadata or {})
+        initial_artifact_metadata = dict(artifact_metadata or {})
 
         # Initialize the embedding model — or reuse a shared one so the same
         # model isn't loaded onto the GPU once per store.
@@ -608,12 +740,18 @@ class CodeVectorStore:
         self.dimension = self._infer_embedding_dimension(dimension)
 
         # Initialize L0 (file-level skeletons)
-        self.l0_index = self._build_faiss_index()
-        self.l0_documents: List[_Document] = []
+        l0_index = self._build_faiss_index()
 
         # Initialize L2 (function/method-level) - default
-        self.l2_index = self._build_faiss_index()
-        self.l2_documents: List[_Document] = []
+        l2_index = self._build_faiss_index()
+        self._loaded_state = _LoadedVectorState(
+            l0_index=l0_index,
+            l0_documents=[],
+            l2_index=l2_index,
+            l2_documents=[],
+            artifact_metadata=initial_artifact_metadata,
+            store_path=initial_store_path,
+        )
 
         logger.info(
             f"Initialized CodeVectorStore with {embedding_provider}:{embedding_model}"
@@ -621,10 +759,11 @@ class CodeVectorStore:
 
     def _get_index_and_docs(self, level: Level) -> tuple[faiss.Index, List[_Document]]:
         """Get the FAISS index and documents list for the specified level."""
+        state = self._loaded_state
         if level == "l0":
-            return self.l0_index, self.l0_documents
+            return state.l0_index, state.l0_documents
         elif level == "l2":
-            return self.l2_index, self.l2_documents
+            return state.l2_index, state.l2_documents
         else:
             raise ValueError(f"Invalid level: {level}. Must be 'l0' or 'l2'.")
 
@@ -833,17 +972,43 @@ class CodeVectorStore:
 
     def close(self) -> None:
         """Release embeddings and FAISS resources to free memory."""
-        for index in (self.l0_index, self.l2_index):
-            if index is None:
+
+        state = self._loaded_state
+        released: dict[int, bool] = {}
+        deferred: BaseException | None = None
+        for index in (state.l0_index, state.l2_index):
+            if index is None or id(index) in released:
                 continue
             reset = getattr(index, "reset", None)
-            if callable(reset):
+            if not callable(reset):
+                released[id(index)] = True
+                continue
+            try:
                 reset()
+                released[id(index)] = True
+            except BaseException as exc:  # noqa: B036 - visit both native indices
+                released[id(index)] = False
+                if deferred is None:
+                    deferred = exc
+                else:
+                    _annotate_secondary_error(
+                        deferred,
+                        "additional FAISS index cleanup also failed",
+                        exc,
+                    )
 
-        self.l0_documents.clear()
-        self.l2_documents.clear()
-        self.l0_index = None
-        self.l2_index = None
+        l0_released = state.l0_index is None or released.get(id(state.l0_index), False)
+        l2_released = state.l2_index is None or released.get(id(state.l2_index), False)
+        self._loaded_state = _LoadedVectorState(
+            l0_index=None if l0_released else state.l0_index,
+            l0_documents=[] if l0_released else state.l0_documents,
+            l2_index=None if l2_released else state.l2_index,
+            l2_documents=[] if l2_released else state.l2_documents,
+            artifact_metadata=state.artifact_metadata,
+            store_path=state.store_path,
+        )
+        if deferred is not None:
+            raise deferred
 
         self.embedding = None
         self._query_cache_depth = 0
@@ -1381,6 +1546,9 @@ class CodeVectorStore:
             view_type="vector",
         )
         view = capture_authenticated_vector_view(load_path)
+        loaded_state: _LoadedVectorState | None = None
+        previous_state: _LoadedVectorState | None = None
+        view_closed = False
         try:
             require_native_index_authorization(
                 native_index_authorization,
@@ -1388,12 +1556,71 @@ class CodeVectorStore:
                 view_type="vector",
                 semantic_contract=self.artifact_metadata,
             )
-            self._load_captured(view)
+            loaded_state = self._load_captured(view)
             view.verify_final()
-        finally:
+            # A close failure is still a failed replacement. Finish the
+            # captured-view lifecycle before exposing any newly parsed state.
             view.close()
+            view_closed = True
+            previous_state = self._loaded_state
+            self._replace_loaded_state(loaded_state)
+        finally:
+            primary_error = sys.exc_info()[1]
+            cleanup_error: BaseException | None = None
+            if not view_closed:
+                try:
+                    view.close()
+                    view_closed = True
+                except BaseException as exc:  # noqa: B036 - preserve primary
+                    cleanup_error = exc
+            if loaded_state is not None:
+                release_state = (
+                    previous_state
+                    if self._loaded_state is loaded_state
+                    else loaded_state
+                )
+                if release_state is not None:
+                    try:
+                        self._release_vector_indices(
+                            tuple(
+                                index
+                                for index in (
+                                    release_state.l0_index,
+                                    release_state.l2_index,
+                                )
+                                if index is not self.l0_index
+                                and index is not self.l2_index
+                            )
+                        )
+                    except BaseException as exc:  # noqa: B036 - visit all cleanup
+                        if primary_error is not None:
+                            _attach_vector_index_cleanup_owner(primary_error, exc)
+                        if cleanup_error is None:
+                            cleanup_error = exc
+                        else:
+                            _attach_vector_index_cleanup_owner(cleanup_error, exc)
+                            _annotate_secondary_error(
+                                cleanup_error,
+                                "vector index cleanup also failed",
+                                exc,
+                            )
+            if cleanup_error is not None:
+                if primary_error is not None:
+                    if not view_closed:
+                        _attach_vector_view_cleanup_owner(
+                            primary_error,
+                            view,
+                            cleanup_error,
+                        )
+                    _annotate_secondary_error(
+                        primary_error,
+                        "vector load cleanup also failed",
+                        cleanup_error,
+                    )
+                else:
+                    raise cleanup_error
 
-    def _load_captured(self, view: AuthenticatedVectorView) -> None:
+    def _load_captured(self, view: AuthenticatedVectorView) -> _LoadedVectorState:
         """Load native state only through one already-authorized captured tree."""
 
         load_path = view.root
@@ -1517,75 +1744,71 @@ class CodeVectorStore:
         elif expected_artifact.get("embedding_fingerprint") is not None:
             raise ValueError("Vector store is missing its top-level configuration")
 
-        loaded_levels = {}
-        for level in ("l0", "l2"):
-            expected_count = expected_counts[level]
-            faiss_relative = f"{level}/index_{model_suffix}.faiss"
-            committed_artifacts = (
-                committed_levels.get(level) if committed_levels is not None else None
-            )
+        loaded_levels: dict[str, tuple[Any, List[_Document]]] = {}
+        try:
+            for level in ("l0", "l2"):
+                expected_count = expected_counts[level]
+                faiss_relative = f"{level}/index_{model_suffix}.faiss"
+                committed_artifacts = (
+                    committed_levels.get(level)
+                    if committed_levels is not None
+                    else None
+                )
 
-            # A zero count in the top-level config is authoritative. Older
-            # writers could leave stale level files behind after deletions.
-            if expected_count == 0:
-                if committed_artifacts is not None:
+                # A zero count in the top-level config is authoritative. Older
+                # writers could leave stale level files behind after deletions.
+                if expected_count == 0:
+                    if committed_artifacts is not None:
+                        raise ValueError(
+                            f"Vector config commits artifacts for empty {level} level"
+                        )
+                    loaded_levels[level] = (self._build_faiss_index(), [])
+                    continue
+
+                if (
+                    committed_levels is not None
+                    and expected_count is not None
+                    and expected_count > 0
+                    and committed_artifacts is None
+                ):
                     raise ValueError(
-                        f"Vector config commits artifacts for empty {level} level"
+                        f"Vector config is missing committed artifacts for {level}"
                     )
-                loaded_levels[level] = (self._build_faiss_index(), [])
-                continue
 
-            if (
-                committed_levels is not None
-                and expected_count is not None
-                and expected_count > 0
-                and committed_artifacts is None
-            ):
-                raise ValueError(
-                    f"Vector config is missing committed artifacts for {level}"
+                if committed_artifacts is not None or view.has_file(faiss_relative):
+                    index, documents = self._load_level(
+                        view,
+                        level,
+                        model_suffix,
+                        committed_artifacts=committed_artifacts,
+                    )
+                elif expected_count is not None and expected_count > 0:
+                    raise FileNotFoundError(
+                        f"Vector config expects {expected_count} {level} documents, "
+                        f"but {faiss_relative} is missing"
+                    )
+                else:
+                    index, documents = self._build_faiss_index(), []
+
+                loaded_levels[level] = (index, documents)
+                if expected_count is not None and len(documents) != expected_count:
+                    raise ValueError(
+                        f"{level} config expects {expected_count} documents, "
+                        f"loaded {len(documents)}"
+                    )
+        except BaseException as primary_error:
+            try:
+                self._release_vector_indices(
+                    tuple(index for index, _documents in loaded_levels.values())
                 )
-
-            if committed_artifacts is not None or view.has_file(faiss_relative):
-                index, documents = self._load_level(
-                    view,
-                    level,
-                    model_suffix,
-                    committed_artifacts=committed_artifacts,
+            except BaseException as cleanup_error:  # noqa: B036 - preserve primary
+                _attach_vector_index_cleanup_owner(primary_error, cleanup_error)
+                _annotate_secondary_error(
+                    primary_error,
+                    "partially loaded vector levels cleanup also failed",
+                    cleanup_error,
                 )
-            elif expected_count is not None and expected_count > 0:
-                raise FileNotFoundError(
-                    f"Vector config expects {expected_count} {level} documents, "
-                    f"but {faiss_relative} is missing"
-                )
-            else:
-                index, documents = self._build_faiss_index(), []
-
-            if expected_count is not None and len(documents) != expected_count:
-                raise ValueError(
-                    f"{level} config expects {expected_count} documents, "
-                    f"loaded {len(documents)}"
-                )
-            loaded_levels[level] = (index, documents)
-
-        old_indices = (self.l0_index, self.l2_index)
-        self.l0_index, self.l0_documents = loaded_levels["l0"]
-        self.l2_index, self.l2_documents = loaded_levels["l2"]
-        self.artifact_metadata = loaded_artifact
-        self.store_path = load_path
-
-        for old_index in old_indices:
-            if (
-                old_index is None
-                or old_index is self.l0_index
-                or old_index is self.l2_index
-            ):
-                continue
-            reset = getattr(old_index, "reset", None)
-            if callable(reset):
-                try:
-                    reset()
-                except Exception as exc:
-                    logger.debug("Could not release replaced FAISS index: %s", exc)
+            raise
 
         for level, (_index, documents) in loaded_levels.items():
             if documents:
@@ -1595,11 +1818,29 @@ class CodeVectorStore:
                     len(documents),
                 )
 
-        total_docs = len(self.l0_documents) + len(self.l2_documents)
+        total_docs = sum(len(documents) for _index, documents in loaded_levels.values())
         logger.info(
             f"Vector store loaded successfully with {total_docs} total documents "
-            f"(L0: {len(self.l0_documents)}, L2: {len(self.l2_documents)})"
+            f"(L0: {len(loaded_levels['l0'][1])}, "
+            f"L2: {len(loaded_levels['l2'][1])})"
         )
+        return _LoadedVectorState(
+            l0_index=loaded_levels["l0"][0],
+            l0_documents=loaded_levels["l0"][1],
+            l2_index=loaded_levels["l2"][0],
+            l2_documents=loaded_levels["l2"][1],
+            artifact_metadata=loaded_artifact,
+            store_path=load_path,
+        )
+
+    @staticmethod
+    def _release_vector_indices(indices: tuple[Any, ...]) -> None:
+        _VectorIndexCleanupOwner(indices).close()
+
+    def _replace_loaded_state(self, state: _LoadedVectorState) -> None:
+        """Commit one fully verified replacement with a single reference store."""
+
+        self._loaded_state = state
 
     def _load_level(
         self,
@@ -1646,12 +1887,52 @@ class CodeVectorStore:
         if not view.has_file(faiss_relative):
             raise FileNotFoundError(f"FAISS index not found at {faiss_relative}")
 
+        index: faiss.Index | None = None
         try:
-            index = _read_authenticated_faiss(view, faiss_relative)
-        except Exception as e:
-            raise ValueError(
-                f"Could not load FAISS index from {faiss_relative}: {e}"
-            ) from e
+            try:
+                index = _read_authenticated_faiss(view, faiss_relative)
+            except Exception as e:
+                raise ValueError(
+                    f"Could not load FAISS index from {faiss_relative}: {e}"
+                ) from e
+            return self._finish_loaded_level(
+                view,
+                level,
+                model_suffix,
+                level_path=level_path,
+                faiss_relative=faiss_relative,
+                committed_documents_relative=committed_documents_relative,
+                index=index,
+            )
+        except BaseException as primary_error:
+            # FAISS has already allocated native state, but the caller cannot
+            # assume ownership until this method returns successfully.
+            if index is not None:
+                try:
+                    self._release_vector_indices((index,))
+                except BaseException as cleanup_error:  # noqa: B036 - preserve primary
+                    _attach_vector_index_cleanup_owner(primary_error, cleanup_error)
+                    _annotate_secondary_error(
+                        primary_error,
+                        "partially loaded FAISS index cleanup also failed",
+                        cleanup_error,
+                    )
+            raise
+
+    def _finish_loaded_level(
+        self,
+        view: AuthenticatedVectorView,
+        level: str,
+        model_suffix: str,
+        *,
+        level_path: Path,
+        faiss_relative: str,
+        committed_documents_relative: str | None,
+        index: faiss.Index,
+    ) -> tuple[faiss.Index, List[_Document]]:
+        """Validate documents and metadata for one already-acquired index."""
+
+        index_name = f"index_{model_suffix}"
         if int(index.d) != self.dimension:
             raise ValueError(
                 f"FAISS dimension mismatch at {faiss_relative}: "

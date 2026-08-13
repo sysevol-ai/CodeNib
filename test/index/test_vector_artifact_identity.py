@@ -4,15 +4,19 @@
 
 from __future__ import annotations
 
+import inspect
+import sys
 from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import codenib.index.embedding.artifact_integrity as artifact_integrity_module
 from codenib._atomic_directory import capture_directory_ownership
 from codenib.index.embedding.vector_store import (
     CodeVectorStore,
+    _LoadedVectorState,
     _OpenAIEmbeddingWrapper,
     _read_authenticated_faiss,
 )
@@ -101,6 +105,92 @@ def _authorization(path, store):
         semantic_contract=store.artifact_metadata,
         evidence=("vector-artifact-test-local-admin",),
     )
+
+
+def test_load_level_releases_native_index_when_validation_fails(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+
+    class _MismatchedIndex:
+        d = store.dimension + 1
+
+        def __init__(self) -> None:
+            self.reset_calls = 0
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+    index = _MismatchedIndex()
+    view = SimpleNamespace(
+        root=tmp_path,
+        has_file=lambda relative: relative.endswith(".faiss"),
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store._read_authenticated_faiss",
+        lambda _view, _relative: index,
+    )
+
+    with pytest.raises(ValueError, match="FAISS dimension mismatch"):
+        store._load_level(view, "l0", "vendor__model")
+
+    assert index.reset_calls == 1
+
+
+def test_load_level_owns_index_at_first_line_after_native_read(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+
+    class _Index:
+        def __init__(self) -> None:
+            self.reset_calls = 0
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+    index = _Index()
+    view = SimpleNamespace(
+        root=tmp_path,
+        has_file=lambda relative: relative.endswith(".faiss"),
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store._read_authenticated_faiss",
+        lambda _view, _relative: index,
+    )
+    source, first_line = inspect.getsourcelines(CodeVectorStore._load_level)
+    finish_line = first_line + next(
+        offset
+        for offset, line in enumerate(source)
+        if "return self._finish_loaded_level(" in line
+    )
+    interruption = KeyboardInterrupt("injected after native index read")
+    injected = False
+
+    def trace(frame, event, _arg):
+        nonlocal injected
+        if (
+            not injected
+            and frame.f_code is CodeVectorStore._load_level.__code__
+            and event == "line"
+            and frame.f_lineno == finish_line
+        ):
+            injected = True
+            raise interruption
+        return trace
+
+    sys.settrace(trace)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            store._load_level(view, "l0", "vendor__model")
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is interruption
+    assert injected
+    assert index.reset_calls == 1
 
 
 def test_load_denies_missing_authorization_before_tree_capture(
@@ -193,6 +283,363 @@ def test_load_requires_saved_identity_when_manifest_has_a_fingerprint(tmp_path) 
 
     with pytest.raises(ValueError, match="top-level configuration"):
         reopened.load(native_index_authorization=_authorization(tmp_path, reopened))
+
+
+def test_load_keeps_previous_state_when_final_tree_verification_fails(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+    old_l0 = store.l0_index
+    old_l2 = store.l2_index
+    old_metadata = store.artifact_metadata
+    old_path = store.store_path
+    ownership = capture_directory_ownership(tmp_path)
+    authorization = _mint_trusted_local_admin_authorization(
+        ownership,
+        view_type="vector",
+        semantic_contract=store.artifact_metadata,
+        evidence=("vector-final-verification-test",),
+    )
+
+    class ReplacementIndex:
+        def __init__(self) -> None:
+            self.reset_calls = 0
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+    replacement_l0 = ReplacementIndex()
+    replacement_l2 = ReplacementIndex()
+    view = SimpleNamespace(
+        ownership=ownership,
+        verify_final=lambda: (_ for _ in ()).throw(
+            ValueError("injected final vector verification failure")
+        ),
+        close=lambda: None,
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.capture_authenticated_vector_view",
+        lambda _path: view,
+    )
+    monkeypatch.setattr(
+        store,
+        "_load_captured",
+        lambda _view: _LoadedVectorState(
+            l0_index=replacement_l0,
+            l0_documents=[object()],
+            l2_index=replacement_l2,
+            l2_documents=[object()],
+            artifact_metadata={"embedding_fingerprint": "sha256:replacement"},
+            store_path=tmp_path / "replacement",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="final vector verification"):
+        store.load(native_index_authorization=authorization)
+
+    assert store.l0_index is old_l0
+    assert store.l2_index is old_l2
+    assert store.artifact_metadata is old_metadata
+    assert store.store_path is old_path
+    assert replacement_l0.reset_calls == 1
+    assert replacement_l2.reset_calls == 1
+
+
+@pytest.mark.parametrize(
+    "cleanup_failure",
+    [RuntimeError("index reset failed"), KeyboardInterrupt("index reset cancelled")],
+)
+def test_load_preserves_primary_and_visits_all_temporary_cleanup(
+    tmp_path,
+    monkeypatch,
+    cleanup_failure: BaseException,
+) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+    ownership = capture_directory_ownership(tmp_path)
+    authorization = _mint_trusted_local_admin_authorization(
+        ownership,
+        view_type="vector",
+        semantic_contract=store.artifact_metadata,
+        evidence=("vector-failed-load-cleanup-test",),
+    )
+
+    class _Index:
+        def __init__(self, failure=None) -> None:
+            self.failure = failure
+            self.reset_calls = 0
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+            if self.failure is not None:
+                raise self.failure
+
+    primary = ValueError("injected final vector verification failure")
+    replacement_l0 = _Index(cleanup_failure)
+    replacement_l2 = _Index()
+    close_calls = []
+    view = SimpleNamespace(
+        ownership=ownership,
+        verify_final=lambda: (_ for _ in ()).throw(primary),
+        close=lambda: close_calls.append(True),
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.capture_authenticated_vector_view",
+        lambda _path: view,
+    )
+    monkeypatch.setattr(
+        store,
+        "_load_captured",
+        lambda _view: _LoadedVectorState(
+            l0_index=replacement_l0,
+            l0_documents=[object()],
+            l2_index=replacement_l2,
+            l2_documents=[object()],
+            artifact_metadata={"embedding_fingerprint": "sha256:replacement"},
+            store_path=tmp_path / "replacement",
+        ),
+    )
+
+    with pytest.raises(ValueError) as caught:
+        store.load(native_index_authorization=authorization)
+
+    assert caught.value is primary
+    assert close_calls == [True]
+    assert replacement_l0.reset_calls == replacement_l2.reset_calls == 1
+    owner = caught.value.vector_index_cleanup_owner
+    assert owner.indices == [replacement_l0]
+    replacement_l0.failure = None
+    owner.close()
+    assert owner.closed
+    assert replacement_l0.reset_calls == 2
+    assert replacement_l2.reset_calls == 1
+
+
+def test_load_preserves_pending_captured_view_owner_on_cleanup_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+    ownership = capture_directory_ownership(tmp_path)
+    authorization = _mint_trusted_local_admin_authorization(
+        ownership,
+        view_type="vector",
+        semantic_contract=store.artifact_metadata,
+        evidence=("vector-view-cleanup-owner-test",),
+    )
+    primary = ValueError("injected final vector verification failure")
+    cleanup_failure = KeyboardInterrupt("injected captured view cleanup failure")
+
+    class _Owner:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    owner = _Owner()
+
+    def fail_close() -> None:
+        cleanup_failure.captured_directory_cleanup_owner = owner
+        raise cleanup_failure
+
+    view = SimpleNamespace(
+        ownership=ownership,
+        verify_final=lambda: (_ for _ in ()).throw(primary),
+        close=fail_close,
+        reader=object(),
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.capture_authenticated_vector_view",
+        lambda _path: view,
+    )
+    monkeypatch.setattr(
+        store,
+        "_load_captured",
+        lambda _view: (_ for _ in ()).throw(primary),
+    )
+
+    with pytest.raises(ValueError) as caught:
+        store.load(native_index_authorization=authorization)
+
+    assert caught.value is primary
+    assert caught.value.captured_directory_cleanup_owner is owner
+    owner.close()
+    assert owner.close_calls == 1
+
+
+@pytest.mark.parametrize("operation", ["mint", "require"])
+def test_vector_authorization_gate_preserves_pending_view_cleanup_owner(
+    tmp_path,
+    monkeypatch,
+    operation: str,
+) -> None:
+    primary = ValueError("injected vector gate verification failure")
+    cleanup_failure = KeyboardInterrupt("injected vector gate cleanup failure")
+    owner = MagicMock()
+
+    def fail_close() -> None:
+        cleanup_failure.captured_directory_cleanup_owner = owner
+        raise cleanup_failure
+
+    view = SimpleNamespace(
+        ownership=object(),
+        verify_final=lambda: (_ for _ in ()).throw(primary),
+        close=fail_close,
+        reader=object(),
+    )
+    monkeypatch.setattr(
+        artifact_integrity_module,
+        "capture_authenticated_vector_view",
+        lambda _path: view,
+    )
+    monkeypatch.setattr(
+        artifact_integrity_module,
+        "_mint_trusted_local_admin_authorization",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        artifact_integrity_module,
+        "require_native_index_authorization_preflight",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        artifact_integrity_module,
+        "require_native_index_authorization",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        if operation == "mint":
+            artifact_integrity_module._mint_trusted_local_vector_authorization(
+                tmp_path,
+                {},
+                evidence=("test",),
+            )
+        else:
+            artifact_integrity_module.require_authorized_vector_view(
+                tmp_path,
+                object(),
+                {},
+            )
+
+    assert caught.value is primary
+    assert caught.value.captured_directory_cleanup_owner is owner
+
+
+def test_load_keeps_published_state_when_old_index_cleanup_is_cancelled(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+    ownership = capture_directory_ownership(tmp_path)
+    authorization = _mint_trusted_local_admin_authorization(
+        ownership,
+        view_type="vector",
+        semantic_contract=store.artifact_metadata,
+        evidence=("vector-old-index-cleanup-test",),
+    )
+
+    class Index:
+        def __init__(self, failure=None) -> None:
+            self.failure = failure
+            self.reset_calls = 0
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+            if self.failure is not None:
+                raise self.failure
+
+    interruption = KeyboardInterrupt("injected old-index cleanup cancellation")
+    old_l0 = Index(interruption)
+    old_l2 = Index()
+    store.l0_index = old_l0
+    store.l2_index = old_l2
+    replacement_l0 = Index()
+    replacement_l2 = Index()
+    view = SimpleNamespace(
+        ownership=ownership,
+        verify_final=lambda: None,
+        close=lambda: None,
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.capture_authenticated_vector_view",
+        lambda _path: view,
+    )
+    monkeypatch.setattr(
+        store,
+        "_load_captured",
+        lambda _view: _LoadedVectorState(
+            l0_index=replacement_l0,
+            l0_documents=[object()],
+            l2_index=replacement_l2,
+            l2_documents=[object()],
+            artifact_metadata={"embedding_fingerprint": "sha256:replacement"},
+            store_path=tmp_path / "replacement",
+        ),
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        store.load(native_index_authorization=authorization)
+
+    assert caught.value is interruption
+    assert store.l0_index is replacement_l0
+    assert store.l2_index is replacement_l2
+    assert replacement_l0.reset_calls == replacement_l2.reset_calls == 0
+    owner = caught.value.vector_index_cleanup_owner
+    assert owner.indices == [old_l0]
+    old_l0.failure = None
+    owner.close()
+    assert owner.closed
+    assert old_l0.reset_calls == 2
+    assert old_l2.reset_calls == 1
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [RuntimeError("index reset failed"), KeyboardInterrupt("index reset cancelled")],
+)
+def test_close_visits_all_indices_and_retains_failed_index_for_retry(
+    tmp_path,
+    failure: BaseException,
+) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+
+    class _Index:
+        def __init__(self, reset_failure=None) -> None:
+            self.reset_failure = reset_failure
+            self.reset_calls = 0
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+            if self.reset_failure is not None:
+                raise self.reset_failure
+
+    first = _Index(failure)
+    second = _Index()
+    store.l0_index = first
+    store.l0_documents = [object()]
+    store.l2_index = second
+    store.l2_documents = [object()]
+
+    with pytest.raises(type(failure)) as caught:
+        store.close()
+
+    assert caught.value is failure
+    assert first.reset_calls == second.reset_calls == 1
+    assert store.l0_index is first
+    assert len(store.l0_documents) == 1
+    assert store.l2_index is None
+    assert store.l2_documents == []
+    assert store.embedding is not None
+
+    first.reset_failure = None
+    store.close()
+
+    assert first.reset_calls == 2
+    assert second.reset_calls == 1
+    assert store.l0_index is store.l2_index is None
+    assert store.embedding is None
 
 
 def test_openai_wrapper_sends_vector_options_on_embedding_requests() -> None:

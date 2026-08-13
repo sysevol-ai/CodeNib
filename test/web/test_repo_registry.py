@@ -26,6 +26,16 @@ from codenib.web.repo_registry import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _stub_vector_authorization(monkeypatch: pytest.MonkeyPatch):
+    authorization = object()
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._mint_trusted_local_vector_authorization",
+        lambda *_args, **_kwargs: authorization,
+    )
+    return authorization
+
+
 def test_fresh_registry_is_isolated_from_singleton():
     singleton = SkillRegistry()
     reg_a = _fresh_registry()
@@ -388,7 +398,7 @@ def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
             self.loaded = None
             created.append(self)
 
-        def load(self, path):
+        def load(self, path, **_kwargs):
             self.loaded = path
 
     monkeypatch.setattr(
@@ -424,6 +434,57 @@ def test_vector_store_uses_provider_config_and_reuses_client(monkeypatch):
     assert second.kwargs["embedding"] is first.embedding
 
 
+def test_vector_load_failure_does_not_publish_embedding_and_retains_cleanup_owner(
+    monkeypatch,
+):
+    primary = RuntimeError("vector load failed")
+    cleanup = KeyboardInterrupt("vector cleanup interrupted")
+    created = []
+
+    class FakeVectorStore:
+        def __init__(self, **_kwargs):
+            self.embedding = object()
+            self.close_calls = 0
+            created.append(self)
+
+        def load(self, _path, **_kwargs):
+            assert registry._embeddings == {}
+            raise primary
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_calls == 1:
+                raise cleanup
+
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: FakeVectorStore,
+    )
+    registry = RepoRegistry(QAConfig(embedding_provider="huggingface"))
+    entry = SimpleNamespace(
+        path="/tmp/vector",
+        config={
+            "embedding_model": "vendor/model",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 384,
+        },
+    )
+
+    observed = None
+    try:
+        registry._load_vector_store(entry)
+    except BaseException as exc:  # noqa: B036 - assert primary/cleanup priority
+        observed = exc
+
+    assert observed is cleanup
+    assert observed.__cause__ is primary
+    assert registry._embeddings == {}
+    assert observed.vector_cleanup_owner is created[0]
+
+    observed.vector_cleanup_owner.close()
+    assert created[0].close_calls == 2
+
+
 def test_vector_store_restores_manifest_embedding_identity(monkeypatch):
     created = []
 
@@ -433,7 +494,7 @@ def test_vector_store_restores_manifest_embedding_identity(monkeypatch):
             self.embedding = kwargs.get("embedding") or object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(
@@ -473,7 +534,7 @@ def test_vector_store_supports_legacy_prebuilt_route_fallback(monkeypatch):
             self.embedding = object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(
@@ -509,7 +570,7 @@ def test_vector_store_fills_legacy_dimension_with_persisted_provider(monkeypatch
             self.embedding = object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(
@@ -567,7 +628,7 @@ def test_vector_store_cache_separates_model_revisions(monkeypatch):
             self.embedding = kwargs.get("embedding") or object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(
@@ -605,7 +666,7 @@ def test_remote_embedding_override_cannot_replace_artifact_route(
             self.embedding = object()
             created.append(self)
 
-        def load(self, _path):
+        def load(self, _path, **_kwargs):
             pass
 
     monkeypatch.setattr(

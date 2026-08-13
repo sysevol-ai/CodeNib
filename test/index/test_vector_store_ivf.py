@@ -452,6 +452,28 @@ def test_zero_top_level_count_does_not_resurrect_stale_level_files(tmp_path):
     assert loaded.l2_documents == []
 
 
+def test_load_supports_legacy_local_pickle_documents(tmp_path):
+    path = tmp_path / "vs"
+    chunks = _chunks(2)
+    store = _make_store(embedding_model="test/model")
+    store.add_code_chunks(chunks)
+    store.save(str(path))
+
+    config_path = path / "config_test__model.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config.pop("persistence_schema")
+    config.pop("level_artifacts")
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    loaded = _make_store(embedding_model="test/model", store_path=str(path))
+    _load_trusted(loaded)
+
+    assert [document.metadata["file"] for document in loaded.l2_documents] == [
+        "m0.py",
+        "m1.py",
+    ]
+
+
 def test_failed_swap_preserves_the_serving_index(tmp_path):
     current = _make_store(embedding_model="test/model")
     current_chunks = _chunks(2)

@@ -18,12 +18,16 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator, Mapping
 
 from ._contained_source import (
     SECURE_CONTAINED_SYMLINKS,
+    _arm_or_reuse_descriptor_close_cookie,
     _attach_source_cleanup_owner,
     _binding_identity,
+    _descriptor_has_close_cookie,
+    _descriptor_ownership_identity,
+    _discard_descriptor_close_cookie,
     _identity_is_reliable,
     _inherit_source_cleanup_owner,
     _open_windows_pinned_repository_root,
@@ -82,14 +86,35 @@ class _SourceLifecycleRLock:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._depth = threading.local()
+        self._pid = os.getpid()
+        self._process_states = {self._pid: (self._lock, self._depth)}
+
+    def _refresh_after_fork(self) -> None:
+        """Discard an inherited native lock whose owning thread no longer exists."""
+
+        process_id = os.getpid()
+        if process_id == self._pid:
+            return
+        # The child may start several threads before this inherited object is
+        # first touched. CPython's single dict.setdefault call installs one
+        # process-local state before its return can be interrupted, so every
+        # child thread converges on the same non-inherited native lock.
+        child_state = self._process_states.setdefault(
+            process_id,
+            (threading.RLock(), threading.local()),
+        )
+        self._lock, self._depth = child_state
+        self._pid = process_id
 
     def depth(self) -> int:
+        self._refresh_after_fork()
         return int(getattr(self._depth, "value", 0))
 
     def _set_depth(self, depth: int) -> None:
         self._depth.value = depth
 
     def _native_is_owned(self) -> bool:
+        self._refresh_after_fork()
         runtime: Any = self._lock
         ownership_check = getattr(runtime, "_is_owned", None)
         if not callable(ownership_check):
@@ -302,6 +327,27 @@ class RepositorySourceFileRecord:
     size: int
     sha256: str
     lexical_identity: tuple[object, ...]
+    link_target: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _RepositorySourceLinkRecord:
+    """Captured state reached through one visible lexical source link."""
+
+    path: str
+    lexical_identity: tuple[object, ...]
+    link_target: str
+    target_state: str
+
+
+@dataclass(frozen=True, slots=True)
+class RepositorySourceIdentitySnapshot:
+    """Detached public identity rebuilt from one retained private authority."""
+
+    root: Path
+    fingerprint: str
+    file_count: int
+    file_records: tuple[RepositorySourceFileRecord, ...]
 
 
 class _HashFanout:
@@ -315,6 +361,155 @@ class _HashFanout:
             target.update(payload)
 
 
+def _snapshot_source_identity_value(value: object) -> object:
+    if type(value) is tuple:
+        return tuple(_snapshot_source_identity_value(item) for item in value)
+    if value is None or type(value) in {bool, int, str, bytes}:
+        return value
+    raise TypeError("repository source identity contains a non-exact value")
+
+
+def _same_source_identity_value(left: object, right: object) -> bool:
+    if type(left) is not type(right):
+        return False
+    if type(left) is tuple:
+        return len(left) == len(right) and all(  # type: ignore[arg-type]
+            _same_source_identity_value(left_item, right_item)
+            for left_item, right_item in zip(  # type: ignore[arg-type]
+                left,
+                right,
+                strict=True,
+            )
+        )
+    return left == right
+
+
+def _same_source_file_record(
+    left: RepositorySourceFileRecord,
+    right: RepositorySourceFileRecord,
+) -> bool:
+    return (
+        type(left) is RepositorySourceFileRecord
+        and type(right) is RepositorySourceFileRecord
+        and type(left.path) is type(right.path) is str
+        and left.path == right.path
+        and type(left.size) is type(right.size) is int
+        and left.size == right.size
+        and type(left.sha256) is type(right.sha256) is str
+        and left.sha256 == right.sha256
+        and type(left.link_target) is type(right.link_target)
+        and left.link_target == right.link_target
+        and _same_source_identity_value(
+            left.lexical_identity,
+            right.lexical_identity,
+        )
+    )
+
+
+def _snapshot_source_file_record(record: object) -> RepositorySourceFileRecord:
+    if type(record) is not RepositorySourceFileRecord:
+        raise TypeError("repository source records must use the exact record type")
+    if (
+        type(record.path) is not str
+        or type(record.size) is not int
+        or type(record.sha256) is not str
+        or type(record.lexical_identity) is not tuple
+        or (record.link_target is not None and type(record.link_target) is not str)
+    ):
+        raise TypeError("repository source record fields must use exact types")
+    if (
+        not record.path
+        or record.size < 0
+        or not re.fullmatch(r"[0-9a-f]{64}", record.sha256, re.ASCII)
+    ):
+        raise ValueError("repository source record identity is invalid")
+    return RepositorySourceFileRecord(
+        path=record.path,
+        size=record.size,
+        sha256=record.sha256,
+        lexical_identity=_snapshot_source_identity_value(
+            record.lexical_identity
+        ),  # type: ignore[arg-type]
+        link_target=record.link_target,
+    )
+
+
+def _verify_resolved_repository_link(
+    source: object,
+    link: _RepositorySourceLinkRecord,
+    records: Mapping[str, RepositorySourceFileRecord],
+) -> None:
+    observed_state = (
+        "regular"
+        if source.is_regular  # type: ignore[attr-defined]
+        else (
+            "directory" if source.is_directory else "unresolved"
+        )  # type: ignore[attr-defined]
+    )
+    if observed_state != link.target_state:
+        raise RepositoryChangedError(
+            "repository source link target state changed after authentication"
+        )
+    if observed_state != "regular":
+        return
+    record = records.get(link.path)
+    if record is None or record.link_target != link.link_target:
+        raise RepositoryChangedError(
+            "repository source link record changed after authentication"
+        )
+    content_digest = hashlib.sha256()
+    source.update_hash(content_digest)  # type: ignore[attr-defined]
+    opened_size = getattr(source, "opened_size", None)
+    if opened_size is None:
+        descriptor = getattr(source, "descriptor", -1)
+        opened_size = os.fstat(descriptor).st_size
+    if opened_size != record.size or content_digest.hexdigest() != record.sha256:
+        raise RepositoryChangedError(
+            "repository source link target differs from its authenticated record"
+        )
+
+
+def _verify_posix_repository_links(
+    root: Path,
+    root_descriptor: int,
+    root_identity: tuple[int, ...],
+    links: tuple[_RepositorySourceLinkRecord, ...],
+    records: Mapping[str, RepositorySourceFileRecord],
+) -> None:
+    for link in links:
+        with _resolved_repository_file_at(
+            root,
+            root_descriptor,
+            link.path,
+            expected_root_identity=root_identity,
+            expected_final_identity=link.lexical_identity,  # type: ignore[arg-type]
+            expected_final_link_target=link.link_target,
+        ) as source:
+            _verify_resolved_repository_link(source, link, records)
+
+
+def _verify_windows_repository_links(
+    root: Path,
+    root_authority: object,
+    root_identity: tuple[object, ...],
+    links: tuple[_RepositorySourceLinkRecord, ...],
+    records: Mapping[str, RepositorySourceFileRecord],
+    *,
+    api: _WindowsKernelApi,
+) -> None:
+    for link in links:
+        with _resolved_windows_repository_file_at(
+            root,
+            root_authority,
+            link.path,
+            expected_root_identity=root_identity,
+            expected_final_identity=link.lexical_identity,
+            expected_final_link_target=link.link_target,
+            api=api,
+        ) as source:
+            _verify_resolved_repository_link(source, link, records)
+
+
 class RepositorySourceBinding:
     """Retained root authority and exact records for verified live reads."""
 
@@ -323,6 +518,11 @@ class RepositorySourceBinding:
         "fingerprint",
         "file_count",
         "file_records",
+        "_authenticated_root",
+        "_authenticated_fingerprint",
+        "_authenticated_file_count",
+        "_authenticated_file_records",
+        "_authenticated_link_records",
         "_records",
         "_inventory_digest",
         "_inventory_entries",
@@ -346,6 +546,7 @@ class RepositorySourceBinding:
         root: Path,
         fingerprint: SourceFingerprint,
         file_records: Iterable[RepositorySourceFileRecord],
+        link_records: Iterable[_RepositorySourceLinkRecord],
         inventory_digest: str,
         inventory_entries: int,
         excluded: tuple[tuple[str, ...], ...],
@@ -355,13 +556,53 @@ class RepositorySourceBinding:
         windows_api: _WindowsKernelApi | None = None,
         windows_authority: object | None = None,
     ) -> None:
-        records = tuple(file_records)
-        self.root = root
+        if type(root) is not type(Path()) or type(fingerprint) is not SourceFingerprint:
+            raise TypeError("repository source identity fields must use exact types")
+        if (
+            type(fingerprint.value) is not str
+            or type(fingerprint.file_count) is not int
+            or fingerprint.file_count < 0
+            or not _SOURCE_FINGERPRINT_V2_RE.fullmatch(fingerprint.value)
+        ):
+            raise ValueError("repository source identity is invalid")
+        records = tuple(_snapshot_source_file_record(record) for record in file_records)
+        authenticated_records = tuple(
+            _snapshot_source_file_record(record) for record in records
+        )
+        root_snapshot = type(root)(os.fspath(root))
+        self.root = type(root)(os.fspath(root))
         self.fingerprint = fingerprint.value
         self.file_count = fingerprint.file_count
         self.file_records = records
-        self._records = {record.path: record for record in records}
-        if len(self._records) != len(records):
+        self._authenticated_root = root_snapshot
+        self._authenticated_fingerprint = fingerprint.value
+        self._authenticated_file_count = fingerprint.file_count
+        self._authenticated_file_records = authenticated_records
+        authenticated_links: list[_RepositorySourceLinkRecord] = []
+        for record in link_records:
+            if (
+                type(record) is not _RepositorySourceLinkRecord
+                or type(record.path) is not str
+                or type(record.lexical_identity) is not tuple
+                or type(record.link_target) is not str
+                or record.target_state not in {"regular", "directory", "unresolved"}
+            ):
+                raise ValueError(
+                    "repository source binding contains invalid link records"
+                )
+            authenticated_links.append(
+                _RepositorySourceLinkRecord(
+                    path=record.path,
+                    lexical_identity=_snapshot_source_identity_value(
+                        record.lexical_identity
+                    ),  # type: ignore[arg-type]
+                    link_target=record.link_target,
+                    target_state=record.target_state,
+                )
+            )
+        self._authenticated_link_records = tuple(authenticated_links)
+        self._records = {record.path: record for record in authenticated_records}
+        if len(self._records) != len(authenticated_records):
             raise ValueError("repository source binding contains duplicate records")
         self._inventory_digest = inventory_digest
         self._inventory_entries = inventory_entries
@@ -453,6 +694,7 @@ class RepositorySourceBinding:
 
     def _verify_inventory(self) -> None:
         self._require_open()
+        self._verify_public_projection()
         if self._windows_authority is not None:
             api = self._windows_api
             if api is None:  # pragma: no cover - constructor invariant
@@ -474,6 +716,7 @@ class RepositorySourceBinding:
                 authority,
                 self._root_identity,
             )
+            self._verify_retained_link_targets()
             return
         scan = _scan_pinned_repository(
             self._root_descriptor,
@@ -492,6 +735,72 @@ class RepositorySourceBinding:
             authority,
             self._root_identity,  # type: ignore[arg-type]
         )
+        self._verify_retained_link_targets()
+
+    def _verify_public_projection(self) -> None:
+        if (
+            type(self.root) is not type(self._authenticated_root)
+            or self.root != self._authenticated_root
+            or type(self.fingerprint) is not str
+            or self.fingerprint != self._authenticated_fingerprint
+            or type(self.file_count) is not int
+            or self.file_count != self._authenticated_file_count
+            or type(self.file_records) is not tuple
+            or len(self.file_records) != len(self._authenticated_file_records)
+        ):
+            raise RepositoryChangedError(
+                "repository source public identity changed after authentication"
+            )
+        for observed, expected in zip(
+            self.file_records,
+            self._authenticated_file_records,
+            strict=True,
+        ):
+            try:
+                detached = _snapshot_source_file_record(observed)
+            except (TypeError, ValueError) as exc:
+                raise RepositoryChangedError(
+                    "repository source public records changed after authentication"
+                ) from exc
+            if not _same_source_file_record(detached, expected):
+                raise RepositoryChangedError(
+                    "repository source public records changed after authentication"
+                )
+        if len(self._records) != len(self._authenticated_file_records) or any(
+            (
+                not _same_source_file_record(self._records[expected.path], expected)
+                if expected.path in self._records
+                else True
+            )
+            for expected in self._authenticated_file_records
+        ):
+            raise RepositoryChangedError(
+                "repository source retained records changed after authentication"
+            )
+
+    def _verify_retained_link_targets(self) -> None:
+        """Rebind every link target state, including excluded or missing targets."""
+
+        if self._windows_authority is not None:
+            api = self._windows_api
+            if api is None:  # pragma: no cover - constructor invariant
+                raise AssertionError("Windows repository binding has no API")
+            _verify_windows_repository_links(
+                self._authenticated_root,
+                self._windows_authority,
+                self._root_identity,
+                self._authenticated_link_records,
+                self._records,
+                api=api,
+            )
+            return
+        _verify_posix_repository_links(
+            self._authenticated_root,
+            self._root_descriptor,
+            self._root_identity,  # type: ignore[arg-type]
+            self._authenticated_link_records,
+            self._records,
+        )
 
     def verify_snapshot(self) -> None:
         """Revalidate the whole retained v2 inventory or poison this binding."""
@@ -508,6 +817,33 @@ class RepositorySourceBinding:
                 raise RepositoryChangedError(
                     "repository source changed after it was authenticated"
                 ) from exc
+
+    def authenticated_identity_snapshot(self) -> RepositorySourceIdentitySnapshot:
+        """Verify and return identity values caller mutation cannot replace."""
+
+        with self._authentication_lease():
+            try:
+                self._verify_inventory()
+            except BaseException as exc:  # noqa: B036 - preserve body failure
+                self._poison(exc)
+                if isinstance(exc, RepositoryChangedError):
+                    raise
+                if not isinstance(exc, (OSError, RuntimeError, ValueError)):
+                    raise
+                raise RepositoryChangedError(
+                    "repository source changed after it was authenticated"
+                ) from exc
+            return RepositorySourceIdentitySnapshot(
+                root=type(self._authenticated_root)(
+                    os.fspath(self._authenticated_root)
+                ),
+                fingerprint=self._authenticated_fingerprint,
+                file_count=self._authenticated_file_count,
+                file_records=tuple(
+                    _snapshot_source_file_record(record)
+                    for record in self._authenticated_file_records
+                ),
+            )
 
     @contextmanager
     def read_session(self) -> Iterator[RepositorySourceBinding]:
@@ -576,20 +912,22 @@ class RepositorySourceBinding:
             if api is None:  # pragma: no cover - constructor invariant
                 raise AssertionError("Windows repository binding has no API")
             resolver = _resolved_windows_repository_file_at(
-                self.root,
+                self._authenticated_root,
                 self._windows_authority,
                 relative,
                 expected_root_identity=self._root_identity,
                 expected_final_identity=record.lexical_identity,
+                expected_final_link_target=record.link_target,
                 api=api,
             )
         else:
             resolver = _resolved_repository_file_at(
-                self.root,
+                self._authenticated_root,
                 self._root_descriptor,
                 relative,
                 expected_root_identity=self._root_identity,  # type: ignore[arg-type]
                 expected_final_identity=record.lexical_identity,  # type: ignore[arg-type]
+                expected_final_link_target=record.link_target,
             )
         with resolver as source:
             if not source.is_regular:
@@ -1176,6 +1514,7 @@ class _PosixRepositoryRootAuthority:
         "root_identity",
         "_resources",
         "_resource_identities",
+        "_resource_close_cookies",
         "_anchor_identity",
         "_bindings",
         "_closed",
@@ -1197,6 +1536,7 @@ class _PosixRepositoryRootAuthority:
         self.root_identity = root_identity
         self._resources = resources
         self._resource_identities = resource_identities
+        self._resource_close_cookies: dict[int, int] = {}
         self._anchor_identity = anchor_identity
         self._bindings = bindings
         self._closed = False
@@ -1230,6 +1570,7 @@ class _PosixRepositoryRootAuthority:
         failure = _close_posix_descriptors(
             self._resources,
             self._resource_identities,
+            self._resource_close_cookies,
         )
         self._closed = not self._resources
         self.descriptor = -1
@@ -1240,6 +1581,7 @@ class _PosixRepositoryRootAuthority:
 def _close_posix_descriptors(
     descriptors: list[int],
     expected_identities: dict[int, tuple[int, ...]],
+    close_cookies: dict[int, int],
 ) -> BaseException | None:
     """Visit every descriptor and retain the first delayed close failure."""
 
@@ -1250,7 +1592,21 @@ def _close_posix_descriptors(
             try:
                 observed = os.fstat(descriptor)
                 expected = expected_identities.get(descriptor)
-                if expected is not None and _binding_identity(observed) != expected:
+                close_cookie = close_cookies.get(descriptor)
+                if (
+                    expected is not None
+                    and _descriptor_ownership_identity(observed) != expected
+                ):
+                    deferred = _remember_interruption(
+                        deferred,
+                        RuntimeError("repository descriptor ownership changed"),
+                    )
+                    closed = True
+                    break
+                if close_cookie is not None and not _descriptor_has_close_cookie(
+                    descriptor,
+                    close_cookie,
+                ):
                     deferred = _remember_interruption(
                         deferred,
                         RuntimeError("repository descriptor ownership changed"),
@@ -1270,8 +1626,15 @@ def _close_posix_descriptors(
                 deferred = _remember_interruption(deferred, exc)
                 continue
 
-            expected_at_close = _binding_identity(observed)
+            expected_at_close = _descriptor_ownership_identity(observed)
             try:
+                if close_cookie is None:
+                    close_cookie = _arm_or_reuse_descriptor_close_cookie(
+                        descriptor,
+                        close_cookies.values(),
+                    )
+                    if close_cookie is not None:
+                        close_cookies[descriptor] = close_cookie
                 os.close(descriptor)
                 closed = True
             except BaseException as exc:  # noqa: B036 - confirm close result
@@ -1297,7 +1660,13 @@ def _close_posix_descriptors(
                             break
                         deferred = _remember_interruption(deferred, probe_error)
                         continue
-                    if _binding_identity(visible) != expected_at_close:
+                    if _descriptor_ownership_identity(visible) != expected_at_close or (
+                        close_cookie is not None
+                        and not _descriptor_has_close_cookie(
+                            descriptor,
+                            close_cookie,
+                        )
+                    ):
                         # The owned fd closed and its number was reused. Never
                         # close the replacement descriptor.
                         closed = True
@@ -1322,17 +1691,19 @@ def _close_posix_descriptors(
                     if isinstance(exc, Exception):
                         raise
                     deferred = _remember_interruption(deferred, exc)
+            _discard_descriptor_close_cookie(close_cookies, descriptor)
     return deferred
 
 
 class _PosixPartialCleanup:
     """Retryable owner installed before temporary descriptor acquisition."""
 
-    __slots__ = ("descriptors", "expected_identities")
+    __slots__ = ("descriptors", "expected_identities", "close_cookies")
 
     def __init__(self) -> None:
         self.descriptors: list[int] = []
         self.expected_identities: dict[int, tuple[int, ...]] = {}
+        self.close_cookies: dict[int, int] = {}
 
     @property
     def closed(self) -> bool:
@@ -1343,7 +1714,9 @@ class _PosixPartialCleanup:
         if deferred is not None:
             raise deferred
         if metadata is not None:
-            self.expected_identities[descriptor] = _binding_identity(metadata)
+            self.expected_identities[descriptor] = _descriptor_ownership_identity(
+                metadata
+            )
         return descriptor
 
     def close_descriptor(self, descriptor: int) -> None:
@@ -1353,11 +1726,21 @@ class _PosixPartialCleanup:
             for descriptor in selected
             if descriptor in self.expected_identities
         }
-        failure = _close_posix_descriptors(selected, identities)
+        cookies = {
+            descriptor: self.close_cookies[descriptor]
+            for descriptor in selected
+            if descriptor in self.close_cookies
+        }
+        failure = _close_posix_descriptors(selected, identities, cookies)
         if descriptor not in selected:
             while descriptor in self.descriptors:
                 self.descriptors.remove(descriptor)
             self.expected_identities.pop(descriptor, None)
+            self.close_cookies.pop(descriptor, None)
+        elif descriptor not in cookies:
+            self.close_cookies.pop(descriptor, None)
+        else:
+            self.close_cookies[descriptor] = cookies[descriptor]
         if failure is not None:
             raise failure
 
@@ -1365,6 +1748,7 @@ class _PosixPartialCleanup:
         failure = _close_posix_descriptors(
             self.descriptors,
             self.expected_identities,
+            self.close_cookies,
         )
         if failure is not None:
             raise failure
@@ -1554,7 +1938,7 @@ def _open_pinned_repository_root(
         if not _identity_is_reliable(anchor_metadata):
             raise ValueError("repository root anchor has no reliable identity")
         anchor_identity = _binding_identity(anchor_metadata)
-        resource_identities[anchor] = anchor_identity
+        resource_identities[anchor] = _descriptor_ownership_identity(anchor_metadata)
         bindings: list[tuple[int, str, int, tuple[int, ...]]] = []
         descriptor = anchor
         for part in root.parts[1:]:
@@ -1576,7 +1960,7 @@ def _open_pinned_repository_root(
             expected_binding = _binding_identity(before)
             if _binding_identity(opened) != expected_binding:
                 raise ValueError("repository root changed while it was being pinned")
-            resource_identities[child] = expected_binding
+            resource_identities[child] = _descriptor_ownership_identity(opened)
             bindings.append((descriptor, part, child, expected_binding))
             descriptor = child
         root_identity = _version_identity(os.fstat(descriptor))
@@ -1647,6 +2031,7 @@ def _fingerprint_windows_repository(
     excluded = _excluded_windows_relative_roots(root_path, exclude_roots)
     file_count = 0
     file_records: list[RepositorySourceFileRecord] = []
+    link_records: list[_RepositorySourceLinkRecord] = []
     root_authority = None
     selected: _WindowsKernelApi | None = None
     completed = False
@@ -1682,8 +2067,22 @@ def _fingerprint_windows_repository(
                         relative_text,
                         expected_root_identity=root_identity,
                         expected_final_identity=_windows_version_identity(metadata),
+                        expected_final_link_target=raw_target,
                         api=selected,
                     ) as binding:
+                        target_state = (
+                            "regular"
+                            if binding.is_regular
+                            else "directory" if binding.is_directory else "unresolved"
+                        )
+                        link_records.append(
+                            _RepositorySourceLinkRecord(
+                                path=relative_text,
+                                lexical_identity=_windows_version_identity(metadata),
+                                link_target=raw_target,
+                                target_state=target_state,
+                            )
+                        )
                         if binding.is_directory:
                             continue
                         if version == 1:
@@ -1725,6 +2124,7 @@ def _fingerprint_windows_repository(
                                     lexical_identity=_windows_version_identity(
                                         metadata
                                     ),
+                                    link_target=raw_target,
                                 )
                             )
                         elif version != 1:
@@ -1800,6 +2200,14 @@ def _fingerprint_windows_repository(
             root_authority,
             root_identity,
         )
+        _verify_windows_repository_links(
+            root_path,
+            root_authority,
+            root_identity,
+            tuple(link_records),
+            {record.path: record for record in file_records},
+            api=selected,
+        )
         completed = True
     except RepositoryChangedError as exc:
         if isinstance(exc.__cause__, BaseException):
@@ -1846,6 +2254,7 @@ def _fingerprint_windows_repository(
                 root=root_path,
                 fingerprint=fingerprint,
                 file_records=file_records,
+                link_records=link_records,
                 inventory_digest=initial_scan.inventory_digest,
                 inventory_entries=initial_scan.inventory_entries,
                 excluded=excluded,
@@ -1919,6 +2328,7 @@ def _fingerprint_repository(
         )
     file_count = 0
     file_records: list[RepositorySourceFileRecord] = []
+    link_records: list[_RepositorySourceLinkRecord] = []
     excluded = _excluded_relative_roots(root_path, exclude_roots)
     root_descriptor = -1
     root_authority: _PosixRepositoryRootAuthority | None = None
@@ -1955,7 +2365,21 @@ def _fingerprint_repository(
                         relative_text,
                         expected_root_identity=root_identity,
                         expected_final_identity=_version_identity(initial_metadata),
+                        expected_final_link_target=raw_target,
                     ) as binding:
+                        target_state = (
+                            "regular"
+                            if binding.is_regular
+                            else "directory" if binding.is_directory else "unresolved"
+                        )
+                        link_records.append(
+                            _RepositorySourceLinkRecord(
+                                path=relative_text,
+                                lexical_identity=_version_identity(initial_metadata),
+                                link_target=raw_target,
+                                target_state=target_state,
+                            )
+                        )
                         if binding.is_directory:
                             # Preserve v1's directory-link exclusion and keep
                             # v2 host/container identities byte-for-byte equal.
@@ -1997,6 +2421,7 @@ def _fingerprint_repository(
                                     lexical_identity=_version_identity(
                                         initial_metadata
                                     ),
+                                    link_target=raw_target,
                                 )
                             )
                         elif version != 1:
@@ -2071,6 +2496,13 @@ def _fingerprint_repository(
                 "repository entries changed while they were being fingerprinted"
             )
         _verify_pinned_repository_root(root_authority, root_identity)
+        _verify_posix_repository_links(
+            root_path,
+            root_descriptor,
+            root_identity,
+            tuple(link_records),
+            {record.path: record for record in file_records},
+        )
         completed = True
     except RepositoryChangedError as exc:
         if isinstance(exc.__cause__, BaseException):
@@ -2122,6 +2554,7 @@ def _fingerprint_repository(
                 root=root_path,
                 fingerprint=fingerprint,
                 file_records=file_records,
+                link_records=link_records,
                 inventory_digest=initial_scan.inventory_digest,
                 inventory_entries=initial_scan.inventory_entries,
                 excluded=excluded,
@@ -2274,6 +2707,7 @@ __all__ = [
     "RepositoryChangedError",
     "RepositorySourceBinding",
     "RepositorySourceFileRecord",
+    "RepositorySourceIdentitySnapshot",
     "SOURCE_FINGERPRINT_VERSION",
     "SourceFingerprint",
     "capture_repository_source",

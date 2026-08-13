@@ -209,3 +209,59 @@ def test_retrieve_rerank_cache_miss_reuses_loaded_embedding(monkeypatch, tmp_pat
     assert result is built_store
     assert len(builder_calls) == 1
     assert builder_calls[0]["embedding"] is embedding
+
+
+def test_retrieve_rerank_cache_load_closes_store_on_base_exception(
+    monkeypatch,
+    tmp_path,
+):
+    from codenib.model import retrieve_rerank_pipeline as pipeline_module
+
+    index_path = tmp_path / "index"
+    index_path.mkdir()
+    (index_path / "config_model.json").write_text("{}", encoding="utf-8")
+    primary = SystemExit("stop vector load")
+    stores = []
+
+    class FakeVectorStore:
+        def __init__(self, **_kwargs):
+            self.embedding = object()
+            self.close_calls = 0
+            stores.append(self)
+
+        def load(self, _path, **_kwargs):
+            raise primary
+
+        def close(self):
+            self.close_calls += 1
+
+    monkeypatch.setattr(pipeline_module, "CodeVectorStore", FakeVectorStore)
+    monkeypatch.setattr(
+        pipeline_module,
+        "_mint_trusted_local_vector_authorization",
+        lambda *_args, **_kwargs: object(),
+    )
+
+    pipeline = object.__new__(pipeline_module.RetrieveRerankPipeline)
+    pipeline.repo_path = str(tmp_path)
+    pipeline.index_path = index_path
+    pipeline.retrieval_level = "l2"
+    pipeline.languages = ["python"]
+    pipeline.max_lines_per_chunk = 300
+    pipeline.index_metric = "ip"
+    pipeline.profiler = None
+
+    observed = None
+    try:
+        pipeline._initialize_vector_store(
+            embedding_model="model",
+            embedding_provider="huggingface",
+            embedding_dimension=4,
+            embedding_kwargs={},
+        )
+    except BaseException as exc:  # noqa: B036 - assert BaseException identity
+        observed = exc
+
+    assert observed is primary
+    assert len(stores) == 1
+    assert stores[0].close_calls == 1

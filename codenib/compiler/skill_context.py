@@ -308,6 +308,10 @@ def _load_vector(
     default_batch_size: Optional[int] = None,
 ):
     """Load a FAISS vector store from an arbitrary directory path."""
+    from ..index.embedding._lifecycle import close_vector_after_failure
+    from ..index.embedding.artifact_integrity import (
+        _mint_trusted_local_vector_authorization,
+    )
     from ..index.embedding.vector_store import CodeVectorStore
 
     kwargs = dict(embedding_kwargs or {})
@@ -316,17 +320,30 @@ def _load_vector(
     if default_batch_size is not None:
         kwargs["default_batch_size"] = default_batch_size
 
+    artifact_contract = dict(artifact_metadata or {})
+    native_authorization = _mint_trusted_local_vector_authorization(
+        index_path,
+        artifact_contract,
+        evidence=("compiler-skill-context-vector-view",),
+    )
     store = CodeVectorStore(
         embedding_model=embedding_model,
         embedding_provider=embedding_provider,
         dimension=embedding_dimension,
         index_metric=index_metric,
-        artifact_metadata=artifact_metadata,
+        artifact_metadata=artifact_contract,
         trust_remote_code=trust_remote_code,
         **kwargs,
     )
-    store.load(index_path)
-    return store
+    try:
+        store.load(
+            index_path,
+            native_index_authorization=native_authorization,
+        )
+        return store
+    except BaseException as primary:  # noqa: B036 - close partial native state
+        close_vector_after_failure(store, primary)
+        raise
 
 
 def _load_symbol_graph(index_path: str):

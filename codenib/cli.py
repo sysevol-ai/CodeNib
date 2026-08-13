@@ -660,30 +660,48 @@ def _run_artifact_verify(args: argparse.Namespace) -> int:
 
     try:
         if args.repo:
-            binding = bind_context_artifact(
+            with bind_context_artifact(
                 args.path,
                 resolve_repo_path(args.repo),
                 expected_repository=args.repository,
                 expected_commit=args.commit,
-            )
-            artifact = binding.artifact
-            checkout = binding.repo_path
+            ) as binding:
+                artifact = binding.artifact
+                checkout = binding.repo_path
+                summary = (
+                    artifact.root,
+                    artifact.repository,
+                    artifact.commit,
+                    tuple(artifact.views),
+                    artifact.file_count,
+                    artifact.byte_count,
+                    checkout,
+                )
         else:
             artifact = verify_context_artifact(
                 args.path,
                 expected_repository=args.repository,
                 expected_commit=args.commit,
             )
-            checkout = None
+            summary = (
+                artifact.root,
+                artifact.repository,
+                artifact.commit,
+                tuple(artifact.views),
+                artifact.file_count,
+                artifact.byte_count,
+                None,
+            )
     except (OSError, RuntimeError, ValueError) as exc:
         raise CLIError(str(exc)) from exc
 
-    print(f"Context artifact: {artifact.root}")
-    print(f"Repository:       {artifact.repository}")
-    print(f"Commit:           {artifact.commit}")
-    print(f"Views:            {', '.join(artifact.views)}")
-    print(f"Files:            {artifact.file_count}")
-    print(f"Bytes:            {artifact.byte_count}")
+    root, repository, commit, views, file_count, byte_count, checkout = summary
+    print(f"Context artifact: {root}")
+    print(f"Repository:       {repository}")
+    print(f"Commit:           {commit}")
+    print(f"Views:            {', '.join(views)}")
+    print(f"Files:            {file_count}")
+    print(f"Bytes:            {byte_count}")
     print(f"Checkout:         {checkout or 'not checked'}")
     return 0
 
@@ -703,20 +721,27 @@ def _run_artifact_fetch(args: argparse.Namespace) -> int:
             api_url=args.github_api_url,
             force=args.force,
         )
-        binding = bind_context_artifact(
+        with bind_context_artifact(
             result.artifact.root,
             repo_path,
             expected_repository=args.repository,
             expected_commit=commit,
-        )
+        ) as binding:
+            artifact_summary = (
+                binding.artifact.root,
+                binding.artifact.repository,
+                binding.artifact.commit,
+                tuple(binding.artifact.views),
+            )
     except (OSError, RuntimeError, ValueError) as exc:
         raise CLIError(str(exc)) from exc
 
     state = "downloaded" if result.downloaded else "cached"
-    print(f"Context artifact: {binding.artifact.root}")
-    print(f"Repository:       {binding.artifact.repository}")
-    print(f"Commit:           {binding.artifact.commit}")
-    print(f"Views:            {', '.join(binding.artifact.views)}")
+    artifact_root, repository, artifact_commit, views = artifact_summary
+    print(f"Context artifact: {artifact_root}")
+    print(f"Repository:       {repository}")
+    print(f"Commit:           {artifact_commit}")
+    print(f"Views:            {', '.join(views)}")
     print(f"State:            {state}")
     if result.record is not None:
         print(f"GitHub artifact:  {result.record.artifact_id}")

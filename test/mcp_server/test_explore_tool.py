@@ -15,6 +15,12 @@ from codenib.mcp.tools.explore import explore_context_impl
 
 
 def _context(tmp_path, *, verified: bool = True):
+    def read_source_bytes(relative: str, *, max_bytes: int) -> bytes:
+        payload = (tmp_path / relative).read_bytes()
+        if len(payload) > max_bytes:
+            raise ValueError("test source exceeds its bound")
+        return payload
+
     return SimpleNamespace(
         manifest=RepoManifest(
             repo_path=str(tmp_path),
@@ -25,6 +31,7 @@ def _context(tmp_path, *, verified: bool = True):
         artifact={"repository": "example/project"},
         source_verified=verified,
         source_error=None if verified else "checkout fingerprint mismatch",
+        read_source_bytes=read_source_bytes,
         bm25=object(),
         vector=None,
         symbol_graph=object(),

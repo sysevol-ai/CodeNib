@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from codenib._atomic_directory import capture_directory_ownership
 from codenib.artifacts import normalize_owned_query_view, validate_portable_query_view
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.index.embedding.artifact_integrity import (
@@ -22,6 +23,7 @@ from codenib.index.embedding.artifact_integrity import (
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.provider_routes import resolve_inference_route
 
 _VECTOR_CONFIG = {
@@ -35,6 +37,15 @@ _VECTOR_CONFIG = {
 }
 _MODEL_SUFFIX = "test__model"
 _REVISION = "a" * 40
+
+
+def _vector_authorization(vector: Path, store):
+    return _mint_trusted_local_admin_authorization(
+        capture_directory_ownership(vector),
+        view_type="vector",
+        semantic_contract=store.artifact_metadata,
+        evidence=("portable-vector-view-test-local-admin",),
+    )
 
 
 def _tree(root: Path) -> dict[str, bytes]:
@@ -1513,7 +1524,7 @@ def test_normalize_schema6_view_loads_with_runtime_contract(
         trust_remote_code=False,
     )
 
-    store.load()
+    store.load(native_index_authorization=_vector_authorization(vector, store))
 
     assert len(store.l2_documents) == 1
     assert int(store.l2_index.ntotal) == 1
@@ -1744,10 +1755,8 @@ def test_normalize_rejects_untrained_active_ivf_before_runtime_first_search(
         revision=_REVISION,
         trust_remote_code=False,
     )
-    store.load()
-    assert store.l2_index.is_trained is False
-    with pytest.raises(RuntimeError, match="is_trained"):
-        store.search("VALUE", top_k=1)
+    with pytest.raises(ValueError, match="FAISS index is not trained"):
+        store.load(native_index_authorization=_vector_authorization(vector, store))
 
     with pytest.raises(ValueError, match="active IVF index is untrained"):
         normalize_owned_query_view(

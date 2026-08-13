@@ -48,6 +48,7 @@ from codenib.repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     default_exclude_patterns,
 )
+from codenib.source_fingerprint import is_secure_source_fingerprint_v2
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -404,6 +405,7 @@ class TestVectorIndexBuilder:
                 )
 
         assert store_type.call_args.kwargs["artifact_metadata"] == previous
+        vector_store.close.assert_called_once_with()
 
     @pytest.mark.parametrize("missing", ["chunk_json", "embedding_pair"])
     def test_pickle_only_incremental_state_forces_rebuild(self, tmp_path, missing):
@@ -1338,7 +1340,7 @@ class TestIndexCompiler:
             data = json.load(f)
         assert data["version"] == MANIFEST_VERSION
         assert "bm25" in data["indexes"]
-        assert data["repo"]["source_fingerprint"].startswith("sha256:")
+        assert is_secure_source_fingerprint_v2(data["repo"]["source_fingerprint"])
         assert data["indexes"]["bm25"]["source_fingerprint"] == (
             data["repo"]["source_fingerprint"]
         )

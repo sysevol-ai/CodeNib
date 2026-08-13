@@ -17,13 +17,9 @@ import pytest
 
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
-from codenib.index.embedding.artifact_integrity import (
-    capture_authenticated_vector_view,
-)
+from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.mcp.context import RUNTIME_VIEW_NAMES, ServerContext
-from codenib.native_index_authorization import (
-    _mint_trusted_local_admin_authorization,
-)
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.provider_routes import resolve_inference_route
 from codenib.source_fingerprint import capture_repository_source, fingerprint_repository
 
@@ -125,6 +121,43 @@ def test_server_context_load_failure_closes_transferred_source_authority(
         ServerContext.load(manifest, views=[], source_binding=binding)
 
     assert not binding.usable
+
+
+def test_server_context_load_uses_one_detached_source_identity_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"A\n")
+    binding = capture_repository_source(repo)
+    manifest = RepoManifest(
+        repo_path=str(repo),
+        source_fingerprint=binding.fingerprint,
+        file_count=binding.file_count,
+    )
+    binding_type = type(binding)
+    real_snapshot = binding_type.authenticated_identity_snapshot
+
+    def snapshot_then_replace_public_projection(source):
+        snapshot = real_snapshot(source)
+        source.root = tmp_path / "substituted"
+        source.fingerprint = "sha256-v2:" + ("0" * 64)
+        source.file_count = 0
+        source.file_records = ()
+        return snapshot
+
+    monkeypatch.setattr(
+        binding_type,
+        "authenticated_identity_snapshot",
+        snapshot_then_replace_public_projection,
+    )
+
+    context = ServerContext.load(manifest, views=(), source_binding=binding)
+    try:
+        assert context.source_verified
+    finally:
+        context.close()
 
 
 def test_server_context_provider_failure_closes_transferred_source_authority(
@@ -924,6 +957,127 @@ def test_load_vector_accepts_compiler_manifest_identity(tmp_path: Path) -> None:
     assert "vector" not in ctx.errors
 
 
+@pytest.mark.parametrize(
+    "interruption",
+    [KeyboardInterrupt("vector load interrupted"), SystemExit("vector load exited")],
+)
+def test_load_vector_closes_unpublished_state_after_base_exception(
+    tmp_path: Path,
+    interruption: BaseException,
+) -> None:
+    manifest, vector_dir = _portable_vector_manifest(tmp_path)
+    manifest.save(tmp_path / "repo_manifest.json")
+    vector = MagicMock()
+    vector.load.side_effect = interruption
+    authorization = _authorize_test_vector(
+        vector_dir,
+        manifest.indexes["vector"].config,
+    )
+
+    with patch(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        return_value=vector,
+    ):
+        with pytest.raises(type(interruption)) as caught:
+            ServerContext.load(
+                tmp_path / "repo_manifest.json",
+                views={"vector"},
+                native_index_authorization=authorization,
+            )
+
+    assert caught.value is interruption
+    vector.close.assert_called_once_with()
+
+
+def test_server_context_load_closes_published_vector_after_late_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest, vector_dir = _portable_vector_manifest(tmp_path)
+    manifest.save(tmp_path / "repo_manifest.json")
+    vector = MagicMock()
+    vector.embedding_model = "test-model"
+    vector.get_stats.return_value = {"total_documents": 1}
+    authorization = _authorize_test_vector(
+        vector_dir,
+        manifest.indexes["vector"].config,
+    )
+    failure = KeyboardInterrupt("late context configuration interruption")
+    monkeypatch.setattr(
+        ServerContext,
+        "configure_lsp_provider",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(failure),
+    )
+
+    with patch(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        return_value=vector,
+    ):
+        with pytest.raises(KeyboardInterrupt) as caught:
+            ServerContext.load(
+                tmp_path / "repo_manifest.json",
+                views={"vector"},
+                native_index_authorization=authorization,
+            )
+
+    assert caught.value is failure
+    vector.close.assert_called_once_with()
+
+
+def test_server_context_load_preserves_runtime_cancellation_and_retry_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_text("VALUE = 1\n", encoding="utf-8")
+    binding = capture_repository_source(repo)
+    manifest = RepoManifest(
+        repo_path=str(repo),
+        source_fingerprint=binding.fingerprint,
+        file_count=binding.file_count,
+    )
+    vector = MagicMock()
+    interruption = KeyboardInterrupt("vector cleanup interrupted")
+    vector.close.side_effect = interruption
+    source_type = type(binding)
+    real_source_close = source_type.close
+    source_close_calls = 0
+
+    def persistent_source_close(_binding) -> None:
+        nonlocal source_close_calls
+        source_close_calls += 1
+        raise OSError("persistent source cleanup EIO")
+
+    def load_views(ctx, _selected):
+        ctx.vector = vector
+        return {}
+
+    monkeypatch.setattr(source_type, "close", persistent_source_close)
+    monkeypatch.setattr(ServerContext, "load_views", load_views)
+    monkeypatch.setattr(
+        ServerContext,
+        "configure_lsp_provider",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("late context setup failed")
+        ),
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        ServerContext.load(manifest, views=(), source_binding=binding)
+
+    assert caught.value is interruption
+    assert caught.value.context_cleanup_owner.vector is vector
+    assert caught.value.source_cleanup_owner is binding
+    vector.close.assert_called_once_with()
+    assert source_close_calls == 2
+
+    vector.close.side_effect = None
+    monkeypatch.setattr(source_type, "close", real_source_close)
+    caught.value.context_cleanup_owner.close()
+    assert binding.closed
+
+
 def test_validate_views_probes_vector_without_loading_embedding_model(
     tmp_path: Path,
 ) -> None:
@@ -1237,6 +1391,86 @@ def test_validate_views_stops_zoekt_probe(manifest_dir: Path) -> None:
     fake_searcher.stop.assert_called_once_with()
 
 
+@pytest.mark.parametrize(
+    "cleanup_failure",
+    [
+        pytest.param(RuntimeError("zoekt stop failed"), id="exception"),
+        pytest.param(KeyboardInterrupt("zoekt stop interrupted"), id="cancellation"),
+    ],
+)
+def test_validate_views_closes_vector_after_zoekt_cleanup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_failure: BaseException,
+) -> None:
+    zoekt = MagicMock()
+    zoekt.stop.side_effect = cleanup_failure
+    vector = MagicMock()
+
+    def load_zoekt(context) -> None:
+        context.zoekt = zoekt
+
+    def load_vector(context, *, probe: bool = False) -> None:
+        assert probe
+        context.vector = vector
+
+    monkeypatch.setattr(ServerContext, "_load_zoekt", load_zoekt)
+    monkeypatch.setattr(ServerContext, "_load_vector", load_vector)
+
+    with pytest.raises(type(cleanup_failure)) as caught:
+        ServerContext.validate_views(
+            RepoManifest(repo_path=str(tmp_path)),
+            views={"zoekt", "vector"},
+        )
+
+    assert caught.value is cleanup_failure
+    vector.close.assert_called_once_with()
+    owner = caught.value.context_cleanup_owner
+    assert owner.zoekt is zoekt
+    assert owner.vector is None
+
+    zoekt.stop.side_effect = None
+    owner.close()
+    assert owner.zoekt is None
+
+
+def test_validate_views_preserves_loader_cancellation_and_retry_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    zoekt = MagicMock()
+    zoekt.stop.side_effect = RuntimeError("zoekt stop failed")
+    vector = MagicMock()
+    interruption = KeyboardInterrupt("vector probe interrupted")
+
+    def load_zoekt(context) -> None:
+        context.zoekt = zoekt
+
+    def load_vector(context, *, probe: bool = False) -> None:
+        assert probe
+        context.vector = vector
+        raise interruption
+
+    monkeypatch.setattr(ServerContext, "_load_zoekt", load_zoekt)
+    monkeypatch.setattr(ServerContext, "_load_vector", load_vector)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        ServerContext.validate_views(
+            RepoManifest(repo_path=str(tmp_path)),
+            views={"zoekt", "vector"},
+        )
+
+    assert caught.value is interruption
+    vector.close.assert_called_once_with()
+    owner = caught.value.context_cleanup_owner
+    assert owner.zoekt is zoekt
+    assert owner.vector is None
+
+    zoekt.stop.side_effect = None
+    owner.close()
+    assert owner.zoekt is None
+
+
 def test_zoekt_unavailable_recorded_in_errors(manifest_dir: Path) -> None:
     """If the zoekt binary is missing, ServerContext records the error and keeps zoekt=None."""
     from codenib.index.trigram import ZoektUnavailableError
@@ -1257,6 +1491,78 @@ def test_zoekt_unavailable_recorded_in_errors(manifest_dir: Path) -> None:
     assert ctx.zoekt is None
     assert "zoekt" in ctx.errors
     assert "binary not found" in ctx.errors["zoekt"]
+
+
+def test_zoekt_start_cancellation_stops_unpublished_searcher(
+    manifest_dir: Path,
+) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    _add_zoekt_entry(manifest_dir / "repo_manifest.json", shard_dir)
+    searcher = MagicMock()
+    interruption = KeyboardInterrupt("zoekt start interrupted")
+    searcher.start.side_effect = interruption
+
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=searcher,
+    ):
+        with pytest.raises(KeyboardInterrupt) as caught:
+            ServerContext.load(manifest_dir / "repo_manifest.json", views={"zoekt"})
+
+    assert caught.value is interruption
+    searcher.stop.assert_called_once_with()
+
+
+def test_zoekt_cleanup_cancellation_exposes_retryable_context_owner(
+    manifest_dir: Path,
+) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    _add_zoekt_entry(manifest_dir / "repo_manifest.json", shard_dir)
+    searcher = MagicMock()
+    searcher.start.side_effect = RuntimeError("zoekt start failed")
+    interruption = KeyboardInterrupt("zoekt stop interrupted")
+    searcher.stop.side_effect = interruption
+
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=searcher,
+    ):
+        with pytest.raises(KeyboardInterrupt) as caught:
+            ServerContext.load(manifest_dir / "repo_manifest.json", views={"zoekt"})
+
+    assert caught.value is interruption
+    owner = caught.value.context_cleanup_owner
+    assert owner.zoekt is searcher
+    searcher.stop.side_effect = None
+    owner.close()
+    assert owner.zoekt is None
+
+
+def test_zoekt_port_failure_does_not_publish_stopped_searcher(
+    manifest_dir: Path,
+) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    _add_zoekt_entry(manifest_dir / "repo_manifest.json", shard_dir)
+    searcher = MagicMock()
+    type(searcher).port = property(
+        lambda _searcher: (_ for _ in ()).throw(RuntimeError("port failed"))
+    )
+
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=searcher,
+    ):
+        context = ServerContext.load(
+            manifest_dir / "repo_manifest.json",
+            views={"zoekt"},
+        )
+
+    assert context.zoekt is None
+    assert context.errors["zoekt"] == "port failed"
+    searcher.stop.assert_called_once_with()
 
 
 def test_zoekt_skipped_when_entry_absent(manifest_dir: Path) -> None:

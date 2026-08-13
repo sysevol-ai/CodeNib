@@ -7,6 +7,9 @@ from __future__ import annotations
 from typing import List, Optional
 
 from ..index.embedding import CodeVectorStore, build_hierarchical_vector_store
+from ..index.embedding.artifact_integrity import (
+    _mint_trusted_local_vector_authorization,
+)
 from ..log_utils import get_logger
 from ..types import QueriedNode
 
@@ -131,7 +134,15 @@ class EmbeddingRetrievePipeline:
         faster than creating a new :class:`EmbeddingRetrievePipeline` for each
         instance, and a failed replacement leaves the current index available.
         """
-        self.vector_store.swap_index(index_path)
+        native_authorization = _mint_trusted_local_vector_authorization(
+            index_path,
+            self.vector_store.artifact_metadata,
+            evidence=("embedding-retrieval-vector-swap",),
+        )
+        self.vector_store.swap_index(
+            index_path,
+            native_index_authorization=native_authorization,
+        )
 
     def query(self, query: str, top_k: Optional[int] = None) -> List[QueriedNode]:
         """Retrieve top-K nodes using embedding similarity search.

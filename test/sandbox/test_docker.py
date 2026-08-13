@@ -146,14 +146,8 @@ def test_container_fingerprint_helper_matches_host_v2_framing(tmp_path: Path) ->
     (source / "package" / "module.py").write_bytes(b"VALUE = 1\n")
     try:
         (source / "relative-link").symlink_to("b")
-        (source / "absolute-link").symlink_to(source / "b")
         (source / "relative-directory-link").symlink_to("package")
-        (source / "absolute-directory-link").symlink_to(source / "package")
         (source / "relative-root-link").symlink_to(".", target_is_directory=True)
-        (source / "absolute-root-link").symlink_to(
-            source,
-            target_is_directory=True,
-        )
         (source / "broken-link").symlink_to("missing")
         (source / "loop-link").symlink_to("loop-link")
         os.mkfifo(source / ".codenib-hidden-pipe")
@@ -242,7 +236,8 @@ def test_container_fingerprint_helper_rejects_outside_directory_symlink(
     )
 
     assert completed.returncode != 0
-    assert "outside the repository" in completed.stderr
+    expected_error = "target must be relative" if absolute else "outside the repository"
+    assert expected_error in completed.stderr
 
 
 def _spec(tmp_path: Path, *, limits=None):

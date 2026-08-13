@@ -808,9 +808,19 @@ def init_server(
                 if artifact_binding is not None
                 else source_binding
             )
-            verified = retained_source is not None and is_secure_source_fingerprint_v2(
+            verified = False
+            if retained_source is not None and is_secure_source_fingerprint_v2(
                 manifest.source_fingerprint
-            )
+            ):
+                retained_identity = retained_source.authenticated_identity_snapshot()
+                if (
+                    retained_identity.fingerprint != manifest.source_fingerprint
+                    or retained_identity.file_count != manifest.file_count
+                ):
+                    raise ValueError(
+                        "repository source bytes do not match the indexed content"
+                    )
+                verified = True
             native_authorization = None
             if verified:
                 source_error = None
@@ -830,9 +840,12 @@ def init_server(
                             exclude_roots=(resolved_manifest_path.parent,),
                             _source_owner=capture_cleanup_owner.retain,
                         )
+                        retained_identity = (
+                            retained_source.authenticated_identity_snapshot()
+                        )
                         if (
-                            retained_source.fingerprint != manifest.source_fingerprint
-                            or retained_source.file_count != manifest.file_count
+                            retained_identity.fingerprint != manifest.source_fingerprint
+                            or retained_identity.file_count != manifest.file_count
                         ):
                             raise ValueError(
                                 "repository source bytes do not match the indexed "

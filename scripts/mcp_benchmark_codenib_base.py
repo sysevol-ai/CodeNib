@@ -17,15 +17,18 @@ import asyncio
 import json
 import time
 from collections import defaultdict
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Dict, List
 
 import datasets
 
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.search import search_semantic
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.paths import prebuilt_data_dir
 
 CODENIB_DATA = prebuilt_data_dir()
@@ -143,87 +146,109 @@ async def benchmark_instance(
         },
     )
 
-    ctx = ServerContext(manifest=manifest)
-    try:
-        ctx.vector = CodeVectorStore(
-            embedding_model=embedding_model,
-            embedding_provider="huggingface",
-            dimension=dimension,
-            index_metric="ip",
-            store_path=str(repo_dir),
-            revision=(
-                DEFAULT_EMBEDDING_REVISION
-                if embedding_model == DEFAULT_EMBEDDING_MODEL
-                else None
-            ),
-            trust_remote_code=(embedding_model == DEFAULT_EMBEDDING_MODEL),
-        )
-        ctx.vector.load()
-    except Exception as e:
+    artifact_contract = dict(manifest.indexes["vector"].config)
+    with ExitStack() as resources:
+        ctx = ServerContext(manifest=manifest)
+        resources.callback(ctx.close)
+        try:
+            with capture_authenticated_vector_view(repo_dir) as vector_view:
+                native_authorization = _mint_trusted_local_admin_authorization(
+                    vector_view.ownership,
+                    view_type="vector",
+                    semantic_contract=artifact_contract,
+                    evidence=(
+                        "mcp-benchmark-local-vector-view",
+                        "captured-vector-tree-subject",
+                    ),
+                )
+
+            ctx.vector = CodeVectorStore(
+                embedding_model=embedding_model,
+                embedding_provider="huggingface",
+                dimension=dimension,
+                index_metric="ip",
+                store_path=str(repo_dir),
+                artifact_metadata=artifact_contract,
+                revision=(
+                    DEFAULT_EMBEDDING_REVISION
+                    if embedding_model == DEFAULT_EMBEDDING_MODEL
+                    else None
+                ),
+                trust_remote_code=(embedding_model == DEFAULT_EMBEDDING_MODEL),
+            )
+            ctx.vector.load(
+                native_index_authorization=native_authorization,
+            )
+        except Exception as e:
+            return {
+                "instance_id": instance_id,
+                "language_group": language_group,
+                "status": "error",
+                "reason": str(e),
+            }
+
+        stats = ctx.vector.get_stats()
+        if stats.get("total_documents", 0) == 0:
+            return {
+                "instance_id": instance_id,
+                "language_group": language_group,
+                "status": "skipped",
+                "reason": "empty_index",
+            }
+
+        query = instance["problem_statement"]
+        start_time = time.time()
+
+        try:
+            results = await search_semantic(
+                ctx=ctx,
+                query=query,
+                top_k=top_k,
+                level="l2",
+            )
+            elapsed = time.time() - start_time
+        except Exception as e:
+            return {
+                "instance_id": instance_id,
+                "language_group": language_group,
+                "status": "error",
+                "reason": f"search_failed: {e}",
+            }
+
+        repo = instance.get("repo", "") or ""
+        retrieved_files: List[str] = []
+        retrieved_symbols: List[str] = []
+        for r in results:
+            rel = _make_relative(r.get("file", "") or "", instance_id, repo)
+            retrieved_files.append(rel)
+            retrieved_symbols.append(_normalize_symbol(r.get("node_id", "") or ""))
+
+        # GT: prefer gt_target_files / gt_code_blocks (codenib-base schema).
+        gt_files = list(instance.get("gt_target_files") or [])
+        gt_symbols: List[str] = []
+        for block in instance.get("gt_code_blocks") or []:
+            if block.get("file_path") and block.get("symbol"):
+                gt_symbols.append(_gt_symbol(block["file_path"], block["symbol"]))
+        # Fallback to gt_symbols_modified if blocks are absent.
+        if not gt_symbols:
+            for s in instance.get("gt_symbols_modified") or []:
+                gt_symbols.append(_normalize_symbol(s))
+
+        k_values = [1, 3, 5, 10]
+        file_metrics = compute_metrics(retrieved_files, gt_files, k_values)
+        symbol_metrics = compute_metrics(retrieved_symbols, gt_symbols, k_values)
+
         return {
             "instance_id": instance_id,
             "language_group": language_group,
-            "status": "error",
-            "reason": str(e),
+            "difficulty_level": instance.get("difficulty_level"),
+            "status": "success",
+            "elapsed_s": elapsed,
+            "num_results": len(results),
+            "retrieved_files": retrieved_files[:top_k],
+            "retrieved_symbols": retrieved_symbols[:top_k],
+            "metrics": {"files": file_metrics, "symbols": symbol_metrics},
         }
-
-    stats = ctx.vector.get_stats()
-    if stats.get("total_documents", 0) == 0:
-        return {
-            "instance_id": instance_id,
-            "language_group": language_group,
-            "status": "skipped",
-            "reason": "empty_index",
-        }
-
-    query = instance["problem_statement"]
-    start_time = time.time()
-
-    try:
-        results = await search_semantic(ctx=ctx, query=query, top_k=top_k, level="l2")
-        elapsed = time.time() - start_time
-    except Exception as e:
-        return {
-            "instance_id": instance_id,
-            "language_group": language_group,
-            "status": "error",
-            "reason": f"search_failed: {e}",
-        }
-
-    repo = instance.get("repo", "") or ""
-    retrieved_files: List[str] = []
-    retrieved_symbols: List[str] = []
-    for r in results:
-        rel = _make_relative(r.get("file", "") or "", instance_id, repo)
-        retrieved_files.append(rel)
-        retrieved_symbols.append(_normalize_symbol(r.get("node_id", "") or ""))
-
-    # GT: prefer gt_target_files / gt_code_blocks (codenib-base schema).
-    gt_files = list(instance.get("gt_target_files") or [])
-    gt_symbols: List[str] = []
-    for block in instance.get("gt_code_blocks") or []:
-        if block.get("file_path") and block.get("symbol"):
-            gt_symbols.append(_gt_symbol(block["file_path"], block["symbol"]))
-    # Fallback to gt_symbols_modified if blocks are absent.
-    if not gt_symbols:
-        for s in instance.get("gt_symbols_modified") or []:
-            gt_symbols.append(_normalize_symbol(s))
-
-    k_values = [1, 3, 5, 10]
-    file_metrics = compute_metrics(retrieved_files, gt_files, k_values)
-    symbol_metrics = compute_metrics(retrieved_symbols, gt_symbols, k_values)
-
-    return {
-        "instance_id": instance_id,
-        "language_group": language_group,
-        "difficulty_level": instance.get("difficulty_level"),
-        "status": "success",
-        "elapsed_s": elapsed,
-        "num_results": len(results),
-        "retrieved_files": retrieved_files[:top_k],
-        "retrieved_symbols": retrieved_symbols[:top_k],
-        "metrics": {"files": file_metrics, "symbols": symbol_metrics},
-    }
 
 
 def _bucket_aggregate(

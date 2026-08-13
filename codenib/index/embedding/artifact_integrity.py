@@ -12,7 +12,7 @@ import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ..._atomic_directory import (
     TreeFileRecord,
@@ -26,6 +26,7 @@ from ..._bounded_json import iter_bounded_json_array
 from ..._captured_directory import AuthenticatedFile, CapturedDirectoryReader
 from ...native_index_authorization import (
     NativeIndexAuthorization,
+    _mint_trusted_local_admin_authorization,
     require_native_index_authorization,
     require_native_index_authorization_preflight,
 )
@@ -263,6 +264,54 @@ def capture_authenticated_vector_view(root: str | Path) -> AuthenticatedVectorVi
         raise ValueError(f"vector view could not be captured safely: {root}") from exc
 
 
+def _attach_vector_view_cleanup_owner(
+    primary: BaseException,
+    view: AuthenticatedVectorView,
+    cleanup_error: BaseException,
+) -> None:
+    """Keep a pending captured-tree owner reachable from the primary failure."""
+
+    owner = getattr(cleanup_error, "captured_directory_cleanup_owner", None)
+    if owner is None:
+        owner = view.reader
+    try:
+        primary.captured_directory_cleanup_owner = owner  # type: ignore[attr-defined]
+    except BaseException:  # noqa: B036 - traceback still retains local view
+        pass
+
+
+def _mint_trusted_local_vector_authorization(
+    root: str | Path,
+    semantic_contract: Mapping[str, Any],
+    *,
+    evidence: Sequence[str],
+) -> NativeIndexAuthorization:
+    """Capture and authorize one stable local vector view before model setup."""
+
+    view = capture_authenticated_vector_view(root)
+    try:
+        authorization = _mint_trusted_local_admin_authorization(
+            view.ownership,
+            view_type="vector",
+            semantic_contract=semantic_contract,
+            evidence=evidence,
+        )
+        view.verify_final()
+    except BaseException as primary_error:  # noqa: B036 - preserve first failure
+        try:
+            view.close()
+        except BaseException as cleanup_error:  # noqa: B036 - preserve first failure
+            _attach_vector_view_cleanup_owner(primary_error, view, cleanup_error)
+            _annotate_secondary_error(
+                primary_error,
+                "authenticated vector view cleanup also failed",
+                cleanup_error,
+            )
+        raise
+    view.close()
+    return authorization
+
+
 def require_authorized_vector_view(
     root: str | Path,
     authorization: NativeIndexAuthorization | None,
@@ -294,6 +343,7 @@ def require_authorized_vector_view(
         try:
             view.close()
         except BaseException as cleanup_error:  # noqa: B036 - preserve first failure
+            _attach_vector_view_cleanup_owner(primary_error, view, cleanup_error)
             _annotate_secondary_error(
                 primary_error,
                 "authenticated vector view cleanup also failed",

@@ -9,6 +9,9 @@ import errno
 import hashlib
 import inspect
 import os
+import select
+import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -167,6 +170,48 @@ def test_source_lock_persistent_probe_failure_is_bounded() -> None:
         source_fingerprint_module._SourceLockLease(lock).__enter__()
 
 
+def test_source_lock_concurrent_child_first_touch_uses_one_process_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock = source_fingerprint_module._SourceLifecycleRLock()
+    original_rlock = threading.RLock
+    construction_barrier = threading.Barrier(2)
+    start_barrier = threading.Barrier(3)
+    observed = []
+
+    def synchronized_rlock():
+        candidate = original_rlock()
+        construction_barrier.wait(timeout=2)
+        return candidate
+
+    monkeypatch.setattr(
+        source_fingerprint_module.os,
+        "getpid",
+        lambda: lock._pid + 1,
+    )
+    monkeypatch.setattr(
+        source_fingerprint_module.threading,
+        "RLock",
+        synchronized_rlock,
+    )
+
+    def first_touch() -> None:
+        start_barrier.wait(timeout=2)
+        assert lock.depth() == 0
+        observed.append(lock._lock)
+
+    threads = [threading.Thread(target=first_touch) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    start_barrier.wait(timeout=2)
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(observed) == 2
+    assert observed[0] is observed[1] is lock._lock
+
+
 def test_repository_source_binding_reads_exact_captured_records(
     tmp_path: Path,
 ) -> None:
@@ -189,6 +234,484 @@ def test_repository_source_binding_reads_exact_captured_records(
         }
         assert binding.read_bytes("a.py", max_bytes=1024) == b"VALUE = 1\n"
         assert binding.read_bytes("link.py", max_bytes=1024) == b"TARGET = 2\n"
+
+
+def test_repository_source_snapshot_revalidates_excluded_symlink_target(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    hidden = repo / ".codenib-cache"
+    hidden.mkdir(parents=True)
+    target = hidden / "target.py"
+    target.write_bytes(b"VALUE = 1\n")
+    link = repo / "visible.py"
+    link.symlink_to(".codenib-cache/target.py")
+    binding = capture_repository_source(repo)
+
+    target.write_bytes(b"VALUE = 2\n")
+
+    with pytest.raises(RepositoryChangedError):
+        binding.verify_snapshot()
+    assert not binding.usable
+
+
+def test_repository_source_snapshot_binds_excluded_symlink_text(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    hidden = repo / ".codenib-cache"
+    hidden.mkdir(parents=True)
+    (hidden / "first.py").write_bytes(b"SAME\n")
+    (hidden / "second.py").write_bytes(b"SAME\n")
+    link = repo / "visible.py"
+    link.symlink_to(".codenib-cache/first.py")
+    binding = capture_repository_source(repo)
+
+    link.unlink()
+    link.symlink_to(".codenib-cache/second.py")
+
+    with pytest.raises(RepositoryChangedError):
+        binding.verify_snapshot()
+    assert not binding.usable
+
+
+def test_repository_source_snapshot_revalidates_unresolved_excluded_target(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    hidden = repo / ".codenib-cache"
+    hidden.mkdir(parents=True)
+    (repo / "visible.py").symlink_to(".codenib-cache/later.py")
+    binding = capture_repository_source(repo)
+
+    (hidden / "later.py").write_bytes(b"VALUE = 1\n")
+
+    with pytest.raises(RepositoryChangedError):
+        binding.verify_snapshot()
+    assert not binding.usable
+
+
+def test_fingerprint_final_gate_revalidates_excluded_link_target_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    hidden = repo / ".codenib-cache"
+    hidden.mkdir(parents=True)
+    (repo / "visible.py").symlink_to(".codenib-cache/later.py")
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    changed = False
+
+    def change_before_final_link_check(descriptor, *, excluded, collect_entries):
+        nonlocal changed
+        if not collect_entries and not changed:
+            changed = True
+            (hidden / "later.py").write_bytes(b"VALUE = 1\n")
+        return real_scan(
+            descriptor,
+            excluded=excluded,
+            collect_entries=collect_entries,
+        )
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        change_before_final_link_check,
+    )
+
+    with pytest.raises(RepositoryChangedError):
+        fingerprint_repository(repo)
+    assert changed
+
+
+@pytest.mark.parametrize("field", ["root", "fingerprint", "file_count", "records"])
+def test_repository_source_binding_rejects_public_identity_mutation(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    repo = tmp_path / field
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"VALUE = 1\n")
+    binding = capture_repository_source(repo)
+    if field == "root":
+        binding.root = tmp_path / "other"
+    elif field == "fingerprint":
+        binding.fingerprint = "sha256-v2:" + "f" * 64
+    elif field == "file_count":
+        binding.file_count += 1
+    else:
+        record = binding.file_records[0]
+        object.__setattr__(record, "sha256", "f" * 64)
+
+    with pytest.raises(RepositoryChangedError, match="public"):
+        binding.verify_snapshot()
+    assert not binding.usable
+
+
+def test_repository_source_identity_snapshot_is_detached(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"VALUE = 1\n")
+
+    with capture_repository_source(repo) as binding:
+        first = binding.authenticated_identity_snapshot()
+        object.__setattr__(first.file_records[0], "sha256", "f" * 64)
+        second = binding.authenticated_identity_snapshot()
+
+        assert second.file_records[0].sha256 != "f" * 64
+        assert binding.read_bytes("a.py", max_bytes=1024) == b"VALUE = 1\n"
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_repository_source_child_close_resets_inherited_locked_rlock(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"VALUE = 1\n")
+    binding = capture_repository_source(repo)
+    held = threading.Event()
+    release = threading.Event()
+
+    def hold_lock() -> None:
+        binding._lock.acquire()
+        held.set()
+        release.wait(timeout=10)
+        binding._lock.release()
+
+    thread = threading.Thread(target=hold_lock)
+    thread.start()
+    assert held.wait(timeout=2)
+    read_descriptor, write_descriptor = os.pipe()
+    child = os.fork()
+    if child == 0:  # pragma: no cover - assertions are reported through the pipe
+        try:
+            os.close(read_descriptor)
+            binding.close()
+            os.write(write_descriptor, b"1" if binding.closed else b"0")
+        except BaseException:  # noqa: B036 - report child failure through pipe
+            os.write(write_descriptor, b"E")
+        finally:
+            os.close(write_descriptor)
+            os._exit(0)
+
+    os.close(write_descriptor)
+    try:
+        ready, _, _ = select.select([read_descriptor], [], [], 3)
+        if not ready:
+            os.kill(child, signal.SIGKILL)
+            pytest.fail("fork child deadlocked on an inherited source lock")
+        assert os.read(read_descriptor, 1) == b"1"
+    finally:
+        os.close(read_descriptor)
+        release.set()
+        thread.join(timeout=2)
+        os.waitpid(child, 0)
+        binding.close()
+
+
+def test_posix_resolution_cleanup_does_not_close_reused_descriptor(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    cleanup = contained_source_module._PosixDescriptorCleanup()
+    descriptor = cleanup.open(first, os.O_RDONLY)
+    os.close(descriptor)
+    replacement = os.open(second, os.O_RDONLY)
+    assert replacement == descriptor
+
+    try:
+        with pytest.raises(RuntimeError, match="ownership changed"):
+            cleanup.close()
+        assert os.read(replacement, 6) == b"second"
+    finally:
+        os.close(replacement)
+
+
+def test_posix_resolution_cleanup_commits_close_then_reuse_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    cleanup = contained_source_module._PosixDescriptorCleanup()
+    descriptor = cleanup.open(first, os.O_RDONLY)
+    real_close = os.close
+    replacement = -1
+    interruption = KeyboardInterrupt("injected close completion cancellation")
+
+    def close_then_reuse(value: int) -> None:
+        nonlocal replacement
+        if value == descriptor and replacement < 0:
+            real_close(value)
+            replacement = os.open(second, os.O_RDONLY)
+            assert replacement == descriptor
+            raise interruption
+        real_close(value)
+
+    monkeypatch.setattr(contained_source_module.os, "close", close_then_reuse)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        cleanup.close()
+
+    assert caught.value is interruption
+    assert cleanup.closed
+    assert os.read(replacement, 6) == b"second"
+    monkeypatch.setattr(contained_source_module.os, "close", real_close)
+    real_close(replacement)
+
+
+def test_posix_resolution_cleanup_rejects_same_inode_new_ofd_after_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    source.write_bytes(b"owned")
+    cleanup = contained_source_module._PosixDescriptorCleanup()
+    descriptor = cleanup.open(source, os.O_RDONLY)
+    real_close = os.close
+    replacement = -1
+    interruption = KeyboardInterrupt("injected same-inode fd reuse")
+
+    def close_then_reopen_same_inode(value: int) -> None:
+        nonlocal replacement
+        if value == descriptor and replacement < 0:
+            real_close(value)
+            replacement = os.open(source, os.O_RDONLY)
+            assert replacement == descriptor
+            raise interruption
+        real_close(value)
+
+    monkeypatch.setattr(
+        contained_source_module.os,
+        "close",
+        close_then_reopen_same_inode,
+    )
+    with pytest.raises(KeyboardInterrupt) as caught:
+        cleanup.close()
+
+    assert caught.value is interruption
+    assert cleanup.closed
+    monkeypatch.setattr(contained_source_module.os, "close", real_close)
+    cleanup.close()
+    assert os.read(replacement, 5) == b"owned"
+    real_close(replacement)
+
+
+def test_posix_resolution_cleanup_coordinates_dup_alias_close_cookie(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    source.write_bytes(b"owned")
+    cleanup = contained_source_module._PosixDescriptorCleanup()
+    original = cleanup.open(source, os.O_RDONLY)
+    duplicate = cleanup.dup(original)
+    real_close = os.close
+    interruption = KeyboardInterrupt("injected before dup alias close")
+    injected = False
+
+    def interrupt_duplicate(value: int) -> None:
+        nonlocal injected
+        if value == duplicate and not injected:
+            injected = True
+            raise interruption
+        real_close(value)
+
+    monkeypatch.setattr(contained_source_module.os, "close", interrupt_duplicate)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        cleanup.close()
+
+    assert caught.value is interruption
+    assert cleanup.descriptors == [duplicate]
+    with pytest.raises(OSError) as original_error:
+        os.fstat(original)
+    assert original_error.value.errno == errno.EBADF
+    assert os.fstat(duplicate)
+
+    monkeypatch.setattr(contained_source_module.os, "close", real_close)
+    cleanup.close()
+    assert cleanup.closed
+    with pytest.raises(OSError) as duplicate_error:
+        os.fstat(duplicate)
+    assert duplicate_error.value.errno == errno.EBADF
+
+
+def test_posix_cleanup_coordinates_close_cookie_across_dup_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    source.write_bytes(b"owned")
+    original_owner = contained_source_module._PosixDescriptorCleanup()
+    alias_owner = contained_source_module._PosixDescriptorCleanup()
+    original = original_owner.open(source, os.O_RDONLY)
+    duplicate = alias_owner.dup(original)
+    baseline = dict(contained_source_module._CLOSE_COOKIE_COUNTS)
+    real_close = os.close
+    interruption = KeyboardInterrupt("injected before cross-owner alias close")
+    injected = False
+
+    def interrupt_duplicate(value: int) -> None:
+        nonlocal injected
+        if value == duplicate and not injected:
+            injected = True
+            raise interruption
+        real_close(value)
+
+    monkeypatch.setattr(contained_source_module.os, "close", interrupt_duplicate)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        alias_owner.close()
+    assert caught.value is interruption
+    assert len(contained_source_module._CLOSE_COOKIE_COUNTS) == len(baseline) + 1
+
+    original_owner.close()
+    assert original_owner.closed
+    monkeypatch.setattr(contained_source_module.os, "close", real_close)
+    alias_owner.close()
+    assert alias_owner.closed
+    assert contained_source_module._CLOSE_COOKIE_COUNTS == baseline
+
+
+def test_posix_directory_cleanup_falls_back_when_cookie_seek_is_unsupported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cleanup = contained_source_module._PosixDescriptorCleanup()
+    descriptor = cleanup.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    baseline = dict(contained_source_module._CLOSE_COOKIE_COUNTS)
+    real_lseek = os.lseek
+
+    def reject_directory_cookie(value: int, offset: int, whence: int) -> int:
+        if value == descriptor:
+            raise OSError(errno.EINVAL, "directory offsets are opaque")
+        return real_lseek(value, offset, whence)
+
+    monkeypatch.setattr(contained_source_module.os, "lseek", reject_directory_cookie)
+    cleanup.close()
+
+    assert cleanup.closed
+    assert contained_source_module._CLOSE_COOKIE_COUNTS == baseline
+    with pytest.raises(OSError) as caught:
+        os.fstat(descriptor)
+    assert caught.value.errno == errno.EBADF
+
+
+def test_posix_directory_cleanup_retains_no_cookie_close_interruption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cleanup = contained_source_module._PosixDescriptorCleanup()
+    descriptor = cleanup.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    real_lseek = os.lseek
+    real_close = os.close
+    interruption = KeyboardInterrupt("injected before no-cookie directory close")
+    injected = False
+
+    def reject_directory_cookie(value: int, offset: int, whence: int) -> int:
+        if value == descriptor:
+            raise OSError(errno.ESPIPE, "directory is not seekable")
+        return real_lseek(value, offset, whence)
+
+    def interrupt_before_close(value: int) -> None:
+        nonlocal injected
+        if value == descriptor and not injected:
+            injected = True
+            raise interruption
+        real_close(value)
+
+    monkeypatch.setattr(contained_source_module.os, "lseek", reject_directory_cookie)
+    monkeypatch.setattr(contained_source_module.os, "close", interrupt_before_close)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        cleanup.close()
+
+    assert caught.value is interruption
+    assert cleanup.descriptors == [descriptor]
+    assert os.fstat(descriptor)
+    cleanup.close()
+    assert cleanup.closed
+
+
+def test_posix_resolution_cleanup_closes_owned_file_after_size_change(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.write_bytes(b"first")
+    cleanup = contained_source_module._PosixDescriptorCleanup()
+    descriptor = cleanup.open(source, os.O_RDONLY)
+
+    source.write_bytes(b"a longer replacement on the same inode")
+    cleanup.close()
+
+    assert cleanup.closed
+    with pytest.raises(OSError) as caught:
+        os.fstat(descriptor)
+    assert caught.value.errno == errno.EBADF
+
+
+def test_posix_root_authority_cleanup_closes_owned_directory_after_chmod(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    authority = source_fingerprint_module._open_pinned_repository_root(repo)
+    descriptors = tuple(authority._resources)
+
+    repo.chmod(0o700)
+    authority.close()
+
+    assert authority.closed
+    for descriptor in descriptors:
+        with pytest.raises(OSError) as caught:
+            os.fstat(descriptor)
+        assert caught.value.errno == errno.EBADF
+
+
+def test_posix_root_cleanup_rejects_same_inode_new_ofd_after_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    authority = source_fingerprint_module._open_pinned_repository_root(repo)
+    descriptor = authority._resources[-1]
+    real_close = os.close
+    replacement = -1
+    interruption = KeyboardInterrupt("injected same-directory fd reuse")
+
+    def close_then_reopen_same_inode(value: int) -> None:
+        nonlocal replacement
+        if value == descriptor and replacement < 0:
+            real_close(value)
+            replacement = os.open(repo, os.O_RDONLY | os.O_DIRECTORY)
+            assert replacement == descriptor
+            raise interruption
+        real_close(value)
+
+    monkeypatch.setattr(
+        source_fingerprint_module.os,
+        "close",
+        close_then_reopen_same_inode,
+    )
+    with pytest.raises(KeyboardInterrupt) as caught:
+        authority.close()
+
+    assert caught.value is interruption
+    assert authority.closed
+    monkeypatch.setattr(source_fingerprint_module.os, "close", real_close)
+    authority.close()
+    assert stat.S_ISDIR(os.fstat(replacement).st_mode)
+    real_close(replacement)
 
 
 def test_repository_source_binding_poisoned_by_touched_or_unrelated_change(
@@ -997,11 +1520,13 @@ def _open_fake_windows_resolution(
     api: _FakeWindowsSourceApi,
     relative: str,
 ):
-    selected, authority, root_identity = (
-        contained_source_module._open_windows_pinned_repository_root(
-            Path(r"C:\repo"),
-            api=api,
-        )
+    (
+        selected,
+        authority,
+        root_identity,
+    ) = contained_source_module._open_windows_pinned_repository_root(
+        Path(r"C:\repo"),
+        api=api,
     )
     scan = source_fingerprint_module._scan_pinned_windows_repository(
         selected,
@@ -1043,11 +1568,13 @@ def _fake_windows_resolution_handoff_case(
         api.add_symlink(api.root_id, "current.py", "missing.py")
     else:  # pragma: no cover - test parameter invariant
         raise AssertionError(case)
-    selected, authority, root_identity = (
-        contained_source_module._open_windows_pinned_repository_root(
-            Path(r"C:\repo"),
-            api=api,
-        )
+    (
+        selected,
+        authority,
+        root_identity,
+    ) = contained_source_module._open_windows_pinned_repository_root(
+        Path(r"C:\repo"),
+        api=api,
     )
     scan = source_fingerprint_module._scan_pinned_windows_repository(
         selected,
@@ -1312,7 +1839,7 @@ def test_windows_fake_excludes_contained_directory_and_root_links() -> None:
     assert api.handles == {}
 
 
-def test_windows_fake_accepts_absolute_contained_symlink() -> None:
+def test_windows_fake_rejects_absolute_contained_symlink() -> None:
     api = _FakeWindowsSourceApi()
     api.add_file(api.root_id, "target.py", b"VALUE = 1\n")
     api.add_symlink(
@@ -1323,15 +1850,85 @@ def test_windows_fake_accepts_absolute_contained_symlink() -> None:
         substitute=r"\??\C:\repo\target.py",
     )
 
-    observed = source_fingerprint_module._fingerprint_windows_repository(
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert api.handles == {}
+
+
+def test_windows_fake_binds_initial_symlink_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "first.py", b"SAME\n")
+    api.add_file(api.root_id, "second.py", b"SAME\n")
+    link_id = api.add_symlink(api.root_id, "current.py", "first.py")
+    original = api.nodes[link_id]["reparse"]
+    replacement = windows_fs_module.WindowsReparsePoint(
+        tag=windows_fs_module.IO_REPARSE_TAG_SYMLINK,
+        substitute_name="second.py",
+        print_name="second.py",
+        flags=windows_fs_module.SYMLINK_FLAG_RELATIVE,
+    )
+    real_resolve = source_fingerprint_module._resolved_windows_repository_file_at
+    swapped = False
+
+    @contextmanager
+    def swap_target(root, authority, relative, **kwargs):
+        nonlocal swapped
+        if swapped or relative != "current.py":
+            with real_resolve(root, authority, relative, **kwargs) as binding:
+                yield binding
+            return
+        swapped = True
+        api.nodes[link_id]["reparse"] = replacement
+        try:
+            with real_resolve(root, authority, relative, **kwargs) as binding:
+                yield binding
+        finally:
+            api.nodes[link_id]["reparse"] = original
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_resolved_windows_repository_file_at",
+        swap_target,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert swapped
+    assert api.handles == {}
+
+
+def test_windows_fake_binding_revalidates_unresolved_excluded_target() -> None:
+    api = _FakeWindowsSourceApi()
+    hidden = api.add_directory(api.root_id, ".codenib-cache")
+    api.add_symlink(api.root_id, "visible.py", r".codenib-cache\later.py")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
         r"C:\repo",
         exclude_roots=(),
         version=SOURCE_FINGERPRINT_VERSION,
         api=api,
+        retain_binding=True,
     )
+    assert isinstance(binding, RepositorySourceBinding)
 
-    assert observed.file_count == 2
-    assert observed.value.startswith("sha256-v2:")
+    api.add_file(hidden, "later.py", b"VALUE = 1\n")
+
+    with pytest.raises(RepositoryChangedError):
+        binding.verify_snapshot()
+    binding.close()
     assert api.handles == {}
 
 
@@ -1606,11 +2203,13 @@ def test_windows_fake_scan_eio_keeps_primary_and_partial_handle_owner() -> None:
 def test_windows_resolution_construction_eio_keeps_primary_and_retry_owner() -> None:
     api = _FakeWindowsSourceApi()
     api.add_symlink(api.root_id, "current.py", "missing.py")
-    selected, authority, root_identity = (
-        contained_source_module._open_windows_pinned_repository_root(
-            Path(r"C:\repo"),
-            api=api,
-        )
+    (
+        selected,
+        authority,
+        root_identity,
+    ) = contained_source_module._open_windows_pinned_repository_root(
+        Path(r"C:\repo"),
+        api=api,
     )
     scan = source_fingerprint_module._scan_pinned_windows_repository(
         selected,
@@ -1754,9 +2353,12 @@ def test_windows_resolution_binding_slot_store_cancellation_closes_every_branch(
     case: str,
     timing: str,
 ) -> None:
-    api, authority, root_identity, expected_identity = (
-        _fake_windows_resolution_handoff_case(case)
-    )
+    (
+        api,
+        authority,
+        root_identity,
+        expected_identity,
+    ) = _fake_windows_resolution_handoff_case(case)
     interruption = KeyboardInterrupt(f"injected {case} {timing}")
 
     class InterruptingSlot(contained_source_module._SourceCleanupSlot):
@@ -1792,9 +2394,12 @@ def test_windows_resolution_binding_slot_store_cancellation_closes_every_branch(
 
 
 def test_windows_resolution_return_cancellation_closes_slot_owner() -> None:
-    api, authority, root_identity, expected_identity = (
-        _fake_windows_resolution_handoff_case("regular")
-    )
+    (
+        api,
+        authority,
+        root_identity,
+        expected_identity,
+    ) = _fake_windows_resolution_handoff_case("regular")
     method = contained_source_module._open_windows_resolution_at
     target_offset = _opcode_offset(
         method,
@@ -1844,9 +2449,12 @@ def test_windows_resolution_return_cancellation_closes_slot_owner() -> None:
 
 
 def test_windows_resolution_return_eio_retains_owner_without_double_close() -> None:
-    api, authority, root_identity, expected_identity = (
-        _fake_windows_resolution_handoff_case("regular")
-    )
+    (
+        api,
+        authority,
+        root_identity,
+        expected_identity,
+    ) = _fake_windows_resolution_handoff_case("regular")
     method = contained_source_module._open_windows_resolution_at
     target_offset = _opcode_offset(
         method,
@@ -2389,6 +2997,49 @@ def test_windows_fake_binding_close_does_not_close_reused_handle() -> None:
     api.close(reused)
 
 
+def test_windows_fake_binding_close_preserves_observable_reuse_after_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    authority = binding._windows_authority
+    assert authority is not None
+    target = authority.handles[-1]
+    replacement_id = api.add_directory()
+    real_close = api.close
+    interruption = KeyboardInterrupt("injected after observable HANDLE reuse")
+    replaced = False
+
+    def close_then_reuse(handle: int) -> None:
+        nonlocal replaced
+        real_close(handle)
+        if handle == target and not replaced:
+            api.handles[target] = replacement_id
+            api.offsets[target] = 0
+            replaced = True
+            raise interruption
+
+    monkeypatch.setattr(api, "close", close_then_reuse)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        binding.close()
+
+    assert caught.value is interruption
+    assert binding.closed
+    assert api.handles == {target: replacement_id}
+    binding.close()
+    assert api.handles == {target: replacement_id}
+    monkeypatch.setattr(api, "close", real_close)
+    real_close(target)
+
+
 def test_windows_kernel_close_checks_closehandle_result() -> None:
     class CloseFailureApi(windows_fs_module.WindowsKernelApi):
         def _raise_last_error(self, context: str) -> None:
@@ -2867,16 +3518,15 @@ def test_fingerprint_rejects_file_swap_in_walker_to_open_window(
     assert foreign.read_text(encoding="utf-8") == "VALUE = 'foreign'\n"
 
 
-def test_fingerprint_accepts_absolute_contained_symlink(tmp_path: Path) -> None:
+def test_fingerprint_rejects_absolute_contained_symlink(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     target = repo / "target.py"
     target.write_text("VALUE = 1\n", encoding="utf-8")
     (repo / "link.py").symlink_to(target)
 
-    observed = fingerprint_repository(repo)
-
-    assert observed.file_count == 2
+    with pytest.raises(RepositoryChangedError):
+        fingerprint_repository(repo)
 
 
 def test_fingerprint_excludes_contained_directory_symlink_in_v1_and_v2(
@@ -2908,6 +3558,13 @@ def test_fingerprint_excludes_repository_root_directory_symlink_in_v1_and_v2(
     (repo / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
     link = repo / "root-link"
     link.symlink_to(repo if absolute else ".", target_is_directory=True)
+
+    if absolute:
+        with pytest.raises(RepositoryChangedError, match="read consistently"):
+            fingerprint_repository(repo)
+        with pytest.raises(RepositoryChangedError, match="read consistently"):
+            fingerprint_repository_v1_for_diagnostics(repo)
+        return
 
     current_with_link = fingerprint_repository(repo)
     legacy_with_link = fingerprint_repository_v1_for_diagnostics(repo)
@@ -3152,7 +3809,6 @@ def test_windows_real_source_v2_regular_and_contained_symlink_node(
     target.write_bytes(b"VALUE = 1\n")
     try:
         (repo / "relative.py").symlink_to("target.py")
-        (repo / "absolute.py").symlink_to(target)
     except OSError as exc:  # pragma: no cover - Windows policy dependent
         pytest.skip(f"Windows symlink creation is unavailable: {exc}")
 
@@ -3161,7 +3817,7 @@ def test_windows_real_source_v2_regular_and_contained_symlink_node(
     legacy = fingerprint_repository_v1_for_diagnostics(repo)
 
     assert first == second
-    assert first.file_count == legacy.file_count == 3
+    assert first.file_count == legacy.file_count == 2
     assert first.value.startswith("sha256-v2:")
     assert legacy.value.startswith("sha256:")
 

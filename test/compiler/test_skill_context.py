@@ -61,6 +61,47 @@ def _make_meta(
     )
 
 
+def test_vector_loader_closes_partial_store_on_base_exception(monkeypatch):
+    primary = KeyboardInterrupt("cancel vector load")
+    stores = []
+
+    class FakeStore:
+        def __init__(self, **_kwargs):
+            self.close_calls = 0
+            stores.append(self)
+
+        def load(self, _path, **_kwargs):
+            raise primary
+
+        def close(self):
+            self.close_calls += 1
+
+    monkeypatch.setattr(
+        "codenib.index.embedding.artifact_integrity."
+        "_mint_trusted_local_vector_authorization",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.CodeVectorStore",
+        FakeStore,
+    )
+
+    observed = None
+    try:
+        skill_context._load_vector(
+            "/tmp/vector",
+            embedding_model="model",
+            embedding_provider="huggingface",
+            embedding_dimension=4,
+        )
+    except BaseException as exc:  # noqa: B036 - assert cancellation identity
+        observed = exc
+
+    assert observed is primary
+    assert len(stores) == 1
+    assert stores[0].close_calls == 1
+
+
 @pytest.fixture(autouse=True)
 def _reset_registry():
     SkillRegistry.reset()

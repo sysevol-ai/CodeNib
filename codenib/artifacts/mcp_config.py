@@ -40,20 +40,20 @@ def render_artifact_mcp_config(
     if claude_scope not in {"local", "project", "user"}:
         raise ValueError("Claude MCP scope must be local, project, or user")
 
-    binding = bind_context_artifact(
+    with bind_context_artifact(
         artifact_path,
         repo_path,
         expected_repository=expected_repository,
-    )
-    args = [
-        "mcp",
-        "--artifact",
-        str(binding.artifact.root),
-        "--repo",
-        str(binding.repo_path),
-        "--repository",
-        binding.artifact.repository,
-    ]
+    ) as binding:
+        args = [
+            "mcp",
+            "--artifact",
+            str(binding.artifact.root),
+            "--repo",
+            str(binding.repo_path),
+            "--repository",
+            binding.artifact.repository,
+        ]
     server = {
         "type": "stdio",
         "command": command,

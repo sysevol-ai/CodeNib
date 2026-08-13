@@ -4,7 +4,48 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from codenib.index.embedding import builders
+
+
+def test_cached_builder_closes_store_when_load_fails(monkeypatch, tmp_path):
+    index_path = tmp_path / "index"
+    index_path.mkdir()
+    (index_path / "config_test-model.json").write_text("{}", encoding="utf-8")
+    primary = RuntimeError("cached load failed")
+    stores = []
+
+    class FakeStore:
+        def __init__(self, **_kwargs):
+            self.close_calls = 0
+            stores.append(self)
+
+        def load(self, _path, **_kwargs):
+            raise primary
+
+        def close(self):
+            self.close_calls += 1
+
+    monkeypatch.setattr(builders, "CodeVectorStore", FakeStore)
+    monkeypatch.setattr(
+        builders,
+        "_mint_trusted_local_vector_authorization",
+        lambda *_args, **_kwargs: object(),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        builders.build_hierarchical_vector_store(
+            repo_path=str(tmp_path),
+            index_path=str(index_path),
+            embedding_model="test-model",
+            embedding_provider="huggingface",
+            embedding_dimension=4,
+        )
+
+    assert exc_info.value is primary
+    assert len(stores) == 1
+    assert stores[0].close_calls == 1
 
 
 def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path):

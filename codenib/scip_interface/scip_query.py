@@ -56,7 +56,7 @@ FACT_QUERY_FILTER_PROOF_SCHEMA_VERSION = 1
 SYMBOL_GRAPH_BUILDER_SCHEMA_VERSION = 4
 
 _HEX_DIGEST = re.compile(r"[0-9a-f]{64}")
-_SOURCE_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}")
+_SOURCE_FINGERPRINT = re.compile(r"(?:sha256|sha256-v2):[0-9a-f]{64}")
 _GIT_COMMIT = re.compile(r"[0-9a-f]{40}")
 _INPUT_RECEIPT_KEYS = frozenset({"schema_version", "index", "metadata"})
 _INPUT_INDEX_KEYS = frozenset({"path", "size_bytes", "sha256"})

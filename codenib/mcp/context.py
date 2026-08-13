@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import math
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -127,17 +128,99 @@ class _DimensionProbeEmbedding:
 
 
 def _close_vector(vector: CodeVectorStore) -> None:
+    vector.close()
+
+
+def _close_vector_after_failure(
+    vector: CodeVectorStore,
+    primary: BaseException,
+) -> None:
+    """Release an unpublished vector without replacing its load failure."""
+
     try:
         vector.close()
-    except Exception as exc:
-        logger.warning("Failed to release vector resources: %s", exc)
+    except BaseException as cleanup_error:  # noqa: B036 - preserve primary
+        try:
+            primary.add_note(f"vector cleanup also failed: {cleanup_error!r}")
+        except (AttributeError, TypeError):  # pragma: no cover - Python < 3.11
+            pass
+        actual = (
+            cleanup_error
+            if isinstance(primary, Exception)
+            and not isinstance(cleanup_error, Exception)
+            else primary
+        )
+        try:
+            actual.vector_cleanup_owner = vector  # type: ignore[attr-defined]
+        except BaseException:  # noqa: B036 - traceback still retains local owner
+            pass
+        if actual is cleanup_error:
+            raise cleanup_error from primary
+        raise primary from cleanup_error
 
 
 def _stop_zoekt(searcher: ZoektSearcher) -> None:
+    searcher.stop()
+
+
+def _stop_zoekt_after_failure(
+    context: ServerContext,
+    searcher: ZoektSearcher,
+    primary: BaseException,
+) -> None:
+    """Release an unpublished searcher or expose one retryable context owner."""
+
+    # Publish the cleanup owner before stop: an interruption during stop must
+    # remain reachable after this loader's local frame disappears.
+    context.zoekt = searcher
     try:
-        searcher.stop()
-    except Exception as exc:
-        logger.warning("Failed to stop Zoekt runtime: %s", exc)
+        _stop_zoekt(searcher)
+    except BaseException as cleanup_error:  # noqa: B036 - preserve priority
+        actual = _retain_context_cleanup_failure(
+            primary,
+            "Zoekt cleanup also failed",
+            cleanup_error,
+        )
+        _attach_context_cleanup_owner(actual, context)
+        if actual is cleanup_error:
+            raise cleanup_error from primary
+        raise primary from cleanup_error
+    context.zoekt = None
+
+
+def _retain_context_cleanup_failure(
+    deferred: BaseException | None,
+    label: str,
+    failure: BaseException,
+) -> BaseException:
+    if deferred is None:
+        return failure
+    if isinstance(deferred, Exception) and not isinstance(failure, Exception):
+        _annotate_context_cleanup_failure(failure, label, deferred)
+        return failure
+    _annotate_context_cleanup_failure(deferred, label, failure)
+    return deferred
+
+
+def _annotate_context_cleanup_failure(
+    primary: BaseException,
+    label: str,
+    secondary: BaseException,
+) -> None:
+    try:
+        primary.add_note(f"{label}: {secondary!r}")
+    except (AttributeError, TypeError):  # pragma: no cover - Python < 3.11
+        pass
+
+
+def _attach_context_cleanup_owner(
+    failure: BaseException,
+    context: ServerContext,
+) -> None:
+    try:
+        failure.context_cleanup_owner = context  # type: ignore[attr-defined]
+    except BaseException:  # noqa: B036 - traceback still retains local owner
+        pass
 
 
 def _resolve_views(views: Iterable[str] | None) -> frozenset[str]:
@@ -264,7 +347,7 @@ class ServerContext:
         if self._source_binding is None:
             return False
         try:
-            self._source_binding.verify_snapshot()
+            self._source_binding.authenticated_identity_snapshot()
         except Exception as exc:
             self.source_error = self._source_binding.failure_reason or str(exc)
             return False
@@ -344,17 +427,18 @@ class ServerContext:
                     lexical_repository_path,
                 )
 
+                source_identity = owned_source.authenticated_identity_snapshot()
                 if (
                     not owned_source.usable
                     or not is_secure_source_fingerprint_v2(manifest.source_fingerprint)
-                    or owned_source.fingerprint != manifest.source_fingerprint
-                    or owned_source.file_count != manifest.file_count
-                    or owned_source.root != lexical_repository_path(manifest.repo_path)
+                    or source_identity.fingerprint != manifest.source_fingerprint
+                    or source_identity.file_count != manifest.file_count
+                    or source_identity.root
+                    != lexical_repository_path(manifest.repo_path)
                 ):
                     raise ValueError(
                         "repository source authority does not match the manifest"
                     )
-                owned_source.verify_snapshot()
 
             ctx.source_error = (
                 None
@@ -395,17 +479,34 @@ class ServerContext:
                 _source_cleanup_owner_is_pending,
             )
 
+            runtime_cleanup_failure: BaseException | None = None
+            if ctx is not None:
+                try:
+                    ctx.close()
+                except BaseException as exc:  # noqa: B036 - retain source priority
+                    _attach_context_cleanup_owner(exc, ctx)
+                    _attach_context_cleanup_owner(primary, ctx)
+                    runtime_cleanup_failure = exc
             cleanup_source = (
                 ctx._source_binding
                 if ctx is not None and ctx._source_binding is not None
-                else source_binding if artifact_binding is None else None
+                else (
+                    source_binding
+                    if artifact_binding is None
+                    and _source_cleanup_owner_is_pending(source_binding)
+                    else None
+                )
             )
-            cleanup_failure: BaseException | None = None
+            cleanup_failure = runtime_cleanup_failure
             if cleanup_source is not None:
                 try:
                     cleanup_source.close()
                 except BaseException as exc:  # noqa: B036 - apply shared priority
-                    cleanup_failure = exc
+                    cleanup_failure = _retain_context_cleanup_failure(
+                        cleanup_failure,
+                        "source cleanup retry also failed",
+                        exc,
+                    )
             pending_owner = (
                 cleanup_source
                 if _source_cleanup_owner_is_pending(cleanup_source)
@@ -483,18 +584,49 @@ class ServerContext:
         """Release runtime resources owned by this context."""
 
         with self._view_lock:
-            self.end_explore_session()
+            deferred: BaseException | None = None
+            try:
+                self.end_explore_session()
+            except BaseException as exc:  # noqa: B036 - visit every runtime owner
+                deferred = exc
             self.lsp_provider = None
             if self.zoekt is not None:
-                _stop_zoekt(self.zoekt)
-                self.zoekt = None
+                try:
+                    _stop_zoekt(self.zoekt)
+                except BaseException as exc:  # noqa: B036 - continue cleanup
+                    deferred = _retain_context_cleanup_failure(
+                        deferred,
+                        "Zoekt cleanup also failed",
+                        exc,
+                    )
+                else:
+                    self.zoekt = None
             if self.vector is not None:
-                _close_vector(self.vector)
-                self.vector = None
+                try:
+                    _close_vector(self.vector)
+                except BaseException as exc:  # noqa: B036 - continue cleanup
+                    deferred = _retain_context_cleanup_failure(
+                        deferred,
+                        "vector cleanup also failed",
+                        exc,
+                    )
+                else:
+                    self.vector = None
             if self._source_binding is not None:
-                self._source_binding.close()
-                self._source_binding = None
-                self.source_error = "source binding is closed"
+                try:
+                    self._source_binding.close()
+                except BaseException as exc:  # noqa: B036 - preserve retry owner
+                    deferred = _retain_context_cleanup_failure(
+                        deferred,
+                        "source cleanup also failed",
+                        exc,
+                    )
+                if self._source_binding.closed:
+                    self._source_binding = None
+                    self.source_error = "source binding is closed"
+            if deferred is not None:
+                _attach_context_cleanup_owner(deferred, self)
+                raise deferred
 
     def begin_explore_session(self) -> ExploreSessionRuntime:
         """Create fresh state for one stdio connection.
@@ -542,9 +674,9 @@ class ServerContext:
             current = self.explore_runtime
             if current is None or (runtime is not None and current is not runtime):
                 return
+            current.close()
             self.explore_runtime = None
             self._explore_loop = None
-            current.close()
 
     def configure_lsp_provider(
         self,
@@ -613,12 +745,20 @@ class ServerContext:
                 if view not in available
             }
         finally:
-            if ctx.zoekt is not None:
-                _stop_zoekt(ctx.zoekt)
-                ctx.zoekt = None
-            if ctx.vector is not None:
-                _close_vector(ctx.vector)
-                ctx.vector = None
+            active_failure = sys.exc_info()[1]
+            try:
+                ctx.close()
+            except BaseException as cleanup_failure:  # noqa: B036 - keep priority
+                if active_failure is None:
+                    raise
+                preferred = _retain_context_cleanup_failure(
+                    active_failure,
+                    "view validation cleanup also failed",
+                    cleanup_failure,
+                )
+                _attach_context_cleanup_owner(preferred, ctx)
+                if preferred is cleanup_failure:
+                    raise cleanup_failure from active_failure
 
     # ------------------------------------------------------------------
     # Private loaders
@@ -731,22 +871,26 @@ class ServerContext:
         try:
             searcher = ZoektSearcher(index_dir=entry.path)
             searcher.start()
-            self.zoekt = searcher
             logger.info(
                 "Started zoekt-webserver  shards=%s  port=%d",
                 entry.path,
                 searcher.port,
             )
+            self.zoekt = searcher
         except ZoektUnavailableError as exc:
             if searcher is not None:
-                _stop_zoekt(searcher)
+                _stop_zoekt_after_failure(self, searcher, exc)
             self.errors["zoekt"] = str(exc)
             logger.warning("Zoekt unavailable: %s", exc)
         except Exception as exc:
             if searcher is not None:
-                _stop_zoekt(searcher)
+                _stop_zoekt_after_failure(self, searcher, exc)
             self.errors["zoekt"] = str(exc)
             logger.warning("Failed to start zoekt-webserver: %s", exc)
+        except BaseException as exc:  # noqa: B036 - cleanup then propagate
+            if searcher is not None:
+                _stop_zoekt_after_failure(self, searcher, exc)
+            raise
 
     def _load_vector(self, *, probe: bool = False) -> None:
         """Load vector embedding index if available."""
@@ -819,9 +963,11 @@ class ServerContext:
                 stats["total_documents"],
                 route.model,
             )
-        except Exception as exc:
+        except BaseException as exc:  # noqa: B036 - release unpublished native state
             if vector is not None:
-                _close_vector(vector)
+                _close_vector_after_failure(vector, exc)
             self.vector = None
+            if not isinstance(exc, Exception):
+                raise
             self.errors["vector"] = str(exc)
             logger.warning("Failed to load vector index: %s", exc)

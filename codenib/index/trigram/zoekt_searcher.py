@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from ..._atomic_directory import _annotate_secondary_error
 from ...types import NodeInfo
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,33 @@ DEFAULT_SEARCH_TIMEOUT = 10.0  # per-request HTTP timeout
 
 class ZoektUnavailableError(RuntimeError):
     """Raised when the Zoekt binary or shard directory is unavailable."""
+
+
+class _ZoektProcessOwner:
+    """Preinstalled owner spanning Popen construction and caller handoff."""
+
+    __slots__ = ("process",)
+
+    def __init__(self) -> None:
+        self.process: Optional[subprocess.Popen[bytes]] = None
+
+    def retain(self, process: subprocess.Popen[bytes]) -> None:
+        if self.process is not None and self.process is not process:
+            raise RuntimeError("zoekt process ownership changed")
+        self.process = process
+
+    def release(self, process: subprocess.Popen[bytes]) -> None:
+        if self.process is not process:
+            raise RuntimeError("zoekt process ownership changed")
+        self.process = None
+
+
+class _OwnedZoektProcess(subprocess.Popen):
+    """Register the Python process object before native process creation."""
+
+    def __init__(self, owner: _ZoektProcessOwner, *args, **kwargs) -> None:
+        owner.retain(self)
+        super().__init__(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -141,34 +169,116 @@ class ZoektSearcher:
             self.index_dir,
         ]
         logger.info("Starting zoekt-webserver: %s", " ".join(cmd))
-        self._proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
+        owner = _ZoektProcessOwner()
+        try:
+            # The owner is installed into the Popen subclass before its native
+            # constructor runs. An interruption at the CALL-return/POP_TOP
+            # bytecode boundary therefore cannot orphan the spawned child.
+            _OwnedZoektProcess(
+                owner,
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            if owner.process is None:
+                raise RuntimeError("zoekt process constructor lost ownership")
+            self._proc = owner.process
+            owner.release(self._proc)
 
-        if not self._cleanup_registered:
-            atexit.register(self.stop)
-            self._cleanup_registered = True
+            if not self._cleanup_registered:
+                atexit.register(self.stop)
+                self._cleanup_registered = True
 
-        self._wait_until_ready()
+            self._wait_until_ready()
+        except BaseException as primary:  # noqa: B036 - retain spawned child
+            if owner.process is not None and self._proc is None:
+                self._proc = owner.process
+            if self._proc is not None:
+                try:
+                    self.stop()
+                except BaseException as cleanup_error:  # noqa: B036
+                    _annotate_secondary_error(
+                        primary,
+                        "zoekt startup cleanup also failed",
+                        cleanup_error,
+                    )
+                    preferred = (
+                        cleanup_error
+                        if isinstance(primary, Exception)
+                        and not isinstance(cleanup_error, Exception)
+                        else primary
+                    )
+                    if self._proc is not None:
+                        try:
+                            preferred.zoekt_cleanup_owner = self  # type: ignore[attr-defined]
+                        except BaseException:  # noqa: B036 - traceback owns self
+                            pass
+                    if preferred is cleanup_error:
+                        raise cleanup_error from primary
+                    raise primary from cleanup_error
+            raise
 
     def stop(self) -> None:
         """Terminate the webserver subprocess if it is still running."""
         proc = self._proc
         if proc is None:
             return
-        if proc.poll() is None:
+        failure: BaseException | None = None
+
+        def retain_failure(exc: BaseException) -> None:
+            nonlocal failure
+            if failure is None:
+                failure = exc
+            else:
+                _annotate_secondary_error(
+                    failure,
+                    "additional zoekt-webserver cleanup failed",
+                    exc,
+                )
+
+        exited = False
+        try:
+            exited = proc.poll() is not None
+        except BaseException as exc:  # noqa: B036 - owner remains pending
+            retain_failure(exc)
+        if not exited:
             try:
                 proc.terminate()
+            except BaseException as exc:  # noqa: B036 - still try kill
+                retain_failure(exc)
+            try:
+                proc.wait(timeout=5)
+                exited = True
+            except subprocess.TimeoutExpired:
+                pass
+            except BaseException as exc:  # noqa: B036 - still try kill
+                retain_failure(exc)
+            if not exited:
+                try:
+                    proc.kill()
+                except BaseException as exc:  # noqa: B036 - retain child
+                    retain_failure(exc)
                 try:
                     proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=5)
-            except Exception as exc:
-                logger.warning("Error stopping zoekt-webserver: %s", exc)
-        self._proc = None
+                    exited = True
+                except BaseException as exc:  # noqa: B036 - retain child
+                    retain_failure(exc)
+        if not exited:
+            try:
+                exited = proc.poll() is not None
+            except BaseException as exc:  # noqa: B036 - retain child
+                retain_failure(exc)
+        if exited:
+            self._proc = None
+        elif failure is None:
+            failure = RuntimeError("zoekt-webserver cleanup remains pending")
+        if failure is not None:
+            if self._proc is not None:
+                try:
+                    failure.zoekt_cleanup_owner = self  # type: ignore[attr-defined]
+                except BaseException:  # noqa: B036 - traceback owns self
+                    pass
+            raise failure
 
     def _wait_until_ready(self) -> None:
         """Poll until the webserver returns any HTTP response or we time out."""

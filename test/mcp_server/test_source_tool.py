@@ -82,7 +82,7 @@ def test_read_source_rejects_noncanonical_paths(
         read_source_impl(_context(tmp_path), file_path)
 
 
-def test_read_source_accepts_absolute_contained_symlink_and_rejects_nonregular(
+def test_read_source_rejects_absolute_symlink_and_nonregular(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "source.py"
@@ -90,9 +90,8 @@ def test_read_source_accepts_absolute_contained_symlink_and_rejects_nonregular(
     (tmp_path / "link.py").symlink_to(source)
     (tmp_path / "folder").mkdir()
 
-    assert read_source_impl(_context(tmp_path), "link.py", 1, 1)["content"] == (
-        "value = 1\n"
-    )
+    with pytest.raises(ValueError, match="readable regular"):
+        read_source_impl(_context(tmp_path), "link.py", 1, 1)
     with pytest.raises(ValueError, match="readable regular"):
         read_source_impl(_context(tmp_path), "folder")
 

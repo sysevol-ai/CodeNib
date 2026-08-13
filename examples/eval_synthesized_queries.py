@@ -54,6 +54,7 @@ import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -372,8 +373,14 @@ def _make_agent(
     from codenib.compiler.manifest import RepoManifest
     from codenib.compiler.params import SessionContext
     from codenib.index.embedding import CodeVectorStore
+    from codenib.index.embedding.artifact_integrity import (
+        capture_authenticated_vector_view,
+    )
     from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
     from codenib.llm.litellm_chat import LiteLLMChat
+    from codenib.native_index_authorization import (
+        _mint_trusted_local_admin_authorization,
+    )
     from codenib.ops.rerank import RerankContext
     from codenib.ops.retrieve import RetrieveContext
 
@@ -405,59 +412,88 @@ def _make_agent(
     )
     compiler.compile_repo(repo_path, cache_dir=cache_dir)
 
-    # Phase 2: load indexes, skills, build runner
-    manifest = RepoManifest.load(os.path.join(cache_dir, "repo_manifest.json"))
-    bm25_index, vector_store = None, None
+    # Phase 2: load indexes, skills, build runner.  Keep the vector store
+    # registered before loading so any partial native state is also released.
+    with ExitStack() as resources:
+        manifest = RepoManifest.load(os.path.join(cache_dir, "repo_manifest.json"))
+        bm25_index, vector_store = None, None
 
-    if "bm25" in manifest.indexes and manifest.indexes["bm25"].status == "fresh":
-        bm25_index = BM25CodeIndexer()
-        bm25_index.load_index(manifest.indexes["bm25"].path)
+        if "bm25" in manifest.indexes and manifest.indexes["bm25"].status == "fresh":
+            bm25_index = BM25CodeIndexer()
+            bm25_index.load_index(manifest.indexes["bm25"].path)
 
-    if "vector" in manifest.indexes and manifest.indexes["vector"].status == "fresh":
-        cfg = manifest.indexes["vector"].config
-        vector_store = CodeVectorStore(
-            embedding_model=cfg.get("embedding_model", args.embedding_model),
-            embedding_provider="huggingface",
-            dimension=cfg.get("embedding_dimension", args.embedding_dimension),
-            store_path=manifest.indexes["vector"].path,
+        if (
+            "vector" in manifest.indexes
+            and manifest.indexes["vector"].status == "fresh"
+        ):
+            entry = manifest.indexes["vector"]
+            artifact_contract = dict(entry.config)
+            with capture_authenticated_vector_view(entry.path) as vector_view:
+                native_authorization = _mint_trusted_local_admin_authorization(
+                    vector_view.ownership,
+                    view_type="vector",
+                    semantic_contract=artifact_contract,
+                    evidence=(
+                        "synthesized-eval-local-vector-view",
+                        "captured-vector-tree-subject",
+                    ),
+                )
+            vector_store = CodeVectorStore(
+                embedding_model=artifact_contract.get(
+                    "embedding_model", args.embedding_model
+                ),
+                embedding_provider="huggingface",
+                dimension=artifact_contract.get(
+                    "embedding_dimension", args.embedding_dimension
+                ),
+                store_path=entry.path,
+                artifact_metadata=artifact_contract,
+            )
+            resources.callback(vector_store.close)
+            vector_store.load(
+                entry.path,
+                native_index_authorization=native_authorization,
+            )
+
+        ctx: Dict[str, Any] = {
+            "retrieve": RetrieveContext(
+                bm25=bm25_index,
+                vector_store=vector_store,
+                default_top_k=args.topk,
+                default_level="l2",
+            ),
+        }
+        if vector_store:
+            ctx["rerank"] = RerankContext(embedding_store=vector_store)
+
+        skills_dir = os.path.join(_PROJECT_ROOT, "codenib", "agent", "skills")
+        SkillLoader().load_all(skills_dir, contexts=ctx)
+
+        runner = AgentRunner(
+            llm=LiteLLMChat(model=args.model, temperature=0.0, max_tokens=1024),
+            registry=SkillRegistry(),
+            max_turns=args.max_turns,
+            manifest=manifest,
+            session_ctx=SessionContext(
+                repo_path=repo_path,
+                repo_size=manifest.file_count,
+                primary_language=(
+                    manifest.languages[0] if manifest.languages else language
+                ),
+            ),
         )
-        vector_store.load(manifest.indexes["vector"].path)
 
-    ctx: Dict[str, Any] = {
-        "retrieve": RetrieveContext(
-            bm25=bm25_index,
-            vector_store=vector_store,
-            default_top_k=args.topk,
-            default_level="l2",
-        ),
-    }
-    if vector_store:
-        ctx["rerank"] = RerankContext(embedding_store=vector_store)
+        def query_fn(q: str, **_kw) -> List[QueriedNode]:
+            result = runner.run(q)
+            nodes: List[QueriedNode] = []
+            for tc in result.tool_calls:
+                if isinstance(tc.result, list):
+                    nodes.extend(n for n in tc.result if isinstance(n, QueriedNode))
+            return nodes
 
-    skills_dir = os.path.join(_PROJECT_ROOT, "codenib", "agent", "skills")
-    SkillLoader().load_all(skills_dir, contexts=ctx)
+        retained_resources = resources.pop_all()
 
-    runner = AgentRunner(
-        llm=LiteLLMChat(model=args.model, temperature=0.0, max_tokens=1024),
-        registry=SkillRegistry(),
-        max_turns=args.max_turns,
-        manifest=manifest,
-        session_ctx=SessionContext(
-            repo_path=repo_path,
-            repo_size=manifest.file_count,
-            primary_language=manifest.languages[0] if manifest.languages else language,
-        ),
-    )
-
-    def query_fn(q: str, **_kw) -> List[QueriedNode]:
-        result = runner.run(q)
-        nodes: List[QueriedNode] = []
-        for tc in result.tool_calls:
-            if isinstance(tc.result, list):
-                nodes.extend(n for n in tc.result if isinstance(n, QueriedNode))
-        return nodes
-
-    return runner, query_fn, lambda: None
+    return runner, query_fn, retained_resources.close
 
 
 _PIPELINE_FACTORIES = {
