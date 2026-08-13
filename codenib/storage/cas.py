@@ -16,13 +16,14 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Iterable, Iterator
+from typing import BinaryIO, Callable, Iterable, Iterator, TypeVar
 
 from .. import _atomic_directory as _atomic
 from .._owned_file_publication import (
     OwnedFileConflictError,
     PublishedFileReceipt,
     PublishedFileRecord,
+    _CancellationSafeRLock,
     publish_owned_file,
     require_owned_file_publication_support,
 )
@@ -53,6 +54,7 @@ _PORTABLE_LINK_UNSUPPORTED_ERRNOS = {
     if value is not None
 }
 _PORTABLE_PUBLISH_LOCKS = tuple(threading.Lock() for _ in range(64))
+_CASResult = TypeVar("_CASResult")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +112,9 @@ class LocalCAS:
         *,
         require_preprovisioned: bool = False,
     ) -> None:
+        self._lifecycle_lock = _CancellationSafeRLock()
+        self._owner_pid = os.getpid()
+        self._process_locks = {self._owner_pid: self._lifecycle_lock}
         if not isinstance(require_preprovisioned, bool):
             raise TypeError("require_preprovisioned must be a boolean")
         try:
@@ -274,14 +279,81 @@ class LocalCAS:
     def close(self) -> None:
         """Release strict generation anchors retained for this store."""
 
+        if not getattr(self, "_require_preprovisioned", False):
+            return
+        current_pid = os.getpid()
+        if current_pid != self._owner_pid:
+            child_lock = self._process_locks.setdefault(
+                current_pid,
+                _CancellationSafeRLock(),
+            )
+            close_error: BaseException | None = None
+            try:
+                child_lock.run(self._close_strict_resources_locked)
+            except BaseException as exc:  # noqa: B036 - report PID boundary
+                close_error = exc
+            boundary_error = StorageIntegrityError(
+                "strict CAS authority crossed a PID boundary"
+            )
+            if close_error is not None:
+                raise boundary_error from close_error
+            raise boundary_error
+        self._run_lifecycle(self._close_strict_resources_locked)
+
+    def _run_lifecycle(self, callback: Callable[[], _CASResult]) -> _CASResult:
+        """Run one same-process strict lifecycle transition linearly."""
+
+        return self._lifecycle_lock.run(callback)
+
+    def _close_strict_resources_locked(self) -> None:
         resources = self._strict_resources
         if resources is None:
             return
-        _close_posix_resources(resources)
-        self._strict_resources = None
-        self._strict_root_descriptor = None
-        self._strict_sha256_descriptor = None
-        self._strict_shard_descriptors.clear()
+        primary_error: BaseException | None = None
+        try:
+            _close_posix_resources(resources)
+        except BaseException as exc:  # noqa: B036 - settle closed ownership
+            primary_error = exc
+        try:
+            closed = resources.closed
+        except BaseException as observation_error:  # noqa: B036
+            if primary_error is None:
+                primary_error = observation_error
+            else:
+                _atomic._annotate_secondary_error(
+                    primary_error,
+                    "strict CAS close-state observation also failed",
+                    observation_error,
+                )
+            closed = False
+        if closed:
+            # Clear the owner first.  If cancellation interrupts a later store,
+            # every operation still observes the lifecycle as terminal.
+            self._strict_resources = None
+            self._strict_root_descriptor = None
+            self._strict_sha256_descriptor = None
+            self._strict_shard_descriptors = {}
+        if primary_error is not None:
+            raise primary_error.with_traceback(primary_error.__traceback__)
+
+    def _run_strict_operation(
+        self,
+        callback: Callable[[], _CASResult],
+    ) -> _CASResult:
+        """Serialize one strict operation with anchor cleanup."""
+
+        if not self._require_preprovisioned:
+            return callback()
+        if os.getpid() != self._owner_pid:
+            raise StorageIntegrityError("strict CAS authority crossed a PID boundary")
+
+        def run_locked() -> _CASResult:
+            resources = self._strict_resources
+            if resources is None or resources.closed:
+                raise StorageIntegrityError("strict CAS authority is closed")
+            return callback()
+
+        return self._run_lifecycle(run_locked)
 
     def __enter__(self) -> LocalCAS:
         return self
@@ -364,10 +436,13 @@ class LocalCAS:
     def put_bytes(self, data: bytes) -> BlobInfo:
         """Store *data*, deduplicating an already-valid immutable object."""
 
-        if not isinstance(data, bytes):
-            raise TypeError("CAS payload must be bytes")
-        digest = hashlib.sha256(data).hexdigest()
-        return self._publish_object(digest, len(data), data)
+        def put() -> BlobInfo:
+            if not isinstance(data, bytes):
+                raise TypeError("CAS payload must be bytes")
+            digest = hashlib.sha256(data).hexdigest()
+            return self._publish_object(digest, len(data), data)
+
+        return self._run_strict_operation(put)
 
     def put_file(self, source: str | Path) -> BlobInfo:
         """Store a stable snapshot of a regular file.
@@ -378,15 +453,18 @@ class LocalCAS:
         replaced or modified while it is being stored.
         """
 
-        source_path = Path(source)
-        digest, byte_size, source_signature = _hash_stable_file(source_path)
-        chunks = _stable_file_chunks(
-            source_path,
-            expected_signature=source_signature,
-            expected_digest=digest,
-            expected_size=byte_size,
-        )
-        return self._publish_object(digest, byte_size, chunks)
+        def put() -> BlobInfo:
+            source_path = Path(source)
+            digest, byte_size, source_signature = _hash_stable_file(source_path)
+            chunks = _stable_file_chunks(
+                source_path,
+                expected_signature=source_signature,
+                expected_digest=digest,
+                expected_size=byte_size,
+            )
+            return self._publish_object(digest, byte_size, chunks)
+
+        return self._run_strict_operation(put)
 
     def has(self, digest: str) -> bool:
         """Return whether a regular object exists for *digest*.
@@ -395,51 +473,74 @@ class LocalCAS:
         before trusting an object at a publication boundary.
         """
 
-        try:
-            handle = self.open(digest)
-        except FileNotFoundError:
-            return False
-        handle.close()
-        return True
+        def check() -> bool:
+            try:
+                handle = self.open(digest)
+            except FileNotFoundError:
+                return False
+            handle.close()
+            return True
+
+        return self._run_strict_operation(check)
 
     def open(self, digest: str) -> BinaryIO:
         """Open a CAS object for binary reading without following symlinks."""
 
-        digest = _validate_digest(digest)
-        with self._open_shard(digest) as (shard_descriptor, shard_path):
-            return _open_regular_at(
-                shard_descriptor,
-                shard_path,
-                digest[2:],
-                label="CAS object",
-            )
+        def open_object() -> BinaryIO:
+            validated = _validate_digest(digest)
+            with self._open_shard(validated) as (shard_descriptor, shard_path):
+                return _open_regular_at(
+                    shard_descriptor,
+                    shard_path,
+                    validated[2:],
+                    label="CAS object",
+                )
+
+        return self._run_strict_operation(open_object)
 
     def read_bytes(self, digest: str) -> bytes:
         """Read an object and reject content that does not match its key."""
 
-        chunks: list[bytes] = []
-        observed_digest, byte_size = self._consume_object(digest, chunks=chunks)
-        if observed_digest != digest:
-            raise StorageIntegrityError(f"CAS object digest mismatch for {digest}")
-        # ``byte_size`` is consumed to keep the full-read and verify paths
-        # symmetrical; joining the recorded chunks cannot change its value.
-        payload = b"".join(chunks)
-        if len(payload) != byte_size:
-            raise StorageIntegrityError(
-                f"CAS object size changed while reading {digest}"
-            )
-        return payload
+        def read() -> bytes:
+            chunks: list[bytes] = []
+            observed_digest, byte_size = self._consume_object(digest, chunks=chunks)
+            if observed_digest != digest:
+                raise StorageIntegrityError(f"CAS object digest mismatch for {digest}")
+            # ``byte_size`` is consumed to keep the full-read and verify paths
+            # symmetrical; joining the recorded chunks cannot change its value.
+            payload = b"".join(chunks)
+            if len(payload) != byte_size:
+                raise StorageIntegrityError(
+                    f"CAS object size changed while reading {digest}"
+                )
+            return payload
+
+        return self._run_strict_operation(read)
 
     def verify(self, digest: str) -> BlobInfo:
         """Fully verify an object and return its canonical metadata."""
 
-        observed_digest, byte_size = self._consume_object(digest)
-        if observed_digest != digest:
-            raise StorageIntegrityError(f"CAS object digest mismatch for {digest}")
-        return self._blob_info(digest, byte_size)
+        def verify_object() -> BlobInfo:
+            observed_digest, byte_size = self._consume_object(digest)
+            if observed_digest != digest:
+                raise StorageIntegrityError(f"CAS object digest mismatch for {digest}")
+            return self._blob_info(digest, byte_size)
+
+        return self._run_strict_operation(verify_object)
 
     def materialize(self, digest: str, destination: str | Path) -> Path:
         """Atomically copy a verified object to a regular destination path."""
+
+        return self._run_strict_operation(
+            lambda: self._materialize_locked(digest, destination)
+        )
+
+    def _materialize_locked(
+        self,
+        digest: str,
+        destination: str | Path,
+    ) -> Path:
+        """Copy an object while the strict lifecycle lease is held."""
 
         digest = _validate_digest(digest)
         source = self._object_path(digest)
@@ -565,7 +666,7 @@ class LocalCAS:
             return
         if os.getpid() != self._owner_pid:
             raise StorageIntegrityError("strict CAS authority crossed a PID boundary")
-        if self._strict_resources is None:
+        if self._strict_resources is None or self._strict_resources.closed:
             raise StorageIntegrityError("strict CAS authority is closed")
         anchors = (
             (

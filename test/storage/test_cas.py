@@ -8,7 +8,9 @@ import errno
 import hashlib
 import multiprocessing
 import os
+import signal
 import stat
+import threading
 from pathlib import Path
 from queue import Empty
 
@@ -692,6 +694,229 @@ def test_strict_put_retains_unlinked_shard_generation_authority(
     assert list(shard.iterdir()) == []
     store.close()
     _assert_bad_descriptor(retained)
+
+
+def test_strict_concurrent_close_traverses_retained_anchors_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ObservedCAS(LocalCAS):
+        def __init__(self, *args, **kwargs) -> None:
+            self.second_attempted = threading.Event()
+            super().__init__(*args, **kwargs)
+
+        def _run_lifecycle(self, callback):
+            if threading.current_thread().name == "second-close":
+                self.second_attempted.set()
+            return super()._run_lifecycle(callback)
+
+    store = ObservedCAS.provision(tmp_path / "objects")
+    resources = store._strict_resources
+    assert resources is not None
+    close_entered = threading.Event()
+    release_close = threading.Event()
+    finished: list[str] = []
+    errors: list[BaseException] = []
+    close_calls = 0
+    real_close_resources = cas_module._close_posix_resources
+
+    def blocking_close(candidate, *, primary_error=None) -> None:
+        nonlocal close_calls
+        if candidate is resources:
+            close_calls += 1
+            close_entered.set()
+            assert release_close.wait(timeout=30)
+        real_close_resources(candidate, primary_error=primary_error)
+
+    def close_store(label: str) -> None:
+        try:
+            store.close()
+        except BaseException as exc:  # noqa: B036 - report thread failure
+            errors.append(exc)
+        else:
+            finished.append(label)
+
+    monkeypatch.setattr(cas_module, "_close_posix_resources", blocking_close)
+    first = threading.Thread(target=close_store, args=("first",), name="first-close")
+    second = threading.Thread(
+        target=close_store,
+        args=("second",),
+        name="second-close",
+    )
+    first.start()
+    assert close_entered.wait(timeout=30)
+    second.start()
+    assert store.second_attempted.wait(timeout=30)
+
+    assert close_calls == 1
+    assert finished == []
+    release_close.set()
+    first.join(timeout=30)
+    second.join(timeout=30)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert errors == []
+    assert sorted(finished) == ["first", "second"]
+    assert close_calls == 1
+    assert store._strict_resources is None
+    with pytest.raises(StorageIntegrityError, match="authority is closed"):
+        store.put_bytes(b"after close")
+
+
+@pytest.mark.parametrize("operation", ["put", "read"])
+def test_strict_close_waits_for_active_put_and_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    class ObservedCAS(LocalCAS):
+        def __init__(self, *args, **kwargs) -> None:
+            self.close_attempted = threading.Event()
+            super().__init__(*args, **kwargs)
+
+        def _run_lifecycle(self, callback):
+            if getattr(callback, "__name__", "") == "_close_strict_resources_locked":
+                self.close_attempted.set()
+            return super()._run_lifecycle(callback)
+
+    store = ObservedCAS.provision(tmp_path / "objects")
+    initial = store.put_bytes(b"existing object")
+    strict_resources = store._strict_resources
+    assert strict_resources is not None
+    operation_entered = threading.Event()
+    release_operation = threading.Event()
+    cleanup_entered = threading.Event()
+    results: list[object] = []
+    errors: list[BaseException] = []
+    real_close_resources = cas_module._close_posix_resources
+
+    if operation == "put":
+        real_operation = cas_module.publish_owned_file
+
+        def blocked_publish(*args, **kwargs):
+            operation_entered.set()
+            assert release_operation.wait(timeout=30)
+            return real_operation(*args, **kwargs)
+
+        monkeypatch.setattr(cas_module, "publish_owned_file", blocked_publish)
+
+        def perform() -> object:
+            return store.put_bytes(b"concurrent object")
+
+    else:
+        real_operation = LocalCAS._consume_object
+
+        def blocked_consume(self, *args, **kwargs):
+            operation_entered.set()
+            assert release_operation.wait(timeout=30)
+            return real_operation(self, *args, **kwargs)
+
+        monkeypatch.setattr(LocalCAS, "_consume_object", blocked_consume)
+
+        def perform() -> object:
+            return store.read_bytes(initial.digest)
+
+    def observe_cleanup(resources, *, primary_error=None) -> None:
+        if resources is strict_resources:
+            cleanup_entered.set()
+        real_close_resources(resources, primary_error=primary_error)
+
+    def run_operation() -> None:
+        try:
+            results.append(perform())
+        except BaseException as exc:  # noqa: B036 - report thread failure
+            errors.append(exc)
+
+    def close_store() -> None:
+        try:
+            store.close()
+        except BaseException as exc:  # noqa: B036 - report thread failure
+            errors.append(exc)
+
+    monkeypatch.setattr(cas_module, "_close_posix_resources", observe_cleanup)
+    worker = threading.Thread(target=run_operation)
+    closer = threading.Thread(target=close_store)
+    worker.start()
+    assert operation_entered.wait(timeout=30)
+    closer.start()
+    assert store.close_attempted.wait(timeout=30)
+
+    assert not cleanup_entered.is_set()
+    release_operation.set()
+    worker.join(timeout=30)
+    closer.join(timeout=30)
+
+    assert not worker.is_alive()
+    assert not closer.is_alive()
+    assert errors == []
+    assert len(results) == 1
+    if operation == "read":
+        assert results == [b"existing object"]
+    assert cleanup_entered.is_set()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_strict_child_rejects_operations_and_closes_without_inherited_lock(
+    tmp_path: Path,
+) -> None:
+    store = LocalCAS.provision(tmp_path / "objects")
+    retained = store._strict_root_descriptor
+    assert retained is not None
+    lock_entered = threading.Event()
+    release_lock = threading.Event()
+
+    def hold_lock() -> None:
+        def hold() -> None:
+            lock_entered.set()
+            assert release_lock.wait(timeout=30)
+
+        store._lifecycle_lock.run(hold)
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    assert lock_entered.wait(timeout=30)
+    child = os.fork()
+    if child == 0:  # pragma: no cover - assertions reported through exit status
+        signal.alarm(10)
+        try:
+            try:
+                store.put_bytes(b"child operation")
+            except StorageIntegrityError as exc:
+                if "PID boundary" not in str(exc):
+                    os._exit(81)
+            else:
+                os._exit(82)
+            try:
+                store.close()
+            except StorageIntegrityError as exc:
+                if "PID boundary" not in str(exc):
+                    os._exit(83)
+            else:
+                os._exit(84)
+            try:
+                os.fstat(retained)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    os._exit(85)
+            else:
+                os._exit(86)
+            os._exit(0)
+        except Exception:
+            os._exit(87)
+
+    try:
+        _pid, status = os.waitpid(child, 0)
+        assert os.WIFEXITED(status)
+        assert os.WEXITSTATUS(status) == 0
+    finally:
+        release_lock.set()
+        holder.join(timeout=30)
+
+    assert not holder.is_alive()
+    os.fstat(retained)
+    assert store.put_bytes(b"parent operation").byte_size == len(b"parent operation")
+    store.close()
 
 
 @pytest.mark.parametrize("layer", ["root", "sha256", "shard"])

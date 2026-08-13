@@ -69,6 +69,18 @@ _F_SEAL_SHRINK = 0x0002
 _F_SEAL_GROW = 0x0004
 _F_SEAL_WRITE = 0x0008
 _REQUIRED_SNAPSHOT_SEALS = _F_SEAL_SEAL | _F_SEAL_SHRINK | _F_SEAL_GROW | _F_SEAL_WRITE
+_SNAPSHOT_UNAVAILABLE_ERRNOS = {
+    value
+    for value in (
+        getattr(errno, "EACCES", None),
+        getattr(errno, "EINVAL", None),
+        getattr(errno, "ENOSYS", None),
+        getattr(errno, "ENOTSUP", None),
+        getattr(errno, "EOPNOTSUPP", None),
+        getattr(errno, "EPERM", None),
+    )
+    if value is not None
+}
 _UNSET_DESTINATION_OWNERSHIP = object()
 _MAX_WORKSPACE_FILE_BYTES = 64 * 1024 * 1024 * 1024
 _MAX_WORKSPACE_TOTAL_BYTES = 64 * 1024 * 1024 * 1024
@@ -89,10 +101,17 @@ def _create_sealable_memfd() -> int:
 
     create = getattr(os, "memfd_create", None)
     if callable(create) and _fcntl is not None:
-        return create(
-            "codenib-authenticated-snapshot",
-            _MFD_CLOEXEC | _MFD_ALLOW_SEALING,
-        )
+        try:
+            return create(
+                "codenib-authenticated-snapshot",
+                _MFD_CLOEXEC | _MFD_ALLOW_SEALING,
+            )
+        except OSError as exc:
+            if exc.errno not in _SNAPSHOT_UNAVAILABLE_ERRNOS:
+                raise
+            raise _SnapshotUnavailable(
+                "sealed authenticated snapshots are unavailable on this host"
+            ) from exc
     if os.name != "posix" or _fcntl is None:
         raise _SnapshotUnavailable(
             "sealed authenticated snapshots are unavailable on this host"
@@ -111,9 +130,12 @@ def _create_sealable_memfd() -> int:
     )
     if descriptor < 0:
         error = ctypes.get_errno()
+        failure = OSError(error, os.strerror(error))
+        if error not in _SNAPSHOT_UNAVAILABLE_ERRNOS:
+            raise failure
         raise _SnapshotUnavailable(
             "sealed authenticated snapshots are unavailable on this host"
-        ) from OSError(error, os.strerror(error))
+        ) from failure
     return descriptor
 
 
@@ -134,10 +156,17 @@ def _seal_snapshot_descriptor(descriptor: int) -> None:
         raise _SnapshotUnavailable(
             "sealed authenticated snapshots are unavailable on this host"
         )
-    _fcntl.fcntl(descriptor, _F_ADD_SEALS, _REQUIRED_SNAPSHOT_SEALS)
-    observed = _fcntl.fcntl(descriptor, _F_GET_SEALS)
+    try:
+        _fcntl.fcntl(descriptor, _F_ADD_SEALS, _REQUIRED_SNAPSHOT_SEALS)
+        observed = _fcntl.fcntl(descriptor, _F_GET_SEALS)
+    except OSError as exc:
+        if exc.errno not in _SNAPSHOT_UNAVAILABLE_ERRNOS:
+            raise
+        raise _SnapshotUnavailable(
+            "sealed authenticated snapshots are unavailable on this host"
+        ) from exc
     if observed & _REQUIRED_SNAPSHOT_SEALS != _REQUIRED_SNAPSHOT_SEALS:
-        raise RuntimeError("authenticated snapshot could not be sealed")
+        raise _SnapshotUnavailable("authenticated snapshot could not be sealed")
     os.lseek(descriptor, 0, os.SEEK_SET)
 
 
@@ -484,6 +513,88 @@ class WorkspacePlan:
         object.__setattr__(self, "digest", plan_digest.hexdigest())
 
 
+def _snapshot_workspace_plan(plan: object) -> WorkspacePlan:
+    """Detach one exact plan from caller-visible frozen dataclasses."""
+
+    if type(plan) is not WorkspacePlan:
+        raise TypeError("owned workspace plan must be an exact WorkspacePlan")
+    subject_digest = plan.subject_digest
+    root_mode = plan.root_mode
+    source_directories = plan.directories
+    source_files = plan.files
+    source_digest = plan.digest
+    if (
+        type(subject_digest) is not str
+        or type(root_mode) is not int
+        or type(source_directories) is not tuple
+        or type(source_files) is not tuple
+        or type(source_digest) is not str
+    ):
+        raise TypeError("owned workspace plan fields must use exact types")
+
+    directory_fields: list[tuple[str, int]] = []
+    file_fields: list[tuple[str, int, int]] = []
+
+    def snapshot_paths() -> Iterator[bytes]:
+        for directory in source_directories:
+            if type(directory) is not WorkspaceDirectory:
+                raise TypeError("owned workspace directories must use exact types")
+            path = directory.path
+            mode = directory.mode
+            if type(path) is not PurePosixPath or type(mode) is not int:
+                raise TypeError("owned workspace directory fields must use exact types")
+            path_text = path.as_posix()
+            directory_fields.append((path_text, mode))
+            yield os.fsencode(path_text)
+        for file in source_files:
+            if type(file) is not WorkspaceFile:
+                raise TypeError("owned workspace files must use exact types")
+            path = file.path
+            mode = file.mode
+            max_bytes = file.max_bytes
+            if (
+                type(path) is not PurePosixPath
+                or type(mode) is not int
+                or type(max_bytes) is not int
+            ):
+                raise TypeError("owned workspace file fields must use exact types")
+            path_text = path.as_posix()
+            file_fields.append((path_text, mode, max_bytes))
+            yield os.fsencode(path_text)
+
+    try:
+        _validate_ownership_inventory_budget(snapshot_paths())
+    except RuntimeError as exc:
+        raise ValueError(
+            "owned workspace plan exceeds the ownership scanner budget"
+        ) from exc
+
+    directories = tuple(
+        WorkspaceDirectory(
+            PurePosixPath(path),
+            mode=mode,
+        )
+        for path, mode in directory_fields
+    )
+    files = tuple(
+        WorkspaceFile(
+            PurePosixPath(path),
+            mode=mode,
+            max_bytes=max_bytes,
+        )
+        for path, mode, max_bytes in file_fields
+    )
+    detached = WorkspacePlan(
+        subject_digest=subject_digest,
+        directories=directories,
+        files=files,
+        root_mode=root_mode,
+    )
+    if detached.digest != source_digest:
+        raise ValueError("owned workspace plan digest is inconsistent")
+    return detached
+
+
 class UnsupportedWorkspaceCreation(RuntimeError):
     """Strict workspace creation is unavailable without a native creator."""
 
@@ -517,7 +628,7 @@ class PublishedWorkspaceReceipt:
 
     __slots__ = (
         "path",
-        "plan",
+        "_plan",
         "sealed_ownership",
         "ownership",
         "parent_identity",
@@ -542,7 +653,7 @@ class PublishedWorkspaceReceipt:
         # therefore be reconciled against the same transfer held by the owner.
         self._transfer = transfer
         self.path = path
-        self.plan = plan
+        self._plan = _snapshot_workspace_plan(plan)
         self.sealed_ownership = sealed_ownership
         self.ownership = published_ownership
         self.parent_identity = parent_identity
@@ -552,7 +663,13 @@ class PublishedWorkspaceReceipt:
 
     @property
     def plan_digest(self) -> str:
-        return self.plan.digest
+        return self._plan.digest
+
+    @property
+    def plan(self) -> WorkspacePlan:
+        """Return a detached diagnostic copy of the publication plan."""
+
+        return _snapshot_workspace_plan(self._plan)
 
     @property
     def closed(self) -> bool:
@@ -1910,7 +2027,7 @@ class OwnedWorkspaceAuthority:
         def get_plan() -> WorkspacePlan:
             if self._plan is None:
                 raise RuntimeError("owned workspace authority has not been adopted")
-            return self._plan
+            return _snapshot_workspace_plan(self._plan)
 
         return self._lock.run(get_plan)
 
@@ -1939,6 +2056,10 @@ class OwnedWorkspaceAuthority:
         """Adopt a pre-opened sibling root and exact empty-file skeleton."""
 
         self._require_owner_pid()
+        if not sys.platform.startswith("linux"):
+            raise UnsupportedWorkspaceCreation(
+                "strict pre-opened workspace publication requires Linux"
+            )
         self._reject_reentrant("adopt")
         self._lock.run(
             lambda: self._adopt_locked(
@@ -1969,12 +2090,7 @@ class OwnedWorkspaceAuthority:
         self._require_owner_pid()
         if self._state != "empty":
             raise RuntimeError("owned workspace authority is not empty")
-        if not (sys.platform.startswith("linux") or sys.platform == "darwin"):
-            raise UnsupportedWorkspaceCreation(
-                "strict pre-opened workspaces require POSIX directory fds"
-            )
-        if not isinstance(plan, WorkspacePlan):
-            raise TypeError("owned workspace plan must be WorkspacePlan")
+        plan = _snapshot_workspace_plan(plan)
         if (
             isinstance(parent_descriptor, bool)
             or not isinstance(parent_descriptor, int)
@@ -2399,7 +2515,7 @@ class OwnedWorkspaceAuthority:
         # covered by publish_into's outer exception reconciliation.  Keeping
         # that reconciliation outside the workspace lock avoids an ABBA with
         # receipt consume/close, whose lifecycle order is owner then workspace.
-        self._publication_transfer = transfer
+        self._store_publication_transfer_locked(transfer)
         self._resources_transferred = True
         self._state = "reserving-publication"
         receipt_owner._reserve(reservation)
@@ -2425,7 +2541,7 @@ class OwnedWorkspaceAuthority:
             receipt = PublishedWorkspaceReceipt(
                 transfer=transfer,
                 path=destination,
-                plan=plan,
+                plan=_snapshot_workspace_plan(plan),
                 sealed_ownership=sealed_ownership,
                 published_ownership=published_ownership,
                 parent_identity=authority.identity,
@@ -2445,6 +2561,14 @@ class OwnedWorkspaceAuthority:
             expected_destination_ownership=self._expected_destination,
             commit_callback=install_receipt,
         )
+
+    def _store_publication_transfer_locked(
+        self,
+        transfer: _WorkspacePublicationTransfer,
+    ) -> None:
+        """Install the first recoverable publication ownership marker."""
+
+        self._publication_transfer = transfer
 
     def _reconcile_publish_failure_outside_lock(
         self,
@@ -2616,7 +2740,7 @@ class OwnedWorkspaceAuthority:
                 self._state != "published"
                 or self._publication_transfer is not receipt._transfer
                 or self._destination != receipt.path
-                or self._plan != receipt.plan
+                or self._plan != receipt._plan
             ):
                 raise RuntimeError("published workspace receipt is not active")
             authority = self._require_parent_authority()

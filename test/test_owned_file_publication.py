@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import dis
 import errno
 import hashlib
 import multiprocessing
@@ -54,46 +53,6 @@ def _set_nonzero_directory_offset(descriptor: int) -> int:
     return offset
 
 
-def _call_with_interrupt_before_store(
-    function: object,
-    local_name: str,
-    callback: object,
-    *,
-    error: BaseException,
-) -> None:
-    """Raise while a call result is on-stack before its first STORE_FAST."""
-
-    assert callable(function)
-    assert callable(callback)
-    code = function.__code__
-    store_offsets = {
-        instruction.offset
-        for instruction in dis.get_instructions(function)
-        if instruction.opname == "STORE_FAST" and instruction.argval == local_name
-    }
-    assert store_offsets
-    previous_trace = sys.gettrace()
-
-    def trace(frame: object, event: str, _arg: object) -> object:
-        if event == "call" and frame.f_code is code:
-            frame.f_trace_opcodes = True
-            return trace
-        if (
-            event == "opcode"
-            and frame.f_code is code
-            and frame.f_lasti in store_offsets
-        ):
-            sys.settrace(None)
-            raise error
-        return trace
-
-    sys.settrace(trace)
-    try:
-        callback()
-    finally:
-        sys.settrace(previous_trace)
-
-
 def _store_publish_result(
     publication: OwnedFilePublicationAuthority,
     receipt_owner: PublishedFileReceiptOwner,
@@ -106,7 +65,7 @@ def _store_helper_result(
     destination: Path,
     receipt_owner: PublishedFileReceiptOwner,
 ) -> None:
-    result = publish_owned_file(
+    result = publication_module.publish_owned_file(
         destination,
         [b"x"],
         max_bytes=1,
@@ -471,6 +430,7 @@ def test_borrowed_parent_bridge_retries_repeated_eio_without_touching_caller(
 @pytest.mark.parametrize("exception_type", [KeyboardInterrupt, SystemExit])
 def test_publish_into_caller_store_cancellation_keeps_owner_and_leaks_no_fd(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     exception_type: type[BaseException],
 ) -> None:
     before = _descriptor_count()
@@ -478,15 +438,25 @@ def test_publish_into_caller_store_cancellation_keeps_owner_and_leaks_no_fd(
     publication.write([b"x"])
     receipt_owner = PublishedFileReceiptOwner()
     interruption = exception_type("injected before caller receipt-result store")
+    real_publish = OwnedFilePublicationAuthority.publish_into
+
+    def publish_then_interrupt(
+        candidate: OwnedFilePublicationAuthority,
+        owner: PublishedFileReceiptOwner,
+    ) -> None:
+        real_publish(candidate, owner)
+        if candidate is publication:
+            raise interruption
+
+    monkeypatch.setattr(
+        OwnedFilePublicationAuthority,
+        "publish_into",
+        publish_then_interrupt,
+    )
 
     try:
         with pytest.raises(exception_type) as caught:
-            _call_with_interrupt_before_store(
-                _store_publish_result,
-                "result",
-                lambda: _store_publish_result(publication, receipt_owner),
-                error=interruption,
-            )
+            _store_publish_result(publication, receipt_owner)
         assert caught.value is interruption
         assert publication.state == "published"
         assert receipt_owner.active
@@ -502,21 +472,28 @@ def test_publish_into_caller_store_cancellation_keeps_owner_and_leaks_no_fd(
 @pytest.mark.parametrize("exception_type", [KeyboardInterrupt, SystemExit])
 def test_helper_caller_store_cancellation_keeps_owner_and_leaks_no_fd(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     exception_type: type[BaseException],
 ) -> None:
     before = _descriptor_count()
     destination = tmp_path / "object"
     receipt_owner = PublishedFileReceiptOwner()
     interruption = exception_type("injected before caller helper-result store")
+    real_helper = publication_module.publish_owned_file
+
+    def helper_then_interrupt(*args, **kwargs) -> None:
+        real_helper(*args, **kwargs)
+        raise interruption
+
+    monkeypatch.setattr(
+        publication_module,
+        "publish_owned_file",
+        helper_then_interrupt,
+    )
 
     try:
         with pytest.raises(exception_type) as caught:
-            _call_with_interrupt_before_store(
-                _store_helper_result,
-                "result",
-                lambda: _store_helper_result(destination, receipt_owner),
-                error=interruption,
-            )
+            _store_helper_result(destination, receipt_owner)
         assert caught.value is interruption
         assert receipt_owner.active
         assert receipt_owner.receipt.read_bytes(max_bytes=1) == b"x"
@@ -726,6 +703,7 @@ def test_different_existing_file_is_a_non_destructive_conflict(
 ) -> None:
     destination = tmp_path / "object"
     destination.write_bytes(b"old")
+    destination.chmod(0o644)
 
     with PublishedFileReceiptOwner() as receipt_owner:
         with pytest.raises(OwnedFileConflictError) as caught:
@@ -2632,6 +2610,7 @@ def test_failure_and_receipt_close_do_not_leak_descriptors(tmp_path: Path) -> No
     before = len(list(Path("/proc/self/fd").iterdir()))
     destination = tmp_path / "object"
     destination.write_bytes(b"old")
+    destination.chmod(0o644)
     for index in range(12):
         with PublishedFileReceiptOwner() as failed_owner:
             with pytest.raises(OwnedFileConflictError):

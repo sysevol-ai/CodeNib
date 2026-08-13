@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import dis
 import errno
 import os
 import signal
@@ -14,7 +13,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
-from typing import Callable, Iterator
+from typing import Iterator
 
 import pytest
 
@@ -72,80 +71,6 @@ def _preopened_workspace(
             os.close(descriptor)
         os.close(root_descriptor)
         os.close(parent_descriptor)
-
-
-def _interrupt_before_store(
-    callback: Callable[[], object],
-    *,
-    local_name: str,
-    error: BaseException,
-) -> None:
-    target_code = callback.__code__
-    instructions = {
-        instruction.offset: instruction
-        for instruction in dis.get_instructions(target_code)
-    }
-    previous_trace = sys.gettrace()
-
-    def trace(frame, event, _arg):
-        if event == "call" and frame.f_code is target_code:
-            frame.f_trace_opcodes = True
-            return trace
-        if event == "opcode" and frame.f_code is target_code:
-            instruction = instructions.get(frame.f_lasti)
-            if (
-                instruction is not None
-                and instruction.opname == "STORE_FAST"
-                and instruction.argval == local_name
-            ):
-                sys.settrace(None)
-                raise error
-        return trace
-
-    sys.settrace(trace)
-    try:
-        callback()
-    finally:
-        sys.settrace(previous_trace)
-
-
-def _interrupt_after_store_attr(
-    callback: Callable[[], object],
-    *,
-    target_code: object,
-    attribute: str,
-    error: BaseException,
-) -> None:
-    instructions = {
-        instruction.offset: instruction
-        for instruction in dis.get_instructions(target_code)
-    }
-    previous_trace = sys.gettrace()
-    armed = False
-
-    def trace(frame, event, _arg):
-        nonlocal armed
-        if event == "call" and frame.f_code is target_code:
-            frame.f_trace_opcodes = True
-            return trace
-        if event == "opcode" and frame.f_code is target_code:
-            if armed:
-                sys.settrace(None)
-                raise error
-            instruction = instructions.get(frame.f_lasti)
-            if (
-                instruction is not None
-                and instruction.opname == "STORE_ATTR"
-                and instruction.argval == attribute
-            ):
-                armed = True
-        return trace
-
-    sys.settrace(trace)
-    try:
-        callback()
-    finally:
-        sys.settrace(previous_trace)
 
 
 def _as_windows_ownership(ownership: object) -> object:
@@ -814,6 +739,133 @@ def test_authenticated_snapshot_has_bounded_immutable_bytes_fallback(
         reader.close()
 
 
+@pytest.mark.parametrize("blocked_errno", [errno.ENOSYS, errno.EPERM])
+def test_authenticated_snapshot_falls_back_when_memfd_syscall_is_blocked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    blocked_errno: int,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    payload = b"portable snapshot"
+    (root / "payload").write_bytes(payload)
+    reader = CapturedDirectoryReader(root, capture_directory_ownership(root))
+
+    def blocked(*_args, **_kwargs) -> int:
+        raise OSError(blocked_errno, "memfd blocked")
+
+    monkeypatch.setattr(captured_directory.os, "memfd_create", blocked, raising=False)
+    try:
+        with reader.authenticated_snapshot("payload") as (snapshot, _record):
+            assert snapshot.read() == payload
+            with pytest.raises(RuntimeError, match="no sealed descriptor"):
+                _ = snapshot.descriptor
+    finally:
+        reader.close()
+
+
+def test_authenticated_snapshot_does_not_hide_memfd_resource_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "payload").write_bytes(b"payload")
+    reader = CapturedDirectoryReader(root, capture_directory_ownership(root))
+
+    def exhausted(*_args, **_kwargs) -> int:
+        raise OSError(errno.EMFILE, "descriptor limit")
+
+    monkeypatch.setattr(
+        captured_directory.os,
+        "memfd_create",
+        exhausted,
+        raising=False,
+    )
+    try:
+        with pytest.raises(ValueError, match="copied immutably") as caught:
+            with reader.authenticated_snapshot("payload"):
+                pass
+        assert isinstance(caught.value.__cause__, OSError)
+        assert caught.value.__cause__.errno == errno.EMFILE
+    finally:
+        reader.close()
+
+
+def test_authenticated_snapshot_falls_back_when_sealing_is_blocked_and_closes_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    payload = b"seal fallback"
+    (root / "payload").write_bytes(payload)
+    reader = CapturedDirectoryReader(root, capture_directory_ownership(root))
+    created: list[int] = []
+
+    def create_stage() -> int:
+        descriptor = os.open(
+            tmp_path / "snapshot-stage",
+            os.O_RDWR | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        created.append(descriptor)
+        return descriptor
+
+    def blocked_seal(
+        _descriptor: int,
+        command: int,
+        *_args: object,
+    ) -> int:
+        assert command == captured_directory._F_ADD_SEALS
+        raise OSError(errno.EPERM, "sealing blocked")
+
+    monkeypatch.setattr(captured_directory, "_create_sealable_memfd", create_stage)
+    assert captured_directory._fcntl is not None
+    monkeypatch.setattr(captured_directory._fcntl, "fcntl", blocked_seal)
+    try:
+        with reader.authenticated_snapshot("payload") as (snapshot, _record):
+            assert snapshot.read() == payload
+    finally:
+        reader.close()
+
+    assert len(created) == 1
+    with pytest.raises(OSError) as caught:
+        os.fstat(created[0])
+    assert caught.value.errno == errno.EBADF
+
+
+def test_authenticated_snapshot_blocked_memfd_obeys_memory_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "payload").write_bytes(b"oversized")
+    reader = CapturedDirectoryReader(root, capture_directory_ownership(root))
+    source = reader.open_file("payload")
+
+    def blocked(*_args, **_kwargs) -> int:
+        raise OSError(errno.EPERM, "memfd blocked")
+
+    def forbidden_copy(*_args, **_kwargs) -> None:
+        raise AssertionError("oversized fallback copied bytes into memory")
+
+    monkeypatch.setattr(captured_directory.os, "memfd_create", blocked, raising=False)
+    monkeypatch.setattr(captured_directory, "_MAX_IN_MEMORY_SNAPSHOT_BYTES", 1)
+    monkeypatch.setattr(
+        captured_directory.AuthenticatedFile,
+        "_copy_authenticated_from_start",
+        forbidden_copy,
+    )
+    try:
+        with pytest.raises(ValueError, match="fallback limit"):
+            source.immutable_snapshot()
+    finally:
+        source.close()
+        reader.close()
+
+
 @pytest.mark.parametrize("force_memory_fallback", [False, True])
 def test_authenticated_snapshot_rewinds_after_partial_source_read(
     tmp_path: Path,
@@ -1401,6 +1453,56 @@ def test_strict_workspace_create_fails_before_filesystem_mutation(
         OwnedWorkspaceAuthority.create()
 
 
+def test_preopened_workspace_rejects_darwin_before_state_or_resource_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="4" * 64,
+        files=(WorkspaceFile("payload", max_bytes=4),),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+
+        def forbidden(*_args, **_kwargs) -> None:
+            raise AssertionError("Darwin adoption acquired a lifecycle resource")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(captured_directory.sys, "platform", "darwin")
+            patch.setattr(
+                captured_directory,
+                "_open_publication_authority",
+                forbidden,
+            )
+            patch.setattr(
+                captured_directory._CancellationSafeRLock,
+                "run",
+                forbidden,
+            )
+            with pytest.raises(UnsupportedWorkspaceCreation, match="requires Linux"):
+                workspace.adopt(
+                    destination=destination,
+                    stage_name=stage.name,
+                    parent_descriptor=parent_fd,
+                    root_descriptor=root_fd,
+                    directory_descriptors=directories,
+                    plan=plan,
+                    expected_destination=None,
+                )
+
+        assert workspace.state == "empty"
+        assert workspace._destination is None
+        assert workspace._stage_path is None
+        assert workspace._plan is None
+        assert workspace._parent_owner.authority is None
+        assert workspace._resources.closed
+        assert workspace._root_descriptor == -1
+        assert workspace._directory_descriptors == {}
+        os.fstat(parent_fd)
+        os.fstat(root_fd)
+
+
 def test_preopened_workspace_seal_rejects_external_hardlink(
     tmp_path: Path,
 ) -> None:
@@ -1456,6 +1558,7 @@ def test_preopened_workspace_seal_is_idempotently_recoverable(
 
 def test_preopened_workspace_seal_return_interruption_keeps_token_recoverable(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plan = WorkspacePlan(
         subject_digest="8" * 64,
@@ -1475,16 +1578,22 @@ def test_preopened_workspace_seal_return_interruption_keeps_token_recoverable(
         )
         workspace.write_file("payload", [b"safe"])
 
-        def seal_and_store() -> object:
-            ownership = workspace.seal()
+        real_seal = workspace.seal
+        interruption = KeyboardInterrupt("seal return")
+        interrupted = False
+
+        def seal_then_interrupt() -> object:
+            nonlocal interrupted
+            ownership = real_seal()
+            if not interrupted:
+                interrupted = True
+                raise interruption
             return ownership
 
+        monkeypatch.setattr(workspace, "seal", seal_then_interrupt)
+
         with pytest.raises(KeyboardInterrupt, match="seal return"):
-            _interrupt_before_store(
-                seal_and_store,
-                local_name="ownership",
-                error=KeyboardInterrupt("seal return"),
-            )
+            workspace.seal()
 
         ownership = workspace.seal()
         assert directory_ownership_file_records(ownership)[0].path == "payload"
@@ -1938,6 +2047,104 @@ def test_owned_workspace_publish_installs_fresh_durable_receipt(
         receipt_owner.close()
         assert receipt_owner.closed
         assert receipt.closed
+
+
+def test_owned_workspace_detaches_caller_and_public_plan_mutation(
+    tmp_path: Path,
+) -> None:
+    source_directory = WorkspaceDirectory("nested")
+    source_file = WorkspaceFile("nested/payload", max_bytes=8)
+    plan = WorkspacePlan(
+        subject_digest="3" * 64,
+        directories=(source_directory,),
+        files=(source_file,),
+    )
+    alternate = WorkspacePlan(
+        subject_digest="4" * 64,
+        files=(WorkspaceFile("alternate", max_bytes=8),),
+    )
+    original_digest = plan.digest
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            expected_destination=None,
+        )
+
+        object.__setattr__(source_directory, "path", PurePosixPath("rebound"))
+        object.__setattr__(source_file, "path", PurePosixPath("rebound/payload"))
+        object.__setattr__(source_file, "max_bytes", 1)
+        object.__setattr__(plan, "subject_digest", alternate.subject_digest)
+        object.__setattr__(plan, "directories", alternate.directories)
+        object.__setattr__(plan, "files", alternate.files)
+        object.__setattr__(plan, "digest", alternate.digest)
+        authority_projection = workspace.plan
+        assert authority_projection.digest == original_digest
+        assert authority_projection.files[0].path.as_posix() == "nested/payload"
+        assert authority_projection.files[0].max_bytes == 8
+
+        object.__setattr__(authority_projection.files[0], "path", PurePosixPath("evil"))
+        object.__setattr__(authority_projection, "files", alternate.files)
+        object.__setattr__(authority_projection, "digest", alternate.digest)
+        assert workspace.plan.digest == original_digest
+        assert workspace.plan.files[0].path.as_posix() == "nested/payload"
+        assert workspace.plan.files[0].max_bytes == 8
+
+        workspace.write_file("nested/payload", [b"durable"])
+        workspace.seal()
+        receipt_owner = PublishedWorkspaceReceiptOwner()
+        workspace.publish_into(receipt_owner)
+        receipt = receipt_owner.receipt
+        assert receipt.plan_digest == original_digest
+
+        receipt_projection = receipt.plan
+        object.__setattr__(receipt_projection.files[0], "path", PurePosixPath("evil"))
+        object.__setattr__(receipt_projection.files[0], "max_bytes", 1)
+        object.__setattr__(receipt_projection, "directories", ())
+        object.__setattr__(receipt_projection, "digest", alternate.digest)
+        assert receipt.plan_digest == original_digest
+        assert receipt.plan.files[0].path.as_posix() == "nested/payload"
+        assert receipt.plan.files[0].max_bytes == 8
+        assert (
+            receipt_owner.consume(lambda borrowed, _reader: borrowed.plan_digest)
+            == original_digest
+        )
+        receipt_owner.close()
+
+
+def test_owned_workspace_rejects_polluted_plan_before_resource_acquisition(
+    tmp_path: Path,
+) -> None:
+    plan = WorkspacePlan(subject_digest="5" * 64)
+    object.__setattr__(plan, "files", [])
+    with _preopened_workspace(
+        tmp_path, WorkspacePlan(subject_digest="5" * 64)
+    ) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+
+        with pytest.raises(TypeError, match="exact types"):
+            workspace.adopt(
+                destination=destination,
+                stage_name=stage.name,
+                parent_descriptor=parent_fd,
+                root_descriptor=root_fd,
+                directory_descriptors=directories,
+                plan=plan,
+                expected_destination=None,
+            )
+
+        assert workspace.state == "empty"
+        assert workspace._parent_owner.authority is None
+        assert workspace._resources.closed
+        os.fstat(parent_fd)
+        os.fstat(root_fd)
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
@@ -2462,6 +2669,7 @@ def test_owned_workspace_child_closes_reserved_publication_resources(
 
 def test_owned_workspace_first_transfer_store_interruption_is_reconciled(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plan = WorkspacePlan(subject_digest="e" * 64)
     with _preopened_workspace(tmp_path, plan) as opened:
@@ -2479,13 +2687,22 @@ def test_owned_workspace_first_transfer_store_interruption_is_reconciled(
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
 
-        with pytest.raises(SystemExit, match="first transfer store"):
-            _interrupt_after_store_attr(
-                lambda: workspace.publish_into(receipt_owner),
-                target_code=OwnedWorkspaceAuthority._publish_into_locked.__code__,
-                attribute="_publication_transfer",
-                error=SystemExit("first transfer store interruption"),
-            )
+        real_store = OwnedWorkspaceAuthority._store_publication_transfer_locked
+        interruption = SystemExit("first transfer store interruption")
+
+        def store_then_interrupt(self, transfer) -> None:
+            real_store(self, transfer)
+            raise interruption
+
+        monkeypatch.setattr(
+            OwnedWorkspaceAuthority,
+            "_store_publication_transfer_locked",
+            store_then_interrupt,
+        )
+        with pytest.raises(SystemExit, match="first transfer store") as caught:
+            workspace.publish_into(receipt_owner)
+
+        assert caught.value is interruption
 
         assert workspace.state == "closed"
         assert receipt_owner.state == "empty"
