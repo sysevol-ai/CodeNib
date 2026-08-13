@@ -230,13 +230,14 @@ instead of another per-file language-boundary crossing.
 
 [#599](https://github.com/sysevol-ai/CodeNib/issues/599) defines the rejection
 gate for one repository-level successor without adding that successor. It does
-not reuse or retune the #558 per-file candidate, add C++ code, or change a
-production chunking route. The candidate is the fixed private #600 adapter
+not reuse or retune the #558 per-file candidate or change a production
+chunking route. [#600](https://github.com/sysevol-ai/CodeNib/issues/600)
+temporarily supplied the fixed private adapter
 `codenib.code_chunking.python_repository_batch_poc.run_python_repository_batch`
-with `CODENIB_NATIVE_PYTHON_CHUNK_BATCH=required`. Until that adapter exists,
-the controller validates the complete benchmark contract, writes its report
-atomically, and exits nonzero instead of comparing the established arm with
-itself.
+and measured it with `CODENIB_NATIVE_PYTHON_CHUNK_BATCH=required`. The
+canonical gate rejected every global worker variant, so the adapter, C++
+batch implementation, bindings, build option, and runtime environment switch
+were removed rather than retained as dead experimental code.
 
 The versioned manifest fixes clean detached checkouts of CodeNib
 `a33bb13118e3a04f8d3d76eabcfb2602f785477a` and HTTPie
@@ -285,12 +286,27 @@ make python-repository-chunk-gate \
   CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
 ```
 
-The default report is
-`/tmp/codenib-python-repository-chunk-gate.json`. Before #600 supplies the
-adapter, the expected result is a complete fail-closed report and a nonzero
-exit. After #600 connects it, the unchanged command becomes the formal
-four-cell performance gate. Raw machine reports remain local; only their hash
-and durable decision belong in the issue and roadmap.
+The August 12, 2026 formal run used 576 unique sample processes and preserved
+the ordered seven-field chunk sequence plus the canonical sorted-unique node
+set in all 288 pairs. Every candidate sample used one native batch call and
+zero fallbacks. Peak RSS used each Linux worker's process-scoped `VmHWM` from
+`/proc/self/status`; a missing or malformed value fails the canonical gate.
+Worker 1 regressed all four cells. Worker 2 cleared both time
+cutoffs for the two CodeNib cells but exceeded the RSS limit and missed both
+time cutoffs on HTTPie. Worker 4 cleared both CodeNib time cutoffs but exceeded
+their RSS limit; on HTTPie it passed only the continuity cell, while BM25
+improved by 17.115% at p50 and 12.761% at p95. No one worker count passed all
+four cells, so no successor was promoted and production chunking is unchanged.
+
+The authoritative local report has SHA-256
+`e580b29b5eb3e5c5373eb5b90bd107c7e5f7b6dfbaf326b64f941952ed9f01a4`;
+the complete receipt and all twelve cell results are retained in the
+[multi-language roadmap](../../docs/scip_multilanguage_roadmap.md). Raw
+machine JSON is not versioned. With the rejected adapter absent, the command
+above again performs the full subject/configuration preflight, writes an
+atomic diagnostic report to
+`/tmp/codenib-python-repository-chunk-gate.json`, and exits nonzero. It must
+not substitute legacy for the missing candidate.
 
 ## File Extension Mapping
 

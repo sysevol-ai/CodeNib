@@ -1110,19 +1110,19 @@ material fraction of cold-start graph build time.
 Milestone 3 and [#601](https://github.com/sysevol-ai/CodeNib/issues/601) track a
 new, ordered program rather than extending the archived Phase 0--6 queue:
 
-1. [#597](https://github.com/sysevol-ai/CodeNib/issues/597) must produce a
+1. [#597](https://github.com/sysevol-ai/CodeNib/issues/597) produced a
    graph-free SCIP FactQueryIndex import path, complete source/filter receipt,
    and exact filtered-graph parity proof.
-2. [#598](https://github.com/sysevol-ai/CodeNib/issues/598) then compares that
+2. [#598](https://github.com/sysevol-ai/CodeNib/issues/598) compared that
    candidate with the real MCP baseline of loading the existing `graph.pkl`.
    The earlier Python/Rust query-ready gains are API evidence, not yet a
    user-visible consumer claim.
-3. [#599](https://github.com/sysevol-ai/CodeNib/issues/599) defines exact
+3. [#599](https://github.com/sysevol-ai/CodeNib/issues/599) defined exact
    repository-level chunk parity and 20% p50/p95 gates before another native
    implementation is added.
-4. [#600](https://github.com/sysevol-ai/CodeNib/issues/600) timeboxes one
+4. [#600](https://github.com/sysevol-ai/CodeNib/issues/600) timeboxed one
    repository call with bounded native workers and an ordered flat buffer. A
-   failed gate removes the POC implementation and retains only the receipt.
+   failed gate removed the POC implementation and retained only the receipt.
 
 M1 implementation status ([#597](https://github.com/sysevol-ai/CodeNib/issues/597)):
 the candidate boundary is deliberately split into two proofs. C++ records the
@@ -1209,17 +1209,18 @@ Python and Rust are decided independently, but neither qualified. The
 consumer-promoted set therefore remains empty, production `ServerContext`, MCP,
 and agent routing for these Python/Rust SCIP paths stay on persisted
 `CodeGraph`, and #598 is a measured negative promotion decision rather than
-unfinished integration work. The ordered next issue is
-[#599](https://github.com/sysevol-ai/CodeNib/issues/599), which defines the
-repository-level chunk successor gate without adding a C++ batch implementation
-or production route. #600 remains the bounded repository-native implementation
-experiment. Storage RFC #199 and Guardian #309 remain independent programs.
+unfinished integration work. At that M2 decision, the ordered next issue was
+[#599](https://github.com/sysevol-ai/CodeNib/issues/599), which defined the
+repository-level chunk successor gate without adding a C++ batch
+implementation or production route; #600 was the subsequent bounded
+repository-native implementation experiment. Storage RFC #199 and Guardian
+#309 remain independent programs.
 
 M3 gate implementation status
 ([#599](https://github.com/sysevol-ai/CodeNib/issues/599)): this issue is the
 fail-closed controller and benchmark contract only. It contains no C++
 successor, does not reuse or retune the negative #558 per-file route, and
-cannot publish candidate performance before #600 supplies the fixed private
+could not publish candidate performance until #600 supplied the fixed private
 `run_python_repository_batch` adapter. In that pre-adapter state, the command
 validates both pinned subjects and configurations, exercises the complete
 controller through deterministic fake adapters in unit tests, writes an atomic
@@ -1241,9 +1242,10 @@ order, with symmetric GC treatment and uncontrolled filesystem page cache.
 The clock spans cold construction, repository discovery/filtering and
 minified-source inspection, reads, parser/worker setup, binding and native
 batch work, ordered merge, decode, complete chunk construction, and node
-materialization. Identity validation is outside the front of the stopwatch;
-parity, backend checks, stage aggregation, receipt observation, and report
-serialization are outside its end.
+materialization. Controller artifact, contract, and subject-receipt checks are
+outside the front of the stopwatch; the candidate's runtime contract safety
+check remains inside. Parity, backend checks, stage aggregation, receipt
+observation, and report serialization are outside its end.
 
 Every warmup and measured pair requires exact ordered parity for all seven
 `CodeChunk` fields. Canonical node parity compares sorted unique symbolic IDs
@@ -1265,10 +1267,99 @@ make python-repository-chunk-gate \
 ```
 
 The raw JSON remains local at
-`/tmp/codenib-python-repository-chunk-gate.json`. Once #600 supplies the fixed
-adapter, the same command and frozen contract become the formal four-cell gate.
-No repository-batch speed, tail-latency, RSS, or promotion result has been
-recorded yet.
+`/tmp/codenib-python-repository-chunk-gate.json`. #600 supplied the fixed
+adapter only long enough to run the unchanged command and frozen contract as
+the formal four-cell gate. The measured outcome follows.
+
+M4 implementation and gate outcome
+([#600](https://github.com/sysevol-ai/CodeNib/issues/600)): the private
+candidate accepted one ordered repository source sequence, released the GIL
+around one bounded native batch, used worker-private parser/tree/result state,
+and merged file/span buffers by original input ordinal. Python retained
+repository filtering, UTF-8-with-replacement decoding, strict/skip behavior,
+final `CodeChunk` construction, headers/epilogues, splitting, and node IDs.
+The ABI, overflow/resource caps, malformed buffers, deterministic concurrency,
+whole-repository fallback, `MemoryError`, and worker 1/2/4 exact parity tests
+all passed before the formal run.
+
+The authoritative `python_repository_chunk_successor_gate_v1` run on August
+12, 2026 used experimental implementation commit
+`8e922a3d9ae2132787f402e81aeafe930d84135c`. Each arm received four warmups
+and 20 measured fresh-process samples for every worker/subject/configuration
+cell: 576 samples and 576 unique PIDs in total, with 144 AB and 144 BA pairs.
+The stopwatch and two configurations remained exactly as frozen by #599.
+Linux peak RSS came from the process-scoped `/proc/self/status` `VmHWM` value;
+an earlier run using inherited `getrusage()` high-water state was superseded
+and is not promotion evidence. Filesystem page cache remained uncontrolled.
+
+| Workers | Subject | Configuration | Legacy p50 / p95 | Candidate p50 / p95 | p50 / p95 improvement | RSS p95 legacy / candidate (ratio) | Cell |
+| ---: | --- | --- | ---: | ---: | ---: | ---: | --- |
+| 1 | CodeNib | BM25 | 0.814943s / 0.882297s | 0.970822s / 1.010272s | -19.128% / -14.505% | 51.000 / 64.270 MiB (1.2602x) | reject |
+| 1 | CodeNib | continuity | 0.697553s / 0.712019s | 0.801416s / 0.822192s | -14.890% / -15.473% | 50.000 / 63.273 MiB (1.2655x) | reject |
+| 1 | HTTPie | BM25 | 0.087597s / 0.110658s | 0.108079s / 0.144070s | -23.381% / -30.193% | 36.500 / 39.500 MiB (1.0822x) | reject |
+| 1 | HTTPie | continuity | 0.088109s / 0.151746s | 0.104742s / 0.165491s | -18.878% / -9.058% | 36.000 / 39.500 MiB (1.0972x) | reject |
+| 2 | CodeNib | BM25 | 0.702405s / 0.787032s | 0.473816s / 0.591675s | +32.544% / +24.822% | 51.000 / 66.438 MiB (1.3027x) | reject |
+| 2 | CodeNib | continuity | 0.860423s / 0.872750s | 0.565708s / 0.608869s | +34.252% / +30.236% | 50.000 / 65.840 MiB (1.3168x) | reject |
+| 2 | HTTPie | BM25 | 0.081361s / 0.084126s | 0.075882s / 0.082794s | +6.735% / +1.583% | 36.500 / 40.000 MiB (1.0959x) | reject |
+| 2 | HTTPie | continuity | 0.080706s / 0.088504s | 0.078726s / 0.079568s | +2.453% / +10.097% | 36.000 / 39.500 MiB (1.0972x) | reject |
+| 4 | CodeNib | BM25 | 0.703526s / 1.601690s | 0.330657s / 0.675341s | +53.000% / +57.836% | 51.000 / 69.457 MiB (1.3619x) | reject |
+| 4 | CodeNib | continuity | 1.199357s / 1.598776s | 0.448330s / 0.670158s | +62.619% / +58.083% | 50.000 / 68.973 MiB (1.3795x) | reject |
+| 4 | HTTPie | BM25 | 0.081310s / 0.081943s | 0.067394s / 0.071486s | +17.115% / +12.761% | 36.500 / 39.500 MiB (1.0822x) | reject |
+| 4 | HTTPie | continuity | 0.157862s / 0.159411s | 0.114359s / 0.117342s | +27.557% / +26.390% | 36.000 / 39.500 MiB (1.0972x) | pass |
+
+Negative improvement denotes a regression. All 288 pairs preserved the
+complete ordered seven-field `CodeChunk` digest and the canonical
+sorted-unique symbolic-node digest. All 288 candidate samples used backend
+`native-repository-batch-poc`, one batch call, zero fallbacks, the requested
+worker count, and valid contract/counter/stage telemetry. Subject, source,
+benchmark, harness, adapter, binary, and contract receipts were clean, stable,
+and unchanged. The gate completed as `status=rejected` with `failure=null`; it
+was not a harness failure.
+
+The durable identities are:
+
+- benchmark commit
+  `8e922a3d9ae2132787f402e81aeafe930d84135c`; harness SHA-256
+  `fd4d083ccb7aefd3ecef12d0db5220d4f95c9c803128f441d95d63e94269ecd7`;
+  subject-manifest SHA-256
+  `d40a35aedc1afcc9980cf414f20a9d1b196e2be615bd44f665020ad6333e16a6`;
+- candidate adapter SHA-256
+  `795867839a0d3ad9927a68dead728c4b140b3f9d2e3aa564336262b28a460be5`;
+  native binary SHA-256
+  `6a0d14f8366a426ebc39b316849b7f1deb6c7d000befe09663a8559bf8405cd9`;
+  contract SHA-256
+  `7e46684ba7b0733bfdb164d44bc664a68c06befc45684641e7ea35103c198849`;
+- CodeNib `a33bb13118e3a04f8d3d76eabcfb2602f785477a`: 520 selected
+  files / 6,630,346 bytes; continuity source SHA-256
+  `65e2ba3a8106cff5ba39a568d3bcad5f279f54f4aaabcf5cba5167d69cc21b09`;
+  BM25 source SHA-256
+  `2b3e1d607d9627d928b51b09af93d1cd5a02b224fca10ffd4840ba64f3bf7e29`;
+  5,620 / 6,403 chunks and 5,619 canonical nodes;
+- HTTPie `2105caa49bae87c5809c274e407619a0de2639d1`: 89 selected
+  files / 338,976 bytes; continuity source SHA-256
+  `d5feafe737d7d3bdfdb54b92883168fe32a255886fbb8fccbc140f6a43aa12a9`;
+  BM25 source SHA-256
+  `645911e349ec6bda45cb8a34688de74e0b3833a216a7dc29f09ed4a358840192`;
+  498 / 595 chunks and 494 canonical nodes;
+- final 8,596,802-byte raw report SHA-256
+  `e580b29b5eb3e5c5373eb5b90bd107c7e5f7b6dfbaf326b64f941952ed9f01a4`.
+
+Only worker 4's HTTPie continuity cell passed all three numeric gates. Worker
+2 cleared both time gates for CodeNib but exceeded the 1.25x RSS limit; worker
+4 cleared both CodeNib time gates but also exceeded that RSS limit, while its
+HTTPie BM25 improvements remained below 20%. The global selection therefore
+returned `qualifying_worker_counts=[]` and `selected_worker_count=null`.
+Per-cell selection and averaging are forbidden, so no successor qualifies.
+
+In accordance with #600's outcome rule, the private Python adapter, C++
+implementation and tests, pybind entry points, CMake option, Make targets, CI
+configuration, and runtime environment switch were removed from the merge
+surface. The #599 fail-closed controller and manifest remain, together with
+the process-scoped RSS and failure-status hardening discovered during the
+measurement. Production chunking remains unchanged and no integration issue
+was opened. Milestone 3 completed with no consumer-boundary backend promoted;
+future warm-session or incremental-reuse hypotheses require a new focused
+issue and gate rather than reopening either rejected native design.
 
 ## PR And Issue Flow
 
@@ -1288,7 +1379,7 @@ Issue triage rules:
 - If a PR changes graph schema or decoder semantics, run parity checks and
   inspect whether `_SCHEMA_VERSION` must change.
 
-Current issue triage notes through August 11, 2026:
+Current issue triage notes through August 12, 2026:
 
 - PR #248 is merged (June 25, 2026). It was an agent-compile/Qwen local-backend
   PR outside this SCIP roadmap and landed as agent-compile work, not as a
@@ -1306,11 +1397,15 @@ Current issue triage notes through August 11, 2026:
 - #558 is closed with exact parity but a negative per-file native chunking
   result; repository batching is tracked separately by #599/#600.
 - #598 is resolved with exact parity and safety but negative Python and Rust
-  consumer performance gates. No language is promoted; #599 is next.
-- #599 is the active fail-closed repository-successor gate. Its harness does
-  not contain a C++ candidate; formal performance waits for the fixed #600
-  adapter.
-- #601 is the open tracker for consumer-boundary acceleration follow-up work.
+  consumer performance gates. No language was promoted; the subsequent #599
+  and #600 repository-chunk gates are now also decided.
+- #599 is closed with its fail-closed repository-successor harness retained.
+- #600 completed as a measured negative result. Its private batch POC was
+  removed after no global worker count passed every fixed cell; no production
+  integration follow-up was opened.
+- #601 completes when this recorded negative outcome is merged and the exact
+  main verification chain is green. The ordered consumer-boundary program then
+  has zero promoted backends.
 - #133 is closed. Its query-time skill-selection runtime landed through #149
   and the subsequent agent-runtime refactor; the original fitted A0--A6 table
   plan was retired in favor of the design-space cost study. Any new adaptive

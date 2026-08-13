@@ -452,17 +452,25 @@ Python tree-sitter already performs parsing in native code, so the next
 experiment should amortize work through incremental parse-tree reuse or
 repository-level batching rather than repeat the same per-file boundary.
 
-## Python Repository-Batch Rejection Gate
+## Python Repository-Batch Gate And Outcome
 
 [#599](https://github.com/sysevol-ai/CodeNib/issues/599) adds only the
-repository-successor controller and fail-closed contract. It adds no C++
-successor, does not reuse the #558 per-file span route, and does not expose a
-standard or production API. The only accepted candidate is the private #600
-adapter
-`codenib.code_chunking.python_repository_batch_poc.run_python_repository_batch`
-under `CODENIB_NATIVE_PYTHON_CHUNK_BATCH=required`. If that adapter or its
-contract is absent, the controller still writes an atomic diagnostic report
-and exits nonzero; legacy-versus-legacy substitution is forbidden.
+repository-successor controller and fail-closed contract. It does not reuse
+the #558 per-file span route and exposes no standard or production API.
+[#600](https://github.com/sysevol-ai/CodeNib/issues/600) tested exactly one
+private candidate: one repository call, a bounded worker set of 1, 2, or 4,
+and one flat result ordered by input file and span. The experimental binding
+released the GIL once, gave each worker private parser/tree and result state,
+and left repository discovery, source decoding, final chunk splitting, header
+and epilogue materialization, and node construction in Python.
+
+The candidate passed its ABI, bounds, malformed-payload, atomic fallback,
+thread-safety, deterministic ordering, and complete consumer-parity tests. The
+formal gate nevertheless rejected it. No global worker count passed every
+CodeNib/HTTPie x continuity/BM25 cell at the simultaneous 20% p50, 20% p95,
+and 1.25x peak-RSS cutoffs. The private adapter, C++ source, pybind APIs,
+CMake option, build targets, and environment switch were therefore removed.
+Normal builds and production routing contain no repository-batch POC surface.
 
 The manifest pins CodeNib
 `a33bb13118e3a04f8d3d76eabcfb2602f785477a` and HTTPie
@@ -480,9 +488,11 @@ paired order alternates AB/BA. The clock covers the entire cold repository
 consumer boundary: adapter/chunker construction, discovery and filtering,
 minified inspection, reads, parser/worker setup, binding, native batch work,
 ordered merge, buffer decode, Python chunk materialization, and node
-materialization. Identity checks occur before timing, while parity, receipt
-observation, backend verification, telemetry aggregation, and report writing
-occur afterward. Filesystem page cache is intentionally uncontrolled.
+materialization. Controller artifact, contract, and subject-receipt checks
+occur before timing. The candidate repeats its runtime contract safety check
+inside its stopwatch. Parity, receipt observation, backend verification,
+telemetry aggregation, and report writing occur afterward. Filesystem page
+cache is intentionally uncontrolled.
 
 The controller requires the complete ordered seven-field `CodeChunk` sequence
 to match for every warmup and measured pair. Canonical node parity compares
@@ -515,11 +525,22 @@ make python-repository-chunk-gate \
   CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
 ```
 
-The default report path is
-`/tmp/codenib-python-repository-chunk-gate.json`. A missing #600 adapter is an
-expected negative pre-implementation result, not candidate performance
-evidence. No p50, p95, RSS, or promotion claim is published until the fixed
-adapter completes the canonical four-cell gate.
+The authoritative August 12, 2026 run used benchmark implementation commit
+`8e922a3d9ae2132787f402e81aeafe930d84135c`, 576 unique sample processes,
+and Linux process-scoped `VmHWM` peak RSS. All 288 pairs preserved the complete
+ordered seven-field chunk digest and canonical sorted-unique node digest; all
+candidate samples reported the required backend, one batch call, and zero
+fallbacks. The report completed normally as `rejected` with no measurement
+failure and has SHA-256
+`e580b29b5eb3e5c5373eb5b90bd107c7e5f7b6dfbaf326b64f941952ed9f01a4`.
+The exact twelve-cell results and artifact receipts are in the
+[multi-language roadmap](scip_multilanguage_roadmap.md).
+
+The retained controller still expects the now-absent fixed adapter and fails
+closed after full preflight. Its default report path is
+`/tmp/codenib-python-repository-chunk-gate.json`; legacy-versus-legacy
+substitution is forbidden. A future hypothesis must use a new focused issue
+and candidate contract rather than silently reviving this rejected ABI.
 
 ## Verify
 
