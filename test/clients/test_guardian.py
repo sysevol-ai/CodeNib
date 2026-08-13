@@ -1780,8 +1780,14 @@ def test_patch_checker_requires_fresh_directory_persistence_probe(
 
     instruction = " ".join(executor.requests[0].instruction.lower().split())
     assert "smallest focused runtime probe" in instruction
-    assert "fresh temporary working directory" in instruction
-    assert "verify that the expected artifact is actually created" in instruction
+    assert "treat persistence as an artifact-set and location contract" in instruction
+    assert "fresh, non-default absolute results directory" in instruction
+    assert "from a different working directory" in instruction
+    assert "every artifact explicitly named by the contract" in instruction
+    assert "reference resolves to the artifact in that same configured" in instruction
+    assert "misplaced in a default/current-working-directory" in instruction
+    assert "public fit/build/write lifecycle" in instruction
+    assert "jointly required by that one artifact-set specification" in instruction
     assert "return `uncertain`" in instruction
     assert "exit 0 only when that specification is satisfied" in instruction
     assert "exit 10 only when the specification is behaviorally violated" in instruction

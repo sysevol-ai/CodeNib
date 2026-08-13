@@ -406,13 +406,26 @@ the smallest focused runtime probe that can falsify it before returning "satisfi
 Code inspection alone is insufficient for lifecycle requirements such as creating,
 persisting, loading, or updating an artifact. Run probes from `/workspace`, place all
 temporary inputs and outputs under a fresh directory in `/tmp`, and do not modify the
-repository. In particular, when the contract requires a fit/build/write operation to
-persist an artifact in a results directory, exercise that operation with the smallest
-valid configuration in a fresh temporary working directory and verify that the expected
-artifact is actually created. If a probe is infeasible, return `uncertain` and explain
-the concrete blocker rather than claiming satisfaction.
+repository. In particular, treat persistence as an artifact-set and location contract.
+When a fit/build/write operation must persist artifacts in a configurable results
+directory, use the repository's public configuration mechanism to select a fresh,
+non-default absolute results directory under `/tmp`. Invoke the public operation from a
+different working directory so a current-working-directory fallback cannot accidentally
+pass. After it returns, verify every artifact explicitly named by the contract exists in
+the configured results directory. When the contract says one artifact records or
+references another, also load the metadata and verify the reference resolves to the
+artifact in that same configured artifact set. Include established companion artifacts
+only when repository evidence makes their preservation part of the same specification.
+The probe must exit 10 when an artifact is missing, misplaced in a
+default/current-working-directory output folder, or referenced from the wrong artifact
+set. A helper-level unit call is not a substitute for exercising the public
+fit/build/write lifecycle. If this artifact-set probe is infeasible, return `uncertain`
+and explain the concrete blocker rather than claiming satisfaction.
 
 Each probe must be one self-contained assertion command for exactly one specification.
+It may assert several files or metadata fields only when they are jointly required by
+that one artifact-set specification; do not split a single lifecycle contract into
+isolated checks that could miss inconsistent location or metadata relationships.
 It must exit 0 only when that specification is satisfied, exit 10 only when the
 specification is behaviorally violated, and use any other exit code for an operational
 failure or inconclusive experiment. Do not combine several independent assertions in
