@@ -49,6 +49,7 @@ DEFAULT_PROMOTION_THRESHOLD = 0.20
 DEFAULT_RSS_RATIO_LIMIT = 1.25
 DEFAULT_WORKER_COUNTS = (1, 2, 4)
 DEFAULT_WORKER_TIMEOUT_SECONDS = 900.0
+CANONICAL_PEAK_RSS_SOURCE = "proc-self-status-vmhwm-kib-v1"
 REPOSITORY_FILTER_POLICY = 3
 REPORT_SCHEMA_VERSION = 1
 _DEFAULT_OUTPUT = (
@@ -691,7 +692,45 @@ def _benchmark_identity(manifest_path: Path) -> dict[str, Any]:
     }
 
 
+def _linux_peak_rss_bytes(
+    status_path: Path | None = None,
+) -> int | None:
+    if status_path is None:
+        status_path = Path("/proc/self/status")
+    try:
+        lines = status_path.read_text(encoding="ascii").splitlines()
+    except (OSError, UnicodeError):
+        return None
+    for line in lines:
+        if not line.startswith("VmHWM:"):
+            continue
+        fields = line.split()
+        if len(fields) != 3 or fields[0] != "VmHWM:" or fields[2] != "kB":
+            return None
+        try:
+            kibibytes = int(fields[1], 10)
+        except ValueError:
+            return None
+        if kibibytes <= 0:
+            return None
+        return kibibytes * 1024
+    return None
+
+
+def _peak_rss_source() -> str:
+    if sys.platform.startswith("linux"):
+        return "proc-self-status-vmhwm-kib-v1"
+    if sys.platform == "darwin":
+        return "getrusage-self-ru-maxrss-bytes-v1"
+    return "getrusage-self-ru-maxrss-kib-v1"
+
+
 def _peak_rss_bytes() -> int | None:
+    # Linux carries ru_maxrss across fork+exec, so it can report the
+    # controller's historical high-water mark instead of this fresh worker's
+    # peak. /proc/self/status VmHWM is scoped to the current executable image.
+    if sys.platform.startswith("linux"):
+        return _linux_peak_rss_bytes()
     try:
         import resource
 
@@ -1553,6 +1592,7 @@ def _canonical_protocol(
         "fresh_process_per_sample": True,
         "paired_arm_order": "alternating-ab-ba",
         "filesystem_page_cache": "uncontrolled",
+        "peak_rss_source": CANONICAL_PEAK_RSS_SOURCE,
     }
     observed = {
         "iterations_per_arm": iterations,
@@ -1566,6 +1606,7 @@ def _canonical_protocol(
         "fresh_process_per_sample": True,
         "paired_arm_order": "alternating-ab-ba",
         "filesystem_page_cache": "uncontrolled",
+        "peak_rss_source": _peak_rss_source(),
     }
     return {"expected": expected, "observed": observed, "passed": observed == expected}
 
@@ -1615,6 +1656,7 @@ def _base_report(
             "arm_order": "alternating paired AB/BA rounds",
             "fresh_process_per_sample": True,
             "gc_policy": "collect-then-disabled-during-stopwatch-v1",
+            "peak_rss_source": _peak_rss_source(),
             "filesystem_page_cache": "uncontrolled",
             "stopwatch_boundary": (
                 "cold construction through repository discovery/filtering, "
