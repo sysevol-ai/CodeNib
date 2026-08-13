@@ -33,6 +33,13 @@ def _write_tree(root: Path, name: str, value: str) -> None:
     (root / name).write_text(value, encoding="utf-8")
 
 
+def _exception_notes(error: BaseException) -> tuple[str, ...]:
+    return (
+        *tuple(getattr(error, "__notes__", ())),
+        *tuple(getattr(error, "_codenib_cleanup_notes", ())),
+    )
+
+
 class _FakeWindowsApi:
     """In-memory HANDLE/FILE_ID model; it intentionally has no path reads."""
 
@@ -3025,6 +3032,319 @@ def test_directory_orphan_reopens_through_parent_authority(tmp_path: Path) -> No
         saved_reader[0].capture_ownership()
 
 
+def test_directory_orphan_callback_primary_survives_post_content_drift(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "authority"
+    parent.mkdir()
+    destination = parent / "published"
+    _write_tree(destination, "old.txt", "old")
+    stage = parent / "stage"
+    _write_tree(stage, "new.txt", "new")
+    orphan = publish_staged_directory(stage, destination)
+    assert orphan is not None
+    primary = ValueError("callback failed")
+    saved_reader: list[atomic_module.PublicationDirectoryReader] = []
+
+    def mutate_then_fail(reader: atomic_module.PublicationDirectoryReader) -> None:
+        saved_reader.append(reader)
+        (orphan.path / "old.txt").write_text("mutated", encoding="utf-8")
+        raise primary
+
+    with pytest.raises(ValueError) as caught:
+        orphan.reopen(mutate_then_fail)
+
+    assert caught.value is primary
+    notes = _exception_notes(primary)
+    assert any(
+        "directory orphan post-callback ownership validation also failed" in note
+        and ("changed" in note or "differs" in note)
+        for note in notes
+    )
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_reader[0].capture_ownership()
+
+
+def _posix_cleanup_test_reader(
+    root: Path,
+) -> tuple[atomic_module.PublicationDirectoryReader, int]:
+    ownership = capture_directory_ownership(root)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    root_descriptor = os.open(root, flags)
+    reader = atomic_module.PublicationDirectoryReader(
+        root,
+        ownership.root_identity,
+        lambda _required, _allow_empty, _policy: ownership,
+        lambda relative, max_bytes, expected: (
+            atomic_module._open_posix_authenticated_file(
+                root_descriptor,
+                root,
+                relative,
+                max_bytes=max_bytes,
+                expected=expected,
+            )
+        ),
+        ownership,
+    )
+    return reader, root_descriptor
+
+
+def _windows_cleanup_test_reader() -> tuple[
+    _FakeWindowsApi,
+    atomic_module.PublicationDirectoryReader,
+    int,
+]:
+    api = _FakeWindowsApi()
+    nested = api.add_directory(api.root_id, "nested")
+    api.add_file(nested, "payload.txt", b"payload")
+    root_path = Path("C:/authority")
+    root_handle = api.create_directory_handle(root_path)
+    ownership = atomic_module._capture_windows_directory_handle(
+        api,
+        root_handle,
+        root_path,
+        required_root_file=None,
+        allow_empty_root=False,
+        entry_policy=None,
+    )
+    reader = atomic_module.PublicationDirectoryReader(
+        root_path,
+        ownership.root_identity,
+        lambda _required, _allow_empty, _policy: ownership,
+        lambda relative, max_bytes, expected: (
+            atomic_module._open_windows_authenticated_file(
+                api,
+                root_handle,
+                root_path,
+                relative,
+                max_bytes=max_bytes,
+                expected=expected,
+            )
+        ),
+        ownership,
+    )
+    return api, reader, root_handle
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+@pytest.mark.parametrize("primary_type", [KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_posix_authenticated_file_body_primary_survives_cleanup_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    primary_type: type[BaseException],
+) -> None:
+    root = tmp_path / "publication"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_bytes(b"payload")
+    reader, root_descriptor = _posix_cleanup_test_reader(root)
+    real_close = os.close
+    primary = primary_type("body-primary")
+    close_errors: list[OSError] = []
+
+    def fail_finalize(_authenticated: object) -> None:
+        raise RuntimeError("finalize-secondary")
+
+    def close_then_fail(descriptor: int) -> None:
+        real_close(descriptor)
+        error = OSError(f"close-secondary-{len(close_errors)}")
+        close_errors.append(error)
+        raise error
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(
+                atomic_module.PublicationAuthenticatedFile,
+                "_finalize",
+                fail_finalize,
+            )
+            faults.setattr(atomic_module.os, "close", close_then_fail)
+            with pytest.raises(primary_type, match="body-primary") as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    raise primary
+
+        assert caught.value is primary
+        notes = _exception_notes(primary)
+        assert any(
+            "file finalization also failed" in note and "finalize-secondary" in note
+            for note in notes
+        )
+        assert any("file descriptor cleanup also failed" in note for note in notes)
+        assert any("directory descriptor cleanup also failed" in note for note in notes)
+        assert len(close_errors) == 3
+        assert reader._authentication_failed is True
+        with pytest.raises(RuntimeError, match="suppressed authentication failure"):
+            reader._require_valid()
+    finally:
+        reader._deactivate()
+        real_close(root_descriptor)
+
+
+@pytest.mark.parametrize("primary_type", [KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_windows_authenticated_file_body_primary_survives_cleanup_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    primary_type: type[BaseException],
+) -> None:
+    api, reader, root_handle = _windows_cleanup_test_reader()
+    real_close = api.close
+    primary = primary_type("body-primary")
+    close_errors: list[OSError] = []
+
+    def fail_finalize(_authenticated: object) -> None:
+        raise RuntimeError("finalize-secondary")
+
+    def close_then_fail(handle: int) -> None:
+        real_close(handle)
+        error = OSError(f"close-secondary-{len(close_errors)}")
+        close_errors.append(error)
+        raise error
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(
+                atomic_module.PublicationAuthenticatedFile,
+                "_finalize",
+                fail_finalize,
+            )
+            faults.setattr(api, "close", close_then_fail)
+            with pytest.raises(primary_type, match="body-primary") as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    raise primary
+
+        assert caught.value is primary
+        notes = _exception_notes(primary)
+        assert any(
+            "file finalization also failed" in note and "finalize-secondary" in note
+            for note in notes
+        )
+        assert any("file HANDLE cleanup also failed" in note for note in notes)
+        assert any("directory HANDLE cleanup also failed" in note for note in notes)
+        assert len(close_errors) == 2
+        assert reader._authentication_failed is True
+        with pytest.raises(RuntimeError, match="suppressed authentication failure"):
+            reader._require_valid()
+    finally:
+        reader._deactivate()
+        real_close(root_handle)
+    assert api.handles == {}
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+@pytest.mark.parametrize("failure_phase", ["finalize", "close"])
+def test_posix_authenticated_file_cleanup_primary_is_exact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_phase: str,
+) -> None:
+    root = tmp_path / "publication"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_bytes(b"payload")
+    reader, root_descriptor = _posix_cleanup_test_reader(root)
+    real_close = os.close
+    cleanup_primary = SystemExit(f"{failure_phase}-primary")
+    close_calls = 0
+
+    def fail_finalize(_authenticated: object) -> None:
+        raise cleanup_primary
+
+    def close_with_first_fault(descriptor: int) -> None:
+        nonlocal close_calls
+        real_close(descriptor)
+        close_calls += 1
+        if close_calls == 1:
+            raise cleanup_primary
+
+    try:
+        with monkeypatch.context() as faults:
+            if failure_phase == "finalize":
+                faults.setattr(
+                    atomic_module.PublicationAuthenticatedFile,
+                    "_finalize",
+                    fail_finalize,
+                )
+            else:
+                faults.setattr(atomic_module.os, "close", close_with_first_fault)
+            with pytest.raises(SystemExit, match=f"{failure_phase}-primary") as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    pass
+
+        assert caught.value is cleanup_primary
+        if failure_phase == "close":
+            assert close_calls == 3
+        assert reader._authentication_failed is True
+        with pytest.raises(RuntimeError, match="suppressed authentication failure"):
+            reader._require_valid()
+    finally:
+        reader._deactivate()
+        real_close(root_descriptor)
+
+
+@pytest.mark.parametrize("failure_phase", ["finalize", "close"])
+def test_windows_authenticated_file_cleanup_primary_is_exact(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_phase: str,
+) -> None:
+    api, reader, root_handle = _windows_cleanup_test_reader()
+    real_close = api.close
+    cleanup_primary = SystemExit(f"{failure_phase}-primary")
+    close_calls = 0
+
+    def fail_finalize(_authenticated: object) -> None:
+        raise cleanup_primary
+
+    def close_with_first_fault(handle: int) -> None:
+        nonlocal close_calls
+        real_close(handle)
+        close_calls += 1
+        if close_calls == 1:
+            raise cleanup_primary
+
+    try:
+        with monkeypatch.context() as faults:
+            if failure_phase == "finalize":
+                faults.setattr(
+                    atomic_module.PublicationAuthenticatedFile,
+                    "_finalize",
+                    fail_finalize,
+                )
+            else:
+                faults.setattr(api, "close", close_with_first_fault)
+            with pytest.raises(SystemExit, match=f"{failure_phase}-primary") as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    pass
+
+        assert caught.value is cleanup_primary
+        if failure_phase == "close":
+            assert close_calls == 2
+        assert reader._authentication_failed is True
+        with pytest.raises(RuntimeError, match="suppressed authentication failure"):
+            reader._require_valid()
+    finally:
+        reader._deactivate()
+        real_close(root_handle)
+    assert api.handles == {}
+
+
 def test_publication_reader_streams_and_authenticates_on_context_exit(
     tmp_path: Path,
 ) -> None:
@@ -3394,6 +3714,392 @@ def test_reopen_authenticated_directory_rejects_root_swap_when_ctime_advances(
     assert (foreign / "payload.txt").read_text(encoding="utf-8") == "foreign"
 
 
+@pytest.mark.parametrize(
+    "primary",
+    [
+        pytest.param(ValueError("callback failed"), id="value-error"),
+        pytest.param(KeyboardInterrupt("callback interrupted"), id="keyboard"),
+        pytest.param(SystemExit("callback exited"), id="system-exit"),
+    ],
+)
+def test_reopen_callback_primary_survives_post_content_drift_detection(
+    tmp_path: Path,
+    primary: BaseException,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    saved_readers: list[object] = []
+
+    def mutate_then_fail(reader: object) -> None:
+        assert isinstance(reader, atomic_module.PublicationDirectoryReader)
+        saved_readers.append(reader)
+        (directory / "payload.txt").write_text("mutated", encoding="utf-8")
+        raise primary
+
+    with pytest.raises(type(primary)) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            mutate_then_fail,
+        )
+
+    assert caught.value is primary
+    traceback_names: list[str] = []
+    traceback = caught.value.__traceback__
+    while traceback is not None:
+        traceback_names.append(traceback.tb_frame.f_code.co_name)
+        traceback = traceback.tb_next
+    assert "mutate_then_fail" in traceback_names
+    assert any(
+        "post-callback ownership validation also failed" in note
+        and ("changed" in note or "differs" in note)
+        for note in _exception_notes(primary)
+    )
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
+def test_reopen_active_outer_exception_raises_exact_postflight_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    outer_error = ValueError("ambient outer failure")
+    post_error = OSError(errno.EIO, "injected tree post-capture failure")
+    real_capture = atomic_module.PublicationDirectoryReader.capture_ownership
+    capture_calls = 0
+    saved_readers: list[atomic_module.PublicationDirectoryReader] = []
+
+    def fail_post_capture(reader: object, **kwargs: object) -> object:
+        nonlocal capture_calls
+        capture_calls += 1
+        if capture_calls == 2:
+            raise post_error
+        return real_capture(reader, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "capture_ownership",
+        fail_post_capture,
+    )
+
+    def mutate_then_return(reader: atomic_module.PublicationDirectoryReader) -> int:
+        saved_readers.append(reader)
+        (directory / "payload.txt").write_text("mutated", encoding="utf-8")
+        return 7
+
+    try:
+        raise outer_error
+    except ValueError as active_outer:
+        assert active_outer is outer_error
+        with pytest.raises(OSError) as caught:
+            atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                mutate_then_return,
+            )
+
+    assert caught.value is post_error
+    assert capture_calls == 2
+    assert _exception_notes(outer_error) == ()
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
+def test_reopen_active_outer_exception_all_green_returns_result(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    outer_error = ValueError("ambient outer failure")
+    saved_readers: list[atomic_module.PublicationDirectoryReader] = []
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> int:
+        saved_readers.append(reader)
+        return 7
+
+    try:
+        raise outer_error
+    except ValueError as active_outer:
+        assert active_outer is outer_error
+        result = atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            consume,
+        )
+
+    assert result == 7
+    assert _exception_notes(outer_error) == ()
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
+def test_reopen_callback_primary_inside_active_outer_exception_is_local(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    outer_error = ValueError("ambient outer failure")
+    callback_error = OSError(errno.EIO, "local callback failure")
+    saved_readers: list[atomic_module.PublicationDirectoryReader] = []
+
+    def mutate_then_fail(reader: atomic_module.PublicationDirectoryReader) -> None:
+        saved_readers.append(reader)
+        (directory / "payload.txt").write_text("mutated", encoding="utf-8")
+        raise callback_error
+
+    try:
+        raise outer_error
+    except ValueError as active_outer:
+        assert active_outer is outer_error
+        with pytest.raises(OSError) as caught:
+            atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                mutate_then_fail,
+            )
+
+    assert caught.value is callback_error
+    traceback_names: list[str] = []
+    traceback = callback_error.__traceback__
+    while traceback is not None:
+        traceback_names.append(traceback.tb_frame.f_code.co_name)
+        traceback = traceback.tb_next
+    assert "mutate_then_fail" in traceback_names
+    assert any(
+        "post-callback ownership validation also failed" in note
+        and ("changed" in note or "differs" in note)
+        for note in _exception_notes(callback_error)
+    )
+    assert _exception_notes(outer_error) == ()
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
+def test_reopen_callback_primary_survives_child_namespace_drift_detection(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    held = tmp_path / "held"
+    primary = ValueError("callback failed after namespace drift")
+
+    def replace_root_then_fail(_reader: object) -> None:
+        directory.rename(held)
+        _write_tree(directory, "payload.txt", "foreign")
+        raise primary
+
+    with pytest.raises(ValueError) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            replace_root_then_fail,
+        )
+
+    assert caught.value is primary
+    assert any(
+        "child namespace validation also failed" in note
+        and "namespace binding changed" in note
+        for note in _exception_notes(primary)
+    )
+
+
+def test_reopen_callback_primary_survives_authority_path_binding_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    primary = ValueError("callback failed before authority verification")
+    path_error = OSError(errno.EIO, "injected authority path verification failure")
+    verification_calls = 0
+
+    def fail_path_binding(_authority: object) -> None:
+        nonlocal verification_calls
+        verification_calls += 1
+        raise path_error
+
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "verify_path_binding",
+        fail_path_binding,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            lambda _reader: (_ for _ in ()).throw(primary),
+        )
+
+    assert caught.value is primary
+    assert verification_calls == 1
+    assert any(
+        "authority path validation also failed" in note
+        and "injected authority path verification failure" in note
+        for note in _exception_notes(primary)
+    )
+
+
+def test_reopen_callback_primary_survives_post_capture_eio(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    primary = ValueError("callback failed before post capture")
+    post_error = OSError(errno.EIO, "injected authenticated post-capture failure")
+    real_capture = atomic_module.PublicationDirectoryReader.capture_ownership
+    capture_calls = 0
+
+    def fail_post_capture(reader: object, **kwargs: object) -> object:
+        nonlocal capture_calls
+        capture_calls += 1
+        if capture_calls == 2:
+            raise post_error
+        return real_capture(reader, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "capture_ownership",
+        fail_post_capture,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            lambda _reader: (_ for _ in ()).throw(primary),
+        )
+
+    assert caught.value is primary
+    assert capture_calls == 2
+    assert any(
+        "post-callback ownership validation also failed" in note
+        and "authenticated post-capture failure" in note
+        for note in _exception_notes(primary)
+    )
+
+
+@pytest.mark.parametrize("callback_fails", [True, False], ids=["callback", "return"])
+def test_reopen_postflight_faults_are_best_effort_and_ordered(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    callback_fails: bool,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    held = tmp_path / "held"
+    callback_error = ValueError("callback failed after replacing the child")
+    tree_error = OSError(errno.EIO, "injected tree post-capture failure")
+    validity_error = RuntimeError("injected reader validity failure")
+    parent_error = RuntimeError("injected parent binding failure")
+    cleanup_error = RuntimeError("injected authority cleanup failure")
+    real_capture = atomic_module.PublicationDirectoryReader.capture_ownership
+    real_close = atomic_module._PublicationAuthority.close
+    capture_calls = 0
+    validity_calls = 0
+    saved_readers: list[atomic_module.PublicationDirectoryReader] = []
+
+    def fail_tree_post_capture(reader: object, **kwargs: object) -> object:
+        nonlocal capture_calls
+        capture_calls += 1
+        if capture_calls == 2:
+            raise tree_error
+        return real_capture(reader, **kwargs)
+
+    def fail_reader_validity(_reader: object) -> None:
+        nonlocal validity_calls
+        validity_calls += 1
+        if validity_calls == 2:
+            raise validity_error
+
+    def fail_parent_binding(_authority: object) -> None:
+        raise parent_error
+
+    def close_then_fail(authority: object) -> None:
+        real_close(authority)
+        raise cleanup_error
+
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "capture_ownership",
+        fail_tree_post_capture,
+    )
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "_require_valid",
+        fail_reader_validity,
+    )
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "verify_path_binding",
+        fail_parent_binding,
+    )
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "close",
+        close_then_fail,
+    )
+
+    def replace_child_then_finish(
+        reader: atomic_module.PublicationDirectoryReader,
+    ) -> int:
+        saved_readers.append(reader)
+        directory.rename(held)
+        _write_tree(directory, "payload.txt", "foreign")
+        if callback_fails:
+            raise callback_error
+        return 7
+
+    with pytest.raises(BaseException) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            replace_child_then_finish,
+        )
+
+    expected_primary = callback_error if callback_fails else tree_error
+    assert caught.value is expected_primary
+    assert capture_calls == 2
+    assert validity_calls == 2
+    notes = _exception_notes(expected_primary)
+    expected_note_fragments = (
+        *(
+            ("post-callback ownership validation also failed",)
+            if callback_fails
+            else ()
+        ),
+        "publication reader validity validation also failed",
+        "publication reader child namespace validation also failed",
+        "authenticated directory authority path validation also failed",
+        "publication authority owner cleanup also failed",
+    )
+    note_positions = [
+        next(index for index, note in enumerate(notes) if fragment in note)
+        for fragment in expected_note_fragments
+    ]
+    assert note_positions == sorted(note_positions)
+    if callback_fails:
+        traceback_names: list[str] = []
+        traceback = caught.value.__traceback__
+        while traceback is not None:
+            traceback_names.append(traceback.tb_frame.f_code.co_name)
+            traceback = traceback.tb_next
+        assert "replace_child_then_finish" in traceback_names
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
+
+
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"),
     reason="requires Linux fd accounting",
@@ -3534,6 +4240,60 @@ def test_reopen_authenticated_directory_fake_windows_rejects_suppressed_error(
     assert isinstance(children, dict)
     assert children["payload.txt"] == original_id
     assert children["foreign.txt"] == foreign_id
+
+
+def test_reopen_authenticated_directory_fake_windows_checks_child_after_primary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    directory_id = api.add_directory(api.root_id, "existing")
+    api.add_file(directory_id, "payload.txt", b"payload")
+    foreign_id = api.add_directory()
+    api.add_file(foreign_id, "payload.txt", b"foreign")
+    monkeypatch.setattr(atomic_module, "_windows_require_publication_api", lambda: None)
+    _install_fake_windows_api(monkeypatch, api)
+    path = Path("C:/authority/existing")
+    authority = atomic_module._open_windows_publication_authority(
+        path.parent,
+        parent_resource=None,
+        expected_parent_identity=None,
+    )
+    try:
+        ownership = authority.capture_child(
+            path.name,
+            path=path,
+            label="existing",
+        )
+    finally:
+        authority.close()
+    assert api.handles == {}
+    primary = KeyboardInterrupt("callback interrupted after child replacement")
+    saved_readers: list[object] = []
+
+    def replace_child_then_fail(reader: object) -> None:
+        saved_readers.append(reader)
+        children = api.nodes[api.root_id]["children"]
+        assert isinstance(children, dict)
+        children["held"] = children.pop("existing")
+        children["existing"] = foreign_id
+        raise primary
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        atomic_module.reopen_authenticated_directory(
+            path,
+            ownership,
+            replace_child_then_fail,
+        )
+
+    assert caught.value is primary
+    assert any(
+        "child namespace validation also failed" in note
+        and "namespace binding changed" in note
+        for note in _exception_notes(primary)
+    )
+    assert api.handles == {}
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="requires real Windows HANDLEs")
@@ -3901,6 +4661,66 @@ def _call_with_interrupt_after_store(
         assert injected, f"failed to inject after {local_name} result store"
 
 
+def _call_with_interrupt_at_back_edge(
+    function: object,
+    callback: object,
+    *,
+    predicate: object,
+    error: BaseException,
+) -> None:
+    assert callable(function)
+    assert callable(callback)
+    assert callable(predicate)
+    code = function.__code__
+    instructions = tuple(dis.get_instructions(function))
+    back_edges = tuple(
+        instruction
+        for instruction in instructions
+        if "JUMP" in instruction.opname
+        and isinstance(instruction.argval, int)
+        and instruction.argval < instruction.offset
+    )
+    assert back_edges
+    # The ordered runner may also have a handler-local back-edge.  Select the
+    # outer action-loop edge (the earliest destination) so a 3.12 line event
+    # cannot inject at handler fallthrough before the real normal back-edge.
+    loop_destination = min(instruction.argval for instruction in back_edges)
+    opcode_offsets = {
+        instruction.offset
+        for instruction in back_edges
+        if instruction.argval == loop_destination
+    }
+    line_offsets = {loop_destination}
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
+            return trace
+        if (
+            frame.f_code is code
+            and (
+                (event == "opcode" and frame.f_lasti in opcode_offsets)
+                or (event == "line" and frame.f_lasti in line_offsets)
+            )
+            and predicate(frame.f_locals)
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to inject at an ordered-action back-edge"
+
+
 def _posix_authority_resources(
     authority: object,
 ) -> atomic_module._PosixResourceOwner:
@@ -3918,6 +4738,1926 @@ def _assert_descriptor_closed(descriptor: int) -> None:
     with pytest.raises(OSError) as caught:
         os.fstat(descriptor)
     assert caught.value.errno == errno.EBADF
+
+
+@pytest.mark.parametrize("callback_fails", [True, False], ids=["primary", "return"])
+def test_ordered_post_validations_resume_after_back_edge_cancellation(
+    callback_fails: bool,
+) -> None:
+    callback_error = ValueError("callback primary")
+    interruption = KeyboardInterrupt("post-validation back-edge")
+    final_error = OSError(errno.EIO, "final validation failure")
+    calls: list[str] = []
+
+    def callback() -> int:
+        if callback_fails:
+            raise callback_error
+        return 7
+
+    def first_validation() -> None:
+        calls.append("first")
+
+    def final_validation() -> None:
+        calls.append("final")
+        raise final_error
+
+    def invoke() -> None:
+        atomic_module._run_callback_with_post_validations(
+            callback,
+            (
+                ("first post-validation also failed", first_validation),
+                ("final post-validation also failed", final_validation),
+            ),
+        )
+
+    with pytest.raises(BaseException) as caught:
+        _call_with_interrupt_at_back_edge(
+            atomic_module._run_ordered_actions_pass,
+            invoke,
+            predicate=lambda local: (
+                local["state"].next_index == 1 and calls == ["first"]
+            ),
+            error=interruption,
+        )
+
+    expected_primary = callback_error if callback_fails else interruption
+    assert caught.value is expected_primary
+    assert calls == ["first", "final"]
+    notes = _exception_notes(expected_primary)
+    expected_fragments = (
+        *(
+            ("publication callback post-validation iteration also failed",)
+            if callback_fails
+            else ()
+        ),
+        "final post-validation also failed",
+    )
+    positions = [
+        next(index for index, note in enumerate(notes) if fragment in note)
+        for fragment in expected_fragments
+    ]
+    assert positions == sorted(positions)
+
+
+def test_ordered_post_validations_protect_back_edge_after_action_error() -> None:
+    callback_error = ValueError("callback primary")
+    first_error = OSError(errno.EIO, "first validation failure")
+    interruption = SystemExit("validation error-handler back-edge")
+    calls: list[str] = []
+
+    def first_validation() -> None:
+        calls.append("first")
+        raise first_error
+
+    def final_validation() -> None:
+        calls.append("final")
+
+    def invoke() -> None:
+        atomic_module._run_callback_with_post_validations(
+            lambda: (_ for _ in ()).throw(callback_error),
+            (
+                ("first post-validation also failed", first_validation),
+                ("final post-validation also failed", final_validation),
+            ),
+        )
+
+    with pytest.raises(ValueError) as caught:
+        _call_with_interrupt_at_back_edge(
+            atomic_module._run_ordered_actions_pass,
+            invoke,
+            predicate=lambda local: (
+                local["state"].next_index == 1 and calls == ["first"]
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is callback_error
+    assert calls == ["first", "final"]
+    notes = _exception_notes(callback_error)
+    first_position = next(
+        index
+        for index, note in enumerate(notes)
+        if "first post-validation also failed" in note
+    )
+    interruption_position = next(
+        index
+        for index, note in enumerate(notes)
+        if "post-validation iteration also failed" in note
+    )
+    assert first_position < interruption_position
+
+
+@pytest.mark.parametrize("body_fails", [True, False], ids=["primary", "return"])
+def test_ordered_cleanup_resumes_after_back_edge_cancellation(
+    body_fails: bool,
+) -> None:
+    body_error = ValueError("context body primary")
+    interruption = KeyboardInterrupt("cleanup back-edge")
+    final_error = OSError(errno.EIO, "final cleanup failure")
+    calls: list[str] = []
+
+    def first_cleanup() -> None:
+        calls.append("first")
+
+    def final_cleanup() -> None:
+        calls.append("final")
+        raise final_error
+
+    def invoke() -> None:
+        with atomic_module._run_context_with_cleanup_actions(
+            (
+                ("first cleanup also failed", first_cleanup),
+                ("final cleanup also failed", final_cleanup),
+            )
+        ):
+            if body_fails:
+                raise body_error
+
+    with pytest.raises(BaseException) as caught:
+        _call_with_interrupt_at_back_edge(
+            atomic_module._run_ordered_actions_pass,
+            invoke,
+            predicate=lambda local: (
+                local["state"].next_index == 1 and calls == ["first"]
+            ),
+            error=interruption,
+        )
+
+    expected_primary = body_error if body_fails else interruption
+    assert caught.value is expected_primary
+    assert calls == ["first", "final"]
+    notes = _exception_notes(expected_primary)
+    expected_fragments = (
+        *(
+            ("publication authenticated cleanup iteration also failed",)
+            if body_fails
+            else ()
+        ),
+        "final cleanup also failed",
+    )
+    positions = [
+        next(index for index, note in enumerate(notes) if fragment in note)
+        for fragment in expected_fragments
+    ]
+    assert positions == sorted(positions)
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX descriptors",
+)
+def test_cleanup_back_edge_cancellation_closes_remaining_posix_descriptors() -> None:
+    first_read, first_write = os.pipe()
+    final_read, final_write = os.pipe()
+    all_descriptors = (first_read, first_write, final_read, final_write)
+    body_error = ValueError("context body primary")
+    interruption = KeyboardInterrupt("descriptor cleanup back-edge")
+    calls: list[str] = []
+
+    def close_first() -> None:
+        os.close(first_read)
+        calls.append("first")
+
+    def close_final() -> None:
+        os.close(final_read)
+        calls.append("final")
+
+    def invoke() -> None:
+        with atomic_module._run_context_with_cleanup_actions(
+            (
+                ("first descriptor cleanup also failed", close_first),
+                ("final descriptor cleanup also failed", close_final),
+            )
+        ):
+            raise body_error
+
+    try:
+        with pytest.raises(ValueError) as caught:
+            _call_with_interrupt_at_back_edge(
+                atomic_module._run_ordered_actions_pass,
+                invoke,
+                predicate=lambda local: (
+                    local["state"].next_index == 1 and calls == ["first"]
+                ),
+                error=interruption,
+            )
+
+        assert caught.value is body_error
+        assert calls == ["first", "final"]
+        _assert_descriptor_closed(first_read)
+        _assert_descriptor_closed(final_read)
+    finally:
+        for descriptor in all_descriptors:
+            try:
+                os.close(descriptor)
+            except OSError as error:
+                if error.errno != errno.EBADF:
+                    raise
+
+
+def test_cleanup_back_edge_cancellation_closes_remaining_windows_handles() -> None:
+    api = _FakeWindowsApi()
+    first_handle = api.create_directory_handle(Path("C:/authority"))
+    final_handle = api.duplicate_handle(first_handle)
+    body_error = ValueError("context body primary")
+    interruption = KeyboardInterrupt("HANDLE cleanup back-edge")
+    calls: list[str] = []
+
+    def close_first() -> None:
+        api.close(first_handle)
+        calls.append("first")
+
+    def close_final() -> None:
+        api.close(final_handle)
+        calls.append("final")
+
+    def invoke() -> None:
+        with atomic_module._run_context_with_cleanup_actions(
+            (
+                ("first HANDLE cleanup also failed", close_first),
+                ("final HANDLE cleanup also failed", close_final),
+            )
+        ):
+            raise body_error
+
+    try:
+        with pytest.raises(ValueError) as caught:
+            _call_with_interrupt_at_back_edge(
+                atomic_module._run_ordered_actions_pass,
+                invoke,
+                predicate=lambda local: (
+                    local["state"].next_index == 1 and calls == ["first"]
+                ),
+                error=interruption,
+            )
+
+        assert caught.value is body_error
+        assert calls == ["first", "final"]
+        assert api.handles == {}
+    finally:
+        for handle in tuple(api.handles):
+            api.close(handle)
+
+
+@pytest.mark.parametrize("surface", ["post-validation", "cleanup"])
+def test_hostile_add_note_cannot_replace_primary_or_skip_actions(
+    surface: str,
+) -> None:
+    class HostilePrimary(BaseException):
+        def __init__(self) -> None:
+            super().__init__("hostile primary")
+            self.override_calls = 0
+
+        def add_note(self, _note: str) -> None:
+            self.override_calls += 1
+            raise RuntimeError("hostile add_note override")
+
+    primary = HostilePrimary()
+    secondary = OSError(errno.EIO, "secondary action failure")
+    calls: list[str] = []
+
+    def first_action() -> None:
+        calls.append("first")
+        raise secondary
+
+    def final_action() -> None:
+        calls.append("final")
+
+    def invoke() -> None:
+        actions = (
+            ("first ordered action also failed", first_action),
+            ("final ordered action also failed", final_action),
+        )
+        if surface == "post-validation":
+            atomic_module._run_callback_with_post_validations(
+                lambda: (_ for _ in ()).throw(primary),
+                actions,
+            )
+        else:
+            with atomic_module._run_context_with_cleanup_actions(actions):
+                raise primary
+
+    with pytest.raises(HostilePrimary) as caught:
+        invoke()
+
+    assert caught.value is primary
+    assert primary.override_calls == 0
+    assert calls == ["first", "final"]
+    assert any(
+        "first ordered action also failed" in note
+        and "secondary action failure" in note
+        for note in _exception_notes(primary)
+    )
+
+
+def _interrupt_ordered_action_before_call(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    label: str,
+    errors: tuple[BaseException, ...],
+) -> list[str]:
+    real_attempt = atomic_module._attempt_ordered_action
+    remaining = list(errors)
+    events: list[str] = []
+
+    def interrupt(state: object, ordered: object) -> object:
+        if ordered.label == label and remaining:
+            error = remaining.pop(0)
+            events.append(type(error).__name__)
+            raise error
+        return real_attempt(state, ordered)
+
+    monkeypatch.setattr(atomic_module, "_attempt_ordered_action", interrupt)
+    return events
+
+
+def _call_with_interrupt_at_ordered_action_call(
+    callback: object,
+    *,
+    error: BaseException,
+) -> None:
+    """Inject at the real action CALL, not around the runner helper."""
+
+    assert callable(callback)
+    function = atomic_module._attempt_ordered_action
+    code = function.__code__
+    source, first_line = inspect.getsourcelines(function)
+    action_lines = {
+        first_line + offset
+        for offset, line in enumerate(source)
+        if "ordered.action()" in line
+    }
+    assert len(action_lines) == 1
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and frame.f_code is code
+            and event == "line"
+            and frame.f_lineno in action_lines
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to inject at the ordered action CALL"
+
+
+def _interrupt_ordered_runner_entries(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    errors: tuple[BaseException, ...],
+    action_index: int = 0,
+) -> list[BaseException]:
+    """Raise repeatedly at the protected call into the ordered runner pass."""
+
+    real_pass = atomic_module._run_ordered_actions_pass
+    remaining = list(errors)
+    observed: list[BaseException] = []
+
+    def interrupt(state: object) -> bool:
+        if state.next_index == action_index and remaining:
+            error = remaining.pop(0)
+            observed.append(error)
+            raise error
+        return real_pass(state)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_run_ordered_actions_pass",
+        interrupt,
+    )
+    return observed
+
+
+def test_callback_post_validations_resume_after_repeated_runner_entry_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    callback_error = ValueError("callback failed before post-validation")
+    first = KeyboardInterrupt("first post-validation runner entry")
+    second = SystemExit("second post-validation runner entry")
+    calls: list[str] = []
+    observed = _interrupt_ordered_runner_entries(
+        monkeypatch,
+        errors=(first, second),
+    )
+
+    with pytest.raises(ValueError) as caught:
+        atomic_module._run_callback_with_post_validations(
+            lambda: (_ for _ in ()).throw(callback_error),
+            (
+                ("first post-validation also failed", lambda: calls.append("first")),
+                ("final post-validation also failed", lambda: calls.append("final")),
+            ),
+        )
+
+    assert caught.value is callback_error
+    assert observed == [first, second]
+    assert calls == ["first", "final"]
+    assert any(
+        "post-validation iteration also failed" in note
+        and "first post-validation runner entry" in note
+        for note in _exception_notes(callback_error)
+    )
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+def test_posix_authenticated_cleanup_resumes_after_runner_entry_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "publication"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_bytes(b"payload")
+    reader, root_descriptor = _posix_cleanup_test_reader(root)
+    body_error = ValueError("authenticated body failed")
+    first = KeyboardInterrupt("first POSIX cleanup runner entry")
+    second = SystemExit("second POSIX cleanup runner entry")
+    owners: list[atomic_module._PosixResourceOwner] = []
+    real_close_all = atomic_module._PosixResourceOwner.close_all
+
+    def capture_owner(owner: atomic_module._PosixResourceOwner) -> None:
+        if not any(candidate is owner for candidate in owners):
+            owners.append(owner)
+        real_close_all(owner)
+
+    monkeypatch.setattr(
+        atomic_module._PosixResourceOwner,
+        "close_all",
+        capture_owner,
+    )
+    observed = _interrupt_ordered_runner_entries(
+        monkeypatch,
+        errors=(first, second),
+    )
+
+    def invoke() -> None:
+        with reader.open_authenticated_file(
+            "nested/payload.txt",
+            max_bytes=16,
+        ) as authenticated:
+            assert authenticated.read() == b"payload"
+            raise body_error
+
+    try:
+        with pytest.raises(ValueError) as caught:
+            invoke()
+
+        assert caught.value is body_error
+        assert observed == [first, second]
+        assert owners and all(owner.closed for owner in owners)
+        assert any(
+            "cleanup iteration also failed" in note
+            and "first POSIX cleanup runner entry" in note
+            for note in _exception_notes(body_error)
+        )
+    finally:
+        reader._deactivate()
+        os.close(root_descriptor)
+
+
+def test_windows_authenticated_cleanup_resumes_after_runner_entry_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api, reader, root_handle = _windows_cleanup_test_reader()
+    body_error = ValueError("authenticated body failed")
+    first = SystemExit("first Windows cleanup runner entry")
+    second = KeyboardInterrupt("second Windows cleanup runner entry")
+    owners: list[atomic_module._WindowsResourceOwner] = []
+    real_close_all = atomic_module._WindowsResourceOwner.close_all
+
+    def capture_owner(owner: atomic_module._WindowsResourceOwner) -> None:
+        if not any(candidate is owner for candidate in owners):
+            owners.append(owner)
+        real_close_all(owner)
+
+    monkeypatch.setattr(
+        atomic_module._WindowsResourceOwner,
+        "close_all",
+        capture_owner,
+    )
+    observed = _interrupt_ordered_runner_entries(
+        monkeypatch,
+        errors=(first, second),
+    )
+
+    def invoke() -> None:
+        with reader.open_authenticated_file(
+            "nested/payload.txt",
+            max_bytes=16,
+        ) as authenticated:
+            assert authenticated.read() == b"payload"
+            raise body_error
+
+    try:
+        with pytest.raises(ValueError) as caught:
+            invoke()
+
+        assert caught.value is body_error
+        assert observed == [first, second]
+        assert owners and all(owner.closed for owner in owners)
+        assert set(api.handles) == {root_handle}
+        assert any(
+            "cleanup iteration also failed" in note
+            and "first Windows cleanup runner entry" in note
+            for note in _exception_notes(body_error)
+        )
+    finally:
+        reader._deactivate()
+        api.close(root_handle)
+
+    assert api.handles == {}
+
+
+def test_callback_post_validations_bound_permanent_runner_entry_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    callback_error = ValueError("callback failed before post-validation")
+    interruptions = tuple(
+        KeyboardInterrupt(f"post-validation runner entry {index}")
+        for index in range(20)
+    )
+    calls: list[str] = []
+    observed = _interrupt_ordered_runner_entries(
+        monkeypatch,
+        errors=interruptions,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        atomic_module._run_callback_with_post_validations(
+            lambda: (_ for _ in ()).throw(callback_error),
+            (
+                (
+                    "blocked post-validation also failed",
+                    lambda: calls.append("blocked"),
+                ),
+                ("later post-validation also failed", lambda: calls.append("later")),
+            ),
+        )
+
+    expected_attempts = atomic_module._MAX_ORDERED_ACTION_CANCELLATION_RETRIES + 1
+    assert caught.value is callback_error
+    assert observed == list(interruptions[:expected_attempts])
+    assert calls == ["later"]
+    notes = _exception_notes(callback_error)
+    assert "post-validation runner entry 0" in notes[0]
+    assert "cancellation retry limit" in notes[-1]
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX descriptors",
+)
+def test_posix_owner_is_retained_after_permanent_runner_entry_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = atomic_module._PosixResourceOwner()
+    descriptor = owner.open(os.devnull, os.O_RDONLY)
+    record = owner.record_for_cleanup(descriptor)
+    primary = ValueError("body failed before POSIX cleanup")
+    interruptions = tuple(
+        KeyboardInterrupt(f"POSIX runner entry {index}") for index in range(20)
+    )
+    later_calls: list[str] = []
+    cleanup_complete = False
+
+    def close_owner() -> None:
+        nonlocal cleanup_complete
+        owner.close_all()
+        cleanup_complete = True
+
+    state = atomic_module._OrderedActionState(
+        actions=(
+            atomic_module._OrderedAction(
+                label="POSIX owner cleanup also failed",
+                action=close_owner,
+                complete=lambda: cleanup_complete,
+                retry_incomplete="cancellation",
+                incomplete_owner=owner,
+            ),
+            ("later cleanup also failed", lambda: later_calls.append("later")),
+        ),
+        iteration_failure_label="POSIX cleanup iteration also failed",
+        primary_error=primary,
+    )
+    observed = _interrupt_ordered_runner_entries(
+        monkeypatch,
+        errors=interruptions,
+    )
+
+    try:
+        atomic_module._run_ordered_actions(state)
+
+        expected_attempts = atomic_module._MAX_ORDERED_ACTION_CANCELLATION_RETRIES + 1
+        assert observed == list(interruptions[:expected_attempts])
+        assert state.primary_error is primary
+        assert state.next_index == 2
+        assert later_calls == ["later"]
+        assert record.descriptor == descriptor
+        os.fstat(descriptor)
+        assert primary.publication_cleanup_owners == (owner,)
+    finally:
+        owner.close_all()
+
+    assert owner.closed
+
+
+def test_windows_owner_is_retained_after_permanent_runner_entry_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    owner = atomic_module._WindowsResourceOwner(api)
+    handle = owner.acquire(lambda: api.create_directory_handle(Path("C:/authority")))
+    record = owner.record_for_cleanup(handle)
+    primary = ValueError("body failed before Windows cleanup")
+    interruptions = tuple(
+        SystemExit(f"Windows runner entry {index}") for index in range(20)
+    )
+    later_calls: list[str] = []
+    cleanup_complete = False
+
+    def close_owner() -> None:
+        nonlocal cleanup_complete
+        owner.close_all()
+        cleanup_complete = True
+
+    state = atomic_module._OrderedActionState(
+        actions=(
+            atomic_module._OrderedAction(
+                label="Windows owner cleanup also failed",
+                action=close_owner,
+                complete=lambda: cleanup_complete,
+                retry_incomplete="cancellation",
+                incomplete_owner=owner,
+            ),
+            ("later cleanup also failed", lambda: later_calls.append("later")),
+        ),
+        iteration_failure_label="Windows cleanup iteration also failed",
+        primary_error=primary,
+    )
+    observed = _interrupt_ordered_runner_entries(
+        monkeypatch,
+        errors=interruptions,
+    )
+
+    atomic_module._run_ordered_actions(state)
+
+    expected_attempts = atomic_module._MAX_ORDERED_ACTION_CANCELLATION_RETRIES + 1
+    assert observed == list(interruptions[:expected_attempts])
+    assert state.primary_error is primary
+    assert state.next_index == 2
+    assert later_calls == ["later"]
+    assert record.handle == handle
+    assert set(api.handles) == {handle}
+    assert primary.publication_cleanup_owners == (owner,)
+    owner.close_all()
+    assert owner.closed
+    assert api.handles == {}
+
+
+def test_outer_trampoline_entry_failure_retains_pending_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = ValueError("body failed before cleanup")
+    boundary_error = KeyboardInterrupt("before the C trampoline started")
+    calls: list[str] = []
+
+    class RetryOwner:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = RetryOwner()
+    monkeypatch.setattr(
+        atomic_module,
+        "_run_ordered_actions",
+        lambda _state: (_ for _ in ()).throw(boundary_error),
+    )
+
+    with pytest.raises(ValueError) as caught:
+        with atomic_module._run_context_with_cleanup_actions(
+            (
+                atomic_module._OrderedAction(
+                    label="pending owner cleanup also failed",
+                    action=owner.close,
+                    complete=lambda: owner.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=owner,
+                ),
+                ("later cleanup also failed", lambda: calls.append("later")),
+            )
+        ):
+            raise primary
+
+    assert caught.value is primary
+    assert not owner.closed
+    assert calls == []
+    assert primary.publication_cleanup_owners == (owner,)
+    assert any(
+        "before the C trampoline started" in note for note in _exception_notes(primary)
+    )
+    owner.close()
+    assert owner.closed
+
+
+def test_completion_aware_action_retries_real_pre_call_cancellation() -> None:
+    interruption = KeyboardInterrupt("action CALL cancellation")
+    completed = False
+    calls: list[str] = []
+
+    def cleanup() -> None:
+        nonlocal completed
+        calls.append("cleanup")
+        completed = True
+
+    state = atomic_module._OrderedActionState(
+        actions=(
+            atomic_module._OrderedAction(
+                label="real cleanup CALL also failed",
+                action=cleanup,
+                complete=lambda: completed,
+                retry_incomplete="cancellation",
+            ),
+            ("final validation also failed", lambda: calls.append("final")),
+        ),
+        iteration_failure_label="real cleanup iteration also failed",
+        primary_error=None,
+    )
+
+    _call_with_interrupt_at_ordered_action_call(
+        lambda: atomic_module._run_ordered_actions(state),
+        error=interruption,
+    )
+
+    assert state.primary_error is interruption
+    assert state.next_index == 2
+    assert completed
+    assert calls == ["cleanup", "final"]
+
+
+def test_completion_aware_action_retries_repeated_pre_call_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = KeyboardInterrupt("first pre-call cancellation")
+    second = SystemExit("second pre-call cancellation")
+    completed = False
+    calls = 0
+
+    def finish() -> None:
+        nonlocal calls, completed
+        calls += 1
+        completed = True
+
+    label = "test completion-aware cleanup also failed"
+    events = _interrupt_ordered_action_before_call(
+        monkeypatch,
+        label=label,
+        errors=(first, second),
+    )
+    state = atomic_module._OrderedActionState(
+        actions=(
+            atomic_module._OrderedAction(
+                label=label,
+                action=finish,
+                complete=lambda: completed,
+                retry_incomplete="cancellation",
+            ),
+        ),
+        iteration_failure_label="test iteration also failed",
+        primary_error=None,
+    )
+
+    atomic_module._run_ordered_actions(state)
+
+    assert events == ["KeyboardInterrupt", "SystemExit"]
+    assert calls == 1
+    assert completed
+    assert state.next_index == 1
+    assert state.primary_error is first
+    assert not any(repr(second) in note for note in _exception_notes(first))
+
+
+@pytest.mark.parametrize(
+    "interruption_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+@pytest.mark.parametrize("surface", ["planning", "pre-call", "action", "advance"])
+@pytest.mark.parametrize("body_fails", [True, False], ids=["body", "cleanup"])
+def test_completion_aware_action_bounds_permanent_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+    interruption_type: type[BaseException],
+    surface: str,
+    body_fails: bool,
+) -> None:
+    interruption = interruption_type("permanent cleanup cancellation")
+    body_error = ValueError("body failed before permanent cleanup cancellation")
+    attempts = 0
+    later_calls = 0
+    real_attempt = atomic_module._attempt_ordered_action
+    real_advance = atomic_module._advance_ordered_action
+    real_coerce = atomic_module._coerce_ordered_action
+
+    class RetryOwner:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = RetryOwner()
+
+    def interrupt_before_call(state: object, ordered: object) -> object:
+        nonlocal attempts
+        if surface == "pre-call":
+            attempts += 1
+            raise interruption
+        return real_attempt(state, ordered)
+
+    def permanently_interrupt() -> None:
+        nonlocal attempts
+        if surface == "action":
+            attempts += 1
+            raise interruption
+        owner.close()
+
+    def interrupt_planning(value: object) -> object:
+        nonlocal attempts
+        if surface == "planning" and isinstance(value, atomic_module._OrderedAction):
+            attempts += 1
+            raise interruption
+        return real_coerce(value)
+
+    def interrupt_advance(state: object) -> None:
+        nonlocal attempts
+        if surface == "advance":
+            attempts += 1
+            raise interruption
+        real_advance(state)
+
+    def run_later() -> None:
+        nonlocal later_calls
+        later_calls += 1
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_attempt_ordered_action",
+        interrupt_before_call,
+    )
+    monkeypatch.setattr(
+        atomic_module,
+        "_coerce_ordered_action",
+        interrupt_planning,
+    )
+    monkeypatch.setattr(
+        atomic_module,
+        "_advance_ordered_action",
+        interrupt_advance,
+    )
+    state = atomic_module._OrderedActionState(
+        actions=(
+            atomic_module._OrderedAction(
+                label="permanently interrupted cleanup also failed",
+                action=permanently_interrupt,
+                complete=lambda: owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=owner,
+            ),
+            ("later cleanup also failed", run_later),
+        ),
+        iteration_failure_label="permanent cleanup iteration also failed",
+        primary_error=(body_error if body_fails else None),
+    )
+
+    atomic_module._run_ordered_actions(state)
+
+    assert attempts == atomic_module._MAX_ORDERED_ACTION_CANCELLATION_RETRIES + 1
+    assert later_calls == 1
+    assert state.next_index == 2
+    expected = body_error if body_fails else interruption
+    assert state.primary_error is expected
+    notes = _exception_notes(expected)
+    assert len(notes) == (2 if body_fails else 1)
+    assert "cancellation retry limit" in notes[-1]
+    assert str(atomic_module._MAX_ORDERED_ACTION_CANCELLATION_RETRIES) in notes[-1]
+    expected_owners = () if surface == "advance" else (owner,)
+    assert getattr(expected, "publication_cleanup_owners", ()) == expected_owners
+    owner.close()
+    assert owner.closed
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+def test_posix_authenticated_cleanup_retries_pre_call_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "publication"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_bytes(b"payload")
+    reader, root_descriptor = _posix_cleanup_test_reader(root)
+    interruption = KeyboardInterrupt("descriptor cleanup pre-call cancellation")
+    owners: list[atomic_module._PosixResourceOwner] = []
+    real_close_all = atomic_module._PosixResourceOwner.close_all
+
+    def capture_owner(
+        owner: atomic_module._PosixResourceOwner,
+    ) -> None:
+        owners.append(owner)
+        real_close_all(owner)
+
+    monkeypatch.setattr(
+        atomic_module._PosixResourceOwner,
+        "close_all",
+        capture_owner,
+    )
+    monkeypatch.setattr(
+        atomic_module._PosixResourceOwner,
+        "record_for_cleanup",
+        lambda _owner, _descriptor: (_ for _ in ()).throw(
+            AssertionError("authenticated cleanup rebuilt a descriptor plan")
+        ),
+    )
+    events = _interrupt_ordered_action_before_call(
+        monkeypatch,
+        label=(
+            "publication authenticated file descriptor cleanup also failed; "
+            "publication authenticated directory descriptor cleanup also failed"
+        ),
+        errors=(interruption,),
+    )
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            with reader.open_authenticated_file(
+                "nested/payload.txt",
+                max_bytes=16,
+            ):
+                pass
+
+        assert caught.value is interruption
+        assert events == ["KeyboardInterrupt"]
+        assert owners and all(owner.closed for owner in owners)
+    finally:
+        reader._deactivate()
+        os.close(root_descriptor)
+
+
+def test_windows_authenticated_cleanup_retries_pre_call_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api, reader, root_handle = _windows_cleanup_test_reader()
+    interruption = SystemExit("HANDLE cleanup pre-call cancellation")
+    owners: list[atomic_module._WindowsResourceOwner] = []
+    real_close_all = atomic_module._WindowsResourceOwner.close_all
+
+    def capture_owner(
+        owner: atomic_module._WindowsResourceOwner,
+    ) -> None:
+        owners.append(owner)
+        real_close_all(owner)
+
+    monkeypatch.setattr(
+        atomic_module._WindowsResourceOwner,
+        "close_all",
+        capture_owner,
+    )
+    monkeypatch.setattr(
+        atomic_module._WindowsResourceOwner,
+        "record_for_cleanup",
+        lambda _owner, _handle: (_ for _ in ()).throw(
+            AssertionError("authenticated cleanup rebuilt a HANDLE plan")
+        ),
+    )
+    events = _interrupt_ordered_action_before_call(
+        monkeypatch,
+        label=(
+            "publication authenticated file HANDLE cleanup also failed; "
+            "publication authenticated directory HANDLE cleanup also failed"
+        ),
+        errors=(interruption,),
+    )
+    try:
+        with pytest.raises(SystemExit) as caught:
+            with reader.open_authenticated_file(
+                "nested/payload.txt",
+                max_bytes=16,
+            ):
+                pass
+
+        assert caught.value is interruption
+        assert events == ["SystemExit"]
+        assert owners and all(owner.closed for owner in owners)
+    finally:
+        reader._deactivate()
+        api.close(root_handle)
+    assert api.handles == {}
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+def test_posix_authenticated_cleanup_owns_open_before_caller_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "publication"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_bytes(b"payload")
+    reader, root_descriptor = _posix_cleanup_test_reader(root)
+    interruption = KeyboardInterrupt("after owned open before caller store")
+    escaped: list[tuple[atomic_module._PosixResourceOwner, int]] = []
+    real_open = atomic_module._PosixResourceOwner.open
+
+    def open_then_interrupt(
+        owner: atomic_module._PosixResourceOwner,
+        path: object,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = real_open(owner, path, flags, mode, dir_fd=dir_fd)
+        if path == "nested" and not escaped:
+            escaped.append((owner, descriptor))
+            raise interruption
+        return descriptor
+
+    monkeypatch.setattr(
+        atomic_module._PosixResourceOwner,
+        "open",
+        open_then_interrupt,
+    )
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            with reader.open_authenticated_file(
+                "nested/payload.txt",
+                max_bytes=16,
+            ):
+                pass
+
+        assert caught.value is interruption
+        assert len(escaped) == 1
+        owner, descriptor = escaped[0]
+        assert owner.closed
+        _assert_descriptor_closed(descriptor)
+    finally:
+        reader._deactivate()
+        os.close(root_descriptor)
+
+
+def test_windows_authenticated_cleanup_owns_acquire_before_caller_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api, reader, root_handle = _windows_cleanup_test_reader()
+    interruption = SystemExit("after owned HANDLE acquire before caller store")
+    escaped: list[tuple[atomic_module._WindowsResourceOwner, int]] = []
+    real_acquire = atomic_module._WindowsResourceOwner.acquire
+
+    def acquire_then_interrupt(
+        owner: atomic_module._WindowsResourceOwner,
+        callback: object,
+    ) -> int:
+        assert callable(callback)
+        handle = real_acquire(owner, callback)
+        if not escaped:
+            escaped.append((owner, handle))
+            raise interruption
+        return handle
+
+    monkeypatch.setattr(
+        atomic_module._WindowsResourceOwner,
+        "acquire",
+        acquire_then_interrupt,
+    )
+    try:
+        with pytest.raises(SystemExit) as caught:
+            with reader.open_authenticated_file(
+                "nested/payload.txt",
+                max_bytes=16,
+            ):
+                pass
+
+        assert caught.value is interruption
+        assert len(escaped) == 1
+        owner, handle = escaped[0]
+        assert owner.closed
+        assert handle not in api.handles
+    finally:
+        reader._deactivate()
+        api.close(root_handle)
+    assert api.handles == {}
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+@pytest.mark.parametrize("body_fails", [True, False], ids=["body", "cleanup"])
+def test_posix_authenticated_cleanup_retains_owner_after_persistent_eio(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    body_fails: bool,
+) -> None:
+    root = tmp_path / "publication"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_bytes(b"payload")
+    reader, root_descriptor = _posix_cleanup_test_reader(root)
+    real_close = atomic_module.os.close
+    body_error = ValueError("authenticated body failed")
+    close_error = OSError(errno.EIO, "persistent descriptor close failure")
+    failed_descriptor = -1
+    retained_owner: atomic_module._PosixResourceOwner | None = None
+
+    def fail_one_descriptor(descriptor: int) -> None:
+        nonlocal failed_descriptor
+        if failed_descriptor < 0:
+            failed_descriptor = descriptor
+        if descriptor == failed_descriptor:
+            raise close_error
+        real_close(descriptor)
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(atomic_module.os, "close", fail_one_descriptor)
+            with pytest.raises(BaseException) as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    if body_fails:
+                        raise body_error
+
+        expected = body_error if body_fails else close_error
+        assert caught.value is expected
+        owners = expected.publication_cleanup_owners
+        matches = [
+            owner
+            for owner in owners
+            if isinstance(owner, atomic_module._PosixResourceOwner)
+        ]
+        assert len(matches) == 1
+        retained_owner = matches[0]
+        assert not retained_owner.closed
+        live = [
+            record.descriptor
+            for record in retained_owner._records
+            if record.descriptor >= 0
+        ]
+        assert live == [failed_descriptor]
+        os.fstat(failed_descriptor)
+    finally:
+        if retained_owner is not None:
+            retained_owner.close()
+        reader._deactivate()
+        real_close(root_descriptor)
+
+    assert retained_owner is not None and retained_owner.closed
+    _assert_descriptor_closed(failed_descriptor)
+
+
+@pytest.mark.parametrize("body_fails", [True, False], ids=["body", "cleanup"])
+def test_windows_authenticated_cleanup_retains_owner_after_persistent_eio(
+    monkeypatch: pytest.MonkeyPatch,
+    body_fails: bool,
+) -> None:
+    api, reader, root_handle = _windows_cleanup_test_reader()
+    real_close = api.close
+    body_error = ValueError("authenticated body failed")
+    close_error = OSError(errno.EIO, "persistent HANDLE close failure")
+    failed_handle = 0
+    retained_owner: atomic_module._WindowsResourceOwner | None = None
+
+    def fail_one_handle(handle: int) -> None:
+        nonlocal failed_handle
+        if not failed_handle:
+            failed_handle = handle
+        if handle == failed_handle:
+            raise close_error
+        real_close(handle)
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(api, "close", fail_one_handle)
+            with pytest.raises(BaseException) as caught:
+                with reader.open_authenticated_file(
+                    "nested/payload.txt",
+                    max_bytes=16,
+                ):
+                    if body_fails:
+                        raise body_error
+
+        expected = body_error if body_fails else close_error
+        assert caught.value is expected
+        owners = expected.publication_cleanup_owners
+        matches = [
+            owner
+            for owner in owners
+            if isinstance(owner, atomic_module._WindowsResourceOwner)
+        ]
+        assert len(matches) == 1
+        retained_owner = matches[0]
+        assert not retained_owner.closed
+        live = [record.handle for record in retained_owner._records if record.handle]
+        assert live == [failed_handle]
+        assert failed_handle in api.handles
+    finally:
+        if retained_owner is not None:
+            retained_owner.close()
+        reader._deactivate()
+        real_close(root_handle)
+
+    assert retained_owner is not None and retained_owner.closed
+    assert api.handles == {}
+
+
+def test_windows_child_open_retains_local_owner_after_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    api.add_file(api.root_id, "payload.txt", b"payload")
+    root_handle = api.create_directory_handle(Path("C:/authority"))
+    entry = atomic_module._windows_find_child(api, root_handle, "payload.txt")
+    assert entry is not None
+    real_metadata = api.metadata
+    real_close = api.close
+    metadata_calls = 0
+    opened_handle = 0
+    metadata_error = OSError(errno.EIO, "post-acquire metadata failure")
+    close_error = OSError(errno.EIO, "persistent local HANDLE close failure")
+    retained_owner: atomic_module._WindowsResourceOwner | None = None
+
+    def fail_second_metadata(handle: int) -> object:
+        nonlocal metadata_calls, opened_handle
+        if handle != root_handle:
+            metadata_calls += 1
+            opened_handle = handle
+            if metadata_calls == 2:
+                raise metadata_error
+        return real_metadata(handle)
+
+    def fail_opened_close(handle: int) -> None:
+        if handle == opened_handle:
+            raise close_error
+        real_close(handle)
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(api, "metadata", fail_second_metadata)
+            faults.setattr(api, "close", fail_opened_close)
+            with pytest.raises(OSError) as caught:
+                atomic_module._windows_open_child_by_id(
+                    api,
+                    root_handle,
+                    entry,
+                    desired_access=atomic_module._WINDOWS_FILE_READ_DATA,
+                    expected_directory=False,
+                )
+
+        assert caught.value is metadata_error
+        owners = metadata_error.publication_cleanup_owners
+        assert len(owners) == 1
+        retained_owner = owners[0]
+        assert isinstance(retained_owner, atomic_module._WindowsResourceOwner)
+        assert not retained_owner.closed
+        assert opened_handle in api.handles
+    finally:
+        if retained_owner is not None:
+            retained_owner.close()
+        real_close(root_handle)
+
+    assert retained_owner is not None and retained_owner.closed
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize("use_parent_resource", [False, True])
+def test_windows_authority_factory_retains_incomplete_local_owner(
+    monkeypatch: pytest.MonkeyPatch,
+    use_parent_resource: bool,
+) -> None:
+    api = _FakeWindowsApi()
+    external_handle = (
+        api.create_directory_handle(Path("C:/authority")) if use_parent_resource else 0
+    )
+    primary = RuntimeError("authority construction failed")
+    close_error = OSError(errno.EIO, "persistent authority HANDLE close failure")
+    real_close = api.close
+    retained_owner: object | None = None
+
+    def fail_authority_init(_authority: object, **_kwargs: object) -> None:
+        raise primary
+
+    def fail_close(_handle: int) -> None:
+        raise close_error
+
+    try:
+        with monkeypatch.context() as faults:
+            _install_fake_windows_api(faults, api)
+            faults.setattr(
+                atomic_module._PublicationAuthority,
+                "__init__",
+                fail_authority_init,
+            )
+            faults.setattr(api, "close", fail_close)
+            with pytest.raises(RuntimeError) as caught:
+                atomic_module._open_windows_publication_authority(
+                    Path("C:/authority"),
+                    parent_resource=(external_handle or None),
+                    expected_parent_identity=None,
+                )
+
+        assert caught.value is primary
+        assert any(
+            "authority cleanup also failed" in note
+            for note in _exception_notes(primary)
+        )
+        assert len(primary.publication_cleanup_owners) == 1
+        retained_owner = primary.publication_cleanup_owners[0]
+        expected_type = (
+            atomic_module._WindowsResourceOwner
+            if use_parent_resource
+            else atomic_module._WindowsLexicalAuthorityOwner
+        )
+        assert isinstance(retained_owner, expected_type)
+        assert not retained_owner.closed
+        assert api.handles
+    finally:
+        if retained_owner is not None:
+            retained_owner.close()
+        if external_handle:
+            real_close(external_handle)
+
+    assert retained_owner is not None and retained_owner.closed
+    assert api.handles == {}
+
+
+@pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="requires POSIX directory descriptors",
+)
+def test_posix_authority_factory_retains_incomplete_local_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = RuntimeError("authority construction failed")
+    close_error = OSError(errno.EIO, "persistent authority descriptor close failure")
+    retained_owner: atomic_module._PosixResourceOwner | None = None
+
+    def fail_authority_init(_authority: object, **_kwargs: object) -> None:
+        raise primary
+
+    def fail_close(_descriptor: int) -> None:
+        raise close_error
+
+    try:
+        with monkeypatch.context() as faults:
+            faults.setattr(
+                atomic_module._PublicationAuthority,
+                "__init__",
+                fail_authority_init,
+            )
+            faults.setattr(atomic_module.os, "close", fail_close)
+            with pytest.raises(RuntimeError) as caught:
+                atomic_module._open_posix_publication_authority(
+                    tmp_path,
+                    parent_resource=None,
+                    expected_parent_identity=None,
+                )
+
+        assert caught.value is primary
+        assert any(
+            "authority cleanup also failed" in note
+            for note in _exception_notes(primary)
+        )
+        assert len(primary.publication_cleanup_owners) == 1
+        retained_owner = primary.publication_cleanup_owners[0]
+        assert isinstance(retained_owner, atomic_module._PosixResourceOwner)
+        assert not retained_owner.closed
+    finally:
+        if retained_owner is not None:
+            retained_owner.close()
+
+    assert retained_owner is not None and retained_owner.closed
+
+
+@pytest.mark.parametrize("body_fails", [True, False], ids=["body", "cleanup"])
+def test_ordered_cleanup_retains_multiple_incomplete_owners(
+    body_fails: bool,
+) -> None:
+    body_error = ValueError("ordered cleanup body failed")
+    cleanup_errors = (
+        OSError(errno.EIO, "first persistent cleanup failure"),
+        OSError(errno.EIO, "second persistent cleanup failure"),
+    )
+
+    class RetryOwner:
+        def __init__(self, error: OSError) -> None:
+            self.error = error
+            self.fail = True
+            self.closed = False
+
+        def close(self) -> None:
+            if self.fail:
+                raise self.error
+            self.closed = True
+
+    owners = tuple(RetryOwner(error) for error in cleanup_errors)
+    actions = tuple(
+        atomic_module._OrderedAction(
+            label=f"owner {index} cleanup also failed",
+            action=owner.close,
+            complete=lambda owner=owner: owner.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=owner,
+        )
+        for index, owner in enumerate(owners)
+    )
+
+    with pytest.raises(BaseException) as caught:
+        with atomic_module._run_context_with_cleanup_actions(actions):
+            if body_fails:
+                raise body_error
+
+    expected = body_error if body_fails else cleanup_errors[0]
+    assert caught.value is expected
+    assert expected.publication_cleanup_owners == owners
+    assert all(not owner.closed for owner in owners)
+    for owner in owners:
+        owner.fail = False
+        owner.close()
+    assert all(owner.closed for owner in owners)
+
+
+def test_cleanup_owner_attachment_bypasses_hostile_exception_attributes() -> None:
+    class HostilePrimary(BaseException):
+        def __getattribute__(self, name: str) -> object:
+            if name == "publication_cleanup_owners":
+                raise RuntimeError("hostile cleanup owner read")
+            return super().__getattribute__(name)
+
+        def __setattr__(self, name: str, value: object) -> None:
+            if name == "publication_cleanup_owners":
+                raise RuntimeError("hostile cleanup owner write")
+            super().__setattr__(name, value)
+
+    class RetryOwner:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    primary = HostilePrimary("hostile primary")
+    owner = RetryOwner()
+
+    with pytest.raises(HostilePrimary) as caught:
+        with atomic_module._run_context_with_cleanup_actions(
+            (
+                atomic_module._OrderedAction(
+                    label="hostile cleanup also failed",
+                    action=lambda: (_ for _ in ()).throw(
+                        OSError(errno.EIO, "cleanup failure")
+                    ),
+                    complete=lambda: False,
+                    incomplete_owner=owner,
+                ),
+            )
+        ):
+            raise primary
+
+    assert caught.value is primary
+    assert BaseException.__getattribute__(
+        primary,
+        "publication_cleanup_owners",
+    ) == (owner,)
+    atomic_module._attach_publication_cleanup_owner(primary, owner)
+    assert BaseException.__getattribute__(
+        primary,
+        "publication_cleanup_owners",
+    ) == (owner,)
+    owner.close()
+
+
+def test_cleanup_owner_attachment_preserves_exact_builtin_tuple() -> None:
+    class RetryOwner:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    primary = ValueError("cleanup failed")
+    first = RetryOwner()
+    second = RetryOwner()
+    BaseException.__setattr__(
+        primary,
+        "publication_cleanup_owners",
+        (first,),
+    )
+
+    atomic_module._attach_publication_cleanup_owner(primary, second)
+
+    retained = BaseException.__getattribute__(
+        primary,
+        "publication_cleanup_owners",
+    )
+    assert type(retained) is tuple
+    assert retained == (first, second)
+
+
+def test_cleanup_owner_attachment_does_not_iterate_tuple_subclass() -> None:
+    class HostileTuple(tuple):
+        def __iter__(self) -> object:
+            raise RuntimeError("hostile tuple iteration")
+
+    class RetryOwner:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    primary = ValueError("cleanup failed")
+    owner = RetryOwner()
+    BaseException.__setattr__(
+        primary,
+        "publication_cleanup_owners",
+        HostileTuple((object(),)),
+    )
+
+    atomic_module._attach_publication_cleanup_owner(primary, owner)
+
+    retained = BaseException.__getattribute__(
+        primary,
+        "publication_cleanup_owners",
+    )
+    assert type(retained) is tuple
+    assert retained == (owner,)
+
+
+def test_completion_observer_failure_does_not_block_later_cleanup() -> None:
+    observer_error = OSError(errno.EIO, "persistent completion observation failure")
+    calls: list[str] = []
+    state = atomic_module._OrderedActionState(
+        actions=(
+            atomic_module._OrderedAction(
+                label="first cleanup also failed",
+                action=lambda: calls.append("first"),
+                complete=lambda: (_ for _ in ()).throw(observer_error),
+                retry_incomplete="cancellation",
+            ),
+            ("later cleanup also failed", lambda: calls.append("later")),
+        ),
+        iteration_failure_label="cleanup iteration also failed",
+        primary_error=None,
+    )
+
+    atomic_module._run_ordered_actions(state)
+
+    assert calls == ["first", "later"]
+    assert state.next_index == 2
+    assert state.primary_error is observer_error
+
+
+def test_exact_record_cleanup_does_not_scan_retained_records() -> None:
+    class NoIterationList(list[object]):
+        def __iter__(self) -> object:
+            raise AssertionError("exact record cleanup scanned retained records")
+
+    posix_owner = atomic_module._PosixResourceOwner()
+    read_descriptor, write_descriptor = os.pipe()
+    duplicate = posix_owner.duplicate(read_descriptor)
+    posix_record = posix_owner.record_for_cleanup(duplicate)
+    posix_owner._records = NoIterationList(posix_owner._records)
+    try:
+        posix_owner.close_record(posix_record)
+    finally:
+        os.close(read_descriptor)
+        os.close(write_descriptor)
+
+    api = _FakeWindowsApi()
+    windows_owner = atomic_module._WindowsResourceOwner(api)
+    handle = windows_owner.acquire(lambda: api.create_directory_handle(Path("C:/")))
+    windows_record = windows_owner.record_for_cleanup(handle)
+    windows_owner._records = NoIterationList(windows_owner._records)
+    windows_owner.close_record(windows_record)
+
+    assert posix_record.descriptor < 0
+    assert windows_record.handle == 0
+    assert api.handles == {}
+
+
+def test_plain_ordered_action_is_not_repeated_if_cursor_cleanup_is_interrupted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    interruption = KeyboardInterrupt("after plain action cursor advance")
+    real_plain = atomic_module._run_plain_ordered_action
+    interrupted = False
+
+    def interrupt_after_action(state: object, ordered: object) -> None:
+        nonlocal interrupted
+        real_plain(state, ordered)
+        if not interrupted:
+            interrupted = True
+            raise interruption
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_run_plain_ordered_action",
+        interrupt_after_action,
+    )
+    state = atomic_module._OrderedActionState(
+        actions=(
+            ("first validation also failed", lambda: calls.append("first")),
+            ("second validation also failed", lambda: calls.append("second")),
+        ),
+        iteration_failure_label="validation iteration also failed",
+        primary_error=None,
+    )
+
+    atomic_module._run_ordered_actions(state)
+
+    assert calls == ["first", "second"]
+    assert state.primary_error is interruption
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor reuse semantics",
+)
+def test_ordered_posix_record_does_not_close_reentrant_replacement() -> None:
+    resources = atomic_module._PosixResourceOwner()
+    source_read, source_write = os.pipe()
+    foreign_read, foreign_write = os.pipe()
+    target = resources.duplicate(source_read)
+    record = resources.record_for_cleanup(target)
+    real_close = atomic_module.os.close
+    cancellation = KeyboardInterrupt("after descriptor close")
+    replacement = -1
+    cleanup_complete = False
+
+    def close_then_replace(descriptor: int) -> None:
+        nonlocal replacement
+        real_close(descriptor)
+        if descriptor == target:
+            replacement = os.dup2(foreign_read, target)
+            assert replacement == target
+            raise cancellation
+
+    def close_resources() -> None:
+        nonlocal cleanup_complete
+        resources.close_all()
+        cleanup_complete = True
+
+    atomic_module.os.close = close_then_replace
+    try:
+        state = atomic_module._OrderedActionState(
+            actions=(
+                atomic_module._OrderedAction(
+                    label="descriptor cleanup also failed",
+                    action=close_resources,
+                    complete=lambda: cleanup_complete,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=resources,
+                ),
+            ),
+            iteration_failure_label="descriptor iteration also failed",
+            primary_error=None,
+        )
+        atomic_module._run_ordered_actions(state)
+        assert state.primary_error is cancellation
+        assert record.descriptor < 0
+        assert cleanup_complete
+        assert not getattr(cancellation, "publication_cleanup_owners", ())
+        os.fstat(replacement)
+    finally:
+        atomic_module.os.close = real_close
+        resources.close_all()
+        real_close(source_read)
+        real_close(source_write)
+        real_close(foreign_read)
+        real_close(foreign_write)
+
+
+def test_ordered_windows_record_does_not_close_reentrant_replacement() -> None:
+    api = _FakeWindowsApi()
+    owner = atomic_module._WindowsResourceOwner(api)
+    target = owner.acquire(lambda: api.create_directory_handle(Path("C:/authority")))
+    record = owner.record_for_cleanup(target)
+    foreign_id = api.add_directory()
+    real_close = api.close
+    cancellation = SystemExit("after HANDLE close")
+    replacement = 0
+    cleanup_complete = False
+
+    def close_then_replace(handle: int) -> None:
+        nonlocal replacement
+        real_close(handle)
+        if handle == target:
+            api.next_handle = handle
+            replacement = api._new_handle(foreign_id)
+            assert replacement == target
+            raise cancellation
+
+    def close_resources() -> None:
+        nonlocal cleanup_complete
+        owner.close_all()
+        cleanup_complete = True
+
+    api.close = close_then_replace
+    try:
+        state = atomic_module._OrderedActionState(
+            actions=(
+                atomic_module._OrderedAction(
+                    label="HANDLE cleanup also failed",
+                    action=close_resources,
+                    complete=lambda: cleanup_complete,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=owner,
+                ),
+            ),
+            iteration_failure_label="HANDLE iteration also failed",
+            primary_error=None,
+        )
+        atomic_module._run_ordered_actions(state)
+        assert state.primary_error is cancellation
+        assert record.handle == 0
+        assert cleanup_complete
+        assert not getattr(cancellation, "publication_cleanup_owners", ())
+        assert api.handles[replacement] == foreign_id
+    finally:
+        api.close = real_close
+        owner.close_all()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux descriptor reuse semantics",
+)
+def test_posix_owner_completion_flag_reports_foreign_reuse() -> None:
+    resources = atomic_module._PosixResourceOwner()
+    source_read, source_write = os.pipe()
+    foreign_read, foreign_write = os.pipe()
+    target = resources.duplicate(source_read)
+    record = resources.record_for_cleanup(target)
+    cleanup_complete = False
+
+    def close_resources() -> None:
+        nonlocal cleanup_complete
+        resources.close_all()
+        cleanup_complete = True
+
+    try:
+        os.close(target)
+        replacement = os.dup2(foreign_read, target)
+        assert replacement == target
+        state = atomic_module._OrderedActionState(
+            actions=(
+                atomic_module._OrderedAction(
+                    label="descriptor cleanup also failed",
+                    action=close_resources,
+                    complete=lambda: cleanup_complete,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=resources,
+                ),
+            ),
+            iteration_failure_label="descriptor iteration also failed",
+            primary_error=None,
+        )
+
+        atomic_module._run_ordered_actions(state)
+
+        assert isinstance(state.primary_error, RuntimeError)
+        assert "ownership changed" in str(state.primary_error)
+        assert not cleanup_complete
+        assert record.descriptor < 0
+        assert not getattr(
+            state.primary_error,
+            "publication_cleanup_owners",
+            (),
+        )
+        os.fstat(replacement)
+    finally:
+        resources.close_all()
+        for descriptor in (
+            source_read,
+            source_write,
+            foreign_read,
+            foreign_write,
+            target,
+        ):
+            try:
+                os.close(descriptor)
+            except OSError as error:
+                if error.errno != errno.EBADF:
+                    raise
+
+
+def test_windows_owner_completion_flag_reports_foreign_reuse() -> None:
+    api = _FakeWindowsApi()
+    owner = atomic_module._WindowsResourceOwner(api)
+    target = owner.acquire(lambda: api.create_directory_handle(Path("C:/authority")))
+    record = owner.record_for_cleanup(target)
+    foreign_id = api.add_directory()
+    cleanup_complete = False
+
+    def close_resources() -> None:
+        nonlocal cleanup_complete
+        owner.close_all()
+        cleanup_complete = True
+
+    api.close(target)
+    api.next_handle = target
+    replacement = api._new_handle(foreign_id)
+    assert replacement == target
+    state = atomic_module._OrderedActionState(
+        actions=(
+            atomic_module._OrderedAction(
+                label="HANDLE cleanup also failed",
+                action=close_resources,
+                complete=lambda: cleanup_complete,
+                retry_incomplete="cancellation",
+                incomplete_owner=owner,
+            ),
+        ),
+        iteration_failure_label="HANDLE iteration also failed",
+        primary_error=None,
+    )
+
+    atomic_module._run_ordered_actions(state)
+
+    assert isinstance(state.primary_error, RuntimeError)
+    assert "ownership changed" in str(state.primary_error)
+    assert not cleanup_complete
+    assert record.handle == 0
+    assert not getattr(state.primary_error, "publication_cleanup_owners", ())
+    assert api.handles[replacement] == foreign_id
+    owner.close_all()
+    api.close(replacement)
+
+
+def test_reopen_interrupt_after_callback_result_store_runs_post_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "existing"
+    _write_tree(directory, "payload.txt", "payload")
+    ownership = capture_directory_ownership(directory)
+    real_capture = atomic_module.PublicationDirectoryReader.capture_ownership
+    capture_calls = 0
+    saved_readers: list[object] = []
+    interruption = KeyboardInterrupt("after callback result store")
+
+    def count_capture(reader: object, **kwargs: object) -> object:
+        nonlocal capture_calls
+        capture_calls += 1
+        return real_capture(reader, **kwargs)
+
+    def consume(reader: object) -> int:
+        saved_readers.append(reader)
+        return 7
+
+    monkeypatch.setattr(
+        atomic_module.PublicationDirectoryReader,
+        "capture_ownership",
+        count_capture,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_after_store(
+            atomic_module._run_callback_with_post_validations,
+            "result",
+            lambda: atomic_module.reopen_authenticated_directory(
+                directory,
+                ownership,
+                consume,
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert capture_calls == 2
+    with pytest.raises(RuntimeError, match="no longer active"):
+        saved_readers[0].inventory()
 
 
 @pytest.mark.skipif(
@@ -4320,6 +7060,7 @@ def test_authority_owner_preserves_operation_error_over_close_failure(
         )
         assert any("cleanup failure" in note for note in notes)
         assert not authority._closed
+        assert primary_error.publication_cleanup_owners == (authority_owner,)
         os.fstat(target)
         for descriptor in descriptors[:-1]:
             _assert_descriptor_closed(descriptor)

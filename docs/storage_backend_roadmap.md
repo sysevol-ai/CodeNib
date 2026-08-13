@@ -259,6 +259,32 @@ publication. Preopened workspace publication applies the same ownership model
 to exact, scanner-bounded directory plans and returns a caller-owned receipt
 whose authenticated reader remains pinned through synchronous consumption.
 
+Callback-scoped directory results are likewise provisional until ordered
+reader-validity, exact-ownership, child-namespace, and parent-authority
+postconditions have been processed after callback success, failure, or
+cancellation. Authenticated-file exit preconstructs cleanup before acquiring a
+resource, then drives the retained owner across every registered descriptor or
+HANDLE even when cancellation lands before a caller can store the returned
+integer. Completion-aware owner cleanup grants a bounded retry window for
+cancellation before or during close, then returns any still-incomplete,
+idempotent owner on the primary exception for explicit retry. Later independent
+cleanup actions still run. An identity-reused foreign resource is diagnosed and
+never closed when its immutable identity observably differs from the owned
+resource. An exact same-inode descriptor ABA or same-FILE_ID HANDLE reuse is not
+distinguishable in Python and remains a native-owner promotion gate. One
+C-level trampoline gives runner entry, re-entry, planning, action, and loop
+failures the same per-action retry state while keeping Python stack and
+diagnostic space constant. Exhausting the nine-attempt window retains an
+incomplete idempotent owner on the primary and continues later actions. The
+first local callback, postflight, or cleanup failure stays primary; later
+failures are diagnostic only. Pure Python cannot guarantee execution when
+repeated interruption lands before the trampoline itself starts. A known
+primary therefore protects pending owners before that handoff, and the first
+outer-entry failure becomes the primary and protects them when no earlier
+failure exists. Closing that remaining arbitrary call-entry gap, the raw
+resource-return gap, and exact-identity ABA requires native ownership. This
+does not complete M1 producer wiring.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced

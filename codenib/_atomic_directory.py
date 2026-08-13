@@ -13,8 +13,10 @@ import os
 import secrets
 import stat
 import sys
+from collections import deque
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import (
     Callable,
@@ -59,6 +61,7 @@ _MAX_PUBLICATION_STREAM_READ_BYTES = 8 << 20
 _RENAME_NOREPLACE = 1
 _RENAME_EXCL = 0x4
 _MAX_ORPHAN_NAME_ATTEMPTS = 128
+_MAX_ORDERED_ACTION_CANCELLATION_RETRIES = 8
 _DURABLE_PUBLICATION_FSYNC_BACKENDS = frozenset({"linux-renameat2"})
 _WINDOWS_RESERVED_BASENAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL"}
@@ -483,15 +486,119 @@ def _annotate_secondary_error(
     label: str,
     secondary_error: BaseException,
 ) -> None:
-    message = f"{label}: {secondary_error!r}"
-    if hasattr(primary_error, "add_note"):
-        primary_error.add_note(message)
+    """Best-effort diagnostics that can never replace the primary error."""
+
+    if primary_error is secondary_error:
         return
-    notes = list(getattr(primary_error, "_codenib_cleanup_notes", ()))
-    notes.append(message)
-    primary_error._codenib_cleanup_notes = tuple(notes)  # type: ignore[attr-defined]
-    if primary_error.__cause__ is None:
-        primary_error.__cause__ = secondary_error
+    try:
+        message = f"{label}: {secondary_error!r}"
+        add_note = getattr(BaseException, "add_note", None)
+        if add_note is not None:
+            # Bypass a hostile BaseException subclass override.  Diagnostics
+            # must not execute code supplied by the exception being preserved.
+            add_note(primary_error, message)
+            return
+
+        try:
+            notes = BaseException.__getattribute__(
+                primary_error,
+                "_codenib_cleanup_notes",
+            )
+        except AttributeError:
+            notes = ()
+        if not isinstance(notes, tuple):
+            notes = ()
+        BaseException.__setattr__(
+            primary_error,
+            "_codenib_cleanup_notes",
+            (*notes, message),
+        )
+        if BaseException.__getattribute__(primary_error, "__cause__") is None:
+            BaseException.__setattr__(
+                primary_error,
+                "__cause__",
+                secondary_error,
+            )
+    except BaseException:  # noqa: B036 - diagnostics are strictly non-primary
+        return
+
+
+def _publication_cleanup_owner_is_closed(owner: object) -> bool:
+    """Best-effort completion probe for an exception-retained cleanup owner."""
+
+    try:
+        return bool(owner.closed)  # type: ignore[attr-defined]
+    except BaseException:  # noqa: B036 - uncertain ownership stays reachable
+        return False
+
+
+def _attach_publication_cleanup_owner(
+    failure: BaseException,
+    owner: object | None,
+) -> None:
+    """Keep an incomplete idempotent cleanup owner reachable from ``failure``."""
+
+    if owner is None or _publication_cleanup_owner_is_closed(owner):
+        return
+    try:
+        close = owner.close  # type: ignore[attr-defined]
+        if not callable(close):
+            return
+        try:
+            existing = BaseException.__getattribute__(
+                failure,
+                "publication_cleanup_owners",
+            )
+        except AttributeError:
+            existing = ()
+        # A callback-controlled exception may expose a tuple subclass whose
+        # iteration executes hostile code.  Retain only the inert built-in
+        # representation; any other value is not a trustworthy owner list.
+        if type(existing) is not tuple:
+            existing = ()
+        retained = tuple(
+            candidate
+            for candidate in existing
+            if not _publication_cleanup_owner_is_closed(candidate)
+        )
+        if any(candidate is owner for candidate in retained):
+            return
+        BaseException.__setattr__(
+            failure,
+            "publication_cleanup_owners",
+            (*retained, owner),
+        )
+    except BaseException:  # noqa: B036 - local ownership remains authoritative
+        return
+
+
+def _prune_publication_cleanup_owners(failure: BaseException | None) -> None:
+    """Drop completed owners after an eagerly protected cleanup finishes."""
+
+    if failure is None:
+        return
+    try:
+        try:
+            existing = BaseException.__getattribute__(
+                failure,
+                "publication_cleanup_owners",
+            )
+        except AttributeError:
+            return
+        if type(existing) is not tuple:
+            return
+        retained = tuple(
+            candidate
+            for candidate in existing
+            if not _publication_cleanup_owner_is_closed(candidate)
+        )
+        BaseException.__setattr__(
+            failure,
+            "publication_cleanup_owners",
+            retained,
+        )
+    except BaseException:  # noqa: B036 - diagnostics are strictly best-effort
+        return
 
 
 def _retain_first_error(
@@ -503,6 +610,461 @@ def _retain_first_error(
         return secondary_error
     _annotate_secondary_error(primary_error, label, secondary_error)
     return primary_error
+
+
+@dataclass(slots=True)
+class _OrderedAction:
+    """One cleanup step with an optional observable completion boundary."""
+
+    label: str
+    action: Callable[[], None]
+    complete: Callable[[], bool] | None = None
+    retry_incomplete: (
+        Literal["never", "cancellation"] | Callable[[BaseException | None], bool]
+    ) = "never"
+    incomplete_owner: object | None = None
+
+
+_OrderedActionInput = _OrderedAction | tuple[str, Callable[[], None]]
+
+
+@dataclass(slots=True)
+class _OrderedActionState:
+    actions: tuple[_OrderedActionInput, ...]
+    iteration_failure_label: str
+    primary_error: BaseException | None
+    next_index: int = 0
+    cancellation_retries: int = 0
+    retry_error_retained: bool = False
+    retained_diagnostics: set[tuple[int, str]] = field(default_factory=set)
+
+    def retain(self, label: str, error: BaseException) -> None:
+        if self.primary_error is None:
+            self.primary_error = error
+            return
+        _annotate_secondary_error(self.primary_error, label, error)
+
+    def retain_once(
+        self,
+        marker: str,
+        label: str,
+        error: BaseException,
+    ) -> None:
+        key = (self.next_index, marker)
+        if key in self.retained_diagnostics:
+            return
+        self.retained_diagnostics.add(key)
+        self.retain(label, error)
+
+    def retain_retry_error(self, label: str, error: BaseException) -> None:
+        if self.retry_error_retained:
+            return
+        self.retry_error_retained = True
+        self.retain(label, error)
+
+    def reset_retry_state(self) -> None:
+        self.cancellation_retries = 0
+        self.retry_error_retained = False
+
+    def protect_pending_owners(self) -> None:
+        """Make every not-yet-run cleanup owner retryable from the primary."""
+
+        if self.primary_error is None:
+            return
+        for action in self.actions[self.next_index :]:
+            if isinstance(action, _OrderedAction):
+                _attach_publication_cleanup_owner(
+                    self.primary_error,
+                    action.incomplete_owner,
+                )
+
+
+def _coerce_ordered_action(value: _OrderedActionInput) -> _OrderedAction:
+    if isinstance(value, _OrderedAction):
+        return value
+    label, action = value
+    return _OrderedAction(label=label, action=action)
+
+
+def _ordered_action_complete(
+    state: _OrderedActionState,
+    ordered: _OrderedAction,
+) -> bool:
+    complete = ordered.complete
+    if complete is None:
+        return False
+    try:
+        return complete() is True
+    except BaseException as completion_error:  # noqa: B036 - keep first
+        state.retain_once(
+            "completion-observation",
+            f"{ordered.label} completion observation also failed",
+            completion_error,
+        )
+        return False
+
+
+def _attempt_ordered_action(
+    state: _OrderedActionState,
+    ordered: _OrderedAction,
+) -> BaseException | None:
+    """Attempt an action inside the region that catches pre-call cancellation."""
+
+    try:
+        ordered.action()
+    except BaseException as action_error:  # noqa: B036 - keep first
+        return action_error
+    return None
+
+
+def _advance_ordered_action(state: _OrderedActionState) -> None:
+    """Advance only after completion, keeping the cursor restartable."""
+
+    state.next_index += 1
+    state.reset_retry_state()
+
+
+def _retain_incomplete_ordered_action(
+    state: _OrderedActionState,
+    ordered: _OrderedAction,
+) -> None:
+    state.retain_once(
+        "incomplete",
+        f"{ordered.label} did not reach completion",
+        RuntimeError("ordered cleanup action did not complete"),
+    )
+    if state.primary_error is not None:
+        _attach_publication_cleanup_owner(
+            state.primary_error,
+            ordered.incomplete_owner,
+        )
+
+
+def _exhaust_ordered_action_retries(
+    state: _OrderedActionState,
+    ordered: _OrderedAction | None,
+    *,
+    label: str,
+) -> None:
+    """Stop one non-progressing action and leave later actions runnable."""
+
+    state.retain_once(
+        "cancellation-retry-exhausted",
+        f"{label} cancellation retry limit also exhausted",
+        RuntimeError(
+            "ordered cleanup progress remained interrupted after "
+            f"{_MAX_ORDERED_ACTION_CANCELLATION_RETRIES} cancellation retries"
+        ),
+    )
+    if ordered is not None and _ordered_action_complete(state, ordered):
+        state.next_index += 1
+        state.reset_retry_state()
+        return
+    if state.primary_error is not None and ordered is not None:
+        _attach_publication_cleanup_owner(
+            state.primary_error,
+            ordered.incomplete_owner,
+        )
+    # Do not call the separately patchable advance seam here.  Its persistent
+    # interruption is one of the no-progress cases this boundary must contain.
+    state.next_index += 1
+    state.reset_retry_state()
+
+
+def _retry_ordered_action(
+    state: _OrderedActionState,
+    ordered: _OrderedAction | None,
+    error: BaseException,
+    *,
+    label: str,
+) -> bool:
+    """Retain one cancellation and grant only a bounded number of retries."""
+
+    state.retain_retry_error(label, error)
+    if state.cancellation_retries >= _MAX_ORDERED_ACTION_CANCELLATION_RETRIES:
+        _exhaust_ordered_action_retries(
+            state,
+            ordered,
+            label=label,
+        )
+        return False
+    state.cancellation_retries += 1
+    return True
+
+
+def _run_plain_ordered_action(
+    state: _OrderedActionState,
+    ordered: _OrderedAction,
+) -> None:
+    """Keep validation actions at-most-once across result/loop cancellation."""
+
+    state.next_index += 1
+    try:
+        ordered.action()
+    except BaseException as action_error:  # noqa: B036 - keep first
+        state.retain(ordered.label, action_error)
+
+
+def _run_ordered_actions_pass(state: _OrderedActionState) -> bool:
+    """Run until completion or one cancellation-sensitive seam interrupts."""
+
+    active_index: int | None = None
+    ordered: _OrderedAction | None = None
+    try:
+        while state.next_index < len(state.actions):
+            active_index = state.next_index
+            ordered = None
+            action_input = state.actions[state.next_index]
+            if isinstance(action_input, _OrderedAction):
+                ordered = action_input
+            ordered = _coerce_ordered_action(action_input)
+            if ordered.complete is None:
+                _run_plain_ordered_action(state, ordered)
+                continue
+            if _ordered_action_complete(state, ordered):
+                _advance_ordered_action(state)
+                continue
+            action_error = _attempt_ordered_action(state, ordered)
+            completed = _ordered_action_complete(state, ordered)
+            retry_policy = ordered.retry_incomplete
+            if callable(retry_policy):
+                retry_incomplete = retry_policy(action_error)
+            else:
+                retry_incomplete = (
+                    retry_policy == "cancellation"
+                    and action_error is not None
+                    and not isinstance(action_error, Exception)
+                )
+            if completed:
+                if action_error is not None:
+                    state.retain_retry_error(ordered.label, action_error)
+                _advance_ordered_action(state)
+                continue
+            if retry_incomplete:
+                retry_error = action_error or RuntimeError(
+                    "ordered cleanup action requested retry without an error"
+                )
+                if _retry_ordered_action(
+                    state,
+                    ordered,
+                    retry_error,
+                    label=ordered.label,
+                ):
+                    continue
+                continue
+            if action_error is not None:
+                state.retain_retry_error(ordered.label, action_error)
+            _retain_incomplete_ordered_action(state, ordered)
+            _advance_ordered_action(state)
+    except BaseException as iteration_error:  # noqa: B036 - resume remaining
+        if active_index is not None and state.next_index == active_index:
+            _retry_ordered_action(
+                state,
+                ordered,
+                iteration_error,
+                label=state.iteration_failure_label,
+            )
+        else:
+            state.retain_once(
+                "iteration-after-progress",
+                state.iteration_failure_label,
+                iteration_error,
+            )
+            state.reset_retry_state()
+    return state.next_index >= len(state.actions)
+
+
+def _run_ordered_actions_trampoline_pass(state: _OrderedActionState) -> bool:
+    """Contain repeated failures at the Python-to-runner call boundary."""
+
+    active_index = state.next_index
+    ordered: _OrderedAction | None = None
+    try:
+        if active_index < len(state.actions):
+            action_input = state.actions[active_index]
+            if isinstance(action_input, _OrderedAction):
+                ordered = action_input
+        return _run_ordered_actions_pass(state)
+    except BaseException as entry_error:  # noqa: B036 - bounded resumption
+        if active_index < len(state.actions) and state.next_index == active_index:
+            _retry_ordered_action(
+                state,
+                ordered,
+                entry_error,
+                label=state.iteration_failure_label,
+            )
+        else:
+            state.retain_once(
+                "trampoline-after-progress",
+                state.iteration_failure_label,
+                entry_error,
+            )
+            state.reset_retry_state()
+        return state.next_index >= len(state.actions)
+
+
+def _run_ordered_actions(state: _OrderedActionState) -> None:
+    """Run ordered actions and resume every cancellation-sensitive seam.
+
+    Cleanup steps may expose an idempotent completion predicate.  Cancellation
+    immediately before their call receives a bounded retry window, while a close
+    that completed before cancellation is observed and never called again.  An
+    owner that remains incomplete after that window is attached to the primary
+    exception for explicit retry.  Plain validation actions retain the
+    historical one-attempt behavior: their failure already prevents a result
+    from escaping, but they own no resource that needs retry.
+    """
+
+    # ``iter(callable, sentinel)`` and a zero-length deque provide a C-level
+    # trampoline.  Each interrupted pass returns before the next one starts, so
+    # the bounded cancellation window does not grow the Python stack or retain
+    # one object per retry.
+    deque(
+        iter(partial(_run_ordered_actions_trampoline_pass, state), True),
+        maxlen=0,
+    )
+
+
+@contextmanager
+def _run_context_with_cleanup_actions(
+    cleanup_actions: tuple[_OrderedActionInput, ...],
+) -> Iterator[None]:
+    """Run every cleanup action without replacing a context-body primary."""
+
+    if not isinstance(cleanup_actions, tuple):
+        raise TypeError("context cleanup actions must be a tuple")
+    # Construct the cleanup state before the caller can acquire any resource.
+    # The finalizer then only installs the observed primary and starts the
+    # already-owned plan.
+    failures = _OrderedActionState(
+        actions=cleanup_actions,
+        iteration_failure_label=(
+            "publication authenticated cleanup iteration also failed"
+        ),
+        primary_error=None,
+    )
+    # An outer ``except`` leaves an ambient value in ``sys.exc_info()``. Track
+    # it separately so cleanup-only failure still propagates from a successful
+    # context body entered while that unrelated exception is being handled.
+    ambient_error = sys.exc_info()[1]
+    context_error: BaseException | None = None
+    try:
+        yield
+    except BaseException as error:  # noqa: B036 - preserve exact local primary
+        context_error = error
+        raise
+    finally:
+        locally_unwinding = context_error is not None
+        primary_error = context_error
+        failures.primary_error = primary_error
+        try:
+            active_error = sys.exc_info()[1]
+            locally_unwinding = context_error is not None or (
+                active_error is not None and active_error is not ambient_error
+            )
+            if primary_error is None and locally_unwinding:
+                primary_error = active_error
+            failures.primary_error = primary_error
+            failures.protect_pending_owners()
+            _run_ordered_actions(failures)
+            _prune_publication_cleanup_owners(failures.primary_error)
+        except BaseException as boundary_error:  # noqa: B036 - retain recovery
+            failures.retain_once(
+                "outer-trampoline-entry",
+                failures.iteration_failure_label,
+                boundary_error,
+            )
+            failures.protect_pending_owners()
+        if not locally_unwinding and failures.primary_error is not None:
+            raise failures.primary_error
+
+
+def _run_callback_with_post_validations(
+    callback: Callable[[], _T],
+    post_validations: tuple[tuple[str, Callable[[], None]], ...],
+) -> _T:
+    """Run one callback and ordered postconditions without losing first-primary.
+
+    Postconditions live in ``finally`` around the callback result store, so
+    cancellation after a callback has returned cannot turn an unchecked result
+    into success.  Every postcondition is attempted in order.  A callback
+    failure remains primary and receives each postcondition failure as a direct
+    note; without an earlier failure, the first postcondition failure is
+    primary and later failures become its notes.
+    """
+
+    if not callable(callback) or not isinstance(post_validations, tuple):
+        raise TypeError("callback validation requires callable inputs")
+    for label, validation in post_validations:
+        if not isinstance(label, str) or not label or not callable(validation):
+            raise TypeError("callback post-validations must be labeled callables")
+    # Own the complete post-validation plan before invoking callback code.
+    failures = _OrderedActionState(
+        actions=post_validations,
+        iteration_failure_label=(
+            "publication callback post-validation iteration also failed"
+        ),
+        primary_error=None,
+    )
+    # ``sys.exc_info()`` is inherited from an active ``except`` in a caller.
+    # Snapshot that ambient exception so it is never mistaken for a failure
+    # raised by this callback or its result/return cancellation window.
+    ambient_error = sys.exc_info()[1]
+    callback_error: BaseException | None = None
+    try:
+        result = callback()
+        return result
+    except BaseException as error:  # noqa: B036 - preserve exact local primary
+        callback_error = error
+        raise
+    finally:
+        # The explicit callback state normally identifies the locally active
+        # exception.  The active-vs-ambient comparison also covers a new
+        # BaseException injected in the result/return seam before the handler
+        # can store it.  Let locally active failures keep unwinding via the
+        # original bare raise so their traceback is unchanged.
+        locally_unwinding = callback_error is not None
+        primary_error = callback_error
+        failures.primary_error = primary_error
+        try:
+            active_error = sys.exc_info()[1]
+            locally_unwinding = callback_error is not None or (
+                active_error is not None and active_error is not ambient_error
+            )
+            if primary_error is None and locally_unwinding:
+                primary_error = active_error
+            failures.primary_error = primary_error
+            _run_ordered_actions(failures)
+        except BaseException as boundary_error:  # noqa: B036 - retain recovery
+            failures.retain_once(
+                "outer-trampoline-entry",
+                failures.iteration_failure_label,
+                boundary_error,
+            )
+        if not locally_unwinding and failures.primary_error is not None:
+            raise failures.primary_error
+
+
+def _run_publication_reader_callback(
+    reader: PublicationDirectoryReader,
+    callback: Callable[[PublicationDirectoryReader], _T],
+    validate_child_binding: Callable[[], None],
+) -> _T:
+    """Run a reader callback and always recheck validity plus child binding."""
+
+    return _run_callback_with_post_validations(
+        lambda: callback(reader),
+        (
+            (
+                "publication reader validity validation also failed",
+                reader._require_valid,
+            ),
+            (
+                "publication reader child namespace validation also failed",
+                validate_child_binding,
+            ),
+        ),
+    )
 
 
 @dataclass(slots=True)
@@ -627,6 +1189,17 @@ class _PosixResourceOwner:
         record = self._record_for(descriptor)
         if record is None:
             return
+        self.close_record(record)
+
+    def record_for_cleanup(self, descriptor: int) -> _PosixDescriptorRecord:
+        record = self._record_for(descriptor)
+        if record is None:
+            raise RuntimeError("publication descriptor is not owned")
+        return record
+
+    def close_record(self, record: _PosixDescriptorRecord) -> None:
+        """Close an exact record returned by :meth:`record_for_cleanup`."""
+
         close_error = self._close_record(record)
         if close_error is not None:
             raise close_error
@@ -643,6 +1216,8 @@ class _PosixResourceOwner:
                 "descriptor cleanup also failed",
                 close_error,
             )
+            if record.descriptor >= 0:
+                _attach_publication_cleanup_owner(primary_error, self)
 
     def close_all(self) -> None:
         primary_error: BaseException | None = None
@@ -657,6 +1232,11 @@ class _PosixResourceOwner:
         if primary_error is not None:
             raise primary_error
 
+    def close(self) -> None:
+        """Retry cleanup through the shared exception-owner protocol."""
+
+        self.close_all()
+
     def close_all_after_error(self, primary_error: BaseException) -> None:
         try:
             self.close_all()
@@ -666,6 +1246,7 @@ class _PosixResourceOwner:
                 "publication authority cleanup also failed",
                 close_error,
             )
+        _attach_publication_cleanup_owner(primary_error, self)
 
     def _record_for(self, descriptor: int) -> _PosixDescriptorRecord | None:
         for record in reversed(self._records):
@@ -831,6 +1412,17 @@ class _WindowsResourceOwner:
         record = self._record_for(handle)
         if record is None:
             return
+        self.close_record(record)
+
+    def record_for_cleanup(self, handle: int) -> _WindowsHandleRecord:
+        record = self._record_for(handle)
+        if record is None:
+            raise RuntimeError("publication HANDLE is not owned")
+        return record
+
+    def close_record(self, record: _WindowsHandleRecord) -> None:
+        """Close an exact record returned by :meth:`record_for_cleanup`."""
+
         close_error = self._close_record(record)
         if close_error is not None:
             raise close_error
@@ -847,6 +1439,8 @@ class _WindowsResourceOwner:
                 "Windows HANDLE cleanup also failed",
                 close_error,
             )
+            if record.handle:
+                _attach_publication_cleanup_owner(primary_error, self)
 
     def close_all(self) -> None:
         primary_error: BaseException | None = None
@@ -861,6 +1455,11 @@ class _WindowsResourceOwner:
         if primary_error is not None:
             raise primary_error
 
+    def close(self) -> None:
+        """Retry cleanup through the shared exception-owner protocol."""
+
+        self.close_all()
+
     def close_all_after_error(self, primary_error: BaseException) -> None:
         try:
             self.close_all()
@@ -870,6 +1469,7 @@ class _WindowsResourceOwner:
                 "Windows authority cleanup also failed",
                 close_error,
             )
+        _attach_publication_cleanup_owner(primary_error, self)
 
     def _record_for(self, handle: int) -> _WindowsHandleRecord | None:
         for record in reversed(self._records):
@@ -1080,6 +1680,7 @@ class _WindowsLexicalAuthorityOwner:
                 "Windows lexical authority cleanup also failed",
                 close_error,
             )
+        _attach_publication_cleanup_owner(primary_error, self)
 
 
 class _PublicationAuthorityOwner:
@@ -1093,6 +1694,11 @@ class _PublicationAuthorityOwner:
     @property
     def authority(self) -> _PublicationAuthority | None:
         return self._authority
+
+    @property
+    def closed(self) -> bool:
+        authority = self._authority
+        return authority is None or authority._closed
 
     def install(self, authority: _PublicationAuthority) -> None:
         if self._authority is not None:
@@ -1122,6 +1728,7 @@ class _PublicationAuthorityOwner:
             if close_complete:
                 self._authority = None
         if primary_error is not None:
+            _attach_publication_cleanup_owner(primary_error, self)
             raise primary_error
 
     def close_after_error(self, primary_error: BaseException) -> None:
@@ -1133,6 +1740,7 @@ class _PublicationAuthorityOwner:
                 "publication authority owner cleanup also failed",
                 close_error,
             )
+        _attach_publication_cleanup_owner(primary_error, self)
 
     def __enter__(self) -> _PublicationAuthorityOwner:
         return self
@@ -1377,25 +1985,55 @@ class DirectoryOrphan:
                 raise RuntimeError("directory orphan platform authority changed")
 
             def use_verified(reader: _PublicationTreeReader) -> _T:
-                before = reader.capture_ownership()
-                _require_matching_ownership(
-                    before,
-                    self.locator.ownership,
-                    label="directory orphan",
-                    allow_root_rename=True,
-                )
-                result = callback(reader)
-                after = reader.capture_ownership()
-                if after != before:
-                    raise RuntimeError("directory orphan changed while reopened")
-                return result
+                before: _TreeOwnership | None = None
 
-            return authority.read_child(
-                self.locator.child_name,
-                path=self.path,
-                label="directory orphan",
-                expected_ownership=self.locator.ownership,
-                callback=use_verified,
+                def consume() -> _T:
+                    nonlocal before
+                    before = reader.capture_ownership()
+                    _require_matching_ownership(
+                        before,
+                        self.locator.ownership,
+                        label="directory orphan",
+                        allow_root_rename=True,
+                    )
+                    return callback(reader)
+
+                def validate_after_ownership() -> None:
+                    after = reader.capture_ownership()
+                    _require_matching_ownership(
+                        after,
+                        self.locator.ownership,
+                        label="directory orphan",
+                        allow_root_rename=True,
+                    )
+                    if before is not None and after != before:
+                        raise RuntimeError("directory orphan changed while reopened")
+
+                return _run_callback_with_post_validations(
+                    consume,
+                    (
+                        (
+                            "directory orphan post-callback ownership validation "
+                            "also failed",
+                            validate_after_ownership,
+                        ),
+                    ),
+                )
+
+            return _run_callback_with_post_validations(
+                lambda: authority.read_child(
+                    self.locator.child_name,
+                    path=self.path,
+                    label="directory orphan",
+                    expected_ownership=self.locator.ownership,
+                    callback=use_verified,
+                ),
+                (
+                    (
+                        "directory orphan authority path validation also failed",
+                        authority.verify_path_binding,
+                    ),
+                ),
             )
 
     def rebind(self) -> _TreeOwnership:
@@ -1585,16 +2223,21 @@ def _open_posix_publication_authority(
                     ),
                     expected_ownership,
                 )
-                result = callback(reader)
-                reader._require_valid()
-                after = os.stat(
-                    name,
-                    dir_fd=owned_descriptor,
-                    follow_symlinks=False,
+
+                def validate_child_binding() -> None:
+                    after = os.stat(
+                        name,
+                        dir_fd=owned_descriptor,
+                        follow_symlinks=False,
+                    )
+                    if _directory_inode_identity(after) != root_identity:
+                        raise RuntimeError(f"{label} namespace binding changed")
+
+                return _run_publication_reader_callback(
+                    reader,
+                    callback,
+                    validate_child_binding,
                 )
-                if _directory_inode_identity(after) != root_identity:
-                    raise RuntimeError(f"{label} namespace binding changed")
-                return result
             except BaseException as exc:
                 primary_error = exc
                 raise
@@ -2139,6 +2782,8 @@ def _windows_open_child_by_id(
                 "Windows child HANDLE cleanup also failed",
                 close_error,
             )
+        if selected_owner._record_for(handle) is not None:
+            _attach_publication_cleanup_owner(primary_error, selected_owner)
         raise
 
 
@@ -2202,15 +2847,43 @@ def _open_windows_authenticated_file(
     max_bytes: int,
     expected: _ExpectedPublicationFile,
 ) -> Iterator[PublicationAuthenticatedFile]:
-    root_before = api.metadata(root_handle)
+    resources = _WindowsResourceOwner(api)
     parent_handle = root_handle
-    opened_directories: list[int] = []
     bindings: list[tuple[int, str, int, int, tuple[int, ...]]] = []
     file_handle = 0
     authenticated: PublicationAuthenticatedFile | None = None
+    cleanup_complete = False
     expected_directories = dict(expected.directory_identities)
     traversed: list[str] = []
-    try:
+
+    def finalize_authenticated_file() -> None:
+        if authenticated is not None:
+            authenticated._finalize()
+
+    def close_resources() -> None:
+        nonlocal cleanup_complete
+        resources.close_all()
+        cleanup_complete = True
+
+    cleanup_actions: tuple[_OrderedActionInput, ...] = (
+        (
+            "publication authenticated file finalization also failed",
+            finalize_authenticated_file,
+        ),
+        _OrderedAction(
+            label=(
+                "publication authenticated file HANDLE cleanup also failed; "
+                "publication authenticated directory HANDLE cleanup also failed"
+            ),
+            action=close_resources,
+            complete=lambda: cleanup_complete,
+            retry_incomplete="cancellation",
+            incomplete_owner=resources,
+        ),
+    )
+
+    with _run_context_with_cleanup_actions(cleanup_actions):
+        root_before = api.metadata(root_handle)
         for part in relative.parts[:-1]:
             traversed.append(part)
             relative_directory = "/".join(traversed)
@@ -2225,14 +2898,13 @@ def _open_windows_authenticated_file(
                 | _WINDOWS_FILE_READ_ATTRIBUTES
                 | _WINDOWS_SYNCHRONIZE,
                 expected_directory=True,
+                resource_owner=resources,
             )
             if opened.st_dev != root_before.st_dev:
-                api.close(child_handle)
                 raise RuntimeError("publication stream crosses a volume")
             if expected_directories.get(
                 relative_directory
             ) != _ownership_version_identity(opened):
-                api.close(child_handle)
                 raise RuntimeError(
                     "publication stream directory differs from captured ownership"
                 )
@@ -2245,7 +2917,6 @@ def _open_windows_authenticated_file(
                     _ownership_version_identity(opened),
                 )
             )
-            opened_directories.append(child_handle)
             parent_handle = child_handle
 
         entry = _windows_find_child(api, parent_handle, relative.name)
@@ -2259,6 +2930,7 @@ def _open_windows_authenticated_file(
             | _WINDOWS_FILE_READ_ATTRIBUTES
             | _WINDOWS_SYNCHRONIZE,
             expected_directory=False,
+            resource_owner=resources,
         )
         if opened_file.st_dev != root_before.st_dev:
             raise RuntimeError("publication stream crosses a volume")
@@ -2300,15 +2972,6 @@ def _open_windows_authenticated_file(
             verify_callback=verify,
         )
         yield authenticated
-    finally:
-        try:
-            if authenticated is not None:
-                authenticated._finalize()
-        finally:
-            if file_handle:
-                api.close(file_handle)
-            for handle in reversed(opened_directories):
-                api.close(handle)
 
 
 def _scan_windows_owned_directory(
@@ -2549,6 +3212,8 @@ def _open_windows_publication_authority(
                 "Windows publication authority cleanup also failed",
                 close_error,
             )
+        _attach_publication_cleanup_owner(primary_error, resources)
+        _attach_publication_cleanup_owner(primary_error, lexical_owner)
 
     def resources_closed() -> bool:
         return resources.closed and lexical_owner.closed
@@ -2684,12 +3349,17 @@ def _open_windows_publication_authority(
                     ),
                     expected_ownership,
                 )
-                result = callback(reader)
-                reader._require_valid()
-                rebound = _windows_find_child(api, owned_parent_handle, name)
-                if rebound is None or rebound.file_id != metadata.st_ino:
-                    raise RuntimeError(f"{label} namespace binding changed")
-                return result
+
+                def validate_child_binding() -> None:
+                    rebound = _windows_find_child(api, owned_parent_handle, name)
+                    if rebound is None or rebound.file_id != metadata.st_ino:
+                        raise RuntimeError(f"{label} namespace binding changed")
+
+                return _run_publication_reader_callback(
+                    reader,
+                    callback,
+                    validate_child_binding,
+                )
             except BaseException as exc:
                 primary_error = exc
                 raise
@@ -2911,18 +3581,48 @@ def _open_posix_authenticated_file(
     max_bytes: int,
     expected: _ExpectedPublicationFile,
 ) -> Iterator[PublicationAuthenticatedFile]:
-    root_before = os.fstat(root_descriptor)
-    root_device = root_before.st_dev
+    resources = _PosixResourceOwner()
     flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     directory_flags = flags | os.O_DIRECTORY | getattr(os, "O_NONBLOCK", 0)
     file_flags = flags | getattr(os, "O_NONBLOCK", 0)
-    descriptors: list[int] = [os.dup(root_descriptor)]
+    descriptors: list[int] = []
     bindings: list[tuple[int, str, int, tuple[int, ...]]] = []
     file_descriptor = -1
     authenticated: PublicationAuthenticatedFile | None = None
+    cleanup_complete = False
     expected_directories = dict(expected.directory_identities)
     traversed: list[str] = []
-    try:
+
+    def finalize_authenticated_file() -> None:
+        if authenticated is not None:
+            authenticated._finalize()
+
+    def close_resources() -> None:
+        nonlocal cleanup_complete
+        resources.close_all()
+        cleanup_complete = True
+
+    cleanup_actions: tuple[_OrderedActionInput, ...] = (
+        (
+            "publication authenticated file finalization also failed",
+            finalize_authenticated_file,
+        ),
+        _OrderedAction(
+            label=(
+                "publication authenticated file descriptor cleanup also failed; "
+                "publication authenticated directory descriptor cleanup also failed"
+            ),
+            action=close_resources,
+            complete=lambda: cleanup_complete,
+            retry_incomplete="cancellation",
+            incomplete_owner=resources,
+        ),
+    )
+
+    with _run_context_with_cleanup_actions(cleanup_actions):
+        root_before = os.fstat(root_descriptor)
+        root_device = root_before.st_dev
+        descriptors.append(resources.duplicate(root_descriptor))
         for part in relative.parts[:-1]:
             traversed.append(part)
             relative_directory = "/".join(traversed)
@@ -2936,7 +3636,7 @@ def _open_posix_authenticated_file(
                 raise RuntimeError(
                     f"publication stream refuses directory: {root_path / relative}"
                 )
-            child = os.open(part, directory_flags, dir_fd=parent)
+            child = resources.open(part, directory_flags, dir_fd=parent)
             descriptors.append(child)
             opened = os.fstat(child)
             if _ownership_binding_identity(opened) != _ownership_binding_identity(
@@ -2962,7 +3662,7 @@ def _open_posix_authenticated_file(
             raise RuntimeError(
                 f"publication stream refuses non-file: {root_path / relative}"
             )
-        file_descriptor = os.open(name, file_flags, dir_fd=parent)
+        file_descriptor = resources.open(name, file_flags, dir_fd=parent)
         opened_file = os.fstat(file_descriptor)
         if _ownership_binding_identity(opened_file) != _ownership_binding_identity(
             metadata
@@ -3017,15 +3717,6 @@ def _open_posix_authenticated_file(
             verify_callback=verify,
         )
         yield authenticated
-    finally:
-        try:
-            if authenticated is not None:
-                authenticated._finalize()
-        finally:
-            if file_descriptor >= 0:
-                os.close(file_descriptor)
-            for descriptor in reversed(descriptors):
-                os.close(descriptor)
 
 
 def _ownership_hash_field(hasher, value: bytes) -> None:
@@ -3621,6 +4312,43 @@ def _require_tree_ownership(
     )
 
 
+def _run_authenticated_directory_callback(
+    reader: PublicationDirectoryReader,
+    expected_ownership: _TreeOwnership,
+    callback: Callable[[PublicationDirectoryReader], _T],
+) -> _T:
+    """Run one authenticated callback inside an exact ownership sandwich."""
+
+    def consume() -> _T:
+        before = reader.capture_ownership()
+        if before != expected_ownership:
+            raise RuntimeError(
+                "authenticated directory differs from expected ownership"
+            )
+        return callback(reader)
+
+    def validate_after_ownership() -> None:
+        after = reader.capture_ownership()
+        if after != expected_ownership:
+            raise RuntimeError("authenticated directory changed while it was consumed")
+
+    return _run_callback_with_post_validations(
+        consume,
+        (
+            (
+                "authenticated directory post-callback reader validity "
+                "validation also failed",
+                reader._require_valid,
+            ),
+            (
+                "authenticated directory post-callback ownership validation "
+                "also failed",
+                validate_after_ownership,
+            ),
+        ),
+    )
+
+
 def reopen_authenticated_directory(
     path: Path,
     expected_ownership: _TreeOwnership,
@@ -3651,32 +4379,25 @@ def reopen_authenticated_directory(
             authority_owner=authority_owner,
         )
 
-        def consume(reader: PublicationDirectoryReader) -> _T:
-            before = reader.capture_ownership()
-            if before != expected_ownership:
-                raise RuntimeError(
-                    "authenticated directory differs from expected ownership"
-                )
-            result = callback(reader)
-            # A validator may deliberately catch a stream/snapshot failure.
-            # Reject before another namespace observation can hide that failure.
-            reader._require_valid()
-            after = reader.capture_ownership()
-            if after != expected_ownership:
-                raise RuntimeError(
-                    "authenticated directory changed while it was consumed"
-                )
-            return result
-
-        result = authority.read_child(
-            lexical.name,
-            path=lexical,
-            label="authenticated directory",
-            expected_ownership=expected_ownership,
-            callback=consume,
+        return _run_callback_with_post_validations(
+            lambda: authority.read_child(
+                lexical.name,
+                path=lexical,
+                label="authenticated directory",
+                expected_ownership=expected_ownership,
+                callback=lambda reader: _run_authenticated_directory_callback(
+                    reader,
+                    expected_ownership,
+                    callback,
+                ),
+            ),
+            (
+                (
+                    "authenticated directory authority path validation also failed",
+                    authority.verify_path_binding,
+                ),
+            ),
         )
-        authority.verify_path_binding()
-        return result
 
 
 def discard_owned_directory(
