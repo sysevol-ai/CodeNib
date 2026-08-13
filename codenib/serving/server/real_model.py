@@ -58,6 +58,17 @@ from codenib.serving.server.sglang import _normalize_eos_token_ids
 from codenib.serving.server.worker import Verifier, VerifyResult
 from codenib.serving.types import DraftTree, TokenId
 
+#: ``model_type`` values that live outside the transformers causal-LM
+#: auto-mapping but whose ``input_ids``-only forward is verified to emit
+#: causal-LM ``.logits``. Values name the auto-class attribute on
+#: ``transformers`` (resolved lazily, so this module imports without the
+#: serving extra). Add a type here only after checking its text-only forward;
+#: every registry load is additionally validated by
+#: :func:`_validate_text_logits` at startup.
+VERIFIED_NON_CAUSAL_MODEL_TYPES = {
+    "muse_glimmer": "AutoModelForImageTextToText",
+}
+
 
 def best_linear_path(tree: DraftTree) -> List[TokenId]:
     """Flatten a draft tree to one linear branch for single-path verification.
@@ -73,18 +84,6 @@ def best_linear_path(tree: DraftTree) -> List[TokenId]:
         node = max(node.children, key=lambda c: c.score)
         path.append(node.token)
     return path
-
-
-#: ``model_type`` values that live outside the transformers causal-LM
-#: auto-mapping but whose ``input_ids``-only forward is verified to emit
-#: causal-LM ``.logits``. Values name the auto-class attribute on
-#: ``transformers`` (resolved lazily, so this module imports without the
-#: serving extra). Add a type here only after checking its text-only forward;
-#: every registry load is additionally validated by
-#: :func:`_validate_text_logits` at startup.
-VERIFIED_NON_CAUSAL_MODEL_TYPES = {
-    "muse_glimmer": "AutoModelForImageTextToText",
-}
 
 
 def _resolve_model_class(model_name: str):
