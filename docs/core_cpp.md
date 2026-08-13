@@ -533,8 +533,8 @@ candidate samples reported the required backend, one batch call, and zero
 fallbacks. The report completed normally as `rejected` with no measurement
 failure and has SHA-256
 `e580b29b5eb3e5c5373eb5b90bd107c7e5f7b6dfbaf326b64f941952ed9f01a4`.
-The exact twelve-cell results and artifact receipts are in the
-[multi-language roadmap](scip_multilanguage_roadmap.md).
+The exact twelve-cell results and artifact receipts are in
+`docs/scip_multilanguage_roadmap.md`.
 
 The retained controller still expects the now-absent fixed adapter and fails
 closed after full preflight. Its default report path is
