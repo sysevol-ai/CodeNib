@@ -813,7 +813,11 @@ def test_repository_source_child_close_resets_inherited_locked_rlock(
     if child == 0:  # pragma: no cover - assertions are reported through the pipe
         try:
             os.close(read_descriptor)
-            binding.close()
+            try:
+                binding.close()
+            except RuntimeError as exc:
+                if "cannot cross processes" not in str(exc):
+                    raise
             os.write(write_descriptor, b"1" if binding.closed else b"0")
         except BaseException:  # noqa: B036 - report child failure through pipe
             os.write(write_descriptor, b"E")

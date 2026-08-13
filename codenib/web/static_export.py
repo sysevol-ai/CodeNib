@@ -912,9 +912,10 @@ def export_static_wiki(
             exclude_roots=(manifest_path.parent,),
             _source_owner=cleanup_owner.retain,
         )
+        source_identity = source_binding.authenticated_identity_snapshot()
         if (
-            source_binding.fingerprint != expected_manifest.source_fingerprint
-            or source_binding.file_count != expected_manifest.file_count
+            source_identity.fingerprint != expected_manifest.source_fingerprint
+            or source_identity.file_count != expected_manifest.file_count
         ):
             raise ValueError("repository source content does not match the manifest")
         source_reader = source_binding.borrow_reader()
@@ -926,8 +927,8 @@ def export_static_wiki(
                 source_reader=source_reader,
             )
             if (
-                source_binding.fingerprint != bundle.manifest.source_fingerprint
-                or source_binding.file_count != bundle.manifest.file_count
+                source_identity.fingerprint != bundle.manifest.source_fingerprint
+                or source_identity.file_count != bundle.manifest.file_count
             ):
                 raise ValueError(
                     "repository source content does not match the loaded manifest"

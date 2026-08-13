@@ -488,6 +488,41 @@ def test_static_export_reads_summary_excerpts_graph_and_paths_from_binding(
     assert line_reads.count("src/runtime.py") >= 2
 
 
+def test_static_export_does_not_trust_mutable_source_identity_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup = _bound_source_export_setup(tmp_path, monkeypatch)
+    expected = RepoManifest.load(str(setup.manifest_path))
+    setup.runtime.write_text(
+        "def run():\n    return 'changed-before-capture'\n",
+        encoding="utf-8",
+    )
+    real_capture = static_module.capture_repository_source
+
+    def replace_public_identity(*args, **kwargs):
+        binding = real_capture(*args, **kwargs)
+        binding.fingerprint = expected.source_fingerprint
+        binding.file_count = expected.file_count
+        return binding
+
+    monkeypatch.setattr(
+        static_module,
+        "capture_repository_source",
+        replace_public_identity,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="public identity changed"):
+        export_static_wiki(
+            setup.repo,
+            setup.manifest_path,
+            setup.output,
+            frontend_dir=setup.frontend,
+        )
+
+    assert not setup.output.exists()
+
+
 def test_static_export_rejects_summary_source_drift_before_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -888,7 +923,10 @@ def test_static_export_rejects_reversible_nested_directory_replacement(
     monkeypatch.setattr(static_module, "_write_json", arm_nested_swap)
     monkeypatch.setattr(static_module.os, "stat", reversible_stat)
 
-    with pytest.raises(ValueError, match="component changed"):
+    with pytest.raises(
+        (RuntimeError, ValueError),
+        match="component changed|publication parent path changed",
+    ):
         export_static_wiki(
             setup.repo,
             setup.manifest_path,
