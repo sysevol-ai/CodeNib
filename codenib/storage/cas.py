@@ -54,6 +54,11 @@ _PORTABLE_LINK_UNSUPPORTED_ERRNOS = {
     if value is not None
 }
 _PORTABLE_PUBLISH_LOCKS = tuple(threading.Lock() for _ in range(64))
+_STRICT_STATE_INACTIVE = "inactive"
+_STRICT_STATE_INITIALIZING = "initializing"
+_STRICT_STATE_ACTIVE = "active"
+_STRICT_STATE_CLOSING = "closing"
+_STRICT_STATE_CLOSED = "closed"
 _CASResult = TypeVar("_CASResult")
 
 
@@ -88,6 +93,9 @@ def _install_strict_state(
     store._strict_sha256_descriptor = strict_sha256_descriptor
     store._strict_shard_descriptors = strict_shard_descriptors
     store._owner_pid = os.getpid()
+    store._strict_lifecycle_state = (
+        _STRICT_STATE_ACTIVE if require_preprovisioned else _STRICT_STATE_INACTIVE
+    )
 
 
 class LocalCAS:
@@ -115,6 +123,7 @@ class LocalCAS:
         self._lifecycle_lock = _CancellationSafeRLock()
         self._owner_pid = os.getpid()
         self._process_locks = {self._owner_pid: self._lifecycle_lock}
+        self._strict_lifecycle_state = _STRICT_STATE_INACTIVE
         if not isinstance(require_preprovisioned, bool):
             raise TypeError("require_preprovisioned must be a boolean")
         try:
@@ -166,6 +175,8 @@ class LocalCAS:
 
         self.root = Path(os.path.abspath(os.fspath(requested_root)))
         self._require_preprovisioned = require_preprovisioned
+        if require_preprovisioned:
+            self._strict_lifecycle_state = _STRICT_STATE_INITIALIZING
         strict_root_identity: tuple[int, ...] | None = None
         strict_sha256_identity: tuple[int, ...] | None = None
         strict_shard_identities: dict[str, tuple[int, ...]] = {}
@@ -306,8 +317,20 @@ class LocalCAS:
         return self._lifecycle_lock.run(callback)
 
     def _close_strict_resources_locked(self) -> None:
-        resources = self._strict_resources
+        state = self._strict_lifecycle_state
+        if state in {_STRICT_STATE_INACTIVE, _STRICT_STATE_CLOSED}:
+            return
+        if state in {_STRICT_STATE_ACTIVE, _STRICT_STATE_INITIALIZING}:
+            # Store the terminal intent before touching the first descriptor.
+            # A failed or interrupted close can then be retried, while no later
+            # operation can enter against a partially released anchor set.
+            self._strict_lifecycle_state = _STRICT_STATE_CLOSING
+        elif state != _STRICT_STATE_CLOSING:
+            raise RuntimeError(f"strict CAS lifecycle state is invalid: {state}")
+
+        resources = getattr(self, "_strict_resources", None)
         if resources is None:
+            self._strict_lifecycle_state = _STRICT_STATE_CLOSED
             return
         primary_error: BaseException | None = None
         try:
@@ -327,12 +350,14 @@ class LocalCAS:
                 )
             closed = False
         if closed:
-            # Clear the owner first.  If cancellation interrupts a later store,
-            # every operation still observes the lifecycle as terminal.
+            # State remains ``closing`` while these stores run, so an
+            # interruption cannot make a later operation observe an active
+            # authority after any descriptor has been released.
             self._strict_resources = None
             self._strict_root_descriptor = None
             self._strict_sha256_descriptor = None
             self._strict_shard_descriptors = {}
+            self._strict_lifecycle_state = _STRICT_STATE_CLOSED
         if primary_error is not None:
             raise primary_error.with_traceback(primary_error.__traceback__)
 
@@ -348,8 +373,10 @@ class LocalCAS:
             raise StorageIntegrityError("strict CAS authority crossed a PID boundary")
 
         def run_locked() -> _CASResult:
-            resources = self._strict_resources
-            if resources is None or resources.closed:
+            if (
+                self._strict_lifecycle_state != _STRICT_STATE_ACTIVE
+                or self._strict_resources is None
+            ):
                 raise StorageIntegrityError("strict CAS authority is closed")
             return callback()
 
@@ -666,7 +693,10 @@ class LocalCAS:
             return
         if os.getpid() != self._owner_pid:
             raise StorageIntegrityError("strict CAS authority crossed a PID boundary")
-        if self._strict_resources is None or self._strict_resources.closed:
+        if (
+            self._strict_lifecycle_state != _STRICT_STATE_ACTIVE
+            or self._strict_resources is None
+        ):
             raise StorageIntegrityError("strict CAS authority is closed")
         anchors = (
             (

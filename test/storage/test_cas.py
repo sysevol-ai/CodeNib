@@ -696,6 +696,128 @@ def test_strict_put_retains_unlinked_shard_generation_authority(
     _assert_bad_descriptor(retained)
 
 
+def test_strict_operations_skip_owner_wide_closed_scans_but_validate_anchors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = LocalCAS.provision(tmp_path / "objects")
+    payload = b"strict lifecycle scan accounting"
+    info = store.put_bytes(payload)
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"strict file publication")
+    materialized = tmp_path / "materialized.bin"
+    resources = store._strict_resources
+    assert resources is not None
+    retained_descriptors = {
+        store._strict_root_descriptor,
+        store._strict_sha256_descriptor,
+        *store._strict_shard_descriptors.values(),
+    }
+    owner_wide_scans = 0
+    retained_anchor_checks = 0
+    real_closed = atomic_module._PosixResourceOwner.closed.fget
+    real_require_generation = cas_module._require_directory_generation
+    assert real_closed is not None
+
+    def counted_closed(owner) -> bool:
+        nonlocal owner_wide_scans
+        if owner is resources:
+            owner_wide_scans += 1
+        return real_closed(owner)
+
+    def counted_require_generation(
+        descriptor,
+        expected,
+        *,
+        path,
+        label,
+    ) -> None:
+        nonlocal retained_anchor_checks
+        if descriptor in retained_descriptors:
+            retained_anchor_checks += 1
+        real_require_generation(
+            descriptor,
+            expected,
+            path=path,
+            label=label,
+        )
+
+    def open_and_read() -> None:
+        with store.open(info.digest) as handle:
+            assert handle.read() == payload
+
+    operations = (
+        lambda: store.put_bytes(b"second strict object"),
+        lambda: store.put_file(source),
+        lambda: store.has(info.digest),
+        open_and_read,
+        lambda: store.read_bytes(info.digest),
+        lambda: store.verify(info.digest),
+        lambda: store.materialize(info.digest, materialized),
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            atomic_module._PosixResourceOwner,
+            "closed",
+            property(counted_closed),
+        )
+        patch.setattr(
+            cas_module,
+            "_require_directory_generation",
+            counted_require_generation,
+        )
+        for operation in operations:
+            owner_wide_scans = 0
+            retained_anchor_checks = 0
+
+            operation()
+
+            assert owner_wide_scans == 0
+            assert retained_anchor_checks == 3
+
+    assert materialized.read_bytes() == payload
+    store.close()
+
+
+def test_strict_failed_close_blocks_operations_until_cleanup_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = LocalCAS.provision(tmp_path / "objects")
+    info = store.put_bytes(b"close retry object")
+    resources = store._strict_resources
+    retained = store._strict_root_descriptor
+    assert resources is not None
+    assert retained is not None
+    real_close_resources = cas_module._close_posix_resources
+    failure = OSError(errno.EIO, "injected strict close failure")
+    failed = False
+
+    def fail_once(candidate, *, primary_error=None) -> None:
+        nonlocal failed
+        if candidate is resources and not failed:
+            failed = True
+            raise failure
+        real_close_resources(candidate, primary_error=primary_error)
+
+    monkeypatch.setattr(cas_module, "_close_posix_resources", fail_once)
+
+    with pytest.raises(OSError) as caught:
+        store.close()
+
+    assert caught.value is failure
+    assert store._strict_lifecycle_state == cas_module._STRICT_STATE_CLOSING
+    os.fstat(retained)
+    with pytest.raises(StorageIntegrityError, match="authority is closed"):
+        store.read_bytes(info.digest)
+
+    store.close()
+
+    assert store._strict_lifecycle_state == cas_module._STRICT_STATE_CLOSED
+    assert store._strict_resources is None
+    _assert_bad_descriptor(retained)
+
+
 def test_strict_concurrent_close_traverses_retained_anchors_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
