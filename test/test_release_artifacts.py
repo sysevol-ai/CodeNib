@@ -4,11 +4,13 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
 
+from scripts import smoke_release_services
 from scripts.verify_release_artifacts import (
     ReleaseValidationError,
     expected_tag,
@@ -17,6 +19,45 @@ from scripts.verify_release_artifacts import (
     validate_readme_mcp_ownership,
     validate_tag,
 )
+
+
+def test_release_service_smoke_accepts_authenticated_source_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "calculator.py").write_text("VALUE = 1\n", encoding="utf-8")
+    git_commands: list[tuple[str, ...]] = []
+
+    def record_git(command, *, cwd, env=None):
+        assert cwd == repo
+        git_commands.append(tuple(command))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(smoke_release_services, "_run", record_git)
+    monkeypatch.setattr(
+        smoke_release_services.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0],
+            2,
+            "",
+            "error: repository source content does not match the manifest\n",
+        ),
+    )
+
+    smoke_release_services._assert_stale_snapshot_rejected(
+        tmp_path,
+        repo,
+        executable="codenib",
+        env={},
+    )
+
+    assert git_commands == [
+        ("git", "add", "calculator.py"),
+        ("git", "commit", "--quiet", "-m", "advance fixture"),
+    ]
 
 
 def test_project_identity_and_tag_match_release_metadata() -> None:

@@ -563,6 +563,7 @@ def _assert_stale_snapshot_rejected(
     stale_messages = (
         "repository checkout does not match the indexed snapshot",
         "repository source files do not match the indexed content",
+        "repository source content does not match the manifest",
     )
     if result.returncode != 2 or not any(
         message in result.stderr for message in stale_messages
