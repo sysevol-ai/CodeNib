@@ -207,6 +207,41 @@ class _DescriptorOwner:
                 )
             raise
 
+    def close_inherited(
+        self,
+        *,
+        expected_identity: tuple[int, ...] | None = None,
+    ) -> None:
+        """Close only this fork child's fd reference without seeking its OFD."""
+
+        descriptor = self._descriptor
+        if descriptor < 0:
+            return
+        identity = expected_identity or self._identity
+        try:
+            metadata = os.fstat(descriptor)
+        except OSError as exc:
+            if exc.errno == errno.EBADF:
+                self._invalidate()
+                return
+            raise
+        if identity is not None and _file_identity(metadata) != identity:
+            self._invalidate()
+            raise RuntimeError("inherited descriptor changed before close")
+        try:
+            os.close(descriptor)
+        except BaseException:
+            try:
+                rebound = os.fstat(descriptor)
+            except OSError as exc:
+                if exc.errno == errno.EBADF:
+                    self._invalidate()
+            else:
+                if identity is not None and _file_identity(rebound) != identity:
+                    self._invalidate()
+            raise
+        self._invalidate()
+
     def _close_retryable(
         self,
         descriptor: int,
@@ -531,6 +566,18 @@ class _PublicationAuthorityOwner:
             if authority._closed:
                 self._authority = None
 
+    def close_inherited(self) -> None:
+        """Close the child copy without arming the parent's shared OFD."""
+
+        authority = self._authority
+        if authority is None:
+            return
+        try:
+            authority.close()
+        finally:
+            if authority._closed:
+                self._authority = None
+
     def close_after_error(self, primary_error: BaseException) -> None:
         try:
             self.close()
@@ -697,12 +744,24 @@ class PublishedFileReceipt:
         if self._descriptor < 0:
             return
         owner_changed = os.getpid() != self._owner_pid
+        if owner_changed:
+            close_error: BaseException | None = None
+            try:
+                self._descriptor_owner.close_inherited(
+                    expected_identity=self.file_identity,
+                )
+            except BaseException as exc:  # noqa: B036 - report PID boundary
+                close_error = exc
+            boundary_error = RuntimeError(
+                "published file receipt cannot cross a PID boundary"
+            )
+            if close_error is not None:
+                raise boundary_error from close_error
+            raise boundary_error
         self._descriptor_owner.close(
             expected_identity=self.file_identity,
             retryable=True,
         )
-        if owner_changed:
-            raise RuntimeError("published file receipt cannot cross a PID boundary")
 
     def _require_active(self) -> None:
         if self._descriptor < 0:
@@ -937,12 +996,13 @@ class PublishedFileReceiptOwner:
     strand the retained descriptor on the evaluation stack.
     """
 
-    __slots__ = ("_slot", "_lock", "_owner_pid")
+    __slots__ = ("_slot", "_lock", "_owner_pid", "_process_locks")
 
     def __init__(self) -> None:
         self._slot: object = _RECEIPT_OWNER_EMPTY
         self._lock = _CancellationSafeRLock()
         self._owner_pid = os.getpid()
+        self._process_locks = {self._owner_pid: self._lock}
 
     @property
     def state(self) -> str:
@@ -1017,9 +1077,17 @@ class PublishedFileReceiptOwner:
         self._lock.run(consume_locked)
 
     def close(self) -> None:
-        owner_changed = os.getpid() != self._owner_pid
-        if self._lock.held_by_current_thread():
-            raise RuntimeError("published file receipt owner close is reentrant")
+        current_pid = os.getpid()
+        owner_changed = current_pid != self._owner_pid
+        if owner_changed:
+            lifecycle_lock = self._process_locks.setdefault(
+                current_pid,
+                _CancellationSafeRLock(),
+            )
+        else:
+            if self._lock.held_by_current_thread():
+                raise RuntimeError("published file receipt owner close is reentrant")
+            lifecycle_lock = self._lock
 
         def close_locked() -> None:
             self._normalize_closed_locked()
@@ -1060,7 +1128,7 @@ class PublishedFileReceiptOwner:
 
         close_error: BaseException | None = None
         try:
-            self._lock.run(close_locked)
+            lifecycle_lock.run(close_locked)
         except BaseException as exc:  # noqa: B036 - report PID after cleanup
             close_error = exc
 
@@ -1577,6 +1645,40 @@ class OwnedFilePublicationAuthority:
         if self._state == "closed":
             return
         owner_changed = os.getpid() != self._owner_pid
+        if owner_changed:
+            close_error: BaseException | None = None
+            if self._stage_owner.descriptor >= 0:
+                try:
+                    self._stage_owner.close_inherited(
+                        expected_identity=self._stage_identity,
+                    )
+                except BaseException as exc:  # noqa: B036 - close all child fds
+                    close_error = exc
+            if self._authority_owner.authority is not None:
+                try:
+                    self._authority_owner.close_inherited()
+                except BaseException as exc:  # noqa: B036 - close all child fds
+                    if close_error is None:
+                        close_error = exc
+                    else:
+                        _annotate_error(
+                            close_error,
+                            "inherited parent authority close also failed",
+                            exc,
+                        )
+            if (
+                self._stage_owner.descriptor < 0
+                and self._authority_owner.authority is None
+            ):
+                self._state = "closed"
+            else:
+                self._state = "close-failed"
+            boundary_error = RuntimeError(
+                "owned file publication authority cannot cross a PID boundary"
+            )
+            if close_error is not None:
+                raise boundary_error from close_error
+            raise boundary_error
         close_error: BaseException | None = None
         if self._stage_owner.descriptor >= 0:
             try:
@@ -1602,10 +1704,6 @@ class OwnedFilePublicationAuthority:
             self._state = "closed"
         elif not cleanup_complete:
             self._state = "close-failed"
-        if owner_changed:
-            raise RuntimeError(
-                "owned file publication authority cannot cross a PID boundary"
-            ) from close_error
         if close_error is not None:
             raise close_error
 

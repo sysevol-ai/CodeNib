@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - Windows fails closed when requested
 
 from . import _windows_fs_authority as _windows_fs
 from ._atomic_directory import (
+    _MAX_OWNERSHIP_COMPONENT_BYTES,
     DirectoryOrphan,
     PublicationDirectoryReader,
     TreeFileRecord,
@@ -37,6 +38,7 @@ from ._atomic_directory import (
     _publish_staged_directory_with_authority,
     _rename_noreplace_at,
     _require_matching_ownership,
+    _validate_ownership_inventory_budget,
     directory_ownership_entry_identities,
     directory_ownership_file_records,
     directory_ownership_inventory,
@@ -68,7 +70,6 @@ _F_SEAL_GROW = 0x0004
 _F_SEAL_WRITE = 0x0008
 _REQUIRED_SNAPSHOT_SEALS = _F_SEAL_SEAL | _F_SEAL_SHRINK | _F_SEAL_GROW | _F_SEAL_WRITE
 _UNSET_DESTINATION_OWNERSHIP = object()
-_MAX_WORKSPACE_ENTRIES = 500_000
 _MAX_WORKSPACE_FILE_BYTES = 64 * 1024 * 1024 * 1024
 _MAX_WORKSPACE_TOTAL_BYTES = 64 * 1024 * 1024 * 1024
 _WORKSPACE_PLAN_DOMAIN = b"codenib-owned-workspace-plan-v1"
@@ -291,6 +292,10 @@ def _relative_path(value: str | Path | PurePosixPath) -> PurePosixPath:
         or relative.as_posix() != raw
         or any(part in {"", ".", ".."} for part in relative.parts)
         or len(relative.parts) > _MAX_COMPONENTS
+        or any(
+            len(os.fsencode(part)) > _MAX_OWNERSHIP_COMPONENT_BYTES
+            for part in relative.parts
+        )
         or len(os.fsencode(raw)) > _MAX_RELATIVE_PATH_BYTES
     ):
         raise ValueError("captured directory path must be normalized and bounded")
@@ -368,8 +373,6 @@ class WorkspacePlan:
             raise ValueError("workspace plan subject digest must be lowercase sha256")
         directories = tuple(self.directories)
         files = tuple(self.files)
-        if len(directories) + len(files) > _MAX_WORKSPACE_ENTRIES:
-            raise ValueError("workspace plan has too many entries")
         if not all(
             isinstance(directory_item, WorkspaceDirectory)
             for directory_item in directories
@@ -430,6 +433,15 @@ class WorkspacePlan:
             sorted(directories, key=lambda item: item.path.as_posix())
         )
         canonical_files = tuple(sorted(files, key=lambda item: item.path.as_posix()))
+        try:
+            _validate_ownership_inventory_budget(
+                os.fsencode(item.path.as_posix())
+                for item in (*canonical_directories, *canonical_files)
+            )
+        except RuntimeError as exc:
+            raise ValueError(
+                "workspace plan exceeds the ownership scanner budget"
+            ) from exc
         plan_digest = hashlib.sha256()
         _workspace_frame(plan_digest, b"domain", _WORKSPACE_PLAN_DOMAIN)
         _workspace_frame(plan_digest, b"subject", subject.encode("ascii"))
@@ -438,7 +450,7 @@ class WorkspacePlan:
             _workspace_frame(
                 plan_digest,
                 b"directory-path",
-                directory_item.path.as_posix().encode("utf-8"),
+                os.fsencode(directory_item.path.as_posix()),
             )
             _workspace_frame(
                 plan_digest,
@@ -449,7 +461,7 @@ class WorkspacePlan:
             _workspace_frame(
                 plan_digest,
                 b"file-path",
-                file_item.path.as_posix().encode("utf-8"),
+                os.fsencode(file_item.path.as_posix()),
             )
             _workspace_frame(
                 plan_digest,

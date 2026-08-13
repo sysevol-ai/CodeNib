@@ -240,6 +240,22 @@ not depend on the catalog implementation.  These gates close the current
 portable context publication surface; they are a prerequisite for, but do not
 complete, the remaining legacy manifest import/export adapter or a future
 streaming payload revision.
+
+Local filesystem publication now has an explicit strict-authority gate. Regular
+files are written through caller-owned staged descriptors, installed with
+no-replace rename, authenticated through a retained receipt, and reported
+durable only after the parent directory is flushed. Strict `LocalCAS` mode
+requires a fully preprovisioned `sha256` layout and retains anchored authorities
+for the root, hash directory, and every shard for the store lifetime; these
+anchors prevent device/inode reuse from making a replacement generation look
+valid. Lazy directory creation remains a cooperative compatibility mode and is
+not an adversarial generation boundary. The current strict implementation is
+POSIX-only, requires callers to close the store to release its generation
+anchors, and does not make ordinary same-UID writable files immutable after
+publication. Preopened workspace publication applies the same ownership model
+to exact, scanner-bounded directory plans and returns a caller-owned receipt
+whose authenticated reader remains pinned through synchronous consumption.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced

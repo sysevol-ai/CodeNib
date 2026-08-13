@@ -263,6 +263,7 @@ def test_put_file_rejects_source_changed_between_passes(
 
 def test_second_file_pass_checks_same_size_mutation_before_stop_iteration(
     tmp_path: Path,
+    filesystem_ctime_tick,
 ) -> None:
     source = tmp_path / "source.bin"
     original = b"same-size-original"
@@ -278,6 +279,7 @@ def test_second_file_pass_checks_same_size_mutation_before_stop_iteration(
     )
 
     assert next(chunks) == original
+    filesystem_ctime_tick(signature[5])
     source.write_bytes(replacement)
 
     with pytest.raises(OSError, match="source changed"):
@@ -585,6 +587,8 @@ def test_provision_builds_complete_strict_layout_and_put_never_mkdirs(
     assert store._strict_root_identity is not None
     assert store._strict_sha256_identity is not None
     assert len(store._strict_shard_identities) == 256
+    assert store._strict_resources is not None
+    assert len(store._strict_shard_descriptors) == 256
 
     def forbidden_mkdir(*_args, **_kwargs) -> None:
         raise AssertionError("strict CAS put attempted to create a directory")
@@ -612,6 +616,40 @@ def test_strict_put_rejects_preprovisioned_shard_generation_replacement(
 
     assert list(shard.iterdir()) == []
     assert list(previous.iterdir()) == []
+
+
+def test_strict_put_retains_unlinked_shard_generation_authority(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "objects"
+    store = LocalCAS.provision(root)
+    payload = b"pinned shard generation"
+    digest = hashlib.sha256(payload).hexdigest()
+    shard_name = digest[:2]
+    shard = root / "sha256" / shard_name
+    retained = store._strict_shard_descriptors[shard_name]
+    retained_identity = cas_module._directory_resource_identity(
+        retained,
+        path=shard,
+        label="retained test shard",
+    )
+
+    shard.rmdir()
+    shard.mkdir()
+
+    assert (
+        cas_module._directory_resource_identity(
+            retained,
+            path=shard,
+            label="retained test shard",
+        )
+        == retained_identity
+    )
+    with pytest.raises(StorageIntegrityError, match="generation changed"):
+        store.put_bytes(payload)
+    assert list(shard.iterdir()) == []
+    store.close()
+    _assert_bad_descriptor(retained)
 
 
 @pytest.mark.parametrize("layer", ["root", "sha256", "shard"])

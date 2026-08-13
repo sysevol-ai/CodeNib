@@ -759,11 +759,13 @@ def test_owned_stage_rejects_root_replacement_before_publish(tmp_path: Path) -> 
 
 def test_authenticated_descriptor_exposes_only_a_sealed_good_snapshot(
     tmp_path: Path,
+    filesystem_ctime_tick,
 ) -> None:
     root = tmp_path / "root"
     root.mkdir()
     source = root / "payload"
     source.write_bytes(b"GOOD")
+    captured_ctime_ns = source.stat().st_ctime_ns
     reader = CapturedDirectoryReader(root, capture_directory_ownership(root))
     observed = b""
 
@@ -774,6 +776,7 @@ def test_authenticated_descriptor_exposes_only_a_sealed_good_snapshot(
                 record,
             ):
                 assert record.size == 4
+                filesystem_ctime_tick(captured_ctime_ns)
                 source.write_bytes(b"EVIL")
                 os.lseek(descriptor, 0, os.SEEK_SET)
                 observed = os.read(descriptor, 4)
@@ -808,6 +811,41 @@ def test_authenticated_snapshot_has_bounded_immutable_bytes_fallback(
             with pytest.raises(RuntimeError, match="no sealed descriptor"):
                 _ = snapshot.descriptor
     finally:
+        reader.close()
+
+
+@pytest.mark.parametrize("force_memory_fallback", [False, True])
+def test_authenticated_snapshot_rewinds_after_partial_source_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    force_memory_fallback: bool,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    payload = b"abcdef"
+    (root / "payload").write_bytes(payload)
+    reader = CapturedDirectoryReader(root, capture_directory_ownership(root))
+    source = reader.open_file("payload", max_bytes=len(payload))
+
+    if force_memory_fallback:
+
+        def unavailable() -> int:
+            raise captured_directory._SnapshotUnavailable("unsupported host")
+
+        monkeypatch.setattr(
+            captured_directory,
+            "_create_sealable_memfd",
+            unavailable,
+        )
+
+    try:
+        assert source.read(2) == b"ab"
+        with source.immutable_snapshot() as snapshot:
+            assert snapshot.record.size == len(payload)
+            assert snapshot.read() == payload
+        source.verify_unchanged()
+    finally:
+        source.close()
         reader.close()
 
 
@@ -1058,6 +1096,72 @@ def test_workspace_plan_is_canonical_and_bound_to_its_subject() -> None:
         ).digest
         != first.digest
     )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX surrogateescape")
+def test_workspace_plan_and_publication_preserve_raw_filesystem_paths(
+    tmp_path: Path,
+) -> None:
+    raw_name = os.fsdecode(b"payload-\xff.bin")
+    plan = WorkspacePlan(
+        subject_digest="c" * 64,
+        files=(WorkspaceFile(raw_name, max_bytes=3),),
+    )
+    same_plan = WorkspacePlan(
+        subject_digest="c" * 64,
+        files=(WorkspaceFile(PurePosixPath(raw_name), max_bytes=3),),
+    )
+
+    assert plan.digest == same_plan.digest
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            expected_destination=None,
+        )
+        workspace.write_file(raw_name, [b"raw"])
+        workspace.seal()
+        receipt_owner = PublishedWorkspaceReceiptOwner()
+        workspace.publish_into(receipt_owner)
+
+        assert os.fsencode(next(destination.iterdir()).name) == os.fsencode(raw_name)
+        assert (
+            receipt_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(raw_name, max_bytes=3)
+            )
+            == b"raw"
+        )
+        receipt_owner.close()
+
+
+@pytest.mark.parametrize(
+    ("limit_name", "limit"),
+    [
+        ("_MAX_OWNERSHIP_ENTRIES", 1),
+        ("_MAX_OWNERSHIP_METADATA_BYTES", 1),
+    ],
+)
+def test_workspace_plan_uses_exact_ownership_scanner_budgets(
+    monkeypatch: pytest.MonkeyPatch,
+    limit_name: str,
+    limit: int,
+) -> None:
+    monkeypatch.setattr(atomic_directory, limit_name, limit)
+
+    with pytest.raises(ValueError, match="ownership scanner budget"):
+        WorkspacePlan(
+            subject_digest="d" * 64,
+            files=(
+                WorkspaceFile("first", max_bytes=1),
+                WorkspaceFile("second", max_bytes=1),
+            ),
+        )
 
 
 @pytest.mark.parametrize(

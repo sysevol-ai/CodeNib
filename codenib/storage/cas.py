@@ -81,6 +81,10 @@ class LocalCAS:
         strict_root_identity: tuple[int, ...] | None = None
         strict_sha256_identity: tuple[int, ...] | None = None
         strict_shard_identities: dict[str, tuple[int, ...]] = {}
+        strict_resources = _atomic._PosixResourceOwner()
+        strict_root_descriptor: int | None = None
+        strict_sha256_descriptor: int | None = None
+        strict_shard_descriptors: dict[str, int] = {}
         if not require_preprovisioned:
             try:
                 _ensure_cas_root(self.root)
@@ -95,8 +99,12 @@ class LocalCAS:
                 label="CAS root",
             ) as root_descriptor:
                 if require_preprovisioned:
-                    strict_root_identity = _directory_resource_identity(
+                    strict_root_descriptor = _retain_directory_descriptor(
+                        strict_resources,
                         root_descriptor,
+                    )
+                    strict_root_identity = _directory_resource_identity(
+                        strict_root_descriptor,
                         path=self.root,
                         label="CAS root",
                     )
@@ -112,8 +120,12 @@ class LocalCAS:
                     label="CAS SHA-256 root",
                 ) as (sha256_descriptor, sha256_path):
                     if require_preprovisioned:
-                        strict_sha256_identity = _directory_resource_identity(
+                        strict_sha256_descriptor = _retain_directory_descriptor(
+                            strict_resources,
                             sha256_descriptor,
+                        )
+                        strict_sha256_identity = _directory_resource_identity(
+                            strict_sha256_descriptor,
                             path=sha256_path,
                             label="CAS SHA-256 root",
                         )
@@ -124,14 +136,20 @@ class LocalCAS:
                                 shard_name,
                                 label="CAS digest shard",
                             ) as (shard_descriptor, shard_path):
+                                retained_shard = _retain_directory_descriptor(
+                                    strict_resources,
+                                    shard_descriptor,
+                                )
+                                strict_shard_descriptors[shard_name] = retained_shard
                                 strict_shard_identities[shard_name] = (
                                     _directory_resource_identity(
-                                        shard_descriptor,
+                                        retained_shard,
                                         path=shard_path,
                                         label="CAS digest shard",
                                     )
                                 )
         except FileNotFoundError as exc:
+            _close_posix_resources(strict_resources, primary_error=exc)
             if require_preprovisioned:
                 try:
                     self.root.lstat()
@@ -145,12 +163,52 @@ class LocalCAS:
                 ) from exc
             raise
         except ValueError as exc:
+            _close_posix_resources(strict_resources, primary_error=exc)
             raise StorageValidationError(
                 f"path is not a real directory: {self.root}"
             ) from exc
+        except BaseException as exc:
+            _close_posix_resources(strict_resources, primary_error=exc)
+            raise
+        if not require_preprovisioned:
+            _close_posix_resources(strict_resources)
         self._strict_root_identity = strict_root_identity
         self._strict_sha256_identity = strict_sha256_identity
         self._strict_shard_identities = strict_shard_identities
+        self._strict_resources = strict_resources if require_preprovisioned else None
+        self._strict_root_descriptor = strict_root_descriptor
+        self._strict_sha256_descriptor = strict_sha256_descriptor
+        self._strict_shard_descriptors = strict_shard_descriptors
+        self._owner_pid = os.getpid()
+
+    def close(self) -> None:
+        """Release strict generation anchors retained for this store."""
+
+        resources = self._strict_resources
+        if resources is None:
+            return
+        _close_posix_resources(resources)
+        self._strict_resources = None
+        self._strict_root_descriptor = None
+        self._strict_sha256_descriptor = None
+        self._strict_shard_descriptors.clear()
+
+    def __enter__(self) -> LocalCAS:
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc: BaseException | None,
+        _traceback: object,
+    ) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     @classmethod
     def provision(cls, root: str | Path) -> LocalCAS:
@@ -350,6 +408,7 @@ class LocalCAS:
         create: bool = False,
     ) -> Iterator[tuple[int | None, Path]]:
         digest = _validate_digest(digest)
+        self._require_strict_anchors(digest[:2])
         with _open_directory_path(self.root, label="CAS root") as root_descriptor:
             _require_directory_generation(
                 root_descriptor,
@@ -385,6 +444,43 @@ class LocalCAS:
                         label="CAS digest shard",
                     )
                     yield shard_descriptor, shard_path
+
+    def _require_strict_anchors(self, shard_name: str) -> None:
+        if not self._require_preprovisioned:
+            return
+        if os.getpid() != self._owner_pid:
+            raise StorageIntegrityError("strict CAS authority crossed a PID boundary")
+        if self._strict_resources is None:
+            raise StorageIntegrityError("strict CAS authority is closed")
+        anchors = (
+            (
+                self._strict_root_descriptor,
+                self._strict_root_identity,
+                self.root,
+                "CAS root",
+            ),
+            (
+                self._strict_sha256_descriptor,
+                self._strict_sha256_identity,
+                self._sha256_root,
+                "CAS SHA-256 root",
+            ),
+            (
+                self._strict_shard_descriptors.get(shard_name),
+                self._strict_shard_identities.get(shard_name),
+                self._sha256_root / shard_name,
+                "CAS digest shard",
+            ),
+        )
+        for descriptor, expected, path, label in anchors:
+            if descriptor is None or expected is None:
+                raise StorageIntegrityError(f"{label} generation anchor is absent")
+            _require_directory_generation(
+                descriptor,
+                expected,
+                path=path,
+                label=label,
+            )
 
     @staticmethod
     def _blob_info(digest: str, byte_size: int) -> BlobInfo:
@@ -485,6 +581,19 @@ def _directory_resource_identity(
         raise StorageIntegrityError(
             f"{label} authority could not be identified: {path}"
         ) from exc
+
+
+def _retain_directory_descriptor(
+    resources: _atomic._PosixResourceOwner,
+    descriptor: int | None,
+) -> int:
+    if descriptor is None:
+        raise RuntimeError("strict CAS has no directory descriptor to retain")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+    retained = resources.open(".", flags, dir_fd=descriptor)
+    os.set_inheritable(retained, False)
+    return retained
 
 
 def _require_directory_generation(

@@ -9,6 +9,7 @@ import errno
 import hashlib
 import multiprocessing
 import os
+import signal
 import stat
 import sys
 import threading
@@ -2465,6 +2466,110 @@ def test_linear_state_and_pid_binding(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(publication_module.os, "getpid", lambda: owner_pid)
     assert receipt_owner.closed
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_receipt_child_close_uses_process_local_lifecycle_lock(
+    tmp_path: Path,
+) -> None:
+    receipt_owner = PublishedFileReceiptOwner()
+    publish_owned_file(
+        tmp_path / "object",
+        [b"payload"],
+        max_bytes=7,
+        receipt_owner=receipt_owner,
+    )
+    receipt_descriptor = receipt_owner.receipt._descriptor
+    consuming = threading.Event()
+    release = threading.Event()
+
+    def hold_receipt() -> None:
+        receipt_owner.consume(
+            lambda _receipt: (
+                consuming.set(),
+                release.wait(timeout=10),
+            )
+        )
+
+    holder = threading.Thread(target=hold_receipt)
+    holder.start()
+    assert consuming.wait(timeout=5)
+
+    child = os.fork()
+    if child == 0:  # pragma: no branch - child reports exact outcome by status
+        signal.signal(signal.SIGALRM, lambda *_args: os._exit(70))
+        signal.alarm(3)
+        try:
+            receipt_owner.close()
+        except RuntimeError as exc:
+            if "PID boundary" not in str(exc):
+                os._exit(71)
+        except BaseException:  # noqa: B036 - child reports by status
+            os._exit(72)
+        else:
+            os._exit(73)
+        try:
+            os.fstat(receipt_descriptor)
+        except OSError as exc:
+            if exc.errno != errno.EBADF:
+                os._exit(74)
+        else:
+            os._exit(75)
+        os._exit(0)
+
+    _pid, status = os.waitpid(child, 0)
+    release.set()
+    holder.join(timeout=5)
+    assert not holder.is_alive()
+    assert os.WIFEXITED(status)
+    assert os.WEXITSTATUS(status) == 0
+    assert receipt_owner.receipt.read_bytes(max_bytes=7) == b"payload"
+    receipt_owner.close()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_publication_child_close_does_not_seek_parent_stage(
+    tmp_path: Path,
+) -> None:
+    publication = OwnedFilePublicationAuthority(tmp_path / "object", max_bytes=6)
+    stage_descriptor = publication._descriptor
+
+    def chunks():
+        yield b"abc"
+        assert os.lseek(stage_descriptor, 0, os.SEEK_CUR) == 3
+        child = os.fork()
+        if child == 0:  # pragma: no branch - child reports exact outcome by status
+            signal.signal(signal.SIGALRM, lambda *_args: os._exit(80))
+            signal.alarm(3)
+            try:
+                publication.close()
+            except RuntimeError as exc:
+                if "PID boundary" not in str(exc):
+                    os._exit(81)
+            except BaseException:  # noqa: B036 - child reports by status
+                os._exit(82)
+            else:
+                os._exit(83)
+            try:
+                os.fstat(stage_descriptor)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    os._exit(84)
+            else:
+                os._exit(85)
+            os._exit(0)
+        _pid, status = os.waitpid(child, 0)
+        assert os.WIFEXITED(status)
+        assert os.WEXITSTATUS(status) == 0
+        assert os.lseek(stage_descriptor, 0, os.SEEK_CUR) == 3
+        yield b"def"
+
+    record = publication.write(chunks())
+    assert record.size == 6
+    receipt_owner = PublishedFileReceiptOwner()
+    publication.publish_into(receipt_owner)
+    assert receipt_owner.receipt.read_bytes(max_bytes=6) == b"abcdef"
+    receipt_owner.close()
 
 
 def test_missing_parent_and_noncanonical_leaf_do_not_create_paths(

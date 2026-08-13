@@ -16,7 +16,15 @@ import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
-from typing import Callable, ContextManager, Iterator, Literal, Protocol, TypeVar
+from typing import (
+    Callable,
+    ContextManager,
+    Iterable,
+    Iterator,
+    Literal,
+    Protocol,
+    TypeVar,
+)
 
 from . import _windows_fs_authority as _windows_fs
 
@@ -1961,7 +1969,7 @@ def _publication_relative_path(
         relative.is_absolute()
         or relative.as_posix() != raw
         or len(relative.parts) > _MAX_SAFE_REMOVAL_DEPTH
-        or len(raw.encode("utf-8", errors="strict")) > _MAX_OWNERSHIP_PATH_BYTES
+        or len(os.fsencode(raw)) > _MAX_OWNERSHIP_PATH_BYTES
     ):
         raise ValueError("publication reader path must be normalized and bounded")
     for part in relative.parts:
@@ -3047,6 +3055,14 @@ def _reserve_ownership_record(
     budget.metadata_bytes += 8 + len(relative) + 1 + 4 + 8 + 32
     if budget.metadata_bytes > _MAX_OWNERSHIP_METADATA_BYTES:
         raise RuntimeError("directory ownership scan exceeds its metadata limit")
+
+
+def _validate_ownership_inventory_budget(relative_paths: Iterable[bytes]) -> None:
+    """Apply the scanner's exact entry and metadata budget to a planned tree."""
+
+    budget = _OwnershipBudget()
+    for relative in relative_paths:
+        _reserve_ownership_record(budget, relative=relative)
 
 
 def _hash_owned_regular_file(
