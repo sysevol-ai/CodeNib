@@ -261,9 +261,10 @@ cache is uncontrolled. The stopwatch starts
 before cold adapter or chunker construction and includes discovery and
 filtering, minified-source inspection, reads, parser/worker setup, the native
 binding and ordered merge, buffer decode, complete `CodeChunk` construction,
-and node materialization. Contract and receipt checks happen before timing;
-parity, backend checks, stage aggregation, and report serialization happen
-after timing.
+and node materialization. Controller-side identity, artifact, contract, and
+receipt checks happen before timing; the candidate's runtime contract safety
+check remains inside its stopwatch. Parity, backend checks, stage aggregation,
+and report serialization happen after timing.
 
 Every warmup and measured pair must preserve the complete ordered seven-field
 `CodeChunk` sequence, including content and node IDs. Because
