@@ -589,6 +589,36 @@ def test_missing_adapter_fails_after_complete_preflight(tmp_path: Path) -> None:
     assert report["workers"] == {}
 
 
+def test_measurement_exception_remains_failed_not_performance_rejected(
+    tmp_path: Path,
+) -> None:
+    manifest, roots = _write_manifest(tmp_path)
+
+    def broken_sample(_config: dict[str, Any]) -> dict[str, Any]:
+        raise TimeoutError("synthetic worker timeout")
+
+    report = profiler.profile_python_repository_chunk_gate(
+        subject_roots=roots,
+        manifest_path=manifest,
+        iterations=1,
+        warmups=0,
+        worker_counts=(1,),
+        _sample_runner=broken_sample,
+        _candidate_observer=_candidate_receipt,
+        _benchmark_observer=_benchmark_receipt,
+    )
+
+    assert report["status"] == "failed"
+    assert report["failure"] == {
+        "stage": "measurement",
+        "error_type": "TimeoutError",
+        "message": "synthetic worker timeout",
+    }
+    assert report["passed"] is False
+    assert report["promotion_eligible"] is False
+    assert report["decision"]["selected_worker_count"] is None
+
+
 def test_selector_drift_fails_closed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

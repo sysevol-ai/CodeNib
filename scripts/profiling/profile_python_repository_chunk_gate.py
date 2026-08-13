@@ -1621,7 +1621,15 @@ def _base_report(
                 "minified inspection, reads, parser/worker setup, native binding, "
                 "ordered merge, decode, CodeChunk and node materialization"
             ),
-            "verification_outside_stopwatch": True,
+            "verification_boundary": {
+                "controller_artifact_contract_and_subject_receipts": (
+                    "outside-stopwatch"
+                ),
+                "candidate_runtime_contract_safety_check": (
+                    "inside-candidate-stopwatch"
+                ),
+                "parity_backend_stage_and_report_checks": "outside-stopwatch",
+            },
             "manifest": _json_safe_observed(manifest_path),
             "candidate_build_dir": _json_safe_observed(build_dir),
             "candidate_adapter": f"{_ADAPTER_MODULE}.{_ADAPTER_FUNCTION}",
@@ -1892,7 +1900,8 @@ def profile_python_repository_chunk_gate(
     # performance, RSS, identity, and isolation gate to pass.
     report["promotion_eligible"] = passed
     report["passed"] = passed
-    report["status"] = "passed" if passed else "rejected"
+    if report["failure"] is None:
+        report["status"] = "passed" if passed else "rejected"
     return report
 
 
