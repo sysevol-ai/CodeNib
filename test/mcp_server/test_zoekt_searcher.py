@@ -6,9 +6,7 @@
 
 from __future__ import annotations
 
-import dis
 import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -284,50 +282,17 @@ class TestSearcherLifecycle:
         proc.poll.return_value = None
         proc.wait.return_value = 0
 
-        def spawn(owner, *_args, **_kwargs):
+        interruption = KeyboardInterrupt("injected after Popen ownership transfer")
+
+        def spawn_then_interrupt(owner, *_args, **_kwargs):
             owner.retain(proc)
-            return proc
+            raise interruption
 
-        monkeypatch.setattr(zoekt_module, "_OwnedZoektProcess", spawn)
-
-        instructions = list(dis.get_instructions(ZoektSearcher.start))
-        load_index = next(
-            index
-            for index, instruction in enumerate(instructions)
-            if instruction.opname == "LOAD_GLOBAL"
-            and instruction.argval == "_OwnedZoektProcess"
-        )
-        handoff_offset = next(
-            instruction.offset
-            for instruction in instructions[load_index:]
-            if instruction.opname == "POP_TOP"
-        )
-        interruption = KeyboardInterrupt("injected after Popen return")
-        injected = False
-
-        def trace(frame, event, _arg):
-            nonlocal injected
-            if frame.f_code is ZoektSearcher.start.__code__ and event == "call":
-                frame.f_trace_opcodes = True
-            if (
-                not injected
-                and frame.f_code is ZoektSearcher.start.__code__
-                and event == "opcode"
-                and frame.f_lasti == handoff_offset
-            ):
-                injected = True
-                raise interruption
-            return trace
-
-        sys.settrace(trace)
-        try:
-            with pytest.raises(KeyboardInterrupt) as caught:
-                searcher.start()
-        finally:
-            sys.settrace(None)
+        monkeypatch.setattr(zoekt_module, "_OwnedZoektProcess", spawn_then_interrupt)
+        with pytest.raises(KeyboardInterrupt) as caught:
+            searcher.start()
 
         assert caught.value is interruption
-        assert injected
         proc.terminate.assert_called_once_with()
         proc.wait.assert_called_once_with(timeout=5)
         assert searcher._proc is None

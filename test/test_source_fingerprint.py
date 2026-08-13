@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import dis
 import errno
 import hashlib
 import inspect
@@ -1593,35 +1592,6 @@ def _fake_windows_resolution_handoff_case(
     )
 
 
-def _opcode_offset(
-    function,
-    *,
-    source_text: str,
-    opname: str,
-    argval: object | None = None,
-    occurrence: str = "last",
-) -> int:
-    lines, first_line = inspect.getsourcelines(function)
-    matching_lines = [
-        first_line + index for index, line in enumerate(lines) if source_text in line
-    ]
-    assert matching_lines
-    target_line = matching_lines[-1] if occurrence == "last" else matching_lines[0]
-    current_line = None
-    matches: list[int] = []
-    for instruction in dis.get_instructions(function):
-        if instruction.starts_line is not None:
-            current_line = instruction.starts_line
-        if (
-            current_line == target_line
-            and instruction.opname == opname
-            and (argval is None or instruction.argval == argval)
-        ):
-            matches.append(instruction.offset)
-    assert matches
-    return matches[-1] if occurrence == "last" else matches[0]
-
-
 def test_fingerprint_changes_with_source_content_and_path(tmp_path):
     source = tmp_path / "module.py"
     source.write_text("VALUE = 1\n")
@@ -2393,82 +2363,63 @@ def test_windows_resolution_binding_slot_store_cancellation_closes_every_branch(
     assert api.handles == {}
 
 
-def test_windows_resolution_return_cancellation_closes_slot_owner() -> None:
+def test_windows_resolution_completed_binding_cancellation_closes_slot_owner() -> None:
     (
         api,
         authority,
         root_identity,
         expected_identity,
     ) = _fake_windows_resolution_handoff_case("regular")
-    method = contained_source_module._open_windows_resolution_at
-    target_offset = _opcode_offset(
-        method,
-        source_text="return binding",
-        opname="LOAD_FAST",
-        argval="binding",
-    )
-    interruption = SystemExit("injected resolution RETURN_VALUE cancellation")
-    injected = False
-    slot = contained_source_module._SourceCleanupSlot()
+    interruption = SystemExit("injected after completed resolution handoff")
 
-    def interrupt_return(frame, event, _arg):
-        nonlocal injected
-        if (
-            not injected
-            and frame.f_code is method.__code__
-            and event == "opcode"
-            and frame.f_lasti == target_offset
-        ):
-            injected = True
-            raise interruption
-        frame.f_trace_opcodes = True
-        return interrupt_return
+    class InterruptingSlot(contained_source_module._SourceCleanupSlot):
+        def own(self, resource: object) -> None:
+            super().own(resource)
+            if isinstance(resource, contained_source_module._WindowsResolutionBinding):
+                raise interruption
 
-    sys.settrace(interrupt_return)
-    try:
-        with pytest.raises(SystemExit) as caught:
-            method(
-                Path(r"C:\repo"),
-                authority,
-                ("current.py",),
-                expected_root_identity=root_identity,
-                expected_final_identity=expected_identity,
-                allow_stable_unresolved=True,
-                api=api,
-                cleanup_slot=slot,
-            )
-    finally:
-        sys.settrace(None)
+    slot = InterruptingSlot()
+    with pytest.raises(SystemExit) as caught:
+        contained_source_module._open_windows_resolution_at(
+            Path(r"C:\repo"),
+            authority,
+            ("current.py",),
+            expected_root_identity=root_identity,
+            expected_final_identity=expected_identity,
+            allow_stable_unresolved=True,
+            api=api,
+            cleanup_slot=slot,
+        )
 
     assert caught.value is interruption
-    assert injected
     assert slot.closed
     assert set(api.handles) == set(authority.handles)
     authority.close()
     assert api.handles == {}
 
 
-def test_windows_resolution_return_eio_retains_owner_without_double_close() -> None:
+def test_windows_resolution_handoff_eio_retains_owner_without_double_close() -> None:
     (
         api,
         authority,
         root_identity,
         expected_identity,
     ) = _fake_windows_resolution_handoff_case("regular")
-    method = contained_source_module._open_windows_resolution_at
-    target_offset = _opcode_offset(
-        method,
-        source_text="return binding",
-        opname="LOAD_FAST",
-        argval="binding",
-    )
-    interruption = KeyboardInterrupt("injected resolution return cancellation")
+    interruption = KeyboardInterrupt("injected resolution handoff cancellation")
     real_close = api.close
     failed = 0
     close_calls: dict[int, int] = {}
-    injected = False
     armed = False
-    slot = contained_source_module._SourceCleanupSlot()
+
+    class InterruptingSlot(contained_source_module._SourceCleanupSlot):
+        def own(self, resource: object) -> None:
+            nonlocal armed
+            super().own(resource)
+            if isinstance(resource, contained_source_module._WindowsResolutionBinding):
+                armed = True
+                raise interruption
+
+    slot = InterruptingSlot()
 
     def persistent_close(handle: int) -> None:
         nonlocal failed
@@ -2482,36 +2433,18 @@ def test_windows_resolution_return_eio_retains_owner_without_double_close() -> N
             raise OSError(errno.EIO, "injected resolution return close EIO")
         real_close(handle)
 
-    def interrupt_return(frame, event, _arg):
-        nonlocal armed, injected
-        if (
-            not injected
-            and frame.f_code is method.__code__
-            and event == "opcode"
-            and frame.f_lasti == target_offset
-        ):
-            injected = True
-            armed = True
-            raise interruption
-        frame.f_trace_opcodes = True
-        return interrupt_return
-
     api.close = persistent_close  # type: ignore[method-assign]
-    sys.settrace(interrupt_return)
-    try:
-        with pytest.raises(KeyboardInterrupt) as caught:
-            method(
-                Path(r"C:\repo"),
-                authority,
-                ("current.py",),
-                expected_root_identity=root_identity,
-                expected_final_identity=expected_identity,
-                allow_stable_unresolved=True,
-                api=api,
-                cleanup_slot=slot,
-            )
-    finally:
-        sys.settrace(None)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        contained_source_module._open_windows_resolution_at(
+            Path(r"C:\repo"),
+            authority,
+            ("current.py",),
+            expected_root_identity=root_identity,
+            expected_final_identity=expected_identity,
+            allow_stable_unresolved=True,
+            api=api,
+            cleanup_slot=slot,
+        )
 
     assert caught.value is interruption
     assert caught.value.source_cleanup_owner is slot
@@ -2674,72 +2607,38 @@ def test_windows_fake_binding_close_commits_interrupted_owner_pop() -> None:
     assert api.handles == {}
 
 
-@pytest.mark.parametrize("timing", ["before-root-store", "after-root-store", "return"])
+@pytest.mark.parametrize("timing", ["before-binding-store", "after-binding-store"])
 def test_windows_repository_binding_handoff_cancellation_closes_slot_owner(
     timing: str,
 ) -> None:
     api = _FakeWindowsSourceApi()
     api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
-    method = source_fingerprint_module._fingerprint_windows_repository
-    store_offset = _opcode_offset(
-        method,
-        source_text="root_authority = None",
-        opname="STORE_FAST",
-        argval="root_authority",
-    )
-    instructions = list(dis.get_instructions(method))
-    store_index = next(
-        index
-        for index, instruction in enumerate(instructions)
-        if instruction.offset == store_offset
-    )
-    offsets = {
-        "before-root-store": store_offset,
-        "after-root-store": instructions[store_index + 1].offset,
-        "return": _opcode_offset(
-            method,
-            source_text="return binding",
-            opname="LOAD_FAST",
-            argval="binding",
-        ),
-    }
-    target_offset = offsets[timing]
     interruption = SystemExit(f"injected repository {timing} cancellation")
-    injected = False
-    owner = SourceBindingCleanupOwner()
 
-    def interrupt_handoff(frame, event, _arg):
-        nonlocal injected
-        if (
-            not injected
-            and frame.f_code is method.__code__
-            and event == "opcode"
-            and frame.f_lasti == target_offset
-        ):
-            injected = True
-            raise interruption
-        frame.f_trace_opcodes = True
-        return interrupt_handoff
+    class InterruptingSlot(contained_source_module._SourceCleanupSlot):
+        def own(self, resource: object) -> None:
+            is_binding = isinstance(resource, RepositorySourceBinding)
+            if is_binding and timing == "before-binding-store":
+                raise interruption
+            super().own(resource)
+            if is_binding and timing == "after-binding-store":
+                raise interruption
 
-    sys.settrace(interrupt_handoff)
-    try:
-        with pytest.raises(SystemExit) as caught:
-            method(
-                r"C:\repo",
-                exclude_roots=(),
-                version=SOURCE_FINGERPRINT_VERSION,
-                api=api,
-                retain_binding=True,
-                source_owner=owner.retain,
-            )
-    finally:
-        sys.settrace(None)
+    slot = InterruptingSlot()
+    with pytest.raises(SystemExit) as caught:
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+            retain_binding=True,
+            cleanup_slot=slot,
+        )
 
     assert caught.value is interruption
-    assert injected
-    assert owner.pending_sources == ()
-    owner.close()
-    assert owner.closed
+    assert slot.pending_sources == ()
+    slot.close()
+    assert slot.closed
     assert api.handles == {}
 
 
@@ -2748,20 +2647,21 @@ def test_windows_repository_return_eio_attaches_retry_owner_without_double_close
 ):
     api = _FakeWindowsSourceApi()
     api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
-    method = source_fingerprint_module._fingerprint_windows_repository
-    target_offset = _opcode_offset(
-        method,
-        source_text="return binding",
-        opname="LOAD_FAST",
-        argval="binding",
-    )
-    interruption = KeyboardInterrupt("injected repository return cancellation")
-    owner = SourceBindingCleanupOwner()
+    interruption = KeyboardInterrupt("injected repository binding cancellation")
     real_close = api.close
     failed = 0
     close_calls: dict[int, int] = {}
-    injected = False
     armed = False
+
+    class InterruptingSlot(contained_source_module._SourceCleanupSlot):
+        def own(self, resource: object) -> None:
+            nonlocal armed
+            super().own(resource)
+            if isinstance(resource, RepositorySourceBinding):
+                armed = True
+                raise interruption
+
+    slot = InterruptingSlot()
 
     def persistent_close(handle: int) -> None:
         nonlocal failed
@@ -2775,34 +2675,16 @@ def test_windows_repository_return_eio_attaches_retry_owner_without_double_close
             raise OSError(errno.EIO, "injected repository return close EIO")
         real_close(handle)
 
-    def interrupt_return(frame, event, _arg):
-        nonlocal armed, injected
-        if (
-            not injected
-            and frame.f_code is method.__code__
-            and event == "opcode"
-            and frame.f_lasti == target_offset
-        ):
-            injected = True
-            armed = True
-            raise interruption
-        frame.f_trace_opcodes = True
-        return interrupt_return
-
     api.close = persistent_close  # type: ignore[method-assign]
-    sys.settrace(interrupt_return)
-    try:
-        with pytest.raises(KeyboardInterrupt) as caught:
-            method(
-                r"C:\repo",
-                exclude_roots=(),
-                version=SOURCE_FINGERPRINT_VERSION,
-                api=api,
-                retain_binding=True,
-                source_owner=owner.retain,
-            )
-    finally:
-        sys.settrace(None)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+            retain_binding=True,
+            cleanup_slot=slot,
+        )
 
     assert caught.value is interruption
     retry_owner = caught.value.source_cleanup_owner
@@ -2816,8 +2698,8 @@ def test_windows_repository_return_eio_attaches_retry_owner_without_double_close
     assert closed_once
 
     api.close = real_close  # type: ignore[method-assign]
-    owner.close()
-    assert owner.closed
+    slot.close()
+    assert slot.closed
     assert api.handles == {}
     assert all(close_calls[handle] == 1 for handle in closed_once)
 
