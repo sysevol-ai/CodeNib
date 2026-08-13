@@ -148,6 +148,22 @@ class LocalCAS:
                                         label="CAS digest shard",
                                     )
                                 )
+            if not require_preprovisioned:
+                _close_posix_resources(strict_resources)
+            # Keep the complete local owner inside this exception boundary
+            # until every retained descriptor is reachable from ``self``.
+            # Otherwise cancellation after the last shard is retained but before
+            # the first attribute store can strand all 258 strict anchors.
+            self._strict_root_identity = strict_root_identity
+            self._strict_sha256_identity = strict_sha256_identity
+            self._strict_shard_identities = strict_shard_identities
+            self._strict_resources = (
+                strict_resources if require_preprovisioned else None
+            )
+            self._strict_root_descriptor = strict_root_descriptor
+            self._strict_sha256_descriptor = strict_sha256_descriptor
+            self._strict_shard_descriptors = strict_shard_descriptors
+            self._owner_pid = os.getpid()
         except FileNotFoundError as exc:
             _close_posix_resources(strict_resources, primary_error=exc)
             if require_preprovisioned:
@@ -170,16 +186,6 @@ class LocalCAS:
         except BaseException as exc:
             _close_posix_resources(strict_resources, primary_error=exc)
             raise
-        if not require_preprovisioned:
-            _close_posix_resources(strict_resources)
-        self._strict_root_identity = strict_root_identity
-        self._strict_sha256_identity = strict_sha256_identity
-        self._strict_shard_identities = strict_shard_identities
-        self._strict_resources = strict_resources if require_preprovisioned else None
-        self._strict_root_descriptor = strict_root_descriptor
-        self._strict_sha256_descriptor = strict_sha256_descriptor
-        self._strict_shard_descriptors = strict_shard_descriptors
-        self._owner_pid = os.getpid()
 
     def close(self) -> None:
         """Release strict generation anchors retained for this store."""

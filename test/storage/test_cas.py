@@ -4,11 +4,13 @@
 
 from __future__ import annotations
 
+import dis
 import errno
 import hashlib
 import multiprocessing
 import os
 import stat
+import sys
 from pathlib import Path
 from queue import Empty
 
@@ -39,6 +41,47 @@ def _exception_notes(error: BaseException) -> tuple[str, ...]:
         *tuple(getattr(error, "__notes__", ())),
         *tuple(getattr(error, "_codenib_cleanup_notes", ())),
     )
+
+
+def _interrupt_before_store_attr(
+    function: object,
+    attribute: str,
+    callback: object,
+    *,
+    error: BaseException,
+) -> None:
+    """Raise before one constructor attribute handoff opcode executes."""
+
+    assert callable(function)
+    assert callable(callback)
+    code = function.__code__
+    store_offsets = {
+        instruction.offset
+        for instruction in dis.get_instructions(function)
+        if instruction.opname == "STORE_ATTR" and instruction.argval == attribute
+    }
+    assert store_offsets
+    previous_trace = sys.gettrace()
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            return trace
+        if (
+            event == "opcode"
+            and frame.f_code is code
+            and frame.f_lasti in store_offsets
+        ):
+            assert len(frame.f_locals["strict_shard_descriptors"]) == 256
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
 
 
 def _put_bytes_in_process(
@@ -597,6 +640,41 @@ def test_provision_builds_complete_strict_layout_and_put_never_mkdirs(
     info = store.put_bytes(b"strict preprovisioned object")
 
     assert store.read_bytes(info.digest) == b"strict preprovisioned object"
+
+
+def test_strict_constructor_cancellation_during_resource_handoff_closes_all(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "objects"
+    provisioned = LocalCAS.provision(root)
+    provisioned.close()
+    retained: list[int] = []
+    real_retain = cas_module._retain_directory_descriptor
+
+    def retain(resources, descriptor):
+        retained_descriptor = real_retain(resources, descriptor)
+        retained.append(retained_descriptor)
+        return retained_descriptor
+
+    monkeypatch.setattr(cas_module, "_retain_directory_descriptor", retain)
+    interruption = KeyboardInterrupt("strict resource handoff cancellation")
+    before = _descriptor_count()
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_before_store_attr(
+            LocalCAS.__init__,
+            "_strict_root_identity",
+            lambda: LocalCAS(root, require_preprovisioned=True),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert len(retained) == 258
+    assert len(set(retained)) == len(retained)
+    for descriptor in retained:
+        _assert_bad_descriptor(descriptor)
+    assert _descriptor_count() <= before
 
 
 def test_strict_put_rejects_preprovisioned_shard_generation_replacement(
