@@ -273,7 +273,7 @@ def _attach_vector_view_cleanup_owner(
 
     owner = getattr(cleanup_error, "captured_directory_cleanup_owner", None)
     if owner is None:
-        owner = view.reader
+        owner = getattr(view, "reader", view)
     try:
         primary.captured_directory_cleanup_owner = owner  # type: ignore[attr-defined]
     except BaseException:  # noqa: B036 - traceback still retains local view

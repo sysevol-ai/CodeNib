@@ -19,13 +19,13 @@ from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
-from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
 import codenib.compiler.index_compiler as index_compiler_module
 from codenib._atomic_directory import (
     capture_directory_ownership,
     directory_ownership_digest,
     directory_ownership_root_identity,
 )
+from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
 from codenib.compiler.index_builders import (
     BM25IndexBuilder,
     IndexBuilderRegistry,
@@ -464,10 +464,7 @@ class TestVectorIndexBuilder:
     ):
         import codenib._atomic_directory as atomic_directory
         from codenib._captured_directory import OwnedDirectoryStage
-        from codenib.index.incremental import (
-            EmbeddingsCache,
-            IncrementalChunkStore,
-        )
+        from codenib.index.incremental import EmbeddingsCache, IncrementalChunkStore
         from codenib.index.incremental import IncrementalState as StateType
 
         output_path = tmp_path / "vector"

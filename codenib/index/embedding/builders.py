@@ -400,7 +400,7 @@ def build_hierarchical_vector_store(
             try:
                 vector_store.load(
                     str(store_path),
-                    native_index_authorization=native_authorization,
+                    native_index_authorization=native_index_authorization,
                 )
                 return vector_store
             except BaseException as primary:  # noqa: B036 - close partial state

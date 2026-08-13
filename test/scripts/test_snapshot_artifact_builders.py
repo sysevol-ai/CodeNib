@@ -121,6 +121,7 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(
 ):
     root = tmp_path / "artifact"
     root.mkdir()
+    quality_path = tmp_path / "quality.json"
     model = "test/model"
     suffix = "test__model"
     instance = {
@@ -137,6 +138,7 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(
     def is_reusable(expected_configuration=None, required_l0_files=()):
         return build_embeddings._quality_report_is_reusable(
             root,
+            quality_path=quality_path,
             embedding_model=model,
             instance=instance,
             expected_configuration=expected_configuration or {},
@@ -155,7 +157,6 @@ def test_isolated_embedding_reuse_requires_passing_quality_report(
         ),
         encoding="utf-8",
     )
-    quality_path = root / f"artifact_quality_{suffix}.json"
     quality_path.write_text(
         json.dumps(
             {
@@ -259,7 +260,7 @@ def test_isolated_embedding_reuse_revalidates_assessed_files(tmp_path):
         f"documents_{suffix}.pkl",
     ):
         (level / name).write_bytes(name.encode("utf-8"))
-    quality_path = root / f"artifact_quality_{suffix}.json"
+    quality_path = tmp_path / "quality.json"
     quality_path.write_text(
         json.dumps(
             {
@@ -278,6 +279,7 @@ def test_isolated_embedding_reuse_revalidates_assessed_files(tmp_path):
     )
 
     kwargs = {
+        "quality_path": quality_path,
         "embedding_model": model,
         "instance": {
             "repo": "org/repo",
@@ -292,6 +294,48 @@ def test_isolated_embedding_reuse_revalidates_assessed_files(tmp_path):
     (level / f"index_{suffix}.faiss").write_bytes(b"corrupt")
 
     assert not build_embeddings._quality_report_is_reusable(root, **kwargs)
+
+
+def test_embedding_layout_keeps_profile_metadata_outside_vector_tree(tmp_path):
+    profile_root = tmp_path / "profile"
+    profile_root.mkdir()
+    (profile_root / "profile.json").write_text("{}\n", encoding="utf-8")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (profile_root / "repo").symlink_to(repository, target_is_directory=True)
+
+    artifact_root = build_embeddings._vector_artifact_root(
+        profile_root,
+        None,
+        "snapshot",
+    )
+    quality_path = build_embeddings._vector_quality_path(
+        profile_root,
+        None,
+        "test/model",
+        "snapshot",
+    )
+    artifact_root.mkdir()
+    quality_path.parent.mkdir(parents=True)
+    quality_path.write_text("{}\n", encoding="utf-8")
+
+    assert artifact_root == profile_root / "vector"
+    assert build_embeddings._vector_artifact_root(profile_root, None) == profile_root
+    assert artifact_root not in quality_path.parents
+    assert profile_root not in quality_path.parents
+    profile_alias = tmp_path / "instance"
+    profile_alias.symlink_to(profile_root, target_is_directory=True)
+    assert (
+        build_embeddings._vector_quality_path(
+            profile_alias,
+            None,
+            "test/model",
+            "snapshot",
+        )
+        == quality_path
+    )
+    with build_embeddings.capture_authenticated_vector_view(artifact_root) as view:
+        assert view.root == artifact_root
 
 
 def test_graph_reuse_requires_matching_artifact_provenance(tmp_path):

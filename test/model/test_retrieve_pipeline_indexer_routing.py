@@ -241,6 +241,11 @@ def test_retrieve_rerank_cache_load_closes_store_on_base_exception(
             self.close_calls += 1
 
     monkeypatch.setattr(pipeline_module, "CodeVectorStore", FakeVectorStore)
+    monkeypatch.setattr(
+        pipeline_module,
+        "require_authorized_vector_view",
+        lambda *_args, **_kwargs: None,
+    )
     pipeline = object.__new__(pipeline_module.RetrieveRerankPipeline)
     pipeline.repo_path = str(tmp_path)
     pipeline.index_path = index_path

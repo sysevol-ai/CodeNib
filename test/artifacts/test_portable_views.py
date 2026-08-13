@@ -15,7 +15,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from codenib._atomic_directory import capture_directory_ownership
 from codenib.artifacts import normalize_owned_query_view, validate_portable_query_view
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.index.embedding.artifact_integrity import (

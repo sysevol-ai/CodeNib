@@ -13,6 +13,7 @@ import pytest
 from codenib import cli
 from codenib.artifacts import CONTEXT_ARTIFACT_MANIFEST
 from codenib.compiler.index_compiler import IndexCompiler
+from codenib.paths import repo_index_dir
 from codenib.web.static_export import STATIC_EXPORT_MANIFEST
 
 
@@ -277,6 +278,56 @@ def test_publish_rejects_output_inside_repository_before_indexing(
 
     assert result == 2
     assert not (repo / "published").exists()
+
+
+@pytest.mark.parametrize(
+    ("output_option", "protected_name"),
+    [
+        ("--site-output", "repository"),
+        ("--context-output", "index"),
+    ],
+)
+def test_publish_rejects_symlinked_output_ancestor_before_indexing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    output_option: str,
+    protected_name: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "runtime.py").write_text("VALUE = 1\n")
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    protected = repo if protected_name == "repository" else repo_index_dir(repo)
+    protected.mkdir(parents=True, exist_ok=True)
+    alias = tmp_path / "output-alias"
+    alias.symlink_to(protected, target_is_directory=True)
+    monkeypatch.setattr(
+        cli,
+        "_run_index",
+        lambda *_args, **_kwargs: pytest.fail("publish indexed before preflight"),
+    )
+    site = tmp_path / "site"
+    context = tmp_path / "context"
+    if output_option == "--site-output":
+        site = alias / "published"
+    else:
+        context = alias / "published"
+
+    result = cli.run(
+        [
+            "publish",
+            str(repo),
+            "--site-output",
+            str(site),
+            "--context-output",
+            str(context),
+            "--frontend-dir",
+            str(_frontend(tmp_path)),
+        ]
+    )
+
+    assert result == 2
+    assert not (protected / "published").exists()
 
 
 def test_publication_environment_marks_custom_embedding_key_as_secret(

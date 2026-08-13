@@ -517,13 +517,17 @@ def _run_mcp(args: argparse.Namespace) -> int:
         command = [
             "--artifact",
             str(Path(os.path.abspath(os.fspath(Path(args.artifact).expanduser())))),
-            "--log-level",
-            args.log_level,
-            "--tool-surface",
-            args.tool_surface,
         ]
         if args.repo is not None:
             command.extend(("--repo", str(resolve_repo_path(args.repo))))
+        command.extend(
+            (
+                "--log-level",
+                args.log_level,
+                "--tool-surface",
+                args.tool_surface,
+            )
+        )
         if args.repository:
             command.extend(("--repository", args.repository))
         mcp_main(command)
@@ -600,6 +604,18 @@ def _paths_overlap(first: Path, second: Path) -> bool:
     return first == second or first in second.parents or second in first.parents
 
 
+def _canonical_publication_path(value: str | Path) -> Path:
+    """Resolve existing output ancestors before validation and publication."""
+
+    lexical = Path(os.path.abspath(os.fspath(Path(value).expanduser())))
+    try:
+        return lexical.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise CLIError(
+            f"publication output path could not be resolved safely: {lexical}"
+        ) from exc
+
+
 def _validate_publish_outputs(
     repo_path: Path,
     *,
@@ -608,29 +624,33 @@ def _validate_publish_outputs(
 ) -> None:
     """Reject destructive publication paths before any index work starts."""
 
+    site_identity = (
+        _canonical_publication_path(site_output) if site_output is not None else None
+    )
+    context_identity = (
+        _canonical_publication_path(context_output)
+        if context_output is not None
+        else None
+    )
     if (
-        site_output is not None
-        and context_output is not None
-        and _paths_overlap(site_output, context_output)
+        site_identity is not None
+        and context_identity is not None
+        and _paths_overlap(site_identity, context_identity)
     ):
         raise CLIError("Wiki and context artifact outputs must not overlap")
 
     from .paths import repo_index_dir
 
     protected = (
-        (repo_path, "repository"),
+        (_canonical_publication_path(repo_path), "repository"),
         (
-            Path(
-                os.path.abspath(
-                    os.fspath(repo_index_dir(repo_path).expanduser()),
-                )
-            ),
+            _canonical_publication_path(repo_index_dir(repo_path)),
             "index state",
         ),
     )
     for output, output_name in (
-        (site_output, "Wiki"),
-        (context_output, "context artifact"),
+        (site_identity, "Wiki"),
+        (context_identity, "context artifact"),
     ):
         if output is None:
             continue
@@ -806,12 +826,10 @@ def _run_artifact_mcp_config(args: argparse.Namespace) -> int:
 def _run_publish(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     site_output = (
-        Path(os.path.abspath(os.fspath(Path(args.site_output).expanduser())))
-        if args.site_output
-        else None
+        _canonical_publication_path(args.site_output) if args.site_output else None
     )
     context_output = (
-        Path(os.path.abspath(os.fspath(Path(args.context_output).expanduser())))
+        _canonical_publication_path(args.context_output)
         if args.context_output
         else None
     )
@@ -839,11 +857,11 @@ def _run_publish(args: argparse.Namespace) -> int:
     from .web.static_export import export_static_wiki
 
     manifest = RepoManifest.load(manifest_path)
-    site_output = site_output or _default_distribution_dir(
-        manifest_path, "wiki", manifest.commit
+    site_output = site_output or _canonical_publication_path(
+        _default_distribution_dir(manifest_path, "wiki", manifest.commit)
     )
-    context_output = context_output or _default_distribution_dir(
-        manifest_path, "context", manifest.commit
+    context_output = context_output or _canonical_publication_path(
+        _default_distribution_dir(manifest_path, "context", manifest.commit)
     )
     _validate_publish_outputs(
         repo_path,

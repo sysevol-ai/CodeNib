@@ -14,7 +14,7 @@ from ..artifacts.runtime import (
     _raise_source_cleanup_failure,
     _source_cleanup_owner_is_pending,
 )
-from ..compiler.cache_lock import compiler_cache_lock
+from ..compiler.cache_lock import COMPILER_CACHE_LOCK_FILENAME, compiler_cache_lock
 from ..compiler.manifest import IndexEntry, RepoManifest
 from ..index.embedding.artifact_integrity import capture_authenticated_vector_view
 from ..native_index_authorization import (
@@ -57,6 +57,25 @@ def _require_same_vector_manifest(
         or not observed.index_is_current("vector")
     ):
         raise ValueError("vector manifest changed before native authorization")
+
+
+def _manifest_source_exclusions(
+    repo_path: Path,
+    manifest_path: Path,
+) -> tuple[Path, ...]:
+    """Exclude a nested cache directory, or only a root-level manifest file."""
+
+    manifest_parent = manifest_path.parent
+    try:
+        manifest_parent.relative_to(repo_path)
+    except ValueError:
+        return ()
+    if manifest_parent == repo_path:
+        return (
+            manifest_path,
+            manifest_parent / COMPILER_CACHE_LOCK_FILENAME,
+        )
+    return (manifest_parent,)
 
 
 def _raise_after_source_cleanup(
@@ -121,7 +140,7 @@ def authorize_local_manifest_vector(
         try:
             source_binding = capture_repository_source(
                 repo_path,
-                exclude_roots=(manifest_path.parent,),
+                exclude_roots=_manifest_source_exclusions(repo_path, manifest_path),
                 _source_owner=cleanup_owner.retain,
             )
             if (

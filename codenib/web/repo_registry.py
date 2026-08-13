@@ -432,9 +432,7 @@ class RepoRegistry:
         native_index_authorization: NativeIndexAuthorization,
     ) -> "CodeVectorStore":
         """Load a manifest vector view with the configured embedding backend."""
-        from ..index.embedding.artifact_integrity import (
-            require_authorized_vector_view,
-        )
+        from ..index.embedding.artifact_integrity import require_authorized_vector_view
 
         # The manifest's exact config is part of the native capability subject.
         # Legacy route defaults are query-time compatibility inputs only: adding

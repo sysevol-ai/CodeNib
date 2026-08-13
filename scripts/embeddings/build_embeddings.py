@@ -6,7 +6,7 @@
 
 """
 Build and cache hierarchical embedding indices for SWE-bench or CodeNib-base instances.
-Each instance's embedding will be stored in <storage-dir>/{instance_id}/
+Each instance's embedding is stored under its artifact directory.
 
 Usage:
     # SWE-bench Lite (default, Python-only)
@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import gc
+import hashlib
 import json
 import logging
 import sys
@@ -71,6 +72,9 @@ DEFAULT_MULTILINGUAL_REPO_LANG_CSV = (
     / "data"
     / "swebench_multilingual_repos.csv"
 )
+
+_SNAPSHOT_DEFAULT_VECTOR_PLAN_NAME = "vector"
+_VECTOR_QUALITY_DIRECTORY = ".artifact-quality"
 
 
 def parse_args():
@@ -230,7 +234,11 @@ def parse_args():
         "--plan-name",
         type=str,
         default=None,
-        help="Optional plan name to nest embedding artifacts under.",
+        help=(
+            "Optional plan name used to isolate the strict vector tree. "
+            "Snapshot-addressed artifacts default to a private "
+            f"{_SNAPSHOT_DEFAULT_VECTOR_PLAN_NAME!r} subtree."
+        ),
     )
 
     # Storage configuration
@@ -407,13 +415,46 @@ def _load_dataset(args):
     )
 
 
-def _vector_artifact_root(root: Path, plan_name: Optional[str]) -> Path:
-    return root / plan_name if plan_name else root
+def _effective_vector_plan_name(
+    plan_name: Optional[str],
+    artifact_layout: str,
+) -> Optional[str]:
+    """Return the private vector-tree name used by the build command."""
+
+    if plan_name:
+        return plan_name
+    if artifact_layout == "snapshot":
+        return _SNAPSHOT_DEFAULT_VECTOR_PLAN_NAME
+    return None
 
 
-def _vector_quality_path(root: Path, embedding_model: str) -> Path:
+def _vector_artifact_root(
+    root: Path,
+    plan_name: Optional[str],
+    artifact_layout: str = "instance",
+) -> Path:
+    effective_plan = _effective_vector_plan_name(plan_name, artifact_layout)
+    return root / effective_plan if effective_plan else root
+
+
+def _vector_quality_path(
+    root: Path,
+    plan_name: Optional[str],
+    embedding_model: str,
+    artifact_layout: str = "instance",
+) -> Path:
+    effective_plan = _effective_vector_plan_name(plan_name, artifact_layout)
+    plan_identity = hashlib.sha256(
+        (effective_plan or "<root-vector-tree>").encode("utf-8")
+    ).hexdigest()[:16]
     model_suffix = embedding_model.replace("/", "__")
-    return root / f"artifact_quality_{model_suffix}.json"
+    resolved_root = root.resolve(strict=False)
+    return (
+        resolved_root.parent
+        / _VECTOR_QUALITY_DIRECTORY
+        / resolved_root.name
+        / f"{plan_identity}__artifact_quality_{model_suffix}.json"
+    )
 
 
 def _assess_vector_artifact_as_local_admin(
@@ -516,6 +557,7 @@ def _required_l0_files(
 def _quality_report_is_reusable(
     root: Path,
     *,
+    quality_path: Path,
     embedding_model: str,
     instance: dict[str, Any],
     expected_configuration: Mapping[str, Any],
@@ -524,7 +566,6 @@ def _quality_report_is_reusable(
 ) -> bool:
     """Revalidate an assessed artifact before skipping its isolated child."""
 
-    quality_path = _vector_quality_path(root, embedding_model)
     config_path = root / f"config_{embedding_model.replace('/', '__')}.json"
     try:
         quality = json.loads(quality_path.read_text(encoding="utf-8"))
@@ -683,7 +724,17 @@ def build_embeddings(args):
                 if "l0" in build_levels
                 else ()
             )
-            artifact_root = _vector_artifact_root(instance_final_dir, args.plan_name)
+            artifact_root = _vector_artifact_root(
+                instance_final_dir,
+                args.plan_name,
+                args.artifact_layout,
+            )
+            quality_path = _vector_quality_path(
+                instance_final_dir,
+                args.plan_name,
+                args.embedding_model,
+                args.artifact_layout,
+            )
 
             # Reuse only artifacts that pass identity, file, and coverage checks.
             model_suffix = args.embedding_model.replace("/", "__")
@@ -709,7 +760,7 @@ def build_embeddings(args):
                     artifact_root,
                 )
                 write_artifact_quality(
-                    _vector_quality_path(artifact_root, args.embedding_model),
+                    quality_path,
                     existing_quality,
                 )
                 skipped += 1
@@ -740,7 +791,10 @@ def build_embeddings(args):
                 embedding_kwargs["max_seq_length"] = args.max_seq_length
 
             logger.info("Building hierarchical vector store...")
-            plan_name = args.plan_name
+            plan_name = _effective_vector_plan_name(
+                args.plan_name,
+                args.artifact_layout,
+            )
             with instance_profiler.section("build_vector_store"):
                 vector_store = build_hierarchical_vector_store(
                     repo_path=repo_path,
@@ -771,7 +825,6 @@ def build_embeddings(args):
                 surface=surface,
                 required_l0_files=required_l0,
             )
-            quality_path = _vector_quality_path(artifact_root, args.embedding_model)
             write_artifact_quality(quality_path, artifact_quality)
             if not artifact_quality["passed"]:
                 raise RuntimeError(
@@ -931,7 +984,17 @@ def build_embeddings_isolated(args):
         # Trust only artifacts carrying a passing model-specific quality report.
         instance_dir_name = instance_id.replace("/", "__")
         instance_final_dir = Path(args.storage_dir) / instance_dir_name
-        artifact_root = _vector_artifact_root(instance_final_dir, args.plan_name)
+        artifact_root = _vector_artifact_root(
+            instance_final_dir,
+            args.plan_name,
+            args.artifact_layout,
+        )
+        quality_path = _vector_quality_path(
+            instance_final_dir,
+            args.plan_name,
+            args.embedding_model,
+            args.artifact_layout,
+        )
         instance_languages = _resolve_languages(
             dict(instance),
             args.languages,
@@ -950,6 +1013,7 @@ def build_embeddings_isolated(args):
         )
         if not args.force_rebuild and _quality_report_is_reusable(
             artifact_root,
+            quality_path=quality_path,
             embedding_model=args.embedding_model,
             instance=dict(instance),
             expected_configuration=expected_configuration,

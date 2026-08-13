@@ -371,9 +371,6 @@ def _load_vector(
 ):
     """Load a FAISS vector store from an arbitrary directory path."""
     from ..index.embedding._lifecycle import close_vector_after_failure
-    from ..index.embedding.artifact_integrity import (
-        _mint_trusted_local_vector_authorization,
-    )
     from ..index.embedding.vector_store import CodeVectorStore
 
     # Bind the capability to the exact tree and semantic contract before the
@@ -392,11 +389,6 @@ def _load_vector(
         kwargs["default_batch_size"] = default_batch_size
 
     artifact_contract = dict(artifact_metadata or {})
-    native_authorization = _mint_trusted_local_vector_authorization(
-        index_path,
-        artifact_contract,
-        evidence=("compiler-skill-context-vector-view",),
-    )
     store = CodeVectorStore(
         embedding_model=embedding_model,
         embedding_provider=embedding_provider,
@@ -409,7 +401,7 @@ def _load_vector(
     try:
         store.load(
             index_path,
-            native_index_authorization=native_authorization,
+            native_index_authorization=native_index_authorization,
         )
         return store
     except BaseException as primary:  # noqa: B036 - close partial native state

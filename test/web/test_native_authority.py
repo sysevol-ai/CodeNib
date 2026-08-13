@@ -106,6 +106,42 @@ def test_local_resolver_binds_exact_tree_and_unmodified_manifest_config(tmp_path
             )
 
 
+def test_local_resolver_does_not_exclude_repo_for_root_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    repo_entry, manifest, vector_entry, _source_file = _local_vector_manifest(tmp_path)
+    root_manifest = tmp_path / "repo_manifest.json"
+    manifest.save(root_manifest)
+    repo_entry = RepoEntry(
+        instance_id=repo_entry.instance_id,
+        repo=repo_entry.repo,
+        base_commit=repo_entry.base_commit,
+        language=repo_entry.language,
+        repo_dir=repo_entry.repo_dir,
+        manifest_path=str(root_manifest),
+    )
+    real_capture = native_authority_module.capture_repository_source
+    observed_exclusions = []
+
+    def capture(path, *, exclude_roots, **kwargs):
+        observed_exclusions.append(exclude_roots)
+        return real_capture(path, exclude_roots=exclude_roots, **kwargs)
+
+    monkeypatch.setattr(native_authority_module, "capture_repository_source", capture)
+
+    authorization = authorize_local_manifest_vector(
+        repo_entry,
+        manifest,
+        vector_entry,
+    )
+
+    assert authorization is not None
+    assert observed_exclusions == [
+        (root_manifest, tmp_path / COMPILER_CACHE_LOCK_FILENAME)
+    ]
+
+
 def test_local_resolver_rejects_source_drift_before_vector_capture(
     tmp_path,
     monkeypatch,

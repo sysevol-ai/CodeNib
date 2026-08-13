@@ -43,6 +43,12 @@ def test_cached_builder_closes_store_when_load_fails(monkeypatch, tmp_path):
     index_path = tmp_path / "index"
     index_path.mkdir()
     (index_path / "config_test-model.json").write_text("{}", encoding="utf-8")
+    authorization = _mint_trusted_local_admin_authorization(
+        atomic_directory.capture_directory_ownership(index_path),
+        view_type="vector",
+        semantic_contract={},
+        evidence=("cached-builder-cleanup-test",),
+    )
     primary = RuntimeError("cached load failed")
     stores = []
 
@@ -58,11 +64,6 @@ def test_cached_builder_closes_store_when_load_fails(monkeypatch, tmp_path):
             self.close_calls += 1
 
     monkeypatch.setattr(builders, "CodeVectorStore", FakeStore)
-    monkeypatch.setattr(
-        builders,
-        "_mint_trusted_local_vector_authorization",
-        lambda *_args, **_kwargs: object(),
-    )
 
     with pytest.raises(RuntimeError) as exc_info:
         builders.build_hierarchical_vector_store(
@@ -71,6 +72,7 @@ def test_cached_builder_closes_store_when_load_fails(monkeypatch, tmp_path):
             embedding_model="test-model",
             embedding_provider="huggingface",
             embedding_dimension=4,
+            native_index_authorization=authorization,
         )
 
     assert exc_info.value is primary

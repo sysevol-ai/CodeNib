@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import codenib.index.embedding.artifact_integrity as artifact_integrity_module
+from codenib._atomic_directory import capture_directory_ownership
 from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.index.embedding.vector_store import (
     CodeVectorStore,

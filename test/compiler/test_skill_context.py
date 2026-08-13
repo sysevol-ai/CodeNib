@@ -66,6 +66,7 @@ def _make_meta(
 
 def test_vector_loader_closes_partial_store_on_base_exception(monkeypatch):
     primary = KeyboardInterrupt("cancel vector load")
+    authorization = object()
     stores = []
 
     class FakeStore:
@@ -80,9 +81,9 @@ def test_vector_loader_closes_partial_store_on_base_exception(monkeypatch):
             self.close_calls += 1
 
     monkeypatch.setattr(
-        "codenib.index.embedding.artifact_integrity."
-        "_mint_trusted_local_vector_authorization",
-        lambda *_args, **_kwargs: object(),
+        skill_context,
+        "require_authorized_vector_view",
+        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "codenib.index.embedding.vector_store.CodeVectorStore",
@@ -96,6 +97,7 @@ def test_vector_loader_closes_partial_store_on_base_exception(monkeypatch):
             embedding_model="model",
             embedding_provider="huggingface",
             embedding_dimension=4,
+            native_index_authorization=authorization,
         )
     except BaseException as exc:  # noqa: B036 - assert cancellation identity
         observed = exc
