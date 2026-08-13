@@ -603,6 +603,28 @@ def test_derived_context_still_requires_an_exact_quote(tmp_path: Path) -> None:
     assert error == "quoted content does not occur in the task message"
 
 
+def test_silent_runtime_probe_is_valid_when_exit_code_is_retained(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    evidence = Evidence(
+        path="runtime-probe:item_1",
+        line_start=1,
+        line_end=1,
+        description="The assertion completed without printing output.",
+        source_type=EvidenceSourceType.RUNTIME_PROBE,
+        command="python /tmp/assertion.py",
+        output="",
+        exit_code=0,
+    )
+
+    checked, error = validate_evidence(request, evidence)
+
+    assert error == ""
+    assert checked is not None
+    assert checked.authority is EvidenceAuthority.BEHAVIORAL
+
+
 def test_guardian_defaults_to_five_specifications_per_explorer() -> None:
     config = GuardianConfig(explorer_model="cheap", aggregator_model="strong")
 
@@ -976,6 +998,10 @@ def test_later_round_receives_only_relevant_experience(tmp_path: Path) -> None:
     )
     assert round_one["specifications"]
     assert all(item["updated_round"] == 1 for item in round_one["specifications"])
+    patch_check = json.loads((result.artifact_dir / "patch-check.json").read_text())
+    assert patch_check["probe_metrics"]["declared"] == 0
+    final_report = json.loads((result.artifact_dir / "final-report.json").read_text())
+    assert final_report["probe_metrics"] == patch_check["probe_metrics"]
 
 
 def test_later_round_planning_failure_falls_back_to_patch_check(
@@ -1268,11 +1294,28 @@ def test_unexecuted_runtime_claim_cannot_promote_violation(tmp_path: Path) -> No
         "backlog": [],
     }
 
-    _, findings, uncertainty, _, _, error = asyncio.run(
+    _, findings, uncertainty, _, execution, error = asyncio.run(
         check_patch(
             request,
             _one_round_config(),
-            ScriptedExecutor([_run(response)]),
+            ScriptedExecutor(
+                [
+                    _run(response),
+                    _run(
+                        {
+                            **response,
+                            "runtime_evidence": [],
+                            "findings": [
+                                {
+                                    **response["findings"][0],
+                                    "status": "uncertain",
+                                    "evidence_ids": [],
+                                }
+                            ],
+                        }
+                    ),
+                ]
+            ),
             memory,
         )
     )
@@ -1281,6 +1324,10 @@ def test_unexecuted_runtime_claim_cannot_promote_violation(tmp_path: Path) -> No
     assert not findings
     assert [item.specification_id for item in uncertainty] == ["LS-mode"]
     assert not uncertainty[0].evidence_ids
+    assert execution.metrics.declared == 1
+    assert execution.metrics.accepted == 0
+    assert execution.metrics.repaired == 0
+    assert execution.metrics.rejected_by_reason == (("removed_by_repair", 1),)
 
 
 def test_probe_marker_recovers_misreported_tool_call_id(tmp_path: Path) -> None:
@@ -1337,6 +1384,121 @@ def test_probe_marker_recovers_misreported_tool_call_id(tmp_path: Path) -> None:
     assert not uncertainty
     assert probes[0].command == command
     assert probes[0].probe_outcome is ProbeOutcome.VIOLATED
+
+
+def test_patch_check_repairs_probe_reference_without_rerunning_probe(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    memory = SpecificationMemory(specifications=(_record(),))
+    response = {
+        "summary": "The assertion falsified the specification.",
+        "runtime_evidence": [
+            {
+                "id": "EV-PROBE-mode",
+                "probe_key": "mode-copy-preserved",
+                "tool_call_id": "item_symbolic",
+                "specification_id": "LS-mode",
+                "observation": "The focused copy assertion failed.",
+            }
+        ],
+        "findings": [
+            {
+                "specification_id": "LS-mode",
+                "status": "violated",
+                "evidence_ids": ["EV-PROBE-mode"],
+                "assessment": "The copy drops mode.",
+                "recommendation": "Preserve mode.",
+            }
+        ],
+        "backlog": [],
+    }
+    repaired = {
+        **response,
+        "runtime_evidence": [
+            {**response["runtime_evidence"][0], "tool_call_id": "item_13"}
+        ],
+    }
+    executor = ScriptedExecutor(
+        [
+            _run_with_probe(
+                response,
+                command="python /tmp/probe.py",
+                output="mode missing",
+                exit_code=10,
+                tool_call_id="item_13",
+            ),
+            _run(repaired),
+        ]
+    )
+
+    _, findings, uncertainty, probes, execution, error = asyncio.run(
+        check_patch(request, _one_round_config(), executor, memory)
+    )
+
+    assert error is None
+    assert [item.specification_id for item in findings] == ["LS-mode"]
+    assert not uncertainty
+    assert probes[0].probe_outcome is ProbeOutcome.VIOLATED
+    assert len(execution.rollouts) == 2
+    assert execution.metrics.to_dict() == {
+        "declared": 1,
+        "accepted": 1,
+        "satisfied": 0,
+        "violated": 1,
+        "inconclusive": 0,
+        "rejected": 0,
+        "rejected_by_reason": {},
+        "repaired": 1,
+        "repair_attempted": True,
+        "repair_accepted": True,
+    }
+    repair_request = executor.requests[1]
+    assert repair_request.metadata["guardian_stage"] == "patch_check_repair"
+    assert "Do not inspect the repository, run commands, call tools" in (
+        repair_request.instruction
+    )
+    assert '"tool_call_id": "item_13"' in repair_request.instruction
+
+
+def test_patch_check_discards_repair_that_uses_tools(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    memory = SpecificationMemory(specifications=(_record(),))
+    response = {
+        "summary": "An unlinked probe was claimed.",
+        "runtime_evidence": [
+            {
+                "id": "EV-PROBE-mode",
+                "probe_key": "mode-copy-preserved",
+                "tool_call_id": "item_missing",
+                "specification_id": "LS-mode",
+                "observation": "No matching command exists.",
+            }
+        ],
+        "findings": [
+            {
+                "specification_id": "LS-mode",
+                "status": "violated",
+                "evidence_ids": ["EV-PROBE-mode"],
+                "assessment": "The copy allegedly drops mode.",
+                "recommendation": "Preserve mode.",
+            }
+        ],
+        "backlog": [],
+    }
+    executor = ScriptedExecutor([_run(response), _run(response, tool=True)])
+
+    _, findings, uncertainty, probes, execution, error = asyncio.run(
+        check_patch(request, _one_round_config(), executor, memory)
+    )
+
+    assert error is None
+    assert not findings
+    assert [item.specification_id for item in uncertainty] == ["LS-mode"]
+    assert not probes
+    assert execution.metrics.repair_attempted is True
+    assert execution.metrics.repair_accepted is False
+    assert execution.metrics.rejected_by_reason == (("unlinked_execution", 1),)
 
 
 def test_probe_exit_code_overrides_model_violation_claim(tmp_path: Path) -> None:
@@ -1494,7 +1656,20 @@ def test_reused_tool_call_invalidates_all_linked_probes(tmp_path: Path) -> None:
                         command="python /tmp/compound_probe.py",
                         output="mixed results",
                         exit_code=10,
-                    )
+                    ),
+                    _run(
+                        {
+                            **response,
+                            "runtime_evidence": [],
+                            "findings": [
+                                {
+                                    **response["findings"][0],
+                                    "status": "uncertain",
+                                    "evidence_ids": [],
+                                }
+                            ],
+                        }
+                    ),
                 ]
             ),
             memory,

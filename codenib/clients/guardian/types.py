@@ -93,6 +93,39 @@ class ProbeOutcome(str, Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class ProbeCheckMetrics:
+    """Controller-derived accounting for final-check runtime probes."""
+
+    declared: int = 0
+    accepted: int = 0
+    satisfied: int = 0
+    violated: int = 0
+    inconclusive: int = 0
+    rejected_by_reason: tuple[tuple[str, int], ...] = ()
+    repaired: int = 0
+    repair_attempted: bool = False
+    repair_accepted: bool = False
+
+    @property
+    def rejected(self) -> int:
+        return sum(count for _, count in self.rejected_by_reason)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "declared": self.declared,
+            "accepted": self.accepted,
+            "satisfied": self.satisfied,
+            "violated": self.violated,
+            "inconclusive": self.inconclusive,
+            "rejected": self.rejected,
+            "rejected_by_reason": dict(self.rejected_by_reason),
+            "repaired": self.repaired,
+            "repair_attempted": self.repair_attempted,
+            "repair_accepted": self.repair_accepted,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class Evidence:
     """An inspectable evidence item with independent source and authority axes."""
 
@@ -501,6 +534,7 @@ class GuardianResult:
     rounds: tuple[RoundRecord, ...] = ()
     artifact_dir: Path | None = None
     errors: tuple[str, ...] = ()
+    probe_metrics: ProbeCheckMetrics = field(default_factory=ProbeCheckMetrics)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", ReviewStatus(self.status))
@@ -558,6 +592,7 @@ class GuardianResult:
             "rounds": len(self.rounds),
             "artifact_dir": str(self.artifact_dir or ""),
             "errors": list(self.errors),
+            "probe_metrics": self.probe_metrics.to_dict(),
             "usage": {**asdict(self.usage), "total_tokens": self.usage.total_tokens},
         }
 
@@ -580,6 +615,8 @@ __all__ = [
     "GuardianResult",
     "InvestigationBrief",
     "LocalSpecification",
+    "ProbeCheckMetrics",
+    "ProbeOutcome",
     "ReviewStatus",
     "RoundRecord",
     "SpecificationMemory",

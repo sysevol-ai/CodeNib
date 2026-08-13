@@ -379,6 +379,7 @@ def parse_patch_check(
     tuple[GuardianFinding, ...],
     tuple[GuardianFinding, ...],
     tuple[Evidence, ...],
+    tuple[str, ...],
 ]:
     value = _object(text)
     rows = value.get("findings")
@@ -386,14 +387,30 @@ def parse_patch_check(
         raise GuardianResponseError("response has no findings array")
     specs = {item.specification_id: item for item in specifications}
     runtime_evidence = []
-    for index, row in enumerate(value.get("runtime_evidence", []), 1):
+    runtime_errors = []
+    raw_runtime = value.get("runtime_evidence", [])
+    if not isinstance(raw_runtime, list):
+        runtime_errors.append("runtime_evidence: not_array")
+        raw_runtime = []
+    for index, row in enumerate(raw_runtime, 1):
         if not isinstance(row, dict):
+            runtime_errors.append(f"runtime_evidence_row[{index}]: row_not_object")
             continue
         spec_id = str(row.get("specification_id", "")).strip()
         probe_key = str(row.get("probe_key", "")).strip()
         observation = str(row.get("observation", "")).strip()
         tool_call_id = str(row.get("tool_call_id", "")).strip()
-        if spec_id not in specs or not probe_key or not observation or not tool_call_id:
+        reason = ""
+        if spec_id not in specs:
+            reason = "unknown_specification"
+        elif not probe_key:
+            reason = "missing_probe_key"
+        elif not observation:
+            reason = "missing_observation"
+        elif not tool_call_id:
+            reason = "missing_tool_call_id"
+        if reason:
+            runtime_errors.append(f"runtime_evidence_row[{index}]: {reason}")
             continue
         evidence_id = str(row.get("id") or f"EV-PATCH-PROBE-{index}").strip()
         runtime_evidence.append(
@@ -468,6 +485,7 @@ def parse_patch_check(
         tuple(findings),
         tuple(uncertain),
         tuple(runtime_evidence),
+        tuple(runtime_errors),
     )
 
 

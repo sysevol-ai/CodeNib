@@ -152,6 +152,7 @@ def _write_result(
             "llm_transport_history": ["codex-cli+codenib-sandbox"],
             "llm_tokens": _tokens(result),
             "analysis_warnings": list(result.errors),
+            "probe_metrics": result.probe_metrics.to_dict(),
             "memory_specifications": memory_specifications,
             "memory_snapshots": memory_snapshots,
             "running": False,

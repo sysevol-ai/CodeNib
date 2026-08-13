@@ -232,6 +232,7 @@ def persist_artifacts(
             "summary": result.summary,
             "findings": [_finding(item) for item in result.findings],
             "backlog": [_finding(item) for item in result.uncertain_specifications],
+            "probe_metrics": result.probe_metrics.to_dict(),
         },
     )
     _write_json(root / "final-report.json", result.to_dict())

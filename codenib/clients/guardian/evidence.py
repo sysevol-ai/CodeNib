@@ -241,8 +241,11 @@ def _validate_non_file(
             return None, "quoted content does not occur in the candidate patch"
         return replace(evidence, authority=EvidenceAuthority.DERIVED), ""
     if evidence.source_type is EvidenceSourceType.RUNTIME_PROBE:
-        if not evidence.command or not evidence.output:
-            return None, "runtime evidence must retain both command and output"
+        if not evidence.command or (not evidence.output and evidence.exit_code is None):
+            return (
+                None,
+                "runtime evidence must retain a command and an output or exit code",
+            )
         return replace(evidence, authority=EvidenceAuthority.BEHAVIORAL), ""
     return None, "unsupported evidence locator"
 

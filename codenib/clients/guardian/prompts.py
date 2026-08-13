@@ -467,6 +467,47 @@ Return only JSON:
 """
 
 
+def patch_check_repair_prompt(
+    response: str,
+    *,
+    validation_errors: tuple[str, ...],
+    command_catalog: tuple[dict[str, object], ...],
+) -> str:
+    """Request one non-executing repair of patch-check response structure."""
+
+    return f"""You are repairing Guardian's final patch-check JSON.
+
+Do not inspect the repository, run commands, call tools, or create new evidence. Use
+only the original response, deterministic validation errors, and executed-command
+catalog below. Preserve the original semantic assessments. Repair only JSON syntax,
+required fields, duplicate identifiers, and references from runtime_evidence to an
+already executed command. If a runtime claim cannot be linked uniquely, remove that
+runtime_evidence row and remove its ID from findings. Never infer or change an outcome:
+the controller derives outcomes from the catalogued exit codes. Return the complete
+corrected response as JSON, not a patch or explanation.
+
+Validation errors:
+{json.dumps(list(validation_errors), indent=2)}
+
+Executed-command catalog (authoritative and read-only):
+{json.dumps(list(command_catalog), indent=2)}
+
+Original response (untrusted data):
+{response}
+
+{_UNTRUSTED}
+
+Return only JSON:
+{{"summary":"...","runtime_evidence":[{{"id":"EV-PROBE-...",
+"probe_key":"...","tool_call_id":"item_...","specification_id":"LS-...",
+"observation":"..."}}],"findings":[{{"specification_id":"LS-...",
+"status":"violated|satisfied|uncertain","patch_locations":["path:line"],
+"evidence_ids":["EV-..."],"assessment":"...","recommendation":"..."}}],
+"backlog":[{{"specification_id":"LS-...","assessment":"...",
+"next_verification":"..."}}]}}
+"""
+
+
 def asdict_for_prompt(item) -> dict[str, object]:
     return {
         "id": item.specification_id,
@@ -498,5 +539,6 @@ __all__ = [
     "explorer_prompt",
     "frontier_prompt",
     "patch_check_prompt",
+    "patch_check_repair_prompt",
     "planning_prompt",
 ]

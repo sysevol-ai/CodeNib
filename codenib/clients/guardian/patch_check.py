@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 import re
+from collections import Counter
+from dataclasses import dataclass, replace
 
 from ..execution import (
     AgentEventKind,
@@ -20,7 +21,7 @@ from ..execution import (
 )
 from .evidence import validate_evidence
 from .normalization import GuardianResponseError, parse_patch_check
-from .prompts import patch_check_prompt
+from .prompts import patch_check_prompt, patch_check_repair_prompt
 from .types import (
     ContextFidelity,
     Evidence,
@@ -30,11 +31,20 @@ from .types import (
     GuardianConfig,
     GuardianFinding,
     GuardianRequest,
+    ProbeCheckMetrics,
     ProbeOutcome,
     SpecificationMemory,
     SpecificationRecord,
     SpecificationStatus,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class PatchCheckExecution:
+    """Patch-check invocations and controller-derived probe accounting."""
+
+    rollouts: tuple[AgentRunResult, ...] = ()
+    metrics: ProbeCheckMetrics = ProbeCheckMetrics()
 
 
 def _direct_task_evidence(
@@ -203,6 +213,67 @@ def _executed_probe(rollout: AgentRunResult, evidence: Evidence) -> Evidence | N
     )
 
 
+def _command_catalog(rollout: AgentRunResult) -> tuple[dict[str, object], ...]:
+    """Describe already-executed commands without exposing mutable capabilities."""
+
+    values = []
+    for event in rollout.trajectory:
+        if (
+            event.kind is not AgentEventKind.TOOL
+            or event.provider_type != "item.completed"
+        ):
+            continue
+        item = event.payload.get("item")
+        if not isinstance(item, dict) or item.get("type") != "command_execution":
+            continue
+        command = item.get("command")
+        exit_code = item.get("exit_code")
+        if not isinstance(command, str) or not isinstance(exit_code, int):
+            continue
+        identity = _command_probe_identity(command)
+        values.append(
+            {
+                "tool_call_id": item.get("id"),
+                "command": command,
+                "exit_code": exit_code,
+                "probe_key": identity[0] if identity else "",
+                "specification_id": identity[1] if identity else "",
+            }
+        )
+    return tuple(values)
+
+
+def _protocol_errors(
+    rollout: AgentRunResult,
+    runtime_evidence: tuple[Evidence, ...],
+    parse_errors: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Return deterministic reasons why declared probes cannot be admitted."""
+
+    errors = list(parse_errors)
+    tool_call_counts = Counter(
+        item.path.removeprefix("runtime-probe:") for item in runtime_evidence
+    )
+    probe_key_counts = Counter(item.probe_key for item in runtime_evidence)
+    evidence_id_counts = Counter(item.evidence_id for item in runtime_evidence)
+    for item in runtime_evidence:
+        tool_call_id = item.path.removeprefix("runtime-probe:")
+        prefix = f"runtime_evidence_id[{item.evidence_id}]"
+        if tool_call_counts[tool_call_id] != 1:
+            errors.append(f"{prefix}: duplicate_tool_call_id")
+        elif probe_key_counts[item.probe_key] != 1:
+            errors.append(f"{prefix}: duplicate_probe_key")
+        elif evidence_id_counts[item.evidence_id] != 1:
+            errors.append(f"{prefix}: duplicate_evidence_id")
+        elif _executed_probe(rollout, item) is None:
+            errors.append(f"{prefix}: unlinked_execution")
+    return tuple(errors)
+
+
+def _reason(error: str) -> str:
+    return error.rsplit(":", 1)[-1].split(" (", 1)[0].strip().replace(" ", "_")
+
+
 async def check_patch(
     request: GuardianRequest,
     config: GuardianConfig,
@@ -213,7 +284,7 @@ async def check_patch(
     tuple[GuardianFinding, ...],
     tuple[GuardianFinding, ...],
     tuple[Evidence, ...],
-    AgentRunResult | None,
+    PatchCheckExecution,
     str | None,
 ]:
     supported = tuple(
@@ -256,7 +327,7 @@ async def check_patch(
             (),
             backlog,
             (),
-            None,
+            PatchCheckExecution(),
             None,
         )
 
@@ -279,34 +350,99 @@ async def check_patch(
     )
     if not rollout.succeeded:
         message = rollout.error.message if rollout.error else rollout.status.value
-        return "", (), (), (), rollout, f"patch checker: {message}"
+        return (
+            "",
+            (),
+            (),
+            (),
+            PatchCheckExecution(rollouts=(rollout,)),
+            f"patch checker: {message}",
+        )
+
+    repair_rollout = None
+    repair_attempted = False
+    repair_accepted = False
+    response = rollout.final_message
     try:
-        summary, findings, backlog, runtime_evidence = parse_patch_check(
-            rollout.final_message,
+        parsed = parse_patch_check(
+            response,
             specifications=memory.specifications,
             evidence=memory.evidence + task_evidence,
         )
+        primary_errors = _protocol_errors(rollout, parsed[3], parsed[4])
     except GuardianResponseError as exc:
-        return "", (), (), (), rollout, f"patch checker: {exc}"
+        parsed = None
+        primary_errors = (f"response: {exc}",)
+    initial_parsed = parsed
+    initial_errors = primary_errors
 
-    tool_call_counts = {}
-    probe_key_counts = {}
-    evidence_id_counts = {}
-    for item in runtime_evidence:
-        tool_call_id = item.path.removeprefix("runtime-probe:")
-        tool_call_counts[tool_call_id] = tool_call_counts.get(tool_call_id, 0) + 1
-        probe_key_counts[item.probe_key] = probe_key_counts.get(item.probe_key, 0) + 1
-        evidence_id_counts[item.evidence_id] = (
-            evidence_id_counts.get(item.evidence_id, 0) + 1
+    if primary_errors:
+        repair_attempted = True
+        repair_rollout = await executor.run(
+            AgentRunRequest(
+                instruction=patch_check_repair_prompt(
+                    response,
+                    validation_errors=primary_errors,
+                    command_catalog=_command_catalog(rollout),
+                ),
+                workspace=request.workspace,
+                role=AgentRole.VERIFIER,
+                timeout_seconds=config.rollout_timeout_seconds,
+                model=config.aggregator_model,
+                reasoning_effort=config.aggregator_reasoning_effort,
+                policy=ExecutionPolicy(
+                    filesystem=FilesystemAccess.READ_ONLY,
+                    isolation=config.execution_isolation,
+                ),
+                metadata={"guardian_stage": "patch_check_repair"},
+            )
         )
+        repair_used_tools = any(
+            event.kind is AgentEventKind.TOOL for event in repair_rollout.trajectory
+        )
+        if repair_rollout.succeeded and not repair_used_tools:
+            try:
+                repaired = parse_patch_check(
+                    repair_rollout.final_message,
+                    specifications=memory.specifications,
+                    evidence=memory.evidence + task_evidence,
+                )
+                repaired_errors = _protocol_errors(rollout, repaired[3], repaired[4])
+                if parsed is None or len(repaired_errors) < len(primary_errors):
+                    parsed = repaired
+                    primary_errors = repaired_errors
+                    repair_accepted = True
+            except GuardianResponseError:
+                pass
+
+    executions = tuple(item for item in (rollout, repair_rollout) if item is not None)
+    if parsed is None:
+        metrics = ProbeCheckMetrics(
+            rejected_by_reason=(("malformed_response", 1),),
+            repair_attempted=repair_attempted,
+            repair_accepted=repair_accepted,
+        )
+        return (
+            "",
+            (),
+            (),
+            (),
+            PatchCheckExecution(rollouts=executions, metrics=metrics),
+            f"patch checker: {primary_errors[0]}",
+        )
+
+    summary, findings, backlog, runtime_evidence, parse_errors = parsed
+    protocol_errors = _protocol_errors(rollout, runtime_evidence, parse_errors)
+
+    invalid_probe_ids = {
+        error.removeprefix("runtime_evidence_id[").split("]", 1)[0]
+        for error in protocol_errors
+        if error.startswith("runtime_evidence_id[")
+    }
     validated_runtime = {}
+    validation_errors = []
     for item in runtime_evidence:
-        tool_call_id = item.path.removeprefix("runtime-probe:")
-        if (
-            tool_call_counts[tool_call_id] != 1
-            or probe_key_counts[item.probe_key] != 1
-            or evidence_id_counts[item.evidence_id] != 1
-        ):
+        if item.evidence_id in invalid_probe_ids:
             continue
         executed = _executed_probe(rollout, item)
         if executed is None:
@@ -328,9 +464,14 @@ async def check_patch(
             snapshot=request.candidate_commit,
             round=prior_sequence + 1,
         )
-        checked, _ = validate_evidence(request, scoped)
+        checked, error = validate_evidence(request, scoped)
         if checked is not None:
             validated_runtime[item.evidence_id] = checked
+        else:
+            validation_errors.append(
+                f"runtime_evidence_id[{item.evidence_id}]: evidence_validation"
+                + (f" ({error})" if error else "")
+            )
     if runtime_evidence:
         runtime_ids = {item.evidence_id for item in runtime_evidence}
         normalized_findings = []
@@ -480,14 +621,53 @@ async def check_patch(
     unique_uncertainty = {}
     for item in uncertainty:
         unique_uncertainty[item.specification_id] = item
+    accepted_probes = tuple(validated_runtime.values())
+    rejection_counts = Counter(
+        _reason(error) for error in (*protocol_errors, *validation_errors)
+    )
+    final_declared = len(runtime_evidence) + len(parse_errors)
+    if initial_parsed is None:
+        initial_declared = 1
+    else:
+        initial_declared = len(initial_parsed[3]) + len(initial_parsed[4])
+    removed_by_repair = (
+        max(0, initial_declared - final_declared) if repair_accepted else 0
+    )
+    if removed_by_repair:
+        rejection_counts["removed_by_repair"] += removed_by_repair
+    repaired_count = (
+        max(
+            0,
+            len(initial_errors) - len(protocol_errors) - removed_by_repair,
+        )
+        if repair_accepted
+        else 0
+    )
+    metrics = ProbeCheckMetrics(
+        declared=initial_declared if repair_attempted else final_declared,
+        accepted=len(accepted_probes),
+        satisfied=sum(
+            item.probe_outcome is ProbeOutcome.SATISFIED for item in accepted_probes
+        ),
+        violated=sum(
+            item.probe_outcome is ProbeOutcome.VIOLATED for item in accepted_probes
+        ),
+        inconclusive=sum(
+            item.probe_outcome is ProbeOutcome.INCONCLUSIVE for item in accepted_probes
+        ),
+        rejected_by_reason=tuple(sorted(rejection_counts.items())),
+        repaired=repaired_count,
+        repair_attempted=repair_attempted,
+        repair_accepted=repair_accepted,
+    )
     return (
         summary,
         definite,
         tuple(unique_uncertainty.values()),
-        tuple(validated_runtime.values()),
-        rollout,
+        accepted_probes,
+        PatchCheckExecution(rollouts=executions, metrics=metrics),
         None,
     )
 
 
-__all__ = ["check_patch"]
+__all__ = ["PatchCheckExecution", "check_patch"]

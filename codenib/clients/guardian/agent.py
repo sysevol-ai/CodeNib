@@ -26,6 +26,7 @@ from .types import (
     GuardianConfig,
     GuardianRequest,
     GuardianResult,
+    ProbeCheckMetrics,
     ReviewStatus,
     RoundRecord,
     SpecificationStatus,
@@ -116,6 +117,7 @@ class GuardianAgent:
         round_records: list[RoundRecord] = []
         memory = request.memory
         prior_rounds = memory.rounds
+        probe_metrics = ProbeCheckMetrics()
 
         def record(
             rollout: AgentRunResult | None,
@@ -174,6 +176,7 @@ class GuardianAgent:
                 rounds=tuple(round_records),
                 artifact_dir=request.artifact_dir,
                 errors=tuple(errors),
+                probe_metrics=probe_metrics,
             )
             persist_artifacts(request, self.config, final)
             return final
@@ -398,15 +401,17 @@ class GuardianAgent:
             findings,
             uncertainty,
             patch_evidence,
-            patch_rollout,
+            patch_execution,
             patch_error,
         ) = await check_patch(request, self.config, self.executor, memory)
-        record(
-            patch_rollout,
-            stage="patch_check",
-            round_number=0,
-            model=self.config.aggregator_model,
-        )
+        probe_metrics = patch_execution.metrics
+        for index, patch_rollout in enumerate(patch_execution.rollouts):
+            record(
+                patch_rollout,
+                stage="patch_check" if index == 0 else "patch_check_repair",
+                round_number=0,
+                model=self.config.aggregator_model,
+            )
         if patch_error:
             errors.append(patch_error)
             return result(ReviewStatus.FAILED, summary=summary)

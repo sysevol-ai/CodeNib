@@ -226,6 +226,18 @@ def test_host_controller_reviews_materialized_snapshot(tmp_path: Path) -> None:
     assert status["terminal"] is False
     assert status["memory_specifications"] == 0
     assert status["memory_snapshots"] == 1
+    assert status["probe_metrics"] == {
+        "accepted": 0,
+        "declared": 0,
+        "inconclusive": 0,
+        "rejected": 0,
+        "rejected_by_reason": {},
+        "repair_accepted": False,
+        "repair_attempted": False,
+        "repaired": 0,
+        "satisfied": 0,
+        "violated": 0,
+    }
     assert (exchange / "latest" / "findings.md").is_file()
     assert (tmp_path / "episodes" / candidate / "status.json").is_file()
 
