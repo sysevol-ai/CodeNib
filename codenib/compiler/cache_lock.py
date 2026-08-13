@@ -471,7 +471,11 @@ def _open_posix_cache_directory(cache_dir: str | Path) -> Iterator[tuple[Path, i
         metadata = os.fstat(descriptor)
         if not stat.S_ISDIR(metadata.st_mode) or _is_reparse_point(metadata):
             raise RuntimeError(f"compiler cache path is not a real directory: {cache}")
-        os.set_inheritable(descriptor, False)
+        # Not os.set_inheritable: its FIOCLEX ioctl fast path fails with EBADF
+        # on the execute-only descriptors O_SEARCH yields (e.g. macOS), while
+        # F_SETFD is valid on any descriptor.
+        flags = fcntl.fcntl(descriptor, fcntl.F_GETFD)
+        fcntl.fcntl(descriptor, fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
         yield cache, descriptor
     finally:
         os.close(descriptor)
