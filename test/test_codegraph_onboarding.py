@@ -596,6 +596,11 @@ def test_dry_run_reports_project_prerequisites_and_exits_nonzero(
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
     monkeypatch.setattr(
         onboarding,
+        "resolve_requested_clients",
+        lambda _requested: ("codex",),
+    )
+    monkeypatch.setattr(
+        onboarding,
         "resolve_codenib_command",
         lambda _explicit=None: ("/opt/codenib/bin/codenib", ()),
     )
