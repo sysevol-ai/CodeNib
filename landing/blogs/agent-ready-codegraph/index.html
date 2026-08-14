@@ -8,10 +8,10 @@ SPDX-License-Identifier: Apache-2.0
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CodeGraph Architecture: Native Query Paths and Durable Facts — CodeNib</title>
-  <meta name="description" content="How CodeGraph separates capability-scoped query paths from durable semantic publication, with measured gates, negative results, and explicit fallbacks.">
+  <meta name="description" content="How to connect CodeGraph to Codex or Claude Code, and how its native query and durable semantic paths avoid unnecessary full-graph materialization.">
   <meta name="author" content="CodeNib Team">
   <meta property="og:title" content="CodeGraph Architecture: Native Query Paths and Durable Facts">
-  <meta property="og:description" content="How CodeGraph separates capability-scoped query paths from durable semantic publication, with measured gates, negative results, and explicit fallbacks.">
+  <meta property="og:description" content="How to connect CodeGraph to Codex or Claude Code, and how its native query and durable semantic paths avoid unnecessary full-graph materialization.">
   <meta property="og:image" content="https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -26,7 +26,7 @@ SPDX-License-Identifier: Apache-2.0
   <meta property="article:tag" content="Performance">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="CodeGraph Architecture: Native Query Paths and Durable Facts">
-  <meta name="twitter:description" content="Capability-scoped queries, durable semantic publication, measured gates, negative results, and explicit fallbacks.">
+  <meta name="twitter:description" content="Use CodeGraph with Codex or Claude Code, then inspect its measured native query paths, durable facts, and full-graph boundaries.">
   <meta name="twitter:image" content="https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png">
   <meta name="twitter:image:alt" content="A CodeGraph architecture diagram showing analyzer artifacts, shared semantic contracts, native query and durable publication paths, and complete-graph compatibility.">
   <link rel="canonical" href="https://codenib.ai/blogs/agent-ready-codegraph/">
@@ -37,7 +37,7 @@ SPDX-License-Identifier: Apache-2.0
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     "headline": "CodeGraph Architecture: Native Query Paths and Durable Facts",
-    "description": "How CodeGraph separates capability-scoped query paths from durable semantic publication, with measured gates, negative results, and explicit fallbacks.",
+    "description": "How to connect CodeGraph to Codex or Claude Code, and how its native query and durable semantic paths avoid unnecessary full-graph materialization.",
     "image": "https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png",
     "datePublished": "2026-08-14T00:00:00-07:00",
     "dateModified": "2026-08-14T00:00:00-07:00",
@@ -81,11 +81,96 @@ SPDX-License-Identifier: Apache-2.0
         <div class="post-meta">
           <span class="tag">CodeGraph architecture</span>
           <time datetime="2026-08-14">August 14, 2026</time>
-          <span>7 min read</span>
+          <span>10 min read</span>
         </div>
         <h1 class="technical-title" id="article-title">CodeGraph Architecture: Native Query Paths and Durable Facts</h1>
-        <p class="deck">How CodeGraph separates capability-scoped query paths from durable semantic publication, what the benchmarks cover, and where complete graph materialization remains authoritative.</p>
+        <p class="deck">How to use CodeGraph with a coding agent, how capability-scoped query paths differ from durable semantic publication, and where complete graph materialization remains authoritative.</p>
       </header>
+
+      <div class="article-body article-lead">
+        <p>CodeGraph gives Codex and Claude Code a source-linked structural view of a repository: an agent can locate an implementation, follow definitions and references, inspect dependency routes, and cite the exact source it used. The setup is local, keeps indexes outside the target checkout by default, and does not require a model or API key to build the graph.</p>
+
+        <h2>Use CodeGraph with Codex or Claude Code</h2>
+
+        <p>Start with Python 3.10 or newer, Git, a clean target repository, and at least one installed <code>codex</code> or <code>claude</code> CLI on <code>PATH</code>. To try the current CodeGraph onboarding workflow from source, install the development checkout:</p>
+
+        <pre><code>git clone https://github.com/sysevol-ai/CodeNib.git
+cd CodeNib
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[graph,mcp]"
+
+# Preview the plan, then build the indexes and register the MCP server.
+codenib codegraph init /absolute/path/to/repository --dry-run
+codenib codegraph init /absolute/path/to/repository
+codenib codegraph status /absolute/path/to/repository --json</code></pre>
+
+        <p>The dry run performs no installation, indexing, receipt write, or client registration. The real initialization detects installed clients, builds reusable repository state outside the target checkout by default, and asks each native client CLI to own its MCP registration. Pass <code>--agent codex</code> or <code>--agent claude</code> to select one explicitly.</p>
+
+        <h3>Ask through the registered MCP tools</h3>
+
+        <p>Open a client session for the target repository and give the agent a concrete evidence contract:</p>
+
+        <pre class="prompt"><code>Use CodeNib's explore_context to locate and explain the implementation of
+&lt;feature&gt;. Cite the returned source paths and line numbers, then use
+dependency_subgraph on the key symbol with direction impact and depth 2
+before proposing an edit.</code></pre>
+
+        <p><code>explore_context</code> is the broad entry point for bounded, source-verified context. Use <code>dependency_subgraph</code> directly when the question is specifically about callers, callees, or change impact. The <a href="https://docs.codenib.ai/codegraph/">CodeGraph guide</a> records language prerequisites, status checks, and safe uninstall behavior.</p>
+
+        <section class="turn-demo" aria-labelledby="turn-demo-title">
+          <header class="turn-demo-head">
+            <p class="turn-demo-kicker">Abbreviated agent turn · pinned source</p>
+            <h3 id="turn-demo-title">From a repository question to a cited answer</h3>
+            <p>This compact transcript is grounded in the CodeNib repository at <code>85f5bec2</code>; it illustrates the tool contract rather than quoting model output.</p>
+          </header>
+
+          <div class="turn-question">
+            <span class="turn-role">You</span>
+            <p>How does <code>codegraph init</code> protect my checkout, and what would be affected if that guard changed?</p>
+          </div>
+
+          <div class="turn-grid">
+            <div class="turn-tools" role="list" aria-label="CodeNib tool trace">
+              <div class="turn-tool" role="listitem">
+                <span class="turn-step">01</span>
+                <div>
+                  <code>explore_context</code>
+                  <p>Ranked source windows, symbols, and repository identity.</p>
+                </div>
+              </div>
+              <div class="turn-tool" role="listitem">
+                <span class="turn-step">02</span>
+                <div>
+                  <code>dependency_subgraph</code>
+                  <p><code>_require_unchanged_<wbr>codegraph_checkout</code> · impact · depth 2</p>
+                  <span class="turn-tool-result">→ <code>_run_codegraph_init</code> is an impacted caller</span>
+                </div>
+              </div>
+              <div class="turn-tool" role="listitem">
+                <span class="turn-step">03</span>
+                <div>
+                  <code>read_source</code>
+                  <p>Exact 1-based windows around the guard and its call sites.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="turn-answer">
+              <div class="turn-answer-head">
+                <span>CodeNib-backed answer</span>
+                <span class="turn-verified"><span aria-hidden="true">●</span> pinned source</span>
+              </div>
+              <p><strong>Initialization repeatedly guards the target checkout against mutation.</strong> It captures the exact Git porcelain state in memory, requires a clean checkout, and compares that snapshot after toolchain setup, indexing, and client registration. A mismatch prevents readiness; it does not claim global rollback.</p>
+              <p>The impact graph identifies <code>_run_codegraph_init</code> as a caller. Exact source windows then show that changing the guard affects every mutable onboarding stage, not just one call site.</p>
+              <ul class="turn-sources" aria-label="Source citations">
+                <li><a aria-label="Checkout snapshot and mismatch guard in codenib/cli.py at line 1930" href="https://github.com/sysevol-ai/CodeNib/blob/85f5bec20232f2f2b95f10306de14477479e98fb/codenib/cli.py#L1930-L1965"><code>cli.py:1930</code></a></li>
+                <li><a aria-label="Three guarded initialization stages in codenib/cli.py at line 1998" href="https://github.com/sysevol-ai/CodeNib/blob/85f5bec20232f2f2b95f10306de14477479e98fb/codenib/cli.py#L1998-L2127"><code>cli.py:1998</code></a></li>
+              </ul>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <figure class="hero-figure">
         <img src="/assets/blogs/fact-query-index-fact-batch.svg" width="1200" height="630" alt="Analyzer artifacts pass through provider-specific normalization into CodeGraph's native query, durable semantic publication, or complete-graph compatibility paths.">
@@ -94,7 +179,9 @@ SPDX-License-Identifier: Apache-2.0
       </figure>
 
       <div class="article-body">
-        <p>CodeNib traditionally materializes semantic records into a complete <code>CodeGraph</code> before serving definitions, references, positions, and routes. That graph remains the compatibility authority, but it is more machinery than a narrow query needs. Recent work adds a capability-scoped <code>FactQueryIndex</code> read model and a separate <code>FactBatch v1</code> per-file semantic contract.</p>
+        <p>The commands above exercise the source-preview onboarding workflow. As of August 14, 2026, it is on <code>main</code> but not in the latest 0.2.0 wheel. The onboarding path prepares the public CodeGraph and MCP surface; it does not force every capability-gated native path described below, and durable FactBatch publication remains opt-in.</p>
+
+        <p>Internally, CodeNib traditionally materializes semantic records into a complete <code>CodeGraph</code> before serving definitions, references, positions, and routes. The complete graph remains the compatibility authority, but it is more machinery than a narrow query needs. The implementation described below adds a capability-scoped <code>FactQueryIndex v1</code> read model and a separate <code>FactBatch v1</code> per-file semantic contract.</p>
 
         <h2>Shared semantics, separate runtime paths</h2>
 
@@ -141,7 +228,7 @@ SPDX-License-Identifier: Apache-2.0
                 <th scope="col">Full graph</th>
                 <th scope="col">Native</th>
                 <th scope="col">Improvement</th>
-                <th scope="col">Native graphs</th>
+                <th scope="col">Native CodeGraph materializations</th>
               </tr>
             </thead>
             <tbody>
@@ -153,7 +240,9 @@ SPDX-License-Identifier: Apache-2.0
           </table>
         </div>
 
-        <p class="scope-note">Scope: median query-ready <code>wall_seconds</code>, including provider startup and the fixed workload over already-generated <code>.idx</code> shards. Process startup, external receipt checks, and clangd index generation are excluded; filesystem page cache was not controlled. Exact public result/error parity, pre/post receipts, source cleanliness, RIFF 18/19/20 support, RSS budgets, zero graph materializations, and three eight-thread route rounds were separate gates. See the <a href="https://docs.codenib.ai/core_cpp/#mixed-workload-and-resource-gate">measurement protocol</a>.</p>
+        <p>The zeroes in the final column are intentional. In every measured native sample, <code>graph_materialization_count</code> remained zero: the decoder did not instantiate the complete Python <code>CodeGraph</code>/igraph representation. It still used graph-shaped data—symbol and reference postings, occurrence intervals, and, for supported route requests, compact native adjacency through the clangd adapter. The legacy arm built one complete graph per isolated process.</p>
+
+        <p class="scope-note">Scope: median query-ready <code>wall_seconds</code>, including provider startup and the fixed workload over already-generated <code>.idx</code> shards. Process startup, external receipt checks, and clangd index generation are excluded; filesystem page cache was not controlled. Exact public result/error parity, pre/post receipts, source cleanliness, RIFF 18/19/20 support, RSS budgets, zero complete CodeGraph materializations, and three eight-thread route rounds were separate gates. See the <a href="https://docs.codenib.ai/core_cpp/#mixed-workload-and-resource-gate">measurement protocol</a>.</p>
 
         <h3>SCIP passed one boundary and failed another</h3>
 
