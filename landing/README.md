@@ -12,21 +12,22 @@ Deploy `landing/` as the document root for `codenib.ai`. The product previews
 embed `https://demo.codenib.ai`; when that service is unavailable, the shipped
 wiki screenshot remains as the visual fallback.
 
-## Deploy status
+## Static routes
 
-The live `codenib.ai` deployment was observed stale on 2026-07-25: it still
-served pre-rebrand assets (`assets/logo.png`, `assets/mark.png` instead of the
-current SVGs) and four `https://docs.codenib.ai` links, a hostname that does
-not resolve. Redeploy this directory to replace that build. Quick check that
-the live site matches the repo copy:
+The site uses real directory indexes for nested routes:
+
+- `/` is `landing/index.html`;
+- `/blogs/` is `landing/blogs/index.html`;
+- each article lives at `landing/blogs/<slug>/index.html`.
+
+Nested pages should reference shared assets from `/assets/...` so the same URL
+works at every route depth. The local Caddy configuration falls back to the
+homepage for unknown paths, so a `200` response alone does not prove that a
+new route or asset exists. Check the page title and asset content type as part
+of deployment verification:
 
 ```bash
-curl -s https://codenib.ai/ | grep codenib-logo.svg
+curl -s https://codenib.ai/blogs/ | grep '<title>CodeNib Blog'
+curl -sI https://codenib.ai/assets/blogs/codegraph-agent-ready.png \
+  | grep -i 'content-type: image/png'
 ```
-
-No output means the stale build is still live.
-
-Launch gate: the GitHub CTAs on this page point at
-`https://github.com/sysevol-ai/CodeNib`, which returns 404 for anonymous
-visitors while the repository is private. Make the repository public (or
-repoint the CTAs at a public docs surface) before promoting the landing page.

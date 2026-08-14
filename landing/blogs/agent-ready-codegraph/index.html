@@ -1,0 +1,231 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent-ready CodeGraph: from checkout to source-linked context — CodeNib</title>
+  <meta name="description" content="How CodeNib turns a clean checkout into local BM25 and source-linked symbol views, then serves bounded repository context to Codex or Claude Code over MCP.">
+  <meta name="author" content="CodeNib Team">
+  <meta property="og:title" content="Agent-ready CodeGraph: from checkout to source-linked context">
+  <meta property="og:description" content="One command builds local BM25 and symbol views, verifies them against the checkout, and connects them to coding agents over MCP.">
+  <meta property="og:image" content="https://codenib.ai/assets/blogs/codegraph-agent-ready.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="CodeNib builds BM25 and symbol graph views, checks source identity, and serves them to coding agents over MCP.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://codenib.ai/blogs/agent-ready-codegraph/">
+  <meta property="article:published_time" content="2026-08-14T00:00:00-07:00">
+  <meta property="article:section" content="Engineering">
+  <meta property="article:tag" content="CodeGraph">
+  <meta property="article:tag" content="MCP">
+  <meta property="article:tag" content="Coding agents">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Agent-ready CodeGraph: from checkout to source-linked context">
+  <meta name="twitter:description" content="Local, model-free repository structure for coding agents—with verified source windows.">
+  <meta name="twitter:image" content="https://codenib.ai/assets/blogs/codegraph-agent-ready.png">
+  <meta name="twitter:image:alt" content="CodeNib builds BM25 and symbol graph views, checks source identity, and serves them to coding agents over MCP.">
+  <link rel="canonical" href="https://codenib.ai/blogs/agent-ready-codegraph/">
+  <link rel="icon" href="/assets/codenib-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/blogs.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Agent-ready CodeGraph: from checkout to source-linked context",
+    "description": "How CodeNib turns a clean checkout into local BM25 and source-linked symbol views, then serves bounded repository context to Codex or Claude Code over MCP.",
+    "image": "https://codenib.ai/assets/blogs/codegraph-agent-ready.png",
+    "datePublished": "2026-08-14T00:00:00-07:00",
+    "dateModified": "2026-08-14T00:00:00-07:00",
+    "mainEntityOfPage": "https://codenib.ai/blogs/agent-ready-codegraph/",
+    "author": {
+      "@type": "Organization",
+      "name": "CodeNib Team",
+      "url": "https://github.com/sysevol-ai/CodeNib"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "CodeNib",
+      "url": "https://codenib.ai/",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://codenib.ai/assets/codenib-icon.svg"
+      }
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/" aria-label="CodeNib home">
+        <img src="/assets/codenib-logo.svg" alt="CodeNib">
+      </a>
+      <a class="nav-link" href="/blogs/" aria-current="page">Blog</a>
+      <a class="nav-link nav-docs" href="https://docs.codenib.ai/">Docs</a>
+      <a class="nav-link nav-github" href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <a class="btn" href="https://demo.codenib.ai/">Open the demo</a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <article aria-labelledby="article-title">
+    <header class="article-head wrap">
+      <a class="back" href="/blogs/"><span aria-hidden="true">←</span> All posts</a>
+      <div class="post-meta">
+        <span class="tag">CodeGraph</span>
+        <time datetime="2026-08-14">August 14, 2026</time>
+        <span>6 min read</span>
+      </div>
+      <h1 id="article-title">Agent-ready CodeGraph: from checkout to source-linked context</h1>
+      <p class="deck">Search finds where to look. CodeGraph shows what the code touches—and links that structure back to the source lines behind those relationships.</p>
+    </header>
+
+    <figure class="hero-figure">
+      <img src="/assets/blogs/codegraph-agent-ready.svg" width="1200" height="630" alt="CodeNib builds BM25 and symbol graph views, checks source identity, and serves them to Codex or Claude Code tools over MCP.">
+      <figcaption>CodeNib builds complementary lexical and graph views, binds them to one source identity, and serves verified source windows under bounded MCP tool contracts.</figcaption>
+    </figure>
+
+    <div class="article-body">
+      <p>Coding agents often struggle when they start with the wrong context: a similarly named function, an incomplete dependency chain, or a source window from a different revision. CodeNib’s agent-ready CodeGraph is designed to make that first read both structural and verifiable.</p>
+
+      <p>The default path is deliberately local and model-free. It combines ranked BM25 retrieval with a static, source-linked symbol graph produced by supported SCIP or clangd providers. The graph supplies definitions, references, and dependency neighborhoods where the selected language provider supports them; bounded source reads supply the evidence. No embedding model or API key is required for this path.</p>
+
+      <h2>A graph that terminates in source</h2>
+
+      <p>A useful repository graph is not an architecture sketch generated from prose. It is a navigation layer whose nodes and relationships can take the reader back to code. CodeNib keeps the containment structure—repository, directory, file, symbol—separate from the reference overlay between symbols. That makes a large repository readable without flattening it into a hairball.</p>
+
+      <p>When an anchored relationship is available, its source location travels with it. A relationship can open its source use site; a symbol can open its definition; a focused dependency view can stay within an explicit depth and output budget. The graph does not replace reading code. It selects the code that deserves to be read next.</p>
+
+      <h2>One command, four contracts</h2>
+
+      <pre><code>codenib codegraph init /absolute/path/to/repository</code></pre>
+
+      <div class="contract-grid" aria-label="CodeGraph initialization stages">
+        <section class="contract">
+          <span class="number">01 / INSPECT</span>
+          <h3>Detect the repository</h3>
+          <p>Identify graph-capable languages, available toolchains, and installed Codex or Claude Code clients.</p>
+        </section>
+        <section class="contract">
+          <span class="number">02 / COMPILE</span>
+          <h3>Build coordinated views</h3>
+          <p>Materialize BM25 and <code>symbol_graph</code> outside the target checkout under one manifest.</p>
+        </section>
+        <section class="contract">
+          <span class="number">03 / CONNECT</span>
+          <h3>Register through native CLIs</h3>
+          <p>Ask each detected agent to own its stdio MCP configuration instead of editing client files directly.</p>
+        </section>
+        <section class="contract">
+          <span class="number">04 / VERIFY</span>
+          <h3>Bind context to source</h3>
+          <p>Record managed client ownership, then verify the manifest against the live source before the server reports ready.</p>
+        </section>
+      </div>
+
+      <p>Running the command again is idempotent when the index and managed registrations still match. Different checkouts receive different server names, so an agent can work across several repositories without sharing ambiguous state. Codex receives a user-level registration; Claude Code receives a repository-local registration. The native client configuration changes, while the target checkout remains unchanged.</p>
+
+      <div class="callout">
+        <p class="callout-label">Preview status</p>
+        <p>Agent-ready onboarding is on CodeNib <code>main</code> and prepared for version 0.2.1. At publication time, PyPI stable is still 0.2.0, so use the source checkout below for this preview rather than a 0.2.1 version pin.</p>
+      </div>
+
+      <h2>What the agent receives</h2>
+
+      <p>The MCP surface keeps retrieval, graph navigation, and source access distinct. That separation makes a tool call inspectable and lets the agent spend a bounded context budget where it matters.</p>
+
+      <div class="tool-table" role="list" aria-label="Selected CodeGraph MCP tools">
+        <div class="tool-row" role="listitem">
+          <code>explore_context</code>
+          <p>Composes ranked retrieval, symbol routing, dependency expansion, and verified source windows for a repository question.</p>
+        </div>
+        <div class="tool-row" role="listitem">
+          <code>dependency_subgraph</code>
+          <p>Returns a bounded caller, callee, or impact neighborhood around a resolved symbol.</p>
+        </div>
+        <div class="tool-row" role="listitem">
+          <code>search_bm25</code>
+          <p>Finds exact identifiers and lexical matches without requiring a model.</p>
+        </div>
+        <div class="tool-row" role="listitem">
+          <code>lsp_definition / lsp_references</code>
+          <p>Navigates static definition and reference signals backed by the graph or a verified live provider.</p>
+        </div>
+        <div class="tool-row" role="listitem">
+          <code>read_source</code>
+          <p>Reads an exact, repository-contained 1-based source window after retrieval or navigation.</p>
+        </div>
+      </div>
+
+      <p>A good first instruction to an agent is concrete about both the tool and the evidence standard:</p>
+
+      <pre class="prompt"><code>Use CodeNib's explore_context to explain where request retries are implemented. Cite the returned source paths and lines before proposing an edit.</code></pre>
+
+      <p>For a change-impact question, switch from discovery to structure:</p>
+
+      <pre class="prompt"><code>Use dependency_subgraph on RetryPolicy.execute with direction impact and depth 2. Summarize the callers that could change if its behavior changes.</code></pre>
+
+      <h2>Fail closed beats confidently stale</h2>
+
+      <p>Repository context is only useful when its provenance is clear. CodeGraph initialization therefore requires a clean Git working tree and checks it again after indexing and client registration. The reusable index lives outside the target checkout. CodeNib may install package-managed graph providers, but it does not run a repository package manager, invoke <code>sudo</code>, or synthesize project prerequisites behind the user’s back.</p>
+
+      <p>At server startup, the indexed source identity is checked against the live checkout. A changed repository is not silently served with an old graph. Rerun <code>init</code> after source changes: a completely current view can be reused, while changed source takes the safe rebuild path instead of publishing partial state.</p>
+
+      <pre><code>codenib codegraph status /absolute/path/to/repository --json
+codenib codegraph init /absolute/path/to/repository
+codenib codegraph uninstall /absolute/path/to/repository</code></pre>
+
+      <p><code>status</code> exposes the readiness contract to both humans and automation. <code>uninstall</code> removes only receipt-owned client registrations and leaves the reusable index intact. If a managed client command has drifted, CodeNib stops and asks the user to inspect it rather than guessing.</p>
+
+      <h2>The same structure has a human view</h2>
+
+      <p>The browser Dependency Map uses the same symbol graph as the agent tools. Its Structure view expands directories, files, and symbols while rolling relationships up to the nearest visible ancestors. Its Graph view opens file scopes into concrete symbols, preserves edge source anchors, and lets a reader jump from a relationship to code.</p>
+
+      <p>This is the larger idea behind CodeNib: build repository context once per indexed source identity, then let humans and agents inspect different projections of the same source-linked artifact.</p>
+
+      <h2>Try the 0.2.1 preview</h2>
+
+      <p>The preview requires Python 3.10+, Git, an installed Codex or Claude Code CLI, and a clean target checkout. Clone CodeNib, install the graph and MCP extras from source, then point the initializer at an absolute repository path:</p>
+
+      <pre><code>git clone https://github.com/sysevol-ai/CodeNib.git
+cd CodeNib
+python -m pip install -e ".[graph,mcp]"
+codenib codegraph init /absolute/path/to/repository --dry-run
+codenib codegraph init /absolute/path/to/repository</code></pre>
+
+      <p>Language providers have different system and project prerequisites. CodeNib reports those boundaries before it publishes an incomplete agent setup; the <a href="https://docs.codenib.ai/language_capabilities/">language capability matrix</a> records the current coverage.</p>
+
+      <aside class="article-cta">
+        <h2>Give your agent a map grounded in source.</h2>
+        <p>Install the preview from <code>main</code>, review the current language boundary, or explore the same repository structure in the browser demo.</p>
+        <div class="actions">
+          <a class="btn" href="https://github.com/sysevol-ai/CodeNib">Get the preview source</a>
+          <a class="btn btn-ghost" href="https://docs.codenib.ai/language_capabilities/">Review language support</a>
+          <a class="btn btn-ghost" href="https://demo.codenib.ai/caddyserver__caddy">Explore the demo</a>
+        </div>
+      </aside>
+    </div>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <a class="footer-brand" href="/" aria-label="CodeNib home">
+        <img src="/assets/codenib-icon.svg" alt="">
+        <span>codenib.ai</span>
+      </a>
+      <a href="/blogs/">Blog</a>
+      <a href="https://docs.codenib.ai/">Docs</a>
+      <a href="https://demo.codenib.ai/">Demo</a>
+      <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <span>© 2026 CodeNib</span>
+    </div>
+  </footer>
+</body>
+</html>

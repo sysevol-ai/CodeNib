@@ -1,0 +1,109 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeNib Blog — Engineering repository context for agents</title>
+  <meta name="description" content="Product notes and engineering deep dives from CodeNib, the source-linked repository context system for coding agents.">
+  <meta property="og:title" content="CodeNib Blog">
+  <meta property="og:description" content="Product notes and engineering deep dives on repository context for coding agents.">
+  <meta property="og:image" content="https://codenib.ai/assets/blogs/codegraph-agent-ready.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="CodeNib builds BM25 and symbol graph views, checks source identity, and serves them to coding agents over MCP.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://codenib.ai/blogs/">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CodeNib Blog">
+  <meta name="twitter:description" content="Product notes and engineering deep dives on repository context for coding agents.">
+  <meta name="twitter:image" content="https://codenib.ai/assets/blogs/codegraph-agent-ready.png">
+  <meta name="twitter:image:alt" content="CodeNib builds BM25 and symbol graph views, checks source identity, and serves them to coding agents over MCP.">
+  <link rel="canonical" href="https://codenib.ai/blogs/">
+  <link rel="icon" href="/assets/codenib-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/blogs.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Blog",
+    "name": "CodeNib Blog",
+    "url": "https://codenib.ai/blogs/",
+    "description": "Product notes and engineering deep dives on repository context for coding agents.",
+    "publisher": {
+      "@type": "Organization",
+      "name": "CodeNib",
+      "url": "https://codenib.ai/",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://codenib.ai/assets/codenib-icon.svg"
+      }
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/" aria-label="CodeNib home">
+        <img src="/assets/codenib-logo.svg" alt="CodeNib">
+      </a>
+      <a class="nav-link" href="/blogs/" aria-current="page">Blog</a>
+      <a class="nav-link nav-docs" href="https://docs.codenib.ai/">Docs</a>
+      <a class="nav-link nav-github" href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <a class="btn" href="https://demo.codenib.ai/">Open the demo</a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="index-hero">
+      <div class="wrap">
+        <p class="eyebrow">CodeNib Blog</p>
+        <h1>Notes from the graph.</h1>
+        <p class="lede">Product releases, system design, and the practical details behind source-linked context for coding agents.</p>
+      </div>
+    </section>
+
+    <section class="posts" aria-labelledby="latest-heading">
+      <div class="wrap">
+        <h2 class="section-label" id="latest-heading">Latest</h2>
+        <article>
+          <a class="featured-post" href="/blogs/agent-ready-codegraph/" aria-label="Read Agent-ready CodeGraph: from checkout to source-linked context">
+            <div class="post-copy">
+              <div class="post-meta">
+                <span class="tag">CodeGraph</span>
+                <time datetime="2026-08-14">August 14, 2026</time>
+                <span>6 min read</span>
+              </div>
+              <h3>Agent-ready CodeGraph: from checkout to source-linked context</h3>
+              <p class="summary">One command builds a local BM25 and symbol graph, verifies it against the checkout, and connects it to Codex or Claude Code over MCP.</p>
+              <span class="read-more">Read the article <span aria-hidden="true">→</span></span>
+            </div>
+            <div class="post-art">
+              <img src="/assets/blogs/codegraph-agent-ready.svg" width="1200" height="630" loading="lazy" alt="">
+            </div>
+          </a>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <a class="footer-brand" href="/" aria-label="CodeNib home">
+        <img src="/assets/codenib-icon.svg" alt="">
+        <span>codenib.ai</span>
+      </a>
+      <a href="/blogs/">Blog</a>
+      <a href="https://docs.codenib.ai/">Docs</a>
+      <a href="https://demo.codenib.ai/">Demo</a>
+      <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <span>© 2026 CodeNib</span>
+    </div>
+  </footer>
+</body>
+</html>
