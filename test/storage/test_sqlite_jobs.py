@@ -1296,14 +1296,16 @@ def test_job_finish_and_slot_release_roll_back_together(tmp_path) -> None:
         lease = catalog.acquire_job_lease(
             job.job_id, owner_id="worker", lease_duration_ms=30_000
         )
-        catalog._connection.execute("""
+        catalog._connection.execute(
+            """
             CREATE TRIGGER fail_job_slot_release
             BEFORE UPDATE ON ref_job_leases
             WHEN NEW.job_id IS NULL
             BEGIN
                 SELECT RAISE(ABORT, 'simulated slot release failure');
             END
-            """)
+            """
+        )
 
         with pytest.raises(sqlite3.IntegrityError, match="simulated slot"):
             catalog.finish_job_attempt(
