@@ -17,6 +17,7 @@ from scripts.verify_release_artifacts import (
     project_identity,
     validate_readme_citation,
     validate_readme_mcp_ownership,
+    validate_release_notes,
     validate_tag,
 )
 
@@ -72,6 +73,52 @@ def test_project_identity_and_tag_match_release_metadata() -> None:
 def test_release_tag_must_match_project_version() -> None:
     with pytest.raises(ReleaseValidationError, match="does not match"):
         validate_tag("v0.1.0", "0.2.0")
+
+
+def test_curated_release_notes_match_the_project_version(tmp_path: Path) -> None:
+    project = tmp_path / "pyproject.toml"
+    project.write_text(
+        '[project]\nname = "codenib"\nversion = "0.2.1"\n',
+        encoding="utf-8",
+    )
+    notes_dir = tmp_path / "notes"
+    notes_dir.mkdir()
+    notes = notes_dir / "0.2.1.md"
+    notes.write_text(
+        "# CodeNib 0.2.1\n\nInstall with `codenib[graph,mcp]==0.2.1`.\n",
+        encoding="utf-8",
+    )
+
+    assert validate_release_notes(project, notes_dir) == notes
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    (
+        ("# CodeNib 0.2.0\n\ncodenib==0.2.1\n", "version heading"),
+        ("# CodeNib 0.2.1\n\ncodenib\n", "installation example"),
+        (
+            "# CodeNib 0.2.1\n\ncodenib==0.2.1 --extra-index-url x\n",
+            "prerelease installation markers",
+        ),
+    ),
+)
+def test_curated_release_notes_reject_invalid_contract(
+    tmp_path: Path,
+    body: str,
+    message: str,
+) -> None:
+    project = tmp_path / "pyproject.toml"
+    project.write_text(
+        '[project]\nname = "codenib"\nversion = "0.2.1"\n',
+        encoding="utf-8",
+    )
+    notes_dir = tmp_path / "notes"
+    notes_dir.mkdir()
+    (notes_dir / "0.2.1.md").write_text(body, encoding="utf-8")
+
+    with pytest.raises(ReleaseValidationError, match=message):
+        validate_release_notes(project, notes_dir)
 
 
 def test_packaged_readme_requires_the_arxiv_citation() -> None:
@@ -184,6 +231,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert production["concurrency"]["cancel-in-progress"] == (
         "${{ github.ref_type != 'tag' }}"
     )
+    assert "docs/releases/**" in production["on"]["pull_request"]["paths"]
 
     assert set(production["jobs"]) == {
         "verify",
@@ -250,9 +298,17 @@ def test_registry_publishers_use_separate_workflows() -> None:
         step["name"]: step for step in production["jobs"]["github-release"]["steps"]
     }
     assert release_steps["Resolve release channel"]["id"] == "channel"
+    resolve_release = release_steps["Resolve release channel"]["run"]
+    assert 'RELEASE_NOTES="docs/releases/$VERSION.md"' in resolve_release
+    assert 'test -f "$RELEASE_NOTES"' in resolve_release
+    assert release_steps["Create release"]["env"]["RELEASE_NOTES"] == (
+        "${{ steps.channel.outputs.notes_file }}"
+    )
     create_release = release_steps["Create release"]["run"]
     assert "RELEASE_FLAGS=(--latest)" in create_release
     assert "RELEASE_FLAGS=(--prerelease)" in create_release
+    assert '--notes-file "$RELEASE_NOTES"' in create_release
+    assert "--generate-notes" not in create_release
     assert '"${RELEASE_FLAGS[@]}"' in create_release
 
     assert set(test["jobs"]) == {

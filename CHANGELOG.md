@@ -11,7 +11,7 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-08-13
+## [0.2.1] - 2026-08-14
 
 ### Added
 

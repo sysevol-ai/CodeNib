@@ -67,6 +67,37 @@ def validate_tag(tag: str | None, version: str) -> None:
         )
 
 
+def validate_release_notes(project_file: Path, notes_dir: Path | None = None) -> Path:
+    """Require curated, version-matched notes before any release publication."""
+    name, version = project_identity(project_file)
+    root = project_file.resolve().parent
+    directory = notes_dir if notes_dir is not None else root / "docs" / "releases"
+    notes = directory / f"{version}.md"
+    try:
+        text = notes.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ReleaseValidationError(
+            f"missing curated release notes for {name} {version}: {notes}"
+        ) from exc
+
+    heading = f"# CodeNib {version}"
+    if heading not in text:
+        raise ReleaseValidationError(
+            f"{notes} must contain the version heading {heading!r}"
+        )
+    if f"=={version}" not in text:
+        raise ReleaseValidationError(
+            f"{notes} must contain an exact {version} installation example"
+        )
+    forbidden = ("test-files.pythonhosted.org", "--extra-index-url", "--index-url")
+    found = [marker for marker in forbidden if marker in text]
+    if found:
+        raise ReleaseValidationError(
+            f"{notes} contains prerelease installation markers: {', '.join(found)}"
+        )
+    return notes
+
+
 def _single(paths: list[Path], kind: str) -> Path:
     if len(paths) != 1:
         found = ", ".join(path.name for path in paths) or "none"
@@ -175,6 +206,7 @@ def validate_release(
 ) -> tuple[Path, Path]:
     name, version = project_identity(project_file)
     validate_tag(tag, version)
+    validate_release_notes(project_file)
 
     wheel = _single(sorted(dist_dir.glob("*.whl")), "wheel")
     sdist = _single(sorted(dist_dir.glob("*.tar.gz")), "sdist")

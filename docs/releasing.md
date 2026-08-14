@@ -125,18 +125,23 @@ on PyPI.
 1. Move relevant entries from `Unreleased` into a dated version section in
    `CHANGELOG.md`.
 2. Confirm `pyproject.toml` uses the release version, `server.json` matches it,
-   and the README citation and `mcp-name` marker remain present.
+   `docs/releases/<version>.md` contains the curated public release notes, and
+   the README citation and `mcp-name` marker remain present.
 3. Run `pre-commit run --all-files` and the local package smoke.
 4. Merge the release commit to `main` and confirm its package gates pass.
 5. Confirm the TestPyPI trusted publisher is visible, then dispatch the
    TestPyPI Release workflow from `main`.
 6. Confirm the TestPyPI registry-download and installed-CLI smoke job passes.
+   Record its exact head SHA, freeze the release surface, and require the
+   production tag to resolve to that same commit.
 7. Complete the public-surface gate above.
 8. Confirm the production PyPI publisher exactly names owner `sysevol-ai`,
    repository `CodeNib`, workflow `release.yml`, and environment `pypi`.
 9. Confirm the `codenib.ai` MCP proof TXT record and protected
    `mcp-registry-publish` environment secret are active.
-10. Create and push an annotated `v<version>` tag.
+10. Create and push an annotated `v<version>` tag at the accepted TestPyPI SHA.
+    Do not include intervening `main` changes without repeating the candidate
+    workflow.
 11. Confirm PyPI, MCP Registry discovery, and the generated GitHub Release all
     identify the same version and that a stable release is marked latest.
 12. After the first successful production OIDC publication, revoke the
