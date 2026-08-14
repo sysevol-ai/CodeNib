@@ -3,8 +3,8 @@ SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
-  <title id="title">FactQueryIndex and FactBatch architecture</title>
-  <desc id="description">SCIP and clangd artifacts pass through provider-specific normalization governed by shared semantic contracts. Capability-scoped native queries, clangd FactBatch generations, and the complete CodeGraph are distinct representations.</desc>
+  <title id="title">CodeGraph architecture: native query paths and durable facts</title>
+  <desc id="description">Analyzer artifacts pass through provider-specific normalization governed by shared semantic contracts. Capability-scoped native queries, durable semantic publication, and the complete CodeGraph are distinct representations.</desc>
   <defs>
     <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
       <path d="M32 0H0V32" fill="none" stroke="#dbe5f1" stroke-width="1" opacity=".42"/>
@@ -25,11 +25,11 @@ SPDX-License-Identifier: Apache-2.0
       <rect width="36" height="36" rx="10" fill="#2563eb"/>
       <path d="m14 11-5 7 5 7m8-14 5 7-5 7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
       <text x="50" y="15" fill="#0f172a" font-size="15" font-weight="650">CodeNib</text>
-      <text x="50" y="32" fill="#64748b" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="620" letter-spacing="1.15">SEMANTIC PIPELINE</text>
+      <text x="50" y="32" fill="#64748b" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="620" letter-spacing="1.15">CODEGRAPH ARCHITECTURE</text>
     </g>
 
-    <text x="48" y="116" fill="#0f172a" font-size="34" font-weight="660" letter-spacing="-1.15">Shared semantics. Consumer-specific representations.</text>
-    <text x="48" y="147" fill="#475569" font-size="16.5">Each provider path normalizes independently; no shared decode cache is implied.</text>
+    <text x="48" y="116" fill="#0f172a" font-size="34" font-weight="660" letter-spacing="-1.15">CodeGraph paths and materialization boundaries.</text>
+    <text x="48" y="147" fill="#475569" font-size="16.5">Provider-specific representations stay behind explicit capability and identity gates.</text>
 
     <!-- Provider artifacts -->
     <g transform="translate(48 206)">
@@ -51,7 +51,7 @@ SPDX-License-Identifier: Apache-2.0
       </g>
 
       <text x="20" y="245" fill="#64748b" font-size="11.5">Existing analyzer output</text>
-      <text x="20" y="262" fill="#64748b" font-size="11.5">Generation measured separately</text>
+      <text x="20" y="262" fill="#64748b" font-size="11.5">Analyzer generation excluded</text>
     </g>
 
     <path d="M271 344h43" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
@@ -82,7 +82,7 @@ SPDX-License-Identifier: Apache-2.0
       <g transform="translate(18 270)">
         <rect width="212" height="28" rx="14" fill="#eff6ff" stroke="#bfdbfe"/>
         <circle cx="16" cy="14" r="3.5" fill="#16a34a"/>
-        <text x="28" y="18" fill="#1e3a8a" font-size="10.5" font-weight="620">canonical paths · ranges · order</text>
+        <text x="28" y="18" fill="#1e3a8a" font-size="10.5" font-weight="620">paths · ranges · roles</text>
       </g>
     </g>
 
@@ -101,15 +101,15 @@ SPDX-License-Identifier: Apache-2.0
       <text x="18" y="82" fill="#475569" font-size="12">Integer postings; capabilities are provider-gated</text>
 
       <g transform="translate(18 99)" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5">
-        <rect width="100" height="29" rx="8" fill="#eff6ff" stroke="#bfdbfe"/>
-        <rect x="108" width="112" height="29" rx="8" fill="#eff6ff" stroke="#bfdbfe"/>
-        <rect x="228" width="96" height="29" rx="8" fill="#eff6ff" stroke="#bfdbfe"/>
-        <text x="50" y="19" text-anchor="middle" fill="#1d4ed8">symbols</text>
-        <text x="164" y="19" text-anchor="middle" fill="#1d4ed8">opt. positions</text>
-        <text x="276" y="19" text-anchor="middle" fill="#1d4ed8">adapter routes</text>
-        <rect x="337" width="160" height="29" rx="14.5" fill="#ecfdf5" stroke="#a7f3d0"/>
-        <circle cx="352" cy="14.5" r="3.5" fill="#16a34a"/>
-        <text x="363" y="19" fill="#166534">0 graphs in v3 gate</text>
+        <rect width="92" height="29" rx="8" fill="#eff6ff" stroke="#bfdbfe"/>
+        <rect x="100" width="108" height="29" rx="8" fill="#eff6ff" stroke="#bfdbfe"/>
+        <rect x="216" width="100" height="29" rx="8" fill="#eff6ff" stroke="#bfdbfe"/>
+        <text x="46" y="19" text-anchor="middle" fill="#1d4ed8">symbols</text>
+        <text x="154" y="19" text-anchor="middle" fill="#1d4ed8">opt. positions</text>
+        <text x="266" y="19" text-anchor="middle" fill="#1d4ed8">route adapter</text>
+        <rect x="324" width="155" height="29" rx="14.5" fill="#ecfdf5" stroke="#a7f3d0"/>
+        <circle cx="339" cy="14.5" r="3.5" fill="#16a34a"/>
+        <text x="350" y="19" fill="#166534">0 graphs in v3 gate</text>
       </g>
     </g>
 
@@ -123,15 +123,15 @@ SPDX-License-Identifier: Apache-2.0
       <text x="18" y="82" fill="#475569" font-size="12">Python adapter → per-file facts → generation manifest → CAS</text>
 
       <g transform="translate(18 99)" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5">
-        <rect width="122" height="29" rx="8" fill="#f0fdfa" stroke="#99f6e4"/>
-        <rect x="130" width="122" height="29" rx="8" fill="#f0fdfa" stroke="#99f6e4"/>
-        <rect x="260" width="100" height="29" rx="8" fill="#f0fdfa" stroke="#99f6e4"/>
-        <text x="61" y="19" text-anchor="middle" fill="#0f766e">source digest</text>
-        <text x="191" y="19" text-anchor="middle" fill="#0f766e">profile digest</text>
-        <text x="310" y="19" text-anchor="middle" fill="#0f766e">provenance</text>
-        <rect x="373" width="124" height="29" rx="14.5" fill="#ecfdf5" stroke="#a7f3d0"/>
-        <circle cx="388" cy="14.5" r="3.5" fill="#16a34a"/>
-        <text x="399" y="19" fill="#166534">51/51 reused</text>
+        <rect width="112" height="29" rx="8" fill="#f0fdfa" stroke="#99f6e4"/>
+        <rect x="120" width="112" height="29" rx="8" fill="#f0fdfa" stroke="#99f6e4"/>
+        <rect x="240" width="92" height="29" rx="8" fill="#f0fdfa" stroke="#99f6e4"/>
+        <text x="56" y="19" text-anchor="middle" fill="#0f766e">source digest</text>
+        <text x="176" y="19" text-anchor="middle" fill="#0f766e">profile digest</text>
+        <text x="286" y="19" text-anchor="middle" fill="#0f766e">provenance</text>
+        <rect x="340" width="139" height="29" rx="14.5" fill="#ecfdf5" stroke="#a7f3d0"/>
+        <circle cx="355" cy="14.5" r="3.5" fill="#16a34a"/>
+        <text x="366" y="19" fill="#166534">51/51 reused</text>
       </g>
     </g>
 
@@ -140,7 +140,7 @@ SPDX-License-Identifier: Apache-2.0
       <rect width="515" height="62" rx="14" fill="#fff" stroke="#cbd5e1" stroke-width="1.2"/>
       <text x="18" y="25" fill="#64748b" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="680" letter-spacing=".9">COMPATIBILITY AUTHORITY</text>
       <text x="18" y="45" fill="#0f172a" font-size="14" font-weight="640">Complete CodeGraph / igraph</text>
-      <text x="497" y="37" text-anchor="end" fill="#64748b" font-size="11.5">direct selection or compatible request fallback</text>
+      <text x="496" y="45" text-anchor="end" fill="#64748b" font-size="11.5">direct selection · request fallback</text>
     </g>
 
     <text x="48" y="604" fill="#64748b" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5">EXISTING ARTIFACTS · PROVIDER-SPECIFIC RECEIPTS · IDENTITY FAILURES FAIL CLOSED · EXTERNAL ANALYZER GENERATION EXCLUDED</text>
