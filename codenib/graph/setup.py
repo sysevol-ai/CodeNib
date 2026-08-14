@@ -301,6 +301,7 @@ def _cpp_setup(
     *,
     repository: Path,
     command_resolver: CommandResolver,
+    allow_project_preparation: bool,
 ) -> GraphLanguageSetup:
     spec = get_language_spec("cpp")
     assert spec is not None
@@ -331,9 +332,16 @@ def _cpp_setup(
     bear_ready = (
         makefile and bool(command_resolver("bear")) and bool(command_resolver("make"))
     )
-    project_ready = bool(existing or cmake_ready or bear_ready)
+    project_ready = bool(
+        existing or (allow_project_preparation and (cmake_ready or bear_ready))
+    )
     if existing:
         detail = str(existing)
+    elif not allow_project_preparation:
+        detail = (
+            "read-only graph onboarding requires an existing usable "
+            "compile_commands.json"
+        )
     elif cmake_ready:
         detail = "CMake project; compile_commands.json can be generated"
     elif bear_ready:
@@ -556,6 +564,7 @@ def _language_setup(
     *,
     repository: Path,
     command_resolver: CommandResolver,
+    allow_project_preparation: bool,
 ) -> GraphLanguageSetup:
     spec = get_language_spec(language)
     if spec is None or not spec.graph_language or not spec.graph_indexer:
@@ -572,6 +581,7 @@ def _language_setup(
         return _cpp_setup(
             repository=repository,
             command_resolver=command_resolver,
+            allow_project_preparation=allow_project_preparation,
         )
     if spec.key == "ruby":
         return _ruby_setup(
@@ -643,6 +653,7 @@ def diagnose_graph_setup(
     *,
     command_resolver: CommandResolver | None = None,
     module_checker: ModuleChecker | None = None,
+    allow_project_preparation: bool = True,
 ) -> GraphSetupReport:
     """Inspect the exact graph providers needed by ``languages``.
 
@@ -650,6 +661,8 @@ def diagnose_graph_setup(
     never installs tools, creates environments, or mutates the repository.
     """
 
+    if type(allow_project_preparation) is not bool:
+        raise ValueError("allow_project_preparation must be a boolean")
     root = Path(repository).expanduser().resolve()
     command_resolver = command_resolver or resolve_command
     module_checker = module_checker or _module_available
@@ -683,6 +696,7 @@ def diagnose_graph_setup(
                 key,
                 repository=root,
                 command_resolver=command_resolver,
+                allow_project_preparation=allow_project_preparation,
             )
         )
     return GraphSetupReport(

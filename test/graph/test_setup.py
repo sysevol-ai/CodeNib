@@ -81,6 +81,37 @@ def test_cpp_setup_requires_a_compilation_database_route(tmp_path: Path) -> None
     assert report.languages[0].resolved_command == "/tools/clangd"
 
 
+def test_cpp_read_only_setup_requires_an_existing_compilation_database(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "CMakeLists.txt").write_text(
+        "cmake_minimum_required(VERSION 3.20)\n",
+        encoding="utf-8",
+    )
+    resolver = _resolver({"clangd": "/tools/clangd", "cmake": "/tools/cmake"})
+
+    preparable = diagnose_graph_setup(
+        tmp_path,
+        ["cpp"],
+        command_resolver=resolver,
+        module_checker=lambda _name: True,
+    )
+    read_only = diagnose_graph_setup(
+        tmp_path,
+        ["cpp"],
+        command_resolver=resolver,
+        module_checker=lambda _name: True,
+        allow_project_preparation=False,
+    )
+
+    assert preparable.ready is True
+    assert read_only.ready is False
+    assert read_only.languages[0].missing == ["compilation database"]
+    assert "existing usable compile_commands.json" in (
+        read_only.languages[0].prerequisites[-1].detail
+    )
+
+
 def test_setup_payload_contains_actionable_language_specific_data(
     tmp_path: Path,
 ) -> None:

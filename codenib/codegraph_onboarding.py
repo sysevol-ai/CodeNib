@@ -437,12 +437,32 @@ def inspect_server_command(
     raw_output = result.stdout or result.stderr or ""
     observed = " ".join((raw_output or "no output").split())
     expected = f"codenib {package_version()}"
-    ready = result.returncode == 0 and expected in {
+    version_ready = result.returncode == 0 and expected in {
         line.strip() for line in raw_output.splitlines()
+    }
+    if not version_ready:
+        return ServerCommandInspection(
+            False,
+            f"expected {expected!r}, observed {observed[:240]!r}",
+        )
+    probe = _invoke_client(
+        (server.command, *server.args, "--runtime-probe"),
+        repository=Path(repository).expanduser().resolve(),
+        runner=runner,
+    )
+    probe_output = probe.stdout or probe.stderr or ""
+    probe_marker = "codenib codegraph mcp runtime ready"
+    ready = probe.returncode == 0 and probe_marker in {
+        line.strip() for line in probe_output.splitlines()
     }
     return ServerCommandInspection(
         ready,
-        expected if ready else f"expected {expected!r}, observed {observed[:240]!r}",
+        (
+            expected
+            if ready
+            else "CodeGraph MCP runtime probe failed: "
+            + " ".join((probe_output or "no output").split())[:240]
+        ),
     )
 
 

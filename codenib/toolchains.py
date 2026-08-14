@@ -282,8 +282,12 @@ def plan_repository_toolchain(
     root: Path | None = None,
     command_resolver: Callable[[str], str | None] | None = None,
     module_checker: Callable[[str], bool] | None = None,
+    allow_project_preparation: bool = True,
 ) -> ToolchainPlan:
     """Build a read-only install/status plan for a repository."""
+
+    if type(allow_project_preparation) is not bool:
+        raise ValueError("allow_project_preparation must be a boolean")
 
     from .graph.setup import diagnose_graph_setup
 
@@ -300,6 +304,7 @@ def plan_repository_toolchain(
             languages,
             command_resolver=resolver,
             module_checker=module_checker,
+            allow_project_preparation=allow_project_preparation,
         )
         if not report.runtime.ready:
             notes.append(

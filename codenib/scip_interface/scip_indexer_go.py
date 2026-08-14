@@ -67,11 +67,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
 
     def _build_index_command(self, **kwargs) -> List[str]:
         """Build the command to generate the SCIP index for Go."""
-        # scip-go runs from project root and outputs index.scip by default.
-        # We move/rename the output afterward if needed, but scip-go doesn't
-        # have a --output flag in all versions, so we rely on the default.
-        cmd = ["scip-go"]
-        return cmd
+        return ["scip-go", "--output", str(self.index_file)]
 
     def _get_decoder_class(self):
         """Get the decoder class for Go."""
@@ -94,6 +90,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
             return False
 
         cmd = self._build_index_command(**kwargs)
+        self.index_file.unlink(missing_ok=True)
 
         logger.debug(f"Running command: {' '.join(cmd)}")
 
@@ -114,24 +111,19 @@ class SCIPGoIndexer(SCIPIndexerBase):
                 if e.stderr:
                     logger.error(f"stderr: {e.stderr}")
                 success = False
+            except BaseException:
+                self.index_file.unlink(missing_ok=True)
+                raise
 
         duration = section.duration
 
-        if success:
-            # scip-go outputs index.scip in the project root by default.
-            # Move it to our output directory if needed.
-            default_output = self.project_root / "index.scip"
-            if default_output.exists() and default_output != self.index_file:
-                import shutil
-
-                shutil.move(str(default_output), str(self.index_file))
-
+        if success and not self.index_file.is_symlink() and self.index_file.is_file():
             logger.info(f"Successfully generated SCIP index at {self.index_file}")
             logger.info(f"Index generation took: {duration:.2f} seconds")
             return True
-        else:
-            logger.error(f"Index generation failed after {duration:.2f} seconds")
-            return False
+        self.index_file.unlink(missing_ok=True)
+        logger.error(f"Index generation failed after {duration:.2f} seconds")
+        return False
 
     def run_pipeline(
         self,

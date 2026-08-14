@@ -264,9 +264,16 @@ release acceptance, exact-main verification, and explicit release authorization.
   providers outside the repository, but never run project package managers or
   build-system preparation from the onboarding command.
 - Make repeated initialization a no-op for matching registrations. Fail closed
-  on unmanaged collisions and managed drift.
+  on unmanaged collisions and managed drift. Auto mode re-detects the current
+  checkout on every run and admits only languages with registered graph
+  providers, so newly added languages are not hidden by an older receipt.
 - Provide human and JSON status plus receipt-scoped uninstall that preserves the
-  reusable index.
+  reusable index. Readiness revalidates the BM25 and graph artifact
+  fingerprints and probes the recorded MCP command's graph runtime, rather than
+  trusting a matching package version or manifest state alone.
+- Treat dry-run project prerequisites as blocking, require an existing usable
+  C/C++ compilation database for read-only onboarding, and direct provider
+  output to CodeNib state instead of the target checkout.
 - Exercise installed `explore_context` and `dependency_subgraph` calls, source
   verification, both client contracts, idempotency, and uninstall in the
   release graph smoke.

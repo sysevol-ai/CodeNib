@@ -738,13 +738,14 @@ class SymbolGraphBuilder:
     def artifact_identity(self) -> Dict[str, Any]:
         graph_languages = self.languages or [self.language]
         return {
-            "builder_schema": 4,
+            "builder_schema": 5,
             "languages": list(graph_languages),
             "graph_route": self.graph_route,
             "exclude_patterns": sorted(self.exclude_patterns),
             "allow_partial_languages": self.allow_partial_languages,
             "allow_partial_index": self.allow_partial_index,
             "source_coverage_fallback": self.source_coverage_fallback,
+            "allow_project_preparation": self.allow_project_preparation,
             "target_dir": None,
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }

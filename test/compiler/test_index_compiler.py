@@ -1207,7 +1207,8 @@ class TestSymbolGraphBuilder:
         assert status.metadata["edge_count"] == 0
         assert status.metadata["language"] == "python"
         assert status.metadata["languages"] == ["python"]
-        assert status.metadata["builder_schema"] == 4
+        assert status.metadata["builder_schema"] == 5
+        assert status.metadata["allow_project_preparation"] is True
         assert status.metadata["target_dir"] is None
         assert status.metadata["update_mode"] == "full_rebuild"
         assert status.metadata["scip_decoded_artifacts"] == {}
@@ -1231,6 +1232,15 @@ class TestSymbolGraphBuilder:
                 },
             )
         ]
+
+    def test_artifact_identity_tracks_project_preparation_policy(self):
+        enabled = SymbolGraphBuilder(allow_project_preparation=True)
+        disabled = SymbolGraphBuilder(allow_project_preparation=False)
+
+        assert enabled.artifact_identity()["builder_schema"] == 5
+        assert enabled.artifact_identity()["allow_project_preparation"] is True
+        assert disabled.artifact_identity()["allow_project_preparation"] is False
+        assert enabled.artifact_identity() != disabled.artifact_identity()
 
     def test_build_records_existing_decoded_scip_artifact(self, monkeypatch, tmp_path):
         from codenib import ls_router

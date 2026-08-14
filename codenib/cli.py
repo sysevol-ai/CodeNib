@@ -217,13 +217,17 @@ def _split_values(values: Iterable[str] | None) -> list[str]:
     return result
 
 
-def detect_languages(repo_path: str | os.PathLike[str]) -> list[str]:
-    """Detect supported source languages, ordered by source-file count."""
+def _detect_languages_for_surface(
+    repo_path: str | os.PathLike[str],
+    *,
+    surface: str,
+) -> list[str]:
+    """Detect registered source languages for one capability surface."""
     from .languages import extension_to_language_map
     from .source_fingerprint import lexical_repository_path
 
     root = lexical_repository_path(repo_path)
-    extension_map = extension_to_language_map("chunker")
+    extension_map = extension_to_language_map(surface)
     counts: Counter[str] = Counter()
 
     for _current_root, dirs, files in os.walk(root):
@@ -245,6 +249,12 @@ def detect_languages(repo_path: str | os.PathLike[str]) -> list[str]:
             key=lambda item: (-item[1], item[0]),
         )
     ]
+
+
+def detect_languages(repo_path: str | os.PathLike[str]) -> list[str]:
+    """Detect chunkable source languages, ordered by source-file count."""
+
+    return _detect_languages_for_surface(repo_path, surface="chunker")
 
 
 def normalize_languages(values: Iterable[str]) -> list[str]:
@@ -328,6 +338,38 @@ def _selected_languages(repo_path: Path, explicit: Iterable[str]) -> list[str]:
     if not languages:
         raise CLIError(
             "no supported source language was detected; pass --language explicitly"
+        )
+    return languages
+
+
+def _selected_codegraph_languages(
+    repo_path: Path,
+    explicit: Iterable[str],
+) -> list[str]:
+    """Select only languages with a registered symbol-graph backend."""
+
+    from .languages import graph_indexer_path, normalize_graph_language
+
+    requested = _split_values(explicit)
+    if requested:
+        selected: list[str] = []
+        for value in requested:
+            language = normalize_graph_language(value)
+            if language is None or graph_indexer_path(language) is None:
+                raise CLIError(f"language has no symbol-graph provider: {value}")
+            if language not in selected:
+                selected.append(language)
+        return selected
+
+    languages = [
+        language
+        for language in _detect_languages_for_surface(repo_path, surface="graph")
+        if graph_indexer_path(language) is not None
+    ]
+    if not languages:
+        raise CLIError(
+            "no graph-capable source language was detected; pass --language "
+            "for a registered symbol-graph provider"
         )
     return languages
 
@@ -514,8 +556,20 @@ def _run_index(
 
 
 def _run_mcp(args: argparse.Namespace) -> int:
-    _require_modules(("mcp",), extra="mcp", feature="the MCP server")
+    runtime_probe = bool(getattr(args, "runtime_probe", False))
+    if runtime_probe:
+        _require_modules(
+            ("mcp", "igraph", "google.protobuf"),
+            extra="graph,mcp",
+            feature="the CodeGraph MCP server",
+        )
+    else:
+        _require_modules(("mcp",), extra="mcp", feature="the MCP server")
     from .mcp.server import main as mcp_main
+
+    if runtime_probe:
+        print("codenib codegraph mcp runtime ready")
+        return 0
 
     if args.artifact:
         command = [
@@ -1818,19 +1872,10 @@ def _codegraph_languages_for_init(
     args: argparse.Namespace,
     receipt,
 ) -> tuple[str, ...]:
-    if args.language or receipt is None:
-        return tuple(_selected_languages(repo_path, args.language))
-
-    from .compiler.manifest import MANIFEST_FILENAME, RepoManifest
-    from .paths import repo_index_dir
-
-    try:
-        manifest = RepoManifest.load(repo_index_dir(repo_path) / MANIFEST_FILENAME)
-        if manifest.languages:
-            return tuple(manifest.languages)
-    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
-        pass
-    return tuple(_selected_languages(repo_path, ()))
+    del receipt
+    # An omitted --language always means auto-detect the current checkout. This
+    # keeps repeated onboarding in sync when a repository adds another language.
+    return tuple(_selected_codegraph_languages(repo_path, args.language))
 
 
 def _codegraph_preflight_clients(
@@ -1868,7 +1913,12 @@ def _codegraph_preflight_clients(
 def _codegraph_toolchain_plan(repo_path: Path, languages: Sequence[str]):
     from .toolchains import plan_repository_toolchain
 
-    return plan_repository_toolchain(repo_path, languages, scopes=("graph",))
+    return plan_repository_toolchain(
+        repo_path,
+        languages,
+        scopes=("graph",),
+        allow_project_preparation=False,
+    )
 
 
 def _codegraph_plan_detail(plan) -> str:
@@ -1969,12 +2019,24 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
             print(f"  toolchain: {shlex.join(command)}")
         for item in manual:
             print(f"  prerequisite: {item}")
+        project_blockers = [
+            note.removeprefix("MISSING: ")
+            for note in plan.notes
+            if note.startswith("MISSING:")
+        ]
+        for blocker in project_blockers:
+            print(f"  prerequisite: {blocker}")
         print("  index: bm25, symbol_graph")
         for client in clients:
             action = "reuse" if observed[client].matches else "add"
             print(f"  {client}: {action} {server.name}")
+        ready_after_install = not manual and not project_blockers
+        print(
+            "Readiness:  "
+            + ("ready after planned tool install" if ready_after_install else "blocked")
+        )
         print("Dry run complete; no tools, indexes, receipts, or clients changed.")
-        return 0
+        return 0 if ready_after_install else 1
 
     _require_modules(
         ("igraph", "google.protobuf", "mcp"),
@@ -2076,6 +2138,10 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
 
 
 def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
+    from .compiler.artifact_fingerprints import (
+        bm25_artifact_files_match,
+        regular_file_fingerprint,
+    )
     from .compiler.checkout_identity import validate_checkout_identity
     from .compiler.manifest import MANIFEST_FILENAME, RepoManifest
     from .paths import repo_index_dir
@@ -2084,7 +2150,11 @@ def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
     report: dict[str, object] = {
         "manifest": str(manifest_path),
         "bm25": False,
+        "bm25_manifest_current": False,
+        "bm25_artifact_matches": False,
         "symbol_graph": False,
+        "symbol_graph_manifest_current": False,
+        "symbol_graph_artifact_matches": False,
         "symbol_graph_complete": False,
         "source_matches": False,
         "languages": [],
@@ -2093,9 +2163,46 @@ def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
     try:
         manifest = RepoManifest.load(manifest_path)
         report["languages"] = list(manifest.languages)
-        report["bm25"] = manifest.index_is_current("bm25")
-        report["symbol_graph"] = manifest.index_is_current("symbol_graph")
+        bm25_entry = manifest.indexes.get("bm25")
         graph_entry = manifest.indexes.get("symbol_graph")
+        report["bm25_manifest_current"] = manifest.index_is_current("bm25")
+        report["symbol_graph_manifest_current"] = manifest.index_is_current(
+            "symbol_graph"
+        )
+        if report["bm25_manifest_current"] and bm25_entry is not None:
+            report["bm25_artifact_matches"] = bm25_artifact_files_match(
+                bm25_entry.path,
+                expected_fingerprints=bm25_entry.config.get(
+                    "artifact_file_fingerprints"
+                ),
+            )
+        if report["symbol_graph_manifest_current"] and graph_entry is not None:
+            expected_graph = graph_entry.config.get("graph_artifact")
+            if (
+                type(expected_graph) is dict
+                and set(expected_graph) == {"relative_path", "size", "sha256"}
+                and expected_graph.get("relative_path") == "graph.pkl"
+                and type(expected_graph.get("size")) is int
+                and expected_graph["size"] >= 0
+                and type(expected_graph.get("sha256")) is str
+            ):
+                try:
+                    observed_graph = regular_file_fingerprint(
+                        Path(graph_entry.path) / "graph.pkl"
+                    )
+                except (OSError, ValueError):
+                    observed_graph = None
+                report["symbol_graph_artifact_matches"] = observed_graph == {
+                    "size": expected_graph["size"],
+                    "sha256": expected_graph["sha256"],
+                }
+        report["bm25"] = bool(
+            report["bm25_manifest_current"] and report["bm25_artifact_matches"]
+        )
+        report["symbol_graph"] = bool(
+            report["symbol_graph_manifest_current"]
+            and report["symbol_graph_artifact_matches"]
+        )
         report["symbol_graph_complete"] = bool(
             report["symbol_graph"]
             and graph_entry is not None
@@ -2108,11 +2215,22 @@ def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
             artifact_root=manifest_path.parent,
         )
         report["source_matches"] = True
-        report["detail"] = (
-            "current"
-            if report["symbol_graph_complete"]
-            else "symbol_graph was built with partial-language admission"
-        )
+        blockers: list[str] = []
+        if not report["bm25_manifest_current"]:
+            blockers.append("bm25 manifest entry is missing, failed, or stale")
+        elif not report["bm25_artifact_matches"]:
+            blockers.append(
+                "bm25 artifact is missing or does not match its fingerprint"
+            )
+        if not report["symbol_graph_manifest_current"]:
+            blockers.append("symbol_graph manifest entry is missing, failed, or stale")
+        elif not report["symbol_graph_artifact_matches"]:
+            blockers.append(
+                "symbol_graph artifact is missing or does not match its fingerprint"
+            )
+        elif not report["symbol_graph_complete"]:
+            blockers.append("symbol_graph was built with partial-language admission")
+        report["detail"] = "; ".join(blockers) or "current"
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         report["detail"] = " ".join(str(exc).split())[:400]
     report["ready"] = bool(
@@ -2126,7 +2244,7 @@ def _codegraph_toolchain_report(
     languages: Sequence[str] | None = None,
 ) -> dict[str, object]:
     try:
-        selected = tuple(languages or _selected_languages(repo_path, ()))
+        selected = tuple(languages or _selected_codegraph_languages(repo_path, ()))
         plan = _codegraph_toolchain_plan(repo_path, selected)
         return {
             "ready": plan.ready,
@@ -2701,6 +2819,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("full", "explore"),
         default="full",
         help="MCP tool surface to expose",
+    )
+    mcp_parser.add_argument(
+        "--runtime-probe",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     mcp_parser.set_defaults(handler=_run_mcp)
 

@@ -244,6 +244,7 @@ class SCIPRustIndexer(SCIPIndexerBase):
         kwargs.pop("project_name", None)
         kwargs.pop("target_dir", None)
         kwargs.pop("cwd", None)
+        kwargs.pop("allow_project_preparation", None)
 
         return super().run_pipeline(
             output_file=output_file,

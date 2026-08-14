@@ -356,17 +356,34 @@ def test_server_command_must_report_the_active_codenib_version(tmp_path: Path) -
 
     def runner(command, **_kwargs):
         commands.append(tuple(command))
+        output = (
+            "codenib codegraph mcp runtime ready\n"
+            if command[-1] == "--runtime-probe"
+            else f"codenib {package_version()}\n"
+        )
         return subprocess.CompletedProcess(
             command,
             0,
-            f"codenib {package_version()}\n",
+            output,
             "",
         )
 
     inspection = inspect_server_command(server, repo, runner=runner)
 
     assert inspection.ready is True
-    assert commands == [("/python", "-m", "codenib", "--version")]
+    assert commands == [
+        ("/python", "-m", "codenib", "--version"),
+        (
+            "/python",
+            "-m",
+            "codenib",
+            "mcp",
+            str(repo.resolve()),
+            "--tool-surface",
+            "full",
+            "--runtime-probe",
+        ),
+    ]
 
     mismatch = inspect_server_command(
         server,
@@ -376,6 +393,19 @@ def test_server_command_must_report_the_active_codenib_version(tmp_path: Path) -
         ),
     )
     assert mismatch.ready is False
+
+    failed_probe = inspect_server_command(
+        server,
+        repo,
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0 if command[-1] == "--version" else 1,
+            f"codenib {package_version()}\n" if command[-1] == "--version" else "",
+            "missing graph runtime" if command[-1] == "--runtime-probe" else "",
+        ),
+    )
+    assert failed_probe.ready is False
+    assert "runtime probe failed" in failed_probe.detail
 
 
 def _ready_plan(repo: Path) -> SimpleNamespace:
@@ -509,7 +539,7 @@ def test_init_rejects_dirty_checkout_before_toolchain_or_index_work(
         cli._run_codegraph_init(args)
 
 
-def test_repeated_init_reuses_manifest_language_selection(
+def test_repeated_auto_init_redetects_graph_languages_from_current_checkout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -519,11 +549,105 @@ def test_repeated_init_reuses_manifest_language_selection(
     repo = _repository(tmp_path)
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
     manifest = _manifest(repo)
-    manifest.languages = ["ruby"]
+    manifest.languages = ["python"]
     manifest.save(repo_index_dir(repo) / MANIFEST_FILENAME)
+    (repo / "new.go").write_text("package example\n", encoding="utf-8")
     args = cli.build_parser().parse_args(["codegraph", "init", str(repo)])
 
-    assert cli._codegraph_languages_for_init(repo, args, object()) == ("ruby",)
+    assert cli._codegraph_languages_for_init(repo, args, object()) == (
+        "go",
+        "python",
+    )
+
+
+def test_codegraph_language_selection_ignores_chunk_only_languages(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    (repo / "Example.swift").write_text("let value = 1\n", encoding="utf-8")
+    (repo / "plugin.lua").write_text("return {}\n", encoding="utf-8")
+    args = cli.build_parser().parse_args(["codegraph", "init", str(repo)])
+
+    assert cli._codegraph_languages_for_init(repo, args, None) == ("python",)
+
+
+def test_codegraph_language_selection_rejects_unsupported_explicit_language(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    args = cli.build_parser().parse_args(
+        ["codegraph", "init", str(repo), "--language", "swift"]
+    )
+
+    with pytest.raises(cli.CLIError, match="no symbol-graph provider"):
+        cli._codegraph_languages_for_init(repo, args, None)
+
+
+def test_dry_run_reports_project_prerequisites_and_exits_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import codenib.codegraph_onboarding as onboarding
+    import codenib.toolchains as toolchains
+
+    repo = _repository(tmp_path)
+    _initialize_git_repository(repo)
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+    monkeypatch.setattr(
+        onboarding,
+        "resolve_codenib_command",
+        lambda _explicit=None: ("/opt/codenib/bin/codenib", ()),
+    )
+    monkeypatch.setattr(
+        onboarding,
+        "inspect_server_command",
+        lambda *_args, **_kwargs: SimpleNamespace(ready=True, detail="ready"),
+    )
+    monkeypatch.setattr(
+        onboarding,
+        "inspect_client_registration",
+        lambda client, _server, _repo: ClientInspection(
+            client, True, False, False, "not configured"
+        ),
+    )
+    plan = SimpleNamespace(
+        root=tmp_path / "tools",
+        missing=(),
+        notes=(
+            "MISSING: Go project prerequisite go.mod: missing from repository root",
+        ),
+        ready=False,
+    )
+    monkeypatch.setattr(cli, "_codegraph_toolchain_plan", lambda *_args: plan)
+    monkeypatch.setattr(
+        toolchains,
+        "install_requirements",
+        lambda *_args, **_kwargs: ([], []),
+    )
+    monkeypatch.setattr(
+        cli,
+        "index_repository",
+        lambda *_args, **_kwargs: pytest.fail("dry-run must not build indexes"),
+    )
+    args = cli.build_parser().parse_args(
+        [
+            "codegraph",
+            "init",
+            str(repo),
+            "--agent",
+            "codex",
+            "--language",
+            "go",
+            "--dry-run",
+        ]
+    )
+
+    assert cli._run_codegraph_init(args) == 1
+    output = capsys.readouterr().out
+    assert "prerequisite: Go project prerequisite go.mod" in output
+    assert "Readiness:  blocked" in output
+    assert "no tools, indexes, receipts, or clients changed" in output
 
 
 def test_init_does_not_overwrite_registration_created_during_indexing(
@@ -702,3 +826,119 @@ def test_status_json_is_nonzero_without_managed_clients(
     report = json.loads(capsys.readouterr().out)
     assert report["ready"] is False
     assert report["clients"] == []
+
+
+def test_human_status_does_not_call_a_graph_only_index_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repository(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "_codegraph_status_report",
+        lambda _repo: {
+            "repository": str(repo),
+            "ready": False,
+            "index": {
+                "ready": False,
+                "detail": "bm25 artifact is missing or does not match its fingerprint",
+            },
+            "toolchain": {"ready": True, "missing": [], "notes": []},
+            "server_command": {"ready": True, "detail": "ready"},
+            "clients": [],
+        },
+    )
+    args = cli.build_parser().parse_args(["codegraph", "status", str(repo)])
+
+    assert cli._run_codegraph_status(args) == 1
+    output = capsys.readouterr().out
+    assert "bm25 artifact is missing" in output
+    assert "bm25 + symbol_graph are current" not in output
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_detail"),
+    [
+        ("remove-bm25", "bm25 artifact is missing"),
+        ("corrupt-graph", "symbol_graph artifact is missing"),
+    ],
+)
+def test_index_status_verifies_persisted_artifact_fingerprints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    expected_detail: str,
+) -> None:
+    from codenib.compiler import checkout_identity
+    from codenib.compiler.artifact_fingerprints import (
+        bm25_artifact_file_fingerprints,
+        regular_file_fingerprint,
+    )
+    from codenib.compiler.manifest import MANIFEST_FILENAME
+    from codenib.paths import repo_index_dir
+
+    repo = _repository(tmp_path)
+    state = tmp_path / "state"
+    monkeypatch.setenv("CODENIB_HOME", str(state))
+    bm25 = state / "artifacts" / "bm25"
+    graph = state / "artifacts" / "symbol_graph"
+    bm25.mkdir(parents=True)
+    graph.mkdir(parents=True)
+    (bm25 / "documents.json").write_text("[]\n", encoding="utf-8")
+    (bm25 / "bm25_metadata.json").write_text("{}\n", encoding="utf-8")
+    (graph / "graph.pkl").write_bytes(b"graph-generation-one")
+    fingerprint = "sha256-v2:" + "b" * 64
+    manifest = RepoManifest(
+        repo_path=str(repo),
+        source_fingerprint=fingerprint,
+        last_indexed_source_fingerprint=fingerprint,
+        languages=["python"],
+        indexes={
+            "bm25": IndexEntry(
+                index_type="bm25",
+                path=str(bm25),
+                built_at="2026-08-13T00:00:00Z",
+                built_at_epoch=1.0,
+                status="fresh",
+                config={
+                    "artifact_file_fingerprints": (
+                        bm25_artifact_file_fingerprints(bm25)
+                    )
+                },
+                source_fingerprint=fingerprint,
+            ),
+            "symbol_graph": IndexEntry(
+                index_type="symbol_graph",
+                path=str(graph),
+                built_at="2026-08-13T00:00:00Z",
+                built_at_epoch=1.0,
+                status="fresh",
+                config={
+                    "allow_partial_languages": False,
+                    "allow_partial_index": False,
+                    "graph_artifact": {
+                        "relative_path": "graph.pkl",
+                        **regular_file_fingerprint(graph / "graph.pkl"),
+                    },
+                },
+                source_fingerprint=fingerprint,
+            ),
+        },
+    )
+    manifest.save(repo_index_dir(repo) / MANIFEST_FILENAME)
+    monkeypatch.setattr(
+        checkout_identity,
+        "validate_checkout_identity",
+        lambda *_args, **_kwargs: None,
+    )
+
+    assert cli._codegraph_index_report(repo)["ready"] is True
+    if mutation == "remove-bm25":
+        (bm25 / "documents.json").unlink()
+    else:
+        (graph / "graph.pkl").write_bytes(b"graph-generation-two")
+
+    report = cli._codegraph_index_report(repo)
+    assert report["ready"] is False
+    assert expected_detail in report["detail"]

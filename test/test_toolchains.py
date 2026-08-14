@@ -106,6 +106,22 @@ def test_repository_plan_uses_language_registry_for_graph_and_lsp(
     ]
 
 
+def test_repository_plan_forwards_read_only_project_policy(tmp_path: Path) -> None:
+    (tmp_path / "CMakeLists.txt").write_text("project(example)\n", encoding="utf-8")
+    available = {"clangd": "/tools/clangd", "cmake": "/tools/cmake"}
+
+    plan = toolchains.plan_repository_toolchain(
+        tmp_path,
+        ["cpp"],
+        command_resolver=available.get,
+        module_checker=lambda _name: True,
+        allow_project_preparation=False,
+    )
+
+    assert plan.ready is False
+    assert any("existing usable compile_commands.json" in note for note in plan.notes)
+
+
 def test_dry_run_renders_pinned_npm_install_without_writing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

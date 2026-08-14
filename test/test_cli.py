@@ -879,6 +879,29 @@ def test_mcp_parser_limits_tool_surface_and_defaults_to_full() -> None:
     assert exc_info.value.code == 2
 
 
+def test_mcp_runtime_probe_checks_the_complete_codegraph_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from codenib.mcp import server
+
+    required: list[tuple[tuple[str, ...], str]] = []
+    monkeypatch.setattr(
+        cli,
+        "_require_modules",
+        lambda modules, **kwargs: required.append((tuple(modules), kwargs["extra"])),
+    )
+    monkeypatch.setattr(
+        server,
+        "main",
+        lambda _command: pytest.fail("runtime probe must not start the MCP server"),
+    )
+
+    assert cli.run(["mcp", "--runtime-probe"]) == 0
+    assert required == [(("mcp", "igraph", "google.protobuf"), "graph,mcp")]
+    assert capsys.readouterr().out == "codenib codegraph mcp runtime ready\n"
+
+
 def test_mcp_manifest_forwards_explore_tool_surface(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
