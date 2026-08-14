@@ -28,6 +28,6 @@ of deployment verification:
 
 ```bash
 curl -s https://codenib.ai/blogs/ | grep '<title>CodeNib Blog'
-curl -sI https://codenib.ai/assets/blogs/codegraph-agent-ready.png \
+curl -sI https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png \
   | grep -i 'content-type: image/png'
 ```

@@ -7,27 +7,28 @@ SPDX-License-Identifier: Apache-2.0
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agent-ready CodeGraph: from checkout to source-linked context — CodeNib</title>
-  <meta name="description" content="How CodeNib turns a clean checkout into local BM25 and source-linked symbol views, then serves bounded repository context to Codex or Claude Code over MCP.">
+  <title>Beyond full-graph materialization: FactQueryIndex v1 and FactBatch v1 — CodeNib</title>
+  <meta name="description" content="A technical account of CodeNib's FactQueryIndex v1 and FactBatch v1: capability-scoped native queries, immutable per-file facts, measured results, and current limits.">
   <meta name="author" content="CodeNib Team">
-  <meta property="og:title" content="Agent-ready CodeGraph: from checkout to source-linked context">
-  <meta property="og:description" content="One command builds local BM25 and symbol views, verifies them against the checkout, and connects them to coding agents over MCP.">
-  <meta property="og:image" content="https://codenib.ai/assets/blogs/codegraph-agent-ready.png">
+  <meta property="og:title" content="Beyond full-graph materialization: FactQueryIndex v1 and FactBatch v1">
+  <meta property="og:description" content="How CodeNib uses a graph-free query read model alongside durable per-file semantic facts, with measured gates and explicit limits.">
+  <meta property="og:image" content="https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="CodeNib builds BM25 and symbol graph views, checks source identity, and serves them to coding agents over MCP.">
+  <meta property="og:image:alt" content="SCIP and clangd artifacts feed capability-specific FactQueryIndex, clangd FactBatch, and complete CodeGraph representations under explicit identity gates.">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://codenib.ai/blogs/agent-ready-codegraph/">
   <meta property="article:published_time" content="2026-08-14T00:00:00-07:00">
+  <meta property="article:modified_time" content="2026-08-14T00:00:00-07:00">
   <meta property="article:section" content="Engineering">
   <meta property="article:tag" content="CodeGraph">
-  <meta property="article:tag" content="MCP">
-  <meta property="article:tag" content="Coding agents">
+  <meta property="article:tag" content="FactQueryIndex">
+  <meta property="article:tag" content="FactBatch">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Agent-ready CodeGraph: from checkout to source-linked context">
-  <meta name="twitter:description" content="Local, model-free repository structure for coding agents—with verified source windows.">
-  <meta name="twitter:image" content="https://codenib.ai/assets/blogs/codegraph-agent-ready.png">
-  <meta name="twitter:image:alt" content="CodeNib builds BM25 and symbol graph views, checks source identity, and serves them to coding agents over MCP.">
+  <meta name="twitter:title" content="Beyond full-graph materialization: FactQueryIndex v1 and FactBatch v1">
+  <meta name="twitter:description" content="Graph-free native postings, immutable per-file facts, measured gains, negative results, and explicit fallbacks.">
+  <meta name="twitter:image" content="https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png">
+  <meta name="twitter:image:alt" content="SCIP and clangd artifacts feed capability-specific FactQueryIndex, clangd FactBatch, and complete CodeGraph representations under explicit identity gates.">
   <link rel="canonical" href="https://codenib.ai/blogs/agent-ready-codegraph/">
   <link rel="icon" href="/assets/codenib-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/blogs.css">
@@ -35,9 +36,9 @@ SPDX-License-Identifier: Apache-2.0
   {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
-    "headline": "Agent-ready CodeGraph: from checkout to source-linked context",
-    "description": "How CodeNib turns a clean checkout into local BM25 and source-linked symbol views, then serves bounded repository context to Codex or Claude Code over MCP.",
-    "image": "https://codenib.ai/assets/blogs/codegraph-agent-ready.png",
+    "headline": "Beyond full-graph materialization: FactQueryIndex v1 and FactBatch v1",
+    "description": "A technical account of CodeNib's FactQueryIndex v1 and FactBatch v1: capability-scoped native queries, immutable per-file facts, measured results, and current limits.",
+    "image": "https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png",
     "datePublished": "2026-08-14T00:00:00-07:00",
     "dateModified": "2026-08-14T00:00:00-07:00",
     "mainEntityOfPage": "https://codenib.ai/blogs/agent-ready-codegraph/",
@@ -75,142 +76,186 @@ SPDX-License-Identifier: Apache-2.0
 
   <main id="main-content">
     <article aria-labelledby="article-title">
-    <header class="article-head wrap">
-      <a class="back" href="/blogs/"><span aria-hidden="true">←</span> All posts</a>
-      <div class="post-meta">
-        <span class="tag">CodeGraph</span>
-        <time datetime="2026-08-14">August 14, 2026</time>
-        <span>6 min read</span>
+      <header class="article-head wrap">
+        <a class="back" href="/blogs/"><span aria-hidden="true">←</span> All posts</a>
+        <div class="post-meta">
+          <span class="tag">Semantic pipeline</span>
+          <time datetime="2026-08-14">August 14, 2026</time>
+          <span>7 min read</span>
+        </div>
+        <h1 class="technical-title" id="article-title">Beyond full-graph materialization: FactQueryIndex v1 and FactBatch v1</h1>
+        <p class="deck">A technical account of how CodeNib uses a graph-free query read model alongside immutable per-file facts, the scope of the benchmarks, and where the full graph remains authoritative.</p>
+      </header>
+
+      <figure class="hero-figure">
+        <img src="/assets/blogs/fact-query-index-fact-batch.svg" width="1200" height="630" alt="SCIP and clangd artifacts pass through provider-specific normalization into capability-scoped FactQueryIndex, clangd FactBatch, or complete CodeGraph representations.">
+        <figcaption>The paths share semantic contracts, not one cached decode object. Representation and fallback are selected at a specific consumer boundary.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/fact-query-index-fact-batch.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body">
+        <p>CodeNib traditionally materializes semantic records into a complete <code>CodeGraph</code> before serving definitions, references, positions, and routes. That graph remains the compatibility authority, but it is more machinery than a narrow query needs. Recent work adds a capability-scoped <code>FactQueryIndex</code> read model and a separate <code>FactBatch v1</code> per-file semantic contract.</p>
+
+        <h2>Shared semantics, separate runtime paths</h2>
+
+        <p>SCIP <code>index.decoded</code> files and clangd <code>.idx</code> shards start with different schemas. Both paths normalize definitions, references, occurrences, traversal order, and capability state against shared semantic contracts, but they do not reuse one runtime decode object. The native clangd query path builds compact C++ records directly; the current clangd FactBatch adapter validates the shards, collects normalized Python records, and then constructs per-file batches.</p>
+
+        <div class="contract-grid" aria-label="FactQueryIndex and FactBatch responsibilities">
+          <section class="contract">
+            <span class="number">READ MODEL</span>
+            <h3><code>FactQueryIndex</code></h3>
+            <p>Retains decoded records in native memory and builds integer postings for supported symbols and references, plus provider-specific occurrence and adjacency capabilities. It is ephemeral and does not publish graph state.</p>
+          </section>
+          <section class="contract">
+            <span class="number">WRITE MODEL</span>
+            <h3><code>FactBatch v1</code></h3>
+            <p>Packages one file's semantic facts with content and analyzer identity. The current durable generation coordinator publishes clangd/C++ units with compare-and-swap.</p>
+          </section>
+        </div>
+
+        <p>The distinction matters: <code>FactQueryIndex</code> is not built from <code>FactBatch</code>, and <code>FactBatch</code> does not make an online query faster by itself. Both consume normalized facts, while the existing CodeGraph path remains available for capabilities the compact read model cannot prove.</p>
+
+        <h2>FactQueryIndex: query-shaped native postings</h2>
+
+        <p><code>FactQueryIndex</code> owns immutable decoded records and indexes them by integer vertex or row IDs. Its postings cover canonical and display names, aliases, incoming references, optional per-file occurrence intervals, and optional predecessor/successor adjacency. Supported calls avoid constructing igraph and the intermediate Python dictionaries and dataclasses used by full materialization.</p>
+
+        <p>The index validates its input before a candidate can serve results: symbol names must be globally unique, endpoints and source ranges must be valid, complete route order must cover every vertex exactly once, and providers configured to require anchored references must supply their locations. Exact-position lookup uses sorted per-file intervals and a prefix maximum end.</p>
+
+        <p>The raw index can retain complete adjacency but does not advertise public graph routes by itself. The clangd provider adapter enriches only touched nodes with source spans and exposes the route contract when the decoded capability is complete. SCIP v1 currently exposes only supported symbol definition and anchored-reference queries.</p>
+
+        <div class="callout">
+          <p class="callout-label">Atomic fallback</p>
+          <p>Before a native candidate is published, <code>auto</code> may select the compatible graph. After publication, unsupported or ambiguous positions and unavailable or failed route preparation can recompute the whole request through one graph. Snapshot mutation, receipt failure, and <code>MemoryError</code> do not switch generations or return a partial answer; they fail closed.</p>
+        </div>
+
+        <h3>What the clangd promotion gate measured</h3>
+
+        <p>The current production-promoted path is scoped to source-verified, local C/C++ checkouts with existing clangd shards. The final v3 workload gate used fmt 11.2.0 at commit <code>40626af88bd7df9a5fb80be7b25ac85b122d6c21</code>, 492 shards (4,820,850 bytes), 20 deterministic query entries, one query-only route, and three process-isolated measured rounds after warmup.</p>
+
+        <div class="data-table" role="region" aria-label="clangd FactQueryIndex workload results" tabindex="0">
+          <table>
+            <caption class="sr-only">Median query-ready wall time for the legacy full graph and native clangd provider across four workloads.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Workload</th>
+                <th scope="col">Full graph</th>
+                <th scope="col">Native</th>
+                <th scope="col">Improvement</th>
+                <th scope="col">Native graphs</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Symbol-only</th><td>2.9039 s</td><td>0.1950 s</td><td>93.3%</td><td>0</td></tr>
+              <tr><th scope="row">Position-first</th><td>3.0069 s</td><td>0.4308 s</td><td>85.7%</td><td>0</td></tr>
+              <tr><th scope="row">Route-first</th><td>2.7913 s</td><td>0.7221 s</td><td>74.1%</td><td>0</td></tr>
+              <tr><th scope="row">Mixed</th><td>2.8408 s</td><td>0.9655 s</td><td>66.0%</td><td>0</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="scope-note">Scope: median query-ready <code>wall_seconds</code>, including provider startup and the fixed workload over already-generated <code>.idx</code> shards. Process startup, external receipt checks, and clangd index generation are excluded; filesystem page cache was not controlled. Exact public result/error parity, pre/post receipts, source cleanliness, RIFF 18/19/20 support, RSS budgets, zero graph materializations, and three eight-thread route rounds were separate gates. See the <a href="https://docs.codenib.ai/core_cpp/#mixed-workload-and-resource-gate">measurement protocol</a>.</p>
+
+        <h3>SCIP passed one boundary and failed another</h3>
+
+        <p>The low-level SCIP read index also cleared the 20% query-ready gate over saved <code>index.decoded</code> artifacts: CodeNib Python moved from 0.4006 s to 0.2991 s (25.3%), and Ruff Rust from 2.4401 s to 1.7280 s (29.2%). These are median end-to-end decode plus index-or-graph build plus 100 definition/reference symbol pairs, with exact parity; external SCIP generation is excluded.</p>
+
+        <p>That result did <strong>not</strong> promote the production SCIP MCP route. A later end-to-end MCP consumer gate missed the threshold, so its promoted language set remains empty and production agent requests continue to use the persisted CodeGraph. This is why promotion is attached to a specific consumer boundary rather than to the data structure in general.</p>
+
+        <h2>FactBatch v1: deterministic per-file state</h2>
+
+        <p>A <code>FactBatch</code> represents the semantic facts for exactly one canonical repository-relative file. Its reuse key binds schema, path, language, source content digest, analyzer profile digest, and provider. The immutable batch digest additionally covers completeness, position encoding, capabilities, and the deterministically sorted definitions, occurrences, edges, provenance, resolver decisions, and bounded diagnostics.</p>
+
+        <p>The current durable generation coordinator is restricted to clangd/C++. It applies whole-file upserts and deletes: an unchanged unit keeps its immutable object receipt, a changed unit is republished, and a manifest binds the complete sorted membership and source identity. The named reference moves only after every member verifies and a catalog compare-and-swap succeeds. A failed publication cannot expose a half-written generation.</p>
+
+        <h3>Measured reuse, not a generic speed claim</h3>
+
+        <p>On the same pinned fmt checkout and its 492 existing clangd shards, the durable generation gate produced 51 file units containing 9,783 definitions, 98,552 occurrences, and 85,903 edges. An unchanged publication reused all 51 units, republished none, and materialized no CodeGraph.</p>
+
+        <div class="data-table compact" role="region" aria-label="FactBatch generation reuse results" tabindex="0">
+          <table>
+            <caption class="sr-only">Median time for the clean adapter and publication arm versus the no-upsert FactBatch reuse publication arm.</caption>
+            <thead>
+              <tr><th scope="col">Profiling arm</th><th scope="col">Median time</th><th scope="col">Reused</th><th scope="col">Published</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Adapter + first publication</th><td>9.9169 s</td><td>0 / 51</td><td>51</td></tr>
+              <tr><th scope="row">No-upsert reuse publication</th><td>5.2349 s</td><td>51 / 51</td><td>0</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="scope-note">The recorded difference between these profiling arms is 47.2%. The first arm includes clangd-record-to-FactBatch adaptation and initial publication; the second loads and validates the prior generation, supplies no upserts, and publishes a new manifest while reusing 51/51 units. It does not rerun the adapter, detect changes, or generate clangd shards, so this is not an end-to-end incremental rebuild claim. The semantic-facts view is opt-in; the legacy materialized graph remains the public graph authority.</p>
+
+        <h2>The negative result: transport was not enough</h2>
+
+        <p><code>FactBatchBuffer v1</code> is a related but distinct C++/Python transport: fixed-width little-endian tables plus one UTF-8 string arena. By design it can expose ownership-safe read-only table buffers without copying each table into Python <code>bytes</code>, but it did not make the measured consumers faster enough to promote.</p>
+
+        <div class="data-table" role="region" aria-label="FactBatchBuffer promotion results" tabindex="0">
+          <table>
+            <caption class="sr-only">Saved-artifact FactBatchBuffer results for CodeNib Python and Ruff Rust consumers.</caption>
+            <thead>
+              <tr><th scope="col">Subject</th><th scope="col">Consumer</th><th scope="col">Legacy</th><th scope="col">Buffer</th><th scope="col">Change</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">CodeNib / Python</th><td>Graph-compatible</td><td>0.3775 s</td><td>0.3937 s</td><td>−4.3%</td></tr>
+              <tr><th scope="row">CodeNib / Python</th><td>Logical FactBatch</td><td>0.6271 s</td><td>0.6772 s</td><td>−8.0%</td></tr>
+              <tr><th scope="row">Ruff / Rust</th><td>Graph-compatible</td><td>1.9756 s</td><td>2.0352 s</td><td>−3.0%</td></tr>
+              <tr><th scope="row">Ruff / Rust</th><td>Logical FactBatch</td><td>3.2654 s</td><td>3.2031 s</td><td>+1.9%</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>These are local median end-to-end measurements from saved SCIP artifacts: CodeNib Python was 41.6 MB and Ruff Rust was 130.5 MB; external SCIP generation was excluded. All parity checks passed, but none of the paths cleared the 20% gate. <code>CODENIB_CORE_FACT_BUFFER</code> therefore remains <code>off</code> by default. The buffer is an intermediate representation, not a promoted acceleration result.</p>
+
+        <h2>Current selection boundaries</h2>
+
+        <div class="tool-table" role="list" aria-label="Current FactQueryIndex and FactBatch status">
+          <div class="tool-row" role="listitem">
+            <code>clangd native provider</code>
+            <p><code>auto</code> is production-promoted for verified local C/C++ symbol, supported exact-position, and provider-enriched route requests. Portable, mixed, unverified, or disabled contexts select the persisted graph directly; compatible native request failures may use one atomic graph fallback, while identity failures fail closed.</p>
+          </div>
+          <div class="tool-row" role="listitem">
+            <code>SCIP FactQueryIndex</code>
+            <p>The low-level API auto-selects measured Python and Rust paths. The experimental MCP provider is not wired into production <code>ServerContext</code>; its default is <code>off</code> and its promoted set is empty because the consumer gate did not pass.</p>
+          </div>
+          <div class="tool-row" role="listitem">
+            <code>clangd FactBatch generation</code>
+            <p>Available as an opt-in C/C++ semantic-facts publication boundary with immutable per-file reuse. It does not replace public graph persistence or queries.</p>
+          </div>
+          <div class="tool-row" role="listitem">
+            <code>FactBatchBuffer</code>
+            <p>Default-off experimental transport. Exact parity passed; the required performance threshold did not.</p>
+          </div>
+        </div>
+
+        <h2>Reproduce and inspect</h2>
+
+        <p>The repository includes separate profilers because each claim has a different boundary. Supply an existing SCIP artifact or clangd shard directory and keep external index generation distinct from query-ready measurements.</p>
+
+        <pre><code># SCIP: existing index.decoded → query-ready consumer
+make fact-query-profile \
+  FACT_QUERY_PROFILE_INDEX=/path/to/index.decoded \
+  FACT_QUERY_PROFILE_LANGUAGE=python \
+  FACT_QUERY_PROFILE_PROJECT_ROOT=/path/to/repository
+
+# clangd: existing shards → fixed symbol/position/route workloads
+make clangd-workload-gate \
+  CLANGD_WORKLOAD_GATE_INDEX_DIR=/path/to/.cache/clangd/index \
+  CLANGD_WORKLOAD_GATE_PROJECT_ROOT=/path/to/repository \
+  CLANGD_WORKLOAD_GATE_SUBJECT_ID=fmt-11.2.0
+
+# clangd: clean publication versus unchanged FactBatch reuse
+make clangd-fact-generation-profile \
+  CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR=/path/to/.cache/clangd/index \
+  CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT=/path/to/repository \
+  CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS=/path/to/compile_commands.json \
+  CLANGD_FACT_GENERATION_PROFILE_TARGET_TRIPLE=x86_64-unknown-linux-gnu \
+  CLANGD_FACT_GENERATION_PROFILE_BUILD_CONTEXT_DIGEST=sha256:&lt;digest&gt;</code></pre>
+
+        <p>Implementation and contract details live in <a href="https://docs.codenib.ai/core_cpp/">C++ core acceleration</a>, <a href="https://docs.codenib.ai/semantic_fact_batches/">Semantic FactBatch v1</a>, and the source for <a href="https://github.com/sysevol-ai/CodeNib/blob/main/core/fact_query_index.h"><code>FactQueryIndex</code></a>, <a href="https://github.com/sysevol-ai/CodeNib/blob/main/codenib/facts/model.py"><code>FactBatch</code></a>, and <a href="https://github.com/sysevol-ai/CodeNib/blob/main/codenib/facts/generation.py">generation publication</a>.</p>
+
+        <p>The design goal is narrower than “remove the graph”: materialize only the representation a proven consumer needs, preserve source and snapshot identity across that choice, and keep the complete graph as an explicit compatibility boundary.</p>
       </div>
-      <h1 id="article-title">Agent-ready CodeGraph: from checkout to source-linked context</h1>
-      <p class="deck">Search finds where to look. CodeGraph shows what the code touches—and links that structure back to the source lines behind those relationships.</p>
-    </header>
-
-    <figure class="hero-figure">
-      <img src="/assets/blogs/codegraph-agent-ready.svg" width="1200" height="630" alt="CodeNib builds BM25 and symbol graph views, checks source identity, and serves them to Codex or Claude Code tools over MCP.">
-      <figcaption>CodeNib builds complementary lexical and graph views, binds them to one source identity, and serves verified source windows under bounded MCP tool contracts.</figcaption>
-    </figure>
-
-    <div class="article-body">
-      <p>Coding agents often struggle when they start with the wrong context: a similarly named function, an incomplete dependency chain, or a source window from a different revision. CodeNib’s agent-ready CodeGraph is designed to make that first read both structural and verifiable.</p>
-
-      <p>The default path is deliberately local and model-free. It combines ranked BM25 retrieval with a static, source-linked symbol graph produced by supported SCIP or clangd providers. The graph supplies definitions, references, and dependency neighborhoods where the selected language provider supports them; bounded source reads supply the evidence. No embedding model or API key is required for this path.</p>
-
-      <h2>A graph that terminates in source</h2>
-
-      <p>A useful repository graph is not an architecture sketch generated from prose. It is a navigation layer whose nodes and relationships can take the reader back to code. CodeNib keeps the containment structure—repository, directory, file, symbol—separate from the reference overlay between symbols. That makes a large repository readable without flattening it into a hairball.</p>
-
-      <p>When an anchored relationship is available, its source location travels with it. A relationship can open its source use site; a symbol can open its definition; a focused dependency view can stay within an explicit depth and output budget. The graph does not replace reading code. It selects the code that deserves to be read next.</p>
-
-      <h2>One command, four contracts</h2>
-
-      <pre><code>codenib codegraph init /absolute/path/to/repository</code></pre>
-
-      <div class="contract-grid" aria-label="CodeGraph initialization stages">
-        <section class="contract">
-          <span class="number">01 / INSPECT</span>
-          <h3>Detect the repository</h3>
-          <p>Identify graph-capable languages, available toolchains, and installed Codex or Claude Code clients.</p>
-        </section>
-        <section class="contract">
-          <span class="number">02 / COMPILE</span>
-          <h3>Build coordinated views</h3>
-          <p>Materialize BM25 and <code>symbol_graph</code> outside the target checkout under one manifest.</p>
-        </section>
-        <section class="contract">
-          <span class="number">03 / CONNECT</span>
-          <h3>Register through native CLIs</h3>
-          <p>Ask each detected agent to own its stdio MCP configuration instead of editing client files directly.</p>
-        </section>
-        <section class="contract">
-          <span class="number">04 / VERIFY</span>
-          <h3>Bind context to source</h3>
-          <p>Record managed client ownership, then verify the manifest against the live source before the server reports ready.</p>
-        </section>
-      </div>
-
-      <p>Running the command again is idempotent when the index and managed registrations still match. Different checkouts receive different server names, so an agent can work across several repositories without sharing ambiguous state. Codex receives a user-level registration; Claude Code receives a repository-local registration. The native client configuration changes, while the target checkout remains unchanged.</p>
-
-      <div class="callout">
-        <p class="callout-label">Preview status</p>
-        <p>Agent-ready onboarding is on CodeNib <code>main</code> and prepared for version 0.2.1. At publication time, PyPI stable is still 0.2.0, so use the source checkout below for this preview rather than a 0.2.1 version pin.</p>
-      </div>
-
-      <h2>What the agent receives</h2>
-
-      <p>The MCP surface keeps retrieval, graph navigation, and source access distinct. That separation makes a tool call inspectable and lets the agent spend a bounded context budget where it matters.</p>
-
-      <div class="tool-table" role="list" aria-label="Selected CodeGraph MCP tools">
-        <div class="tool-row" role="listitem">
-          <code>explore_context</code>
-          <p>Composes ranked retrieval, symbol routing, dependency expansion, and verified source windows for a repository question.</p>
-        </div>
-        <div class="tool-row" role="listitem">
-          <code>dependency_subgraph</code>
-          <p>Returns a bounded caller, callee, or impact neighborhood around a resolved symbol.</p>
-        </div>
-        <div class="tool-row" role="listitem">
-          <code>search_bm25</code>
-          <p>Finds exact identifiers and lexical matches without requiring a model.</p>
-        </div>
-        <div class="tool-row" role="listitem">
-          <code>lsp_definition / lsp_references</code>
-          <p>Navigates static definition and reference signals backed by the graph or a verified live provider.</p>
-        </div>
-        <div class="tool-row" role="listitem">
-          <code>read_source</code>
-          <p>Reads an exact, repository-contained 1-based source window after retrieval or navigation.</p>
-        </div>
-      </div>
-
-      <p>A good first instruction to an agent is concrete about both the tool and the evidence standard:</p>
-
-      <pre class="prompt"><code>Use CodeNib's explore_context to explain where request retries are implemented. Cite the returned source paths and lines before proposing an edit.</code></pre>
-
-      <p>For a change-impact question, switch from discovery to structure:</p>
-
-      <pre class="prompt"><code>Use dependency_subgraph on RetryPolicy.execute with direction impact and depth 2. Summarize the callers that could change if its behavior changes.</code></pre>
-
-      <h2>Fail closed beats confidently stale</h2>
-
-      <p>Repository context is only useful when its provenance is clear. CodeGraph initialization therefore requires a clean Git working tree and checks it again after indexing and client registration. The reusable index lives outside the target checkout. CodeNib may install package-managed graph providers, but it does not run a repository package manager, invoke <code>sudo</code>, or synthesize project prerequisites behind the user’s back.</p>
-
-      <p>At server startup, the indexed source identity is checked against the live checkout. A changed repository is not silently served with an old graph. Rerun <code>init</code> after source changes: a completely current view can be reused, while changed source takes the safe rebuild path instead of publishing partial state.</p>
-
-      <pre><code>codenib codegraph status /absolute/path/to/repository --json
-codenib codegraph init /absolute/path/to/repository
-codenib codegraph uninstall /absolute/path/to/repository</code></pre>
-
-      <p><code>status</code> exposes the readiness contract to both humans and automation. <code>uninstall</code> removes only receipt-owned client registrations and leaves the reusable index intact. If a managed client command has drifted, CodeNib stops and asks the user to inspect it rather than guessing.</p>
-
-      <h2>The same structure has a human view</h2>
-
-      <p>The browser Dependency Map uses the same symbol graph as the agent tools. Its Structure view expands directories, files, and symbols while rolling relationships up to the nearest visible ancestors. Its Graph view opens file scopes into concrete symbols, preserves edge source anchors, and lets a reader jump from a relationship to code.</p>
-
-      <p>This is the larger idea behind CodeNib: build repository context once per indexed source identity, then let humans and agents inspect different projections of the same source-linked artifact.</p>
-
-      <h2>Try the 0.2.1 preview</h2>
-
-      <p>The preview requires Python 3.10+, Git, an installed Codex or Claude Code CLI, and a clean target checkout. Clone CodeNib, install the graph and MCP extras from source, then point the initializer at an absolute repository path:</p>
-
-      <pre><code>git clone https://github.com/sysevol-ai/CodeNib.git
-cd CodeNib
-python -m pip install -e ".[graph,mcp]"
-codenib codegraph init /absolute/path/to/repository --dry-run
-codenib codegraph init /absolute/path/to/repository</code></pre>
-
-      <p>Language providers have different system and project prerequisites. CodeNib reports those boundaries before it publishes an incomplete agent setup; the <a href="https://docs.codenib.ai/language_capabilities/">language capability matrix</a> records the current coverage.</p>
-
-      <aside class="article-cta">
-        <h2>Give your agent a map grounded in source.</h2>
-        <p>Install the preview from <code>main</code>, review the current language boundary, or explore the same repository structure in the browser demo.</p>
-        <div class="actions">
-          <a class="btn" href="https://github.com/sysevol-ai/CodeNib">Get the preview source</a>
-          <a class="btn btn-ghost" href="https://docs.codenib.ai/language_capabilities/">Review language support</a>
-          <a class="btn btn-ghost" href="https://demo.codenib.ai/caddyserver__caddy">Explore the demo</a>
-        </div>
-      </aside>
-    </div>
     </article>
   </main>
 
