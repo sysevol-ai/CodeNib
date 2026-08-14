@@ -40,6 +40,8 @@ from codenib.sandbox import (
     SandboxPolicy,
 )
 
+from .delivery import completed_responses
+
 ReviewerFactory = Callable[[Path], GuardianAgent]
 
 
@@ -305,6 +307,46 @@ def _write_failure(
     )
 
 
+def _write_running(
+    path: Path,
+    *,
+    request_id: str,
+    base_commit: str,
+    explorer_model: str,
+    aggregator_model: str,
+    cycle_index: int,
+    max_cycles: int,
+) -> None:
+    """Publish observable progress before long model rollouts begin."""
+
+    _write_json_atomic(
+        path / "status.json",
+        {
+            "commit": request_id,
+            "base_commit": base_commit,
+            "findings": 0,
+            "uncertain_specifications": 0,
+            "candidate_count": 0,
+            "degraded": False,
+            "analysis_status": "running",
+            "exit_reason": "",
+            "review_performed": False,
+            "cycle_index": cycle_index,
+            "max_cycles": max_cycles,
+            "terminal": False,
+            "termination_reason": "",
+            "llm_model": aggregator_model,
+            "explorer_model": explorer_model,
+            "aggregator_model": aggregator_model,
+            "llm_backend": "codex-cli+codenib-sandbox",
+            "llm_tokens": {"prompt": 0, "cached_input": 0, "completion": 0, "total": 0},
+            "analysis_warnings": [],
+            "running": True,
+            "error": "",
+        },
+    )
+
+
 def _git_patch(workspace: Path, base: str, candidate: str) -> str:
     return subprocess.run(
         ("git", "diff", "--no-ext-diff", "--binary", f"{base}..{candidate}"),
@@ -501,6 +543,15 @@ class GuardianHostController:
         response: Path,
     ) -> None:
         cycle_index = self._completed_cycles + 1
+        _write_running(
+            response,
+            request_id=request.request_id,
+            base_commit=request.base_commit,
+            explorer_model=self.config.explorer_model,
+            aggregator_model=self.config.aggregator_model,
+            cycle_index=cycle_index,
+            max_cycles=self.max_cycles,
+        )
         with tempfile.TemporaryDirectory(prefix="guardian-review-") as temporary:
             trusted_bundle = _copy_bundle_to_controller_storage(
                 bundle,
@@ -628,14 +679,15 @@ class GuardianHostController:
         asyncio.run(serve_thread())
 
     def is_idle(self) -> bool:
-        """Return whether every published checkpoint has a response status."""
+        """Return whether every published checkpoint has a terminal response."""
 
         self._prepare()
-        manifests = tuple((self.exchange_root / "requests").glob("*.json"))
-        return all(
-            (self.exchange_root / "responses" / item.stem / "status.json").is_file()
-            for item in manifests
-        )
+        commits = {
+            item.stem
+            for item in (self.exchange_root / "requests").glob("*.json")
+            if item.is_file()
+        }
+        return completed_responses(self.exchange_root, commits) == commits
 
     async def wait_until_idle(self) -> None:
         """Wait until every published checkpoint has a terminal response.

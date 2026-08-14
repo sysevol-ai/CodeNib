@@ -62,9 +62,7 @@ def persist_codex_logs(logs_dir: Path, turn_logs: list[CodexTurnLog]) -> None:
     if turn_logs:
         combined = b""
         for turn_index, transcript in turn_logs:
-            _replace_bytes(
-                logs_dir / f"codex_turn_{turn_index:02d}.txt", transcript
-            )
+            _replace_bytes(logs_dir / f"codex_turn_{turn_index:02d}.txt", transcript)
             if combined and not combined.endswith(b"\n"):
                 combined += b"\n"
             combined += transcript

@@ -345,6 +345,11 @@ def _build_pier_command(
                 "--ak",
                 f"guardian_max_findings={args.guardian_max_findings}",
                 "--ak",
+                "guardian_max_patch_probes=" f"{args.guardian_max_patch_probes}",
+                "--ak",
+                "guardian_max_explorer_repairs="
+                f"{args.guardian_max_explorer_repairs}",
+                "--ak",
                 f"guardian_max_cycles={args.guardian_max_cycles}",
                 "--ak",
                 f"guardian_rollout_timeout={args.guardian_rollout_timeout}",
@@ -470,6 +475,12 @@ def _run_trial(
         ),
         "guardian_max_findings": (
             args.guardian_max_findings if baseline == "guardian" else None
+        ),
+        "guardian_max_patch_probes": (
+            args.guardian_max_patch_probes if baseline == "guardian" else None
+        ),
+        "guardian_max_explorer_repairs": (
+            args.guardian_max_explorer_repairs if baseline == "guardian" else None
         ),
         "guardian_max_cycles": (
             args.guardian_max_cycles if baseline == "guardian" else None
@@ -603,6 +614,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=int,
         default=10,
         help="Maximum evidence-admitted findings delivered per review",
+    )
+    parser.add_argument(
+        "--guardian-max-patch-probes",
+        type=int,
+        default=5,
+        help="Maximum executable runtime probes in final patch checking",
+    )
+    parser.add_argument(
+        "--guardian-max-patch-specifications",
+        dest="guardian_max_patch_probes",
+        type=int,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--guardian-max-explorer-repairs",
+        type=int,
+        default=1,
+        help="Maximum no-tools structural-repair attempts per malformed explorer",
     )
     parser.add_argument(
         "--guardian-max-cycles",

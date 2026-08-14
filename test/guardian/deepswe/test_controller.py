@@ -128,6 +128,21 @@ class FakeReviewer:
         )
 
 
+class BlockingReviewer(FakeReviewer):
+    def __init__(self, requests: list, release: asyncio.Event) -> None:
+        super().__init__(requests)
+        self.release = release
+
+    async def review(self, request):
+        self.requests.append(request)
+        await self.release.wait()
+        return GuardianResult(
+            base_commit=request.base_commit,
+            candidate_commit=request.candidate_commit,
+            status=ReviewStatus.COMPLETE,
+        )
+
+
 def test_sandbox_reviewer_uses_stable_codex_tool_execution(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -241,6 +256,36 @@ def test_host_controller_reviews_materialized_snapshot(tmp_path: Path) -> None:
     assert (exchange / "latest" / "findings.md").is_file()
     assert (tmp_path / "episodes" / candidate / "status.json").is_file()
     assert (exchange / "last_reviewed_commit").read_text().strip() == candidate
+
+
+def test_host_controller_publishes_running_status_during_review(
+    tmp_path: Path,
+) -> None:
+    exchange, base, candidate = _publish(tmp_path)
+
+    async def exercise() -> None:
+        release = asyncio.Event()
+        controller = GuardianHostController(
+            exchange_root=exchange,
+            episodes_root=tmp_path / "episodes",
+            config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+            reviewer_factory=lambda _workspace: BlockingReviewer([], release),
+            initial_base_commit=base,
+        )
+        processing = asyncio.create_task(controller.process_pending())
+        status_path = exchange / "responses" / candidate / "status.json"
+        for _ in range(100):
+            if status_path.is_file():
+                break
+            await asyncio.sleep(0.01)
+        status = json.loads(status_path.read_text())
+        assert status["analysis_status"] == "running"
+        assert status["running"] is True
+        assert status["commit"] == candidate
+        release.set()
+        assert await processing == 1
+
+    asyncio.run(exercise())
 
 
 def test_host_controller_ignores_unverified_persisted_review_head(

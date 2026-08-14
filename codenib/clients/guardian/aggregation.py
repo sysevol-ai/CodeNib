@@ -57,9 +57,10 @@ def _merge_specification_records(
     for record in incoming:
         key = _specification_key(record.statement, record.condition)
         supplied = by_id.get(record.specification_id)
-        if supplied is not None and _specification_key(
-            supplied.statement, supplied.condition
-        ) != key:
+        if (
+            supplied is not None
+            and _specification_key(supplied.statement, supplied.condition) != key
+        ):
             specification_id = by_key.get(key) or _specification_id(
                 record.statement, record.condition
             )
@@ -89,9 +90,7 @@ def _materialize_task_evidence(
         if item.fidelity is ContextFidelity.VERBATIM
         and item.source is not TaskContextSource.SOLVER_SUMMARY
     }
-    aliases = {
-        f"EV-TASK-{context_id}": context_id for context_id in contexts
-    }
+    aliases = {f"EV-TASK-{context_id}": context_id for context_id in contexts}
     normalized = tuple(
         replace(
             record,

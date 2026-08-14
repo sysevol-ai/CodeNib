@@ -315,6 +315,21 @@ class ExplorationExperience:
 
 
 @dataclass(frozen=True, slots=True)
+class ExplorerAttempt:
+    """One retained generation or bounded structural-repair attempt."""
+
+    attempt: int
+    kind: str
+    response: str
+    succeeded: bool
+    error: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+    duration_seconds: float = 0.0
+    used_tools: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class ExplorerOutput:
     explorer: str
     round: int
@@ -322,6 +337,7 @@ class ExplorerOutput:
     candidates: tuple[CandidateSpecification, ...]
     trace: ExplorationTrace
     error: str = ""
+    attempts: tuple[ExplorerAttempt, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -479,7 +495,9 @@ class GuardianConfig:
     aggregator_reasoning_effort: str = "medium"
     rollout_timeout_seconds: float = 600.0
     max_findings: int = 10
+    max_patch_probes: int = 5
     max_specifications_per_explorer: int = 5
+    max_explorer_repairs: int = 1
     execution_isolation: ExecutionIsolation = ExecutionIsolation.NATIVE
 
     def __post_init__(self) -> None:
@@ -488,10 +506,13 @@ class GuardianConfig:
             "targeted_explorer_count",
             "max_rounds",
             "max_findings",
+            "max_patch_probes",
             "max_specifications_per_explorer",
         ):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive")
+        if self.max_explorer_repairs < 0:
+            raise ValueError("max_explorer_repairs must not be negative")
         object.__setattr__(
             self, "execution_isolation", ExecutionIsolation(self.execution_isolation)
         )
@@ -606,6 +627,7 @@ __all__ = [
     "EvidenceSourceType",
     "ExplorationExperience",
     "ExplorationTrace",
+    "ExplorerAttempt",
     "ExplorerOutput",
     "FindingStatus",
     "GuardianConfig",

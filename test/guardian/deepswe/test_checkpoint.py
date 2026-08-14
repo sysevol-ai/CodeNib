@@ -9,8 +9,23 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 from scripts.guardian.deepswe.harness.checkpoint import guardian_checkpoint_script
+
+
+def test_solver_prompt_requires_one_foreground_checkpoint_call() -> None:
+    prompt = (
+        Path(__file__).parents[3]
+        / "scripts/guardian/deepswe/harness/prompts/codex_file_bridge.md"
+    ).read_text(encoding="utf-8")
+    normalized = " ".join(prompt.lower().split())
+
+    assert "one standalone foreground shell call" in prompt
+    assert "Do not background" in prompt
+    assert "parallel `sleep`, `pgrep`" in prompt
+    assert "wait for that same shell execution to complete" in normalized
+    assert "do not call the generic collaboration `wait` tool" in normalized
 
 
 def _git(repo, *args):

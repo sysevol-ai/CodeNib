@@ -62,6 +62,7 @@ def _scoped_identifier(
     explorer: str,
     round_number: int,
     index: int,
+    namespace: str = "",
 ) -> str:
     """Turn rollout-local model identifiers into review-global identifiers.
 
@@ -75,7 +76,9 @@ def _scoped_identifier(
     if not local:
         local = str(index)
     owner = _IDENTIFIER_COMPONENT.sub("-", explorer).strip("-._") or "explorer"
-    return f"{prefix}-R{round_number}-{owner}-{local}"
+    scope = _IDENTIFIER_COMPONENT.sub("-", namespace).strip("-._")
+    scoped = f"-{scope}" if scope else ""
+    return f"{prefix}{scoped}-R{round_number}-{owner}-{local}"
 
 
 def _source(value: object) -> EvidenceSourceType:
@@ -123,6 +126,7 @@ def _evidence(
     round_number: int,
     supports: str = "",
     opposes: str = "",
+    namespace: str = "",
 ) -> tuple[Evidence, ...]:
     if not isinstance(raw, list):
         return ()
@@ -158,6 +162,7 @@ def _evidence(
             explorer=explorer,
             round_number=round_number,
             index=index,
+            namespace=namespace,
         )
         values.append(
             Evidence(
@@ -210,7 +215,12 @@ def parse_briefs(text: str) -> tuple[InvestigationBrief, ...]:
 
 
 def parse_explorer_output(
-    text: str, *, explorer: str, round_number: int, brief_id: str
+    text: str,
+    *,
+    explorer: str,
+    round_number: int,
+    brief_id: str,
+    namespace: str = "",
 ) -> ExplorerOutput:
     value = _object(text)
     rows = value.get("candidate_specifications", value.get("candidates"))
@@ -226,6 +236,7 @@ def parse_explorer_output(
             explorer=explorer,
             round_number=round_number,
             index=index,
+            namespace=namespace,
         )
         statement = str(row.get("statement", "")).strip()
         supporting = _evidence(
@@ -233,12 +244,14 @@ def parse_explorer_output(
             explorer=explorer,
             round_number=round_number,
             supports=candidate_id,
+            namespace=namespace,
         )
         counter = _evidence(
             row.get("counterevidence"),
             explorer=explorer,
             round_number=round_number,
             opposes=candidate_id,
+            namespace=namespace,
         )
         if not statement or not supporting:
             continue

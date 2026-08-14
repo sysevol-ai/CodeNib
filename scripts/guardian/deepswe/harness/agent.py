@@ -130,6 +130,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
         guardian_targeted_explorer_count: int = 2,
         guardian_search_rounds: int = 2,
         guardian_max_findings: int = 10,
+        guardian_max_patch_probes: int = 5,
+        guardian_max_explorer_repairs: int = 1,
         guardian_max_cycles: int = 3,
         guardian_rollout_timeout: float = 600,
         guardian_poll_interval: int = 10,
@@ -141,6 +143,7 @@ class GuardianCodingAgent(BaseInstalledAgent):
         guardian_platform: str = "linux/amd64",
         guardian_codex_bin: str = "/usr/local/bin/codex-guardian",
         guardian_codex_version: str = "0.145.0",
+        guardian_max_patch_specifications: int | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -163,6 +166,10 @@ class GuardianCodingAgent(BaseInstalledAgent):
         self._guardian_targeted_explorer_count = int(guardian_targeted_explorer_count)
         self._guardian_search_rounds = int(guardian_search_rounds)
         self._guardian_max_findings = int(guardian_max_findings)
+        if guardian_max_patch_specifications is not None:
+            guardian_max_patch_probes = guardian_max_patch_specifications
+        self._guardian_max_patch_probes = int(guardian_max_patch_probes)
+        self._guardian_max_explorer_repairs = int(guardian_max_explorer_repairs)
         self._guardian_max_cycles = int(guardian_max_cycles)
         self._guardian_rollout_timeout = float(guardian_rollout_timeout)
         self._guardian_poll_interval = int(guardian_poll_interval)
@@ -521,6 +528,8 @@ class GuardianCodingAgent(BaseInstalledAgent):
             max_rounds=self._guardian_search_rounds,
             rollout_timeout_seconds=self._guardian_rollout_timeout,
             max_findings=self._guardian_max_findings,
+            max_patch_probes=self._guardian_max_patch_probes,
+            max_explorer_repairs=self._guardian_max_explorer_repairs,
             execution_isolation=ExecutionIsolation.EXTERNAL,
         )
         reviewer_factory = sandbox_reviewer_factory(

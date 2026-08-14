@@ -53,6 +53,14 @@ waits. That means the checkpoint is still healthy and in progress. Continue
 waiting on that same identifier until it exits; do not launch duplicate
 checkpoint commands, infer failure from an empty response directory, or return
 your final answer while the original checkpoint process is still running.
+Use only the shell execution's own continuation mechanism. Do not call the generic
+collaboration `wait` tool: it waits for subagents, not for this shell process, and
+cannot deliver the checkpoint result.
+Invoke the checkpoint as one standalone foreground shell call. Do not background
+it, combine it with another shell command, or issue parallel `sleep`, `pgrep`,
+`ps`, `cat status.json`, or other polling calls while it runs. The checkpoint
+process performs its own polling and prints the report when ready; wait for that
+same shell execution to complete.
 
 Read the latest completed report with your shell tool:
 

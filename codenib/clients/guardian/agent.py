@@ -16,7 +16,7 @@ from .discovery import discover
 from .distillation import distill
 from .evidence import revalidate_memory_evidence, validate_candidates
 from .frontier import select_frontier
-from .patch_check import check_patch
+from .patch_check import check_patch, is_patch_review_specification
 from .planning import plan_briefs
 from .provenance import validate_request_provenance
 from .types import (
@@ -232,16 +232,23 @@ class GuardianAgent:
                 briefs,
                 round_number=round_number,
             )
-            for rollout in explorer_rollouts:
-                discovery_stage = (
-                    "exploration" if round_number == 1 else "investigation"
-                )
-                record(
-                    rollout,
-                    stage=discovery_stage,
-                    round_number=round_number,
-                    model=self.config.explorer_model,
-                )
+            rollout_index = 0
+            for output in outputs:
+                for attempt_index in range(max(1, len(output.attempts))):
+                    rollout = explorer_rollouts[rollout_index]
+                    rollout_index += 1
+                    if attempt_index:
+                        discovery_stage = "explorer_repair"
+                    else:
+                        discovery_stage = (
+                            "exploration" if round_number == 1 else "investigation"
+                        )
+                    record(
+                        rollout,
+                        stage=discovery_stage,
+                        round_number=round_number,
+                        model=self.config.explorer_model,
+                    )
             if outputs and all(output.error for output in outputs):
                 errors.extend(explorer_errors)
                 round_records.append(
@@ -424,6 +431,8 @@ class GuardianAgent:
         # patch checker did not explicitly mention them.
         reported_uncertainty = {item.specification_id for item in uncertainty}
         reported_findings = {item.specification_id for item in findings}
+        assessed_specifications = set(patch_execution.assessed_specification_ids)
+        evidence_by_id = {item.evidence_id: item for item in memory.evidence}
         for item in memory.specifications:
             if (
                 item.status
@@ -431,6 +440,8 @@ class GuardianAgent:
                     SpecificationStatus.PROPOSED,
                     SpecificationStatus.CONTESTED,
                 )
+                and is_patch_review_specification(item, evidence_by_id)
+                and item.specification_id not in assessed_specifications
                 and item.specification_id not in reported_uncertainty
                 and item.specification_id not in reported_findings
             ):

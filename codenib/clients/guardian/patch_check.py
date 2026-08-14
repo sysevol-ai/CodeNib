@@ -45,14 +45,12 @@ class PatchCheckExecution:
 
     rollouts: tuple[AgentRunResult, ...] = ()
     metrics: ProbeCheckMetrics = ProbeCheckMetrics()
+    assessed_specification_ids: tuple[str, ...] = ()
 
 
-def _direct_task_evidence(
-    request: GuardianRequest, specifications: tuple[SpecificationRecord, ...]
-) -> tuple[Evidence, ...]:
+def _direct_task_evidence(request: GuardianRequest) -> tuple[Evidence, ...]:
     """Expose verbatim task text as first-class normative checker evidence."""
 
-    supported_ids = tuple(item.specification_id for item in specifications)
     return tuple(
         Evidence(
             evidence_id=f"EV-TASK-{item.context_id}",
@@ -63,7 +61,10 @@ def _direct_task_evidence(
             source_type=EvidenceSourceType.TASK,
             authority=EvidenceAuthority.NORMATIVE,
             quote=item.content,
-            supports=supported_ids,
+            # The checker may cite this exact contract to adjudicate a proposed
+            # specification, but the controller must not pre-assert that the
+            # contract entails every specification merely by exposing it.
+            supports=(),
         )
         for item in request.task_context
         if item.fidelity is ContextFidelity.VERBATIM
@@ -247,22 +248,46 @@ def _protocol_errors(
     rollout: AgentRunResult,
     runtime_evidence: tuple[Evidence, ...],
     parse_errors: tuple[str, ...],
+    *,
+    max_probes: int,
+    allowed_probe_specification_ids: frozenset[str] | None = None,
 ) -> tuple[str, ...]:
     """Return deterministic reasons why declared probes cannot be admitted."""
 
     errors = list(parse_errors)
+    executed_probes = sum(
+        bool(item["probe_key"] and item["specification_id"])
+        for item in _command_catalog(rollout)
+    )
+    for item in runtime_evidence[max_probes:]:
+        errors.append(f"runtime_evidence_id[{item.evidence_id}]: probe_budget_exceeded")
+    if executed_probes > max_probes and executed_probes > len(runtime_evidence):
+        errors.append(
+            f"runtime_evidence: undeclared_probe_budget_exceeded "
+            f"({executed_probes} > {max_probes})"
+        )
     tool_call_counts = Counter(
         item.path.removeprefix("runtime-probe:") for item in runtime_evidence
     )
     probe_key_counts = Counter(item.probe_key for item in runtime_evidence)
+    specification_counts = Counter(
+        item.probe_specification_id for item in runtime_evidence
+    )
     evidence_id_counts = Counter(item.evidence_id for item in runtime_evidence)
     for item in runtime_evidence:
         tool_call_id = item.path.removeprefix("runtime-probe:")
         prefix = f"runtime_evidence_id[{item.evidence_id}]"
-        if tool_call_counts[tool_call_id] != 1:
+        if (
+            allowed_probe_specification_ids is not None
+            and item.probe_specification_id not in allowed_probe_specification_ids
+        ):
+            errors.append(f"{prefix}: outside_probe_frontier")
+        elif tool_call_counts[tool_call_id] != 1:
             errors.append(f"{prefix}: duplicate_tool_call_id")
         elif probe_key_counts[item.probe_key] != 1:
             errors.append(f"{prefix}: duplicate_probe_key")
+        elif specification_counts[item.probe_specification_id] != 1:
+            errors.append(f"{prefix}: duplicate_specification_probe")
         elif evidence_id_counts[item.evidence_id] != 1:
             errors.append(f"{prefix}: duplicate_evidence_id")
         elif _executed_probe(rollout, item) is None:
@@ -272,6 +297,145 @@ def _protocol_errors(
 
 def _reason(error: str) -> str:
     return error.rsplit(":", 1)[-1].split(" (", 1)[0].strip().replace(" ", "_")
+
+
+_PROCESS_ONLY_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(?:must|should|needs? to)\s+(?:be\s+)?(?:covered|tested)\b",
+        r"\b(?:test|testing)\s+coverage\b",
+        r"\b(?:unit|integration|end-to-end|e2e|regression)\s+tests?\s+"
+        r"(?:must|should|need|are required)\b",
+        r"\badd(?:ed|ing)?\s+(?:unit|integration|end-to-end|e2e|regression)?\s*tests?\b",
+    )
+)
+
+
+def _task_backed(
+    specification: SpecificationRecord, evidence_by_id: dict[str, Evidence]
+) -> bool:
+    return any(
+        evidence_by_id[evidence_id].source_type is EvidenceSourceType.TASK
+        and evidence_by_id[evidence_id].authority is EvidenceAuthority.NORMATIVE
+        for evidence_id in specification.supporting_evidence
+        if evidence_id in evidence_by_id
+    )
+
+
+def is_patch_review_specification(
+    specification: SpecificationRecord, evidence_by_id: dict[str, Evidence]
+) -> bool:
+    """Return whether a record is a software property rather than process advice."""
+
+    if _task_backed(specification, evidence_by_id):
+        return True
+    text = f"{specification.statement} {specification.condition}"
+    return not any(pattern.search(text) for pattern in _PROCESS_ONLY_PATTERNS)
+
+
+def _patch_specifications(
+    request: GuardianRequest,
+    memory: SpecificationMemory,
+) -> tuple[SpecificationRecord, ...]:
+    """Expose every reviewable contract; probing is budgeted separately."""
+
+    evidence_by_id = {item.evidence_id: item for item in memory.evidence}
+
+    def priority(item: SpecificationRecord) -> tuple[int, int]:
+        current_failed_probe = any(
+            evidence_id in evidence_by_id
+            and evidence_by_id[evidence_id].source_type
+            is EvidenceSourceType.RUNTIME_PROBE
+            and evidence_by_id[evidence_id].probe_outcome is ProbeOutcome.VIOLATED
+            and evidence_by_id[evidence_id].snapshot == request.candidate_commit
+            for evidence_id in item.counterevidence
+        )
+        if current_failed_probe:
+            return (0, 0)
+        if _task_backed(item, evidence_by_id):
+            return (1, 0)
+        if item.counterevidence:
+            return (2, 0)
+        return (3, 0)
+
+    supported = [
+        item
+        for item in memory.specifications
+        if item.status is SpecificationStatus.SUPPORTED
+        and is_patch_review_specification(item, evidence_by_id)
+    ]
+    proposed = [
+        item
+        for item in memory.specifications
+        if item.status is SpecificationStatus.PROPOSED
+        and is_patch_review_specification(item, evidence_by_id)
+    ]
+    supported.sort(key=priority)
+    proposed.sort(key=priority)
+    return tuple(supported + proposed)
+
+
+_PUBLIC_LIFECYCLE_TERMS = (
+    "evaluate",
+    "predict",
+    "/predict",
+    "served",
+    "public path",
+    "model call",
+    "persisted model",
+    "load and apply",
+)
+_ARTIFACT_LIFECYCLE_TERMS = (
+    "persist",
+    "artifact",
+    "description.json",
+    "feature_schema",
+    "results directory",
+    "export",
+)
+
+
+def _probe_frontier(
+    request: GuardianRequest,
+    memory: SpecificationMemory,
+    specifications: tuple[SpecificationRecord, ...],
+    *,
+    limit: int,
+) -> tuple[SpecificationRecord, ...]:
+    """Rank executable contracts without hiding non-probed specifications."""
+
+    evidence_by_id = {item.evidence_id: item for item in memory.evidence}
+
+    def priority(item: SpecificationRecord) -> tuple[int, int, int, str]:
+        text = f"{item.statement} {item.condition}".casefold()
+        current_violation = any(
+            evidence_id in evidence_by_id
+            and evidence_by_id[evidence_id].source_type
+            is EvidenceSourceType.RUNTIME_PROBE
+            and evidence_by_id[evidence_id].probe_outcome is ProbeOutcome.VIOLATED
+            and evidence_by_id[evidence_id].snapshot == request.candidate_commit
+            for evidence_id in item.counterevidence
+        )
+        current_probe = any(
+            evidence_id in evidence_by_id
+            and evidence_by_id[evidence_id].source_type
+            is EvidenceSourceType.RUNTIME_PROBE
+            and evidence_by_id[evidence_id].snapshot == request.candidate_commit
+            for evidence_id in item.supporting_evidence + item.counterevidence
+        )
+        lifecycle_rank = (
+            0
+            if any(term in text for term in _PUBLIC_LIFECYCLE_TERMS)
+            else 1 if any(term in text for term in _ARTIFACT_LIFECYCLE_TERMS) else 2
+        )
+        return (
+            0 if current_violation else 1,
+            lifecycle_rank,
+            1 if current_probe else 0,
+            item.specification_id,
+        )
+
+    return tuple(sorted(specifications, key=priority)[:limit])
 
 
 async def check_patch(
@@ -287,17 +451,25 @@ async def check_patch(
     PatchCheckExecution,
     str | None,
 ]:
-    supported = tuple(
+    all_supported = tuple(
         item
         for item in memory.specifications
         if item.status is SpecificationStatus.SUPPORTED
     )
-    proposed = tuple(
+    all_proposed = tuple(
         item
         for item in memory.specifications
         if item.status is SpecificationStatus.PROPOSED
     )
-    task_evidence = _direct_task_evidence(request, supported + proposed)
+    selected = _patch_specifications(request, memory)
+    selected_ids = {item.specification_id for item in selected}
+    supported = tuple(
+        item for item in all_supported if item.specification_id in selected_ids
+    )
+    proposed = tuple(
+        item for item in all_proposed if item.specification_id in selected_ids
+    )
+    task_evidence = _direct_task_evidence(request)
     checkable = supported + (proposed if task_evidence else ())
     if not checkable:
         backlog = tuple(
@@ -321,6 +493,9 @@ async def check_patch(
                 SpecificationStatus.PROPOSED,
                 SpecificationStatus.CONTESTED,
             )
+            and is_patch_review_specification(
+                item, {evidence.evidence_id: evidence for evidence in memory.evidence}
+            )
         )
         return (
             "No supported local specification was available for definite patch checking.",
@@ -331,10 +506,23 @@ async def check_patch(
             None,
         )
 
+    probe_frontier = _probe_frontier(
+        request,
+        memory,
+        checkable,
+        limit=config.max_patch_probes,
+    )
+    allowed_probe_ids = frozenset(item.specification_id for item in probe_frontier)
+
     rollout = await executor.run(
         AgentRunRequest(
             instruction=patch_check_prompt(
-                request, memory, max_findings=config.max_findings
+                request,
+                memory,
+                max_findings=config.max_findings,
+                max_probes=config.max_patch_probes,
+                specifications=checkable,
+                probe_specifications=probe_frontier,
             ),
             workspace=request.workspace,
             role=AgentRole.VERIFIER,
@@ -366,10 +554,16 @@ async def check_patch(
     try:
         parsed = parse_patch_check(
             response,
-            specifications=memory.specifications,
+            specifications=checkable,
             evidence=memory.evidence + task_evidence,
         )
-        primary_errors = _protocol_errors(rollout, parsed[3], parsed[4])
+        primary_errors = _protocol_errors(
+            rollout,
+            parsed[3],
+            parsed[4],
+            max_probes=config.max_patch_probes,
+            allowed_probe_specification_ids=allowed_probe_ids,
+        )
     except GuardianResponseError as exc:
         parsed = None
         primary_errors = (f"response: {exc}",)
@@ -404,10 +598,16 @@ async def check_patch(
             try:
                 repaired = parse_patch_check(
                     repair_rollout.final_message,
-                    specifications=memory.specifications,
+                    specifications=checkable,
                     evidence=memory.evidence + task_evidence,
                 )
-                repaired_errors = _protocol_errors(rollout, repaired[3], repaired[4])
+                repaired_errors = _protocol_errors(
+                    rollout,
+                    repaired[3],
+                    repaired[4],
+                    max_probes=config.max_patch_probes,
+                    allowed_probe_specification_ids=allowed_probe_ids,
+                )
                 if parsed is None or len(repaired_errors) < len(primary_errors):
                     parsed = repaired
                     primary_errors = repaired_errors
@@ -432,7 +632,13 @@ async def check_patch(
         )
 
     summary, findings, backlog, runtime_evidence, parse_errors = parsed
-    protocol_errors = _protocol_errors(rollout, runtime_evidence, parse_errors)
+    protocol_errors = _protocol_errors(
+        rollout,
+        runtime_evidence,
+        parse_errors,
+        max_probes=config.max_patch_probes,
+        allowed_probe_specification_ids=allowed_probe_ids,
+    )
 
     invalid_probe_ids = {
         error.removeprefix("runtime_evidence_id[").split("]", 1)[0]
@@ -493,6 +699,7 @@ async def check_patch(
             )
             status = item.status
             assessment = item.patch_assessment
+            recommendation = item.recommendation
             if claimed_runtime_ids:
                 outcomes = {probe.probe_outcome for probe in valid_probes}
                 if not valid_probes:
@@ -508,11 +715,26 @@ async def check_patch(
                     status = FindingStatus.UNCERTAIN
                 else:
                     status = FindingStatus.SATISFIED
+                if status is not item.status and valid_probes:
+                    probe_keys = ", ".join(
+                        sorted(probe.probe_key for probe in valid_probes)
+                    )
+                    assessment = (
+                        f"Authoritative execution of runtime probe(s) {probe_keys} "
+                        f"produced a {status.value} outcome, overriding the patch "
+                        f"checker's declared {item.status.value} verdict. Inspect "
+                        "the retained command and output before changing the patch."
+                    )
+                    recommendation = (
+                        "Reproduce the focused probe and verify that its assertion "
+                        "tests only this specification before acting on the result."
+                    )
             normalized_findings.append(
                 replace(
                     item,
                     status=status,
                     patch_assessment=assessment,
+                    recommendation=recommendation,
                     evidence=tuple(
                         validated_runtime.get(evidence.evidence_id, evidence)
                         for evidence in item.evidence
@@ -558,7 +780,7 @@ async def check_patch(
         ):
             admitted.append(item)
     monotonic = _active_failed_probes(
-        request, memory, supported, tuple(validated_runtime.values())
+        request, memory, all_supported, tuple(validated_runtime.values())
     )
     admitted_by_specification = {item.specification_id: item for item in admitted}
     for item in monotonic:
@@ -575,10 +797,7 @@ async def check_patch(
         item
         for item in findings
         if item.specification_id not in admitted_specification_ids
-        and (
-            item.status is FindingStatus.UNCERTAIN
-            or item.specification_id not in supported_ids
-        )
+        and item.status is FindingStatus.UNCERTAIN
     )
     uncertainty.extend(
         replace(
@@ -665,9 +884,17 @@ async def check_patch(
         definite,
         tuple(unique_uncertainty.values()),
         accepted_probes,
-        PatchCheckExecution(rollouts=executions, metrics=metrics),
+        PatchCheckExecution(
+            rollouts=executions,
+            metrics=metrics,
+            assessed_specification_ids=tuple(sorted(represented_ids)),
+        ),
         None,
     )
 
 
-__all__ = ["PatchCheckExecution", "check_patch"]
+__all__ = [
+    "PatchCheckExecution",
+    "check_patch",
+    "is_patch_review_specification",
+]

@@ -180,6 +180,10 @@ Relevant prior exploration experience:
 Discover at most {max_specifications} falsifiable local specifications. This is a hard
 output limit: return only the best-evidenced, non-duplicative candidates. Inspect paths,
 callers, modes, lifecycle stages, tests, and runtime behavior relevant to the brief.
+Local specifications describe required observable software properties. The presence of
+tests, coverage level, review thoroughness, code style, or a preferred implementation
+technique is verification or process advice, not a local specification, unless the
+verbatim task itself explicitly requires that deliverable.
 You may run focused probes, but the workspace is read-only and any sandbox changes are
 temporary. First-round explorers do not see sibling results. Suggested status is only
 advice; the aggregator makes the official decision.
@@ -213,6 +217,25 @@ Return only JSON:
 "searched_locations":["..."],"actions_and_outcomes":["..."],
 "unsuccessful_routes":["..."],"remaining_questions":["..."],
 "suggested_next_actions":["..."]}}}}
+"""
+
+
+def explorer_repair_prompt(response: str, *, validation_error: str) -> str:
+    """Ask for a structural repair without permitting new investigation."""
+
+    return f"""Repair one Guardian explorer response so it is valid JSON.
+
+This is a bounded serialization repair, not a new investigation. Do not use tools,
+inspect the repository, add new evidence, remove substantive candidates, or change
+their meaning. Preserve all recoverable content and correct only JSON syntax or the
+required top-level shape. Return only one JSON object with
+`candidate_specifications` and `exploration_trace`.
+
+Validation error:
+{validation_error}
+
+Original response:
+{response}
 """
 
 
@@ -273,6 +296,12 @@ quote. In that case, compare the candidate statement and condition with the verb
 context: support claims entailed by it and reject claims that are not. Do not leave an
 entailed requirement unresolved merely because the explorer used different wording.
 Record a reason for every status decision.
+
+A local specification must describe a required observable software property. Reject
+process-only candidates about adding tests, test coverage, review thoroughness, code
+style, or preferred implementation technique unless the verbatim task explicitly makes
+that artifact a deliverable. Tests may support a behavioral specification; their mere
+absence is not itself a behavioral violation.
 
 Existing memory:
 {_memory(memory)}
@@ -338,12 +367,12 @@ def patch_check_prompt(
     memory: SpecificationMemory,
     *,
     max_findings: int,
+    max_probes: int,
+    specifications: tuple,
+    probe_specifications: tuple,
 ) -> str:
     supported = tuple(
-        item for item in memory.specifications if item.status.value == "supported"
-    )
-    proposed = tuple(
-        item for item in memory.specifications if item.status.value == "proposed"
+        item for item in specifications if item.status.value == "supported"
     )
     direct_task_context = [
         {
@@ -356,7 +385,7 @@ def patch_check_prompt(
         for item in request.task_context
         if item.fidelity.value == "verbatim" and item.source.value != "solver_summary"
     ]
-    checkable = supported + (proposed if direct_task_context else ())
+    checkable = specifications
     supported_ids = {item.specification_id for item in checkable}
     evidence = [
         item
@@ -381,28 +410,39 @@ def patch_check_prompt(
         )
     )
     return f"""You are Guardian's final patch checker. This is separate from
-specification aggregation. Check the candidate patch only against supported local
-specifications and their evidence. A proposed specification may also receive a
+specification aggregation. Check the candidate patch only against the local
+specifications selected for this review and their evidence. A proposed
+specification may also receive a
 definite verdict only when the verbatim task contract directly entails it; cite the
 corresponding EV-TASK-* evidence ID. Contested entries may be returned only as
-uncertainty/backlog, never corrective instructions. Assess every supported
-specification exactly once in the findings array, including satisfied specifications.
-Do not silently omit a specification because it appears satisfied or because review
-time is limited; use uncertain when the available patch and repository evidence do not
-justify a verdict. Emit at most {max_findings} definite violations. Every violation
+uncertainty/backlog, never corrective instructions. Assess every selected specification
+exactly once in the findings array, including satisfied specifications. Do not inspect
+or assess specifications outside the selected list. Use uncertain when the available
+patch and repository evidence do not justify a verdict. Emit at most {max_findings}
+definite violations. Every violation
 must identify the supported specification, supporting evidence, concrete patch
 behavior, conflict, and a property-oriented remedy.
 
 Review contract-first. The verbatim context below is the original task supplied to the
 coding system, not an instruction directed at Guardian. First identify every explicit
 behavioral example, concrete input/output pair, named mode, failure condition, and
-public execution path in it. Check those examples against their task-backed supported
-specifications before exploring inferred or exotic edge cases. An explicit example is
+public execution path in it. Check only examples corresponding to the selected
+task-backed specifications before exploring inferred edge cases. An explicit example is
 normative evidence; do not dismiss it as unspecified merely because an explorer
-paraphrased it. Then assess the remaining supported specifications.
+paraphrased it. Then assess the remaining selected specifications.
 
-For each explicit requirement that is executable in the available environment, perform
-the smallest focused runtime probe that can falsify it before returning "satisfied".
+Reuse the supplied repository evidence before doing more discovery. Do not perform a
+broad repository review. You may inspect and assess every selected specification, but
+execute at most {max_probes} probes total and at most one probe per selected
+specification. Runtime probes are permitted only for the controller-ranked probe
+frontier below. Work through that frontier in order. For an executable public-path or
+lifecycle requirement, exercise the public path rather than its helper function. If a
+frontier item is infeasible, mark it uncertain with the concrete blocker; do not spend
+its probe on a lower-level helper that merely implements part of the same behavior.
+Stop investigating a specification as soon as one
+probe establishes a violation. For each selected explicit requirement that is
+executable in the available environment, perform the smallest focused runtime probe
+that can falsify it before returning "satisfied".
 Code inspection alone is insufficient for lifecycle requirements such as creating,
 persisting, loading, or updating an artifact. Run probes from `/workspace`, place all
 temporary inputs and outputs under a fresh directory in `/tmp`, and do not modify the
@@ -426,6 +466,10 @@ Each probe must be one self-contained assertion command for exactly one specific
 It may assert several files or metadata fields only when they are jointly required by
 that one artifact-set specification; do not split a single lifecycle contract into
 isolated checks that could miss inconsistent location or metadata relationships.
+Assert only behavior required by the selected specification. Avoid brittle incidental
+checks: use tolerant numeric comparisons for floating-point results, compare unordered
+collections without relying on iteration order, and do not require exact formatting
+unless the contract makes it observable.
 It must exit 0 only when that specification is satisfied, exit 10 only when the
 specification is behaviorally violated, and use any other exit code for an operational
 failure or inconclusive experiment. Do not combine several independent assertions in
@@ -447,8 +491,11 @@ code is neither 0 nor 10, report the finding as uncertain.
 Direct verbatim task contract:
 {json.dumps(direct_task_context, indent=2)}
 
-Supported specifications:
+Selected specifications:
 {json.dumps([asdict_for_prompt(item) for item in checkable], indent=2)}
+
+Controller-ranked runtime-probe frontier, highest priority first:
+{json.dumps([asdict_for_prompt(item) for item in probe_specifications], indent=2)}
 
 Supporting evidence:
 {json.dumps([evidence_for_prompt(item) for item in evidence] + [
@@ -550,6 +597,7 @@ __all__ = [
     "aggregation_prompt",
     "distillation_prompt",
     "explorer_prompt",
+    "explorer_repair_prompt",
     "frontier_prompt",
     "patch_check_prompt",
     "patch_check_repair_prompt",

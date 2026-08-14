@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 import os
+import csv
 from pathlib import Path
 
 from .memory import evidence_to_dict, memory_to_dict, specification_to_dict
+from .contribution import explorer_contribution_report
 from .types import (
     CandidateSpecification,
     ExplorerOutput,
@@ -28,6 +30,25 @@ def _write_json(path: Path, value: object) -> None:
     temporary.write_text(
         json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    os.replace(temporary, path)
+
+
+def _write_text(path: Path, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(value, encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _write_csv(
+    path: Path, rows: list[dict[str, object]], fieldnames: tuple[str, ...]
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
     os.replace(temporary, path)
 
 
@@ -75,6 +96,19 @@ def _explorer(value: ExplorerOutput) -> dict[str, object]:
             "suggested_next_actions": list(value.trace.suggested_next_actions),
         },
         "error": value.error,
+        "attempts": [
+            {
+                "attempt": item.attempt,
+                "kind": item.kind,
+                "succeeded": item.succeeded,
+                "error": item.error,
+                "started_at": item.started_at,
+                "finished_at": item.finished_at,
+                "duration_seconds": item.duration_seconds,
+                "used_tools": item.used_tools,
+            }
+            for item in value.attempts
+        ],
     }
 
 
@@ -179,7 +213,9 @@ def persist_artifacts(
             "round_1_explorers": config.explorer_count,
             "later_round_explorers": config.targeted_explorer_count,
             "maximum_findings": config.max_findings,
+            "maximum_patch_probes": config.max_patch_probes,
             "maximum_specifications_per_explorer": config.max_specifications_per_explorer,
+            "maximum_explorer_repairs": config.max_explorer_repairs,
         },
     )
     _write_json(root / "memory.json", memory_to_dict(result.memory))
@@ -191,6 +227,23 @@ def persist_artifacts(
         )
         for index, output in enumerate(round_record.explorer_outputs, 1):
             _write_json(directory / f"explorer-{index:02d}.json", _explorer(output))
+            attempt_directory = directory / f"explorer-{index:02d}"
+            for attempt in output.attempts:
+                prefix = attempt_directory / f"attempt-{attempt.attempt:02d}"
+                _write_text(prefix.with_suffix(".txt"), attempt.response)
+                _write_json(
+                    prefix.with_suffix(".json"),
+                    {
+                        "attempt": attempt.attempt,
+                        "kind": attempt.kind,
+                        "succeeded": attempt.succeeded,
+                        "error": attempt.error,
+                        "started_at": attempt.started_at,
+                        "finished_at": attempt.finished_at,
+                        "duration_seconds": attempt.duration_seconds,
+                        "used_tools": attempt.used_tools,
+                    },
+                )
         _write_json(
             directory / "aggregation.json",
             {
@@ -226,6 +279,49 @@ def persist_artifacts(
                 "new_information": round_record.new_information,
             },
         )
+        contribution = explorer_contribution_report(
+            round_record.explorer_outputs, round_record.specifications
+        )
+        _write_json(directory / "contribution.json", contribution)
+        _write_csv(
+            directory / "explorer-contribution.csv",
+            contribution["explorers"],
+            (
+                "explorer",
+                "valid_output",
+                "attempts",
+                "candidate_count",
+                "accepted_specifications",
+                "corroborated_specifications",
+                "unique_specifications",
+                "rejected_specifications",
+                "duration_seconds",
+            ),
+        )
+        _write_csv(
+            directory / "pairwise-overlap.csv",
+            contribution["pairwise"],
+            (
+                "explorer_a",
+                "explorer_b",
+                "corroborated_specifications",
+                "supporting_relation_pairs",
+                "contradicting_relation_pairs",
+                "unique_to_a",
+                "unique_to_b",
+            ),
+        )
+        _write_csv(
+            directory / "subset-coverage.csv",
+            contribution["subsets"],
+            (
+                "explorers",
+                "k",
+                "covered_specifications",
+                "corroborated_specifications",
+                "contradicting_relation_pairs",
+            ),
+        )
     _write_json(
         root / "patch-check.json",
         {
@@ -257,7 +353,7 @@ def persist_artifacts(
             "total": result.to_dict()["usage"],
         },
     )
-    (root / "final-report.md").write_text(render_markdown(result), encoding="utf-8")
+    _write_text(root / "final-report.md", render_markdown(result))
 
 
 __all__ = ["persist_artifacts", "render_markdown"]

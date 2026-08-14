@@ -48,9 +48,14 @@ from codenib.clients.guardian.aggregation import (
     _merge_specification_records,
     adjudicate_records,
 )
+from codenib.clients.guardian.contribution import explorer_contribution_report
 from codenib.clients.guardian.evidence import validate_candidates, validate_evidence
 from codenib.clients.guardian.normalization import parse_explorer_output
-from codenib.clients.guardian.patch_check import check_patch
+from codenib.clients.guardian.patch_check import (
+    _probe_frontier,
+    _protocol_errors,
+    check_patch,
+)
 
 
 def _run(
@@ -633,6 +638,186 @@ def test_guardian_defaults_to_five_specifications_per_explorer() -> None:
     config = GuardianConfig(explorer_model="cheap", aggregator_model="strong")
 
     assert config.max_specifications_per_explorer == 5
+    assert config.max_patch_probes == 5
+
+
+def test_malformed_explorer_json_is_repaired_and_both_attempts_are_retained(
+    tmp_path: Path,
+) -> None:
+    executor = ScriptedExecutor(
+        [
+            _run(_briefs(1)),
+            _run('{"candidate_specifications": [{"candidate_id": "C-1"'),
+            _run(_exploration()),
+            _run(_aggregation()),
+            _run(_distillation()),
+            _run(_patch_check()),
+        ]
+    )
+
+    result = asyncio.run(
+        GuardianAgent(_one_round_config(), executor=executor).review(_request(tmp_path))
+    )
+
+    output = result.rounds[0].explorer_outputs[0]
+    assert [item.kind for item in output.attempts] == [
+        "initial",
+        "structural_repair",
+    ]
+    assert not output.error
+    assert len(output.candidates) == 1
+    assert [item.stage for item in result.memory.stage_usage].count(
+        "explorer_repair"
+    ) == 1
+    attempt_dir = result.artifact_dir / "round-01" / "explorer-01"
+    assert (attempt_dir / "attempt-01.txt").is_file()
+    assert (attempt_dir / "attempt-02.txt").is_file()
+    assert (result.artifact_dir / "round-01" / "contribution.json").is_file()
+    assert (result.artifact_dir / "round-01" / "pairwise-overlap.csv").is_file()
+
+
+def test_explorer_contribution_is_order_independent() -> None:
+    first = parse_explorer_output(
+        json.dumps(_exploration("C-1")),
+        explorer="explorer-a",
+        round_number=1,
+        brief_id="A",
+    )
+    second = parse_explorer_output(
+        json.dumps(_exploration("C-2")),
+        explorer="explorer-b",
+        round_number=1,
+        brief_id="B",
+    )
+    third = parse_explorer_output(
+        json.dumps(_exploration("C-3")),
+        explorer="explorer-c",
+        round_number=1,
+        brief_id="C",
+    )
+    shared = replace(
+        _record(),
+        provenance=(
+            SpecificationProvenance("explorer-a", 1, first.candidates[0].candidate_id),
+            SpecificationProvenance("explorer-b", 1, second.candidates[0].candidate_id),
+        ),
+    )
+    unique = replace(
+        _record(),
+        specification_id="LS-unique",
+        statement="A separate behavior remains observable.",
+        provenance=(
+            SpecificationProvenance("explorer-c", 1, third.candidates[0].candidate_id),
+        ),
+    )
+
+    report = explorer_contribution_report((first, second, third), (shared, unique))
+
+    assert report["method"]["ordering"] == "order-independent"
+    assert report["pairwise"][0]["corroborated_specifications"] == 1
+    by_k = {item["k"]: item for item in report["coverage_by_k"]}
+    assert by_k[1]["subset_count"] == 3
+    assert by_k[2]["subset_count"] == 3
+    assert by_k[3]["mean_covered_specifications"] == 2
+
+
+def test_explorer_identifiers_are_scoped_to_candidate_snapshot() -> None:
+    response = json.dumps(_exploration())
+    first = parse_explorer_output(
+        response,
+        explorer="explorer-1-1",
+        round_number=1,
+        brief_id="A",
+        namespace="a" * 12,
+    )
+    second = parse_explorer_output(
+        response,
+        explorer="explorer-1-1",
+        round_number=1,
+        brief_id="A",
+        namespace="b" * 12,
+    )
+
+    assert first.candidates[0].candidate_id != second.candidates[0].candidate_id
+    assert (
+        first.candidates[0].supporting_evidence[0].evidence_id
+        != second.candidates[0].supporting_evidence[0].evidence_id
+    )
+
+
+def test_probe_frontier_prioritizes_public_lifecycle_contracts(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    specifications = (
+        replace(_record(), specification_id="LS-helper", statement="Constants drop."),
+        replace(
+            _record(),
+            specification_id="LS-predict",
+            statement="Persisted predict must apply the schema before a model call.",
+        ),
+        replace(
+            _record(),
+            specification_id="LS-artifact",
+            statement="Fit must persist feature_schema in the results directory.",
+        ),
+    )
+
+    frontier = _probe_frontier(
+        request,
+        SpecificationMemory(specifications=specifications),
+        specifications,
+        limit=2,
+    )
+
+    assert [item.specification_id for item in frontier] == [
+        "LS-predict",
+        "LS-artifact",
+    ]
+
+
+def test_patch_probe_budget_is_controller_enforced() -> None:
+    events = []
+    evidence = []
+    for index in range(6):
+        specification_id = f"LS-{index}"
+        probe_key = f"probe-{index}"
+        tool_call_id = f"item-{index}"
+        command = (
+            f"GUARDIAN_PROBE_KEY={probe_key} "
+            f"GUARDIAN_SPECIFICATION_ID={specification_id} true"
+        )
+        events.append(
+            AgentEvent(
+                sequence=index,
+                kind=AgentEventKind.TOOL,
+                provider_type="item.completed",
+                payload={
+                    "item": {
+                        "id": tool_call_id,
+                        "type": "command_execution",
+                        "command": command,
+                        "aggregated_output": "",
+                        "exit_code": 0,
+                    }
+                },
+            )
+        )
+        evidence.append(
+            Evidence(
+                evidence_id=f"EV-{index}",
+                path=f"runtime-probe:{tool_call_id}",
+                line_start=1,
+                line_end=1,
+                description="Probe completed.",
+                source_type=EvidenceSourceType.RUNTIME_PROBE,
+                probe_key=probe_key,
+                probe_specification_id=specification_id,
+            )
+        )
+    rollout = replace(_run({}), trajectory=tuple(events))
+
+    errors = _protocol_errors(rollout, tuple(evidence), (), max_probes=5)
+
+    assert errors == ("runtime_evidence_id[EV-5]: probe_budget_exceeded",)
 
 
 def test_equivalent_candidates_merge_without_losing_provenance(tmp_path: Path) -> None:
@@ -1223,7 +1408,7 @@ def test_patch_check_exposes_omitted_supported_specification(tmp_path: Path) -> 
     assert "omitted" in uncertainty[0].patch_assessment
     instruction = executor.requests[0].instruction.lower()
     normalized_instruction = " ".join(instruction.split())
-    assert "assess every supported" in normalized_instruction
+    assert "assess every selected specification" in normalized_instruction
     assert "exactly once in the findings array" in normalized_instruction
     assert "review contract-first" in normalized_instruction
     assert "original task supplied to the coding system" in normalized_instruction
@@ -1231,7 +1416,7 @@ def test_patch_check_exposes_omitted_supported_specification(tmp_path: Path) -> 
         "every copied state must preserve its configured mode" in normalized_instruction
     )
     assert instruction.index("direct verbatim task contract:") < instruction.index(
-        "\nsupported specifications:"
+        "\nselected specifications:"
     )
 
 
@@ -1639,6 +1824,71 @@ def test_probe_exit_code_overrides_model_violation_claim(tmp_path: Path) -> None
     assert probes[0].supports == ("LS-mode",)
 
 
+def test_probe_exit_code_replaces_contradictory_satisfied_assessment(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    task_evidence = replace(
+        _typed_evidence(EvidenceSourceType.TASK, EvidenceAuthority.NORMATIVE),
+        evidence_id="EV-task",
+        supports=("LS-mode",),
+    )
+    memory = SpecificationMemory(
+        specifications=(replace(_record(), supporting_evidence=("EV-task",)),),
+        evidence=(task_evidence,),
+    )
+    response = {
+        "summary": "The model incorrectly calls a failing probe satisfied.",
+        "runtime_evidence": [
+            {
+                "id": "EV-PROBE-mode",
+                "probe_key": "mode-copy-preserved",
+                "tool_call_id": "item_1",
+                "specification_id": "LS-mode",
+                "observation": "The model claims that mode was preserved.",
+            }
+        ],
+        "findings": [
+            {
+                "specification_id": "LS-mode",
+                "status": "satisfied",
+                "evidence_ids": ["EV-task", "EV-PROBE-mode"],
+                "assessment": "Mode is preserved.",
+                "recommendation": "",
+            }
+        ],
+        "backlog": [],
+    }
+
+    _, findings, uncertainty, probes, _, error = asyncio.run(
+        check_patch(
+            request,
+            _one_round_config(),
+            ScriptedExecutor(
+                [
+                    _run_with_probe(
+                        response,
+                        command="python /tmp/probe_mode.py",
+                        output="mode missing",
+                        exit_code=10,
+                    )
+                ]
+            ),
+            memory,
+        )
+    )
+
+    assert error is None
+    assert not uncertainty
+    assert [item.specification_id for item in findings] == ["LS-mode"]
+    assert findings[0].status is FindingStatus.VIOLATED
+    assert "overriding the patch checker's declared satisfied verdict" in (
+        findings[0].patch_assessment
+    )
+    assert "Reproduce the focused probe" in findings[0].recommendation
+    assert probes[0].probe_outcome is ProbeOutcome.VIOLATED
+
+
 def test_non_protocol_probe_exit_is_inconclusive(tmp_path: Path) -> None:
     request = _request(tmp_path)
     memory = SpecificationMemory(specifications=(_record(),))
@@ -1795,6 +2045,127 @@ def test_patch_checker_requires_fresh_directory_persistence_probe(
     assert "do not report an outcome, command, or output" in instruction
     assert "guardian_probe_key=<probe_key>" in instruction
     assert "guardian_specification_id=<specification_id>" in instruction
+
+
+def test_patch_checker_exposes_all_behavioral_specs_but_limits_probes(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    specifications = []
+    evidence = []
+    for index in range(1, 7):
+        specification_id = f"LS-{index}"
+        evidence_id = f"EV-{index}"
+        specifications.append(
+            replace(
+                _record(),
+                specification_id=specification_id,
+                statement=f"Behavior {index} remains observable.",
+                supporting_evidence=(evidence_id,),
+            )
+        )
+        evidence.append(
+            replace(
+                _typed_evidence(
+                    EvidenceSourceType.DOCUMENTATION,
+                    EvidenceAuthority.CONVENTIONAL,
+                ),
+                evidence_id=evidence_id,
+                path="contract.py",
+                supports=(specification_id,),
+            )
+        )
+    specifications.insert(
+        0,
+        replace(
+            _record(),
+            specification_id="LS-tests",
+            statement="Feature-schema changes must be covered by integration tests.",
+            supporting_evidence=("EV-tests",),
+        ),
+    )
+    evidence.append(
+        replace(
+            _typed_evidence(
+                EvidenceSourceType.TEST,
+                EvidenceAuthority.CONVENTIONAL,
+            ),
+            evidence_id="EV-tests",
+            path="tests/test_contract.py",
+            supports=("LS-tests",),
+        )
+    )
+    memory = SpecificationMemory(
+        specifications=tuple(specifications), evidence=tuple(evidence)
+    )
+    response = {
+        "summary": "No violation established.",
+        "findings": [
+            {
+                "specification_id": "LS-1",
+                "status": "satisfied",
+                "patch_locations": [],
+                "evidence_ids": ["EV-1"],
+                "assessment": "The supplied evidence supports the behavior.",
+                "recommendation": "",
+            }
+        ],
+        "backlog": [],
+    }
+    executor = ScriptedExecutor([_run(response)])
+
+    asyncio.run(
+        check_patch(
+            request,
+            _one_round_config(max_patch_probes=5),
+            executor,
+            memory,
+        )
+    )
+
+    instruction = executor.requests[0].instruction
+    for index in range(1, 7):
+        assert f'"id": "LS-{index}"' in instruction
+    assert '"id": "LS-tests"' not in instruction
+    normalized = " ".join(instruction.lower().split())
+    assert "execute at most 5 probes total" in normalized
+    assert "at most one probe per selected specification" in normalized
+    assert "do not perform a broad repository review" in normalized
+
+
+def test_satisfied_proposed_specification_is_not_reported_as_uncertain(
+    tmp_path: Path,
+) -> None:
+    response = {
+        "summary": "The selected specification is satisfied.",
+        "findings": [
+            {
+                "specification_id": "LS-mode",
+                "status": "satisfied",
+                "patch_locations": ["contract.py:1"],
+                "evidence_ids": [_scoped_evidence()],
+                "assessment": "The copied state preserves mode.",
+                "recommendation": "",
+            }
+        ],
+        "backlog": [],
+    }
+    executor = ScriptedExecutor(
+        [
+            _run(_briefs(1)),
+            _run(_exploration(suggested_status="proposed")),
+            _run(_aggregation(status="proposed")),
+            _run(_distillation()),
+            _run(response),
+        ]
+    )
+
+    result = asyncio.run(
+        GuardianAgent(_one_round_config(), executor=executor).review(_request(tmp_path))
+    )
+
+    assert not result.findings
+    assert not result.uncertain_specifications
 
 
 def test_patch_checker_probe_is_retained_in_cross_cycle_memory(tmp_path: Path) -> None:

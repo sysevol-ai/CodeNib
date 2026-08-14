@@ -28,6 +28,10 @@ def test_local_specification_rollout_controls_are_forwarded(tmp_path):
             "codex:gpt-5.6-sol",
             "--guardian-max-findings",
             "4",
+            "--guardian-max-patch-probes",
+            "3",
+            "--guardian-max-explorer-repairs",
+            "2",
             "--guardian-max-cycles",
             "2",
             "--guardian-rollout-timeout",
@@ -46,6 +50,8 @@ def test_local_specification_rollout_controls_are_forwarded(tmp_path):
     assert "guardian_explorer_model=codex:gpt-5.6-luna" in command
     assert "guardian_aggregator_model=codex:gpt-5.6-sol" in command
     assert "guardian_max_findings=4" in command
+    assert "guardian_max_patch_probes=3" in command
+    assert "guardian_max_explorer_repairs=2" in command
     assert "guardian_max_cycles=2" in command
     assert "guardian_rollout_timeout=123.0" in command
     assert "guardian_codex_version=0.145.0" in command
@@ -76,6 +82,8 @@ def test_reframed_guardian_defaults_are_explicit(tmp_path):
     assert "guardian_explorer_model=codex:gpt-5.6-terra" in command
     assert "guardian_aggregator_model=codex:gpt-5.6-terra" in command
     assert "guardian_max_findings=10" in command
+    assert "guardian_max_patch_probes=5" in command
+    assert "guardian_max_explorer_repairs=1" in command
     assert "guardian_max_cycles=3" in command
     assert "guardian_rollout_timeout=600.0" in command
     assert "guardian_codex_version=0.145.0" in command
