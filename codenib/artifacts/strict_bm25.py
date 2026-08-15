@@ -47,7 +47,10 @@ from .._workspace_provider import (
     StrictWorkspaceSession,
     run_strict_workspace,
 )
-from ..source_fingerprint import RepositorySourceBinding
+from ..source_fingerprint import (
+    RepositorySourceBinding,
+    RepositorySourceIdentitySnapshot,
+)
 from .security import assert_publishable_json_value
 
 _MAX_CONFIG_JSON_BYTES = 16 * 1024 * 1024
@@ -171,14 +174,23 @@ def _preflight_publication_authorities(
             raise TypeError("strict workspace provider has an invalid contract")
 
 
+def _authenticated_repository_identity(
+    repository_source: RepositorySourceBinding,
+) -> RepositorySourceIdentitySnapshot:
+    identity = repository_source.authenticated_identity_snapshot()
+    if type(identity) is not RepositorySourceIdentitySnapshot:
+        raise TypeError("strict BM25 repository identity has an invalid type")
+    return identity
+
+
 def _require_disjoint_view_path(
     path: Path,
-    repository_source: RepositorySourceBinding,
+    repository_root: Path,
 ) -> Path:
     """Return one lexical view path that cannot contain or enter the repo."""
 
     candidate = lexical_directory_path(path)
-    repository = lexical_directory_path(repository_source.root)
+    repository = lexical_directory_path(repository_root)
 
     def overlaps(left: Path, right: Path) -> bool:
         return left == right or left in right.parents or right in left.parents
@@ -203,18 +215,18 @@ def _preflight_view_location(
     destination: Path,
     *,
     source_generation: PublishedWorkspaceReceiptOwner,
-    repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
 ) -> tuple[PublishedWorkspaceReceipt, Path]:
     """Bind replacement to its source path before source bytes are consumed."""
 
     source_receipt = source_generation.receipt
     source_path = _require_disjoint_view_path(
         source_receipt.path,
-        repository_source,
+        repository_identity.root,
     )
     lexical_destination = _require_disjoint_view_path(
         destination,
-        repository_source,
+        repository_identity.root,
     )
     if lexical_destination != source_path:
         raise ValueError(
@@ -720,9 +732,9 @@ def _source_view(
 
 
 def _repository_files(
-    repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
 ) -> frozenset[str]:
-    records = tuple(repository_source.file_records)
+    records = repository_identity.file_records
     paths = frozenset(record.path for record in records)
     if len(paths) != len(records):
         raise RuntimeError("authenticated repository source repeats a file")
@@ -730,15 +742,13 @@ def _repository_files(
 
 
 def _policy(
-    repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
     view_config: Mapping[str, Any],
     *,
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
 ) -> tuple[str, tuple[Path, ...], frozenset[str]]:
-    if not repository_source.usable:
-        raise RuntimeError("strict BM25 repository source is not usable")
-    forbidden = (repository_source.root, *forbidden_paths)
+    forbidden = (repository_identity.root, *forbidden_paths)
     assert_no_secret_fields(view_config, source="portable BM25 view config")
     _assert_authenticated_publishable_json_value(
         view_config,
@@ -754,43 +764,24 @@ def _policy(
     return (
         hashlib.sha256(config_bytes).hexdigest(),
         forbidden,
-        _repository_files(repository_source),
+        _repository_files(repository_identity),
     )
 
 
-def plan_bm25_view_strict(
+def _plan_bm25_view_with_identity(
     source_generation: PublishedWorkspaceReceiptOwner,
     *,
     repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
     view_config: Mapping[str, Any],
-    forbidden_paths: Iterable[Path] = (),
-    environ: Mapping[str, str] | None = None,
+    forbidden_paths: tuple[Path, ...],
+    environ: Mapping[str, str],
 ) -> PlannedBm25View:
-    """Plan exact canonical BM25 bytes from one retained source generation."""
-
-    if type(source_generation) is not PublishedWorkspaceReceiptOwner:
-        raise TypeError("strict BM25 source must be a workspace receipt owner")
-    if type(repository_source) is not RepositorySourceBinding:
-        raise TypeError("strict BM25 repository source has an invalid type")
-    if not source_generation.active:
-        raise RuntimeError("strict BM25 source generation must be active")
-    if not repository_source.usable:
-        raise RuntimeError("strict BM25 repository source is not usable")
-    _require_disjoint_view_path(
-        source_generation.receipt.path,
-        repository_source,
-    )
-    config_snapshot = _json_object_snapshot(
-        view_config,
-        label="portable BM25 view config",
-    )
-    environment = _environment_snapshot(environ)
-    forbidden_tail = tuple(forbidden_paths)
     config_digest, forbidden, authenticated_files = _policy(
-        repository_source,
-        config_snapshot,
-        forbidden_paths=forbidden_tail,
-        environ=environment,
+        repository_identity,
+        view_config,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
     )
 
     def consume_source(
@@ -800,9 +791,9 @@ def plan_bm25_view_strict(
         ownership, source_records, reader = _source_view(receipt, publication)
         metadata_bytes, document_chunks = _payloads(
             reader,
-            repository_source.root,
+            repository_identity.root,
             forbidden_paths=forbidden,
-            environ=environment,
+            environ=environ,
             authenticated_source_files=authenticated_files,
         )
         documents_record = _record_chunks(
@@ -826,7 +817,7 @@ def plan_bm25_view_strict(
             source_records=source_records,
             output_records=output_records,
             view_config_digest=config_digest,
-            repository_fingerprint=repository_source.fingerprint,
+            repository_fingerprint=repository_identity.fingerprint,
         )
         return PlannedBm25View(
             plan=plan,
@@ -835,18 +826,57 @@ def plan_bm25_view_strict(
             source_records=source_records,
             output_records=output_records,
             view_config_digest=config_digest,
-            repository_fingerprint=repository_source.fingerprint,
+            repository_fingerprint=repository_identity.fingerprint,
         )
 
     with repository_source.read_session():
         return source_generation.consume(consume_source)
 
 
+def plan_bm25_view_strict(
+    source_generation: PublishedWorkspaceReceiptOwner,
+    *,
+    repository_source: RepositorySourceBinding,
+    view_config: Mapping[str, Any],
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+) -> PlannedBm25View:
+    """Plan exact canonical BM25 bytes from one retained source generation."""
+
+    if type(source_generation) is not PublishedWorkspaceReceiptOwner:
+        raise TypeError("strict BM25 source must be a workspace receipt owner")
+    if type(repository_source) is not RepositorySourceBinding:
+        raise TypeError("strict BM25 repository source has an invalid type")
+    if not source_generation.active:
+        raise RuntimeError("strict BM25 source generation must be active")
+    if not repository_source.usable:
+        raise RuntimeError("strict BM25 repository source is not usable")
+    repository_identity = _authenticated_repository_identity(repository_source)
+    _require_disjoint_view_path(
+        source_generation.receipt.path,
+        repository_identity.root,
+    )
+    config_snapshot = _json_object_snapshot(
+        view_config,
+        label="portable BM25 view config",
+    )
+    environment = _environment_snapshot(environ)
+    forbidden_tail = tuple(forbidden_paths)
+    return _plan_bm25_view_with_identity(
+        source_generation,
+        repository_source=repository_source,
+        repository_identity=repository_identity,
+        view_config=config_snapshot,
+        forbidden_paths=forbidden_tail,
+        environ=environment,
+    )
+
+
 def _require_plan(
     planned: PlannedBm25View,
     *,
     source_receipt: PublishedWorkspaceReceipt,
-    repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
     view_config_digest: str,
 ) -> None:
     if type(planned) is not PlannedBm25View:
@@ -859,7 +889,7 @@ def _require_plan(
         != directory_ownership_digest(source_receipt.ownership)  # type: ignore[arg-type]
     ):
         raise ValueError("strict BM25 plan belongs to another source generation")
-    if planned.repository_fingerprint != repository_source.fingerprint:
+    if planned.repository_fingerprint != repository_identity.fingerprint:
         raise ValueError("strict BM25 plan belongs to another repository source")
     if planned.view_config_digest != view_config_digest:
         raise ValueError("strict BM25 plan belongs to another view config")
@@ -878,7 +908,7 @@ def _candidate_records(
     candidate: PublicationDirectoryReader,
     *,
     planned: PlannedBm25View,
-    repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
     authenticated_source_files: frozenset[str],
@@ -897,7 +927,7 @@ def _candidate_records(
     reader = _PublicationBm25Reader(candidate, ownership)
     metadata_bytes, document_chunks = _payloads(
         reader,
-        repository_source.root,
+        repository_identity.root,
         forbidden_paths=forbidden_paths,
         environ=environ,
         authenticated_source_files=authenticated_source_files,
@@ -924,47 +954,30 @@ def _candidate_records(
     return records
 
 
-def publish_planned_bm25_view_strict(
-    destination: Path,
+def _publish_planned_bm25_view_with_identity(
     *,
     planned: PlannedBm25View,
     source_generation: PublishedWorkspaceReceiptOwner,
+    source_receipt: PublishedWorkspaceReceipt,
     repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
     workspace_provider: StrictWorkspaceProvider,
     output_receipt_owner: PublishedWorkspaceReceiptOwner,
+    lexical_destination: Path,
     view_config: Mapping[str, Any],
-    forbidden_paths: Iterable[Path] = (),
-    environ: Mapping[str, str] | None = None,
+    forbidden_paths: tuple[Path, ...],
+    environ: Mapping[str, str],
 ) -> dict[str, Any]:
-    """Replay and durably publish one exact strict BM25 plan."""
-
-    _preflight_publication_authorities(
-        source_generation=source_generation,
-        repository_source=repository_source,
-        workspace_provider=workspace_provider,
-        output_receipt_owner=output_receipt_owner,
-    )
-    source_receipt, lexical_destination = _preflight_view_location(
-        destination,
-        source_generation=source_generation,
-        repository_source=repository_source,
-    )
-    config_snapshot = _json_object_snapshot(
-        view_config,
-        label="portable BM25 view config",
-    )
-    environment = _environment_snapshot(environ)
-    forbidden_tail = tuple(forbidden_paths)
     config_digest, forbidden, authenticated_files = _policy(
-        repository_source,
-        config_snapshot,
-        forbidden_paths=forbidden_tail,
-        environ=environment,
+        repository_identity,
+        view_config,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
     )
     _require_plan(
         planned,
         source_receipt=source_receipt,
-        repository_source=repository_source,
+        repository_identity=repository_identity,
         view_config_digest=config_digest,
     )
     request = StrictWorkspaceRequest(
@@ -990,9 +1003,9 @@ def publish_planned_bm25_view_strict(
                 raise ValueError("strict BM25 source changed after planning")
             metadata_bytes, document_chunks = _payloads(
                 reader,
-                repository_source.root,
+                repository_identity.root,
                 forbidden_paths=forbidden,
-                environ=environment,
+                environ=environ,
                 authenticated_source_files=authenticated_files,
             )
             written = tuple(
@@ -1014,9 +1027,9 @@ def publish_planned_bm25_view_strict(
                     _candidate_records(
                         candidate,
                         planned=planned,
-                        repository_source=repository_source,
+                        repository_identity=repository_identity,
                         forbidden_paths=forbidden,
-                        environ=environment,
+                        environ=environ,
                         authenticated_source_files=authenticated_files,
                     )
                     != planned.output_records
@@ -1036,6 +1049,53 @@ def publish_planned_bm25_view_strict(
     if not output_receipt_owner.active:
         raise RuntimeError("strict BM25 publication returned without a receipt")
     return planned.adjustments
+
+
+def publish_planned_bm25_view_strict(
+    destination: Path,
+    *,
+    planned: PlannedBm25View,
+    source_generation: PublishedWorkspaceReceiptOwner,
+    repository_source: RepositorySourceBinding,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+    view_config: Mapping[str, Any],
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Replay and durably publish one exact strict BM25 plan."""
+
+    _preflight_publication_authorities(
+        source_generation=source_generation,
+        repository_source=repository_source,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    repository_identity = _authenticated_repository_identity(repository_source)
+    source_receipt, lexical_destination = _preflight_view_location(
+        destination,
+        source_generation=source_generation,
+        repository_identity=repository_identity,
+    )
+    config_snapshot = _json_object_snapshot(
+        view_config,
+        label="portable BM25 view config",
+    )
+    environment = _environment_snapshot(environ)
+    forbidden_tail = tuple(forbidden_paths)
+    return _publish_planned_bm25_view_with_identity(
+        planned=planned,
+        source_generation=source_generation,
+        source_receipt=source_receipt,
+        repository_source=repository_source,
+        repository_identity=repository_identity,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+        lexical_destination=lexical_destination,
+        view_config=config_snapshot,
+        forbidden_paths=forbidden_tail,
+        environ=environment,
+    )
 
 
 def normalize_owned_query_view_strict(
@@ -1060,33 +1120,43 @@ def normalize_owned_query_view_strict(
         workspace_provider=workspace_provider,
         output_receipt_owner=output_receipt_owner,
     )
-    _preflight_view_location(
+    repository_identity = _authenticated_repository_identity(repository_source)
+    source_receipt, lexical_destination = _preflight_view_location(
         destination,
         source_generation=source_generation,
-        repository_source=repository_source,
+        repository_identity=repository_identity,
     )
     config_snapshot = _json_object_snapshot(
         view_config,
         label="portable BM25 view config",
     )
     environment = _environment_snapshot(environ)
-    forbidden = tuple(forbidden_paths)
-    planned = plan_bm25_view_strict(
+    forbidden_tail = tuple(forbidden_paths)
+    planned = _plan_bm25_view_with_identity(
         source_generation,
         repository_source=repository_source,
+        repository_identity=repository_identity,
         view_config=config_snapshot,
-        forbidden_paths=forbidden,
+        forbidden_paths=forbidden_tail,
         environ=environment,
     )
-    return publish_planned_bm25_view_strict(
-        destination,
-        planned=planned,
+    _preflight_publication_authorities(
         source_generation=source_generation,
         repository_source=repository_source,
         workspace_provider=workspace_provider,
         output_receipt_owner=output_receipt_owner,
+    )
+    return _publish_planned_bm25_view_with_identity(
+        planned=planned,
+        source_generation=source_generation,
+        source_receipt=source_receipt,
+        repository_source=repository_source,
+        repository_identity=repository_identity,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+        lexical_destination=lexical_destination,
         view_config=config_snapshot,
-        forbidden_paths=forbidden,
+        forbidden_paths=forbidden_tail,
         environ=environment,
     )
 

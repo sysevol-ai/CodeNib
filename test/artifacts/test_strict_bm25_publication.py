@@ -39,7 +39,11 @@ from codenib.artifacts import (
 )
 from codenib.artifacts.strict_bm25 import _record_chunks
 from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
-from codenib.source_fingerprint import capture_repository_source
+from codenib.source_fingerprint import (
+    RepositorySourceBinding,
+    RepositorySourceIdentitySnapshot,
+    capture_repository_source,
+)
 
 _Result = TypeVar("_Result")
 _Value = TypeVar("_Value")
@@ -349,6 +353,74 @@ def test_strict_bm25_high_level_freezes_caller_mappings_once(
         output_owner.close()
 
 
+def test_strict_bm25_high_level_uses_one_detached_source_identity(
+    strict_generation,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fixture = strict_generation
+    binding = fixture.repository_source
+    original_root = binding.root
+    original_fingerprint = binding.fingerprint
+    original_file_count = binding.file_count
+    original_file_records = binding.file_records
+    forged_root = tmp_path / "forged-public-root"
+    snapshot_calls = 0
+    policy_identities: list[RepositorySourceIdentitySnapshot] = []
+    real_snapshot = RepositorySourceBinding.authenticated_identity_snapshot
+    real_policy = strict_bm25_module._policy
+
+    def counted_snapshot(self):
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        return real_snapshot(self)
+
+    def mutate_public_projection(repository_identity, *args, **kwargs):
+        assert type(repository_identity) is RepositorySourceIdentitySnapshot
+        policy_identities.append(repository_identity)
+        binding.root = forged_root
+        binding.fingerprint = f"sha256-v2:{'0' * 64}"
+        binding.file_count = 0
+        binding.file_records = ()
+        try:
+            return real_policy(repository_identity, *args, **kwargs)
+        finally:
+            binding.root = original_root
+            binding.fingerprint = original_fingerprint
+            binding.file_count = original_file_count
+            binding.file_records = original_file_records
+
+    monkeypatch.setattr(
+        RepositorySourceBinding,
+        "authenticated_identity_snapshot",
+        counted_snapshot,
+    )
+    monkeypatch.setattr(strict_bm25_module, "_policy", mutate_public_projection)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider(
+        expected_destination=fixture.source_owner.receipt.ownership,
+    )
+    try:
+        normalize_owned_query_view_strict(
+            fixture.destination,
+            source_generation=fixture.source_owner,
+            repository_source=binding,
+            workspace_provider=provider,
+            output_receipt_owner=output_owner,
+            view_type="bm25",
+            view_config={},
+            environ={},
+        )
+        assert snapshot_calls == 1
+        assert len(policy_identities) == 2
+        assert policy_identities[0] is policy_identities[1]
+        assert policy_identities[0].root == original_root
+        assert policy_identities[0].fingerprint == original_fingerprint
+        assert output_owner.active
+    finally:
+        output_owner.close()
+
+
 def test_strict_bm25_plan_binds_view_config_into_subject(
     strict_generation,
 ) -> None:
@@ -640,7 +712,7 @@ def test_strict_bm25_rejects_repository_overlap_before_source_consume(
             with pytest.raises(ValueError, match="must not overlap"):
                 strict_bm25_module._require_disjoint_view_path(
                     overlapping,
-                    repository_source,
+                    repository,
                 )
     finally:
         output_owner.close()
