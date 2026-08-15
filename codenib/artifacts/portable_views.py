@@ -54,7 +54,10 @@ from ..native_index_authorization import (
     require_native_index_authorization_preflight,
 )
 from ..provider_routes import normalize_provider, resolve_embedding_artifact_route
-from ..source_fingerprint import RepositorySourceBinding
+from ..source_fingerprint import (
+    RepositorySourceBinding,
+    RepositorySourceIdentitySnapshot,
+)
 from .security import assert_publishable_json_value
 
 _VECTOR_LEVELS = ("l0", "l2")
@@ -3022,10 +3025,11 @@ def _validate_portable_vector_view(
             )
 
 
-def validate_content_bound_portable_query_view_reader(
+def _validate_content_bound_portable_query_view_reader_with_identity(
     publication: PublicationDirectoryReader,
     *,
     repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
     view_type: str,
     view_config: Mapping[str, Any] | None = None,
     forbidden_paths: Iterable[Path] = (),
@@ -3041,6 +3045,8 @@ def validate_content_bound_portable_query_view_reader(
         raise TypeError("portable view requires a publication directory reader")
     if type(repository_source) is not RepositorySourceBinding:
         raise TypeError("portable view repository source has an invalid type")
+    if type(repository_identity) is not RepositorySourceIdentitySnapshot:
+        raise TypeError("portable view repository identity has an invalid type")
     if view_type not in {"bm25", "vector"}:
         raise ValueError(f"unsupported portable query view: {view_type!r}")
     if not isinstance(view_config, Mapping):
@@ -3063,7 +3069,7 @@ def validate_content_bound_portable_query_view_reader(
     forbidden = tuple(forbidden_paths)
     if any(not isinstance(path, Path) for path in forbidden):
         raise TypeError("portable validation forbidden paths must be Path values")
-    repository_records = tuple(repository_source.file_records)
+    repository_records = repository_identity.file_records
     authenticated_source_files = frozenset(record.path for record in repository_records)
     if len(authenticated_source_files) != len(repository_records):
         raise RuntimeError("authenticated repository source repeats a file record")
@@ -3073,7 +3079,7 @@ def validate_content_bound_portable_query_view_reader(
 
     def validate_semantics() -> None:
         with repository_source.read_session():
-            policy_paths = (repository_source.root, *forbidden)
+            policy_paths = (repository_identity.root, *forbidden)
             _assert_authenticated_publishable_json_value(
                 config_snapshot,
                 forbidden_paths=policy_paths,
@@ -3083,7 +3089,7 @@ def validate_content_bound_portable_query_view_reader(
             if view_type == "bm25":
                 _validate_portable_bm25_view(
                     reader.root,
-                    repository_source.root,
+                    repository_identity.root,
                     view_config=config_snapshot,
                     forbidden=policy_paths,
                     environment=environment,
@@ -3094,7 +3100,7 @@ def validate_content_bound_portable_query_view_reader(
             else:
                 _validate_portable_vector_view(
                     reader.root,
-                    repository_source.root,
+                    repository_identity.root,
                     view_config=config_snapshot,
                     forbidden=policy_paths,
                     environment=environment,
@@ -3115,6 +3121,39 @@ def validate_content_bound_portable_query_view_reader(
                 reader.close,
             ),
         ),
+    )
+
+
+def validate_content_bound_portable_query_view_reader(
+    publication: PublicationDirectoryReader,
+    *,
+    repository_source: RepositorySourceBinding,
+    view_type: str,
+    view_config: Mapping[str, Any] | None = None,
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+) -> None:
+    """Validate one portable view through retained view and source authorities."""
+
+    if type(publication) is not PublicationDirectoryReader:
+        raise TypeError("portable view requires a publication directory reader")
+    if type(repository_source) is not RepositorySourceBinding:
+        raise TypeError("portable view repository source has an invalid type")
+    if view_type not in {"bm25", "vector"}:
+        raise ValueError(f"unsupported portable query view: {view_type!r}")
+    if not isinstance(view_config, Mapping):
+        raise ValueError(f"portable {view_type} validation requires its view config")
+    repository_identity = repository_source.authenticated_identity_snapshot()
+    if type(repository_identity) is not RepositorySourceIdentitySnapshot:
+        raise TypeError("portable view repository identity has an invalid type")
+    _validate_content_bound_portable_query_view_reader_with_identity(
+        publication,
+        repository_source=repository_source,
+        repository_identity=repository_identity,
+        view_type=view_type,
+        view_config=view_config,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
     )
 
 

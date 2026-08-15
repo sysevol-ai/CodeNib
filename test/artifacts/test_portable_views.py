@@ -35,6 +35,7 @@ from codenib.provider_routes import resolve_inference_route
 from codenib.source_fingerprint import (
     RepositoryChangedError,
     RepositorySourceBinding,
+    RepositorySourceIdentitySnapshot,
     capture_repository_source,
 )
 
@@ -2691,6 +2692,72 @@ def test_content_bound_portable_reader_has_stable_public_signature() -> None:
         "forbidden_paths",
         "environ",
     ]
+
+
+def test_content_bound_reader_uses_one_detached_source_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    view_config = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    binding = capture_repository_source(repo)
+    original_root = binding.root
+    original_fingerprint = binding.fingerprint
+    original_file_count = binding.file_count
+    original_file_records = binding.file_records
+    forged_root = tmp_path / "forged-public-root"
+    snapshot_calls = 0
+    observed_roots: list[Path] = []
+    real_snapshot = RepositorySourceBinding.authenticated_identity_snapshot
+    real_validate = portable_views_module._validate_portable_bm25_view
+
+    def counted_snapshot(self):
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        identity = real_snapshot(self)
+        assert type(identity) is RepositorySourceIdentitySnapshot
+        return identity
+
+    def mutate_public_projection(root, repository, *args, **kwargs):
+        observed_roots.append(repository)
+        binding.root = forged_root
+        binding.fingerprint = f"sha256-v2:{'0' * 64}"
+        binding.file_count = 0
+        binding.file_records = ()
+        try:
+            return real_validate(root, repository, *args, **kwargs)
+        finally:
+            binding.root = original_root
+            binding.fingerprint = original_fingerprint
+            binding.file_count = original_file_count
+            binding.file_records = original_file_records
+
+    monkeypatch.setattr(
+        RepositorySourceBinding,
+        "authenticated_identity_snapshot",
+        counted_snapshot,
+    )
+    monkeypatch.setattr(
+        portable_views_module,
+        "_validate_portable_bm25_view",
+        mutate_public_projection,
+    )
+    try:
+        _validate_content_bound_view(
+            bm25,
+            repository_source=binding,
+            view_type="bm25",
+            view_config=view_config,
+        )
+        assert snapshot_calls == 1
+        assert observed_roots == [original_root]
+    finally:
+        binding.close()
 
 
 def test_content_bound_portable_reader_validates_bm25_without_documents_dom(

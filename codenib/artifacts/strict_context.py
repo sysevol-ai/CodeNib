@@ -43,6 +43,7 @@ from ..compiler.snapshot_store import normalize_repo
 from ..provider_routes import resolve_embedding_artifact_route
 from ..source_fingerprint import (
     RepositorySourceBinding,
+    RepositorySourceIdentitySnapshot,
     is_secure_source_fingerprint_v2,
 )
 from .context import (
@@ -51,7 +52,9 @@ from .context import (
     PORTABLE_CONTEXT_VIEWS,
     ContextArtifactResult,
 )
-from .portable_views import validate_content_bound_portable_query_view_reader
+from .portable_views import (
+    _validate_content_bound_portable_query_view_reader_with_identity,
+)
 from .runtime import verify_context_artifact_reader
 from .security import assert_publishable_tree_reader
 from .strict_bm25 import (
@@ -344,6 +347,7 @@ class _FrozenContextInputs:
     manifest: dict[str, Any]
     repository: str
     repository_source: RepositorySourceBinding
+    repository_identity: RepositorySourceIdentitySnapshot
     view_generations: tuple[tuple[str, PublishedWorkspaceReceiptOwner], ...]
     environment: dict[str, str]
 
@@ -403,6 +407,9 @@ def _freeze_inputs(
         raise TypeError("strict context repository source has an invalid type")
     if not repository_source.usable:
         raise RuntimeError("strict context repository source is not usable")
+    repository_identity = repository_source.authenticated_identity_snapshot()
+    if type(repository_identity) is not RepositorySourceIdentitySnapshot:
+        raise TypeError("strict context repository identity has an invalid type")
     if not isinstance(repository, str):
         raise TypeError("strict context repository must be text")
     normalized_repository = normalize_repo(repository)
@@ -414,6 +421,7 @@ def _freeze_inputs(
         manifest=_snapshot_manifest(manifest),
         repository=normalized_repository,
         repository_source=repository_source,
+        repository_identity=repository_identity,
         view_generations=_snapshot_view_generations(view_generations),
         environment=_environment_snapshot(environ),
     )
@@ -421,7 +429,7 @@ def _freeze_inputs(
 
 def _validate_manifest_identity(inputs: _FrozenContextInputs) -> RepoManifest:
     manifest = RepoManifest.from_dict(inputs.manifest)
-    source = inputs.repository_source
+    source = inputs.repository_identity
     if manifest.version != MANIFEST_VERSION:
         raise ValueError(
             "strict context repository manifest version is incompatible: "
@@ -454,7 +462,7 @@ def _overlaps(left: Path, right: Path) -> bool:
 
 
 def _require_disjoint_paths(inputs: _FrozenContextInputs) -> tuple[Path, ...]:
-    repository = lexical_directory_path(inputs.repository_source.root)
+    repository = lexical_directory_path(inputs.repository_identity.root)
     sources: list[Path] = []
     physical: list[Path] = []
     for view, owner in inputs.view_generations:
@@ -489,7 +497,7 @@ def _require_destination_disjoint(
     source_paths: tuple[Path, ...],
 ) -> Path:
     candidate = lexical_directory_path(destination)
-    repository = lexical_directory_path(inputs.repository_source.root)
+    repository = lexical_directory_path(inputs.repository_identity.root)
     if _overlaps(candidate, repository) or any(
         _overlaps(candidate, source) for source in source_paths
     ):
@@ -547,9 +555,10 @@ def _validate_source_view(
         before = publication.capture_ownership()
         if before != expected_ownership:
             raise RuntimeError(f"strict context {view} generation changed")
-        validate_content_bound_portable_query_view_reader(
+        _validate_content_bound_portable_query_view_reader_with_identity(
             publication,
             repository_source=inputs.repository_source,
+            repository_identity=inputs.repository_identity,
             view_type=view,
             view_config=config,
             forbidden_paths=(),
@@ -586,7 +595,7 @@ def _planned_view(
     config = entry["config"]
     _assert_authenticated_publishable_json_value(
         entry,
-        forbidden_paths=(inputs.repository_source.root, receipt.path),
+        forbidden_paths=(inputs.repository_identity.root, receipt.path),
         environ=inputs.environment,
         label=f"strict context {view} manifest entry",
     )
@@ -751,7 +760,7 @@ def _build_plan(inputs: _FrozenContextInputs) -> PlannedContextArtifact:
     }
     _assert_authenticated_publishable_json_value(
         metadata,
-        forbidden_paths=(inputs.repository_source.root,),
+        forbidden_paths=(inputs.repository_identity.root,),
         environ=inputs.environment,
         label="strict context metadata",
     )
@@ -895,7 +904,7 @@ def _validate_candidate(
         raise RuntimeError("strict context candidate differs from its exact plan")
     assert_publishable_tree_reader(
         candidate,
-        forbidden_paths=(inputs.repository_source.root, *forbidden_paths),
+        forbidden_paths=(inputs.repository_identity.root, *forbidden_paths),
         environ=inputs.environment,
         label="strict context artifact",
         streaming_json_paths=planned.streaming_json_paths,

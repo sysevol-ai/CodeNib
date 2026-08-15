@@ -40,7 +40,11 @@ from codenib.artifacts import (
 )
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.artifact_integrity import VECTOR_PERSISTENCE_SCHEMA
-from codenib.source_fingerprint import capture_repository_source
+from codenib.source_fingerprint import (
+    RepositorySourceBinding,
+    RepositorySourceIdentitySnapshot,
+    capture_repository_source,
+)
 
 _Result = TypeVar("_Result")
 _COMMIT = "a" * 40
@@ -472,6 +476,80 @@ def test_strict_context_freezes_inputs_before_single_provider_support_call(
             (destination / "repo_manifest.json").read_text(encoding="utf-8")
         )
         assert published["indexes"]["bm25"]["config"]["tokenizer"] == "frozen"
+        assert output_owner.active
+    finally:
+        output_owner.close()
+        fixture.close()
+
+
+def test_strict_context_uses_one_detached_source_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture(tmp_path, ("bm25",))
+    binding = fixture.repository_source
+    original_root = binding.root
+    original_fingerprint = binding.fingerprint
+    original_file_count = binding.file_count
+    original_file_records = binding.file_records
+    forged_root = tmp_path / "forged-public-root"
+    snapshot_calls = 0
+    observed_identities: list[RepositorySourceIdentitySnapshot] = []
+    real_snapshot = RepositorySourceBinding.authenticated_identity_snapshot
+    real_planned_view = strict_context_module._planned_view
+
+    def counted_snapshot(self):
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        return real_snapshot(self)
+
+    def mutate_public_projection(view, owner, *, manifest, inputs):
+        assert type(inputs.repository_identity) is RepositorySourceIdentitySnapshot
+        observed_identities.append(inputs.repository_identity)
+        binding.root = forged_root
+        binding.fingerprint = f"sha256-v2:{'0' * 64}"
+        binding.file_count = 0
+        binding.file_records = ()
+        try:
+            return real_planned_view(
+                view,
+                owner,
+                manifest=manifest,
+                inputs=inputs,
+            )
+        finally:
+            binding.root = original_root
+            binding.fingerprint = original_fingerprint
+            binding.file_count = original_file_count
+            binding.file_records = original_file_records
+
+    monkeypatch.setattr(
+        RepositorySourceBinding,
+        "authenticated_identity_snapshot",
+        counted_snapshot,
+    )
+    monkeypatch.setattr(
+        strict_context_module,
+        "_planned_view",
+        mutate_public_projection,
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    destination = tmp_path / "published" / "context"
+    try:
+        stage_context_artifact_strict(
+            destination,
+            manifest=fixture.manifest,
+            repository="owner/repo",
+            repository_source=binding,
+            view_generations=fixture.owners,
+            workspace_provider=_TestWorkspaceProvider(),
+            output_receipt_owner=output_owner,
+            environ={},
+        )
+        assert snapshot_calls == 1
+        assert len(observed_identities) == 1
+        assert observed_identities[0].root == original_root
+        assert observed_identities[0].fingerprint == original_fingerprint
         assert output_owner.active
     finally:
         output_owner.close()
