@@ -10,6 +10,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from codenib.clients.guardian.exchange import is_request_id
+
 
 @dataclass(frozen=True, slots=True)
 class CompletedReport:
@@ -25,7 +27,11 @@ def review_request_commits(exchange_root: Path) -> set[str]:
     requests = exchange_root / "requests"
     if not requests.is_dir():
         return set()
-    return {path.stem for path in requests.glob("*.json") if path.is_file()}
+    return {
+        path.stem
+        for path in requests.glob("*.json")
+        if path.is_file() and is_request_id(path.stem)
+    }
 
 
 def completed_responses(exchange_root: Path, commits: set[str]) -> set[str]:
@@ -33,6 +39,8 @@ def completed_responses(exchange_root: Path, commits: set[str]) -> set[str]:
 
     completed = set()
     for commit in commits:
+        if not is_request_id(commit):
+            continue
         status_path = exchange_root / "responses" / commit / "status.json"
         try:
             status = json.loads(status_path.read_text(encoding="utf-8"))
@@ -48,6 +56,8 @@ def completed_report(exchange_root: Path, commits: set[str]) -> CompletedReport 
 
     reports = []
     for commit in commits:
+        if not is_request_id(commit):
+            continue
         response = exchange_root / "responses" / commit
         status_path = response / "status.json"
         report_path = response / "findings.md"

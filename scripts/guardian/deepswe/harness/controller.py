@@ -28,7 +28,9 @@ from codenib.clients.guardian import (
     render_markdown,
 )
 from codenib.clients.guardian.exchange import (
+    ExchangeProtocolError,
     ReviewExchangeRequest,
+    is_request_id,
     load_exchange_request,
     materialize_exchange_request,
 )
@@ -40,7 +42,7 @@ from codenib.sandbox import (
     SandboxPolicy,
 )
 
-from .delivery import completed_responses
+from .delivery import completed_responses, review_request_commits
 
 ReviewerFactory = Callable[[Path], GuardianAgent]
 
@@ -473,8 +475,12 @@ class GuardianHostController:
         )
 
     async def process_manifest(self, manifest: Path) -> None:
-        self._prepare()
         request_id = manifest.stem
+        if manifest.name != f"{request_id}.json" or not is_request_id(request_id):
+            raise ExchangeProtocolError(
+                "manifest filename must be a full lowercase Git SHA"
+            )
+        self._prepare()
         response = self.exchange_root / "responses" / request_id
         if (response / "status.json").exists():
             return
@@ -608,6 +614,7 @@ class GuardianHostController:
             pending = [
                 manifest
                 for manifest in (self.exchange_root / "requests").glob("*.json")
+                if is_request_id(manifest.stem)
                 if not (
                     self.exchange_root / "responses" / manifest.stem / "status.json"
                 ).exists()
@@ -682,11 +689,7 @@ class GuardianHostController:
         """Return whether every published checkpoint has a terminal response."""
 
         self._prepare()
-        commits = {
-            item.stem
-            for item in (self.exchange_root / "requests").glob("*.json")
-            if item.is_file()
-        }
+        commits = review_request_commits(self.exchange_root)
         return completed_responses(self.exchange_root, commits) == commits
 
     async def wait_until_idle(self) -> None:

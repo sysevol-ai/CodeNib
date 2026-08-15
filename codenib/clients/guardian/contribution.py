@@ -9,7 +9,12 @@ from __future__ import annotations
 from itertools import combinations
 from statistics import mean
 
-from .types import ExplorerOutput, SpecificationRecord, SpecificationStatus
+from .types import (
+    MAX_EXPLORERS,
+    ExplorerOutput,
+    SpecificationRecord,
+    SpecificationStatus,
+)
 
 
 def _round_specifications(
@@ -36,6 +41,10 @@ def explorer_contribution_report(
     """
 
     explorers = tuple(output.explorer for output in outputs)
+    if len(explorers) > MAX_EXPLORERS:
+        raise ValueError(
+            f"contribution analysis supports at most {MAX_EXPLORERS} explorers"
+        )
     candidate_owner = {
         candidate.candidate_id: output.explorer
         for output in outputs

@@ -29,6 +29,12 @@ class ExchangeProtocolError(ValueError):
     """An exchange artifact is malformed, stale, or fails validation."""
 
 
+def is_request_id(value: object) -> bool:
+    """Return whether ``value`` is a canonical commit-addressed request ID."""
+
+    return isinstance(value, str) and _REQUEST_ID.fullmatch(value) is not None
+
+
 @dataclass(frozen=True, slots=True)
 class ReviewExchangeRequest:
     """A request to review one exact transition between Git commits."""
@@ -47,8 +53,12 @@ class ReviewExchangeRequest:
             )
         for name in ("request_id", "base_commit", "candidate_commit"):
             value = getattr(self, name)
-            pattern = _REQUEST_ID if name == "request_id" else _REVISION
-            if not isinstance(value, str) or not pattern.fullmatch(value):
+            valid = (
+                is_request_id(value)
+                if name == "request_id"
+                else (isinstance(value, str) and _REVISION.fullmatch(value) is not None)
+            )
+            if not valid:
                 raise ExchangeProtocolError(f"{name} must be a full lowercase Git SHA")
         if self.request_id != self.candidate_commit:
             raise ExchangeProtocolError("request_id must equal candidate_commit")
@@ -184,6 +194,7 @@ __all__ = [
     "ExchangeProtocolError",
     "ReviewExchangeRequest",
     "SCHEMA_VERSION",
+    "is_request_id",
     "load_exchange_request",
     "materialize_exchange_request",
 ]

@@ -14,7 +14,10 @@ import threading
 import time
 from pathlib import Path, PurePosixPath
 
+import pytest
+
 from codenib.clients.guardian import GuardianConfig, GuardianResult, ReviewStatus
+from codenib.clients.guardian.exchange import ExchangeProtocolError
 from scripts.guardian.deepswe.harness import controller as controller_module
 from scripts.guardian.deepswe.harness.controller import GuardianHostController
 
@@ -141,6 +144,30 @@ class BlockingReviewer(FakeReviewer):
             candidate_commit=request.candidate_commit,
             status=ReviewStatus.COMPLETE,
         )
+
+
+def test_host_controller_ignores_noncanonical_request_filename(
+    tmp_path: Path,
+) -> None:
+    exchange = tmp_path / "exchange"
+    requests = exchange / "requests"
+    requests.mkdir(parents=True)
+    manifest = requests / "...json"
+    manifest.write_text("{}", encoding="utf-8")
+    controller = GuardianHostController(
+        exchange_root=exchange,
+        episodes_root=tmp_path / "episodes",
+        config=GuardianConfig(explorer_model="luna", aggregator_model="terra"),
+        reviewer_factory=lambda _workspace: FakeReviewer([]),
+        initial_base_commit="a" * 40,
+    )
+
+    with pytest.raises(ExchangeProtocolError, match="full lowercase Git SHA"):
+        asyncio.run(controller.process_manifest(manifest))
+
+    assert asyncio.run(controller.process_pending()) == 0
+    assert controller.is_idle()
+    assert not (exchange / "status.json").exists()
 
 
 def test_sandbox_reviewer_uses_stable_codex_tool_execution(

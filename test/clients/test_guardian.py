@@ -12,6 +12,8 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from codenib.clients.execution import (
     AgentEvent,
     AgentEventKind,
@@ -50,12 +52,16 @@ from codenib.clients.guardian.aggregation import (
 )
 from codenib.clients.guardian.contribution import explorer_contribution_report
 from codenib.clients.guardian.evidence import validate_candidates, validate_evidence
-from codenib.clients.guardian.normalization import parse_explorer_output
+from codenib.clients.guardian.normalization import (
+    GuardianResponseError,
+    parse_explorer_output,
+)
 from codenib.clients.guardian.patch_check import (
     _probe_frontier,
     _protocol_errors,
     check_patch,
 )
+from codenib.clients.guardian.types import MAX_EXPLORERS
 
 
 def _run(
@@ -641,6 +647,58 @@ def test_guardian_defaults_to_five_specifications_per_explorer() -> None:
     assert config.max_patch_probes == 5
 
 
+@pytest.mark.parametrize("field", ("explorer_count", "targeted_explorer_count"))
+def test_guardian_rejects_explorer_counts_above_analysis_limit(field: str) -> None:
+    with pytest.raises(ValueError, match=f"{field} must not exceed {MAX_EXPLORERS}"):
+        GuardianConfig(
+            explorer_model="cheap",
+            aggregator_model="strong",
+            **{field: MAX_EXPLORERS + 1},
+        )
+
+
+def test_guardian_rejects_artifact_directory_inside_reviewed_workspace(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    artifact_dir = request.workspace / ".guardian-artifacts"
+
+    with pytest.raises(ValueError, match="artifact_dir must be outside"):
+        replace(request, artifact_dir=artifact_dir)
+
+    assert not artifact_dir.exists()
+
+
+def test_explorer_parser_enforces_hard_specification_limit() -> None:
+    response = _exploration()
+    response["candidate_specifications"] *= 2
+
+    with pytest.raises(GuardianResponseError, match="maximum is 1"):
+        parse_explorer_output(
+            json.dumps(response),
+            explorer="explorer-1-1",
+            round_number=1,
+            brief_id="BRIEF-1",
+            max_specifications=1,
+        )
+
+
+def test_contribution_analysis_rejects_unbounded_explorer_sets() -> None:
+    prototype = parse_explorer_output(
+        json.dumps(_exploration()),
+        explorer="explorer-1",
+        round_number=1,
+        brief_id="BRIEF-1",
+    )
+    outputs = tuple(
+        replace(prototype, explorer=f"explorer-{index}")
+        for index in range(MAX_EXPLORERS + 1)
+    )
+
+    with pytest.raises(ValueError, match=f"at most {MAX_EXPLORERS} explorers"):
+        explorer_contribution_report(outputs, ())
+
+
 def test_malformed_explorer_json_is_repaired_and_both_attempts_are_retained(
     tmp_path: Path,
 ) -> None:
@@ -674,6 +732,31 @@ def test_malformed_explorer_json_is_repaired_and_both_attempts_are_retained(
     assert (attempt_dir / "attempt-02.txt").is_file()
     assert (result.artifact_dir / "round-01" / "contribution.json").is_file()
     assert (result.artifact_dir / "round-01" / "pairwise-overlap.csv").is_file()
+
+
+def test_explorer_output_above_hard_limit_is_repaired(tmp_path: Path) -> None:
+    oversized = _exploration()
+    oversized["candidate_specifications"] *= 2
+    executor = ScriptedExecutor(
+        [
+            _run(_briefs(1)),
+            _run(oversized),
+            _run(_exploration()),
+            _run(_aggregation()),
+            _run(_distillation()),
+            _run(_patch_check()),
+        ]
+    )
+
+    result = asyncio.run(
+        GuardianAgent(
+            _one_round_config(max_specifications_per_explorer=1), executor=executor
+        ).review(_request(tmp_path))
+    )
+
+    attempts = result.rounds[0].explorer_outputs[0].attempts
+    assert [attempt.succeeded for attempt in attempts] == [False, True]
+    assert "maximum is 1" in attempts[0].error
 
 
 def test_explorer_contribution_is_order_independent() -> None:

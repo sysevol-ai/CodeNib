@@ -17,6 +17,7 @@ from typing import Sequence
 from ..execution import AgentRunResult, ExecutionIsolation, TokenUsage
 
 _REVISION = re.compile(r"^[0-9a-f]{7,40}$")
+MAX_EXPLORERS = 12
 
 
 class TaskContextSource(str, Enum):
@@ -477,6 +478,8 @@ class GuardianRequest:
         if artifact_dir is None:
             artifact_dir = Path(tempfile.mkdtemp(prefix="guardian-review-artifacts-"))
         artifact_dir = Path(artifact_dir).expanduser().resolve()
+        if artifact_dir == workspace or workspace in artifact_dir.parents:
+            raise ValueError("artifact_dir must be outside the reviewed workspace")
         artifact_dir.mkdir(parents=True, exist_ok=True)
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "task_context", task_context)
@@ -509,8 +512,18 @@ class GuardianConfig:
             "max_patch_probes",
             "max_specifications_per_explorer",
         ):
-            if getattr(self, name) < 1:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value < 1:
                 raise ValueError(f"{name} must be positive")
+        for name in ("explorer_count", "targeted_explorer_count"):
+            if getattr(self, name) > MAX_EXPLORERS:
+                raise ValueError(f"{name} must not exceed {MAX_EXPLORERS}")
+        if isinstance(self.max_explorer_repairs, bool) or not isinstance(
+            self.max_explorer_repairs, int
+        ):
+            raise TypeError("max_explorer_repairs must be an integer")
         if self.max_explorer_repairs < 0:
             raise ValueError("max_explorer_repairs must not be negative")
         object.__setattr__(
@@ -637,6 +650,7 @@ __all__ = [
     "GuardianResult",
     "InvestigationBrief",
     "LocalSpecification",
+    "MAX_EXPLORERS",
     "ProbeCheckMetrics",
     "ProbeOutcome",
     "ReviewStatus",

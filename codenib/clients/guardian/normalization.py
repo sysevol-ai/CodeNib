@@ -221,11 +221,17 @@ def parse_explorer_output(
     round_number: int,
     brief_id: str,
     namespace: str = "",
+    max_specifications: int | None = None,
 ) -> ExplorerOutput:
     value = _object(text)
     rows = value.get("candidate_specifications", value.get("candidates"))
     if not isinstance(rows, list):
         raise GuardianResponseError("response has no candidate_specifications array")
+    if max_specifications is not None and len(rows) > max_specifications:
+        raise GuardianResponseError(
+            "response has "
+            f"{len(rows)} candidate specifications; maximum is {max_specifications}"
+        )
     candidates = []
     for index, row in enumerate(rows, 1):
         if not isinstance(row, dict):

@@ -160,6 +160,7 @@ async def discover(
                 round_number=round_number,
                 brief_id=brief.brief_id,
                 namespace=identifier_namespace,
+                max_specifications=config.max_specifications_per_explorer,
             )
         except GuardianResponseError as exc:
             error = str(exc)
@@ -208,6 +209,7 @@ async def discover(
                             round_number=round_number,
                             brief_id=brief.brief_id,
                             namespace=identifier_namespace,
+                            max_specifications=config.max_specifications_per_explorer,
                         )
                     except GuardianResponseError as repair_exc:
                         repair_error = str(repair_exc)
