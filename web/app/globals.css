@@ -131,8 +131,10 @@ pre {
   /* Match the page gutter below so the brand aligns with the left rail. */
   padding: 0 clamp(24px, 4vw, 80px);
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
-  backdrop-filter: blur(12px);
+  /* Sticky chrome can pass over prose and source while the page scrolls. It
+     must be fully opaque or comments remain visible through its labels. */
+  background: var(--bg-surface);
+  backdrop-filter: none;
 }
 .site-header .brand {
   display: flex;
@@ -3769,6 +3771,9 @@ a.codepanel-name:hover {
   padding: 40px;
 }
 .codepane-nav {
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
   flex: 0 0 auto;
   display: flex;
   gap: 5px;
@@ -3806,13 +3811,16 @@ a.codepanel-name:hover {
 .frag {
   border-bottom: 1px solid var(--border);
 }
-/* Selected fragment: a blue band across the whole cited range (DeepWiki-style).
-   The code's own backgrounds are made transparent so the tint shows through. */
+/* Selected fragment: an opaque blue surface across the cited range. Keeping
+   alpha out of this scrolling layer prevents comments beneath a moving source
+   label from visually bleeding through it. */
 .frag.active {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: var(--code-line-active);
   box-shadow: inset 3px 0 var(--accent);
 }
-.frag.active .hl-code,
+.frag.active .hl-code {
+  background: var(--code-line-active);
+}
 .frag.active .hl-pre,
 .frag.active .hl-gutter {
   background: transparent;
