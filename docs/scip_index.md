@@ -76,6 +76,13 @@ tools remain explicit. Preview the exact operations without writing anything:
 codenib toolchain install . --scope all --dry-run
 ```
 
+Rust graph construction uses the managed Rustup toolchain by default. For a
+repository-specific upstream analyzer crash, an operator may temporarily set
+`CODENIB_RUST_ANALYZER=/absolute/path/to/rust-analyzer`; both static SCIP
+construction and live Rust LSP then use that exact executable. Keep the
+override explicit and validate the resulting graph before publication rather
+than silently changing the project-wide pin.
+
 ## Install Local Toolchains From Source
 
 For a CodeNib source checkout, the Makefile retains broad maintainer and CI

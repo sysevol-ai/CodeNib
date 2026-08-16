@@ -336,6 +336,7 @@ def build_hierarchical_vector_store(
     profiler: Optional[Profiler] = None,
     force_rebuild: bool = False,
     strict_chunking: bool = False,
+    additional_ignore_dirs: Optional[List[str]] = None,
     artifact_metadata: Optional[Dict[str, Any]] = None,
     native_index_authorization: NativeIndexAuthorization | None = None,
     _atomic_publish: bool = True,
@@ -421,6 +422,7 @@ def build_hierarchical_vector_store(
     languages = languages or ["python"]
     build_levels = normalized_levels
     repo_cfg = RepoChunkingConfig(languages=languages)
+    repo_cfg.ignore_dirs.update(additional_ignore_dirs or ())
 
     chunks_by_level = {}
     level_configs = {

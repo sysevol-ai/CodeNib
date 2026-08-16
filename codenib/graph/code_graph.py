@@ -4,6 +4,7 @@
 
 import bisect
 import pickle
+import pickletools
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -41,6 +42,45 @@ from ..types import (
 # v5: symbol vertices carry optional semantic symbol_kind plus explicit
 #     has_definition provenance; decoders may emit anchored import edges.
 _SCHEMA_VERSION = 5
+
+
+def current_graph_schema_version() -> int:
+    """Return the graph schema understood by this runtime."""
+
+    return _SCHEMA_VERSION
+
+
+def persisted_graph_schema_version(input_path) -> Optional[int]:
+    """Inspect the leading schema field without unpickling the graph payload.
+
+    ``save_graph`` writes ``schema_version`` as the first mapping entry. Reading
+    a short pickle prefix avoids importing a potentially large igraph object
+    merely to decide whether a Demo capability can be advertised.
+    """
+
+    try:
+        with open(input_path, "rb") as handle:
+            prefix = handle.read(128)
+    except OSError:
+        return None
+
+    found_key = False
+    memo_opcodes = {"MEMOIZE", "BINPUT", "LONG_BINPUT", "PUT"}
+    integer_opcodes = {"INT", "BININT", "BININT1", "BININT2", "LONG1", "LONG4"}
+    try:
+        for opcode, argument, _position in pickletools.genops(prefix):
+            if not found_key:
+                if argument == "schema_version":
+                    found_key = True
+                continue
+            if opcode.name in memo_opcodes:
+                continue
+            if opcode.name in integer_opcodes and isinstance(argument, int):
+                return argument
+            return None
+    except (ValueError, pickle.UnpicklingError):
+        return None
+    return None
 
 
 @dataclass(slots=True)

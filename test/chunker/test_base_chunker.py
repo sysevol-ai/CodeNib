@@ -119,6 +119,19 @@ def test_chunk_file_replaces_invalid_utf8_bytes(monkeypatch, tmp_path):
     assert "\ufffd" in chunks[0].content
 
 
+def test_tree_walkers_handle_deeper_trees_than_python_recursion_limit():
+    target = SimpleNamespace(type="target", children=[])
+    branch = target
+    for _ in range(1500):
+        branch = SimpleNamespace(type="nested", children=[branch])
+    later_target = SimpleNamespace(type="target", children=[])
+    root = SimpleNamespace(type="root", children=[branch, later_target])
+    chunker = object.__new__(StubCodeChunker)
+
+    assert chunker._find_first_child(root, ("target",)) is target
+    assert chunker._find_nodes_by_type(root, "target") == [target, later_target]
+
+
 @pytest.mark.parametrize(
     ("configured_limit", "expected_limit"),
     [(None, DEFAULT_L0_RAW_FALLBACK_MAX_LINES), (100, 100)],

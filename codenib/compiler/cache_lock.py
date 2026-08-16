@@ -507,12 +507,38 @@ def _require_posix_primitives() -> None:
         )
 
 
+def _make_bounded_cache_directories(cache: Path) -> None:
+    """Create a missing cache suffix without broad intermediate modes.
+
+    ``os.makedirs(..., mode=0o700)`` applies ``mode`` only to the leaf.  With
+    a cooperative umask such as 0002, newly created intermediate directories
+    would therefore remain group-writable.  Discover only the missing suffix
+    and create each member explicitly; existing parents retain their modes.
+    A concurrent creator may win any individual mkdir, in which case the
+    final descriptor validation remains authoritative.
+    """
+
+    missing: list[Path] = []
+    current = cache
+    while not current.exists():
+        missing.append(current)
+        parent = current.parent
+        if parent == current:  # pragma: no cover - filesystem root exists
+            break
+        current = parent
+    for directory in reversed(missing):
+        try:
+            os.mkdir(directory, mode=0o700)
+        except FileExistsError:
+            continue
+
+
 @contextmanager
 def _open_posix_cache_directory(cache_dir: str | Path) -> Iterator[tuple[Path, int]]:
     _require_posix_primitives()
     cache = _cache_path(cache_dir)
     try:
-        os.makedirs(cache, mode=0o700, exist_ok=True)
+        _make_bounded_cache_directories(cache)
         descriptor = os.open(cache, _directory_open_flags())
     except OSError as exc:
         raise RuntimeError(f"could not open compiler cache directory: {cache}") from exc

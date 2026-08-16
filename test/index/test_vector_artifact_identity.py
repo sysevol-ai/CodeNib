@@ -666,3 +666,80 @@ def test_openai_wrapper_sends_vector_options_on_embedding_requests() -> None:
         model="text-embedding-3-small",
         dimensions=2,
     )
+
+
+def test_openai_wrapper_batches_document_embeddings_in_order() -> None:
+    client = MagicMock()
+    client.embeddings.create.side_effect = [
+        SimpleNamespace(
+            data=[
+                SimpleNamespace(index=1, embedding=[2.0]),
+                SimpleNamespace(index=0, embedding=[1.0]),
+            ]
+        ),
+        SimpleNamespace(
+            data=[
+                SimpleNamespace(index=1, embedding=[4.0]),
+                SimpleNamespace(index=0, embedding=[3.0]),
+            ]
+        ),
+        SimpleNamespace(data=[SimpleNamespace(index=0, embedding=[5.0])]),
+    ]
+    with patch("openai.OpenAI", return_value=client):
+        embedding = _OpenAIEmbeddingWrapper("served", batch_size=2)
+
+    assert embedding.embed_documents(["a", "b", "c", "d", "e"]) == [
+        [1.0],
+        [2.0],
+        [3.0],
+        [4.0],
+        [5.0],
+    ]
+    assert [
+        call.kwargs["input"] for call in client.embeddings.create.call_args_list
+    ] == [
+        ["a", "b"],
+        ["c", "d"],
+        ["e"],
+    ]
+
+
+def test_openai_wrapper_splits_only_context_limit_failures() -> None:
+    class ContextLimitError(Exception):
+        status_code = 400
+
+    client = MagicMock()
+
+    def create(*, input, **_kwargs):
+        if len(input) > 1:
+            raise ContextLimitError("maximum context length; input_tokens")
+        return SimpleNamespace(
+            data=[SimpleNamespace(index=0, embedding=[float(ord(input[0]))])]
+        )
+
+    client.embeddings.create.side_effect = create
+    with patch("openai.OpenAI", return_value=client):
+        embedding = _OpenAIEmbeddingWrapper("served", batch_size=4)
+
+    assert embedding.embed_documents(["a", "b", "c"]) == [
+        [97.0],
+        [98.0],
+        [99.0],
+    ]
+
+
+def test_openai_wrapper_bounds_one_oversized_document_deterministically() -> None:
+    client = MagicMock()
+
+    def create(*, input, **_kwargs):
+        assert len(input) == 1
+        assert len(input[0]) == 80
+        assert input[0].startswith("a" * 20)
+        assert input[0].endswith("z" * 5)
+        return SimpleNamespace(data=[SimpleNamespace(index=0, embedding=[1.0])])
+
+    client.embeddings.create.side_effect = create
+    with patch("openai.OpenAI", return_value=client):
+        embedding = _OpenAIEmbeddingWrapper("served", max_input_chars=80)
+
+    assert embedding.embed_documents(["a" * 100 + "z" * 100]) == [[1.0]]

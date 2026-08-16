@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,7 @@ _DOCUMENTATION_RE = re.compile(r'(?:^|\n)\s*documentation:\s*"((?:\\.|[^"\\])*)"
 _TS_SIGNATURE_RE = re.compile(r"^```(?:ts|typescript)\\n(class|interface|enum|type)\s")
 _ROLES_RE = re.compile(r"symbol_roles:\s*(\d+)")
 _RANGE_RE = re.compile(r"(?:^|\n)\s*range:\s*(\d+)")
+_STATIC_MODULE_PARSERS = threading.local()
 
 
 def _snake_case(value: str) -> str:
@@ -126,39 +128,73 @@ def _point_in_span(
     return span[0] <= point < span[1]
 
 
-def _static_module_nodes(source: bytes, suffix: str):
-    from tree_sitter import Parser
-    from tree_sitter_language_pack import get_language
+def _static_module_parser(language_name: str):
+    """Reuse one native parser per language and thread.
 
-    language_name = "tsx" if suffix.lower() in {".tsx", ".jsx"} else "typescript"
-    language = get_language(language_name)
-    try:
-        parser = Parser(language)
-    except TypeError:  # tree-sitter < 0.25 compatibility
-        parser = Parser()
-        parser.language = language
-    root = parser.parse(source).root_node
-    return [
-        node
-        for node in root.named_children
-        if node.type == "import_statement"
-        or (
-            node.type == "export_statement"
+    Some language-pack builds corrupt native state when parsers for different
+    grammars are repeatedly created and destroyed in the same decoder pass.
+    Thread-local reuse avoids both that lifecycle bug and cross-thread parser
+    sharing.
+    """
+
+    from tree_sitter_language_pack import get_parser
+
+    parsers = getattr(_STATIC_MODULE_PARSERS, "parsers", None)
+    if parsers is None:
+        parsers = {}
+        _STATIC_MODULE_PARSERS.parsers = parsers
+    parser = parsers.get(language_name)
+    if parser is None:
+        # Use the language-pack parser directly. Constructing the separate
+        # ``tree_sitter.Parser`` binding around language-pack capsules corrupts
+        # native state after enough mixed TypeScript/JavaScript files on arm64.
+        parser = get_parser(language_name)
+        parsers[language_name] = parser
+    return parser
+
+
+def _static_module_nodes(source: bytes, suffix: str):
+    normalized_suffix = suffix.lower()
+    if normalized_suffix == ".tsx":
+        language_name = "tsx"
+    elif normalized_suffix in {".js", ".jsx"}:
+        # JavaScript's grammar natively includes JSX. Parsing large generated
+        # JavaScript (Babel's Makefile.js is one example) with the TypeScript
+        # grammar can corrupt tree-sitter's native state rather than merely
+        # returning error nodes.
+        language_name = "javascript"
+    else:
+        language_name = "typescript"
+    parser = _static_module_parser(language_name)
+    tree = parser.parse_bytes(source)
+    root_node = tree.root_node()
+    nodes = []
+    for index in range(root_node.named_child_count()):
+        node = root_node.named_child(index)
+        kind = node.kind()
+        if kind == "import_statement" or (
+            kind == "export_statement"
             and node.child_by_field_name("source") is not None
-        )
-    ]
+        ):
+            nodes.append(node)
+    # A tree-sitter ``Node`` borrows native memory owned by its ``Tree``. Keep
+    # the tree alive while callers read node coordinates; returning bare nodes
+    # can become a use-after-free once Python collects this local tree (large
+    # workspaces made that surface as a decoder segfault).
+    return source, parser, tree, nodes
 
 
 def _static_module_anchors(source: bytes, suffix: str):
+    _source, _parser, _tree, nodes = _static_module_nodes(source, suffix)
     return [
         (
             (
-                (node.start_point.row, node.start_point.column),
-                (node.end_point.row, node.end_point.column),
+                (node.start_position().row, node.start_position().column),
+                (node.end_position().row, node.end_position().column),
             ),
-            node.start_point.row,
+            node.start_position().row,
         )
-        for node in _static_module_nodes(source, suffix)
+        for node in nodes
     ]
 
 
@@ -167,16 +203,17 @@ def typescript_static_module_fingerprint(
 ) -> tuple[tuple[object, ...], ...]:
     """Fingerprint static import/re-export text and its source coordinates."""
 
+    _source, _parser, _tree, nodes = _static_module_nodes(source, suffix)
     return tuple(
         (
-            node.type,
-            node.start_point.row,
-            node.start_point.column,
-            node.end_point.row,
-            node.end_point.column,
-            source[node.start_byte : node.end_byte],
+            node.kind(),
+            node.start_position().row,
+            node.start_position().column,
+            node.end_position().row,
+            node.end_position().column,
+            source[node.start_byte() : node.end_byte()],
         )
-        for node in _static_module_nodes(source, suffix)
+        for node in nodes
     )
 
 
@@ -203,67 +240,75 @@ def enrich_typescript_import_edges(
     root = Path(project_root) if project_root is not None else None
     project_packages = _typescript_project_packages(decoded_content)
     added = 0
-    for document in extract_scip_blocks(decoded_content, "documents"):
-        path_match = re.search(r'relative_path:\s*"([^"]+)"', document)
-        if not path_match:
-            continue
-        source_file = Path(path_match.group(1)).as_posix()
-        if source_file not in code_graph.name_to_vertex:
-            continue
-        module_anchors = []
-        source_path = _safe_source_path(root, source_file) if root is not None else None
-        if source_path is not None:
-            try:
-                module_anchors = _static_module_anchors(
-                    source_path.read_bytes(), source_path.suffix
+    # A large decoded workspace already carries tens of thousands of reference
+    # edges. Adding import edges to igraph one at a time rebuilds its adjacency
+    # indexes after every insertion (quadratic work and, on Babel-scale graphs,
+    # a native igraph crash). Buffer the complete enrichment pass and publish
+    # it with one add_edges call.
+    with code_graph.batch_edges():
+        for document in extract_scip_blocks(decoded_content, "documents"):
+            path_match = re.search(r'relative_path:\s*"([^"]+)"', document)
+            if not path_match:
+                continue
+            source_file = Path(path_match.group(1)).as_posix()
+            if source_file not in code_graph.name_to_vertex:
+                continue
+            module_anchors = []
+            source_path = (
+                _safe_source_path(root, source_file) if root is not None else None
+            )
+            if source_path is not None:
+                try:
+                    module_anchors = _static_module_anchors(
+                        source_path.read_bytes(), source_path.suffix
+                    )
+                except (OSError, RuntimeError, TypeError, ValueError):
+                    pass
+            for occurrence in extract_scip_blocks(document, "occurrences"):
+                values = [int(value) for value in _RANGE_RE.findall(occurrence)]
+                if len(values) < 3:
+                    continue
+                roles_match = _ROLES_RE.search(occurrence)
+                roles = int(roles_match.group(1)) if roles_match else 0
+                if roles & 1:
+                    continue
+                point = (values[0], values[1])
+                statement_line = next(
+                    (
+                        anchor_line
+                        for span, anchor_line in module_anchors
+                        if _point_in_span(point, span)
+                    ),
+                    None,
                 )
-            except (OSError, RuntimeError, TypeError, ValueError):
-                pass
-        for occurrence in extract_scip_blocks(document, "occurrences"):
-            values = [int(value) for value in _RANGE_RE.findall(occurrence)]
-            if len(values) < 3:
-                continue
-            roles_match = _ROLES_RE.search(occurrence)
-            roles = int(roles_match.group(1)) if roles_match else 0
-            if roles & 1:
-                continue
-            point = (values[0], values[1])
-            statement_line = next(
-                (
-                    anchor_line
-                    for span, anchor_line in module_anchors
-                    if _point_in_span(point, span)
-                ),
-                None,
-            )
-            if not (roles & 2) and statement_line is None:
-                continue
-            symbol = extract_symbol(occurrence)
-            target = _typescript_symbol_target(symbol or "")
-            if target is None:
-                continue
-            target_package, target_file = target
-            if target_package[0].startswith("@types/"):
-                continue
-            if target_package[0] != "." and target_package not in project_packages:
-                continue
-            if target_file == source_file:
-                continue
-            target_id = code_graph.name_to_vertex.get(target_file)
-            if target_id is None:
-                continue
-            target_attrs = code_graph.graph.vs[target_id].attributes()
-            if target_attrs.get("type") != NODE_TYPE_FILE:
-                continue
-            before = code_graph.graph.ecount()
-            code_graph._add_edge(
-                source_file,
-                target_file,
-                EDGE_TYPE_IMPORT,
-                anchor_file=source_file,
-                anchor_line=(
-                    statement_line if statement_line is not None else values[0]
-                ),
-            )
-            added += int(code_graph.graph.ecount() > before)
+                if not (roles & 2) and statement_line is None:
+                    continue
+                symbol = extract_symbol(occurrence)
+                target = _typescript_symbol_target(symbol or "")
+                if target is None:
+                    continue
+                target_package, target_file = target
+                if target_package[0].startswith("@types/"):
+                    continue
+                if target_package[0] != "." and target_package not in project_packages:
+                    continue
+                if target_file == source_file:
+                    continue
+                target_id = code_graph.name_to_vertex.get(target_file)
+                if target_id is None:
+                    continue
+                target_attrs = code_graph.graph.vs[target_id].attributes()
+                if target_attrs.get("type") != NODE_TYPE_FILE:
+                    continue
+                before = len(code_graph._edge_index)
+                code_graph._add_edge(
+                    source_file,
+                    target_file,
+                    EDGE_TYPE_IMPORT,
+                    anchor_file=source_file,
+                    anchor_line=(
+                        statement_line if statement_line is not None else values[0]
+                    ),
+                )
+                added += int(len(code_graph._edge_index) > before)
     return added

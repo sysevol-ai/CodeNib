@@ -7,6 +7,7 @@
 """
 SCIP indexer for TypeScript and JavaScript projects using scip-typescript.
 """
+
 import json
 import re
 import shutil
@@ -305,6 +306,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                 logger.warning("Fallback install also failed: %s", e2)
 
     _PATCHED_TSCONFIG_NAME = ".tsconfig.scip.json"
+    _READ_ONLY_TSCONFIG_NAME = ".tsconfig.scip.readonly.json"
 
     def _ensure_allow_js(self) -> Optional[Path]:
         """Create a temporary tsconfig with JS and repository-filter settings.
@@ -435,6 +437,50 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         patched_path = self.project_root / self._PATCHED_TSCONFIG_NAME
         patched_path.unlink(missing_ok=True)
 
+    def _create_read_only_tsconfig(self) -> Path:
+        """Create an external config without writing into the source tree.
+
+        ``scip-typescript --infer-tsconfig`` writes ``tsconfig.json`` in its
+        working directory, and it does not recognize ``jsconfig.json`` on its
+        own.  A config in the artifact directory can extend either repository
+        config while keeping a shared checkout byte-for-byte unchanged.
+        """
+
+        base_config = next(
+            (
+                candidate
+                for candidate in (
+                    self.project_root / "tsconfig.json",
+                    self.project_root / "jsconfig.json",
+                )
+                if candidate.is_file()
+            ),
+            None,
+        )
+        payload: dict[str, object] = {
+            "compilerOptions": {"allowJs": True},
+            # A config's implicit include is relative to the config file, not
+            # to the extended config. Make the repository surface explicit
+            # because this wrapper intentionally lives outside the checkout.
+            "include": [
+                f"{self.project_root.resolve()}/**/*.js",
+                f"{self.project_root.resolve()}/**/*.jsx",
+                f"{self.project_root.resolve()}/**/*.mjs",
+                f"{self.project_root.resolve()}/**/*.cjs",
+                f"{self.project_root.resolve()}/**/*.ts",
+                f"{self.project_root.resolve()}/**/*.tsx",
+            ],
+        }
+        if base_config is not None:
+            payload["extends"] = str(base_config.resolve())
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        config_path = self.output_dir / self._READ_ONLY_TSCONFIG_NAME
+        config_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        return config_path
+
     def _normalize_workspace_kwargs(self, kwargs: dict) -> dict:
         """
         Ensure workspace flags are consistent with available package managers.
@@ -541,7 +587,15 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         # Auto-select workspace mode when not explicitly provided.
         workspace_flags = ("yarn_workspaces", "pnpm_workspaces", "npm_workspaces")
         has_workspace_mode = any(kwargs.get(flag) for flag in workspace_flags)
-        if not has_workspace_mode:
+        has_root_config = (self.project_root / "tsconfig.json").is_file() or (
+            self.project_root / "jsconfig.json"
+        ).is_file()
+        if not has_workspace_mode and not has_root_config:
+            # A root config is an explicit project boundary and may already
+            # include every workspace source. Passing a workspace flag instead
+            # makes scip-typescript enumerate package manifests and can turn a
+            # healthy root project (for example Vue) into a successful but
+            # nearly empty index when its member packages have no tsconfig.
             # pnpm defines workspaces in pnpm-workspace.yaml (not package.json),
             # so check for it independently.
             has_pnpm_workspace_yaml = (
@@ -597,6 +651,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             needs_generate = False
 
         cleanup_patched_tsconfig = False
+        read_only_tsconfig: Optional[Path] = None
         if needs_generate:
             if allow_project_preparation:
                 self._install_dependencies()
@@ -606,11 +661,13 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                     cleanup_patched_tsconfig = True
             else:
                 logger.info(
-                    "Skipping project dependency installation and temporary "
-                    "tsconfig generation for read-only CodeGraph onboarding"
+                    "Skipping project dependency installation for read-only "
+                    "CodeGraph onboarding"
                 )
                 if not (self.project_root / "tsconfig.json").is_file():
-                    kwargs.setdefault("infer_tsconfig", True)
+                    read_only_tsconfig = self._create_read_only_tsconfig()
+                    kwargs["patched_tsconfig"] = str(read_only_tsconfig)
+                    kwargs["infer_tsconfig"] = False
         else:
             logger.info(
                 "Skipping dependency install and tsconfig patching (cached artifacts exist)"
@@ -628,3 +685,5 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         finally:
             if cleanup_patched_tsconfig:
                 self._cleanup_patched_tsconfig()
+            if read_only_tsconfig is not None:
+                read_only_tsconfig.unlink(missing_ok=True)

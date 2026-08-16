@@ -49,6 +49,10 @@ from .model_policy import (
     EmbeddingLoadPolicy,
     resolve_embedding_load_policy_from_options,
 )
+from .text_policy import (
+    REMOTE_EMBEDDING_DOCUMENT_MAX_CHARS,
+    bounded_remote_embedding_document,
+)
 
 logger = get_logger(__name__)
 
@@ -529,11 +533,26 @@ class _HuggingFaceEmbeddingWrapper:
 class _OpenAIEmbeddingWrapper:
     """Wraps the OpenAI SDK to expose ``embed_query`` / ``embed_documents``."""
 
-    def __init__(self, model: str, request_options: Optional[Dict] = None, **kwargs):
+    def __init__(
+        self,
+        model: str,
+        request_options: Optional[Dict] = None,
+        batch_size: int = 64,
+        max_input_chars: int = REMOTE_EMBEDDING_DOCUMENT_MAX_CHARS,
+        **kwargs,
+    ):
         from openai import OpenAI
 
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+            raise ValueError("embedding batch_size must be an integer")
+        if batch_size <= 0:
+            raise ValueError("embedding batch_size must be positive")
         self._model = model
         self._request_options = dict(request_options or {})
+        self._batch_size = batch_size
+        self._max_input_chars = max_input_chars
+        # Validate the bound before constructing the first request.
+        bounded_remote_embedding_document("", max_chars=max_input_chars)
         self._client = OpenAI(**kwargs)
 
     def embed_query(self, text: str) -> List[float]:
@@ -545,12 +564,57 @@ class _OpenAIEmbeddingWrapper:
         return resp.data[0].embedding
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        resp = self._client.embeddings.create(
-            input=texts,
-            model=self._model,
-            **self._request_options,
-        )
+        texts = [
+            bounded_remote_embedding_document(
+                text,
+                max_chars=self._max_input_chars,
+            )
+            for text in texts
+        ]
+        embeddings: List[List[float]] = []
+        for start in range(0, len(texts), self._batch_size):
+            embeddings.extend(
+                self._embed_document_batch(texts[start : start + self._batch_size])
+            )
+        return embeddings
+
+    def _embed_document_batch(self, texts: List[str]) -> List[List[float]]:
+        try:
+            resp = self._client.embeddings.create(
+                input=texts,
+                model=self._model,
+                **self._request_options,
+            )
+        except Exception as exc:
+            if len(texts) <= 1 or not self._request_exceeded_context(exc):
+                raise
+            midpoint = len(texts) // 2
+            logger.warning(
+                "Embedding request exceeded the provider context; retrying "
+                "as batches of %d and %d documents",
+                midpoint,
+                len(texts) - midpoint,
+            )
+            return [
+                *self._embed_document_batch(texts[:midpoint]),
+                *self._embed_document_batch(texts[midpoint:]),
+            ]
         return [d.embedding for d in sorted(resp.data, key=lambda x: x.index)]
+
+    @staticmethod
+    def _request_exceeded_context(exc: Exception) -> bool:
+        if getattr(exc, "status_code", None) != 400:
+            return False
+        message = str(exc).lower()
+        return any(
+            marker in message
+            for marker in (
+                "maximum context length",
+                "input_tokens",
+                "too many tokens",
+                "context_length_exceeded",
+            )
+        )
 
 
 def _to_document(obj: Any) -> _Document:

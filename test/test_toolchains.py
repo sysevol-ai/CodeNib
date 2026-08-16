@@ -52,6 +52,20 @@ def test_packaged_tool_versions_match_source_bootstrap(
     assert match.group(1) == packaged_value
 
 
+def test_go_bootstrap_binds_cached_tool_to_detected_platform() -> None:
+    makefile = (Path(__file__).resolve().parents[1] / "Makefile").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "GO_ARCH ?= $(if $(filter aarch64 arm64,$(shell uname -m)),arm64,amd64)"
+        in makefile
+    )
+    assert "GO_TOOL_ID = $(GO_VERSION)-$(GO_OS)-$(GO_ARCH)" in makefile
+    assert 'grep -qx "$(GO_TOOL_ID)"' in makefile
+    assert 'echo "$(GO_TOOL_ID)"' in makefile
+
+
 def test_toolchain_dir_is_durable_and_supports_explicit_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -77,6 +91,7 @@ def test_activate_managed_toolchain_prepends_all_provider_bins(
     assert root == tmp_path / "tools"
     assert path[0] == str(root)
     assert str(root / "node-tools" / "node_modules" / ".bin") in path
+    assert str(root / "go" / "bin") in path
     assert str(root / "go-tools" / "bin") in path
     assert path[-1] == "/usr/bin"
 

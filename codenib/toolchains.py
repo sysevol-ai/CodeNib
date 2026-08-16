@@ -209,6 +209,7 @@ def managed_bin_dirs(root: Path | None = None) -> tuple[Path, ...]:
     directories = [
         root,
         root / "node-tools" / "node_modules" / ".bin",
+        root / "go" / "bin",
         root / "go-tools" / "bin",
         root / "dotnet-tools",
         root / "dotnet",

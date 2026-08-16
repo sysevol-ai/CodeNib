@@ -256,12 +256,12 @@ class BaseCodeChunker(ABC):
 
     def _find_first_child(self, node, target_types: Tuple[str, ...]):
         """Depth-first search for the first child node matching one of target_types."""
-        for child in node.children:
+        stack = list(reversed(node.children))
+        while stack:
+            child = stack.pop()
             if child.type in target_types:
                 return child
-            found = self._find_first_child(child, target_types)
-            if found:
-                return found
+            stack.extend(reversed(child.children))
         return None
 
     def _extract_signature_text_default(
@@ -564,14 +564,15 @@ class BaseCodeChunker(ABC):
     def _find_nodes_by_type(self, root_node, node_type: str):
         """Find all nodes with the given type in the tree."""
         nodes = []
-
-        def traverse(node):
+        stack = [root_node]
+        while stack:
+            node = stack.pop()
             if node.type == node_type:
                 nodes.append(node)
-            for child in node.children:
-                traverse(child)
-
-        traverse(root_node)
+            # Reverse before pushing to retain the recursive implementation's
+            # source-order depth-first traversal without consuming Python call
+            # stack on generated C/C++ expression trees thousands of nodes deep.
+            stack.extend(reversed(node.children))
         return nodes
 
     def save_chunks_to_json(self, chunks: List[CodeChunk], output_path: str):

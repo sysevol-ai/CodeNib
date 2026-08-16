@@ -29,6 +29,7 @@ from ..index.embedding.model_policy import (
     DEFAULT_EMBEDDING_MODEL,
     resolve_embedding_load_policy,
 )
+from ..index.embedding.text_policy import REMOTE_EMBEDDING_DOCUMENT_MAX_CHARS
 from ..provider_routes import (
     InferenceRoute,
     normalize_endpoint,
@@ -101,9 +102,10 @@ class BM25IndexBuilder:
     languages: List[str] = field(default_factory=lambda: ["python"])
     max_k: int = 128
     max_lines_per_chunk: int = 300
+    additional_ignore_dirs: List[str] = field(default_factory=list)
 
     def artifact_identity(self) -> Dict[str, Any]:
-        return {
+        identity = {
             # v8 refuses skipped files and retains non-symbol source context.
             "builder_schema": 8,
             "languages": list(self.languages),
@@ -113,6 +115,11 @@ class BM25IndexBuilder:
             "include_header_epilogue": True,
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
+        if self.additional_ignore_dirs:
+            identity["additional_ignore_dirs"] = sorted(
+                set(self.additional_ignore_dirs)
+            )
+        return identity
 
     def build(self, scope: str, **kwargs: Any) -> IndexStatus:
         repo_path: str = kwargs["repo_path"]
@@ -122,9 +129,11 @@ class BM25IndexBuilder:
         from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 
         primary = self.languages[0] if self.languages else "python"
+        repo_config = RepoChunkingConfig(languages=self.languages)
+        repo_config.ignore_dirs.update(self.additional_ignore_dirs)
         chunker = CodeChunker(
             language=primary,
-            repo_config=RepoChunkingConfig(languages=self.languages),
+            repo_config=repo_config,
             max_lines_per_chunk=self.max_lines_per_chunk,
             include_header_epilogue=True,
         )
@@ -183,14 +192,17 @@ class VectorIndexBuilder:
     build_levels: List[str] = field(default_factory=lambda: ["l0", "l2"])
     max_lines_per_chunk: int = 300
     index_metric: str = "ip"
+    embedding_document_max_chars: int = REMOTE_EMBEDDING_DOCUMENT_MAX_CHARS
+    additional_ignore_dirs: List[str] = field(default_factory=list)
 
     def artifact_identity(self) -> Dict[str, Any]:
         """Return the embedding contract required to reopen this artifact."""
 
         route = self._embedding_route()
-        return {
-            # v6 commits vector, chunk, cache, and incremental state together.
-            "builder_schema": 6,
+        identity = {
+            # v7 deterministically bounds remote document inputs in addition
+            # to committing vector, chunk, cache, and incremental state.
+            "builder_schema": 7,
             "embedding_model": route.model,
             "embedding_provider": route.provider,
             "embedding_dimension": self.embedding_dimension,
@@ -206,6 +218,13 @@ class VectorIndexBuilder:
             "chunking_failure_policy": "fail",
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
         }
+        if route.provider == "openai":
+            identity["embedding_document_max_chars"] = self.embedding_document_max_chars
+        if self.additional_ignore_dirs:
+            identity["additional_ignore_dirs"] = sorted(
+                set(self.additional_ignore_dirs)
+            )
+        return identity
 
     def _embedding_route(self) -> InferenceRoute:
         return resolve_inference_route(
@@ -242,6 +261,8 @@ class VectorIndexBuilder:
                 kwargs[key] = nested
             else:
                 kwargs[key] = value
+        if route.provider == "openai":
+            kwargs["max_input_chars"] = self.embedding_document_max_chars
         runtime_endpoint = normalize_endpoint(kwargs.get("base_url"))
         if runtime_endpoint is not None and runtime_endpoint != route.endpoint:
             raise ValueError(
@@ -385,6 +406,7 @@ class VectorIndexBuilder:
                 # would stamp stale vectors with the current source identity.
                 force_rebuild=True,
                 strict_chunking=True,
+                additional_ignore_dirs=self.additional_ignore_dirs,
                 # ``build`` owns the complete private generation tree.  Its
                 # outer OwnedDirectoryStage is the publication boundary.
                 _atomic_publish=False,
@@ -1126,6 +1148,7 @@ def register_default_builders(
     embedding_batch_size: Optional[int] = None,
     embedding_max_seq_length: Optional[int] = None,
     exclude_patterns: Optional[List[str]] = None,
+    additional_chunk_ignore_dirs: Optional[List[str]] = None,
     allow_partial_graph_languages: bool = False,
     allow_partial_graph_index: bool = False,
     graph_source_coverage_fallback: bool = False,
@@ -1133,7 +1156,14 @@ def register_default_builders(
 ) -> None:
     """Register all standard index builders with sensible defaults."""
     langs = languages or ["python"]
-    registry.register("bm25", BM25IndexBuilder(languages=langs))
+    chunk_ignore_dirs = sorted(set(additional_chunk_ignore_dirs or ()))
+    registry.register(
+        "bm25",
+        BM25IndexBuilder(
+            languages=langs,
+            additional_ignore_dirs=chunk_ignore_dirs,
+        ),
+    )
 
     embedding_provider = normalize_provider(embedding_provider)
     embedding_kwargs: Dict[str, Any] = {}
@@ -1176,6 +1206,7 @@ def register_default_builders(
             embedding_endpoint=embedding_endpoint,
             embedding_credential_env=embedding_credential_env,
             embedding_runtime_kwargs=embedding_runtime_kwargs,
+            additional_ignore_dirs=chunk_ignore_dirs,
         ),
     )
     registry.register(

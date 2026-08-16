@@ -1032,7 +1032,7 @@ class TestVectorIndexBuilder:
 
         identity = builder.artifact_identity()
         assert identity == {
-            "builder_schema": 6,
+            "builder_schema": 7,
             "embedding_model": "test-model",
             "embedding_provider": "huggingface",
             "embedding_dimension": 384,

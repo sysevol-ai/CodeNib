@@ -35,27 +35,15 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from codenib.compiler.index_builders import (  # noqa: E402
-    BM25IndexBuilder,
-    IndexBuilderRegistry,
-    VectorIndexBuilder,
-)
-from codenib.compiler.index_compiler import (  # noqa: E402
-    IndexCompiler,
-    IndexCompilerConfig,
-)
-from codenib.compiler.manifest import (  # noqa: E402
-    MANIFEST_FILENAME,
-    IndexEntry,
-    RepoManifest,
-)
+from codenib.compiler.index_builders import BM25IndexBuilder  # noqa: E402
+from codenib.compiler.index_builders import IndexBuilderRegistry, VectorIndexBuilder
+from codenib.compiler.index_compiler import IndexCompiler  # noqa: E402
+from codenib.compiler.index_compiler import IndexCompilerConfig
+from codenib.compiler.manifest import MANIFEST_FILENAME  # noqa: E402
+from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.dataset.codenib_base import CodeNibBaseDataset  # noqa: E402
-from codenib.web.config import (  # noqa: E402
-    CACHE_DIR_NAME,
-    RepoEntry,
-    load_config,
-    save_registry,
-)
+from codenib.web.config import RepoEntry  # noqa: E402
+from codenib.web.config import CACHE_DIR_NAME, load_config, save_registry
 
 # Map dataset language_group -> tree-sitter chunker languages.
 # Keys are normalized single-label tokens (lower-case, no slashes). The dataset
@@ -170,6 +158,24 @@ def _count_files(repo_path: str) -> int:
     for _, _, files in os.walk(repo_path):
         count += len(files)
     return count
+
+
+def _vector_builder(cfg, languages: List[str]) -> VectorIndexBuilder:
+    """Build with the same explicit embedding route the Web runtime reopens."""
+
+    runtime_kwargs = {}
+    if cfg.embedding_api_key:
+        # Runtime-only; VectorIndexBuilder excludes this mapping from its
+        # persisted compatibility identity and manifest metadata.
+        runtime_kwargs["api_key"] = cfg.embedding_api_key
+    return VectorIndexBuilder(
+        languages=languages,
+        embedding_model=cfg.embedding_model,
+        embedding_provider=cfg.embedding_provider,
+        embedding_dimension=cfg.embedding_dimension,
+        embedding_endpoint=cfg.embedding_base_url,
+        embedding_runtime_kwargs=runtime_kwargs,
+    )
 
 
 def build_one_prebuilt(cfg, row, force: bool) -> RepoEntry:
@@ -303,14 +309,7 @@ def build_one(cfg, row, force: bool) -> RepoEntry:
         builders = IndexBuilderRegistry()
         builders.register("bm25", BM25IndexBuilder(languages=languages))
         if "vector" in index_types:
-            builders.register(
-                "vector",
-                VectorIndexBuilder(
-                    languages=languages,
-                    embedding_model=cfg.embedding_model,
-                    embedding_dimension=cfg.embedding_dimension,
-                ),
-            )
+            builders.register("vector", _vector_builder(cfg, languages))
         compiler = IndexCompiler(
             builders,
             IndexCompilerConfig(index_types=index_types, languages=languages),
@@ -326,14 +325,7 @@ def build_one(cfg, row, force: bool) -> RepoEntry:
         builders = IndexBuilderRegistry()
         builders.register("bm25", BM25IndexBuilder(languages=languages))
         if "vector" in index_types:
-            builders.register(
-                "vector",
-                VectorIndexBuilder(
-                    languages=languages,
-                    embedding_model=cfg.embedding_model,
-                    embedding_dimension=cfg.embedding_dimension,
-                ),
-            )
+            builders.register("vector", _vector_builder(cfg, languages))
         compiler = IndexCompiler(
             builders,
             IndexCompilerConfig(index_types=index_types, languages=languages),
