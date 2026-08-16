@@ -425,6 +425,27 @@ class _InstrumentedCAS(LocalCAS):
             raise StorageIntegrityError("injected final receipt failure")
         return super().verify_receipt(expected)
 
+    def retain_receipts(
+        self,
+        expected: tuple[BlobInfo, ...],
+        callback: Callable[[], _Result],
+    ) -> _Result:
+        self.state.setdefault("events", []).append(("retention", "request"))
+
+        def retained() -> _Result:
+            assert not self.state.get("retention_active", False)
+            assert self.receipt_counts
+            assert set(self.receipt_counts.values()) == {1}
+            self.state["retention_active"] = True
+            self.state.setdefault("events", []).append(("retention", "enter"))
+            try:
+                return callback()
+            finally:
+                self.state["retention_active"] = False
+                self.state.setdefault("events", []).append(("retention", "exit"))
+
+        return super().retain_receipts(expected, retained)
+
 
 class _InstrumentedCatalog(SQLiteCatalog):
     def __init__(self, path: Path, state: dict[str, Any]) -> None:
@@ -436,6 +457,9 @@ class _InstrumentedCatalog(SQLiteCatalog):
         assert self.state.get(
             "consume_returned", True
         ), f"catalog {name} ran before retained context consume postflight"
+        assert self.state.get(
+            "retention_active", False
+        ), f"catalog {name} ran outside the object retention scope"
         self.state["catalog_started"] = True
         self.state.setdefault("events", []).append(("catalog", name))
 
@@ -551,6 +575,9 @@ class _BackendTripwire:
 
     def verify_receipt(self, *args: Any, **kwargs: Any) -> Any:
         return self._called("verify_receipt")
+
+    def retain_receipts(self, *args: Any, **kwargs: Any) -> Any:
+        return self._called("retain_receipts")
 
     def create_namespace(self, *args: Any, **kwargs: Any) -> Any:
         return self._called("create_namespace")

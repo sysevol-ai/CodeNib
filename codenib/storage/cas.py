@@ -68,8 +68,9 @@ class BlobInfo:
     """Point-in-time identity receipt for one immutable CAS object.
 
     This value is not a retention lease.  Revalidate it at each later metadata
-    boundary and authenticate bytes inside the actual read operation until an
-    explicit pin contract exists.
+    boundary and authenticate bytes inside the actual read operation.  Use
+    :meth:`LocalCAS.retain_receipts` when catalog publication needs a bounded
+    retention scope.
     """
 
     digest: str
@@ -629,6 +630,44 @@ class LocalCAS:
                 f"verified CAS object receipt does not match expected receipt: {digest}"
             )
         return observed
+
+    def retain_receipts(
+        self,
+        expected: tuple[BlobInfo, ...],
+        callback: Callable[[], _CASResult],
+    ) -> _CASResult:
+        """Run *callback* while exact receipts are protected from local GC.
+
+        LocalCAS has no garbage collector today.  The lifecycle lock is the
+        retention fence that any future local reclamation path must share.
+        Verification and the callback run under one cancellation-safe lock, so
+        no compliant collector can enter between the receipt gate and catalog
+        publication.
+        """
+
+        if type(expected) is not tuple:
+            raise TypeError("retained object receipts must be an exact tuple")
+        if not expected:
+            raise StorageValidationError("retained object receipts must not be empty")
+        if not callable(callback):
+            raise TypeError("retained object callback must be callable")
+        receipts = tuple(expected)
+        for receipt in receipts:
+            if type(receipt) is not BlobInfo:
+                raise TypeError("retained object receipt must be BlobInfo")
+
+        def retained() -> _CASResult:
+            seen: set[str] = set()
+            for receipt in receipts:
+                verified = self.verify_receipt(receipt)
+                if verified.digest in seen:
+                    raise StorageValidationError(
+                        "retained object receipts must have unique digests"
+                    )
+                seen.add(verified.digest)
+            return callback()
+
+        return self._run_lifecycle(retained)
 
     def materialize(self, digest: str, destination: str | Path) -> Path:
         """Atomically copy a verified object to a regular destination path."""

@@ -253,11 +253,57 @@ def test_object_receipt_revalidation_is_executable_and_does_not_pin_lifetime(
 
     # A BlobInfo is an immutable identity receipt, not a retention lease.  A
     # future GC may remove unpinned bytes, so each read boundary must execute
-    # the exact-receipt gate again instead of inferring a pin from API shape.
+    # the exact-receipt gate again instead of inferring a pin from BlobInfo.
     (object_store.root / receipt.storage_key).unlink()
     with pytest.raises(FileNotFoundError):
         object_store.verify_receipt(receipt)
     assert verified == [receipt.digest, receipt.digest, receipt.digest]
+
+
+def test_retained_receipt_scope_verifies_before_callback_and_is_bounded(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    object_store = LocalCAS(tmp_path / "objects")
+    receipt = object_store.put_bytes(b"retained publication payload")
+    events: list[object] = []
+    real_verify = object_store.verify_receipt
+
+    def record_verify(expected: BlobInfo) -> BlobInfo:
+        events.append(("verify", expected.digest))
+        return real_verify(expected)
+
+    monkeypatch.setattr(object_store, "verify_receipt", record_verify)
+    callback_error = RuntimeError("publication failed")
+
+    def fail_publication() -> None:
+        events.append("callback")
+        raise callback_error
+
+    with pytest.raises(RuntimeError) as caught:
+        object_store.retain_receipts((receipt,), fail_publication)
+    assert caught.value is callback_error
+    assert events == [("verify", receipt.digest), "callback"]
+
+    events.clear()
+    assert object_store.retain_receipts((receipt,), lambda: "published") == "published"
+    assert events == [("verify", receipt.digest)]
+
+    callback_calls = 0
+
+    def forbidden_callback() -> None:
+        nonlocal callback_calls
+        callback_calls += 1
+
+    with pytest.raises(TypeError, match="exact tuple"):
+        object_store.retain_receipts([receipt], forbidden_callback)  # type: ignore[arg-type]
+    with pytest.raises(StorageValidationError, match="must not be empty"):
+        object_store.retain_receipts((), forbidden_callback)
+    with pytest.raises(StorageValidationError, match="unique digests"):
+        object_store.retain_receipts((receipt, receipt), forbidden_callback)
+    with pytest.raises(TypeError, match="must be BlobInfo"):
+        object_store.retain_receipts((object(),), forbidden_callback)  # type: ignore[arg-type]
+    assert callback_calls == 0
 
 
 def test_object_receipt_revalidation_rejects_equality_forged_subclasses(

@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import (
     Any,
     BinaryIO,
+    Callable,
     Iterable,
     Mapping,
     Protocol,
     Sequence,
+    TypeVar,
     runtime_checkable,
 )
 
@@ -32,6 +34,7 @@ RETAINED_IMPORT_RESPONSE_MAX_NODES = 250_000
 RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS = 64 * 1024 * 1024
 RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS = 4_096
 RETAINED_IMPORT_CATALOG_CONTRACT = "codenib.retained-import-catalog.v1"
+_RetainedResult = TypeVar("_RetainedResult")
 
 
 def snapshot_retained_import_response(value: object, *, label: str) -> Any:
@@ -114,7 +117,8 @@ class ObjectStore(Protocol):
     :class:`ReceiptVerifyingObjectStore` without breaking existing object-store
     implementations.  A separate ``open`` after verification is not pinned by
     that earlier result.  This protocol gains a longer lifetime only with an
-    explicit pin or lease.
+    explicit pin or lease.  Publication coordinators use the additive
+    :class:`RetainedImportObjectStore` callback scope for that longer lifetime.
     """
 
     def put_bytes(self, data: bytes) -> BlobInfo: ...
@@ -185,7 +189,21 @@ class RetainedImportObjectStore(
     protocol shape until they explicitly implement retained imports.
     """
 
-    pass
+    def retain_receipts(
+        self,
+        expected: tuple[BlobInfo, ...],
+        callback: Callable[[], _RetainedResult],
+    ) -> _RetainedResult:
+        """Verify and retain exact objects while *callback* publishes them.
+
+        Implementations must serialize garbage collection or reclamation
+        against this scope.  Every receipt is revalidated before ``callback``
+        starts, and its canonical storage key remains resolvable until the
+        callback returns or raises.  This callback-shaped lease prevents a
+        caller from accidentally escaping a backend-specific pin token.
+        """
+
+        ...
 
 
 @runtime_checkable

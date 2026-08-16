@@ -116,6 +116,7 @@ _OBJECT_STORE_METHODS = (
     "materialize",
     "put_chunks",
     "verify_receipt",
+    "retain_receipts",
 )
 _CATALOG_METHODS = (
     "retained_import_contract",
@@ -1354,7 +1355,7 @@ def _validate_snapshot_summary(
     return published_at
 
 
-def _register_and_publish(
+def _register_and_publish_retained(
     prepared: _PreparedImport,
     *,
     plan: RepoManifestImportPlan,
@@ -1369,8 +1370,6 @@ def _register_and_publish(
 ) -> RepoManifestImportResult:
     stored_objects = prepared.stored_objects
     objects_by_digest = {stored.record.digest: stored for stored in stored_objects}
-    for stored in stored_objects:
-        _verify_exact_receipt(object_store, stored)
 
     namespace_id = repository_identity.namespace_id
     _exact_backend_id(
@@ -1443,8 +1442,9 @@ def _register_and_publish(
             "view generation ID",
         )
 
-    # Receipts are observations, not pins.  Revalidate every object at the
-    # final boundary immediately before the catalog's atomic snapshot/ref CAS.
+    # The caller holds the backend retention fence around this whole function.
+    # Revalidate every object once more at the final boundary to detect storage
+    # corruption before the catalog's atomic snapshot/ref CAS.
     for stored in stored_objects:
         _verify_exact_receipt(object_store, stored)
 
@@ -1532,6 +1532,38 @@ def _register_and_publish(
             )
         ),
     )
+
+
+def _register_and_publish(
+    prepared: _PreparedImport,
+    *,
+    plan: RepoManifestImportPlan,
+    catalog: RetainedImportCatalog,
+    object_store: RetainedImportObjectStore,
+    repository_key: str,
+    namespace_name: str,
+    ref_name: str,
+    expected_generation: int,
+    repository_identity: RepositoryIdentity,
+    source_identity: SourceRevision,
+) -> RepoManifestImportResult:
+    receipts = tuple(stored.receipt for stored in prepared.stored_objects)
+
+    def publish_retained() -> RepoManifestImportResult:
+        return _register_and_publish_retained(
+            prepared,
+            plan=plan,
+            catalog=catalog,
+            object_store=object_store,
+            repository_key=repository_key,
+            namespace_name=namespace_name,
+            ref_name=ref_name,
+            expected_generation=expected_generation,
+            repository_identity=repository_identity,
+            source_identity=source_identity,
+        )
+
+    return object_store.retain_receipts(receipts, publish_retained)
 
 
 def import_retained_repo_manifest(
