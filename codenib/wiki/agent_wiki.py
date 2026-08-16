@@ -66,6 +66,7 @@ from .quality import page_quality_report as _page_quality_report
 from .quality import prose_terms as _prose_terms
 from .quality import redundancy_terms as _redundancy_terms
 from .quality import section_synthesis_report as _section_synthesis_report
+from .quality import sentence_boundary_count as _sentence_boundary_count
 
 logger = get_logger(__name__)
 
@@ -2491,7 +2492,7 @@ def _plan_quality_warnings(
         warnings.append("page thesis must be a source-grounded claim")
     else:
         thesis_statement, _thesis_ids = admitted_thesis
-        if len(re.findall(r"[.!?](?=\s|$)", thesis_statement)) > 1:
+        if _sentence_boundary_count(thesis_statement) > 1:
             warnings.append("page thesis must contain exactly one sentence")
 
     claims = [claim for section in sections for claim in section.get("claims") or []]
@@ -2504,7 +2505,7 @@ def _plan_quality_warnings(
     narrates_relation_anchors = False
     for claim in claims:
         statement = str(claim.get("statement") or "")
-        if len(re.findall(r"[.!?](?=\s|$)", statement)) > 1:
+        if _sentence_boundary_count(statement) > 1:
             multi_sentence_claims.append(statement)
         narrates_evidence_ids |= bool(re.search(r"(?<!\[)\b[ER]\d+\b", statement))
         narrates_relation_anchors |= bool(
@@ -5573,6 +5574,11 @@ class AgentWiki:
             generation_reason = "quality_guard"
 
         citations = self._citation_payload(evidence)
+        # ``RelationItem`` is a frozen, slotted dataclass and intentionally has
+        # no ``__dict__``.  Reuse the canonical evidence serializer so a cold
+        # page with graph relations cannot finish an otherwise successful model
+        # call and then fail while planning its optional media metadata.
+        evidence_payload = evidence_metadata(evidence, relations)
         total_ms = (perf_counter() - generation_started) * 1000
         generation_metrics = {
             "total_ms": round(total_ms, 1),
@@ -5590,9 +5596,9 @@ class AgentWiki:
                 page_id=str(meta.get("id") or ""),
                 title=str(meta.get("title") or meta.get("id") or ""),
                 citations=citations,
-                relations=[item.__dict__ for item in relations],
+                relations=evidence_payload["relations"],
             ),
-            "evidence": evidence_metadata(evidence, relations),
+            "evidence": evidence_payload,
             "generation": {
                 "mode": "generated" if generated else "degraded",
                 "model": self._model,

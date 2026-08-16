@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchEdgeLabel, fetchWikiPage, shouldWithholdWikiPage } from "./api";
+import {
+  fetchEdgeLabel,
+  fetchWikiPage,
+  materializedWikiMediaSlots,
+  shouldWithholdWikiPage,
+  type WikiMediaSlot,
+} from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -163,5 +169,38 @@ describe("shouldWithholdWikiPage", () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe("materializedWikiMediaSlots", () => {
+  const planned = {
+    id: "overview-concept",
+    kind: "image",
+    placement: "section",
+    title: "Overview concept",
+    purpose: "Explain the source-linked flow.",
+    source_citations: ["src/runtime.py"],
+    prompt: "Draw the runtime flow.",
+    human_prior: { editable: true, notes: [] },
+  } satisfies WikiMediaSlot;
+
+  it("hides internal plans and keeps only generated reader assets", () => {
+    const generated = {
+      ...planned,
+      id: "overview-generated",
+      asset: {
+        slot_id: "overview-generated",
+        kind: "image",
+        uri: "/api/repos/demo/wiki-media/overview/generated.svg",
+        mime_type: "image/svg+xml",
+        model: "local/svg",
+        provider: "local",
+        prompt: "Draw the runtime flow.",
+        source_citations: ["src/runtime.py"],
+      },
+    } satisfies WikiMediaSlot;
+
+    expect(materializedWikiMediaSlots([planned, generated])).toEqual([generated]);
+    expect(materializedWikiMediaSlots(undefined)).toEqual([]);
   });
 });

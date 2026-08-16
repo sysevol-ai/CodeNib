@@ -193,6 +193,18 @@ export interface WikiMediaAsset {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Planned media slots are internal generation metadata, not reader content.
+ * Only expose slots that actually have a materialized asset in the Wiki UI.
+ */
+export function materializedWikiMediaSlots(
+  slots: WikiMediaSlot[] | null | undefined,
+): WikiMediaSlot[] {
+  return (slots ?? []).filter(
+    (slot) => typeof slot.asset?.uri === "string" && slot.asset.uri.trim().length > 0,
+  );
+}
+
 /** Keep diagnostic or structurally invalid prose out of the reader surface. */
 export function shouldWithholdWikiPage(page: WikiPage | null | undefined): boolean {
   if (page?.generation?.mode !== "degraded") return false;

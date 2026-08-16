@@ -12,6 +12,7 @@ import {
   fetchWikiGraph,
   fetchWikiPage,
   fetchWikiTree,
+  materializedWikiMediaSlots,
   repoRelative,
   shouldWithholdWikiPage,
   type CodemapResponse,
@@ -245,8 +246,9 @@ function MultimodalMedia({
   slots: WikiMediaSlot[];
   repo: RepoInfo | null;
 }) {
-  if (!slots.length) return null;
-  const [primary, ...secondary] = slots;
+  const visibleSlots = materializedWikiMediaSlots(slots);
+  if (!visibleSlots.length) return null;
+  const [primary, ...secondary] = visibleSlots;
   const primaryAssetUrl = primary?.asset?.uri
     ? mediaAssetUrl(primary.asset.uri)
     : null;
@@ -255,12 +257,14 @@ function MultimodalMedia({
     <section className="wiki-media" aria-labelledby="wiki-media-title">
       <div className="wiki-media-head">
         <div>
-          <h2 id="wiki-media-title">Multimodal CodeWiki</h2>
+          <h2 id="wiki-media-title">Source-linked visuals</h2>
           <p>
-            Source-grounded diagrams, illustrations, and storyboard hooks for this wiki page.
+            Generated visual explanations grounded in the source citations on this page.
           </p>
         </div>
-        <span className="wiki-media-count">{slots.length} media slots</span>
+        <span className="wiki-media-count">
+          {visibleSlots.length} visual{visibleSlots.length === 1 ? "" : "s"}
+        </span>
       </div>
 
       {primary && (
@@ -297,7 +301,6 @@ function MultimodalMedia({
               <div className="wiki-media-meta">
                 <span>{mediaKindLabel(slot.kind)}</span>
                 <span>{slot.placement}</span>
-                {slot.human_prior?.editable && <span>human-prior ready</span>}
               </div>
               <h3>{slot.title}</h3>
               <p>{slot.purpose}</p>
@@ -330,10 +333,6 @@ function MultimodalMedia({
                   })}
                 </div>
               )}
-              <details className="wiki-media-prompt">
-                <summary>Generation prompt</summary>
-                <p>{slot.prompt}</p>
-              </details>
             </div>
           </article>
         ))}

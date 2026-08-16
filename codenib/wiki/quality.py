@@ -46,6 +46,25 @@ _REFERENCE_NARRATION = re.compile(
     re.IGNORECASE,
 )
 _FRAMING_SECTION_TITLES = frozenset({"purpose and scope", "at a glance"})
+_PROTECTED_SENTENCE_FRAGMENT = re.compile(
+    r"`[^`\n]*`|(?<!\w)'[^'\n]+'(?!\w)|(?<!\w)\"[^\"\n]+\"(?!\w)"
+)
+
+
+def sentence_boundary_count(text: str) -> int:
+    """Count prose sentence endings without treating literals as prose.
+
+    Fact-plan claims routinely describe prompts such as ``'Overwrite? (y/N):'``
+    or code containing punctuation.  Those literals belong to the surrounding
+    sentence; counting their punctuation as another sentence creates an
+    impossible repair loop for otherwise valid source-backed claims.
+    """
+
+    scrubbed = _PROTECTED_SENTENCE_FRAGMENT.sub(
+        lambda match: re.sub(r"[.!?]", "", match.group(0)),
+        text or "",
+    )
+    return len(re.findall(r"[.!?](?=\s|$)", scrubbed))
 
 
 def _without_internal_wiki_navigation(markdown: str) -> str:
@@ -537,7 +556,7 @@ def plan_narrative_report(
     }
     for claim in claims:
         statement = str(claim.get("statement") or "")
-        if len(re.findall(r"[.!?](?=\s|$)", statement)) > 1:
+        if sentence_boundary_count(statement) > 1:
             multi_sentence_claims.append(statement)
         role = str(claim.get("role") or infer_claim_role(statement))
         roles[role] = roles.get(role, 0) + 1
@@ -593,7 +612,7 @@ def plan_narrative_report(
     thesis_statement = (
         str(thesis.get("statement") or "") if isinstance(thesis, dict) else ""
     )
-    thesis_sentence_count = len(re.findall(r"[.!?](?=\s|$)", thesis_statement))
+    thesis_sentence_count = sentence_boundary_count(thesis_statement)
     thesis_grounded = bool(
         isinstance(thesis, dict)
         and thesis_statement.strip()
@@ -1006,5 +1025,6 @@ __all__ = [
     "section_narrative_report",
     "section_sentence_redundancy_report",
     "section_synthesis_report",
+    "sentence_boundary_count",
     "summarize_page_audits",
 ]

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from codenib.wiki.evidence import RelationItem, evidence_metadata
 from codenib.wiki.multimodal import plan_media_slots
 
 
@@ -40,6 +41,32 @@ def test_media_slots_plan_storyboard_when_relations_are_available():
     assert [slot["kind"] for slot in slots] == ["image", "storyboard"]
     assert slots[1]["id"] == "runtime-flow-storyboard"
     assert "components hand work" in slots[1]["purpose"]
+
+
+def test_media_planning_serializes_slotted_relation_evidence():
+    relation = RelationItem(
+        id="R1",
+        source="src/runtime.py:dispatch()",
+        target="src/worker.py:run()",
+        anchors=("src/runtime.py:12",),
+    )
+    metadata = evidence_metadata([], [relation])
+
+    slots = plan_media_slots(
+        page_id="runtime",
+        title="Runtime",
+        relations=metadata["relations"],
+    )
+
+    assert metadata["relations"] == [
+        {
+            "id": "R1",
+            "source": "src/runtime.py:dispatch()",
+            "target": "src/worker.py:run()",
+            "anchors": ("src/runtime.py:12",),
+        }
+    ]
+    assert [slot["kind"] for slot in slots] == ["storyboard"]
 
 
 def test_media_slot_planning_only_probes_one_relation_and_skips_bad_citations():

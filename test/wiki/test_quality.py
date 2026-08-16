@@ -757,6 +757,36 @@ def test_plan_narrative_rejects_multi_sentence_claims():
     assert report["plan_role_integrity_valid"] is False
 
 
+def test_plan_narrative_ignores_sentence_punctuation_inside_literals():
+    statement = (
+        "`generate_config_file()` prints the path and asks "
+        "'Overwrite? (y/N):' before replacing it."
+    )
+    report = plan_narrative_report(
+        {
+            "thesis": {
+                "statement": "`generate_config_file()` owns config generation",
+                "evidence": ["E1"],
+            },
+            "sections": [
+                {
+                    "title": "Overwrite protection",
+                    "claims": [
+                        {
+                            "role": "contract",
+                            "statement": statement,
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert report["multi_sentence_claims"] == []
+    assert report["plan_role_integrity_valid"] is True
+
+
 def test_plan_narrative_rejects_relation_only_non_flow_claims():
     report = plan_narrative_report(
         {
