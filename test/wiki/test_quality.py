@@ -393,6 +393,36 @@ def test_sentence_redundancy_allows_parallel_named_config_variants():
     assert report["sentence_redundancy_valid"] is True
 
 
+def test_sentence_redundancy_allows_parallel_container_cases():
+    report = section_sentence_redundancy_report(
+        "# Lifecycle\n\n"
+        "## Recursive cleanup\n\n"
+        "For arrays, `jv_free` pushes each element onto a pending stack and "
+        "then frees the array structure. "
+        "For objects, `jv_free` frees each key string and pushes the matching "
+        "value onto the pending stack before freeing the object structure."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
+def test_sentence_redundancy_keeps_punctuation_inside_code_literals():
+    report = section_sentence_redundancy_report(
+        "# Recompilation\n\n"
+        "## State reuse\n\n"
+        "`run_jq_recompile_tests()` demonstrates reuse by compiling different "
+        "programs on the same state. "
+        "`run_jq_recompile_tests()` initializes a state and compiles `. + 1`, "
+        "then recompiles with `. * 2` on that state. "
+        "`run_jq_recompile_tests()` also exercises `jq_compile_args()` before "
+        "returning to `jq_compile()`."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
 def test_prose_integrity_rejects_internal_ids_and_private_user_entries():
     report = prose_integrity_report(
         "# Runtime\n\n"
@@ -452,6 +482,18 @@ def test_prose_integrity_allows_public_entry_with_named_private_helpers():
         "# Solvers\n\n"
         "The package uses `solve` as the public entry point, while specialized "
         "helpers such as `_tsolve` own per-domain work. [E1]"
+    )
+
+    assert report["private_entry_sentences"] == []
+    assert report["prose_integrity_valid"] is True
+
+
+def test_prose_integrity_allows_private_work_in_a_mixed_entry_section():
+    report = prose_integrity_report(
+        "# Resampling\n\n"
+        "## Entry Points and Shared Construction\n\n"
+        "`DataArray.resample()` passes its indexer to `Resampler`. [R1]\n\n"
+        "`DataWithCoords._resample()` constructs the resample object. [E1]"
     )
 
     assert report["private_entry_sentences"] == []

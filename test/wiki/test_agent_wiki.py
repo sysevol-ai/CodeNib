@@ -2690,6 +2690,45 @@ def test_page_plan_rejects_private_helper_as_public_entrypoint():
     ]
 
 
+def test_page_plan_allows_private_work_in_a_mixed_entry_section():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="core/resample.py",
+            start_line=10,
+            end_line=20,
+            symbol="DataWithCoords._resample",
+            kind="method",
+            content="def _resample(self): return Resampler(self)",
+        )
+    ]
+    plan = {
+        "sections": [
+            {
+                "title": "Entry Points and Shared Construction",
+                "claims": [
+                    {
+                        "statement": (
+                            "`DataWithCoords._resample()` constructs the "
+                            "resample object"
+                        ),
+                        "role": "responsibility",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ]
+    }
+
+    warnings = _plan_quality_warnings(
+        {"id": "resampling"},
+        plan,
+        evidence,
+    )
+
+    assert not any("private helper" in warning for warning in warnings)
+
+
 def test_page_plan_allows_a_public_entry_to_delegate_to_a_private_helper():
     evidence = [
         EvidenceItem(
@@ -3272,6 +3311,57 @@ def test_plan_support_drops_an_unproved_flow_but_keeps_local_facts():
             "evidence": ["E2"],
         }
     ]
+
+
+def test_plan_support_downgrades_a_mislabeled_local_state_claim():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="sklearn/feature_extraction/text.py",
+            start_line=10,
+            end_line=18,
+            symbol="TfidfVectorizer.idf_",
+            kind="property",
+            content=(
+                "@idf_.setter\n"
+                "def idf_(self, value):\n"
+                "    if not hasattr(self, '_tfidf'):\n"
+                "        self._tfidf = TfidfTransformer()\n"
+                "    self._tfidf.idf_ = value"
+            ),
+        )
+    ]
+    plan = {
+        "sections": [
+            {
+                "title": "Configuration",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "The `idf_` setter creates a `TfidfTransformer` if "
+                            "one does not exist and assigns the provided IDF "
+                            "values to it"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ]
+    }
+
+    normalized = _normalize_plan_support(plan, evidence, [])
+
+    claim = normalized["sections"][0]["claims"][0]
+    assert claim["role"] == "component"
+    assert not any(
+        warning.startswith("flow claim")
+        for warning in _plan_quality_warnings(
+            {"id": "text-vectorization"},
+            normalized,
+            evidence,
+        )
+    )
 
 
 def test_plan_support_drops_method_to_owner_generalization():

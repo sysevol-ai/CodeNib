@@ -44,6 +44,7 @@ from .evidence import (
     evidence_metadata,
     grounding_report,
     infer_claim_role,
+    is_entry_only_section_title,
     is_interaction_claim,
     parse_fact_plan,
     promotional_phrases,
@@ -2264,6 +2265,20 @@ def _normalize_plan_support(
             )
             claim["statement"] = statement
             role = str(claim.get("role") or infer_claim_role(statement))
+            inferred_role = infer_claim_role(statement)
+            code_identifiers = set(re.findall(r"`([^`\n]+)`", statement))
+            if (
+                role == "flow"
+                and not is_interaction_claim(statement)
+                and inferred_role != "flow"
+                and len(code_identifiers) >= 2
+            ):
+                # Model role labels are hints, not evidence. A local statement
+                # can name its owner and stored type without asserting a
+                # component handoff; retain the source-backed fact under its
+                # deterministic role instead of forcing an impossible repair.
+                role = inferred_role
+                claim["role"] = role
             if role != "flow":
                 if (
                     not cited_evidence
@@ -2375,9 +2390,7 @@ def _plan_quality_warnings(
     )
     for section in sections:
         title = str(section.get("title") or "untitled")
-        entry_section = bool(
-            re.search(r"\b(?:public|entry\s+points?)\b", title, re.IGNORECASE)
-        )
+        entry_section = is_entry_only_section_title(title)
         if (
             not page_is_about_helpers
             and public_evidence >= 2

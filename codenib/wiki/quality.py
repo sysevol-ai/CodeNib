@@ -15,6 +15,7 @@ from .evidence import (
     describes_private_entry,
     evidence_matches_claim,
     infer_claim_role,
+    is_entry_only_section_title,
     is_interaction_claim,
     is_internal_wiki_navigation,
     promotional_phrases,
@@ -49,6 +50,10 @@ _FRAMING_SECTION_TITLES = frozenset({"purpose and scope", "at a glance"})
 _PROTECTED_SENTENCE_FRAGMENT = re.compile(
     r"`[^`\n]*`|(?<!\w)'[^'\n]+'(?!\w)|(?<!\w)\"[^\"\n]+\"(?!\w)"
 )
+_SENTENCE_LITERAL_TRANSLATION = str.maketrans(
+    {".": "\ue000", "!": "\ue001", "?": "\ue002"}
+)
+_SENTENCE_LITERAL_RESTORE = str.maketrans({"\ue000": ".", "\ue001": "!", "\ue002": "?"})
 
 
 def sentence_boundary_count(text: str) -> int:
@@ -110,8 +115,13 @@ def _prose_sentences(markdown: str) -> list[str]:
         without_fences,
         flags=re.MULTILINE,
     )
+    protected = _PROTECTED_SENTENCE_FRAGMENT.sub(
+        lambda match: match.group(0).translate(_SENTENCE_LITERAL_TRANSLATION),
+        without_headings,
+    )
     sentences = []
-    for sentence in re.split(r"(?<=[.!?])\s+", without_headings):
+    for sentence in re.split(r"(?<=[.!?])\s+", protected):
+        sentence = sentence.translate(_SENTENCE_LITERAL_RESTORE)
         cleaned = _EVIDENCE_MARKER.sub("", sentence)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         plain = re.sub(r"[`*_[\]()#>-]", "", cleaned).strip()
@@ -182,6 +192,13 @@ def leading_code_subject(text: str) -> str:
     if not match:
         return ""
     return re.sub(r"\([^)]*\)$", "", match.group(1)).casefold()
+
+
+def leading_parallel_subject(text: str) -> str:
+    """Return a short subject from a leading ``For ...`` comparison clause."""
+
+    match = re.match(r"^\s*for\s+([a-z][a-z0-9_-]*)\b", text, re.IGNORECASE)
+    return match.group(1).casefold() if match else ""
 
 
 def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
@@ -414,6 +431,9 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
             for sentence in sentences
         ]
         subjects = [leading_code_subject(sentence) for sentence in sentences]
+        parallel_subjects = [
+            leading_parallel_subject(sentence) for sentence in sentences
+        ]
         interactions = [is_interaction_claim(sentence) for sentence in sentences]
         for left in range(len(sentences)):
             for right in range(left + 1, len(sentences)):
@@ -433,10 +453,20 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
                     and subjects[right]
                     and subjects[left] != subjects[right]
                 )
+                distinct_parallel_subjects = bool(
+                    parallel_subjects[left]
+                    and parallel_subjects[right]
+                    and parallel_subjects[left] != parallel_subjects[right]
+                )
                 distinct_code_subjects = bool(
                     identifiers[left]
                     and identifiers[right]
                     and identifiers[left].isdisjoint(identifiers[right])
+                )
+                distinct_named_details = bool(
+                    identifiers[left]
+                    and identifiers[right]
+                    and len(identifiers[left] ^ identifiers[right]) >= 2
                 )
                 # A handoff and a local responsibility can legitimately name
                 # the same subject and data. Treating their shared vocabulary
@@ -447,7 +477,9 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
                     overlap >= 0.7
                     and not distinct_handoffs
                     and not distinct_named_subjects
+                    and not distinct_parallel_subjects
                     and not distinct_code_subjects
+                    and not distinct_named_details
                     and not distinct_claim_kinds
                 ):
                     repetitions.append(
@@ -486,11 +518,7 @@ def prose_integrity_report(markdown: str) -> dict[str, Any]:
         re.finditer(r"^##\s+(.+?)\s*$", without_citations, flags=re.MULTILINE)
     )
     for index, match in enumerate(section_matches):
-        if not re.search(
-            r"\b(?:public|entry\s+points?)\b",
-            match.group(1),
-            re.IGNORECASE,
-        ):
+        if not is_entry_only_section_title(match.group(1)):
             continue
         end = (
             section_matches[index + 1].start()

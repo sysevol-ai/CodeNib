@@ -207,7 +207,8 @@ _STRONG_HANDOFF_RE = re.compile(
     r"forward(?:s|ed|ing)?\s+.+\s+to|hand(?:s|ed)?\s+(?:off|to)|"
     r"interact(?:s|ed|ing)?\s+with|"
     r"load(?:s|ed|ing)?\s+.+\s+from|pass(?:es|ed|ing)?\s+.+\s+to|"
-    r"provid(?:e|es|ed|ing)\s+.+\s+to|"
+    # Exclude adjectival ``provided values``; present-tense handoffs remain.
+    r"provid(?:e|es|ing)\s+.+\s+to|"
     r"quer(?:y|ies|ied|ying)\s+.+\s+(?:through|via)|"
     r"read(?:s)?\s+.+\s+from|receiv(?:e|es|ed|ing)\s+.+\s+from|"
     r"retriev(?:e|es|ed|ing)\s+.+\s+from|"
@@ -226,6 +227,10 @@ _COMPONENT_TERM_RE = re.compile(
 )
 _ENTRY_RE = re.compile(
     r"\b(command|entry\s*point|endpoint|public|request|users?)\b",
+    re.IGNORECASE,
+)
+_ENTRY_ONLY_SECTION_RE = re.compile(
+    r"(?:public(?:\s+(?:api|entry\s+points?))?|entry\s+points?)",
     re.IGNORECASE,
 )
 _EXPLICIT_ENTRY_RE = re.compile(
@@ -520,6 +525,12 @@ def describes_private_entry(statement: str, *, role: str = "") -> bool:
         or after_entry.search(text[match.end() : match.end() + 64])
         for match in private_identifiers
     )
+
+
+def is_entry_only_section_title(title: str) -> bool:
+    """Whether an entire section is framed solely as a public entry surface."""
+
+    return bool(_ENTRY_ONLY_SECTION_RE.fullmatch((title or "").strip()))
 
 
 def promotional_phrases(text: str) -> List[str]:
@@ -1062,6 +1073,7 @@ __all__ = [
     "evidence_metadata",
     "evidence_matches_claim",
     "grounding_report",
+    "is_entry_only_section_title",
     "parse_fact_plan",
     "promotional_phrases",
     "relation_endpoints_named",
