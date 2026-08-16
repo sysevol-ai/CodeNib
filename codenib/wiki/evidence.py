@@ -184,7 +184,8 @@ _PROMOTIONAL_RE = re.compile(
 )
 _FLOW_RE = re.compile(
     r"\b(call(?:s|ed|ing)?|delegat(?:e|es|ed|ing)|dispatch(?:es|ed|ing)?|"
-    r"feed(?:s|ing)?|hand(?:s|ed)?\s+(?:off|to)|"
+    r"feed(?:s|ing)?|forward(?:s|ed|ing)?\s+.+\s+to|"
+    r"hand(?:s|ed)?\s+(?:off|to)|"
     r"interact(?:s|ed|ing)?\s+with|invok(?:e|es|ed|ing)|"
     r"load(?:s|ed|ing)?\s+.+\s+from|pass(?:es|ed|ing)?\s+.+\s+to|"
     r"publish(?:es|ed)?|read(?:s)?\s+.+\s+from|"
@@ -202,7 +203,8 @@ _RETURN_FLOW_RE = re.compile(
 )
 _STRONG_HANDOFF_RE = re.compile(
     r"\b(?:"
-    r"dispatch(?:es|ed|ing)?\s+.+\s+to|hand(?:s|ed)?\s+(?:off|to)|"
+    r"dispatch(?:es|ed|ing)?\s+.+\s+to|"
+    r"forward(?:s|ed|ing)?\s+.+\s+to|hand(?:s|ed)?\s+(?:off|to)|"
     r"interact(?:s|ed|ing)?\s+with|"
     r"load(?:s|ed|ing)?\s+.+\s+from|pass(?:es|ed|ing)?\s+.+\s+to|"
     r"provid(?:e|es|ed|ing)\s+.+\s+to|"

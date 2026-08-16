@@ -579,6 +579,65 @@ def test_architecture_narrative_admits_a_grounded_component_flow():
     assert quality["valid"] is True
 
 
+def test_topic_narrative_allows_direct_source_backing_for_a_flow():
+    statement = (
+        "`Command.envs()` forwards the provided variables to " "`self.std.envs(vars)`."
+    )
+    plan = {
+        "thesis": {
+            "statement": "`Command` configures spawned process environments",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Environment",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": statement,
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/process/command.rs",
+            start_line=1,
+            end_line=4,
+            symbol="Command.envs",
+            kind="method",
+            content="fn envs(vars) { self.std.envs(vars); }",
+        )
+    ]
+    relations = [
+        RelationItem(
+            id="R1",
+            source="Command.envs()",
+            target="self.std.envs(vars)",
+        )
+    ]
+
+    topic = plan_narrative_report(
+        plan,
+        require_relation_backing=False,
+        relations=relations,
+        evidence_items=evidence,
+    )
+    overview = plan_narrative_report(
+        plan,
+        require_relation_backing=True,
+        relations=relations,
+        evidence_items=evidence,
+    )
+
+    assert topic["supported_interaction_claims"] == 1
+    assert topic["invalid_flow_claims"] == []
+    assert overview["invalid_flow_claims"] == [statement]
+
+
 def test_plan_narrative_rejects_flow_labels_without_a_relation_handoff():
     report = plan_narrative_report(
         {

@@ -2503,6 +2503,7 @@ def _plan_quality_warnings(
     multi_sentence_claims = []
     narrates_evidence_ids = False
     narrates_relation_anchors = False
+    require_relation_backing = meta.get("id") == "overview"
     for claim in claims:
         statement = str(claim.get("statement") or "")
         if _sentence_boundary_count(statement) > 1:
@@ -2549,6 +2550,9 @@ def _plan_quality_warnings(
             known_relation_pair = any(
                 relation_endpoints_named(statement, item) for item in relations
             )
+            source_stated = any(
+                evidence_matches_claim(statement, item) for item in cited_evidence
+            )
             if is_interaction_claim(statement) and (
                 (
                     bool(cited_relations)
@@ -2559,11 +2563,8 @@ def _plan_quality_warnings(
                 )
                 or (
                     not cited_relations
-                    and not known_relation_pair
-                    and any(
-                        evidence_matches_claim(statement, item)
-                        for item in cited_evidence
-                    )
+                    and source_stated
+                    and (not require_relation_backing or not known_relation_pair)
                 )
             ):
                 supported_flows.append(claim)

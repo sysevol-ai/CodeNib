@@ -588,8 +588,8 @@ def plan_narrative_report(
                     (relation_backed and relation_stated)
                     or (
                         not relation_backed
-                        and not known_relation_pair
                         and source_stated
+                        and (not require_relation_backing or not known_relation_pair)
                     )
                 )
             else:
