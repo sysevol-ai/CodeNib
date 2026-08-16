@@ -120,22 +120,34 @@ export default function CodePanel({
   const [internal, setInternal] = useState(0);
   const active = activeProp ?? internal;
   const fragEls = useRef<(HTMLDivElement | null)[]>([]);
-  const firstScroll = useRef(true);
+  const bodyEl = useRef<HTMLDivElement | null>(null);
+  const citationKey = refs
+    .map((c) => `${repoRelative(c.file)}:${c.start_line ?? ""}-${c.end_line ?? ""}`)
+    .join("|");
 
   useEffect(() => {
-    fragEls.current = [];
-  }, [citations]);
+    bodyEl.current?.scrollTo({ top: 0, left: 0 });
+  }, [citationKey]);
 
-  const scrollToFrag = (i: number) =>
-    fragEls.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const scrollToFrag = (i: number) => {
+    const body = bodyEl.current;
+    const target = fragEls.current[i];
+    if (!body || !target) return;
+
+    // Keep navigation inside the code pane. Element.scrollIntoView() also
+    // scrolls outer ancestors, which made the sticky answer column and its
+    // tabs slide across the source while selecting a reference.
+    const bodyRect = body.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    body.scrollTo({
+      top: Math.max(0, body.scrollTop + targetRect.top - bodyRect.top),
+      behavior: "smooth",
+    });
+  };
 
   // Scroll on every selection, even re-selecting the same fragment after the
   // user scrolled away. Keyed on scrollSignal (not active) so it always fires.
   useEffect(() => {
-    if (firstScroll.current) {
-      firstScroll.current = false;
-      return;
-    }
     scrollToFrag(active);
   }, [scrollSignal]);
 
@@ -171,7 +183,7 @@ export default function CodePanel({
           </button>
         ))}
       </div>
-      <div className="codepane-body">
+      <div className="codepane-body" ref={bodyEl}>
         {refs.map((c, i) => (
           <div
             key={i}

@@ -3181,7 +3181,10 @@ a.evidence-row:hover {
 .ask-code {
   position: sticky;
   top: var(--top-h);
-  height: calc(100vh - var(--top-h));
+  /* The fixed composer owns the bottom strip of the viewport. Keeping the
+     source pane above it means its last lines remain readable and clickable. */
+  height: calc(100vh - var(--top-h) - var(--askbar-h));
+  height: calc(100dvh - var(--top-h) - var(--askbar-h));
   overflow: hidden;
   background: #ffffff;
   display: flex;
@@ -3264,6 +3267,11 @@ a.evidence-row:hover {
   .ask-code {
     position: static;
     height: 60vh;
+  }
+  .ask-page .codepane-body {
+    /* On the stacked layout the fixed composer can cross the code pane while
+       the document scrolls; leave enough internal runway for the last line. */
+    padding-bottom: var(--askbar-h);
   }
 }
 
@@ -3810,9 +3818,6 @@ a.codepanel-name:hover {
   background: transparent;
 }
 .frag-head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   padding: 8px 14px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
