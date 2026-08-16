@@ -2653,7 +2653,11 @@ def _plan_quality_warnings(
                 "grounded in its allocated evidence"
             )
     component_claims = role_counts.get("component", 0)
-    if len(claims) >= 4 and component_claims / len(claims) > 0.65:
+    if (
+        len(claims) >= 4
+        and component_claims / len(claims) > 0.65
+        and not supported_flows
+    ):
         warnings.append(
             "page is dominated by isolated component facts instead of a system "
             "explanation"

@@ -378,6 +378,21 @@ def test_sentence_redundancy_allows_parallel_documented_entrypoints():
     assert report["sentence_redundancy_valid"] is True
 
 
+def test_sentence_redundancy_allows_parallel_named_config_variants():
+    report = section_sentence_redundancy_report(
+        "# Templates\n\n"
+        "## Config variants\n\n"
+        "The JavaScript config in `examples/classic/docusaurus.config.js` is "
+        "identical in header structure to the JavaScript template. "
+        "The TypeScript config in "
+        "`examples/classic-typescript/docusaurus.config.ts` is identical in "
+        "header structure to the TypeScript template."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
 def test_prose_integrity_rejects_internal_ids_and_private_user_entries():
     report = prose_integrity_report(
         "# Runtime\n\n"
@@ -636,6 +651,67 @@ def test_topic_narrative_allows_direct_source_backing_for_a_flow():
     assert topic["supported_interaction_claims"] == 1
     assert topic["invalid_flow_claims"] == []
     assert overview["invalid_flow_claims"] == [statement]
+
+
+def test_component_heavy_plan_is_valid_when_it_contains_a_supported_flow():
+    component_claims = [
+        {
+            "role": "component",
+            "statement": f"Component {index} records compatibility metadata",
+            "evidence": ["E1"],
+        }
+        for index in range(4)
+    ]
+    plan = {
+        "thesis": {
+            "statement": "Compatibility data drives transform selection",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Selection",
+                "claims": [
+                    *component_claims,
+                    {
+                        "role": "flow",
+                        "statement": "`filterAvailable()` passes plugins to `presetEnv()`",
+                        "evidence": ["R1"],
+                    },
+                ],
+            }
+        ],
+    }
+    relation = RelationItem(
+        id="R1",
+        source="filterAvailable()",
+        target="presetEnv()",
+    )
+
+    report = plan_narrative_report(plan, relations=[relation])
+    isolated = plan_narrative_report(
+        {
+            **plan,
+            "sections": [
+                {
+                    "title": "Selection",
+                    "claims": [
+                        *component_claims,
+                        {
+                            "role": "component",
+                            "statement": "Component 5 records target metadata",
+                            "evidence": ["E1"],
+                        },
+                    ],
+                }
+            ],
+        },
+        relations=[relation],
+    )
+
+    assert report["supported_interaction_claims"] == 1
+    assert report["component_claim_ratio"] == 0.8
+    assert report["component_dominated"] is False
+    assert isolated["component_dominated"] is True
 
 
 def test_plan_narrative_rejects_flow_labels_without_a_relation_handoff():

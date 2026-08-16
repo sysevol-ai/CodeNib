@@ -433,6 +433,11 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
                     and subjects[right]
                     and subjects[left] != subjects[right]
                 )
+                distinct_code_subjects = bool(
+                    identifiers[left]
+                    and identifiers[right]
+                    and identifiers[left].isdisjoint(identifiers[right])
+                )
                 # A handoff and a local responsibility can legitimately name
                 # the same subject and data. Treating their shared vocabulary
                 # as a duplicate rejects useful workflow prose such as "calls
@@ -442,6 +447,7 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
                     overlap >= 0.7
                     and not distinct_handoffs
                     and not distinct_named_subjects
+                    and not distinct_code_subjects
                     and not distinct_claim_kinds
                 ):
                     repetitions.append(
@@ -620,7 +626,9 @@ def plan_narrative_report(
     )
     component_claims = roles.get("component", 0)
     component_ratio = component_claims / len(claims) if claims else 0.0
-    component_dominated = bool(len(claims) >= 4 and component_ratio > 0.65)
+    component_dominated = bool(
+        len(claims) >= 4 and component_ratio > 0.65 and supported_interactions == 0
+    )
     return {
         "claim_roles": roles,
         "supported_interaction_claims": supported_interactions,
