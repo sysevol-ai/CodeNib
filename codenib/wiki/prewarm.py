@@ -109,7 +109,19 @@ def prewarm_wiki_cache(
                     page_id = str(page_ref.get("id") or "")
                     title = str(page_ref.get("title") or page_id)
                     before = str(page_ref.get("cache_state") or "unknown")
-                    if before == "ready":
+                    retry_ready = False
+                    needs_operator_retry = getattr(
+                        wiki,
+                        "page_needs_operator_retry",
+                        None,
+                    )
+                    if (
+                        before == "ready"
+                        and retry_degraded_now
+                        and callable(needs_operator_retry)
+                    ):
+                        retry_ready = bool(needs_operator_retry(page_id))
+                    if before == "ready" and not retry_ready:
                         repo_results.append(
                             {
                                 "repo": repo_id,

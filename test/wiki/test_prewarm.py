@@ -129,6 +129,41 @@ def test_prewarm_can_explicitly_retry_degraded_pages_now():
     assert report["counts"] == {"warmed": 1}
 
 
+def test_prewarm_can_retry_a_reader_ready_page_needing_operator_review():
+    class ReviewWiki(_Wiki):
+        def page_tree(self):
+            return [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "cache_state": "ready",
+                    "children": [],
+                }
+            ]
+
+        def page_needs_operator_retry(self, page_id):
+            return page_id == "overview"
+
+        def page(self, page_id, *, retry_degraded_now=False):
+            self.calls.append((page_id, retry_degraded_now))
+            return {
+                "id": page_id,
+                "generation": {"mode": "generated", "metrics": {}},
+                "quality": {"valid": True},
+            }
+
+    wiki = ReviewWiki()
+
+    report = prewarm_wiki_cache(
+        _registry(wiki),
+        wiki_factory=lambda bundle: bundle.wiki,
+        retry_degraded_now=True,
+    )
+
+    assert wiki.calls == [("overview", True)]
+    assert report["counts"] == {"warmed": 1}
+
+
 def test_prewarm_releases_each_repo_after_its_pages_finish():
     wiki = _Wiki()
     registry = _registry(wiki)

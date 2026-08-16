@@ -545,10 +545,9 @@ def _normalize_callable_command_labels(
     statement: str,
     evidence: Sequence[EvidenceItem],
 ) -> str:
-    """Replace a model's CLI label with the callable kind recorded in source."""
+    """Replace model callable labels with the kind recorded in source."""
 
-    def replace(match: re.Match[str]) -> str:
-        identifier = match.group("identifier")
+    def recorded_label(identifier: str) -> str:
         leaf = re.sub(
             r"\([^)]*\)$",
             "",
@@ -570,14 +569,30 @@ def _normalize_callable_command_labels(
             == leaf
         }
         if not kinds:
-            return match.group(0)
-        label = next(iter(kinds)) if len(kinds) == 1 else "callable"
-        return f"{label} `{identifier}`"
+            return ""
+        return next(iter(kinds)) if len(kinds) == 1 else "callable"
+
+    def replace_command(match: re.Match[str]) -> str:
+        identifier = match.group("identifier")
+        label = recorded_label(identifier)
+        return f"{label} `{identifier}`" if label else match.group(0)
+
+    normalized = re.sub(
+        r"\bcommand\s+`(?P<identifier>[^`\n]+)`",
+        replace_command,
+        statement,
+        flags=re.IGNORECASE,
+    )
+
+    def replace_postpositive(match: re.Match[str]) -> str:
+        identifier = match.group("identifier")
+        label = recorded_label(identifier)
+        return f"`{identifier}` {label}" if label else match.group(0)
 
     return re.sub(
-        r"\bcommand\s+`(?P<identifier>[^`\n]+)`",
-        replace,
-        statement,
+        r"`(?P<identifier>[^`\n]+)`\s+(?:class|function|method)\b",
+        replace_postpositive,
+        normalized,
         flags=re.IGNORECASE,
     )
 
@@ -1144,6 +1159,64 @@ def _supplement_topic_relation_flows(
             if added >= target_count:
                 break
     return supplemented
+
+
+def _relation_backed_recovery_plan(
+    meta: Dict[str, Any],
+    evidence: Sequence[EvidenceItem],
+    relations: Sequence[RelationItem],
+) -> dict[str, Any]:
+    """Build a minimal readable plan from fully evidenced call endpoints."""
+
+    def endpoint_symbol(endpoint: str) -> str:
+        return endpoint.rsplit(":", 1)[-1].strip()
+
+    def symbol_leaf(symbol: str) -> str:
+        value = re.sub(r"\([^)]*\)$", "", symbol.strip()).casefold()
+        return re.split(r"::|\.", value)[-1]
+
+    evidence_by_leaf: dict[str, list[str]] = {}
+    for item in evidence:
+        leaf = symbol_leaf(item.symbol.rsplit(":", 1)[-1])
+        if leaf:
+            evidence_by_leaf.setdefault(leaf, []).append(item.id)
+
+    claims: list[dict[str, Any]] = []
+    for relation in relations:
+        source = endpoint_symbol(relation.source)
+        target = endpoint_symbol(relation.target)
+        source_ids = evidence_by_leaf.get(symbol_leaf(source), [])
+        target_ids = evidence_by_leaf.get(symbol_leaf(target), [])
+        if (
+            not source.endswith("()")
+            or not target.endswith("()")
+            or not source_ids
+            or not target_ids
+        ):
+            continue
+        claims.append(
+            {
+                "role": "flow",
+                "statement": f"`{source}` calls `{target}`",
+                "evidence": list(
+                    dict.fromkeys([relation.id, *source_ids, *target_ids])
+                ),
+            }
+        )
+        if len(claims) >= 3:
+            break
+
+    if not claims or not evidence:
+        return {}
+    plan = {
+        "thesis": {
+            "statement": str(meta.get("summary") or "").strip(),
+            "evidence": [evidence[0].id],
+        },
+        "sections": [{"title": "Verified call path", "claims": claims}],
+    }
+    plan = _normalize_plan_support(plan, evidence, relations)
+    return _renderable_plan(plan, evidence, relations)
 
 
 def _renderable_plan(
@@ -3358,6 +3431,14 @@ class AgentWiki:
         )
 
     @staticmethod
+    def _cached_page_needs_operator_retry(page: Any) -> bool:
+        """Return whether an operator should revisit any degraded generation."""
+
+        if not isinstance(page, dict):
+            return False
+        return (page.get("generation") or {}).get("mode") == "degraded"
+
+    @staticmethod
     def _cached_page_needs_regeneration(page: Any) -> bool:
         """Return whether a bad persisted page is due for a bounded retry.
 
@@ -3530,6 +3611,22 @@ class AgentWiki:
             )
         return "ready"
 
+    def page_needs_operator_retry(self, page_id: str) -> bool:
+        """Inspect one cache entry for maintenance without changing UI state."""
+
+        meta = self._find(page_id)
+        if meta is None:
+            return False
+        if page_id == "overview":
+            meta = self._overview_page_meta(
+                meta,
+                self.outline().get("pages", [])[1:],
+            )
+        page = self._pages.get(page_id)
+        if page is None:
+            page = self._read_cache(self._page_cache_suffix(meta))
+        return self._cached_page_needs_operator_retry(page)
+
     def _find(
         self, page_id: str, pages: Optional[List[Dict[str, Any]]] = None
     ) -> Optional[Dict[str, Any]]:
@@ -3629,7 +3726,7 @@ class AgentWiki:
         *,
         retry_degraded_now: bool = False,
     ) -> Optional[dict]:
-        """Return a page, optionally retrying hidden degraded prose immediately.
+        """Return a page, optionally retrying degraded generation immediately.
 
         ``retry_degraded_now`` is an explicit operator action used by the cache
         prewarmer after an index or model upgrade. Normal reader traffic still
@@ -3637,7 +3734,8 @@ class AgentWiki:
         """
 
         if page_id in self._pages and not (
-            retry_degraded_now and self._cached_page_is_degraded(self._pages[page_id])
+            retry_degraded_now
+            and self._cached_page_needs_operator_retry(self._pages[page_id])
         ):
             return self._pages[page_id]
         meta = self._find(page_id)
@@ -3652,13 +3750,14 @@ class AgentWiki:
         with self._page_generation_lock(page_id):
             if page_id in self._pages and not (
                 retry_degraded_now
-                and self._cached_page_is_degraded(self._pages[page_id])
+                and self._cached_page_needs_operator_retry(self._pages[page_id])
             ):
                 return self._pages[page_id]
             with self._cache_generation_lock(cache_suffix):
                 cached = self._read_cache(cache_suffix)
                 force_retry = bool(
-                    retry_degraded_now and self._cached_page_is_degraded(cached)
+                    retry_degraded_now
+                    and self._cached_page_needs_operator_retry(cached)
                 )
                 if (
                     cached
@@ -5074,6 +5173,25 @@ class AgentWiki:
                 best_plan.setdefault(key, value)
             finish_metrics()
             return best_plan, best_warnings
+
+        relation_recovery = _relation_backed_recovery_plan(
+            meta,
+            evidence,
+            relations,
+        )
+        relation_recovery_warnings = (
+            _plan_quality_warnings(
+                meta,
+                relation_recovery,
+                evidence,
+                relations,
+            )
+            if relation_recovery.get("sections")
+            else [empty_warning]
+        )
+        if relation_recovery.get("sections") and not relation_recovery_warnings:
+            finish_metrics()
+            return relation_recovery, []
 
         claims = [
             {

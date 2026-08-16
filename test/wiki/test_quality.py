@@ -1091,6 +1091,35 @@ def test_plan_narrative_ignores_sentence_punctuation_inside_literals():
     assert report["plan_role_integrity_valid"] is True
 
 
+def test_plan_narrative_ignores_periods_in_technical_abbreviations():
+    statement = (
+        "`canSwapBetweenExpressionAndStatement()` returns true when the "
+        "replacement matches the opposite node type (expression vs. block "
+        "statement)."
+    )
+    report = plan_narrative_report(
+        {
+            "thesis": {"statement": statement, "evidence": ["E1"]},
+            "sections": [
+                {
+                    "title": "Replacement",
+                    "claims": [
+                        {
+                            "statement": statement,
+                            "role": "contract",
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert report["multi_sentence_claims"] == []
+    assert report["thesis_sentence_count"] == 1
+    assert report["plan_role_integrity_valid"] is True
+
+
 def test_plan_narrative_rejects_relation_only_non_flow_claims():
     report = plan_narrative_report(
         {

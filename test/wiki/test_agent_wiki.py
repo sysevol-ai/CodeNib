@@ -31,6 +31,7 @@ from codenib.wiki.agent_wiki import (
     _prepare_evidence_content,
     _prune_uncited_blocks,
     _readme_intro,
+    _relation_backed_recovery_plan,
     _remove_orphan_headings,
     _renderable_plan,
     _supplement_topic_relation_flows,
@@ -3202,6 +3203,20 @@ def test_page_plan_rejects_labeling_a_function_as_a_method():
         "records function" in warnings
     )
 
+    normalized = _normalize_plan_support(plan, evidence, [])
+    normalized_statement = normalized["sections"][0]["claims"][0]["statement"]
+    assert normalized_statement == (
+        "The `register_default_builders` function registers builders"
+    )
+    assert (
+        _plan_quality_warnings(
+            {"id": "indexing", "title": "Indexing"},
+            normalized,
+            evidence,
+        )
+        == []
+    )
+
 
 def test_plan_support_drops_an_unrelated_relation_when_source_proves_flow():
     evidence = [
@@ -3408,6 +3423,60 @@ def test_plan_support_promotes_a_grounded_section_lead_to_thesis():
         "statement": lead,
         "evidence": ["E1"],
     }
+
+
+def test_relation_recovery_plan_uses_verified_call_endpoints():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="include/fmt/format.h",
+            start_line=2590,
+            end_line=2626,
+            symbol="include/fmt/format.h:do_write_float()",
+            kind="function",
+            content="do_write_float(...) { return write_fixed(...); }",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="include/fmt/format.h",
+            start_line=2524,
+            end_line=2586,
+            symbol="write_fixed",
+            kind="function",
+            content="write_fixed(...) { /* write fixed-point digits */ }",
+        ),
+    ]
+    relations = [
+        RelationItem(
+            id="R1",
+            source="include/fmt/format.h:fmt.detail.do_write_float()",
+            target="include/fmt/format.h:fmt.detail.write_fixed()",
+        )
+    ]
+
+    plan = _relation_backed_recovery_plan(
+        {
+            "id": "type-dispatch-and-writing",
+            "summary": "Routes formatted values to specialized write functions",
+        },
+        evidence,
+        relations,
+    )
+    markdown = _fact_plan_markdown(plan, evidence, relations)
+
+    assert (
+        _plan_quality_warnings(
+            {"id": "type-dispatch-and-writing"},
+            plan,
+            evidence,
+            relations,
+        )
+        == []
+    )
+    assert "## Verified call path" in markdown
+    assert "`fmt.detail.do_write_float()` calls `fmt.detail.write_fixed()`" in markdown
+    assert "Source-backed components" not in markdown
+    assert "is indexed from" not in markdown
 
 
 def test_plan_support_drops_method_to_owner_generalization():

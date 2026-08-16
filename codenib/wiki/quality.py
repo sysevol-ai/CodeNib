@@ -48,7 +48,9 @@ _REFERENCE_NARRATION = re.compile(
 )
 _FRAMING_SECTION_TITLES = frozenset({"purpose and scope", "at a glance"})
 _PROTECTED_SENTENCE_FRAGMENT = re.compile(
-    r"`[^`\n]*`|(?<!\w)'[^'\n]+'(?!\w)|(?<!\w)\"[^\"\n]+\"(?!\w)"
+    r"`[^`\n]*`|(?<!\w)'[^'\n]+'(?!\w)|(?<!\w)\"[^\"\n]+\"(?!\w)|"
+    r"\b(?:e\.g|i\.e|vs|etc)\.",
+    re.IGNORECASE,
 )
 _SENTENCE_LITERAL_TRANSLATION = str.maketrans(
     {".": "\ue000", "!": "\ue001", "?": "\ue002"}
