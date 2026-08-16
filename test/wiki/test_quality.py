@@ -712,6 +712,7 @@ def test_component_heavy_plan_is_valid_when_it_contains_a_supported_flow():
     assert report["component_claim_ratio"] == 0.8
     assert report["component_dominated"] is False
     assert isolated["component_dominated"] is True
+    assert isolated["plan_role_integrity_valid"] is True
 
 
 def test_plan_narrative_rejects_flow_labels_without_a_relation_handoff():

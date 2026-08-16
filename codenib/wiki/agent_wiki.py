@@ -2654,7 +2654,8 @@ def _plan_quality_warnings(
             )
     component_claims = role_counts.get("component", 0)
     if (
-        len(claims) >= 4
+        meta.get("id") == "overview"
+        and len(claims) >= 4
         and component_claims / len(claims) > 0.65
         and not supported_flows
     ):

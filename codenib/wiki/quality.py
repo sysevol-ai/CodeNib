@@ -645,7 +645,6 @@ def plan_narrative_report(
             or private_entry_claims
             or multi_sentence_claims
             or thesis_sentence_count > 1
-            or component_dominated
         ),
         "thesis_grounded": thesis_grounded,
     }
@@ -758,6 +757,7 @@ def page_quality_report(
         and integrity_report["prose_integrity_valid"]
         and sentence_report["sentence_redundancy_valid"]
         and plan_report["plan_role_integrity_valid"]
+        and (not require_dense_sections or not plan_report["component_dominated"])
         and (not require_grounded_thesis or plan_report["thesis_grounded"])
         and source_evidence_count >= minimum_source_evidence
         and not missing_claim_roles
