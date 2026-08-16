@@ -3,7 +3,14 @@ import { repoRelative, type Citation } from "./api";
 /** Filtered, index-stable citation list both panes share.
  *  Backend API citations are already 1-based for display + /source lookup. */
 export function codeRefs(citations: Citation[]): Citation[] {
-  return citations.filter((c) => repoRelative(c.file)).slice(0, 12);
+  return citations
+    .filter(
+      (c) =>
+        repoRelative(c.file) &&
+        ((c.start_line != null && c.start_line >= 1) ||
+          Boolean(c.content?.trim())),
+    )
+    .slice(0, 12);
 }
 
 function norm(s: string): string {

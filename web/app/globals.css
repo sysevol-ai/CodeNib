@@ -1608,6 +1608,37 @@ pre {
 .ask-tools {
   margin-top: 16px;
 }
+.ask-related {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.ask-related-label {
+  margin-right: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ask-related-link {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-decoration: none;
+}
+.ask-related-link:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  text-decoration: none;
+}
 
 /* ===== Codemap mode (dependency / call graph) ===== */
 .codemap {
@@ -3807,6 +3838,21 @@ a.codepanel-name:hover {
   min-height: 0;
   overflow: auto;
   background: #fff;
+}
+.ask-page .codepane-body {
+  /* Let even a short final source range reach the reading threshold. Without
+     this runway, the last few tabs can never become the scroll-spy selection. */
+  padding-bottom: max(
+    160px,
+    calc(100dvh - var(--top-h) - var(--askbar-h) - 120px)
+  );
+}
+@media (max-width: 980px) {
+  .ask-page .codepane-body {
+    /* The stacked pane is only 60vh tall, so use a proportional runway rather
+       than the desktop viewport formula while preserving composer clearance. */
+    padding-bottom: max(var(--askbar-h), 42vh);
+  }
 }
 .frag {
   border-bottom: 1px solid var(--border);

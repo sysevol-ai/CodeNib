@@ -26,6 +26,7 @@ describe("codeRefs", () => {
   it("filters non-source citations and caps the shared list at twelve", () => {
     const citations = [
       citation({ file: null }),
+      citation({ file: "src/empty.py", start_line: null, content: null }),
       ...Array.from({ length: 13 }, (_, i) =>
         citation({
           file: `src/file${i}.py`,
@@ -39,6 +40,20 @@ describe("codeRefs", () => {
     expect(refs).toHaveLength(12);
     expect(refs[0].file).toBe("src/file0.py");
     expect(refs[11].file).toBe("src/file11.py");
+  });
+
+  it("keeps embedded source even when a legacy result has no line range", () => {
+    const refs = codeRefs([
+      citation({
+        file: "src/embedded.py",
+        start_line: null,
+        end_line: null,
+        content: "def embedded(): pass",
+      }),
+    ]);
+
+    expect(refs).toHaveLength(1);
+    expect(refs[0].file).toBe("src/embedded.py");
   });
 });
 

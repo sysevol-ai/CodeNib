@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import HighlightedCode from "@/components/HighlightedCode";
 import { fetchSource, repoRelative, type Citation } from "@/lib/api";
+import { codeRefs } from "@/lib/citations";
+import { sourceIndexAtThreshold } from "@/lib/sourceNavigation";
 
 function ghUrl(repo: string | undefined, commit: string | undefined, c: Citation, rel: string) {
   if (!repo) return null;
@@ -104,6 +106,7 @@ export default function CodePanel({
   commit,
   active: activeProp,
   onSelect,
+  onVisibleChange,
   scrollSignal,
 }: {
   repoId: string;
@@ -113,21 +116,110 @@ export default function CodePanel({
   /** Controlled active fragment, so prose chips can drive the pane. */
   active?: number;
   onSelect?: (i: number) => void;
+  /** Scroll-spy update; unlike a tab click, this must not initiate a scroll. */
+  onVisibleChange?: (i: number) => void;
   /** Bumped by the parent on every selection; each bump re-scrolls to active. */
   scrollSignal?: number;
 }) {
-  const refs = citations.filter((c) => repoRelative(c.file)).slice(0, 12);
+  const refs = codeRefs(citations);
   const [internal, setInternal] = useState(0);
-  const active = activeProp ?? internal;
+  const requestedActive = activeProp ?? internal;
+  const active = refs.length
+    ? Math.max(0, Math.min(requestedActive, refs.length - 1))
+    : 0;
   const fragEls = useRef<(HTMLDivElement | null)[]>([]);
   const bodyEl = useRef<HTMLDivElement | null>(null);
+  const navEl = useRef<HTMLDivElement | null>(null);
+  const tabEls = useRef<(HTMLButtonElement | null)[]>([]);
+  const scrollSpyFrame = useRef<number | null>(null);
+  const programmaticScroll = useRef(false);
+  const scrollEndTimer = useRef<number | null>(null);
   const citationKey = refs
     .map((c) => `${repoRelative(c.file)}:${c.start_line ?? ""}-${c.end_line ?? ""}`)
     .join("|");
 
   useEffect(() => {
+    programmaticScroll.current = false;
     bodyEl.current?.scrollTo({ top: 0, left: 0 });
   }, [citationKey]);
+
+  useEffect(
+    () => () => {
+      if (scrollSpyFrame.current != null) {
+        cancelAnimationFrame(scrollSpyFrame.current);
+      }
+      if (scrollEndTimer.current != null) {
+        window.clearTimeout(scrollEndTimer.current);
+      }
+    },
+    [],
+  );
+
+  const revealActiveTab = (index: number) => {
+    const nav = navEl.current;
+    const tab = tabEls.current[index];
+    if (!nav || !tab) return;
+    const navRect = nav.getBoundingClientRect();
+    const tabRect = tab.getBoundingClientRect();
+    let delta = 0;
+    if (tabRect.left < navRect.left) delta = tabRect.left - navRect.left - 8;
+    else if (tabRect.right > navRect.right) delta = tabRect.right - navRect.right + 8;
+    if (delta) nav.scrollTo({ left: nav.scrollLeft + delta, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    revealActiveTab(active);
+  }, [active, citationKey]);
+
+  const reportVisibleFragment = (index: number) => {
+    if (index < 0 || index === active) return;
+    if (onVisibleChange) onVisibleChange(index);
+    else if (activeProp == null) setInternal(index);
+  };
+
+  const syncVisibleFragment = () => {
+    const body = bodyEl.current;
+    if (!body) return;
+    const bodyRect = body.getBoundingClientRect();
+    const threshold = bodyRect.top + Math.min(72, bodyRect.height * 0.18);
+    const index = sourceIndexAtThreshold(
+      fragEls.current.slice(0, refs.length).map((element) =>
+        element ? element.getBoundingClientRect().top : Number.POSITIVE_INFINITY,
+      ),
+      threshold,
+    );
+    reportVisibleFragment(index);
+  };
+
+  const finishProgrammaticScroll = () => {
+    if (scrollEndTimer.current != null) {
+      window.clearTimeout(scrollEndTimer.current);
+    }
+    scrollEndTimer.current = window.setTimeout(() => {
+      programmaticScroll.current = false;
+      syncVisibleFragment();
+    }, 140);
+  };
+
+  const handleBodyScroll = () => {
+    if (programmaticScroll.current) {
+      finishProgrammaticScroll();
+      return;
+    }
+    if (scrollSpyFrame.current != null) return;
+    scrollSpyFrame.current = requestAnimationFrame(() => {
+      scrollSpyFrame.current = null;
+      syncVisibleFragment();
+    });
+  };
+
+  const takeOverScroll = () => {
+    programmaticScroll.current = false;
+    if (scrollEndTimer.current != null) {
+      window.clearTimeout(scrollEndTimer.current);
+      scrollEndTimer.current = null;
+    }
+  };
 
   const scrollToFrag = (i: number) => {
     const body = bodyEl.current;
@@ -139,10 +231,14 @@ export default function CodePanel({
     // tabs slide across the source while selecting a reference.
     const bodyRect = body.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
+    const top = Math.max(0, body.scrollTop + targetRect.top - bodyRect.top);
+    if (Math.abs(body.scrollTop - top) < 1) return;
+    programmaticScroll.current = true;
     body.scrollTo({
-      top: Math.max(0, body.scrollTop + targetRect.top - bodyRect.top),
+      top,
       behavior: "smooth",
     });
+    finishProgrammaticScroll();
   };
 
   // Scroll on every selection, even re-selecting the same fragment after the
@@ -162,17 +258,20 @@ export default function CodePanel({
   if (refs.length === 0) {
     return (
       <div className="codepane codepane-empty">
-        <p className="muted">No code references for this answer yet.</p>
+        <p className="muted">No verified source range is available for this answer.</p>
       </div>
     );
   }
 
   return (
     <div className="codepane">
-      <div className="codepane-nav" role="tablist">
+      <div className="codepane-nav" role="tablist" ref={navEl}>
         {refs.map((c, i) => (
           <button
             key={i}
+            ref={(element) => {
+              tabEls.current[i] = element;
+            }}
             role="tab"
             aria-selected={i === active}
             className={`codepane-tab ${i === active ? "active" : ""}`}
@@ -183,7 +282,14 @@ export default function CodePanel({
           </button>
         ))}
       </div>
-      <div className="codepane-body" ref={bodyEl}>
+      <div
+        className="codepane-body"
+        ref={bodyEl}
+        onScroll={handleBodyScroll}
+        onWheel={takeOverScroll}
+        onTouchStart={takeOverScroll}
+        onPointerDown={takeOverScroll}
+      >
         {refs.map((c, i) => (
           <div
             key={i}
