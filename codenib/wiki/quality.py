@@ -201,6 +201,17 @@ def leading_parallel_subject(text: str) -> str:
     return match.group(1).casefold() if match else ""
 
 
+def leading_condition_terms(text: str) -> set[str]:
+    """Return normalized terms from a leading conditional clause."""
+
+    match = re.match(
+        r"^\s*(?:if|unless|when|while)\s+(.+?)(?:,\s|$)",
+        text,
+        re.IGNORECASE,
+    )
+    return redundancy_terms(match.group(1)) if match else set()
+
+
 def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
     """Find paragraph pairs where one largely restates the other."""
 
@@ -211,6 +222,7 @@ def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
     )
     terms = []
     subjects = []
+    identifiers = []
     for raw in re.split(r"\n\s*\n", without_fences):
         block = raw.strip()
         if not block or block.startswith("#"):
@@ -219,6 +231,12 @@ def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
         if len(block_terms) >= 6:
             terms.append(block_terms)
             subjects.append(leading_code_subject(block))
+            identifiers.append(
+                {
+                    re.sub(r"\([^)]*\)$", "", item).casefold()
+                    for item in re.findall(r"`([^`\n]+)`", block)
+                }
+            )
 
     duplicates: List[List[int]] = []
     for left in range(len(terms)):
@@ -228,7 +246,23 @@ def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
             distinct_named_subjects = bool(
                 subjects[left] and subjects[right] and subjects[left] != subjects[right]
             )
-            if overlap >= 0.85 and not distinct_named_subjects:
+            named_elaboration = bool(
+                (not identifiers[left] and len(identifiers[right]) >= 2)
+                or (not identifiers[right] and len(identifiers[left]) >= 2)
+            )
+            expanded_named_context = bool(
+                identifiers[left]
+                and identifiers[right]
+                and identifiers[left] != identifiers[right]
+                and max(len(terms[left]), len(terms[right]))
+                >= min(len(terms[left]), len(terms[right])) + 8
+            )
+            if (
+                overlap >= 0.85
+                and not distinct_named_subjects
+                and not named_elaboration
+                and not expanded_named_context
+            ):
                 duplicates.append([left + 1, right + 1])
     return duplicates
 
@@ -435,6 +469,13 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
             leading_parallel_subject(sentence) for sentence in sentences
         ]
         interactions = [is_interaction_claim(sentence) for sentence in sentences]
+        conditional_terms = [
+            leading_condition_terms(sentence) for sentence in sentences
+        ]
+        conditional_negations = [
+            bool(item & {"invalid", "never", "no", "not", "without"})
+            for item in conditional_terms
+        ]
         for left in range(len(sentences)):
             for right in range(left + 1, len(sentences)):
                 smaller = min(len(terms[left]), len(terms[right]))
@@ -468,11 +509,34 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
                     and identifiers[right]
                     and len(identifiers[left] ^ identifiers[right]) >= 2
                 )
+                named_sentence_elaboration = bool(
+                    (
+                        not identifiers[left]
+                        and identifiers[right]
+                        and len(terms[right]) >= len(terms[left]) + 4
+                    )
+                    or (
+                        not identifiers[right]
+                        and identifiers[left]
+                        and len(terms[left]) >= len(terms[right]) + 4
+                    )
+                )
                 # A handoff and a local responsibility can legitimately name
                 # the same subject and data. Treating their shared vocabulary
                 # as a duplicate rejects useful workflow prose such as "calls
                 # print_file_ranges" followed by how diff ranges are built.
                 distinct_claim_kinds = interactions[left] != interactions[right]
+                distinct_conditional_kinds = bool(conditional_terms[left]) != bool(
+                    conditional_terms[right]
+                )
+                distinct_conditional_branches = bool(
+                    conditional_terms[left]
+                    and conditional_terms[right]
+                    and (
+                        len(conditional_terms[left] ^ conditional_terms[right]) >= 2
+                        or conditional_negations[left] != conditional_negations[right]
+                    )
+                )
                 if (
                     overlap >= 0.7
                     and not distinct_handoffs
@@ -480,7 +544,10 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
                     and not distinct_parallel_subjects
                     and not distinct_code_subjects
                     and not distinct_named_details
+                    and not named_sentence_elaboration
                     and not distinct_claim_kinds
+                    and not distinct_conditional_kinds
+                    and not distinct_conditional_branches
                 ):
                     repetitions.append(
                         {

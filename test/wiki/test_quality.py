@@ -91,6 +91,33 @@ def test_duplicate_blocks_preserve_parallel_named_scripts():
     assert duplicate_prose_blocks(repeated) == [[1, 3]]
 
 
+def test_duplicate_blocks_allow_summary_then_named_implementation_detail():
+    markdown = (
+        "## Shutdown\n\n"
+        "When the runtime shuts down, each worker core is collected into a "
+        "shared list; the last worker drains the list and shuts down every "
+        "core.\n\n"
+        "`Handle.shutdown_core()` pushes each worker's `Box<Core>` into the "
+        "shared `shutdown_cores` list. `Context.run()` calls "
+        "`Handle.shutdown_core()` when the worker loop exits, and the last "
+        "worker drains the injection queue."
+    )
+
+    assert duplicate_prose_blocks(markdown) == []
+
+
+def test_duplicate_blocks_allow_thesis_to_expand_into_named_context():
+    markdown = (
+        "`useContext` stores the context on its hook state slot.\n\n"
+        "The hooks system stores each hook's state in a list attached to the "
+        "component so state persists across renders. `getHookState` creates or "
+        "retrieves the slot for each hook index, and `useContext` uses that "
+        "slot to retain context-related state for the component lifecycle."
+    )
+
+    assert duplicate_prose_blocks(markdown) == []
+
+
 def test_section_evidence_report_detects_section_source_reuse():
     markdown = (
         "# Overview\n\n"
@@ -401,6 +428,63 @@ def test_sentence_redundancy_allows_parallel_container_cases():
         "then frees the array structure. "
         "For objects, `jv_free` frees each key string and pushes the matching "
         "value onto the pending stack before freeing the object structure."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
+def test_sentence_redundancy_allows_a_conditional_builder_edge_case():
+    report = section_sentence_redundancy_report(
+        "# Taxonomies\n\n"
+        "## Building the list\n\n"
+        "`Site.Taxonomies()` returns the list built by "
+        "`pageMap.CreateSiteTaxonomies()`. "
+        "When taxonomy and term kinds are disabled, "
+        "`pageMap.CreateSiteTaxonomies()` returns an empty list without "
+        "walking the tree."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
+def test_sentence_redundancy_allows_distinct_conditional_branches():
+    report = section_sentence_redundancy_report(
+        "# Output\n\n"
+        "## Destination\n\n"
+        "If no pager is configured, `OutputType::try_pager()` returns "
+        "`OutputType::stdout()`. "
+        "If the pager binary cannot be resolved, `OutputType::try_pager()` "
+        "emits a warning and returns `OutputType::stdout()`."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
+def test_sentence_redundancy_allows_opposite_condition_polarities():
+    report = section_sentence_redundancy_report(
+        "# Echo\n\n"
+        "## Response\n\n"
+        "When the body is valid JSON, `handleApiRequest()` responds with "
+        "status 200 and the request fields. "
+        "When the body is not valid JSON, `handleApiRequest()` responds with "
+        "status 400 and the error message."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
+def test_sentence_redundancy_allows_named_implementation_elaboration():
+    report = section_sentence_redundancy_report(
+        "# Builders\n\n"
+        "## Compatibility wrappers\n\n"
+        "The uppercase builders are generated as compatibility wrappers "
+        "around the lowercase builders. "
+        "The `alias` factory creates these wrappers, and the generated module "
+        "exports uppercase names bound to the corresponding lowercase builder."
     )
 
     assert report["redundant_sentence_pairs"] == []

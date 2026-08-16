@@ -3364,6 +3364,52 @@ def test_plan_support_downgrades_a_mislabeled_local_state_claim():
     )
 
 
+def test_plan_support_promotes_a_grounded_section_lead_to_thesis():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="tokio/src/sync/barrier.rs",
+            start_line=139,
+            end_line=198,
+            symbol="Barrier.wait_internal",
+            kind="method",
+            content=(
+                "The count and generation are stored behind a synchronous "
+                "mutex. A watch channel carries the generation number to "
+                "waiting tasks."
+            ),
+        )
+    ]
+    lead = (
+        "The count and generation are stored behind a synchronous mutex, and "
+        "a watch channel carries the generation number to waiting tasks"
+    )
+    plan = {
+        "sections": [
+            {
+                "title": "Barrier generation counting and release",
+                "lead": {"statements": [lead], "evidence": ["E1"]},
+                "claims": [
+                    {
+                        "statement": (
+                            "`Barrier.wait_internal()` increments the arrival "
+                            "count. `Barrier.wait()` waits for its result"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ]
+    }
+
+    normalized = _normalize_plan_support(plan, evidence, [])
+
+    assert normalized["thesis"] == {
+        "statement": lead,
+        "evidence": ["E1"],
+    }
+
+
 def test_plan_support_drops_method_to_owner_generalization():
     evidence = [
         EvidenceItem(

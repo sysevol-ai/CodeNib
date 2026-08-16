@@ -2332,6 +2332,19 @@ def _normalize_plan_support(
             for section in normalized_sections
             for claim in section.get("claims") or []
         ]
+        framing_sources = [plan.get("purpose") or {}] + [
+            section.get("lead") or {} for section in normalized_sections
+        ]
+        candidates.extend(
+            {
+                "statement": statement,
+                "evidence": list(framing.get("evidence") or []),
+                "role": "purpose",
+            }
+            for framing in framing_sources
+            for raw_statement in framing.get("statements") or []
+            if (statement := str(raw_statement or "").strip())
+        )
         role_priority = {
             "purpose": 0,
             "entry": 1,
