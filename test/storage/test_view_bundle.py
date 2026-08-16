@@ -71,6 +71,23 @@ def test_public_physical_size_gate_rejects_malformed_size(byte_size: object) -> 
         )
 
 
+def test_public_physical_size_gate_rejects_integer_subclass_before_comparison() -> None:
+    class ForgedSize(int):
+        def __lt__(self, other: object) -> bool:
+            raise AssertionError("integer subclass comparison must not run")
+
+        def __gt__(self, other: object) -> bool:
+            raise AssertionError("integer subclass comparison must not run")
+
+    with pytest.raises(StorageValidationError, match="nonnegative integer"):
+        validate_view_bundle_physical_size(
+            ForgedSize(2 * 1024 * 1024),
+            max_files=1,
+            max_bytes=1,
+            max_metadata_bytes=1,
+        )
+
+
 def _moved_publication_root(destination: Path) -> Path:
     matches = tuple(
         path

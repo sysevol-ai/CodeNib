@@ -636,7 +636,7 @@ def _validate_limits(max_files: int, max_bytes: int, max_metadata_bytes: int) ->
 def _validate_expected_size(value: int | None) -> int | None:
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if type(value) is not int or value < 0:
         raise StorageValidationError(
             "expected archive size must be a nonnegative integer"
         )
