@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchEdgeLabel,
   fetchWikiPage,
+  isSourceCheckedWikiPage,
   materializedWikiMediaSlots,
   shouldWithholdWikiPage,
   type WikiMediaSlot,
@@ -167,6 +168,63 @@ describe("shouldWithholdWikiPage", () => {
           planned_claims: 1,
           claim_coverage: 1,
         },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("isSourceCheckedWikiPage", () => {
+  const checkedPage = {
+    id: "runtime",
+    title: "Runtime",
+    markdown: "Readable text",
+    citations: [],
+    diagram: "",
+    generation: { mode: "degraded" as const, model: "test" },
+    grounding: {
+      valid: true,
+      citation_coverage: 1,
+      evidence_count: 2,
+      relation_count: 1,
+    },
+    quality: {
+      valid: true,
+      planned_sections: 1,
+      required_sections: 1,
+      rendered_sections: 1,
+      substantive_blocks: 2,
+      required_blocks: 2,
+      covered_claims: 2,
+      planned_claims: 2,
+      claim_coverage: 1,
+    },
+  };
+
+  it("accepts review-mode prose when both strict checks pass", () => {
+    expect(isSourceCheckedWikiPage(checkedPage)).toBe(true);
+  });
+
+  it("rejects offline, fallback, and invalid pages", () => {
+    expect(
+      isSourceCheckedWikiPage({
+        ...checkedPage,
+        generation: { mode: "offline", model: null },
+      }),
+    ).toBe(false);
+    expect(
+      isSourceCheckedWikiPage({
+        ...checkedPage,
+        generation: {
+          mode: "degraded",
+          model: "test",
+          fallback: "fact_plan",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isSourceCheckedWikiPage({
+        ...checkedPage,
+        quality: { ...checkedPage.quality, valid: false },
       }),
     ).toBe(false);
   });

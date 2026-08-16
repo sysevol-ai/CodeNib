@@ -215,6 +215,19 @@ export function shouldWithholdWikiPage(page: WikiPage | null | undefined): boole
   );
 }
 
+/** Derive the reader-facing source status from the checks themselves. */
+export function isSourceCheckedWikiPage(
+  page: WikiPage | null | undefined,
+): boolean {
+  if (!page || page.generation?.mode === "offline") return false;
+  return Boolean(
+    !shouldWithholdWikiPage(page) &&
+      !page.generation?.fallback &&
+      page.grounding?.valid === true &&
+      page.quality?.valid === true,
+  );
+}
+
 export interface WikiEvidenceItem {
   id: string;
   file: string;

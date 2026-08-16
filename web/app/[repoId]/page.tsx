@@ -12,6 +12,7 @@ import {
   fetchWikiGraph,
   fetchWikiPage,
   fetchWikiTree,
+  isSourceCheckedWikiPage,
   materializedWikiMediaSlots,
   repoRelative,
   shouldWithholdWikiPage,
@@ -522,11 +523,10 @@ export default function WikiPageView({
   const hasGraph = !!repo?.capabilities?.codemap;
   const hasPageGraph = hasGraph || !!repo?.capabilities?.wiki_graph;
   const generationMode = page?.generation?.mode ?? "offline";
-  // "Source checked" is the strict claim: every substantial block is cited
-  // and every referenced source identifier resolves. Generated pages that only
-  // clear the looser grounding floor stay visible, but retain the review badge.
-  const sourceChecked =
-    generationMode === "generated" && page?.grounding?.valid === true;
+  // "Source checked" is the strict claim: source identifiers resolve and the
+  // complete page passes its planned coverage checks. Generation mode is an
+  // operator diagnostic, so it must not override those reader-facing checks.
+  const sourceChecked = isSourceCheckedWikiPage(page);
   const withheldByQualityGuard = shouldWithholdWikiPage(page);
   const evidenceRoutes = [
     ...new Set(page?.evidence?.items.flatMap((item) => item.routes) ?? []),
