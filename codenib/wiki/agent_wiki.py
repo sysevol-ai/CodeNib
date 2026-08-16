@@ -2585,7 +2585,12 @@ def _plan_quality_warnings(
             f"{len(multi_sentence_claims)} claim statement(s) contain multiple "
             "sentences; keep each claim to one sentence"
         )
-    if relations and len(evidence) >= 2 and not supported_flows:
+    if (
+        meta.get("id") == "overview"
+        and relations
+        and len(evidence) >= 2
+        and not supported_flows
+    ):
         examples = "; ".join(
             f"{item.id}: `{item.source}` -> `{item.target}`" for item in relations[:3]
         )
@@ -5288,7 +5293,13 @@ class AgentWiki:
             "require_cited_intro": True,
             "require_narrative_novelty": dense_sections,
             "require_narrative_density": True,
-            "require_interaction": bool(relations and len(evidence) >= 2),
+            # Overview promises an architectural through-line. A regular topic
+            # page may legitimately compare sibling formats or contracts even
+            # when the graph contains incidental relations; forcing a handoff
+            # there creates repair calls without improving the explanation.
+            "require_interaction": bool(
+                dense_sections and relations and len(evidence) >= 2
+            ),
             "require_grounded_thesis": True,
             "minimum_source_evidence": (min(4, len(evidence)) if dense_sections else 0),
             "required_claim_roles": (("flow",) if dense_sections and relations else ()),

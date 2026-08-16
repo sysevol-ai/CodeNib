@@ -486,9 +486,37 @@ def describes_private_entry(statement: str, *, role: str = "") -> bool:
     """Whether prose presents a private identifier as a public/user entry."""
 
     text = statement or ""
-    return bool(
-        _PRIVATE_IDENTIFIER_RE.search(text)
-        and (role == "entry" or _EXPLICIT_ENTRY_RE.search(text))
+    private_identifiers = list(_PRIVATE_IDENTIFIER_RE.finditer(text))
+    if not private_identifiers:
+        return False
+
+    code_identifiers = list(_CODE_RE.finditer(text))
+    if role == "entry":
+        # An entry claim may still explain that its public subject delegates to
+        # a private helper. Only reject it when the claim's primary code subject
+        # is itself private.
+        return bool(
+            code_identifiers
+            and _PRIVATE_IDENTIFIER_RE.fullmatch(code_identifiers[0].group(0))
+        )
+
+    if not _EXPLICIT_ENTRY_RE.search(text):
+        return False
+
+    before_entry = re.compile(
+        r"(?:entry\s*point|public\s+(?:api|callable|command|endpoint|function|method)|"
+        r"users?\s+(?:call|execute|invoke|run))\s*$",
+        re.IGNORECASE,
+    )
+    after_entry = re.compile(
+        r"^\s*(?:(?:is|acts\s+as|serves\s+as)\s+)?(?:the\s+)?(?:entry\s*point|"
+        r"public\s+(?:api|callable|command|endpoint|function|method)|endpoint)\b",
+        re.IGNORECASE,
+    )
+    return any(
+        before_entry.search(text[max(0, match.start() - 64) : match.start()])
+        or after_entry.search(text[match.end() : match.end() + 64])
+        for match in private_identifiers
     )
 
 

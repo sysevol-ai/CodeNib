@@ -432,6 +432,17 @@ def test_prose_integrity_allows_a_public_entry_to_delegate_to_a_helper():
     assert report["prose_integrity_valid"] is True
 
 
+def test_prose_integrity_allows_public_entry_with_named_private_helpers():
+    report = prose_integrity_report(
+        "# Solvers\n\n"
+        "The package uses `solve` as the public entry point, while specialized "
+        "helpers such as `_tsolve` own per-domain work. [E1]"
+    )
+
+    assert report["private_entry_sentences"] == []
+    assert report["prose_integrity_valid"] is True
+
+
 def test_page_audit_requires_a_flow_when_static_relations_are_available():
     page = {
         "id": "agent-runtime",
@@ -459,6 +470,37 @@ def test_page_audit_requires_a_flow_when_static_relations_are_available():
     assert report["require_interaction"] is True
     assert report["interaction_valid"] is False
     assert report["publishable"] is False
+
+
+def test_page_audit_respects_an_explicit_non_architectural_page_contract():
+    page = {
+        "id": "formats",
+        "title": "Formats",
+        "markdown": (
+            "# Formats\n\n"
+            "The package supports source-linked text and binary formats. [E1]\n\n"
+            "## Text\n\n"
+            "`read_text()` parses delimited records from a stream. [E1]\n\n"
+            "## Binary\n\n"
+            "`read_binary()` decodes typed records from a file. [E2]"
+        ),
+        "evidence": {
+            "items": [{"id": "E1"}, {"id": "E2"}],
+            "relations": [{"id": "R1"}],
+        },
+        "generation": {"mode": "generated"},
+        "grounding": {"valid": True, "citation_coverage": 1.0},
+        "quality": {
+            "valid": True,
+            "claim_coverage": 1.0,
+            "require_interaction": False,
+        },
+    }
+
+    report = audit_page(page)
+
+    assert report["require_interaction"] is False
+    assert report["interaction_valid"] is True
 
 
 def test_architecture_narrative_admits_a_grounded_component_flow():

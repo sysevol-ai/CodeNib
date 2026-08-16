@@ -826,8 +826,10 @@ def audit_page(page: dict[str, Any]) -> dict[str, Any]:
             and not duplicate_blocks
         )
     require_novelty = page.get("id") == "overview"
-    require_interaction = bool(
-        quality.get("require_interaction") or (relation_count and evidence_count >= 2)
+    require_interaction = (
+        bool(quality.get("require_interaction"))
+        if "require_interaction" in quality
+        else bool(relation_count and evidence_count >= 2)
     )
     interaction_valid = (
         not require_interaction or density["interaction_sentence_count"] >= 1

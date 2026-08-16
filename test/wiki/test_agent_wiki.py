@@ -2917,7 +2917,7 @@ def test_page_plan_rejects_a_flow_label_without_a_component_handoff():
         relations,
     )
 
-    assert any(
+    assert not any(
         warning.startswith(
             "page has static relations but no supported component handoff"
         )
