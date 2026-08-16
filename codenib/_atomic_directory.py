@@ -988,6 +988,14 @@ class PublicationDirectoryReader:
 _PublicationTreeReader = PublicationDirectoryReader
 
 
+def _set_publication_reader_inactive(
+    lifetime: _PublicationReaderLifetime,
+) -> None:
+    """Apply the reader lifetime transition through a stable fault seam."""
+
+    lifetime.active = False
+
+
 def _force_publication_reader_inactive(
     lifetime: _PublicationReaderLifetime,
     failures: _OrderedActionState,
@@ -997,7 +1005,7 @@ def _force_publication_reader_inactive(
     try:
         while lifetime.active:
             try:
-                lifetime.active = False
+                _set_publication_reader_inactive(lifetime)
             except BaseException as transition_error:  # noqa: B036 - retry state
                 failures.retain(
                     "publication reader inactive transition also failed",

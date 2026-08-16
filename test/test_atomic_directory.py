@@ -9491,69 +9491,33 @@ def test_capture_retains_fake_windows_regular_file_close_for_retry(
     assert api.handles == {}
 
 
-def _call_with_interrupt_before_reader_inactive_store(
+def _call_with_interrupt_before_reader_inactive_transition(
     callback: object,
     *,
+    monkeypatch: pytest.MonkeyPatch,
     error: BaseException,
-    event_mode: str,
 ) -> None:
     assert callable(callback)
-    assert event_mode in {"opcode", "line"}
-    code = atomic_module._force_publication_reader_inactive.__code__
-    store_offsets = {
-        instruction.offset
-        for instruction in dis.get_instructions(
-            atomic_module._force_publication_reader_inactive
-        )
-        if instruction.opname == "STORE_ATTR" and instruction.argval == "active"
-    }
-    assert store_offsets
-    source, first_line = inspect.getsourcelines(
-        atomic_module._force_publication_reader_inactive
-    )
-    assignment_lines = {
-        first_line + offset
-        for offset, line in enumerate(source)
-        if "lifetime.active = False" in line
-    }
-    assert len(assignment_lines) == 1
-    previous_trace = sys.gettrace()
+    real_transition = atomic_module._set_publication_reader_inactive
     injected = False
 
-    def trace(frame: object, event: str, _arg: object) -> object:
+    def interrupt_once(
+        lifetime: atomic_module._PublicationReaderLifetime,
+    ) -> None:
         nonlocal injected
-        if event == "call" and frame.f_code is code:
-            frame.f_trace_opcodes = True
-            frame.f_trace_lines = True
-            return trace
-        if (
-            not injected
-            and frame.f_code is code
-            and (
-                (
-                    event_mode == "opcode"
-                    and event == "opcode"
-                    and frame.f_lasti in store_offsets
-                )
-                or (
-                    event_mode == "line"
-                    and event == "line"
-                    and frame.f_lineno in assignment_lines
-                )
-            )
-            and frame.f_locals["lifetime"].active
-        ):
+        if not injected and lifetime.active:
             injected = True
-            sys.settrace(None)
             raise error
-        return trace
+        real_transition(lifetime)
 
-    sys.settrace(trace)
-    try:
+    with monkeypatch.context() as fault:
+        fault.setattr(
+            atomic_module,
+            "_set_publication_reader_inactive",
+            interrupt_once,
+        )
         callback()
-    finally:
-        sys.settrace(previous_trace)
-        assert injected, "failed to inject before reader inactive STORE_ATTR"
+    assert injected, "failed to inject before reader inactive transition"
 
 
 @pytest.mark.skipif(
@@ -9604,14 +9568,14 @@ def test_posix_reader_deactivation_interrupt_closes_child_and_rejects_aba(
 
     try:
         with pytest.raises(KeyboardInterrupt) as caught:
-            _call_with_interrupt_before_reader_inactive_store(
+            _call_with_interrupt_before_reader_inactive_transition(
                 lambda: atomic_module.reopen_authenticated_directory(
                     directory,
                     ownership,
                     consume,
                 ),
+                monkeypatch=monkeypatch,
                 error=deactivation_error,
-                event_mode="opcode",
             )
         assert caught.value is deactivation_error
         assert reused
@@ -9681,14 +9645,14 @@ def test_reader_deactivation_and_child_cleanup_keep_callback_primary(
 
     try:
         with pytest.raises(ValueError) as caught:
-            _call_with_interrupt_before_reader_inactive_store(
+            _call_with_interrupt_before_reader_inactive_transition(
                 lambda: atomic_module.reopen_authenticated_directory(
                     directory,
                     ownership,
                     consume,
                 ),
+                monkeypatch=monkeypatch,
                 error=deactivation_error,
-                event_mode="line",
             )
         assert caught.value is callback_error
         assert reused
@@ -9765,14 +9729,14 @@ def test_fake_windows_reader_deactivation_interrupt_rejects_handle_aba(
     _install_fake_windows_api(monkeypatch, api)
     try:
         with pytest.raises(KeyboardInterrupt) as caught:
-            _call_with_interrupt_before_reader_inactive_store(
+            _call_with_interrupt_before_reader_inactive_transition(
                 lambda: atomic_module.reopen_authenticated_directory(
                     Path("C:/authority/owned"),
                     ownership,
                     consume,
                 ),
+                monkeypatch=monkeypatch,
                 error=deactivation_error,
-                event_mode="line",
             )
         assert caught.value is deactivation_error
         assert reused
