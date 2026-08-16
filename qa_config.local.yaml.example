@@ -3,7 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Copy this file to qa_config.local.yaml for local GPU LLM runs.
-# qa_config.local.yaml is ignored by git.
+# qa_config.local.yaml is ignored by git. It inherits shared repository,
+# retrieval, and UI defaults from the tracked base configuration.
+
+extends: qa_config.yaml
 
 model: openai/qwen2.5-coder
 mode: hybrid

@@ -254,8 +254,14 @@ def section_narrative_report(markdown: str) -> dict[str, Any]:
         re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
     )
     intro_end = section_matches[0].start() if section_matches else len(without_fences)
-    intro_terms = prose_terms(without_fences[:intro_end])
-    prior = [("intro", intro_terms)]
+    intro_body = without_fences[:intro_end]
+    intro_terms = prose_terms(intro_body)
+    intro_subjects = {
+        subject
+        for sentence in _prose_sentences(intro_body)
+        if (subject := leading_code_subject(sentence))
+    }
+    prior = [("intro", intro_terms, intro_subjects)]
     redundant_sections: List[str] = []
     comparisons: dict[str, dict[str, Any]] = {}
 
@@ -266,12 +272,20 @@ def section_narrative_report(markdown: str) -> dict[str, Any]:
             else len(without_fences)
         )
         title = match.group(1).strip()
-        terms = prose_terms(without_fences[match.end() : end])
+        body = without_fences[match.end() : end]
+        terms = prose_terms(body)
+        subjects = {
+            subject
+            for sentence in _prose_sentences(body)
+            if (subject := leading_code_subject(sentence))
+        }
         best_against = ""
         best_overlap = 0.0
-        for prior_title, prior_terms in prior:
+        for prior_title, prior_terms, prior_subjects in prior:
             smaller = min(len(terms), len(prior_terms))
             overlap = len(terms & prior_terms) / smaller if smaller >= 6 else 0.0
+            if subjects and prior_subjects and subjects.isdisjoint(prior_subjects):
+                overlap = 0.0
             if overlap > best_overlap:
                 best_against = prior_title
                 best_overlap = overlap
@@ -281,7 +295,7 @@ def section_narrative_report(markdown: str) -> dict[str, Any]:
         }
         if best_overlap >= 0.8:
             redundant_sections.append(title)
-        prior.append((title, terms))
+        prior.append((title, terms, subjects))
 
     return {
         "redundant_sections": redundant_sections,
@@ -381,6 +395,7 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
             for sentence in sentences
         ]
         subjects = [leading_code_subject(sentence) for sentence in sentences]
+        interactions = [is_interaction_claim(sentence) for sentence in sentences]
         for left in range(len(sentences)):
             for right in range(left + 1, len(sentences)):
                 smaller = min(len(terms[left]), len(terms[right]))
@@ -399,10 +414,16 @@ def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
                     and subjects[right]
                     and subjects[left] != subjects[right]
                 )
+                # A handoff and a local responsibility can legitimately name
+                # the same subject and data. Treating their shared vocabulary
+                # as a duplicate rejects useful workflow prose such as "calls
+                # print_file_ranges" followed by how diff ranges are built.
+                distinct_claim_kinds = interactions[left] != interactions[right]
                 if (
                     overlap >= 0.7
                     and not distinct_handoffs
                     and not distinct_named_subjects
+                    and not distinct_claim_kinds
                 ):
                     repetitions.append(
                         {

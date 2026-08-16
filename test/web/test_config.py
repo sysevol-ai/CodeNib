@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from codenib.web.config import load_config
 
 
@@ -26,14 +28,12 @@ def test_wiki_media_config_enables_local_renderer_without_endpoint(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        """
+    config_path.write_text("""
 wiki_media_model: local/svg
 wiki_media_options:
   provider: local
   width: 1024
-""".lstrip()
-    )
+""".lstrip())
 
     config = load_config(str(config_path))
 
@@ -47,13 +47,11 @@ def test_wiki_media_environment_overrides_file_config(
     monkeypatch,
 ) -> None:
     config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        """
+    config_path.write_text("""
 wiki_media_model: local/svg
 wiki_media_options:
   provider: local
-""".lstrip()
-    )
+""".lstrip())
     monkeypatch.setenv("CODENIB_WIKI_MEDIA_MODEL", "openai/image-1")
     monkeypatch.setenv("CODENIB_WIKI_MEDIA_API_BASE", "https://images.example/v1")
     monkeypatch.setenv("CODENIB_WIKI_MEDIA_API_KEY", "secret")
@@ -72,3 +70,96 @@ wiki_media_options:
         "provider": "openai",
         "timeout": 30,
     }
+
+
+def test_config_profile_extends_relative_base_and_merges_options(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.yaml"
+    base.write_text(
+        "model: openai/local\n"
+        "model_api_base: http://127.0.0.1:8080/v1\n"
+        "model_api_key: local-placeholder\n"
+        "mode: hybrid\n"
+        "model_options:\n"
+        "  timeout: 90\n"
+        "  extra_body:\n"
+        "    reasoning:\n"
+        "      enabled: true\n"
+    )
+    profile_dir = tmp_path / "profiles"
+    profile_dir.mkdir()
+    api = profile_dir / "api.yaml"
+    api.write_text(
+        "extends: ../base.yaml\n"
+        "model: deepseek/deepseek-v4-flash\n"
+        "model_api_base: https://api.deepseek.com\n"
+        "model_api_key: null\n"
+        "model_options:\n"
+        "  timeout: 30\n"
+        "  extra_body:\n"
+        "    thinking:\n"
+        "      type: disabled\n"
+    )
+
+    config = load_config(str(api))
+
+    assert config.model == "deepseek/deepseek-v4-flash"
+    assert config.model_api_base == "https://api.deepseek.com"
+    assert config.model_api_key is None
+    assert config.mode == "hybrid"
+    assert config.model_options == {
+        "timeout": 30,
+        "extra_body": {
+            "reasoning": {"enabled": True},
+            "thinking": {"type": "disabled"},
+        },
+    }
+
+
+def test_config_profile_supports_ordered_parent_layers(tmp_path: Path) -> None:
+    base = tmp_path / "base.yaml"
+    base.write_text("model: base\nmax_tokens: 1024\n")
+    service = tmp_path / "service.yaml"
+    service.write_text("max_tokens: 2048\nmode: hybrid\n")
+    profile = tmp_path / "profile.yaml"
+    profile.write_text(
+        "extends:\n" "  - base.yaml\n" "  - service.yaml\n" "model: api\n"
+    )
+
+    config = load_config(str(profile))
+
+    assert config.model == "api"
+    assert config.max_tokens == 2048
+    assert config.mode == "hybrid"
+
+
+def test_config_profile_environment_still_has_highest_precedence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = tmp_path / "base.yaml"
+    base.write_text("model: base\n")
+    profile = tmp_path / "profile.yaml"
+    profile.write_text("extends: base.yaml\nmodel: profile\n")
+    monkeypatch.setenv("CODENIB_DEMO_MODEL", "environment")
+
+    assert load_config(str(profile)).model == "environment"
+
+
+def test_config_profile_rejects_extends_cycle(tmp_path: Path) -> None:
+    first = tmp_path / "first.yaml"
+    second = tmp_path / "second.yaml"
+    first.write_text("extends: second.yaml\n")
+    second.write_text("extends: first.yaml\n")
+
+    with pytest.raises(ValueError, match="extends cycle"):
+        load_config(str(first))
+
+
+def test_config_profile_reports_missing_parent(tmp_path: Path) -> None:
+    profile = tmp_path / "profile.yaml"
+    profile.write_text("extends: missing.yaml\n")
+
+    with pytest.raises(FileNotFoundError, match="parent does not exist"):
+        load_config(str(profile))

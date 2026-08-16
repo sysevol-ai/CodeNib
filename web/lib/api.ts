@@ -2,6 +2,25 @@ import { apiBase, isStaticRuntime, staticDataUrl } from "./runtime";
 
 export const API_BASE = apiBase();
 
+async function responseError(response: Response, label: string): Promise<Error> {
+  let detail = "";
+  try {
+    const raw = (await response.text()).trim();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { detail?: unknown };
+        detail = typeof parsed.detail === "string" ? parsed.detail : raw;
+      } catch {
+        detail = raw;
+      }
+    }
+  } catch {
+    // The HTTP status remains useful even when the response body is unreadable.
+  }
+  const bounded = detail.replace(/\s+/g, " ").slice(0, 500);
+  return new Error(`${label} (${response.status})${bounded ? `: ${bounded}` : ""}`);
+}
+
 /** Strip an absolute index prefix (e.g. /home/.../repo/) to a repo-relative path. */
 export function repoRelative(path: string | null | undefined): string {
   if (!path) return "";
@@ -72,6 +91,7 @@ export async function fetchRepos(opts: { signal?: AbortSignal } = {}): Promise<R
 export interface WikiPageRef {
   id: string;
   title: string;
+  cache_state?: "ready" | "cold" | "retryable" | "degraded";
   children: WikiPageRef[];
 }
 
@@ -99,6 +119,25 @@ export interface WikiPage {
     renderer?: "fact_plan" | "narrative";
     reason?: string;
     plan_warnings?: string[];
+    retry?: {
+      state: "scheduled" | "exhausted" | "recovered";
+      attempts: number;
+      max_attempts: number;
+      last_attempt_epoch: number;
+      next_attempt_epoch: number | null;
+    };
+    metrics?: {
+      total_ms: number;
+      retrieval_ms: number;
+      relation_ms: number;
+      planning_ms: number;
+      model_call_ms: number;
+      model_calls: number;
+      model_failures: number;
+      initial_attempts: number;
+      fresh_replans: number;
+      repair_attempts: number;
+    };
   };
   grounding?: {
     valid: boolean;
@@ -154,6 +193,16 @@ export interface WikiMediaAsset {
   metadata?: Record<string, unknown>;
 }
 
+/** Keep diagnostic or structurally invalid prose out of the reader surface. */
+export function shouldWithholdWikiPage(page: WikiPage | null | undefined): boolean {
+  if (page?.generation?.mode !== "degraded") return false;
+  return Boolean(
+    page.generation.fallback === "fact_plan" ||
+      page.quality?.valid === false ||
+      page.grounding?.valid === false,
+  );
+}
+
 export interface WikiEvidenceItem {
   id: string;
   file: string;
@@ -183,17 +232,39 @@ export async function fetchWikiTree(repoId: string): Promise<WikiTree> {
     ? staticDataUrl("repos", repoId, "wiki.json")
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to load wiki (${res.status})`);
+  if (!res.ok) throw await responseError(res, "Failed to load wiki");
   return res.json();
 }
 
-export async function fetchWikiPage(repoId: string, pageId: string): Promise<WikiPage> {
-  const url = isStaticRuntime()
-    ? staticDataUrl("repos", repoId, "pages", `${pageId}.json`)
-    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to load page (${res.status})`);
-  return res.json();
+const wikiPageRequests = new Map<string, Promise<WikiPage>>();
+
+export async function fetchWikiPage(
+  repoId: string,
+  pageId: string,
+  options: { refresh?: boolean } = {},
+): Promise<WikiPage> {
+  const cacheKey = `${repoId}\u0000${pageId}`;
+  if (!options.refresh) {
+    const cached = wikiPageRequests.get(cacheKey);
+    if (cached) return cached;
+  }
+  const request = (async () => {
+    const url = isStaticRuntime()
+      ? staticDataUrl("repos", repoId, "pages", `${pageId}.json`)
+      : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw await responseError(res, "Failed to load page");
+    return res.json();
+  })();
+  wikiPageRequests.set(cacheKey, request);
+  try {
+    return await request;
+  } catch (error) {
+    if (wikiPageRequests.get(cacheKey) === request) {
+      wikiPageRequests.delete(cacheKey);
+    }
+    throw error;
+  }
 }
 
 export async function fetchSource(

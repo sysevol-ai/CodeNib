@@ -249,6 +249,11 @@ class TestAgentRunner:
         forced_kwargs = llm._call_raw.call_args.kwargs
         assert forced_kwargs.get("tool_choice") == "none"
         assert forced_kwargs.get("usage_turn") == 3
+        forced_history = llm._call_raw.call_args.args[0]
+        assert any(
+            "directly supported by retrieved evidence" in (message.get("content") or "")
+            for message in forced_history
+        )
 
     def test_force_final_answer_empty_result_raises(self, echo_registry):
         """An empty forced answer is an error, not a silent fallback."""

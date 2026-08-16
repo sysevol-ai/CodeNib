@@ -9,6 +9,8 @@
 #
 # `model` is a LiteLLM model string; override with CODENIB_DEMO_MODEL.
 # Keep secrets in environment variables, not this file.
+# Profile files may inherit this common configuration with
+# `extends: qa_config.yaml`; child values win and mappings are merged.
 
 model: gpt-4o
 # Optional: use a different model for generated wiki prose and edge labels.

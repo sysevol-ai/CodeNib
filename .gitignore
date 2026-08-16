@@ -51,3 +51,4 @@ web/*.tsbuildinfo
 .env.local
 web_before
 qa_config.local.yaml
+qa_config.api.yaml

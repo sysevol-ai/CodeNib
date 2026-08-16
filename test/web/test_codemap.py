@@ -131,6 +131,23 @@ def test_page_subgraph_bounds_repeated_anchor_collection():
     assert edge["hidden_anchors"] == 88
 
 
+def test_page_subgraph_explains_missing_or_mismatched_graph_seeds():
+    graph = CodeGraph()
+
+    no_evidence = build_page_subgraph(graph, [])
+    unresolved = build_page_subgraph(
+        graph,
+        [{"file": "src/missing.py", "start_line": 1, "node_name": "missing"}],
+    )
+
+    assert no_evidence["note"] == "This page has no source citations to map yet."
+    assert unresolved["note"] == (
+        "This page cites 1 source location, but none match symbols in the active "
+        "graph snapshot. Rebuild the symbol graph from the same repository "
+        "snapshot as the Wiki indexes."
+    )
+
+
 def test_page_subgraph_ranks_bridges_by_exact_anchor_count():
     graph = CodeGraph()
     vertices = {

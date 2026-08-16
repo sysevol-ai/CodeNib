@@ -5,6 +5,9 @@
 """Fast unit tests for the agent wiki retrieval guardrails."""
 
 import json
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 from codenib.graph.code_graph import CodeGraph
@@ -12,6 +15,7 @@ from codenib.wiki.agent_wiki import (
     AgentWiki,
     _candidate_score,
     _clean_markdown,
+    _compact_dense_plan,
     _condense_relation_free_overview,
     _ensure_cited_intro,
     _fact_plan_markdown,
@@ -22,6 +26,7 @@ from codenib.wiki.agent_wiki import (
     _page_quality_report,
     _plan_evidence_constraints,
     _plan_quality_warnings,
+    _plan_repair_limit,
     _plan_repair_score,
     _prepare_evidence_content,
     _prune_uncited_blocks,
@@ -174,6 +179,13 @@ def test_plan_repair_score_never_trades_a_required_topic_for_style_progress():
         plan,
         missing_topic,
     )
+
+
+def test_plan_repair_limit_distinguishes_truth_from_composition_feedback():
+    assert _plan_repair_limit(["claim cites evidence that does not exist"]) == 3
+    assert _plan_repair_limit(["section 'Flow' reads as a callable catalog"]) == 1
+    assert _plan_repair_limit(["section 'A' substantially repeats section 'B'"]) == 1
+    assert _plan_repair_limit([]) == 0
 
 
 def test_relation_free_overview_keeps_one_explanatory_fact_per_topic():
@@ -1277,6 +1289,96 @@ def test_renderable_plan_aligns_intro_deduplication_with_quality_gate():
     assert quality["planned_sections"] == quality["rendered_sections"] == 1
     assert quality["planned_claims"] == quality["covered_claims"] == 1
     assert quality["valid"] is True
+
+
+def test_renderable_plan_deduplicates_claims_across_overview_sections():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/client.py",
+            start_line=1,
+            end_line=12,
+            symbol="Client.send",
+            kind="method",
+            content=(
+                "def send(self, request):\n"
+                "    prepared = self.prepare(request)\n"
+                "    return self.adapter.dispatch(prepared)"
+            ),
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/client.py",
+            start_line=1,
+            end_line=12,
+            symbol="Client.send",
+            kind="method",
+            content=(
+                "def send(self, request):\n"
+                "    prepared = self.prepare(request)\n"
+                "    return self.adapter.dispatch(prepared)"
+            ),
+        ),
+    ]
+    repeated = (
+        "`Client.send()` prepares an incoming request and dispatches the "
+        "prepared request through its configured adapter"
+    )
+    plan = {
+        "thesis": {
+            "statement": "The client coordinates HTTP request execution",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Client requests",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": repeated,
+                        "evidence": ["E1"],
+                    }
+                ],
+            },
+            {
+                "title": "Adapter dispatch",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": repeated,
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
+        ],
+    }
+
+    rendered = _renderable_plan(plan, evidence, [])
+
+    assert [section["title"] for section in rendered["sections"]] == ["Client requests"]
+
+
+def test_dense_plan_compaction_drops_thin_sections_but_keeps_three_areas():
+    plan = {
+        "sections": [
+            {"title": "Core", "claims": [{"evidence": ["E1"]}]},
+            {"title": "Compute", "claims": [{"evidence": ["E2"]}]},
+            {"title": "Grouping", "claims": [{"evidence": ["E3"]}]},
+            {"title": "Parallel", "claims": [{"evidence": ["E4"]}]},
+        ]
+    }
+
+    compacted = _compact_dense_plan(
+        plan,
+        {"thin_sections": ["Parallel"], "redundant_sections": []},
+    )
+
+    assert [section["title"] for section in compacted["sections"]] == [
+        "Core",
+        "Compute",
+        "Grouping",
+    ]
+    assert len(plan["sections"]) == 4
 
 
 def test_renderable_plan_keeps_specific_claims_for_distinct_named_scripts():
@@ -3669,6 +3771,73 @@ def test_overview_plan_rejects_filename_as_subsystem_name():
     assert "section 'Subsystems' names a source file as a subsystem" in warnings
 
 
+def test_fact_plan_caps_total_model_calls_when_repairs_never_improve(monkeypatch):
+    response = json.dumps(
+        {
+            "thesis": {
+                "statement": "`Router.run()` returns `dispatch(request)`",
+                "evidence": ["E1"],
+            },
+            "sections": [
+                {
+                    "title": "Routing",
+                    "claims": [
+                        {
+                            "role": "contract",
+                            "statement": "`Router.run()` returns `dispatch(request)`",
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    class LLM:
+        cache_identity = "fake"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, _messages, **_kwargs):
+            self.calls += 1
+            return response
+
+    llm = LLM()
+    wiki = AgentWiki(
+        SimpleNamespace(entry=SimpleNamespace(repo="owner/repo", language="python")),
+        model="fake-model",
+        llm=llm,
+    )
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/router.py",
+            start_line=1,
+            end_line=2,
+            symbol="Router.run",
+            kind="method",
+            content="def run(request):\n    return dispatch(request)",
+        )
+    ]
+    monkeypatch.setattr(
+        "codenib.wiki.agent_wiki._plan_quality_warnings",
+        lambda *_args, **_kwargs: ["claim cites evidence that does not exist"],
+    )
+    metrics = {}
+
+    wiki._fact_plan(
+        {"id": "routing", "title": "Routing", "summary": "Request routing"},
+        evidence,
+        [],
+        metrics=metrics,
+    )
+
+    assert llm.calls == 3
+    assert metrics["model_calls"] == 3
+    assert metrics["fresh_replans"] + metrics["repair_attempts"] == 2
+
+
 def test_overview_fact_plan_repairs_sparse_plan():
     sparse = {
         "thesis": "indexed source",
@@ -4174,6 +4343,72 @@ def test_overview_uses_canonical_readme_intro():
     )
     assert "This document provides" not in rendered
     assert "## Workflow" in rendered
+
+
+def test_overview_keeps_supported_thesis_when_canonical_intro_is_a_fragment():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=20,
+            symbol="README.md",
+            kind="file",
+            content=("jq is a lightweight and flexible command-line JSON processor."),
+        )
+    ]
+    draft = (
+        "`jq` parses JSON input, compiles a filter, and executes the compiled "
+        "program against each value. [E1]\n\n"
+        "## Execution\n\n"
+        "The runtime evaluates compiled filters against JSON values. [E1]"
+    )
+
+    rendered = _ensure_cited_intro(
+        draft,
+        evidence,
+        canonical_readme=True,
+        repository_name="jq",
+    )
+
+    assert rendered == draft
+    assert not rendered.startswith("jq is a lightweight.")
+
+
+def test_overview_drops_purpose_that_repeats_canonical_intro():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="README.md",
+            start_line=1,
+            end_line=20,
+            symbol="README.md",
+            kind="file",
+            content=(
+                "Axios is a promise-based HTTP client that sends requests from "
+                "browsers and Node.js applications."
+            ),
+        )
+    ]
+    draft = (
+        "A supported planning thesis that will be replaced. [E1]\n\n"
+        "## Purpose and scope\n\n"
+        "Axios is a promise-based HTTP client for sending requests from browser "
+        "and Node.js applications. [E1]\n\n"
+        "## Request pipeline\n\n"
+        "The request pipeline normalizes configuration before dispatch. [E1]"
+    )
+
+    rendered = _ensure_cited_intro(
+        draft,
+        evidence,
+        canonical_readme=True,
+        repository_name="Axios",
+    )
+
+    assert rendered.startswith("Axios is a promise-based HTTP client")
+    assert "## Purpose and scope" not in rendered
+    assert "## Request pipeline" in rendered
 
 
 def test_overview_truncates_promotional_readme_tail_at_complete_clause():
@@ -5607,8 +5842,98 @@ def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
     assert page["quality"]["valid"] is True
     assert page["generation"]["mode"] == "generated"
     assert page["generation"]["renderer"] == "fact_plan"
+    assert page["generation"]["metrics"]["model_calls"] == 1
+    assert page["generation"]["metrics"]["repair_attempts"] == 0
+    assert page["generation"]["metrics"]["total_ms"] >= 0
     assert page["citations"][0]["start_line"] == 1
     assert page["evidence"]["items"][0]["routes"] == ("outline", "dense")
+
+
+def test_empty_fact_plan_replans_from_original_evidence(tmp_path):
+    valid_plan = json.dumps(
+        {
+            "thesis": {
+                "statement": "The `Router` owns repository request dispatch",
+                "evidence": ["E1"],
+            },
+            "sections": [
+                {
+                    "title": "Flow",
+                    "claims": [
+                        {
+                            "role": "responsibility",
+                            "statement": (
+                                "`dispatch` invokes `handle` for source-backed "
+                                "repository requests"
+                            ),
+                            "evidence": ["E1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    class LLM:
+        cache_identity = "fake"
+
+        def __init__(self):
+            self.prompts = []
+
+        def complete(self, messages, **_kwargs):
+            prompt = messages[0]["content"]
+            self.prompts.append(prompt)
+            if len(self.prompts) == 1:
+                return '{"thesis": {}, "sections": []}'
+            # An empty admitted plan must start over from the original source
+            # prompt instead of trying to revise the poisoned plan.
+            assert prompt.startswith("You are planning one source-grounded page")
+            return valid_plan
+
+    node = {
+        "file": "src/core.py",
+        "node_name": "Router",
+        "type": "class",
+        "start_line": 0,
+        "end_line": 6,
+        "content": (
+            "class Router:\n"
+            "    def dispatch(self, repository_request):\n"
+            "        return handle(repository_request)"
+        ),
+    }
+    llm = LLM()
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=_FakeVectorStore([node]),
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+        code_graph=lambda: None,
+    )
+
+    page = AgentWiki(bundle, model="fake-model", llm=llm)._generate_page(
+        {
+            "id": "routing",
+            "title": "Request Routing",
+            "summary": "How requests move through the repository",
+            "keywords": ["dispatch"],
+            "files": ["src/core.py"],
+        }
+    )
+
+    assert len(llm.prompts) == 2
+    assert page["generation"]["mode"] == "generated"
+    assert page["generation"]["fallback"] is None
+    assert page["generation"]["metrics"]["model_calls"] == 2
+    assert page["generation"]["metrics"]["fresh_replans"] == 1
+    assert page["generation"]["metrics"]["repair_attempts"] == 0
+    assert "is indexed from" not in page["markdown"]
 
 
 def test_structured_page_deduplicates_without_free_form_markdown_repair(tmp_path):
@@ -5943,6 +6268,8 @@ def test_page_reports_model_unavailable_when_fact_planning_falls_back(tmp_path):
     assert page["generation"]["renderer"] == "fact_plan"
     assert page["generation"]["fallback"] == "fact_plan"
     assert page["grounding"]["valid"] is True
+    assert page["generation"]["metrics"]["model_calls"] == 1
+    assert page["generation"]["metrics"]["model_failures"] == 1
     assert llm.calls == 1
 
 
@@ -5969,6 +6296,72 @@ def test_agent_wiki_cache_key_tracks_view_rebuild_identity(tmp_path):
     before = wiki._key("outline")
     view.built_at_epoch = 2.0
     view.config = {"builder_schema": 2}
+
+    assert wiki._key("outline") != before
+
+
+def test_agent_wiki_cache_key_ignores_equivalent_rebuild_timestamp(tmp_path):
+    view = SimpleNamespace(
+        status="fresh",
+        commit="abc123",
+        source_fingerprint="sha256:source",
+        built_at_epoch=1.0,
+        config={"builder_schema": 1},
+        metadata={"artifact_digest": "sha256:artifact"},
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(
+            languages=["python"],
+            indexes={"bm25": view},
+            source_fingerprint="sha256:source",
+        ),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    before = wiki._key("outline")
+
+    view.built_at_epoch = 2.0
+
+    assert wiki._key("outline") == before
+
+
+def test_agent_wiki_cache_key_tracks_artifact_receipt(tmp_path):
+    view = SimpleNamespace(
+        status="fresh",
+        commit="abc123",
+        source_fingerprint="sha256:source",
+        built_at_epoch=1.0,
+        config={"builder_schema": 1},
+        metadata={"artifact_digest": "sha256:first"},
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(
+            languages=["python"],
+            indexes={"bm25": view},
+            source_fingerprint="sha256:source",
+        ),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    before = wiki._key("outline")
+
+    view.metadata["artifact_digest"] = "sha256:second"
 
     assert wiki._key("outline") != before
 
@@ -6020,6 +6413,73 @@ def test_agent_wiki_cache_key_is_stable_across_lazy_client_creation(tmp_path):
     assert wiki._key("outline") == before
 
 
+def test_agent_wiki_adopts_legacy_timestamp_cache_into_stable_key(tmp_path):
+    view = SimpleNamespace(
+        status="fresh",
+        commit="abc123",
+        source_fingerprint="",
+        built_at_epoch=1.0,
+        config={"builder_schema": 1},
+        metadata={},
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={"bm25": view}),
+    )
+    cache_dir = tmp_path / "wiki-cache"
+    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+    stable, legacy = wiki._cache_candidate_paths("outline")
+    payload = {"pages": [{"id": "overview", "title": "Overview"}]}
+    wiki._atomic_write_cache(
+        legacy,
+        {"model": "old-model", "data": payload},
+    )
+
+    assert not os.path.exists(stable)
+    assert wiki._read_cache("outline") == payload
+    assert os.path.isfile(stable)
+    with open(stable, encoding="utf-8") as handle:
+        assert json.load(handle)["model"] == "old-model"
+
+
+def test_agent_wiki_atomic_cache_write_preserves_previous_entry_on_failure(
+    tmp_path, monkeypatch
+):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    cache_dir = tmp_path / "wiki-cache"
+    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+    wiki._write_cache("outline", {"pages": [{"id": "original"}]})
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "codenib.wiki.agent_wiki.json.dump",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+        )
+        wiki._write_cache("outline", {"pages": [{"id": "replacement"}]})
+
+    assert wiki._read_cache("outline") == {"pages": [{"id": "original"}]}
+    assert not list(cache_dir.glob("*.tmp"))
+
+
 def test_agent_wiki_page_cache_key_tracks_outline_metadata():
     original = {
         "id": "runtime",
@@ -6038,6 +6498,322 @@ def test_agent_wiki_page_cache_key_tracks_outline_metadata():
     assert AgentWiki._page_cache_suffix(original) != AgentWiki._page_cache_suffix(
         revised
     )
+
+
+def test_agent_wiki_page_tree_reports_ready_cold_and_degraded_cache_states(tmp_path):
+    runtime = {
+        "id": "runtime",
+        "title": "Runtime",
+        "children": [
+            {"id": "routing", "title": "Routing", "children": []},
+        ],
+    }
+    broken = {"id": "broken", "title": "Broken", "children": []}
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+        vector_store=None,
+        bm25=None,
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    wiki._outline = {"pages": [runtime, broken]}
+    cached = {
+        wiki._page_cache_suffix(runtime): {
+            "generation": {"mode": "generated"},
+            "quality": {"valid": True},
+        },
+        wiki._page_cache_suffix(broken): {
+            "generation": {
+                "mode": "degraded",
+                "retry": {"attempts": 2},
+            },
+            "quality": {"valid": False},
+        },
+    }
+    wiki._read_cache = lambda suffix: cached.get(suffix)
+
+    tree = wiki.page_tree()
+
+    assert tree[0]["cache_state"] == "ready"
+    assert tree[0]["children"][0]["cache_state"] == "cold"
+    assert tree[1]["cache_state"] == "degraded"
+
+
+def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path):
+    node = {
+        "file": "src/router.py",
+        "node_name": "Router.run",
+        "type": "method",
+        "start_line": 0,
+        "end_line": 2,
+        "content": "def run(request):\n    return dispatch(request)",
+    }
+    store = _FakeVectorStore([node])
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=store,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    outline = {
+        "pages": [
+            {
+                "id": "runtime",
+                "title": "Runtime",
+                "summary": "Request routing",
+                "files": ["src/router.py"],
+                "children": [],
+            }
+        ]
+    }
+    cache_dir = tmp_path / "wiki-cache"
+    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+    wiki._outline = outline
+    wiki._generate_page = lambda _meta: (_ for _ in ()).throw(
+        AssertionError("graph evidence must not generate prose")
+    )
+
+    citations = wiki.page_citations("runtime")
+
+    assert citations == [
+        {
+            "file": "src/router.py",
+            "start_line": 1,
+            "end_line": 3,
+            "node_name": "Router.run",
+            "type": "method",
+            "score": None,
+            "content": None,
+        }
+    ]
+    assert len(store.calls) == 1
+    assert wiki._pages == {}
+
+    store.calls.clear()
+    reloaded = AgentWiki(bundle, model="other-model", cache_dir=str(cache_dir))
+    reloaded._outline = outline
+    assert reloaded.page_citations("runtime") == citations
+    assert store.calls == []
+
+
+def test_agent_wiki_regenerates_cached_diagnostic_fallback(tmp_path):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    meta = {"id": "runtime", "title": "Runtime", "children": []}
+    cached = {
+        "id": "runtime",
+        "markdown": "`Router` is indexed from `src/router.py`.",
+        "generation": {
+            "mode": "degraded",
+            "fallback": "fact_plan",
+            "reason": "quality_guard",
+        },
+    }
+    generated = {
+        "id": "runtime",
+        "markdown": "Readable source-linked explanation.",
+        "generation": {"mode": "generated", "fallback": None},
+    }
+    writes = []
+    wiki._find = lambda _page_id: meta
+    wiki._read_cache = lambda _suffix: cached
+    wiki._generate_page = lambda _meta: generated
+    wiki._write_cache = lambda suffix, page: writes.append((suffix, page))
+
+    assert wiki.page("runtime") is generated
+    assert writes == [(wiki._page_cache_suffix(meta), generated)]
+
+
+def test_agent_wiki_retries_quality_invalid_cache_with_a_cooldown():
+    legacy_invalid = {
+        "generation": {"mode": "degraded", "fallback": None},
+        "quality": {"valid": False},
+    }
+
+    assert AgentWiki._cached_page_needs_regeneration(legacy_invalid) is True
+
+    AgentWiki._record_page_retry(legacy_invalid, now_epoch=10_000_000_000.0)
+    retry = legacy_invalid["generation"]["retry"]
+    assert retry["state"] == "scheduled"
+    assert retry["attempts"] == 0
+    assert retry["next_attempt_epoch"] > 10_000_000_000.0
+    assert AgentWiki._cached_page_needs_regeneration(legacy_invalid) is False
+
+
+def test_agent_wiki_stops_retrying_after_bounded_failed_attempts():
+    previous = {
+        "generation": {
+            "mode": "degraded",
+            "fallback": None,
+            "retry": {"attempts": 1},
+        },
+        "quality": {"valid": False},
+    }
+    still_invalid = {
+        "generation": {"mode": "degraded", "fallback": None},
+        "quality": {"valid": False},
+    }
+
+    AgentWiki._record_page_retry(
+        still_invalid,
+        previous=previous,
+        now_epoch=100.0,
+    )
+
+    assert still_invalid["generation"]["retry"] == {
+        "state": "exhausted",
+        "attempts": 2,
+        "max_attempts": 2,
+        "last_attempt_epoch": 100.0,
+        "next_attempt_epoch": None,
+    }
+    assert AgentWiki._cached_page_needs_regeneration(still_invalid) is False
+
+
+def test_agent_wiki_records_recovery_from_a_bad_cached_page():
+    previous = {
+        "generation": {"mode": "degraded", "fallback": "fact_plan"},
+        "quality": {"valid": False},
+    }
+    recovered = {
+        "generation": {"mode": "generated", "fallback": None},
+        "quality": {"valid": True},
+    }
+
+    AgentWiki._record_page_retry(recovered, previous=previous, now_epoch=100.0)
+
+    assert recovered["generation"]["retry"]["state"] == "recovered"
+    assert recovered["generation"]["retry"]["attempts"] == 1
+
+
+def test_agent_wiki_coalesces_concurrent_page_generation(tmp_path):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    meta = {"id": "runtime", "title": "Runtime", "children": []}
+    generation_started = threading.Event()
+    second_lookup_started = threading.Event()
+    release_generation = threading.Event()
+    lookup_calls = 0
+    generation_calls = 0
+    calls_guard = threading.Lock()
+
+    def find(_page_id):
+        nonlocal lookup_calls
+        with calls_guard:
+            lookup_calls += 1
+            if lookup_calls == 2:
+                second_lookup_started.set()
+        return meta
+
+    def generate(_meta):
+        nonlocal generation_calls
+        with calls_guard:
+            generation_calls += 1
+        generation_started.set()
+        assert release_generation.wait(timeout=2)
+        return {"id": "runtime", "markdown": "generated once"}
+
+    wiki._find = find
+    wiki._generate_page = generate
+    wiki._read_cache = lambda _suffix: None
+    wiki._write_cache = lambda _suffix, _page: None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(wiki.page, "runtime")
+        assert generation_started.wait(timeout=2)
+        second = executor.submit(wiki.page, "runtime")
+        assert second_lookup_started.wait(timeout=2)
+        release_generation.set()
+
+        assert first.result(timeout=2) == second.result(timeout=2)
+
+    assert generation_calls == 1
+
+
+def test_agent_wiki_coalesces_generation_across_builder_instances(tmp_path):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    meta = {"id": "runtime", "title": "Runtime", "children": []}
+    outline = {"pages": [meta]}
+    cache_dir = tmp_path / "wiki-cache"
+    builders = [
+        AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+        for _ in range(2)
+    ]
+    for wiki in builders:
+        wiki._outline = outline
+    generation_started = threading.Event()
+    release_generation = threading.Event()
+    calls_guard = threading.Lock()
+    generation_calls = 0
+
+    def generate(_meta):
+        nonlocal generation_calls
+        with calls_guard:
+            generation_calls += 1
+        generation_started.set()
+        assert release_generation.wait(timeout=2)
+        return {
+            "id": "runtime",
+            "markdown": "generated once across processes",
+            "generation": {"mode": "generated"},
+            "quality": {"valid": True},
+        }
+
+    for wiki in builders:
+        wiki._generate_page = generate
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = [executor.submit(wiki.page, "runtime") for wiki in builders]
+        assert generation_started.wait(timeout=2)
+        release_generation.set()
+        assert results[0].result(timeout=2) == results[1].result(timeout=2)
+
+    assert generation_calls == 1
 
 
 def test_flow_step_naming_an_unsupported_symbol_is_dropped():

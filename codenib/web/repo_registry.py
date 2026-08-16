@@ -14,6 +14,7 @@ concurrent queries are safe.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from importlib.util import find_spec
 from threading import Lock
@@ -25,6 +26,7 @@ from ..index.embedding._lifecycle import close_vector_after_failure
 from ..log_utils import get_logger
 from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_route
 from ..repository_summary import read_bound_repository_summary, read_repository_summary
+from ..source_fingerprint import is_secure_source_fingerprint_v2
 from .config import QAConfig, RepoEntry, load_registry
 from .schemas import GraphCoverage, RepoInfo
 
@@ -54,6 +56,10 @@ _DEMO_SYSTEM_PROMPT = (
     "When evidence exposes a candidate identifier, run a targeted search for "
     "its exact identifier and defining file; do not claim it is absent while "
     "an unresolved candidate identifier remains. "
+    "Trace wrapper chains breadth-first: combine every unresolved identifier "
+    "visible in the current evidence into one focused follow-up search instead "
+    "of spending one search on each wrapper. Do not name a downstream "
+    "implementation as fact until its implementation evidence was retrieved. "
     "Explain behaviour only after finding implementation evidence. Treat tests, "
     "examples, documentation, and validation scripts as corroboration, not as "
     "runtime mechanisms, unless the user asks about them explicitly. Distinguish "
@@ -65,7 +71,8 @@ _DEMO_SYSTEM_PROMPT = (
     "the fields used by an actual branch or comparison: computing age or a "
     "timestamp after a predicate does not make time the freshness criterion. "
     "Distinguish building an artifact from marking it stale, publishing it, "
-    "and loading it. Write a direct, well-structured final answer and name the "
+    "and loading it. Keep the final answer under 500 words unless the user asks "
+    "for more depth. Write a direct, well-structured final answer and name the "
     "strongest two to five repository-relative files or symbols so the reader "
     "can open them. For every action requested by the user, follow wrappers to "
     "the concrete implementation; a name or docstring saying that a method "
@@ -141,17 +148,50 @@ class RepoBundle:
         with self._runtime_lock:
             if self._runtime_loaded:
                 return
+            # A standalone maintenance worker may have released the views
+            # between the optimistic check above and this runtime lease.
+            self.ensure_views()
             if self.runtime_loader is None:
                 raise RuntimeError("repo runtime loader is not configured")
             self.runtime_loader(self)
             self._runtime_loaded = True
 
+    def release_views(self) -> bool:
+        """Release retrieval artifacts when no interactive runtime owns them.
+
+        This is intended for bounded maintenance jobs such as Wiki prewarming.
+        An initialized Ask runner retains its retrieval contexts, so those
+        bundles deliberately stay loaded for the lifetime of the process.
+        """
+
+        with self._runtime_lock:
+            if self._runtime_loaded:
+                return False
+            with self._views_lock:
+                if self._runtime_loaded:
+                    return False
+                vector_store = self.vector_store
+                self.vector_store = None
+                self.bm25 = None
+                self._views_loaded = self.view_loader is None
+                self._file_count_cache = None
+                if vector_store is not None:
+                    vector_store.close()
+                return True
+
     def info(self) -> RepoInfo:
         capabilities = dict(self.manifest.capabilities)
         # The prebuilt indexes ship a symbol graph that the manifest doesn't
         # declare; surface a "codemap" capability so the UI can offer the mode.
-        capabilities["codemap"] = (
-            self._graph_path() is not None and find_spec("igraph") is not None
+        graph_path = self._graph_path()
+        graph_load_failed = getattr(self, "_code_graph_loaded", False) and (
+            getattr(self, "_code_graph", None) is None
+        )
+        capabilities["codemap"] = bool(
+            graph_path is not None
+            and find_spec("igraph") is not None
+            and self._graph_schema_is_current()
+            and not graph_load_failed
         )
         capabilities["chat"] = self.chat_available
         display_name = self.entry.repo
@@ -257,12 +297,34 @@ class RepoBundle:
             return True
         return str(getattr(entry, "source_fingerprint", "") or "") == manifest_source
 
+    def _graph_schema_version(self) -> Optional[int]:
+        """Return the persisted graph schema using a bounded, safe prefix read."""
+
+        cached = getattr(self, "_graph_schema_version_cache", "?")
+        if cached != "?":
+            return cached
+        path = self._graph_path()
+        if path is None:
+            version = None
+        else:
+            from ..graph.code_graph import persisted_graph_schema_version
+
+            version = persisted_graph_schema_version(path)
+        self._graph_schema_version_cache = version
+        return version
+
+    def _graph_schema_is_current(self) -> bool:
+        from ..graph.code_graph import current_graph_schema_version
+
+        return self._graph_schema_version() == current_graph_schema_version()
+
     def code_graph(self) -> Optional[CodeGraph]:
         """Lazily load + cache the repo's symbol graph (None if unavailable)."""
         if getattr(self, "_code_graph_loaded", False):
             return self._code_graph
         self._code_graph_loaded = True
         self._code_graph = None
+        self._code_graph_error = None
         path = self._graph_path()
         if path is None:
             return None
@@ -275,12 +337,34 @@ class RepoBundle:
             )
         except Exception as exc:  # noqa: BLE001 - stale/old-format graph: skip codemap
             logger.warning("codemap: graph at %s unusable: %s", path, exc)
+            self._code_graph_error = str(exc)
             self._code_graph = None
         return self._code_graph
 
     def graph_unavailable_note(self) -> str:
         """Return an actionable reason when the dependency graph cannot load."""
 
+        from ..graph.code_graph import current_graph_schema_version
+
+        persisted_schema = self._graph_schema_version()
+        current_schema = current_graph_schema_version()
+        if persisted_schema is not None and persisted_schema != current_schema:
+            return (
+                f"Dependency graph uses schema {persisted_schema}, but this server "
+                f"requires schema {current_schema}. Rebuild symbol_graph for this "
+                "repository."
+            )
+        load_error = str(getattr(self, "_code_graph_error", "") or "")
+        schema_mismatch = re.search(
+            r"schema_version=([^,]+), expected ([^.]+)", load_error
+        )
+        if schema_mismatch:
+            observed, expected = schema_mismatch.groups()
+            return (
+                f"Dependency graph uses schema {observed}, but this server "
+                f"requires schema {expected}. Rebuild symbol_graph for this "
+                "repository."
+            )
         entry = self.manifest.indexes.get("symbol_graph")
         if entry is None:
             return (
@@ -600,6 +684,23 @@ class RepoRegistry:
                     raise ValueError(
                         "hybrid mode requires a current vector manifest entry"
                     )
+                bundle.vector_store = None
+                bundle.bm25 = bm25_index
+                return
+
+            if (
+                self._allow_missing_native_index_authorization
+                and not is_secure_source_fingerprint_v2(
+                    getattr(manifest, "source_fingerprint", None)
+                )
+            ):
+                logger.warning(
+                    "Skipping legacy native vector view at %s without source "
+                    "fingerprint v2; BM25 remains available. Rebuild the "
+                    "repository manifest and vector artifact to restore hybrid "
+                    "retrieval.",
+                    vec_entry.path,
+                )
                 bundle.vector_store = None
                 bundle.bm25 = bm25_index
                 return

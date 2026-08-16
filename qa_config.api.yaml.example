@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Copy this file to qa_config.api.yaml after creating qa_config.local.yaml.
+# This profile retains the local profile's repository, cache, embedding, and
+# retrieval settings while routing user-facing generation through DeepSeek.
+# qa_config.api.yaml is ignored by git; keep credentials in environment vars.
+
+extends: qa_config.local.yaml
+
+model: deepseek/deepseek-v4-flash
+model_api_base: https://api.deepseek.com
+# Clear any placeholder inherited from a local OpenAI-compatible server. Set
+# CODENIB_DEMO_API_KEY (or DEEPSEEK_API_KEY for provider-native routing).
+model_api_key: null
+model_options:
+  timeout: 45
+  extra_body:
+    thinking:
+      type: disabled
+
+# Use the same API route for Wiki prose. Because the provider prefix matches
+# `model`, the Wiki path safely reuses the Ask endpoint and credential.
+wiki_model: deepseek/deepseek-v4-flash
+wiki_api_base: null
+wiki_api_key: null
+
+# Bound the interactive tool loop to keep hosted latency and cost predictable.
+max_turns: 3
+max_tokens: 4096

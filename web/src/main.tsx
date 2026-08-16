@@ -37,7 +37,14 @@ function App() {
     const query = new URLSearchParams(location.search).get("q") ?? "";
     return <AskPage repoId={repoId} query={query} />;
   }
-  return <WikiPageView repoId={repoId} />;
+  const pageId = new URLSearchParams(location.search).get("p") || "overview";
+  return (
+    <WikiPageView
+      key={`${repoId}:${pageId}`}
+      repoId={repoId}
+      initialPageId={pageId}
+    />
+  );
 }
 
 restoreStaticRoute();

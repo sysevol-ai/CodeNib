@@ -31,6 +31,7 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
   // Bumped whenever the thread resets so in-flight answers from a previous
   // conversation can't land in the new one.
   const genRef = useRef(0);
@@ -40,6 +41,19 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
       .then((rs) => setRepo(rs.find((r) => r.id === repoId) ?? null))
       .catch(() => {});
   }, [repoId]);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(
+      () => setLoadingSeconds(Math.floor((Date.now() - startedAt) / 1000)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   // Append a turn and fetch its answer. The request carries the prior turns
   // plus this question as the final user message (DeepWiki-style) so the agent
@@ -191,7 +205,19 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
                 )}
 
                 {!t.resp && !t.err && (
-                  <p className="muted ask-thinking">Searching {repoName}…</p>
+                  <div className="muted ask-thinking" role="status" aria-live="polite">
+                    <div>
+                      {loadingSeconds < 5
+                        ? `Searching ${repoName}…`
+                        : "Reviewing retrieved code and refining the answer…"}
+                    </div>
+                    {loadingSeconds >= 5 && (
+                      <div className="ask-thinking-detail">
+                        Multi-step agent run
+                        <span className="mono"> · {loadingSeconds}s</span>
+                      </div>
+                    )}
+                  </div>
                 )}
                 {t.err && (
                   <p className="muted">

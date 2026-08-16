@@ -13,6 +13,7 @@ import {
   fetchWikiPage,
   fetchWikiTree,
   repoRelative,
+  shouldWithholdWikiPage,
   type CodemapResponse,
   type Citation,
   type CommitRef,
@@ -77,6 +78,12 @@ function TocTree({
   activeId: string;
   onPick: (id: string) => void;
 }) {
+  const cacheLabels = {
+    ready: "Cached page",
+    cold: "First load will generate this page",
+    retryable: "Quality retry queued",
+    degraded: "Page needs review",
+  } as const;
   return (
     <ul className="toc-tree">
       {pages.map((p) => (
@@ -87,7 +94,14 @@ function TocTree({
             title={p.title}
             onClick={() => onPick(p.id)}
           >
-            {p.title}
+            <span className="toc-label">{p.title}</span>
+            {p.cache_state && (
+              <span
+                className={`toc-cache-state ${p.cache_state}`}
+                aria-label={cacheLabels[p.cache_state]}
+                title={cacheLabels[p.cache_state]}
+              />
+            )}
           </button>
           {p.children.length > 0 && (
             <TocTree pages={p.children} activeId={activeId} onPick={onPick} />
@@ -96,6 +110,22 @@ function TocTree({
       ))}
     </ul>
   );
+}
+
+function flattenPages(pages: WikiPageRef[]): WikiPageRef[] {
+  return pages.flatMap((page) => [page, ...flattenPages(page.children)]);
+}
+
+function markPageCacheState(
+  pages: WikiPageRef[],
+  pageId: string,
+  cacheState: WikiPageRef["cache_state"],
+): WikiPageRef[] {
+  return pages.map((item) => ({
+    ...item,
+    cache_state: item.id === pageId ? cacheState : item.cache_state,
+    children: markPageCacheState(item.children, pageId, cacheState),
+  }));
 }
 
 // Timed cold graph-build or warm patch section for the selected snapshot. This
@@ -312,14 +342,21 @@ function MultimodalMedia({
   );
 }
 
-export default function WikiPageView({ repoId }: { repoId: string }) {
+export default function WikiPageView({
+  repoId,
+  initialPageId = "overview",
+}: {
+  repoId: string;
+  initialPageId?: string;
+}) {
 
   const staticRuntime = isStaticRuntime();
 
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);
-  const [activeId, setActiveId] = useState<string>("overview");
+  const [activeId, setActiveId] = useState<string>(initialPageId);
   const [page, setPage] = useState<WikiPage | null>(null);
+  const [pageLoadSeconds, setPageLoadSeconds] = useState(0);
   const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
   const [pageGraphOpen, setPageGraphOpen] = useState(false);
   const [pageGraphLoading, setPageGraphLoading] = useState(false);
@@ -347,9 +384,6 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
     setCommits([]);
     setSelectedCommit(undefined);
 
-    // Deep-link support: ?p=<pageId> opens that wiki page directly.
-    const p = new URLSearchParams(window.location.search).get("p");
-    if (p) setActiveId(p);
     fetchRepos()
       .then((rs) => {
         if (!cancelled) setRepo(rs.find((x) => x.id === repoId) ?? null);
@@ -371,7 +405,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
         if (!cancelled) setPages(t.pages);
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       })
       .finally(() => {
         if (!cancelled) setTocLoading(false);
@@ -383,6 +417,13 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    const startedAt = Date.now();
+    const elapsedTimer = window.setInterval(() => {
+      if (!cancelled) {
+        setPageLoadSeconds(Math.floor((Date.now() - startedAt) / 1000));
+      }
+    }, 1000);
+    setPageLoadSeconds(0);
     setPage(null);
     setPageError(null);
     setPageGraph(null);
@@ -392,11 +433,46 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
     setSourceCitation(null);
     fetchWikiPage(repoId, activeId)
       .then((p) => !cancelled && setPage(p))
-      .catch((e) => !cancelled && setPageError(String(e)));
+      .catch(
+        (e) =>
+          !cancelled && setPageError(e instanceof Error ? e.message : String(e)),
+      )
+      .finally(() => window.clearInterval(elapsedTimer));
     return () => {
       cancelled = true;
+      window.clearInterval(elapsedTimer);
     };
   }, [repoId, activeId]);
+
+  useEffect(() => {
+    if (!page) return;
+    setPages((current) =>
+      markPageCacheState(
+        current,
+        page.id,
+        shouldWithholdWikiPage(page) ? "degraded" : "ready",
+      ),
+    );
+  }, [page]);
+
+  // Preload at most two adjacent pages that the server already reports as
+  // cached. This makes sidebar navigation instant without turning browsing
+  // into hidden model spend for cold pages.
+  useEffect(() => {
+    if (!page || pages.length === 0) return;
+    const flattened = flattenPages(pages);
+    const activeIndex = flattened.findIndex((item) => item.id === activeId);
+    if (activeIndex < 0) return;
+    [flattened[activeIndex + 1], flattened[activeIndex - 1]]
+      .filter(
+        (item): item is WikiPageRef =>
+          Boolean(item && item.cache_state === "ready"),
+      )
+      .slice(0, 2)
+      .forEach((item) => {
+        void fetchWikiPage(repoId, item.id).catch(() => {});
+      });
+  }, [repoId, activeId, page, pages]);
 
   useEffect(() => {
     if (!pageGraphOpen || pageGraph) return;
@@ -489,6 +565,7 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
   // clear the looser grounding floor stay visible, but retain the review badge.
   const sourceChecked =
     generationMode === "generated" && page?.grounding?.valid === true;
+  const withheldByQualityGuard = shouldWithholdWikiPage(page);
   const evidenceRoutes = [
     ...new Set(page?.evidence?.items.flatMap((item) => item.routes) ?? []),
   ];
@@ -591,7 +668,10 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
             )
           )}
           {error ? (
-            <div className="muted">Failed to load wiki.</div>
+            <div className="page-load-error" role="alert">
+              <div>Failed to load this wiki.</div>
+              <div className="page-load-error-detail mono">{error}</div>
+            </div>
           ) : tocLoading ? (
             <div className="toc-skeleton" aria-hidden>
               {Array.from({ length: 7 }).map((_, i) => (
@@ -617,11 +697,13 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                   <span className="provenance-state">
                     {generationMode === "offline"
                       ? "Index-derived page"
-                      : sourceChecked
-                        ? "Evidence-linked generation"
-                        : page.generation?.fallback
-                          ? "Index-derived fallback"
-                          : "Generated, evidence review needed"}
+                      : withheldByQualityGuard
+                        ? "Explanation withheld by quality guard"
+                        : sourceChecked
+                          ? "Evidence-linked generation"
+                          : page.generation?.fallback
+                            ? "Index-derived fallback"
+                            : "Generated, evidence review needed"}
                   </span>
                   {page.grounding && (
                     <span className="provenance-detail">
@@ -654,7 +736,9 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                     <span className="subsystem-count">
                       {pageGraph?.available && pageGraph.nodes.length > 0
                         ? `${pageGraph.nodes.length} symbols`
-                        : "Indexed graph"}
+                        : pageGraph
+                          ? "Unavailable"
+                          : "Indexed graph"}
                     </span>
                     {repo?.commit_short && (
                       <span className="subsystem-index mono">Last indexed {repo.commit_short}</span>
@@ -667,7 +751,8 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                       !pageGraph?.available ||
                       pageGraph.nodes.length === 0 ? (
                       <div className="subsystem-loading">
-                        No source-linked graph is available for this page.
+                        {pageGraph?.note ||
+                          "No source-linked graph is available for this page."}
                       </div>
                     ) : (
                       <Suspense
@@ -787,23 +872,52 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
                 <MultimodalMedia slots={page.media_slots} repo={repo} />
               )}
               {page ? (
-                <Markdown
-                  citations={page.citations}
-                  relations={page.evidence?.relations}
-                  onCite={(index) =>
-                    setSourceCitation(page.citations[index] ?? null)
-                  }
-                >
-                  {stripGeneratedDiagrams(
-                    page.markdown,
-                    generationMode === "generated" &&
-                      page.generation?.renderer === "fact_plan",
-                  )}
-                </Markdown>
+                withheldByQualityGuard ? (
+                  <div className="page-load-error" role="alert">
+                    <p>A readable source-linked explanation is being regenerated.</p>
+                    <p className="page-load-error-detail">
+                      Source evidence was retrieved, but the generated prose did not
+                      pass validation. The diagnostic draft has been hidden while a
+                      bounded background retry is pending.
+                    </p>
+                  </div>
+                ) : (
+                  <Markdown
+                    citations={page.citations}
+                    relations={page.evidence?.relations}
+                    onCite={(index) =>
+                      setSourceCitation(page.citations[index] ?? null)
+                    }
+                  >
+                    {stripGeneratedDiagrams(
+                      page.markdown,
+                      generationMode === "generated" &&
+                        page.generation?.renderer === "fact_plan",
+                    )}
+                  </Markdown>
+                )
               ) : pageError ? (
-                <p className="muted">Couldn't load this page. It may not exist — pick a section from the sidebar.</p>
+                <div className="page-load-error" role="alert">
+                  <p>
+                    Couldn't load this page. Pick another section or retry after
+                    fixing the backend.
+                  </p>
+                  <p className="page-load-error-detail mono">{pageError}</p>
+                </div>
               ) : (
-                <p className="muted">Loading…</p>
+                <div className="page-loading-state" role="status" aria-live="polite">
+                  <div className="page-loading-title">
+                    {pageLoadSeconds < 2
+                      ? "Loading the indexed page…"
+                      : "Preparing a source-linked page…"}
+                  </div>
+                  {pageLoadSeconds >= 2 && (
+                    <div className="page-loading-detail">
+                      A first load retrieves evidence and may generate prose.
+                      <span className="mono"> {pageLoadSeconds}s</span>
+                    </div>
+                  )}
+                </div>
               )}
           </div>
         </main>
@@ -829,7 +943,9 @@ export default function WikiPageView({ repoId }: { repoId: string }) {
               title="Re-fetch this wiki page"
               onClick={() => {
                 fetchWikiTree(repoId).then((t) => setPages(t.pages)).catch(() => {});
-                fetchWikiPage(repoId, activeId).then(setPage).catch(() => {});
+                fetchWikiPage(repoId, activeId, { refresh: true })
+                  .then(setPage)
+                  .catch(() => {});
               }}
             >
               Refresh this wiki

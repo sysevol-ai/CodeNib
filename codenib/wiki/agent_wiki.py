@@ -23,7 +23,13 @@ import html
 import json
 import os
 import re
+import tempfile
+import threading
+from contextlib import nullcontext
+from time import perf_counter, time
 from typing import Any, Dict, List, Optional, Sequence
+
+from filelock import FileLock
 
 from ..log_utils import get_logger
 from ..repository_summary import readme_summary
@@ -87,7 +93,11 @@ _MAX_EXCERPT_LINES = 14
 _OUTLINE_PROMPT_VERSION = "13"
 _PAGE_PROMPT_VERSION = "106"
 _MAX_PLAN_REPAIRS = 3
+_MAX_FACT_PLAN_MODEL_CALLS = 3
+_MAX_COMPOSITION_PLAN_REPAIRS = 1
 _MAX_STYLE_REPAIRS = 2
+_MAX_DEGRADED_PAGE_RETRIES = 2
+_DEGRADED_PAGE_RETRY_COOLDOWN_SECONDS = 6 * 60 * 60
 # The overview is asked for a section per outline area, and a repository
 # outline runs to 9-17 of them. Twelve symbols could not ground that many,
 # so the coverage guard fired on pages that simply had nothing to say about
@@ -114,6 +124,7 @@ _COMPOSITION_PLAN_WARNING_MARKERS = (
     "must use an allocated relation",
     "needs a section-level",
     "substantially repeat an admitted fact",
+    "substantially repeats section",
     "needs one publishable, non-redundant claim",
     "needs at least two supported facts",
     "names a source file as a subsystem",
@@ -707,6 +718,22 @@ def _blocking_plan_warnings(warnings: Sequence[str]) -> List[str]:
         for warning in _hard_plan_warnings(warnings)
         if warning not in composition
     ]
+
+
+def _plan_repair_limit(warnings: Sequence[str]) -> int:
+    """Return the useful repair budget for the current diagnostics.
+
+    Unsupported facts may need more than one structural correction. Pure
+    composition feedback gets one chance: repeatedly asking a model to
+    reorganise already-grounded prose is expensive and rarely changes whether
+    the page is safe to publish.
+    """
+
+    if _blocking_plan_warnings(warnings):
+        return _MAX_PLAN_REPAIRS
+    if _composition_plan_warnings(warnings):
+        return _MAX_COMPOSITION_PLAN_REPAIRS
+    return 0
 
 
 def _plan_repair_score(
@@ -1393,7 +1420,103 @@ def _renderable_plan(
             else:
                 rendered_section.pop("lead", None)
             rendered_sections.append(rendered_section)
-    rendered["sections"] = rendered_sections
+    # Models commonly allocate the same high-level fact to several Overview
+    # topics.  Per-section de-duplication above cannot catch that, and the
+    # resulting page reads like a repeated symbol inventory even though every
+    # sentence is individually grounded.  Keep the first distinct claim and
+    # section globally, using the same conservative overlap floor as the
+    # reader-facing quality report.  Distinct code subjects remain distinct
+    # even when their surrounding workflow vocabulary is similar.
+    distinct_sections = []
+    admitted_claims: list[str] = []
+    intro_subject = _leading_code_subject(intro)
+    prior_sections: list[tuple[set[str], set[str]]] = (
+        [(intro_terms, {intro_subject} if intro_subject else set())]
+        if len(intro_terms) >= 6
+        else []
+    )
+    for section in rendered_sections:
+        distinct_claims = []
+        for claim in section.get("claims") or []:
+            statement = str(claim.get("statement") or "")
+            terms = _redundancy_terms(statement)
+            subject = _leading_code_subject(statement)
+            duplicate = False
+            for admitted in admitted_claims:
+                admitted_terms = _redundancy_terms(admitted)
+                smaller = min(len(terms), len(admitted_terms))
+                admitted_subject = _leading_code_subject(admitted)
+                if (
+                    smaller >= 6
+                    and len(terms & admitted_terms) / smaller >= 0.85
+                    and not (
+                        subject and admitted_subject and subject != admitted_subject
+                    )
+                ):
+                    duplicate = True
+                    break
+            if not duplicate:
+                distinct_claims.append(claim)
+        if not distinct_claims:
+            continue
+
+        rendered_section = copy.deepcopy(section)
+        rendered_section["claims"] = distinct_claims
+        claim_statements = [
+            str(claim.get("statement") or "") for claim in distinct_claims
+        ]
+        lead = rendered_section.get("lead") or {}
+        lead_statements = [
+            str(statement)
+            for statement in lead.get("statements") or []
+            if str(statement).strip()
+        ]
+        lead_statements = [
+            statement
+            for statement in lead_statements
+            if not any(
+                _substantially_repeats(statement, admitted)
+                for admitted in (*admitted_claims, *claim_statements)
+            )
+        ]
+        if lead_statements and lead.get("evidence"):
+            rendered_section["lead"] = {
+                "statements": lead_statements,
+                "evidence": list(lead.get("evidence") or []),
+            }
+        else:
+            rendered_section.pop("lead", None)
+
+        section_terms = set().union(
+            *(
+                _prose_terms(statement)
+                for statement in (*lead_statements, *claim_statements)
+            )
+        )
+        section_subjects = {
+            subject
+            for statement in (*lead_statements, *claim_statements)
+            if (subject := _leading_code_subject(statement))
+        }
+        repeats_prior_section = any(
+            min(len(section_terms), len(prior_terms)) >= 6
+            and len(section_terms & prior_terms)
+            / min(len(section_terms), len(prior_terms))
+            >= 0.8
+            and not (
+                section_subjects
+                and prior_subjects
+                and section_subjects.isdisjoint(prior_subjects)
+            )
+            for prior_terms, prior_subjects in prior_sections
+        )
+        if repeats_prior_section:
+            continue
+        distinct_sections.append(rendered_section)
+        admitted_claims.extend(claim_statements)
+        if section_terms:
+            prior_sections.append((section_terms, section_subjects))
+    rendered["sections"] = distinct_sections
     return rendered
 
 
@@ -1593,6 +1716,35 @@ def _fact_plan_markdown(
     return "\n\n".join(blocks)
 
 
+def _compact_dense_plan(
+    plan: dict[str, Any],
+    quality: dict[str, Any],
+) -> dict[str, Any]:
+    """Drop optional Overview sections that the rendered quality gate rejects."""
+
+    rejected = {
+        str(title)
+        for title in (
+            *(quality.get("thin_sections") or []),
+            *(quality.get("redundant_sections") or []),
+        )
+    }
+    if not rejected:
+        return plan
+    compacted = copy.deepcopy(plan)
+    compacted["sections"] = [
+        section
+        for section in compacted.get("sections") or []
+        if str(section.get("title") or "") not in rejected
+    ]
+    # Overview still needs three complementary areas. If pruning would erase
+    # that floor, retain the auditable degraded candidate instead of making a
+    # superficially green but empty landing page.
+    if len(compacted["sections"]) < 3:
+        return plan
+    return compacted
+
+
 def _candidate_score(
     report: dict[str, Any],
     quality: dict[str, Any],
@@ -1715,8 +1867,15 @@ def _ensure_cited_intro(
     if canonical_readme and intro is not None:
         text, evidence_id = intro
         canonical = _canonical_readme_sentence(text, repository_name)
-        if canonical:
+        canonical_plain = re.sub(r"[`*_[\]()#>-]", " ", canonical)
+        canonical_plain = re.sub(r"\s+", " ", canonical_plain).strip()
+        # Removing a promotional tail can leave a grammatical but useless
+        # fragment (for example, ``jq is a lightweight.``).  Such a fragment
+        # must not replace the longer source-supported thesis already rendered
+        # by the fact plan.
+        if canonical and len(canonical_plain) >= 40:
             sections = markdown[first_section.start() :] if first_section else ""
+            sections = _drop_redundant_purpose_section(sections, canonical)
             return f"{canonical} [{evidence_id}]\n\n{sections.lstrip()}".rstrip()
         intro = None
 
@@ -1730,6 +1889,26 @@ def _ensure_cited_intro(
         return markdown
     text, evidence_id = intro
     return f"{text} [{evidence_id}]\n\n{markdown.lstrip()}"
+
+
+def _drop_redundant_purpose_section(markdown: str, intro: str) -> str:
+    """Drop a Purpose block that only restates the canonical Overview intro."""
+
+    headings = list(re.finditer(r"^##\s+(.+?)\s*$", markdown, flags=re.MULTILINE))
+    for index, heading in enumerate(headings):
+        if heading.group(1).strip().casefold() != "purpose and scope":
+            continue
+        end = (
+            headings[index + 1].start() if index + 1 < len(headings) else len(markdown)
+        )
+        body = markdown[heading.end() : end]
+        intro_terms = _prose_terms(intro)
+        body_terms = _prose_terms(body)
+        smaller = min(len(intro_terms), len(body_terms))
+        if smaller < 6 or len(intro_terms & body_terms) / smaller < 0.8:
+            return markdown
+        return (markdown[: heading.start()] + markdown[end:]).strip()
+    return markdown
 
 
 _PLAN_PROMPT = """\
@@ -2888,10 +3067,100 @@ class AgentWiki:
         self._outline: Optional[Dict[str, Any]] = None
         self._pages: Dict[str, Dict[str, Any]] = {}
         self._retrieval_routes: Dict[tuple, tuple[str, ...]] = {}
+        # FastAPI serves Wiki work in a thread pool. Coalesce concurrent cold
+        # requests so one page/outline costs one provider call and one cache
+        # publication instead of generating duplicate prose in parallel.
+        self._outline_generation_lock = threading.Lock()
+        self._page_generation_locks_guard = threading.Lock()
+        self._page_generation_locks: Dict[str, Any] = {}
+        self._page_evidence_locks_guard = threading.Lock()
+        self._page_evidence_locks: Dict[str, Any] = {}
+        self._page_evidence: Dict[str, List[EvidenceItem]] = {}
+        # ``_retrieve`` records route provenance on the instance before
+        # ``_evidence_items`` consumes it. Keep that short pair atomic across
+        # page workers so one page cannot inherit another page's route labels.
+        self._evidence_retrieval_lock = threading.Lock()
+        # Page generation runs in a FastAPI worker thread. Preserve planning
+        # observations per thread so tests and extensions that replace
+        # ``_fact_plan`` keep the long-standing three-argument call contract.
+        self._fact_plan_observations = threading.local()
 
     # -- caching -----------------------------------------------------------
 
     def _key(self, suffix: str) -> str:
+        """Return a stable cache identity for equivalent repository views."""
+
+        entry = self._bundle.entry
+        commit = getattr(entry, "commit_short", "") or getattr(entry, "base_commit", "")
+        manifest = getattr(self._bundle, "manifest", None)
+        indexes = getattr(manifest, "indexes", {})
+        view_parts = []
+        for name, view in sorted(indexes.items()):
+            config = getattr(view, "config", {}) or {}
+            config_hash = hashlib.sha1(
+                json.dumps(
+                    config,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()[:10]
+            metadata = getattr(view, "metadata", {}) or {}
+            receipt = {
+                key: metadata[key]
+                for key in (
+                    "artifact_digest",
+                    "artifact_schema",
+                    "batch_digest",
+                    "builder_schema",
+                    "digest",
+                    "payload_digest",
+                    "reuse_key",
+                    "schema_version",
+                    "tree_digest",
+                )
+                if key in metadata
+            }
+            receipt_hash = hashlib.sha1(
+                json.dumps(
+                    receipt,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()[:10]
+            view_parts.append(
+                f"{name}:{getattr(view, 'status', '')}:"
+                f"{getattr(view, 'commit', '')}:"
+                f"{getattr(view, 'source_fingerprint', '')}:"
+                f"{config_hash}:{receipt_hash}"
+            )
+        view_identity = ",".join(view_parts)
+        source_identity = (
+            getattr(manifest, "source_fingerprint", "")
+            or getattr(manifest, "last_indexed_source_fingerprint", "")
+            or getattr(manifest, "commit", "")
+            or commit
+        )
+        prompt_version = (
+            _OUTLINE_PROMPT_VERSION if suffix == "outline" else _PAGE_PROMPT_VERSION
+        )
+        # Deliberately model-independent: the key identifies *what* was asked
+        # (prompt version + repo snapshot + index state), not *who* answered.
+        # Binding the model/endpoint into the key made every backend swap
+        # discard the whole corpus (~800 pages, hours of generation). The
+        # producing model is recorded in the cache entry instead — see
+        # ``_write_cache`` — mirroring EdgeLabeler's namespace-only keying.
+        raw = (
+            f"stable-v2/{prompt_version}/"
+            f"{getattr(entry, 'instance_id', 'repo')}@{commit}/"
+            f"{source_identity}/{view_identity}/{suffix}"
+        )
+        return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+    def _legacy_key(self, suffix: str) -> str:
+        """Return the timestamp-bound key used before stable cache identity."""
+
         entry = self._bundle.entry
         commit = getattr(entry, "commit_short", "") or getattr(entry, "base_commit", "")
         indexes = getattr(getattr(self._bundle, "manifest", None), "indexes", {})
@@ -2912,19 +3181,12 @@ class AgentWiki:
                 f"{getattr(view, 'source_fingerprint', '')}:"
                 f"{getattr(view, 'built_at_epoch', '')}:{config_hash}"
             )
-        view_identity = ",".join(view_parts)
         prompt_version = (
             _OUTLINE_PROMPT_VERSION if suffix == "outline" else _PAGE_PROMPT_VERSION
         )
-        # Deliberately model-independent: the key identifies *what* was asked
-        # (prompt version + repo snapshot + index state), not *who* answered.
-        # Binding the model/endpoint into the key made every backend swap
-        # discard the whole corpus (~800 pages, hours of generation). The
-        # producing model is recorded in the cache entry instead — see
-        # ``_write_cache`` — mirroring EdgeLabeler's namespace-only keying.
         raw = (
             f"{prompt_version}/{getattr(entry, 'instance_id', 'repo')}@{commit}/"
-            f"{view_identity}/{suffix}"
+            f"{','.join(view_parts)}/{suffix}"
         )
         return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
@@ -2945,7 +3207,18 @@ class AgentWiki:
         if not self._cache_dir:
             return None
         os.makedirs(self._cache_dir, exist_ok=True)
-        return os.path.join(self._cache_dir, f"agentwiki_{self._key(suffix)}.json")
+        return self._cache_candidate_paths(suffix)[0]
+
+    def _cache_candidate_paths(self, suffix: str) -> tuple[str, ...]:
+        """Return stable then legacy cache paths without touching the disk."""
+
+        if not self._cache_dir:
+            return ()
+        keys = (self._key(suffix), self._legacy_key(suffix))
+        return tuple(
+            os.path.join(self._cache_dir, f"agentwiki_{key}.json")
+            for key in dict.fromkeys(keys)
+        )
 
     @staticmethod
     def _page_cache_suffix(meta: Dict[str, Any]) -> str:
@@ -2962,33 +3235,189 @@ class AgentWiki:
         return f"page_{meta.get('id', 'page')}_{identity}"
 
     def _read_cache(self, suffix: str) -> Optional[Any]:
-        path = self._cache_path(suffix)
-        if path and os.path.isfile(path):
+        paths = self._cache_candidate_paths(suffix)
+        for index, path in enumerate(paths):
+            if not os.path.isfile(path):
+                continue
             try:
                 with open(path, encoding="utf-8") as fh:
-                    return json.load(fh).get("data")
+                    envelope = json.load(fh)
             except (OSError, json.JSONDecodeError):
-                return None
+                continue
+            if not isinstance(envelope, dict) or "data" not in envelope:
+                continue
+            if index > 0 and paths:
+                # Adopt the current timestamp-bound entry into the stable key
+                # before a future equivalent index rebuild changes its legacy
+                # identity. Preserve the original model provenance envelope.
+                try:
+                    self._atomic_write_cache(paths[0], envelope, if_absent=True)
+                except (OSError, TypeError):
+                    pass
+            return envelope.get("data")
         return None
+
+    @staticmethod
+    def _atomic_write_cache(
+        path: str,
+        envelope: dict[str, Any],
+        *,
+        if_absent: bool = False,
+    ) -> None:
+        """Publish one complete JSON envelope under an inter-process lock."""
+
+        parent = os.path.dirname(path)
+        os.makedirs(parent, exist_ok=True)
+        with FileLock(f"{path}.lock"):
+            if if_absent and os.path.isfile(path):
+                return
+            descriptor, temporary_path = tempfile.mkstemp(
+                prefix=f".{os.path.basename(path)}.",
+                suffix=".tmp",
+                dir=parent,
+            )
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                    json.dump(envelope, handle)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary_path, path)
+                temporary_path = ""
+                try:
+                    directory_descriptor = os.open(parent, os.O_RDONLY)
+                    try:
+                        os.fsync(directory_descriptor)
+                    finally:
+                        os.close(directory_descriptor)
+                except OSError:
+                    pass
+            finally:
+                if temporary_path:
+                    try:
+                        os.unlink(temporary_path)
+                    except OSError:
+                        pass
+
+    def _cache_generation_lock(self, suffix: str) -> Any:
+        path = self._cache_path(suffix)
+        if not path:
+            return nullcontext()
+        return FileLock(f"{path}.generate.lock")
+
+    @staticmethod
+    def _cached_page_is_degraded(page: Any) -> bool:
+        """Return whether persisted prose is intentionally hidden from readers."""
+
+        if not isinstance(page, dict):
+            return False
+        generation = page.get("generation") or {}
+        return bool(
+            generation.get("mode") == "degraded"
+            and (
+                generation.get("fallback") == "fact_plan"
+                or (page.get("quality") or {}).get("valid") is False
+            )
+        )
+
+    @staticmethod
+    def _cached_page_needs_regeneration(page: Any) -> bool:
+        """Return whether a bad persisted page is due for a bounded retry.
+
+        A failed planning pass still carries useful evidence metadata, so it is
+        written for auditability.  It is not durable Wiki content, though: a
+        later process may have a healthy provider response and should get a
+        bounded, cooled-down chance to replace it instead of serving diagnostic
+        prose forever or retrying it on every process restart.
+        """
+
+        if not AgentWiki._cached_page_is_degraded(page):
+            return False
+        generation = page.get("generation") or {}
+        retry = generation.get("retry") or {}
+        attempts = int(retry.get("attempts") or 0)
+        if attempts >= _MAX_DEGRADED_PAGE_RETRIES:
+            return False
+        next_attempt_epoch = retry.get("next_attempt_epoch")
+        return not isinstance(next_attempt_epoch, (int, float)) or time() >= float(
+            next_attempt_epoch
+        )
+
+    @staticmethod
+    def _record_page_retry(
+        page: Any,
+        *,
+        previous: Any = None,
+        now_epoch: Optional[float] = None,
+    ) -> None:
+        """Persist retry state on an attempted page without changing prose."""
+
+        if not isinstance(page, dict):
+            return
+        generation = page.get("generation")
+        if not isinstance(generation, dict):
+            return
+        previous_generation = (
+            previous.get("generation") if isinstance(previous, dict) else None
+        ) or {}
+        previous_retry = previous_generation.get("retry") or {}
+        previous_retryable = bool(
+            previous_generation.get("mode") == "degraded"
+            and (
+                previous_generation.get("fallback") == "fact_plan"
+                or (previous.get("quality") or {}).get("valid") is False
+            )
+        )
+        attempts = int(previous_retry.get("attempts") or 0)
+        if previous_retryable:
+            attempts += 1
+        retryable = bool(
+            generation.get("mode") == "degraded"
+            and (
+                generation.get("fallback") == "fact_plan"
+                or (page.get("quality") or {}).get("valid") is False
+            )
+        )
+        if not retryable and not previous_retryable:
+            return
+        now = time() if now_epoch is None else float(now_epoch)
+        if retryable and attempts < _MAX_DEGRADED_PAGE_RETRIES:
+            state = "scheduled"
+            next_attempt_epoch: Optional[float] = (
+                now + _DEGRADED_PAGE_RETRY_COOLDOWN_SECONDS
+            )
+        elif retryable:
+            state = "exhausted"
+            next_attempt_epoch = None
+        else:
+            state = "recovered"
+            next_attempt_epoch = None
+        generation["retry"] = {
+            "state": state,
+            "attempts": attempts,
+            "max_attempts": _MAX_DEGRADED_PAGE_RETRIES,
+            "last_attempt_epoch": round(now, 3),
+            "next_attempt_epoch": (
+                round(next_attempt_epoch, 3) if next_attempt_epoch is not None else None
+            ),
+        }
 
     def _write_cache(self, suffix: str, data: Any) -> None:
         path = self._cache_path(suffix)
         if not path:
             return
         try:
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(
-                    {
-                        # Provenance only — none of this is part of the cache
-                        # key, so a later backend swap reuses this entry.
-                        "model": self._model,
-                        "api_base": self._api_base or "",
-                        "llm_identity": self._cache_llm_identity,
-                        "data": data,
-                    },
-                    fh,
-                )
-        except OSError:
+            self._atomic_write_cache(
+                path,
+                {
+                    # Provenance only — none of this is part of the cache key,
+                    # so a later backend swap reuses this entry.
+                    "model": self._model,
+                    "api_base": self._api_base or "",
+                    "llm_identity": self._cache_llm_identity,
+                    "data": data,
+                },
+            )
+        except (OSError, TypeError):
             pass
 
     # -- outline + nav -----------------------------------------------------
@@ -2996,16 +3425,20 @@ class AgentWiki:
     def outline(self) -> Dict[str, Any]:
         if self._outline is not None:
             return self._outline
-        cached = self._read_cache("outline")
-        if cached and cached.get("pages"):
-            self._outline = cached
-            return cached
-        data = generate_outline(self._bundle, self._model, llm=self._client())
-        self._normalize(data.get("pages", []), seen=set(), first=True)
-        self._outline = data
-        if data.get("pages"):
-            self._write_cache("outline", data)
-        return data
+        with self._outline_generation_lock:
+            if self._outline is not None:
+                return self._outline
+            with self._cache_generation_lock("outline"):
+                cached = self._read_cache("outline")
+                if cached and cached.get("pages"):
+                    self._outline = cached
+                    return cached
+                data = generate_outline(self._bundle, self._model, llm=self._client())
+                self._normalize(data.get("pages", []), seen=set(), first=True)
+                self._outline = data
+                if data.get("pages"):
+                    self._write_cache("outline", data)
+                return data
 
     def _normalize(self, pages: List[Dict[str, Any]], seen: set, first: bool) -> None:
         """Ensure unique slug ids; force the first page id to 'overview'."""
@@ -3022,17 +3455,42 @@ class AgentWiki:
             self._normalize(p.get("children", []) or [], seen, first=False)
 
     def page_tree(self) -> List[dict]:
-        def refs(pages: List[Dict[str, Any]]) -> List[dict]:
+        outline_pages = self.outline().get("pages", [])
+
+        def refs(pages: List[Dict[str, Any]], *, top_level: bool = False) -> List[dict]:
             return [
                 {
                     "id": p["id"],
                     "title": p.get("title", p["id"]),
+                    "cache_state": self._page_cache_state(
+                        self._overview_page_meta(p, outline_pages[1:])
+                        if top_level and p.get("id") == "overview"
+                        else p
+                    ),
                     "children": refs(p.get("children", []) or []),
                 }
                 for p in pages
             ]
 
-        return refs(self.outline().get("pages", []))
+        return refs(outline_pages, top_level=True)
+
+    def _page_cache_state(self, meta: Dict[str, Any]) -> str:
+        """Return a reader-facing cache state without generating the page."""
+
+        page_id = str(meta.get("id") or "")
+        page = self._pages.get(page_id)
+        if page is None:
+            page = self._read_cache(self._page_cache_suffix(meta))
+        if not isinstance(page, dict):
+            return "cold"
+        invalid = self._cached_page_is_degraded(page)
+        if invalid:
+            return (
+                "retryable"
+                if self._cached_page_needs_regeneration(page)
+                else "degraded"
+            )
+        return "ready"
 
     def _find(
         self, page_id: str, pages: Optional[List[Dict[str, Any]]] = None
@@ -3049,8 +3507,100 @@ class AgentWiki:
 
     # -- page generation ---------------------------------------------------
 
-    def page(self, page_id: str) -> Optional[dict]:
-        if page_id in self._pages:
+    def _page_generation_lock(self, page_id: str) -> Any:
+        with self._page_generation_locks_guard:
+            return self._page_generation_locks.setdefault(page_id, threading.Lock())
+
+    def _page_evidence_lock(self, cache_suffix: str) -> Any:
+        with self._page_evidence_locks_guard:
+            return self._page_evidence_locks.setdefault(cache_suffix, threading.Lock())
+
+    def _source_evidence(self, meta: Dict[str, Any]) -> List[EvidenceItem]:
+        """Retrieve source evidence once per page without invoking a model."""
+
+        cache_suffix = self._page_cache_suffix(meta)
+        cached = self._page_evidence.get(cache_suffix)
+        if cached is not None:
+            return cached
+        with self._page_evidence_lock(cache_suffix):
+            cached = self._page_evidence.get(cache_suffix)
+            if cached is not None:
+                return cached
+            with self._evidence_retrieval_lock:
+                nodes = self._retrieve(
+                    meta,
+                    top_k=(
+                        _OVERVIEW_RETRIEVAL_LIMIT
+                        if meta.get("id") == "overview"
+                        else 12
+                    ),
+                )
+                evidence = self._evidence_items(nodes)
+            self._page_evidence[cache_suffix] = evidence
+            return evidence
+
+    @staticmethod
+    def _citation_payload(evidence: Sequence[EvidenceItem]) -> List[dict[str, Any]]:
+        return [
+            {
+                "file": item.file,
+                "start_line": item.start_line,
+                "end_line": item.end_line,
+                "node_name": item.symbol,
+                "type": item.kind,
+                "score": None,
+                "content": None,
+            }
+            for item in evidence
+        ]
+
+    def page_citations(self, page_id: str) -> Optional[List[dict[str, Any]]]:
+        """Resolve graph seeds for a page without generating its prose."""
+
+        meta = self._find(page_id)
+        if meta is None:
+            return None
+        if page_id == "overview":
+            meta = self._overview_page_meta(
+                meta,
+                self.outline().get("pages", [])[1:],
+            )
+        page_suffix = self._page_cache_suffix(meta)
+        page = self._pages.get(page_id) or self._read_cache(page_suffix)
+        if isinstance(page, dict) and isinstance(page.get("citations"), list):
+            return page["citations"]
+
+        evidence_suffix = f"evidence_{page_suffix}"
+        cached = self._read_cache(evidence_suffix)
+        if isinstance(cached, dict) and isinstance(cached.get("citations"), list):
+            return cached["citations"]
+        with self._cache_generation_lock(evidence_suffix):
+            cached = self._read_cache(evidence_suffix)
+            if isinstance(cached, dict) and isinstance(cached.get("citations"), list):
+                return cached["citations"]
+            citations = self._citation_payload(self._source_evidence(meta))
+            self._write_cache(
+                evidence_suffix,
+                {"id": page_id, "citations": citations},
+            )
+            return citations
+
+    def page(
+        self,
+        page_id: str,
+        *,
+        retry_degraded_now: bool = False,
+    ) -> Optional[dict]:
+        """Return a page, optionally retrying hidden degraded prose immediately.
+
+        ``retry_degraded_now`` is an explicit operator action used by the cache
+        prewarmer after an index or model upgrade. Normal reader traffic still
+        observes the persisted cooldown and retry ceiling.
+        """
+
+        if page_id in self._pages and not (
+            retry_degraded_now and self._cached_page_is_degraded(self._pages[page_id])
+        ):
             return self._pages[page_id]
         meta = self._find(page_id)
         if meta is None:
@@ -3061,27 +3611,58 @@ class AgentWiki:
                 self.outline().get("pages", [])[1:],
             )
         cache_suffix = self._page_cache_suffix(meta)
-        cached = self._read_cache(cache_suffix)
-        if cached:
-            if "media_slots" not in cached:
-                evidence_meta = cached.get("evidence") or {}
-                cached = {
-                    **cached,
-                    "media_slots": plan_media_slots(
-                        page_id=str(cached.get("id") or meta.get("id") or ""),
-                        title=str(cached.get("title") or meta.get("title") or ""),
-                        citations=cached.get("citations") or (),
-                        diagram=str(cached.get("diagram") or ""),
+        with self._page_generation_lock(page_id):
+            if page_id in self._pages and not (
+                retry_degraded_now
+                and self._cached_page_is_degraded(self._pages[page_id])
+            ):
+                return self._pages[page_id]
+            with self._cache_generation_lock(cache_suffix):
+                cached = self._read_cache(cache_suffix)
+                force_retry = bool(
+                    retry_degraded_now and self._cached_page_is_degraded(cached)
+                )
+                if (
+                    cached
+                    and not force_retry
+                    and not self._cached_page_needs_regeneration(cached)
+                ):
+                    if "media_slots" not in cached:
+                        evidence_meta = cached.get("evidence") or {}
+                        cached = {
+                            **cached,
+                            "media_slots": plan_media_slots(
+                                page_id=str(cached.get("id") or meta.get("id") or ""),
+                                title=str(
+                                    cached.get("title") or meta.get("title") or ""
+                                ),
+                                citations=cached.get("citations") or (),
+                                diagram=str(cached.get("diagram") or ""),
+                                relations=evidence_meta.get("relations") or (),
+                            ),
+                        }
+                        self._write_cache(cache_suffix, cached)
+                    self._pages[page_id] = cached
+                    return cached
+                if cached:
+                    logger.info(
+                        "Regenerating degraded Wiki page for %s",
+                        page_id,
+                    )
+                page = self._generate_page(meta)
+                if "media_slots" not in page:
+                    evidence_meta = page.get("evidence") or {}
+                    page["media_slots"] = plan_media_slots(
+                        page_id=str(page.get("id") or meta.get("id") or ""),
+                        title=str(page.get("title") or meta.get("title") or ""),
+                        citations=page.get("citations") or (),
+                        diagram=str(page.get("diagram") or ""),
                         relations=evidence_meta.get("relations") or (),
-                    ),
-                }
-                self._write_cache(cache_suffix, cached)
-            self._pages[page_id] = cached
-            return cached
-        page = self._generate_page(meta)
-        self._pages[page_id] = page
-        self._write_cache(cache_suffix, page)
-        return page
+                    )
+                self._record_page_retry(page, previous=cached)
+                self._pages[page_id] = page
+                self._write_cache(cache_suffix, page)
+                return page
 
     def _retrieve(self, meta: Dict[str, Any], top_k: int = 12) -> List[Any]:
         ensure_views = getattr(self._bundle, "ensure_views", None)
@@ -4108,7 +4689,57 @@ class AgentWiki:
         meta: Dict[str, Any],
         evidence: List[EvidenceItem],
         relations: List[RelationItem],
+        *,
+        metrics: Optional[Dict[str, Any]] = None,
     ) -> tuple[dict[str, Any], List[str]]:
+        planning_started = perf_counter()
+        if metrics is None:
+            metrics = {}
+        else:
+            metrics.clear()
+        metrics.update(
+            {
+                "model_calls": 0,
+                "model_failures": 0,
+                "model_call_ms": 0.0,
+                "initial_attempts": 0,
+                "fresh_replans": 0,
+                "repair_attempts": 0,
+            }
+        )
+
+        def complete_plan(
+            content: str,
+            *,
+            phase: str,
+            max_tokens: int,
+        ) -> str:
+            call_started = perf_counter()
+            metrics["model_calls"] += 1
+            if phase == "initial":
+                metrics["initial_attempts"] += 1
+            elif phase == "fresh_replan":
+                metrics["fresh_replans"] += 1
+            elif phase == "repair":
+                metrics["repair_attempts"] += 1
+            try:
+                return self._client().complete(
+                    [{"role": "user", "content": content}],
+                    max_tokens=max_tokens,
+                    temperature=0.0,
+                )
+            except Exception:
+                metrics["model_failures"] += 1
+                raise
+            finally:
+                metrics["model_call_ms"] += (perf_counter() - call_started) * 1000
+
+        def finish_metrics() -> None:
+            metrics["planning_ms"] = (perf_counter() - planning_started) * 1000
+            for key in ("model_call_ms", "planning_ms"):
+                metrics[key] = round(float(metrics[key]), 1)
+            self._fact_plan_observations.latest = dict(metrics)
+
         prompt = _PLAN_PROMPT.format(
             repo=getattr(self._bundle.entry, "repo", "this repository"),
             title=meta.get("title", ""),
@@ -4121,14 +4752,15 @@ class AgentWiki:
         )
         allowed = [item.id for item in evidence] + [item.id for item in relations]
         errors: List[str] = []
+        sticky_blocks: dict[str, Any] = {}
         try:
-            text = self._client().complete(
-                [{"role": "user", "content": prompt}],
+            text = complete_plan(
+                prompt,
+                phase="initial",
                 # A plan now carries framing, a scan table and up to six
                 # sections; 1200 truncated the JSON mid-object, which parsed as
                 # "no supported sections" and sent every page through repair.
                 max_tokens=3000,
-                temperature=0.0,
             )
             plan, errors = parse_fact_plan(text, allowed)
             # Framing and the scan table are validated on their own evidence and
@@ -4228,11 +4860,95 @@ class AgentWiki:
                 best_score = supplemented_score
                 plan = best_plan
                 warnings = best_warnings
+        planning_unavailable = "model planning unavailable" in errors
+        # A repair prompt is useful when a plan has a few bad claims.  When
+        # source admission removed every claim, however, repeatedly revising
+        # that empty/poisoned plan tends to preserve the original mistake.
+        # Retry once from the original evidence before entering the repair
+        # loop. Hosted models occasionally produce one malformed or
+        # over-generalized response even at temperature zero; a clean replan is
+        # both faster and more reliable than three repairs of an empty plan.
+        if not best_plan.get("sections") and not planning_unavailable:
+            logger.info(
+                "Wiki fact plan for %s had no admissible claims; replanning "
+                "from source evidence",
+                meta.get("id"),
+            )
+            try:
+                replanned_text = complete_plan(
+                    prompt,
+                    phase="fresh_replan",
+                    max_tokens=3000,
+                )
+                replanned_plan, replanned_errors = parse_fact_plan(
+                    replanned_text,
+                    allowed,
+                )
+                replanned_sticky_blocks = {
+                    key: copy.deepcopy(replanned_plan[key])
+                    for key in ("purpose", "map", "flow", "see_also")
+                    if replanned_plan.get(key)
+                }
+                replanned_plan = _normalize_plan_support(
+                    replanned_plan,
+                    evidence,
+                    relations,
+                )
+                replanned_plan = _renderable_plan(
+                    replanned_plan,
+                    evidence,
+                    relations,
+                )
+                replanned_plan = _supplement_topic_relation_flows(
+                    meta,
+                    replanned_plan,
+                    relations,
+                    evidence,
+                )
+                replanned_plan = _normalize_plan_support(
+                    replanned_plan,
+                    evidence,
+                    relations,
+                )
+                replanned_plan = _renderable_plan(
+                    replanned_plan,
+                    evidence,
+                    relations,
+                )
+                replanned_quality_warnings = (
+                    _plan_quality_warnings(
+                        meta,
+                        replanned_plan,
+                        evidence,
+                        relations,
+                    )
+                    if replanned_plan.get("sections")
+                    else [empty_warning]
+                )
+                replanned_warnings = [
+                    *replanned_errors,
+                    *replanned_quality_warnings,
+                ]
+                replanned_score = _plan_repair_score(
+                    replanned_plan,
+                    replanned_warnings,
+                )
+                if replanned_score < best_score:
+                    best_plan = replanned_plan
+                    best_warnings = replanned_warnings
+                    best_score = replanned_score
+                    sticky_blocks = replanned_sticky_blocks
+            except Exception as exc:  # noqa: BLE001 - continue to plan repair
+                logger.debug("wiki clean fact replan unavailable: %s", exc)
+            plan = best_plan
+            warnings = best_warnings
         repairs = 0
         hard_warnings = _hard_plan_warnings(best_warnings)
-        planning_unavailable = "model planning unavailable" in errors
         while (
-            hard_warnings and not planning_unavailable and repairs < _MAX_PLAN_REPAIRS
+            hard_warnings
+            and not planning_unavailable
+            and repairs < _plan_repair_limit(best_warnings)
+            and metrics["model_calls"] < _MAX_FACT_PLAN_MODEL_CALLS
         ):
             repairs += 1
             repair_prompt = _PLAN_REPAIR_PROMPT.format(
@@ -4249,10 +4965,10 @@ class AgentWiki:
                 relations=self._relations_context(relations),
             )
             try:
-                repaired_text = self._client().complete(
-                    [{"role": "user", "content": repair_prompt}],
+                repaired_text = complete_plan(
+                    repair_prompt,
+                    phase="repair",
                     max_tokens=2600,
-                    temperature=0.0,
                 )
                 repaired_plan, repaired_errors = parse_fact_plan(repaired_text, allowed)
                 repaired_plan = _normalize_plan_support(
@@ -4318,6 +5034,7 @@ class AgentWiki:
         if best_plan.get("sections"):
             for key, value in sticky_blocks.items():
                 best_plan.setdefault(key, value)
+            finish_metrics()
             return best_plan, best_warnings
 
         claims = [
@@ -4346,6 +5063,7 @@ class AgentWiki:
         }
         fallback = _normalize_plan_support(fallback, evidence, relations)
         fallback = _renderable_plan(fallback, evidence, relations)
+        finish_metrics()
         return fallback, best_warnings
 
     def _rel(self, file: Optional[str]) -> Optional[str]:
@@ -4493,18 +5211,18 @@ class AgentWiki:
             return draft
 
     def _generate_page(self, meta: Dict[str, Any]) -> dict:
+        generation_started = perf_counter()
         repo_dir = str(getattr(self._bundle.entry, "repo_dir", "") or "").rstrip(os.sep)
         repository_name = (
             os.path.basename(repo_dir)
             or str(getattr(self._bundle.entry, "repo", "") or "")
             or str(getattr(self._bundle.entry, "instance_id", "") or "")
         )
-        nodes = self._retrieve(
-            meta,
-            top_k=(_OVERVIEW_RETRIEVAL_LIMIT if meta.get("id") == "overview" else 12),
-        )
-        evidence = self._evidence_items(nodes)
+        retrieval_started = perf_counter()
+        evidence = self._source_evidence(meta)
+        retrieval_ms = (perf_counter() - retrieval_started) * 1000
         if not evidence:
+            total_ms = (perf_counter() - generation_started) * 1000
             return {
                 "id": meta["id"],
                 "title": meta.get("title", meta["id"]),
@@ -4519,6 +5237,18 @@ class AgentWiki:
                     "mode": "degraded",
                     "model": self._model,
                     "reason": "no_source_evidence",
+                    "metrics": {
+                        "total_ms": round(total_ms, 1),
+                        "retrieval_ms": round(retrieval_ms, 1),
+                        "relation_ms": 0.0,
+                        "planning_ms": 0.0,
+                        "model_call_ms": 0.0,
+                        "model_calls": 0,
+                        "model_failures": 0,
+                        "initial_attempts": 0,
+                        "fresh_replans": 0,
+                        "repair_attempts": 0,
+                    },
                 },
                 "grounding": {
                     "valid": False,
@@ -4528,9 +5258,28 @@ class AgentWiki:
                 },
             }
 
+        relation_started = perf_counter()
         relations = self._relation_items(evidence, meta)
+        relation_ms = (perf_counter() - relation_started) * 1000
+        self._fact_plan_observations.latest = {}
         plan, plan_warnings = self._fact_plan(meta, evidence, relations)
+        planning_metrics: Dict[str, Any] = {
+            "planning_ms": 0.0,
+            "model_call_ms": 0.0,
+            "model_calls": 0,
+            "model_failures": 0,
+            "initial_attempts": 0,
+            "fresh_replans": 0,
+            "repair_attempts": 0,
+            **getattr(self._fact_plan_observations, "latest", {}),
+        }
         plan = self._resolve_page_references(plan, str(meta.get("id") or ""))
+        # Reference resolution and repair merging can leave a claim that no
+        # longer carries executable support in its final form.  Re-run the
+        # same admission and global de-duplication consumed by the renderer so
+        # the quality report evaluates exactly what readers will see.
+        plan = _normalize_plan_support(plan, evidence, relations)
+        plan = _renderable_plan(plan, evidence, relations)
         model_planning_failed = "model planning unavailable" in plan_warnings
         dense_sections = meta.get("id") == "overview"
         quality_requirements = {
@@ -4576,6 +5325,40 @@ class AgentWiki:
             plan,
             **quality_requirements,
         )
+        repaired = False
+        if structured_render and dense_sections and not quality["valid"]:
+            compacted_plan = _compact_dense_plan(plan, quality)
+            if compacted_plan is not plan:
+                compacted_markdown = _fact_plan_markdown(
+                    compacted_plan,
+                    evidence,
+                    relations,
+                )
+                compacted_markdown = _ensure_cited_intro(
+                    compacted_markdown,
+                    evidence,
+                    canonical_readme=True,
+                    repository_name=repository_name,
+                )
+                compacted_report = grounding_report(
+                    compacted_markdown,
+                    evidence,
+                    relations,
+                )
+                compacted_quality = _page_quality_report(
+                    compacted_markdown,
+                    compacted_plan,
+                    **quality_requirements,
+                )
+                if _candidate_score(
+                    compacted_report,
+                    compacted_quality,
+                ) > _candidate_score(report, quality):
+                    plan = compacted_plan
+                    markdown = compacted_markdown
+                    report = compacted_report
+                    quality = compacted_quality
+                    repaired = True
         logger.debug(
             "wiki page candidate %s: grounding=%s quality=%s",
             meta.get("id"),
@@ -4583,7 +5366,6 @@ class AgentWiki:
             quality,
         )
         best = (markdown, report, quality)
-        repaired = False
         if (
             (
                 not report["valid"]
@@ -4790,18 +5572,14 @@ class AgentWiki:
         else:
             generation_reason = "quality_guard"
 
-        citations = [
-            {
-                "file": item.file,
-                "start_line": item.start_line,
-                "end_line": item.end_line,
-                "node_name": item.symbol,
-                "type": item.kind,
-                "score": None,
-                "content": None,
-            }
-            for item in evidence
-        ]
+        citations = self._citation_payload(evidence)
+        total_ms = (perf_counter() - generation_started) * 1000
+        generation_metrics = {
+            "total_ms": round(total_ms, 1),
+            "retrieval_ms": round(retrieval_ms, 1),
+            "relation_ms": round(relation_ms, 1),
+            **planning_metrics,
+        }
         return {
             "id": meta["id"],
             "title": meta.get("title", meta["id"]),
@@ -4825,6 +5603,7 @@ class AgentWiki:
                 "renderer": "fact_plan" if structured_render else "narrative",
                 "plan_warnings": plan_warnings,
                 "reason": generation_reason,
+                "metrics": generation_metrics,
             },
             "grounding": report,
             "quality": quality,

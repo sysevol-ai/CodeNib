@@ -1211,7 +1211,11 @@ limited tool budget, so converge once the implementing location is confirmed.
                 "content": (
                     "Stop searching. Using what you have already read, give "
                     "your complete final answer now, citing the relevant "
-                    "files and symbols."
+                    "files and symbols. Include only implementation claims "
+                    "directly supported by retrieved evidence. If a wrapper "
+                    "chain is incomplete, state that limitation instead of "
+                    "inferring a definition or downstream behavior from its "
+                    "identifier."
                 ),
             }
         )

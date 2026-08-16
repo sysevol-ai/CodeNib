@@ -9,7 +9,8 @@ CODENIB_RESULTS_DIR ?= $(CODENIB_HOME)/results
 CODENIB_SCIP_TOOLS_DIR ?= $(CODENIB_TEMP_DIR)/scip-tools
 GO_VERSION ?= 1.26.4
 GO_OS ?= linux
-GO_ARCH ?= amd64
+GO_ARCH ?= $(if $(filter aarch64 arm64,$(shell uname -m)),arm64,amd64)
+GO_TOOL_ID = $(GO_VERSION)-$(GO_OS)-$(GO_ARCH)
 GO_URL ?= https://go.dev/dl/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz
 SCIP_GO_MODULE ?= github.com/scip-code/scip-go/cmd/scip-go
 SCIP_GO_VERSION ?= v0.2.7
@@ -232,6 +233,8 @@ endef
 .PHONY: jdtls-tool csharp-lsp-tool ruby-lsp-tool intelephense-tool kotlin-lsp-tool
 .PHONY: dev test test-all test-slow ask-quality branding-assets branding-check
 .PHONY: web-deps web-start web-stop web-restart web-reclaim web-status web-logs web-follow
+.PHONY: wiki-cache-audit wiki-cache-prewarm demo-index-rebuild
+.PHONY: demo-ask-benchmark demo-wiki-benchmark
 
 install:
 	pip install -e .
@@ -305,14 +308,14 @@ go-tool:
 	$(call require-command,tar)
 	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)"
 	@if [ ! -f "$(CODENIB_SCIP_TOOLS_DIR)/go/.codenib-version" ] \
-		|| ! grep -qx "$(GO_VERSION)" "$(CODENIB_SCIP_TOOLS_DIR)/go/.codenib-version"; then \
+		|| ! grep -qx "$(GO_TOOL_ID)" "$(CODENIB_SCIP_TOOLS_DIR)/go/.codenib-version"; then \
 		rm -rf "$(CODENIB_SCIP_TOOLS_DIR)/go" \
 			"$(CODENIB_SCIP_TOOLS_DIR)/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz"; \
 		curl -fL "$(GO_URL)" \
 			-o "$(CODENIB_SCIP_TOOLS_DIR)/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz"; \
 		tar -xzf "$(CODENIB_SCIP_TOOLS_DIR)/go$(GO_VERSION).$(GO_OS)-$(GO_ARCH).tar.gz" \
 			-C "$(CODENIB_SCIP_TOOLS_DIR)"; \
-		echo "$(GO_VERSION)" > "$(CODENIB_SCIP_TOOLS_DIR)/go/.codenib-version"; \
+		echo "$(GO_TOOL_ID)" > "$(CODENIB_SCIP_TOOLS_DIR)/go/.codenib-version"; \
 	fi
 
 scip-go-tool: go-tool
@@ -1040,3 +1043,18 @@ web-logs:
 
 web-follow:
 	./scripts/dev_web.sh follow
+
+wiki-cache-audit:
+	python scripts/audit_wiki_cache.py $(WIKI_CACHE_AUDIT_ARGS)
+
+wiki-cache-prewarm:
+	python scripts/prewarm_wiki_cache.py $(WIKI_CACHE_PREWARM_ARGS)
+
+demo-index-rebuild:
+	python scripts/rebuild_demo_indexes.py $(DEMO_INDEX_REBUILD_ARGS)
+
+demo-ask-benchmark:
+	python scripts/benchmark_demo_ask.py $(DEMO_ASK_BENCHMARK_ARGS)
+
+demo-wiki-benchmark:
+	python scripts/benchmark_demo_wiki.py $(DEMO_WIKI_BENCHMARK_ARGS)

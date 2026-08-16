@@ -336,6 +336,20 @@ def test_sentence_redundancy_allows_one_source_to_call_distinct_targets():
     assert report["sentence_redundancy_valid"] is True
 
 
+def test_sentence_redundancy_allows_handoff_and_local_detail_for_same_subject():
+    report = section_sentence_redundancy_report(
+        "# Controller\n\n"
+        "## File Printing\n\n"
+        "`Controller.print_file()` calls `Controller.print_file_ranges()` with "
+        "the resolved line ranges. "
+        "In diff context mode, `Controller.print_file()` builds line ranges "
+        "from the Git diff keys plus and minus the context size."
+    )
+
+    assert report["redundant_sentence_pairs"] == []
+    assert report["sentence_redundancy_valid"] is True
+
+
 def test_sentence_redundancy_allows_symmetric_named_operations():
     report = section_sentence_redundancy_report(
         "# Logging\n\n"

@@ -80,6 +80,14 @@ export CODENIB_DEMO_PREBUILT_DIR=/path/to/prebuilt
 
 The path is fully configurable; nothing is hardcoded to a specific machine.
 
+Native vector reuse also requires a secure source fingerprint v2 in the
+repository manifest. The interactive Web service treats a missing or legacy
+fingerprint as an unavailable vector view: it does not open the vector artifact,
+logs a warning, and continues with BM25 retrieval. Once a v2 fingerprint is
+present, authorization rejection and artifact-integrity failures still fail
+closed. Rebuild both the manifest and vector artifact with the current CodeNib
+version to restore hybrid retrieval; do not edit fingerprint fields by hand.
+
 ## 2. Launch the backend
 
 From the repository root (so the relative `data_dir` resolves):
@@ -101,9 +109,29 @@ curl -s http://127.0.0.1:8000/api/health   # {"status":"ok","repos":N}
 
 ### Configuration and env overrides
 
-Config lives in `qa_config.yaml` (override path with `CODENIB_DEMO_CONFIG`);
-environment variables beat the YAML (`load_config()` in
-`codenib/web/config.py`):
+Config lives in `qa_config.yaml` (override path with `CODENIB_DEMO_CONFIG`). A
+profile may set `extends` to one relative parent path or an ordered list of
+parents. Parents are applied left to right, the child wins, nested mappings are
+merged, and environment variables beat the final YAML (`load_config()` in
+`codenib/web/config.py`). Missing parents and inheritance cycles fail at
+startup instead of silently selecting defaults.
+
+The checked-in templates support two generation profiles without duplicating
+index and cache settings:
+
+| Profile | Template | Generation route |
+|---|---|---|
+| Local serve | `qa_config.local.yaml.example` | OpenAI-compatible local Qwen/vLLM endpoint |
+| API service | `qa_config.api.yaml.example` | DeepSeek hosted API for Ask and Wiki |
+
+Copy them to the ignored `qa_config.local.yaml` and `qa_config.api.yaml` files.
+The API profile extends the local profile, so both routes use the same source
+registry, retrieval artifacts, embeddings, and Wiki cache. Set
+`CODENIB_DEMO_PROFILE=api` with `scripts/start_web.sh`, or point a service
+directly at `CODENIB_DEMO_CONFIG=qa_config.api.yaml`. Keep API keys in
+`CODENIB_DEMO_API_KEY` or the provider's standard environment variable.
+
+Environment overrides are:
 
 | Config key | Env override | Purpose |
 |---|---|---|
@@ -243,6 +271,176 @@ contract: it proxies `/api/*` to the local FastAPI process and leaves
 `0.0.0.0` usable from another machine without exposing a loopback API URL to
 that browser.
 
+For a long-lived reverse-proxied demo, build once and serve the production
+bundle instead of leaving Vite's development server running:
+
+```bash
+cd web
+npm run build
+CODENIB_API_BASE=http://127.0.0.1:8000 \
+  npm run preview -- --host 127.0.0.1 --port 3001
+```
+
+The document base keeps relative Vite chunks rooted correctly when a browser
+opens or refreshes a nested route such as `/<repo>/ask`. Static export removes
+that document base and rewrites the same assets to its configured Pages mount,
+so sub-path exports remain portable.
+
+### What the loading states mean
+
+- The route-level `Loading CodeNib…` is a lazily loaded frontend chunk. A
+  production build avoids the development transform and React StrictMode
+  request replay costs.
+- A Wiki page is normally a disk- or memory-cache read. On its first load, the
+  backend retrieves source evidence and may ask the configured Wiki model to
+  generate prose. Concurrent requests for the same cold outline or page are
+  coalesced into one generation call.
+- A degraded fact-plan fallback is retained as diagnostic evidence, but it is
+  not treated as durable page content. A fresh backend process retries that
+  page from the original evidence, and the reader UI withholds the internal
+  fallback instead of displaying `is indexed from` inventory text.
+- Ask is a multi-turn model run. Retrieval itself is usually short; model
+  turns and the growing evidence context dominate latency. `max_turns` is the
+  main latency/coverage trade-off, so tune it with repeated, source-checked
+  questions rather than a ping prompt.
+- Source panes and dependency graphs load independently after the narrative;
+  they do not need to hold the page in a generic loading state.
+- Repository cards inspect the small leading schema field of `graph.pkl`
+  without loading the graph. An older persisted schema disables `codemap`
+  immediately; the page-graph API returns the required rebuild version instead
+  of advertising an indexed graph and then returning an unexplained empty map.
+
+The Wiki and Ask views replace a bare spinner with the active stage and elapsed
+time. A direct Wiki deep link starts with its requested page instead of first
+fetching `overview`. API responses also expose backend processing time through
+the `Server-Timing: codenib;dur=...` header. Requests that spend at least two
+seconds in the backend are logged by method, path, and duration; query strings
+and Ask contents are deliberately omitted.
+
+### Audit the Wiki cache
+
+The cache auditor reads only entries reachable from the current registry and
+outline identities; it never generates an outline or page and therefore never
+calls the Wiki model:
+
+```bash
+make wiki-cache-audit \
+  WIKI_CACHE_AUDIT_ARGS="--config qa_config.local.yaml --require-overviews"
+```
+
+Its JSON report separates Overview, root-page, and child-page coverage; lists
+degraded, fallback, and quality-invalid pages; and reports stale/orphaned cache
+storage. Newly generated pages also contribute retrieval, planning, model-call,
+repair-count, and total-latency summaries. Existing cache entries created before
+those metrics were introduced remain readable and are simply excluded from the
+latency sample. Add `--fail-on-fallback` and `--fail-on-quality-invalid` to use
+the report as an acceptance gate.
+
+Prewarm the landing page for every registered repository with a small bounded
+worker pool after reviewing the selection in dry-run mode:
+
+```bash
+make wiki-cache-prewarm \
+  WIKI_CACHE_PREWARM_ARGS="--config qa_config.local.yaml --scope overview --dry-run"
+make wiki-cache-prewarm \
+  WIKI_CACHE_PREWARM_ARGS="--config qa_config.local.yaml --scope overview --workers 2 --retry-degraded-now --fail-on-error --fail-on-quality-invalid"
+```
+
+`overview` is the safe public-demo default; `root` includes every top-level
+section and `all` includes child pages. The prewarmer skips healthy entries and
+quality failures still inside their retry cooldown. The sidebar reports each
+page as cached, cold, retryable, or needing review; the browser preloads at most
+two adjacent pages only when they are already cached, so navigation does not
+silently create model spend.
+
+`--retry-degraded-now` is an explicit operator action: it bypasses the retry
+cooldown for degraded pages in this prewarm run without changing the bounded
+reader-traffic policy. It does not regenerate healthy cached prose.
+The standalone prewarmer groups pages by repository and releases that
+repository's BM25/vector views as soon as its group finishes, so a 26-repository
+run retains at most the configured worker count of large retrieval bundles.
+Pass `--keep-views` only when profiling retained-view memory deliberately.
+
+### Rebuild demo indexes safely
+
+When a manifest predates secure source fingerprints, rebuild its BM25, vector,
+and symbol-graph views together instead of editing the manifest. Preview the
+registry selection first, then publish either all repositories or a repeated
+set of repository ids:
+
+```bash
+make demo-index-rebuild \
+  DEMO_INDEX_REBUILD_ARGS="--config qa_config.local.yaml --dry-run"
+make demo-index-rebuild \
+  DEMO_INDEX_REBUILD_ARGS="--config qa_config.local.yaml --repo sharkdp__bat"
+```
+
+The command builds into `<data_dir>/rebuilds-source-v2`, validates the source
+binding, commit, fresh-view status, and complete vector artifact, then replaces
+only the manifest while holding the compiler cache lock. A demo graph with
+fewer than 25 nodes is also rejected, catching tools that exit successfully
+after indexing the wrong workspace boundary. The command preserves the original
+as `repo_manifest.json.pre-source-v2` and refuses publication if the live
+manifest changed while the private generation was being built.
+
+Some demo checkouts populate optional dependency SDKs after cloning. Keep a
+repository-specific exclusion explicit and persisted in the BM25/vector
+artifact identity instead of silently adding that directory to the global
+source policy. For example, MicroPython's populated `lib/` tree is external
+dependency material and otherwise contributes hundreds of thousands of noisy
+chunks:
+
+```bash
+make demo-index-rebuild \
+  DEMO_INDEX_REBUILD_ARGS="--config qa_config.local.yaml --repo micropython__micropython --ignore-dir micropython__micropython:lib"
+```
+
+The source fingerprint still binds the entire visible checkout; the exclusion
+only defines the retrieval corpus. Consequently, a dependency-tree change is
+detected conservatively even though those files are not searchable.
+
+The managed Rust analyzer remains the default. If one repository exposes an
+upstream analyzer crash, set `CODENIB_RUST_ANALYZER` to an explicit validated
+executable for that rebuild; this opt-in override does not replace the pinned
+toolchain for other repositories.
+
+### Compare Ask model candidates
+
+With the candidate served behind the configured OpenAI-compatible endpoint,
+run the fixed Requests, Gin, and Vue source-grounding gate and retain its JSON:
+
+```bash
+make demo-ask-benchmark \
+  DEMO_ASK_BENCHMARK_ARGS="--candidate qwen-current --repeat 2" \
+  > demo-ask-qwen-current.json
+```
+
+The report records end-to-end and backend-reported latency, citation location
+validity, expected-file recall, and expected-term coverage. Compare candidates
+with identical indexes, backend settings, cases, and repeat counts; a successful
+model ping is not a demo-quality or latency result.
+
+Wiki prose has a separate gate because it uses a separate model and quality
+contract. It reuses each repository's current cached outline, writes candidate
+pages only to an isolated temporary cache, and retains metrics rather than the
+generated prose:
+
+```bash
+make demo-wiki-benchmark \
+  DEMO_WIKI_BENCHMARK_ARGS="--config qa_config.local.yaml --candidate deepseek-current --repo psf__requests"
+make demo-wiki-benchmark \
+  DEMO_WIKI_BENCHMARK_ARGS="--config qa_config.local.yaml --candidate local-candidate --model openai/local-model --api-base http://127.0.0.1:8080/v1 --repo psf__requests"
+```
+
+Run cache prewarming first: the benchmark intentionally refuses to generate a
+new outline, so every candidate receives the same source-bound page plan. A run
+fails when generation errors, falls back to diagnostic mode, or produces a page
+that does not pass the normal Wiki quality gate.
+
+The August 2026 production comparison of Qwen3.6, Qwen3.8-27B, DeepSeek V4
+Flash, and Muse Glimmer 30B is recorded in
+[Demo model and cold-start bake-off](experiments/demo_model_bakeoff_2026-08.md).
+
 ## Running over SSH
 
 With the default or loopback API configuration, the browser talks only to the
@@ -284,8 +482,10 @@ the right. The middle column leads with the graph, then the prose:
 The **Refresh this wiki** button re-fetches the page tree and active page from
 the backend. It does not clear the in-memory or on-disk generation cache, run a
 new index build, or force model regeneration. To regenerate model-authored
-pages after changing provider settings, stop the backend, remove
-`<data_dir>/wiki_cache`, and start it again.
+pages after changing provider settings, run the bounded prewarmer with
+`--retry-degraded-now`; healthy pages remain cached. A deliberate prompt or
+index identity change selects new cache entries without deleting unrelated
+healthy content.
 
 ### No more Mermaid
 
@@ -477,7 +677,13 @@ re-fetches `POST /api/chat`; every submit is its own answer.
 | Symptom | Cause / fix |
 |---|---|
 | Stuck on "Loading repositories…" | Backend unreachable from the Vite proxy or production runtime configuration. Confirm `:8000` is up (`curl 127.0.0.1:8000/api/health`); over SSH only `:3000` needs forwarding in source-development mode. Hard-refresh after the backend finishes loading. |
+| Direct `/<repo>/ask` refresh is blank | Rebuild the frontend from a checkout whose `index.html` contains the live document base. Without it, relative Vite assets resolve below the nested route and return 404. Static exports remove and remount this base automatically. |
+| Vite says `This host is not allowed` | Add the exact public proxy hostname to `server.allowedHosts` (and `preview.allowedHosts` when using `vite preview`). Keep host checking enabled; do not use `allowedHosts: true`. The checked-in config already admits `demo.codenib.ai`. |
+| Wiki says "Couldn't load this page" | Read the status and backend detail now shown in the page. A provider or generation error points to the Wiki model; a legacy source-fingerprint warning means the Web service is serving BM25 until the manifest and vector artifact are rebuilt. Older or strict runtimes may instead return `native vector authorization requires source fingerprint v2`. |
+| Wiki stays on "Preparing a source-linked page…" | This is a cold page generation, not the Ask model. Check the Wiki provider and its timeout, then inspect whether another identical request is already in flight. Later requests reuse the disk cache. |
 | Ask shows a backend error | The configured model endpoint is unreachable, provider authentication is unavailable, or the model call failed. Check the backend log and run `codenib doctor --require agent` with the same model settings; add `--probe-model` to send live text, tool, and structured-output probes. |
-| Wiki prose looks deterministic after changing models | Generation fell back because the earlier model call failed, or the existing page cache was reused. Stop the backend, clear `<data_dir>/wiki_cache`, and restart it after fixing the provider. |
+| Wiki prose looks deterministic after changing models | Source-checked page caches are model-independent by design, so changing the configured model does not rewrite healthy pages. Degraded fact-plan fallbacks are retried automatically by a fresh backend process; clear the matching cache only when intentionally regenerating a healthy page with another model. |
+| Frontend changes do not appear | Run `make web-status` and inspect the Vite process cwd. Stop a current-user process rooted in an old checkout or detached snapshot, then start the frontend from the checkout being edited. Never reclaim a listener owned by another user. |
 | Dependency Map shows setup commands | The repo has no usable symbol graph, so the `codemap` capability is off. Install `codenib[graph]` and rebuild with `codenib wiki . --preset graph`. |
+| Page graph says its schema is incompatible | The prose and graph are separate artifacts. The page can remain source-cited while an older `graph.pkl` is rejected. Rebuild `symbol_graph` with the current CodeNib version; do not edit the pickle's version field. |
 | `repos: 0` at `/api/health` | No registry. Run `scripts/build_qa_index.py` (or fix `data_dir`/`prebuilt_dir`). |

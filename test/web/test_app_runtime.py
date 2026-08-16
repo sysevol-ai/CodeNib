@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +15,23 @@ from fastapi.testclient import TestClient
 
 import codenib.web.app as web_app
 import codenib.wiki.media_generation as media_generation
+
+
+def test_request_timing_header_and_slow_log_exclude_query(monkeypatch, caplog):
+    ticks = iter((10.0, 12.5))
+    monkeypatch.setattr(web_app, "perf_counter", lambda: next(ticks))
+
+    with caplog.at_level(logging.INFO, logger=web_app.logger.name):
+        response = TestClient(web_app.app).get("/api/health?secret=query")
+
+    assert response.headers["server-timing"] == "codenib;dur=2500.0"
+    app_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == web_app.logger.name
+    ]
+    assert "Slow API request: GET /api/health 2500.0 ms" in app_messages
+    assert all("secret=query" not in message for message in app_messages)
 
 
 def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
@@ -59,6 +77,7 @@ def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
     assert captured == {
         "config": config,
         "native_index_authorization_resolver": resolver,
+        "allow_missing_native_index_authorization": True,
         "loaded": True,
     }
 
@@ -243,6 +262,34 @@ def test_wiki_media_materialization_does_not_swallow_memory_error(
         web_app._materialize_wiki_media(
             "demo", "overview", {"media_slots": [{"id": "asset"}]}
         )
+
+
+def test_wiki_page_graph_reports_why_the_graph_is_unavailable(monkeypatch):
+    class Builder:
+        def page_citations(self, page_id):
+            return []
+
+        def page(self, page_id):
+            raise AssertionError("page graph must not generate prose")
+
+    bundle = SimpleNamespace(
+        code_graph=lambda: None,
+        graph_unavailable_note=lambda: (
+            "Dependency graph uses schema 4, but this server requires schema 5."
+        ),
+    )
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+
+    result = asyncio.run(web_app.wiki_page_graph("repo", "overview"))
+
+    assert result == {
+        "available": False,
+        "nodes": [],
+        "edges": [],
+        "mermaid": "",
+        "note": "Dependency graph uses schema 4, but this server requires schema 5.",
+    }
 
 
 def test_template_wiki_disables_narrator(tmp_path):

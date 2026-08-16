@@ -657,7 +657,9 @@ pre {
   font-size: 13.5px;
 }
 .toc-link {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   width: 100%;
   text-align: left;
   background: transparent;
@@ -672,6 +674,28 @@ pre {
   overflow: hidden;
   text-overflow: ellipsis;
   transition: background-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+.toc-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toc-cache-state {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 999px;
+  background: var(--border);
+}
+.toc-cache-state.ready {
+  background: #42a36b;
+}
+.toc-cache-state.retryable {
+  background: #d99928;
+}
+.toc-cache-state.degraded {
+  background: #c35b43;
 }
 .toc-link:hover {
   background: var(--bg-subtle);
@@ -784,6 +808,40 @@ pre {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 8px;
+}
+
+.page-load-error {
+  color: #b3541e;
+  background: rgba(240, 136, 62, 0.08);
+  border: 1px solid rgba(240, 136, 62, 0.3);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+.page-load-error p {
+  margin: 0;
+}
+.page-load-error-detail {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.page-loading-state {
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px;
+  color: var(--text);
+}
+.page-loading-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.page-loading-detail,
+.ask-thinking-detail {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .wiki-modeswitch {

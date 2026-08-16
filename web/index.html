@@ -3,6 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Vite emits relative asset references so the static exporter can remount
+      the bundle below a Pages base path. Live API deployments serve routes
+      such as /<repo>/ask directly, where those references otherwise resolve
+      below the route and 404. The exporter strips this tag before rewriting
+      the same references to its configured mount path.
+    -->
+    <base href="/" />
     <meta
       name="description"
       content="Source-linked repository documentation powered by CodeNib."

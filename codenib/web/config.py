@@ -33,6 +33,7 @@ from ..provider_routes import normalize_provider
 DEFAULT_CONFIG_PATH = "qa_config.yaml"
 CACHE_DIR_NAME = REPO_INDEX_DIRNAME
 REGISTRY_FILENAME = "qa_registry.json"
+CONFIG_EXTENDS_KEY = "extends"
 
 
 def _model_provider(model: str) -> Optional[str]:
@@ -40,6 +41,75 @@ def _model_provider(model: str) -> Optional[str]:
 
     provider, separator, _ = str(model or "").strip().partition("/")
     return provider.lower() if separator else None
+
+
+def _merge_config_data(
+    base: Dict[str, Any],
+    overlay: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Return a recursive config merge where the overlay always wins.
+
+    Mappings are merged so a profile can override one nested model option
+    without copying the rest of the base profile. Scalars, lists, and explicit
+    ``null`` values replace the inherited value.
+    """
+
+    merged = dict(base)
+    for key, value in overlay.items():
+        if key == CONFIG_EXTENDS_KEY:
+            continue
+        inherited = merged.get(key)
+        if isinstance(inherited, dict) and isinstance(value, dict):
+            merged[key] = _merge_config_data(inherited, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _config_parents(value: Any, *, source: Path) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        parents = [value]
+    elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+        parents = value
+    else:
+        raise ValueError(
+            f"{source}: {CONFIG_EXTENDS_KEY} must be a path or list of paths"
+        )
+    if any(not parent.strip() for parent in parents):
+        raise ValueError(f"{source}: {CONFIG_EXTENDS_KEY} paths cannot be empty")
+    return parents
+
+
+def _load_config_data(path: Path, *, chain: tuple[Path, ...] = ()) -> Dict[str, Any]:
+    """Load one YAML profile and recursively merge its relative parents."""
+
+    resolved = path.expanduser().resolve()
+    if resolved in chain:
+        cycle = " -> ".join(str(item) for item in (*chain, resolved))
+        raise ValueError(f"demo config extends cycle: {cycle}")
+    if not resolved.is_file():
+        if chain:
+            raise FileNotFoundError(f"demo config parent does not exist: {resolved}")
+        return {}
+
+    with resolved.open(encoding="utf-8") as handle:
+        loaded = yaml.safe_load(handle) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"demo config must contain a YAML mapping: {resolved}")
+
+    merged: Dict[str, Any] = {}
+    next_chain = (*chain, resolved)
+    for parent in _config_parents(loaded.get(CONFIG_EXTENDS_KEY), source=resolved):
+        parent_path = Path(parent).expanduser()
+        if not parent_path.is_absolute():
+            parent_path = resolved.parent / parent_path
+        merged = _merge_config_data(
+            merged,
+            _load_config_data(parent_path, chain=next_chain),
+        )
+    return _merge_config_data(merged, loaded)
 
 
 @dataclass(slots=True)
@@ -229,12 +299,9 @@ class QAConfig:
 
 
 def load_config(path: Optional[str] = None) -> QAConfig:
-    """Load demo config from YAML, applying env overrides."""
+    """Load a layered demo config from YAML, then apply env overrides."""
     cfg_path = path or os.environ.get("CODENIB_DEMO_CONFIG", DEFAULT_CONFIG_PATH)
-    data = {}
-    if Path(cfg_path).exists():
-        with open(cfg_path) as f:
-            data = yaml.safe_load(f) or {}
+    data = _load_config_data(Path(cfg_path))
 
     defaults = QAConfig()
     cfg = QAConfig(

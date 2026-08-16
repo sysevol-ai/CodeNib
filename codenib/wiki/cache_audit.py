@@ -1,0 +1,294 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""Read-only coverage and quality audit for persisted AgentWiki pages."""
+
+from __future__ import annotations
+
+import glob
+import json
+import math
+import os
+from collections import Counter
+from typing import Any, Callable, Iterable, Optional
+
+from .agent_wiki import AgentWiki
+
+
+def _summary(values: Iterable[float]) -> dict[str, Any]:
+    ordered = sorted(float(value) for value in values)
+    if not ordered:
+        return {"count": 0, "p50": None, "p95": None, "max": None}
+
+    def percentile(fraction: float) -> float:
+        index = max(0, min(len(ordered) - 1, math.ceil(len(ordered) * fraction) - 1))
+        return round(ordered[index], 1)
+
+    return {
+        "count": len(ordered),
+        "p50": percentile(0.50),
+        "p95": percentile(0.95),
+        "max": round(ordered[-1], 1),
+    }
+
+
+def _coverage(cached: int, total: int) -> dict[str, Any]:
+    return {
+        "cached": cached,
+        "total": total,
+        "missing": max(0, total - cached),
+        "percent": round((cached / total * 100) if total else 100.0, 1),
+    }
+
+
+def _cache_paths(cache_root: str, wiki: AgentWiki, suffix: str) -> tuple[str, ...]:
+    """Resolve stable and legacy cache files without creating a directory."""
+
+    paths = wiki._cache_candidate_paths(suffix)
+    if paths:
+        return paths
+    return (os.path.join(cache_root, f"agentwiki_{wiki._key(suffix)}.json"),)
+
+
+def _read_cache(paths: Iterable[str]) -> Optional[Any]:
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict) and "data" in payload:
+            return payload.get("data")
+    return None
+
+
+def audit_wiki_cache(
+    registry: Any,
+    *,
+    model: str,
+    cache_dir: str | os.PathLike[str],
+    repo_ids: Optional[Iterable[str]] = None,
+    wiki_factory: Callable[..., AgentWiki] = AgentWiki,
+) -> dict[str, Any]:
+    """Inspect only cache entries reachable from each current Wiki outline.
+
+    The function never calls ``outline()`` or ``page()`` and therefore never
+    invokes a model. Missing outlines are reported instead of generated.
+    """
+
+    cache_root = os.path.abspath(os.fspath(cache_dir))
+    selected = set(repo_ids or ())
+    totals = Counter()
+    modes = Counter()
+    missing_overviews: list[str] = []
+    missing_outlines: list[str] = []
+    degraded_pages: list[dict[str, Any]] = []
+    quality_invalid_pages: list[dict[str, Any]] = []
+    fallback_pages: list[dict[str, Any]] = []
+    retry_scheduled_pages: list[dict[str, Any]] = []
+    retry_exhausted_pages: list[dict[str, Any]] = []
+    current_cache_paths: set[str] = set()
+    metric_samples: dict[str, list[float]] = {
+        "total_ms": [],
+        "retrieval_ms": [],
+        "planning_ms": [],
+        "model_call_ms": [],
+        "model_calls": [],
+        "repair_attempts": [],
+    }
+    repo_reports: list[dict[str, Any]] = []
+
+    for info in registry.list_infos():
+        repo_id = str(info.id)
+        if selected and repo_id not in selected:
+            continue
+        bundle = registry.get(repo_id)
+        if bundle is None:
+            continue
+        wiki = wiki_factory(bundle, model=model, cache_dir=cache_root)
+        outline_paths = _cache_paths(cache_root, wiki, "outline")
+        current_cache_paths.update(os.path.abspath(path) for path in outline_paths)
+        outline = _read_cache(outline_paths)
+        if not isinstance(outline, dict) or not outline.get("pages"):
+            missing_outlines.append(repo_id)
+            repo_reports.append(
+                {
+                    "repo": repo_id,
+                    "pages": _coverage(0, 0),
+                    "root_pages": _coverage(0, 0),
+                    "child_pages": _coverage(0, 0),
+                    "overview_cached": False,
+                    "outline_cached": False,
+                }
+            )
+            continue
+
+        wiki._outline = outline
+        repo_counts = Counter()
+
+        def inspect(
+            raw_meta: dict[str, Any],
+            depth: int,
+            *,
+            repo_counts: Counter = repo_counts,
+            repo_id: str = repo_id,
+            wiki: AgentWiki = wiki,
+            outline: dict[str, Any] = outline,
+        ) -> None:
+            totals["pages"] += 1
+            repo_counts["pages"] += 1
+            scope = "root" if depth == 0 else "child"
+            totals[f"{scope}_pages"] += 1
+            repo_counts[f"{scope}_pages"] += 1
+            is_overview = raw_meta.get("id") == "overview"
+            if is_overview:
+                totals["overviews"] += 1
+                meta = wiki._overview_page_meta(
+                    raw_meta,
+                    (outline.get("pages") or [])[1:],
+                )
+            else:
+                meta = raw_meta
+
+            suffix = wiki._page_cache_suffix(meta)
+            paths = _cache_paths(cache_root, wiki, suffix)
+            current_cache_paths.update(os.path.abspath(path) for path in paths)
+            evidence_paths = _cache_paths(cache_root, wiki, f"evidence_{suffix}")
+            current_cache_paths.update(os.path.abspath(path) for path in evidence_paths)
+            page = _read_cache(paths)
+            if isinstance(page, dict):
+                totals["cached_pages"] += 1
+                repo_counts["cached_pages"] += 1
+                totals[f"cached_{scope}_pages"] += 1
+                repo_counts[f"cached_{scope}_pages"] += 1
+                if is_overview:
+                    totals["cached_overviews"] += 1
+
+                generation = page.get("generation") or {}
+                mode = str(generation.get("mode") or "unknown")
+                modes[mode] += 1
+                record = {
+                    "repo": repo_id,
+                    "id": str(page.get("id") or meta.get("id") or ""),
+                    "title": str(page.get("title") or meta.get("title") or ""),
+                    "mode": mode,
+                    "reason": generation.get("reason"),
+                    "fallback": generation.get("fallback"),
+                    "quality_valid": (page.get("quality") or {}).get("valid"),
+                    "retry": generation.get("retry"),
+                }
+                if mode == "degraded":
+                    degraded_pages.append(record)
+                if generation.get("fallback"):
+                    fallback_pages.append(record)
+                if (page.get("quality") or {}).get("valid") is False:
+                    quality_invalid_pages.append(record)
+                retry_state = (generation.get("retry") or {}).get("state")
+                if retry_state == "scheduled":
+                    retry_scheduled_pages.append(record)
+                elif retry_state == "exhausted":
+                    retry_exhausted_pages.append(record)
+
+                metrics = generation.get("metrics") or {}
+                for name in metric_samples:
+                    value = metrics.get(name)
+                    if isinstance(value, (int, float)) and not isinstance(value, bool):
+                        metric_samples[name].append(float(value))
+            elif is_overview:
+                missing_overviews.append(repo_id)
+
+            for child in raw_meta.get("children") or []:
+                if isinstance(child, dict):
+                    inspect(child, depth + 1)
+
+        for root in outline.get("pages") or []:
+            if isinstance(root, dict):
+                inspect(root, 0)
+
+        repo_reports.append(
+            {
+                "repo": repo_id,
+                "pages": _coverage(
+                    repo_counts["cached_pages"],
+                    repo_counts["pages"],
+                ),
+                "root_pages": _coverage(
+                    repo_counts["cached_root_pages"],
+                    repo_counts["root_pages"],
+                ),
+                "child_pages": _coverage(
+                    repo_counts["cached_child_pages"],
+                    repo_counts["child_pages"],
+                ),
+                "overview_cached": repo_id not in missing_overviews,
+                "outline_cached": True,
+            }
+        )
+
+    all_cache_paths = {
+        os.path.abspath(path)
+        for path in glob.glob(os.path.join(cache_root, "agentwiki_*.json"))
+    }
+    orphan_paths = all_cache_paths - current_cache_paths
+    orphan_bytes = sum(
+        os.path.getsize(path) for path in orphan_paths if os.path.isfile(path)
+    )
+    cache_bytes = sum(
+        os.path.getsize(path) for path in all_cache_paths if os.path.isfile(path)
+    )
+    return {
+        "schema_version": 1,
+        "repositories": len(repo_reports),
+        "coverage": {
+            "all": _coverage(totals["cached_pages"], totals["pages"]),
+            "overview": _coverage(
+                totals["cached_overviews"],
+                totals["overviews"],
+            ),
+            "root": _coverage(
+                totals["cached_root_pages"],
+                totals["root_pages"],
+            ),
+            "child": _coverage(
+                totals["cached_child_pages"],
+                totals["child_pages"],
+            ),
+        },
+        "generation_modes": dict(sorted(modes.items())),
+        "generation_metrics": {
+            name: _summary(values) for name, values in metric_samples.items()
+        },
+        "missing_outlines": sorted(missing_outlines),
+        "missing_overviews": sorted(missing_overviews),
+        "degraded_pages": sorted(
+            degraded_pages,
+            key=lambda item: (item["repo"], item["id"]),
+        ),
+        "quality_invalid_pages": sorted(
+            quality_invalid_pages,
+            key=lambda item: (item["repo"], item["id"]),
+        ),
+        "fallback_pages": sorted(
+            fallback_pages,
+            key=lambda item: (item["repo"], item["id"]),
+        ),
+        "retry_scheduled_pages": sorted(
+            retry_scheduled_pages,
+            key=lambda item: (item["repo"], item["id"]),
+        ),
+        "retry_exhausted_pages": sorted(
+            retry_exhausted_pages,
+            key=lambda item: (item["repo"], item["id"]),
+        ),
+        "storage": {
+            "files": len(all_cache_paths),
+            "bytes": cache_bytes,
+            "orphan_files": len(orphan_paths),
+            "orphan_bytes": orphan_bytes,
+        },
+        "repos": sorted(repo_reports, key=lambda item: item["repo"]),
+    }
+
+
+__all__ = ["audit_wiki_cache"]

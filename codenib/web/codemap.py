@@ -966,6 +966,15 @@ def build_page_subgraph(
             break
 
     if not names:
+        if citations:
+            note = (
+                f"This page cites {len(citations)} source location"
+                f"{'s' if len(citations) != 1 else ''}, but none match symbols "
+                "in the active graph snapshot. Rebuild the symbol graph from "
+                "the same repository snapshot as the Wiki indexes."
+            )
+        else:
+            note = "This page has no source citations to map yet."
         return {
             "available": False,
             "root": "",
@@ -975,7 +984,7 @@ def build_page_subgraph(
             "edges": [],
             "hierarchy": empty_hierarchy(),
             "mermaid": "",
-            "note": "No graph symbols for this page.",
+            "note": note,
         }
 
     seeds = set(names)  # the page's own cited symbols (highlighted)
