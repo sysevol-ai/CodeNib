@@ -174,67 +174,28 @@ function mediaKindLabel(kind: WikiMediaSlot["kind"]): string {
 function MediaPreview({ slot }: { slot: WikiMediaSlot }) {
   const asset = slot.asset;
   const src = asset?.uri ? mediaAssetUrl(asset.uri) : null;
-  if (src && asset) {
-    if (asset.mime_type.startsWith("video/")) {
-      return (
-        <video
-          className="wiki-media-asset"
-          controls
-          src={src}
-        >
-          Video preview is unavailable in this browser.
-        </video>
-      );
-    }
+  if (!src || !asset) return null;
+  if (asset.mime_type.startsWith("video/")) {
     return (
-      <img
-        className="wiki-media-asset"
-        src={src}
-        alt={slot.title}
-        referrerPolicy="no-referrer"
-      />
+      <video className="wiki-media-asset" controls src={src}>
+        Video preview is unavailable in this browser.
+      </video>
     );
   }
-
-  if (slot.kind === "storyboard" || slot.kind === "video") {
-    return (
-      <div className="wiki-media-storyboard" aria-hidden>
-        <span>Setup</span>
-        <span>Flow</span>
-        <span>Result</span>
-      </div>
-    );
-  }
-
-  if (slot.kind === "diagram") {
-    return (
-      <div className="wiki-media-diagram-preview" aria-hidden>
-        <span className="wiki-media-node">Source</span>
-        <span className="wiki-media-edge" />
-        <span className="wiki-media-node accent">Graph</span>
-        <span className="wiki-media-edge" />
-        <span className="wiki-media-node">Wiki</span>
-      </div>
-    );
-  }
-
   return (
-    <div className="wiki-media-image-preview" aria-hidden>
-      <span className="wiki-media-figure" />
-      <span className="wiki-media-caption-line" />
-      <span className="wiki-media-caption-line short" />
-    </div>
+    <img
+      className="wiki-media-asset"
+      src={src}
+      alt={slot.title}
+      referrerPolicy="no-referrer"
+    />
   );
 }
 
-function MediaStatus({ slot }: { slot: WikiMediaSlot }) {
-  const ready = Boolean(slot.asset?.uri && mediaAssetUrl(slot.asset.uri));
+function MediaStatus() {
   return (
     <div className="wiki-media-status">
-      <span className={ready ? "ready" : "planned"}>
-        {ready ? "Asset generated" : "Ready to generate"}
-      </span>
-      {ready && slot.asset?.model && <span className="mono">{slot.asset.model}</span>}
+      <span className="ready">Generated from cited source</span>
     </div>
   );
 }
@@ -246,7 +207,9 @@ function MultimodalMedia({
   slots: WikiMediaSlot[];
   repo: RepoInfo | null;
 }) {
-  const visibleSlots = materializedWikiMediaSlots(slots);
+  const visibleSlots = materializedWikiMediaSlots(slots).filter((slot) =>
+    slot.asset?.uri ? Boolean(mediaAssetUrl(slot.asset.uri)) : false,
+  );
   if (!visibleSlots.length) return null;
   const [primary, ...secondary] = visibleSlots;
   const primaryAssetUrl = primary?.asset?.uri
@@ -278,7 +241,7 @@ function MultimodalMedia({
             </div>
             <h3>{primary.title}</h3>
             <p>{primary.purpose}</p>
-            <MediaStatus slot={primary} />
+            <MediaStatus />
             {primaryAssetUrl && (
               <a
                 className="wiki-media-open"
@@ -304,7 +267,7 @@ function MultimodalMedia({
               </div>
               <h3>{slot.title}</h3>
               <p>{slot.purpose}</p>
-              <MediaStatus slot={slot} />
+              <MediaStatus />
               {(slot.source_citations ?? []).length > 0 && (
                 <div className="wiki-media-citations">
                   {(slot.source_citations ?? []).slice(0, 4).map((file) => {
