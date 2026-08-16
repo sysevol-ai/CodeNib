@@ -528,6 +528,73 @@ def test_every_profile_axis_participates_in_profile_identity(view_type: str) -> 
         assert altered.profile_id != intent.profile_id, axis
 
 
+@pytest.mark.parametrize("view_type", ["bm25", "vector"])
+def test_optional_ignore_directories_participate_in_profile_identity(
+    view_type: str,
+) -> None:
+    manifest = _manifest()
+    baseline = _profile_id(manifest, view_type)
+    _set_entry_field(
+        manifest.indexes[view_type],
+        "additional_ignore_dirs",
+        ["vendored-source"],
+    )
+
+    plan = plan_repo_manifest_import(manifest, views=[view_type])
+    compatibility = plan.view_map[view_type].profile.config["compatibility"]
+
+    assert compatibility["additional_ignore_dirs"] == ["vendored-source"]
+    assert plan.view_map[view_type].profile_id != baseline
+
+
+def test_remote_vector_profile_binds_document_input_limit() -> None:
+    manifest = _manifest()
+    entry = manifest.indexes["vector"]
+    remote_identity = VectorIndexBuilder(
+        languages=["python", "typescript"],
+        embedding_model="test/model",
+        embedding_provider="openai",
+        embedding_dimension=4,
+        embedding_endpoint="https://embedding.example/v1",
+        embedding_credential_env="TEST_EMBEDDING_API_KEY",
+        build_levels=["l0", "l2"],
+        max_lines_per_chunk=240,
+        embedding_document_max_chars=12_000,
+    ).artifact_identity()
+    _set_entry_fields(entry, remote_identity)
+
+    first = plan_repo_manifest_import(manifest, views=["vector"])
+    assert (
+        first.view_map["vector"].profile.config["compatibility"][
+            "embedding_document_max_chars"
+        ]
+        == 12_000
+    )
+
+    _set_entry_field(entry, "embedding_document_max_chars", 8_000)
+    second = plan_repo_manifest_import(manifest, views=["vector"])
+    assert second.view_map["vector"].profile_id != first.view_map["vector"].profile_id
+
+
+def test_remote_vector_profile_requires_document_input_limit() -> None:
+    manifest = _manifest()
+    entry = manifest.indexes["vector"]
+    remote_identity = VectorIndexBuilder(
+        languages=["python", "typescript"],
+        embedding_model="test/model",
+        embedding_provider="openai",
+        embedding_dimension=4,
+        embedding_endpoint="https://embedding.example/v1",
+        build_levels=["l0", "l2"],
+        max_lines_per_chunk=240,
+    ).artifact_identity()
+    remote_identity.pop("embedding_document_max_chars")
+    _set_entry_fields(entry, remote_identity)
+
+    with pytest.raises(StorageValidationError, match="document bound is missing"):
+        plan_repo_manifest_import(manifest, views=["vector"])
+
+
 def test_vector_profile_binds_resolved_artifact_model_policy() -> None:
     manifest = _manifest()
     baseline = _profile_id(manifest, "vector")

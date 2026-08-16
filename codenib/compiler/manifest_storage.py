@@ -45,7 +45,7 @@ REPO_MANIFEST_BM25_GENERATION_CONTRACT = "codenib.repo-manifest-bm25-generation.
 REPO_MANIFEST_VECTOR_GENERATION_CONTRACT = "codenib.repo-manifest-vector-generation.v1"
 
 PORTABLE_STORAGE_VIEWS = frozenset({"bm25", "vector"})
-CURRENT_PORTABLE_BUILDER_SCHEMAS = {"bm25": 8, "vector": 6}
+CURRENT_PORTABLE_BUILDER_SCHEMAS = {"bm25": 8, "vector": 7}
 
 DEFAULT_MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 _MAX_JSON_DEPTH = 64
@@ -170,6 +170,11 @@ VECTOR_PROFILE_AXES = (
     "max_lines_per_chunk",
     "chunking_failure_policy",
     "repository_filter_policy",
+)
+_BM25_OPTIONAL_PROFILE_AXES = ("additional_ignore_dirs",)
+_VECTOR_OPTIONAL_PROFILE_AXES = (
+    "additional_ignore_dirs",
+    "embedding_document_max_chars",
 )
 
 _BM25_NON_PROFILE_CONFIG_FIELDS = frozenset(
@@ -1458,13 +1463,16 @@ def _require_profile_axes(
 def _profile_config(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
     config = entry.config
     axes: tuple[str, ...]
+    optional_axes: tuple[str, ...]
     non_profile: frozenset[str]
     embedding_load_policy: dict[str, Any] | None = None
     if view_type == "bm25":
         axes = BM25_PROFILE_AXES
+        optional_axes = _BM25_OPTIONAL_PROFILE_AXES
         non_profile = _BM25_NON_PROFILE_CONFIG_FIELDS
     elif view_type == "vector":
         axes = VECTOR_PROFILE_AXES
+        optional_axes = _VECTOR_OPTIONAL_PROFILE_AXES
         non_profile = _VECTOR_NON_PROFILE_CONFIG_FIELDS
     else:  # pragma: no cover - selection excludes unsupported views
         raise _IncompleteProfile(f"unsupported view profile: {view_type}")
@@ -1472,16 +1480,16 @@ def _profile_config(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
     _reject_unknown_config_fields(
         config,
         view_type=view_type,
-        profile_axes=axes,
+        profile_axes=(*axes, *optional_axes),
         non_profile_fields=non_profile,
     )
     _reject_unknown_metadata_fields(
         entry.metadata,
         view_type=view_type,
-        profile_axes=axes,
+        profile_axes=(*axes, *optional_axes),
         non_profile_fields=non_profile,
     )
-    for axis in axes:
+    for axis in (*axes, *optional_axes):
         if axis not in entry.metadata:
             continue
         try:
@@ -1522,6 +1530,11 @@ def _profile_config(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
         config["repository_filter_policy"],
         f"view {view_type!r} repository_filter_policy",
     )
+    if "additional_ignore_dirs" in config:
+        _text_list(
+            config["additional_ignore_dirs"],
+            f"view {view_type!r} additional_ignore_dirs",
+        )
 
     if view_type == "bm25":
         _positive_int(config["max_k"], "view 'bm25' max_k")
@@ -1568,13 +1581,32 @@ def _profile_config(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
                     "revision": None,
                     "trust_remote_code": False,
                 }
+            if route.provider == "openai":
+                if "embedding_document_max_chars" not in config:
+                    raise _IncompleteProfile(
+                        "view 'vector' remote embedding document bound is missing"
+                    )
+                _positive_int(
+                    config["embedding_document_max_chars"],
+                    "view 'vector' embedding_document_max_chars",
+                )
+            elif "embedding_document_max_chars" in config:
+                raise _IncompleteProfile(
+                    "view 'vector' local embedding route has a remote document bound"
+                )
+        except _IncompleteProfile:
+            raise
         except (TypeError, ValueError) as exc:
             raise _IncompleteProfile(
                 "view 'vector' embedding route or model policy is incomplete or "
                 "inconsistent"
             ) from exc
 
-    compatibility = {axis: config[axis] for axis in axes if axis != "builder_schema"}
+    compatibility = {
+        axis: config[axis]
+        for axis in (*axes, *optional_axes)
+        if axis != "builder_schema" and axis in config
+    }
     if embedding_load_policy is not None:
         # The load policy is derived without filesystem discovery.  Keeping it
         # explicit prevents policy defaults from becoming an identity wildcard.
