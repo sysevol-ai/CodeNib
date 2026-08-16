@@ -538,6 +538,19 @@ class _MismatchedResolvedSummaryCatalog(_InstrumentedCatalog):
         return result
 
 
+class _PostCommitInterruptCatalog(_InstrumentedCatalog):
+    def __init__(self, path: Path, state: dict[str, Any]) -> None:
+        super().__init__(path, state)
+        self._interrupt_once = True
+
+    def publish_snapshot(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        result = super().publish_snapshot(*args, **kwargs)
+        if self._interrupt_once:
+            self._interrupt_once = False
+            raise KeyboardInterrupt("injected postcommit interruption")
+        return result
+
+
 class _BackendTripwire:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -745,6 +758,51 @@ def test_real_import_publishes_members_projection_subset_and_exact_retry(
         assert retry.generation == first.generation
         assert retry.changed is False
         assert retry.view_generation_items == first.view_generation_items
+        assert fixture.context_owner.active
+        assert fixture.repository_source.usable
+    finally:
+        catalog.close()
+        fixture.close()
+
+
+def test_postcommit_interruption_converges_on_exact_retry(tmp_path: Path) -> None:
+    fixture = _context_fixture(tmp_path / "fixture", ("bm25",))
+    plan = fixture.plan()
+    state: dict[str, Any] = {"consume_returned": True, "catalog_started": False}
+    cas = _InstrumentedCAS(tmp_path / "cas", state)
+    state["cas"] = cas
+    catalog = _PostCommitInterruptCatalog(tmp_path / "catalog.sqlite", state)
+    try:
+        with pytest.raises(KeyboardInterrupt, match="postcommit interruption"):
+            import_retained_repo_manifest(
+                plan,
+                artifact_owner=fixture.context_owner,
+                repository_source=fixture.repository_source,
+                repository_key=_REPOSITORY_KEY,
+                catalog=catalog,
+                object_store=cas,
+                environ={},
+            )
+
+        assert not state["retention_active"]
+        assert catalog.publish_count == 1
+
+        state["catalog_started"] = False
+        cas.receipt_counts.clear()
+        retry = import_retained_repo_manifest(
+            plan,
+            artifact_owner=fixture.context_owner,
+            repository_source=fixture.repository_source,
+            repository_key=_REPOSITORY_KEY,
+            catalog=catalog,
+            object_store=cas,
+            environ={},
+        )
+
+        assert retry.generation == 1
+        assert retry.changed is False
+        assert catalog.publish_count == 2
+        assert not state["retention_active"]
         assert fixture.context_owner.active
         assert fixture.repository_source.usable
     finally:

@@ -447,8 +447,12 @@ identity core. SQLite schema v4 then atomically promotes staged generations,
 seals the snapshot, and advances its generation-counted ref; the executor
 re-resolves the ref and exact manifest summary before releasing object
 retention and returning. Earlier failures may leave unreachable CAS objects or
-staged catalog rows for future GC, but cannot move the old ref. This is the
-direct M1 bootstrap path, not the M2 fenced job-success transaction. Retained
+staged catalog rows for future GC; validation and receipt failures before
+publication cannot move the old ref. If cancellation lands after SQLite commits
+but before the caller observes the result, the direct M1 call is at-least-once:
+an exact retry idempotently resolves to the already-published snapshot without
+advancing the ref again. This is the direct M1 bootstrap path, not the M2 fenced
+job-success transaction. Retained
 materialization/export, production compiler/runtime wiring, and a production
 GC implementation and policy remain outstanding, so M1 remains in progress.
 
