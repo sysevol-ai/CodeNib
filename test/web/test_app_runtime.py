@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 import codenib.web.app as web_app
 import codenib.wiki.media_generation as media_generation
+from codenib.web.schemas import ChatRequest, ChatResponse
 
 
 def test_request_timing_header_and_slow_log_exclude_query(monkeypatch, caplog):
@@ -97,6 +98,52 @@ def test_oversized_chat_request_is_rejected_before_runtime_lookup(monkeypatch):
     )
 
     assert response.status_code == 422
+
+
+def test_chat_maps_citations_off_loop_from_the_served_checkout(monkeypatch):
+    calls = []
+    runner_result = object()
+
+    class Runner:
+        def run(self, query, *, chat_history):
+            assert query == "Where is runtime?"
+            assert chat_history == []
+            return runner_result
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir="/served/checkout"),
+        runner=Runner(),
+        ensure_runtime=lambda: None,
+    )
+
+    class Registry:
+        def get(self, repo_id):
+            return bundle if repo_id == "repo" else None
+
+    def fake_mapping(result, *, repo_path):
+        assert result is runner_result
+        assert repo_path == "/served/checkout"
+        return ChatResponse(answer="answer")
+
+    async def fake_to_thread(func, *args, **kwargs):
+        calls.append(func)
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(web_app, "_registry", Registry)
+    monkeypatch.setattr(web_app, "agent_result_to_response", fake_mapping)
+    monkeypatch.setattr(web_app.asyncio, "to_thread", fake_to_thread)
+
+    response = asyncio.run(
+        web_app.chat(
+            ChatRequest(
+                repo_id="repo",
+                messages=[{"role": "user", "content": "Where is runtime?"}],
+            )
+        )
+    )
+
+    assert response.answer == "answer"
+    assert calls == [bundle.ensure_runtime, bundle.runner.run, fake_mapping]
 
 
 def test_wiki_generation_runs_off_event_loop(monkeypatch):

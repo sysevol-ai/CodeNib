@@ -18,6 +18,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from codenib.agent.boundary import to_agent_repr
 
+from .repository_files import live_source_slice
+
 _MAX_REPO_ID_CHARS = 512
 _MAX_PATH_CHARS = 4096
 _MAX_EDGE_LABEL_CHARS = 1024
@@ -25,6 +27,7 @@ _MAX_EDGE_ANCHORS = 32
 _MAX_CHAT_MESSAGES = 128
 _MAX_CHAT_MESSAGE_CHARS = 64 * 1024
 _MAX_CHAT_TOTAL_CHARS = 256 * 1024
+_MAX_CITATION_CONTENT_CHARS = 16 * 1024
 
 
 class WindowStats(BaseModel):
@@ -289,8 +292,9 @@ def _select_answer_citations(
     citations: List[Citation],
     *,
     limit: int = 5,
+    repo_path: str = "",
 ) -> List[Citation]:
-    """Keep the strongest source locations actually named in the final answer."""
+    """Keep strong answer citations that resolve to exact repository source."""
 
     symbol_matches = [
         citation
@@ -309,7 +313,35 @@ def _select_answer_citations(
 
     if not selected:
         selected = citations
-    return selected[:limit]
+
+    renderable: List[Citation] = []
+    for citation in selected:
+        if repo_path:
+            if not citation.file or citation.start_line is None:
+                continue
+            source = live_source_slice(
+                repo_path,
+                citation.file,
+                citation.start_line,
+                citation.end_line or citation.start_line,
+            )
+            if not source or not str(source.get("content") or "").strip():
+                continue
+            content = str(source["content"])
+            if len(content) > _MAX_CITATION_CONTENT_CHARS:
+                content = content[:_MAX_CITATION_CONTENT_CHARS] + "\n... (truncated)"
+            citation = citation.model_copy(
+                update={
+                    "file": source.get("file") or citation.file,
+                    "start_line": source.get("start_line") or citation.start_line,
+                    "end_line": source.get("end_line") or citation.end_line,
+                    "content": content,
+                }
+            )
+        renderable.append(citation)
+        if len(renderable) >= limit:
+            break
+    return renderable
 
 
 def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
@@ -346,7 +378,11 @@ def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
 
     return ChatResponse(
         answer=result.answer or "",
-        citations=_select_answer_citations(result.answer or "", citations),
+        citations=_select_answer_citations(
+            result.answer or "",
+            citations,
+            repo_path=repo_path,
+        ),
         tool_calls=tool_calls,
         total_turns=result.total_turns,
         total_duration_ms=result.total_duration_ms,

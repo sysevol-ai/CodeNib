@@ -722,8 +722,10 @@ async def chat(req: ChatRequest) -> ChatResponse:
         logger.error("agent run failed for %r: %s", req.repo_id, exc, exc_info=True)
         raise HTTPException(status_code=500, detail="agent run failed") from exc
 
-    return agent_result_to_response(
-        result, repo_path=getattr(bundle.manifest, "repo_path", "")
+    return await asyncio.to_thread(
+        agent_result_to_response,
+        result,
+        repo_path=getattr(bundle.entry, "repo_dir", ""),
     )
 
 
