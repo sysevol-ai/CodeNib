@@ -823,9 +823,13 @@ def test_all_selected_views_finish_validation_and_planning_before_cas_and_catalo
             for index, event in enumerate(state["events"])
             if event[:1] == ("catalog",)
         )
+        retention_enter = state["events"].index(("retention", "enter"))
+        retention_exit = state["events"].index(("retention", "exit"))
+        assert retention_enter < first_catalog < retention_exit
         assert all(
             event[:1] != ("catalog",) for event in state["events"][:first_catalog]
         )
+        assert state["retention_active"] is False
         assert state["consume_returned"] is True
         assert fixture.context_owner.active
         assert fixture.repository_source.usable
@@ -975,6 +979,7 @@ def test_final_receipt_failure_does_not_move_existing_ref(tmp_path: Path) -> Non
         assert catalog.publish_count == old_publish_count
         assert cas.receipt_counts
         assert 1 in cas.receipt_counts.values()
+        assert state["retention_active"] is False
         assert second_fixture.context_owner.active
         assert second_fixture.repository_source.usable
     finally:
