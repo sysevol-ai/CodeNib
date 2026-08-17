@@ -78,7 +78,7 @@ def audit_wiki_cache(
     """
 
     cache_root = os.path.abspath(os.fspath(cache_dir))
-    selected = set(repo_ids or ())
+    selected = {str(repo_id) for repo_id in repo_ids or ()}
     totals = Counter()
     modes = Counter()
     missing_overviews: list[str] = []
@@ -99,7 +99,15 @@ def audit_wiki_cache(
     }
     repo_reports: list[dict[str, Any]] = []
 
-    for info in registry.list_infos():
+    infos = list(registry.list_infos())
+    available_repo_ids = {str(info.id) for info in infos}
+    unknown_repo_ids = sorted(selected - available_repo_ids)
+    if unknown_repo_ids:
+        raise ValueError(
+            "unknown repository selector(s): " + ", ".join(unknown_repo_ids)
+        )
+
+    for info in infos:
         repo_id = str(info.id)
         if selected and repo_id not in selected:
             continue
@@ -226,10 +234,17 @@ def audit_wiki_cache(
             }
         )
 
-    all_cache_paths = {
-        os.path.abspath(path)
-        for path in glob.glob(os.path.join(cache_root, "agentwiki_*.json"))
-    }
+    if selected:
+        # Cache keys are hashed, so an arbitrary file cannot be attributed to a
+        # selected repository without resolving that repository's outline.
+        # Keep subset accounting scoped to the selected repositories instead
+        # of calling every unselected repository's valid cache orphaned.
+        all_cache_paths = {path for path in current_cache_paths if os.path.isfile(path)}
+    else:
+        all_cache_paths = {
+            os.path.abspath(path)
+            for path in glob.glob(os.path.join(cache_root, "agentwiki_*.json"))
+        }
     orphan_paths = all_cache_paths - current_cache_paths
     orphan_bytes = sum(
         os.path.getsize(path) for path in orphan_paths if os.path.isfile(path)

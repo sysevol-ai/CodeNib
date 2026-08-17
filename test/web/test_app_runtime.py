@@ -111,7 +111,10 @@ def test_chat_maps_citations_off_loop_from_the_served_checkout(monkeypatch):
             return runner_result
 
     bundle = SimpleNamespace(
-        entry=SimpleNamespace(repo_dir="/served/checkout"),
+        entry=SimpleNamespace(
+            repo_dir="/served/checkout",
+            base_commit="a" * 40,
+        ),
         runner=Runner(),
         ensure_runtime=lambda: None,
     )
@@ -120,9 +123,10 @@ def test_chat_maps_citations_off_loop_from_the_served_checkout(monkeypatch):
         def get(self, repo_id):
             return bundle if repo_id == "repo" else None
 
-    def fake_mapping(result, *, repo_path):
+    def fake_mapping(result, *, repo_path, repo_commit):
         assert result is runner_result
         assert repo_path == "/served/checkout"
+        assert repo_commit == "a" * 40
         return ChatResponse(answer="answer")
 
     async def fake_to_thread(func, *args, **kwargs):

@@ -87,7 +87,9 @@ function flattenPages(
   const flattened: RelatedWikiPage[] = [];
   for (const page of pages) {
     const breadcrumb = [...parents, page.title].join(" / ");
-    flattened.push({ id: page.id, title: page.title, breadcrumb, score: 0 });
+    if (page.cache_state === "ready") {
+      flattened.push({ id: page.id, title: page.title, breadcrumb, score: 0 });
+    }
     flattened.push(...flattenPages(page.children ?? [], [...parents, page.title]));
   }
   return flattened;

@@ -51,7 +51,7 @@ _DEFAULT_CASES = (
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--endpoint", default="http://127.0.0.1:8001")
+    parser.add_argument("--endpoint", default="http://127.0.0.1:8000")
     parser.add_argument("--candidate", required=True)
     parser.add_argument(
         "--case-file",

@@ -3,22 +3,35 @@ import type { Citation, WikiPageRef } from "./api";
 import { relatedWikiPages } from "./relatedWiki";
 
 const pages: WikiPageRef[] = [
-  { id: "overview", title: "Overview", children: [] },
+  { id: "overview", title: "Overview", cache_state: "ready", children: [] },
   {
     id: "configuration-and-evaluation",
     title: "Configuration and Evaluation",
+    cache_state: "ready",
     children: [
-      { id: "stacks-runtime", title: "Stacks Runtime", children: [] },
-      { id: "stack-planning", title: "Stack Planning", children: [] },
+      {
+        id: "stacks-runtime",
+        title: "Stacks Runtime",
+        cache_state: "ready",
+        children: [],
+      },
+      {
+        id: "stack-planning",
+        title: "Stack Planning",
+        cache_state: "ready",
+        children: [],
+      },
     ],
   },
   {
     id: "time-and-date-handling",
     title: "Time and Date Handling",
+    cache_state: "ready",
     children: [
       {
         id: "date-formatting-and-parsing",
         title: "Date Formatting and Parsing",
+        cache_state: "ready",
         children: [],
       },
     ],
@@ -72,5 +85,43 @@ describe("relatedWikiPages", () => {
 
   it("does not manufacture links without a question or citation match", () => {
     expect(relatedWikiPages(pages, "Where is the parser?", "It is here.", [])).toEqual([]);
+  });
+
+  it("does not recommend cold, retryable, or degraded pages", () => {
+    const unavailable: WikiPageRef[] = [
+      {
+        id: "stacks-cold",
+        title: "Stacks Cold",
+        cache_state: "cold",
+        children: [],
+      },
+      {
+        id: "stacks-retryable",
+        title: "Stacks Retryable",
+        cache_state: "retryable",
+        children: [],
+      },
+      {
+        id: "stacks-degraded",
+        title: "Stacks Degraded",
+        cache_state: "degraded",
+        children: [],
+      },
+      {
+        id: "stacks-ready",
+        title: "Stacks Ready",
+        cache_state: "ready",
+        children: [],
+      },
+    ];
+
+    expect(
+      relatedWikiPages(
+        unavailable,
+        "How do stacks work?",
+        "Stacks are described by the runtime.",
+        [citation("src/stacks.ts", "Stacks")],
+      ).map((page) => page.id),
+    ).toEqual(["stacks-ready"]);
   });
 });

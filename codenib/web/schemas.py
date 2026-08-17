@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from codenib.agent.boundary import to_agent_repr
 
-from .repository_files import live_source_slice
+from .repository_files import git_source_slice, live_source_slice
 
 _MAX_REPO_ID_CHARS = 512
 _MAX_PATH_CHARS = 4096
@@ -293,6 +293,7 @@ def _select_answer_citations(
     *,
     limit: int = 5,
     repo_path: str = "",
+    repo_commit: str = "",
 ) -> List[Citation]:
     """Keep strong answer citations that resolve to exact repository source."""
 
@@ -319,12 +320,21 @@ def _select_answer_citations(
         if repo_path:
             if not citation.file or citation.start_line is None:
                 continue
-            source = live_source_slice(
-                repo_path,
-                citation.file,
-                citation.start_line,
-                citation.end_line or citation.start_line,
-            )
+            if repo_commit:
+                source = git_source_slice(
+                    repo_path,
+                    repo_commit,
+                    citation.file,
+                    citation.start_line,
+                    citation.end_line or citation.start_line,
+                )
+            else:
+                source = live_source_slice(
+                    repo_path,
+                    citation.file,
+                    citation.start_line,
+                    citation.end_line or citation.start_line,
+                )
             if not source or not str(source.get("content") or "").strip():
                 continue
             content = str(source["content"])
@@ -344,7 +354,11 @@ def _select_answer_citations(
     return renderable
 
 
-def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
+def agent_result_to_response(
+    result: Any,
+    repo_path: str = "",
+    repo_commit: str = "",
+) -> ChatResponse:
     """Flatten an ``AgentResult`` into the API response.
 
     Retrieved locations are de-duplicated and narrowed to the strongest files
@@ -382,6 +396,7 @@ def agent_result_to_response(result: Any, repo_path: str = "") -> ChatResponse:
             result.answer or "",
             citations,
             repo_path=repo_path,
+            repo_commit=repo_commit,
         ),
         tool_calls=tool_calls,
         total_turns=result.total_turns,

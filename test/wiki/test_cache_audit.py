@@ -4,6 +4,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from codenib.wiki.agent_wiki import AgentWiki
 from codenib.wiki.cache_audit import audit_wiki_cache
 
@@ -131,3 +133,72 @@ def test_cache_audit_does_not_create_a_missing_cache_directory(tmp_path):
 
     assert report["missing_outlines"] == ["owner__repo"]
     assert not cache_dir.exists()
+
+
+def test_cache_audit_rejects_unknown_repository_selectors(tmp_path):
+    class Registry:
+        def list_infos(self):
+            return [SimpleNamespace(id="owner__repo")]
+
+        def get(self, repo_id):
+            raise AssertionError("unknown selection reached bundle lookup")
+
+    with pytest.raises(ValueError, match="unknown repository selector.*typo"):
+        audit_wiki_cache(
+            Registry(),
+            model="fake-model",
+            cache_dir=tmp_path / "wiki-cache",
+            repo_ids=["typo"],
+        )
+
+
+def test_cache_audit_subset_does_not_count_other_repo_as_orphan(tmp_path):
+    cache_dir = tmp_path / "wiki-cache"
+    bundles = {}
+    for repo_id in ("owner__selected", "owner__other"):
+        bundle = SimpleNamespace(
+            entry=SimpleNamespace(
+                repo=repo_id.replace("__", "/"),
+                repo_dir=str(tmp_path / repo_id),
+                instance_id=repo_id,
+                commit_short="abc123",
+                language="python",
+            ),
+            manifest=SimpleNamespace(languages=["python"], indexes={}),
+            vector_store=None,
+            bm25=None,
+        )
+        bundles[repo_id] = bundle
+        wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+        wiki._write_cache(
+            "outline",
+            {
+                "pages": [
+                    {
+                        "id": "overview",
+                        "title": "Overview",
+                        "summary": "Repository overview",
+                        "files": ["README.md"],
+                        "children": [],
+                    }
+                ]
+            },
+        )
+
+    class Registry:
+        def list_infos(self):
+            return [SimpleNamespace(id=repo_id) for repo_id in bundles]
+
+        def get(self, repo_id):
+            return bundles.get(repo_id)
+
+    report = audit_wiki_cache(
+        Registry(),
+        model="fake-model",
+        cache_dir=cache_dir,
+        repo_ids=["owner__selected"],
+    )
+
+    assert report["repositories"] == 1
+    assert report["storage"]["files"] == 1
+    assert report["storage"]["orphan_files"] == 0

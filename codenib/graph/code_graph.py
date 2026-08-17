@@ -78,7 +78,7 @@ def persisted_graph_schema_version(input_path) -> Optional[int]:
             if opcode.name in integer_opcodes and isinstance(argument, int):
                 return argument
             return None
-    except (ValueError, pickle.UnpicklingError):
+    except Exception:  # noqa: BLE001 - every malformed prefix is unavailable
         return None
     return None
 

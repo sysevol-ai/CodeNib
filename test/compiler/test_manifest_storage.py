@@ -547,6 +547,29 @@ def test_optional_ignore_directories_participate_in_profile_identity(
     assert plan.view_map[view_type].profile_id != baseline
 
 
+@pytest.mark.parametrize(
+    ("axis", "value"),
+    [
+        ("additional_ignore_dirs", ["vendored-source"]),
+        ("embedding_document_max_chars", 12_000),
+    ],
+)
+def test_metadata_only_optional_vector_axes_are_incomplete_profiles(
+    axis: str,
+    value: object,
+) -> None:
+    manifest = _manifest()
+    entry = manifest.indexes["vector"]
+    entry.config.pop(axis, None)
+    entry.metadata[axis] = value
+
+    optional = plan_repo_manifest_import(manifest)
+    assert optional.selection.skipped_views == {"vector": "incomplete_profile"}
+
+    with pytest.raises(StorageValidationError, match="incomplete profile.*missing"):
+        plan_repo_manifest_import(manifest, views=["vector"])
+
+
 def test_remote_vector_profile_binds_document_input_limit() -> None:
     manifest = _manifest()
     entry = manifest.indexes["vector"]

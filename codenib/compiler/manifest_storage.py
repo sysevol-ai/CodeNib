@@ -1492,6 +1492,10 @@ def _profile_config(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
     for axis in (*axes, *optional_axes):
         if axis not in entry.metadata:
             continue
+        if axis not in config:
+            raise _IncompleteProfile(
+                f"view {view_type!r} profile axis {axis!r} is missing from config"
+            )
         try:
             config_value = _canonical_bytes({"value": config[axis]})
             metadata_value = _canonical_bytes({"value": entry.metadata[axis]})

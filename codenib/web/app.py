@@ -726,6 +726,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
         agent_result_to_response,
         result,
         repo_path=getattr(bundle.entry, "repo_dir", ""),
+        repo_commit=getattr(bundle.entry, "base_commit", ""),
     )
 
 

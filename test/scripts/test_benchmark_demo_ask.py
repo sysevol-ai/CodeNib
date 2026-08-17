@@ -2,7 +2,13 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from scripts.benchmark_demo_ask import evaluate_response
+from scripts.benchmark_demo_ask import _parser, evaluate_response
+
+
+def test_default_endpoint_matches_the_demo_backend():
+    args = _parser().parse_args(["--candidate", "test-model"])
+
+    assert args.endpoint == "http://127.0.0.1:8000"
 
 
 def test_evaluate_response_reports_source_and_term_coverage():

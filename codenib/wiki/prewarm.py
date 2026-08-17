@@ -50,7 +50,7 @@ def prewarm_wiki_cache(
     """Generate only cold or due-for-retry pages in a bounded worker pool."""
 
     started = perf_counter()
-    selected = set(repo_ids or ())
+    selected = {str(repo_id) for repo_id in repo_ids or ()}
     worker_count = max(1, min(int(workers), 8))
     limit = None if max_pages is None else max(0, int(max_pages))
     results: list[dict[str, Any]] = []
@@ -58,7 +58,15 @@ def prewarm_wiki_cache(
     selected_for_generation = 0
     selection_lock = Lock()
 
-    for info in registry.list_infos():
+    infos = list(registry.list_infos())
+    available_repo_ids = {str(info.id) for info in infos}
+    unknown_repo_ids = sorted(selected - available_repo_ids)
+    if unknown_repo_ids:
+        raise ValueError(
+            "unknown repository selector(s): " + ", ".join(unknown_repo_ids)
+        )
+
+    for info in infos:
         repo_id = str(info.id)
         if selected and repo_id not in selected:
             continue

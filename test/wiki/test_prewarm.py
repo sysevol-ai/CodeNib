@@ -4,6 +4,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from codenib.wiki.prewarm import prewarm_wiki_cache
 
 
@@ -94,6 +96,19 @@ def test_prewarm_dry_run_never_requests_a_page():
         "skipped_limit": 1,
         "skipped_ready": 1,
     }
+
+
+def test_prewarm_rejects_unknown_repository_selectors():
+    wiki = _Wiki()
+
+    with pytest.raises(ValueError, match="unknown repository selector.*typo"):
+        prewarm_wiki_cache(
+            _registry(wiki),
+            wiki_factory=lambda bundle: bundle.wiki,
+            repo_ids=["typo"],
+        )
+
+    assert wiki.calls == []
 
 
 def test_prewarm_can_explicitly_retry_degraded_pages_now():
