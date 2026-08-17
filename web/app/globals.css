@@ -3301,11 +3301,6 @@ a.evidence-row:hover {
     position: static;
     height: 60vh;
   }
-  .ask-page .codepane-body {
-    /* On the stacked layout the fixed composer can cross the code pane while
-       the document scrolls; leave enough internal runway for the last line. */
-    padding-bottom: var(--askbar-h);
-  }
 }
 
 /* ===== Relevant source files (top of page, DeepWiki-style) ===== */
@@ -3839,21 +3834,6 @@ a.codepanel-name:hover {
   overflow: auto;
   background: #fff;
 }
-.ask-page .codepane-body {
-  /* Let even a short final source range reach the reading threshold. Without
-     this runway, the last few tabs can never become the scroll-spy selection. */
-  padding-bottom: max(
-    160px,
-    calc(100dvh - var(--top-h) - var(--askbar-h) - 120px)
-  );
-}
-@media (max-width: 980px) {
-  .ask-page .codepane-body {
-    /* The stacked pane is only 60vh tall, so use a proportional runway rather
-       than the desktop viewport formula while preserving composer clearance. */
-    padding-bottom: max(var(--askbar-h), 42vh);
-  }
-}
 .frag {
   border-bottom: 1px solid var(--border);
 }
@@ -3872,9 +3852,13 @@ a.codepanel-name:hover {
   background: transparent;
 }
 .frag-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   padding: 8px 14px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 var(--border);
   display: flex;
   flex-direction: column;
   gap: 2px;

@@ -181,12 +181,24 @@ export default function CodePanel({
     const body = bodyEl.current;
     if (!body) return;
     const bodyRect = body.getBoundingClientRect();
-    const threshold = bodyRect.top + Math.min(72, bodyRect.height * 0.18);
+    const maxScroll = Math.max(0, body.scrollHeight - body.clientHeight);
+    const remainingScroll = Math.max(0, maxScroll - body.scrollTop);
+    const atEnd = maxScroll > 2 && remainingScroll <= 2;
+    const baseOffset = Math.min(72, bodyRect.height * 0.18);
+    // Keep the reading marker near the top for most of the document. During
+    // the final viewport, let it move down so short tail fragments can become
+    // active without manufacturing visible padding below the source.
+    const tailOffset = Math.min(
+      bodyRect.height * 0.68,
+      baseOffset + Math.max(0, bodyRect.height - remainingScroll),
+    );
+    const threshold = bodyRect.top + tailOffset;
     const index = sourceIndexAtThreshold(
       fragEls.current.slice(0, refs.length).map((element) =>
         element ? element.getBoundingClientRect().top : Number.POSITIVE_INFINITY,
       ),
       threshold,
+      atEnd,
     );
     reportVisibleFragment(index);
   };
@@ -197,7 +209,6 @@ export default function CodePanel({
     }
     scrollEndTimer.current = window.setTimeout(() => {
       programmaticScroll.current = false;
-      syncVisibleFragment();
     }, 140);
   };
 

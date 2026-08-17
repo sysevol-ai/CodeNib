@@ -12,6 +12,12 @@ describe("sourceIndexAtThreshold", () => {
     expect(sourceIndexAtThreshold([-500, 80, 420], 100)).toBe(1);
   });
 
+  it("selects the final renderable fragment at the real scroll boundary", () => {
+    expect(
+      sourceIndexAtThreshold([-500, 80, 420, Number.POSITIVE_INFINITY], 100, true),
+    ).toBe(2);
+  });
+
   it("reports no selection without source fragments", () => {
     expect(sourceIndexAtThreshold([], 100)).toBe(-1);
   });
