@@ -280,6 +280,37 @@ def test_wiki_page_materializes_local_svg_media(tmp_path, monkeypatch):
     assert "sandbox" in asset_response.headers["content-security-policy"]
 
 
+def test_wiki_page_can_skip_media_materialization_for_preload(monkeypatch):
+    slot = {
+        "id": "overview-concept-illustration",
+        "kind": "image",
+        "prompt": "Draw the runtime.",
+    }
+
+    class Builder:
+        def page(self, page_id):
+            return {
+                "id": page_id,
+                "title": "Overview",
+                "markdown": "# Overview",
+                "citations": [],
+                "diagram": "",
+                "media_slots": [slot],
+            }
+
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(
+        web_app,
+        "_materialize_wiki_media",
+        lambda *_args: pytest.fail("read-only preload must not generate media"),
+    )
+
+    page = asyncio.run(web_app.wiki_page("demo", "overview", materialize_media=False))
+
+    assert page["media_slots"] == [slot]
+    assert "asset" not in page["media_slots"][0]
+
+
 def test_wiki_media_storage_keys_cannot_traverse_data_root(tmp_path):
     config = SimpleNamespace(data_dir=str(tmp_path))
     root = tmp_path / "wiki_media"

@@ -271,9 +271,10 @@ const wikiPageRequests = new Map<string, Promise<WikiPage>>();
 export async function fetchWikiPage(
   repoId: string,
   pageId: string,
-  options: { refresh?: boolean } = {},
+  options: { refresh?: boolean; materializeMedia?: boolean } = {},
 ): Promise<WikiPage> {
-  const cacheKey = `${repoId}\u0000${pageId}`;
+  const materializeMedia = options.materializeMedia !== false;
+  const cacheKey = `${repoId}\u0000${pageId}\u0000media=${materializeMedia ? "1" : "0"}`;
   if (!options.refresh) {
     const cached = wikiPageRequests.get(cacheKey);
     if (cached) return cached;
@@ -281,7 +282,9 @@ export async function fetchWikiPage(
   const request = (async () => {
     const url = isStaticRuntime()
       ? staticDataUrl("repos", repoId, "pages", `${pageId}.json`)
-      : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}`;
+      : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}${
+          materializeMedia ? "" : "?materialize_media=false"
+        }`;
     const res = await fetch(url);
     if (!res.ok) throw await responseError(res, "Failed to load page");
     return res.json();

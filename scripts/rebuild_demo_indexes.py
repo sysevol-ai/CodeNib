@@ -259,21 +259,11 @@ def _rebuild_one(
     stage = output_root / repo_id
     stage.mkdir(parents=True, exist_ok=True)
     stage_manifest_path = stage / MANIFEST_FILENAME
-    staged = None
-    if stage_manifest_path.is_file():
-        try:
-            candidate = RepoManifest.load(stage_manifest_path)
-            if (
-                os.path.realpath(candidate.repo_path)
-                == os.path.realpath(bundle.entry.repo_dir)
-                and candidate.commit == bundle.entry.base_commit
-                and is_secure_source_fingerprint_v2(candidate.source_fingerprint)
-            ):
-                staged = candidate
-        except (OSError, ValueError, KeyError, TypeError):
-            staged = None
-    if staged is None:
-        manifest.save(stage_manifest_path)
+    # The staging directory may retain large view artifacts between repair
+    # attempts, but its manifest is not authoritative.  Always reset compiler
+    # control state from the current publication target so removed views,
+    # languages, and capabilities cannot be resurrected by an older stage.
+    manifest.save(stage_manifest_path)
     compiler = IndexCompiler(
         _builders(
             config,

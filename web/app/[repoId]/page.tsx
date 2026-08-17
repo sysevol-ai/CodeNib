@@ -433,7 +433,9 @@ export default function WikiPageView({
       )
       .slice(0, 2)
       .forEach((item) => {
-        void fetchWikiPage(repoId, item.id).catch(() => {});
+        void fetchWikiPage(repoId, item.id, { materializeMedia: false }).catch(
+          () => {},
+        );
       });
   }, [repoId, activeId, page, pages]);
 

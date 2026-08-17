@@ -377,13 +377,17 @@ async def wiki_tree(repo_id: str, cached_only: bool = False) -> dict:
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}")
-async def wiki_page(repo_id: str, page_id: str) -> dict:
+async def wiki_page(
+    repo_id: str,
+    page_id: str,
+    materialize_media: bool = True,
+) -> dict:
     page = await asyncio.to_thread(_wiki(repo_id).page, page_id)
     if page is None:
         raise HTTPException(status_code=404, detail=f"Unknown wiki page: {page_id!r}")
     if "media_slots" not in page:
         page = {**page, "media_slots": []}
-    if page.get("media_slots"):
+    if materialize_media and page.get("media_slots"):
         page = await asyncio.to_thread(_materialize_wiki_media, repo_id, page_id, page)
     if "generation" not in page:
         page = {

@@ -2,15 +2,18 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from codenib.compiler.manifest import IndexEntry, RepoManifest
+import scripts.rebuild_demo_indexes as rebuild_demo_indexes
+from codenib.compiler.manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
 from scripts.build_qa_index import _vector_builder
 from scripts.rebuild_demo_indexes import (
     _builders,
     _parse_repo_ignore_dirs,
+    _rebuild_one,
     _select_registry_bundles,
     _validate_repo_ignore_dirs,
     _validated_graph_node_count,
@@ -157,3 +160,81 @@ def test_demo_rebuild_validates_selectors_before_applying_the_limit():
             ["owner__a", "owner__missing"],
             max_repos=1,
         )
+
+
+def test_demo_rebuild_resets_staging_manifest_from_current_target(
+    tmp_path,
+    monkeypatch,
+):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    target = tmp_path / "published" / MANIFEST_FILENAME
+    source_fingerprint = "sha256-v2:" + ("a" * 64)
+    current = RepoManifest(
+        repo_path=str(repo_root),
+        commit="current-commit",
+        source_fingerprint=source_fingerprint,
+        languages=["python"],
+        capabilities={"sparse_search": True},
+    )
+    current.indexes["bm25"] = IndexEntry(
+        index_type="bm25",
+        path="/published/bm25",
+        built_at="",
+        built_at_epoch=0.0,
+        status="fresh",
+        commit=current.commit,
+        source_fingerprint=source_fingerprint,
+    )
+    current.save(target)
+
+    output_root = tmp_path / "staging"
+    stage_manifest = output_root / "owner__repo" / MANIFEST_FILENAME
+    stale = RepoManifest.from_dict(current.to_dict())
+    stale.languages.append("rust")
+    stale.capabilities["dense_search"] = True
+    stale.indexes["vector"] = IndexEntry(
+        index_type="vector",
+        path="/stale/vector",
+        built_at="",
+        built_at_epoch=0.0,
+        status="fresh",
+        commit=stale.commit,
+        source_fingerprint=source_fingerprint,
+    )
+    stale.save(stage_manifest)
+    observed = []
+
+    class StopAfterStageCheck(RuntimeError):
+        pass
+
+    class FakeCompiler:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def compile_repo(self, _repo_path, *, cache_dir, **_kwargs):
+            observed.append(RepoManifest.load(Path(cache_dir) / MANIFEST_FILENAME))
+            raise StopAfterStageCheck
+
+    monkeypatch.setattr(rebuild_demo_indexes, "IndexCompiler", FakeCompiler)
+    monkeypatch.setattr(rebuild_demo_indexes, "_builders", lambda *_a, **_k: object())
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            instance_id="owner__repo",
+            manifest_path=str(target),
+            repo_dir=str(repo_root),
+            base_commit=current.commit,
+        )
+    )
+
+    with pytest.raises(StopAfterStageCheck):
+        _rebuild_one(
+            config=SimpleNamespace(),
+            bundle=bundle,
+            output_root=output_root,
+            dry_run=False,
+            min_graph_nodes=0,
+            additional_chunk_ignore_dirs=[],
+        )
+
+    assert observed[0].to_dict() == current.to_dict()

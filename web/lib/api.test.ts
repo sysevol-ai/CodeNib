@@ -137,6 +137,33 @@ describe("fetchWikiPage", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps media-free preloads separate from visible navigation", async () => {
+    const payload = {
+      id: "runtime",
+      title: "Runtime",
+      markdown: "Cached page",
+      citations: [],
+      diagram: "",
+      media_slots: [{ id: "runtime-image", kind: "image" }],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => payload,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchWikiPage("media-preload-test", "runtime", {
+      materializeMedia: false,
+    });
+    await fetchWikiPage("media-preload-test", "runtime");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toMatch(
+      /\/wiki\/runtime\?materialize_media=false$/,
+    );
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/wiki\/runtime$/);
+  });
 });
 
 describe("fetchWikiTree", () => {

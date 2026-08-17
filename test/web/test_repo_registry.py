@@ -5,6 +5,8 @@
 """Tests for per-repo skill-registry isolation, config, and the QA registry."""
 
 import pickle
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Lock
 from types import SimpleNamespace
 
 import pytest
@@ -859,6 +861,67 @@ def test_vector_store_uses_provider_config_and_reuses_client(
     assert first.kwargs["api_key"] == "secret"
     assert first.kwargs["dimension"] == 768
     assert second.kwargs["embedding"] is first.embedding
+
+
+def test_concurrent_vector_loads_initialize_shared_embedding_once(
+    monkeypatch,
+    native_authorization,
+):
+    first_load_started = Event()
+    allow_first_load = Event()
+    duplicate_construction = Event()
+    construction_lock = Lock()
+    cold_embeddings = []
+
+    class FakeVectorStore:
+        def __init__(self, **kwargs):
+            embedding = kwargs.get("embedding")
+            if embedding is None:
+                embedding = object()
+                with construction_lock:
+                    cold_embeddings.append(embedding)
+                    if len(cold_embeddings) > 1:
+                        duplicate_construction.set()
+            self.embedding = embedding
+
+        def load(self, _path, **_kwargs):
+            if not first_load_started.is_set():
+                first_load_started.set()
+                assert allow_first_load.wait(timeout=2)
+
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: FakeVectorStore,
+    )
+    registry = RepoRegistry(QAConfig(embedding_provider="huggingface"))
+    entry = SimpleNamespace(
+        path="/tmp/vector",
+        config={
+            "embedding_model": "vendor/model",
+            "embedding_provider": "huggingface",
+            "embedding_dimension": 384,
+        },
+    )
+
+    def load():
+        return registry._load_vector_store(
+            entry,
+            native_index_authorization=native_authorization,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(load)
+        assert first_load_started.wait(timeout=2)
+        second_future = executor.submit(load)
+        try:
+            assert not duplicate_construction.wait(timeout=0.2)
+        finally:
+            allow_first_load.set()
+        first = first_future.result(timeout=2)
+        second = second_future.result(timeout=2)
+
+    assert cold_embeddings == [first.embedding]
+    assert second.embedding is first.embedding
 
 
 def test_vector_load_failure_does_not_publish_embedding_and_retains_cleanup_owner(

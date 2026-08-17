@@ -17,7 +17,7 @@ import os
 import re
 from dataclasses import dataclass
 from importlib.util import find_spec
-from threading import Lock
+from threading import Lock, RLock
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
@@ -499,6 +499,7 @@ class RepoRegistry:
         # One embedding model per model name, shared across repos: the GPU model
         # is loaded once instead of once per CodeVectorStore (one per repo).
         self._embeddings: Dict[Tuple[str, str, int, Optional[str], str], object] = {}
+        self._embedding_load_lock = RLock()
 
     def load_all(self) -> None:
         """Load every dataset repo in the registry whose manifest exists."""
@@ -616,42 +617,47 @@ class RepoRegistry:
             client_kwargs = route.client_kwargs()
         embedding_kwargs.update(client_kwargs)
 
-        missing_embedding = object()
-        previous_embedding = self._embeddings.get(cache_key, missing_embedding)
-        vector_store = _vector_store_type()(
-            embedding_model=route.model,
-            embedding_provider=route.provider,
-            dimension=route.dimension,
-            index_metric=effective_route_config.get("index_metric", "ip"),
-            store_path=vec_entry.path,
-            embedding=self._embeddings.get(cache_key),
-            artifact_metadata=semantic_contract,
-            **embedding_kwargs,
-        )
-        candidate_embedding = missing_embedding
-        try:
-            candidate_embedding = vector_store.embedding
-            vector_store.load(
-                vec_entry.path,
-                native_index_authorization=native_index_authorization,
+        # Loading a cold local embedding model is the expensive part of opening
+        # a repository view.  Serialize construction and authenticated load so
+        # parallel prewarm workers cannot each observe an empty cache and place
+        # a duplicate model on the GPU before either one publishes it.
+        with self._embedding_load_lock:
+            missing_embedding = object()
+            previous_embedding = self._embeddings.get(cache_key, missing_embedding)
+            vector_store = _vector_store_type()(
+                embedding_model=route.model,
+                embedding_provider=route.provider,
+                dimension=route.dimension,
+                index_metric=effective_route_config.get("index_metric", "ip"),
+                store_path=vec_entry.path,
+                embedding=self._embeddings.get(cache_key),
+                artifact_metadata=semantic_contract,
+                **embedding_kwargs,
             )
-            # Publish the reusable client only after the authenticated vector
-            # view loaded successfully.  The exception handler below rolls
-            # this handoff back if cancellation lands before the return.
-            self._embeddings[cache_key] = candidate_embedding
-            return vector_store
-        except BaseException as primary:  # noqa: B036 - close partial state
-            if (
-                candidate_embedding is not missing_embedding
-                and self._embeddings.get(cache_key, missing_embedding)
-                is candidate_embedding
-            ):
-                if previous_embedding is missing_embedding:
-                    self._embeddings.pop(cache_key, None)
-                else:
-                    self._embeddings[cache_key] = previous_embedding
-            close_vector_after_failure(vector_store, primary)
-            raise
+            candidate_embedding = missing_embedding
+            try:
+                candidate_embedding = vector_store.embedding
+                vector_store.load(
+                    vec_entry.path,
+                    native_index_authorization=native_index_authorization,
+                )
+                # Publish the reusable client only after the authenticated vector
+                # view loaded successfully.  The exception handler below rolls
+                # this handoff back if cancellation lands before the return.
+                self._embeddings[cache_key] = candidate_embedding
+                return vector_store
+            except BaseException as primary:  # noqa: B036 - close partial state
+                if (
+                    candidate_embedding is not missing_embedding
+                    and self._embeddings.get(cache_key, missing_embedding)
+                    is candidate_embedding
+                ):
+                    if previous_embedding is missing_embedding:
+                        self._embeddings.pop(cache_key, None)
+                    else:
+                        self._embeddings[cache_key] = previous_embedding
+                close_vector_after_failure(vector_store, primary)
+                raise
 
     def _create_ask_llm(self) -> "LiteLLMChat":
         """Create the interactive model without mutating process-wide config."""
