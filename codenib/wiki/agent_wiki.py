@@ -3764,11 +3764,15 @@ class AgentWiki:
         observes the persisted cooldown and retry ceiling.
         """
 
-        if page_id in self._pages and not (
-            retry_degraded_now
-            and self._cached_page_needs_operator_retry(self._pages[page_id])
+        in_memory_page = self._pages.get(page_id)
+        if in_memory_page is not None and not (
+            (
+                retry_degraded_now
+                and self._cached_page_needs_operator_retry(in_memory_page)
+            )
+            or self._cached_page_needs_regeneration(in_memory_page)
         ):
-            return self._pages[page_id]
+            return in_memory_page
         meta = self._find(page_id)
         if meta is None:
             return None
@@ -3779,11 +3783,15 @@ class AgentWiki:
             )
         cache_suffix = self._page_cache_suffix(meta)
         with self._page_generation_lock(page_id):
-            if page_id in self._pages and not (
-                retry_degraded_now
-                and self._cached_page_needs_operator_retry(self._pages[page_id])
+            in_memory_page = self._pages.get(page_id)
+            if in_memory_page is not None and not (
+                (
+                    retry_degraded_now
+                    and self._cached_page_needs_operator_retry(in_memory_page)
+                )
+                or self._cached_page_needs_regeneration(in_memory_page)
             ):
-                return self._pages[page_id]
+                return in_memory_page
             with self._cache_generation_lock(cache_suffix):
                 cached = self._read_cache(cache_suffix)
                 force_retry = bool(

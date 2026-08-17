@@ -144,6 +144,45 @@ def test_prewarm_rejects_unknown_repository_selectors():
     assert wiki.calls == []
 
 
+def test_prewarm_reports_wiki_factory_failure_and_continues_other_repositories():
+    healthy_wiki = _Wiki()
+    bundles = {
+        "owner__broken": SimpleNamespace(wiki=None),
+        "owner__healthy": SimpleNamespace(wiki=healthy_wiki),
+    }
+
+    class Registry:
+        def list_infos(self):
+            return [SimpleNamespace(id=repo_id) for repo_id in bundles]
+
+        def get(self, repo_id):
+            return bundles.get(repo_id)
+
+    def factory(bundle):
+        if bundle.wiki is None:
+            raise RuntimeError("invalid Wiki route")
+        return bundle.wiki
+
+    report = prewarm_wiki_cache(
+        Registry(),
+        wiki_factory=factory,
+        workers=2,
+    )
+
+    assert report["counts"] == {"error": 1, "warmed": 1}
+    assert report["pages"][0] == {
+        "repo": "owner__broken",
+        "id": "",
+        "title": "",
+        "before": "unknown",
+        "status": "error",
+        "error": "outline unavailable: invalid Wiki route",
+    }
+    assert report["pages"][1]["repo"] == "owner__healthy"
+    assert report["pages"][1]["status"] == "warmed"
+    assert healthy_wiki.calls == ["overview"]
+
+
 def test_prewarm_can_explicitly_retry_degraded_pages_now():
     class DegradedWiki(_Wiki):
         def page_tree(self):

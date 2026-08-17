@@ -12,6 +12,7 @@ from scripts.rebuild_demo_indexes import (
     _builders,
     _parse_repo_ignore_dirs,
     _select_registry_bundles,
+    _validate_repo_ignore_dirs,
     _validated_graph_node_count,
 )
 
@@ -120,6 +121,17 @@ def test_demo_rebuild_records_explicit_repository_dependency_exclusions():
 def test_demo_rebuild_rejects_ambiguous_dependency_exclusions(value):
     with pytest.raises(ValueError, match="REPO_ID:DIR_NAME"):
         _parse_repo_ignore_dirs([value])
+
+
+def test_demo_rebuild_rejects_dependency_exclusions_for_unknown_repositories():
+    with pytest.raises(
+        ValueError,
+        match="Unknown repository ids in --ignore-dir: owner__missing",
+    ):
+        _validate_repo_ignore_dirs(
+            {"owner__known": ["vendor"], "owner__missing": ["generated"]},
+            {"owner__known"},
+        )
 
 
 def test_demo_rebuild_validates_selectors_before_applying_the_limit():

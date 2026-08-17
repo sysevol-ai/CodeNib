@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchEdgeLabel,
+  fetchWikiTree,
   fetchWikiPage,
   isSourceCheckedWikiPage,
   materializedWikiMediaSlots,
@@ -104,6 +105,24 @@ describe("fetchWikiPage", () => {
 
     await fetchWikiPage("cache-test", "runtime", { refresh: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("fetchWikiTree", () => {
+  it("requests a read-only cached tree for optional related links", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ repo: "owner/repo", pages: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchWikiTree("owner/repo", { cachedOnly: true });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/api\/repos\/owner%2Frepo\/wiki\?cached_only=true$/,
+      ),
+    );
   });
 });
 

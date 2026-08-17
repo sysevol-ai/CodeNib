@@ -252,10 +252,15 @@ export interface SourceSlice {
   content: string;
 }
 
-export async function fetchWikiTree(repoId: string): Promise<WikiTree> {
+export async function fetchWikiTree(
+  repoId: string,
+  options: { cachedOnly?: boolean } = {},
+): Promise<WikiTree> {
   const url = isStaticRuntime()
     ? staticDataUrl("repos", repoId, "wiki.json")
-    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki`;
+    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki${
+        options.cachedOnly ? "?cached_only=true" : ""
+      }`;
   const res = await fetch(url);
   if (!res.ok) throw await responseError(res, "Failed to load wiki");
   return res.json();

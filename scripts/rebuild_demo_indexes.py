@@ -196,6 +196,19 @@ def _parse_repo_ignore_dirs(values: list[str]) -> dict[str, list[str]]:
     return {repo: sorted(set(directories)) for repo, directories in parsed.items()}
 
 
+def _validate_repo_ignore_dirs(
+    repo_ignore_dirs: dict[str, list[str]],
+    available_repo_ids: set[str],
+) -> None:
+    """Reject exclusions that would otherwise be silently ignored."""
+
+    unknown = sorted(set(repo_ignore_dirs) - available_repo_ids)
+    if unknown:
+        raise ValueError(
+            "Unknown repository ids in --ignore-dir: " + ", ".join(unknown)
+        )
+
+
 def _validated_graph_node_count(graph_dir: str, minimum: int) -> int:
     """Load the published graph surface and enforce the demo quality floor."""
 
@@ -347,6 +360,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     registry.load_all()
     try:
+        _validate_repo_ignore_dirs(
+            repo_ignore_dirs,
+            {str(info.id) for info in registry.list_infos()},
+        )
         bundles = _select_registry_bundles(registry, args.repos, args.max_repos)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)

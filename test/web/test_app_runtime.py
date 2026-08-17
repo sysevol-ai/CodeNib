@@ -196,6 +196,30 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
     assert calls == [("page_tree", ()), ("page", ("overview",))]
 
 
+def test_cached_wiki_tree_does_not_generate_a_missing_outline(monkeypatch):
+    calls = []
+
+    class Builder:
+        def cached_page_tree(self):
+            calls.append("cached_page_tree")
+            return None
+
+        def page_tree(self):
+            raise AssertionError("cached-only Wiki lookup must not generate")
+
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(
+        web_app,
+        "_bundle",
+        lambda _repo_id: SimpleNamespace(entry=SimpleNamespace(repo="org/repo")),
+    )
+
+    tree = asyncio.run(web_app.wiki_tree("repo", cached_only=True))
+
+    assert tree == {"repo": "org/repo", "pages": []}
+    assert calls == ["cached_page_tree"]
+
+
 def test_wiki_page_materializes_local_svg_media(tmp_path, monkeypatch):
     class Builder:
         def page(self, page_id):

@@ -6904,6 +6904,46 @@ def test_agent_wiki_regenerates_cached_diagnostic_fallback(tmp_path):
     assert writes == [(wiki._page_cache_suffix(meta), generated)]
 
 
+def test_agent_wiki_rechecks_in_memory_degraded_page_after_cooldown(tmp_path):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    meta = {"id": "runtime", "title": "Runtime", "children": []}
+    degraded = {
+        "id": "runtime",
+        "generation": {
+            "mode": "degraded",
+            "fallback": "fact_plan",
+            "retry": {"attempts": 0, "next_attempt_epoch": 0.0},
+        },
+        "quality": {"valid": False},
+    }
+    generated = {
+        "id": "runtime",
+        "markdown": "Recovered source-linked explanation.",
+        "generation": {"mode": "generated", "fallback": None},
+        "quality": {"valid": True},
+    }
+    wiki._pages["runtime"] = degraded
+    wiki._find = lambda _page_id: meta
+    wiki._read_cache = lambda _suffix: degraded
+    wiki._generate_page = lambda _meta: generated
+    wiki._write_cache = lambda _suffix, _page: None
+
+    assert wiki.page("runtime") is generated
+    assert wiki._pages["runtime"] is generated
+
+
 def test_agent_wiki_retries_quality_invalid_cache_with_a_cooldown():
     legacy_invalid = {
         "generation": {"mode": "degraded", "fallback": None},

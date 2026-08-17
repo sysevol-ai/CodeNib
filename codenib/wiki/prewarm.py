@@ -85,8 +85,8 @@ def prewarm_wiki_cache(
 
     def process_repo(repo_id: str, bundle: Any) -> list[dict[str, Any]]:
         repo_results: list[dict[str, Any]] = []
-        wiki = wiki_factory(bundle)
         try:
+            wiki = wiki_factory(bundle)
             if dry_run:
                 cached_page_tree = getattr(wiki, "cached_page_tree", None)
                 tree = cached_page_tree() if callable(cached_page_tree) else None

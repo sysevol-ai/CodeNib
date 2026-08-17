@@ -48,7 +48,9 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
         if (!cancelled) setRepo(rs.find((r) => r.id === repoId) ?? null);
       })
       .catch(() => {});
-    fetchWikiTree(repoId)
+    // Related links are optional here. Ask must never trigger an outline model
+    // call merely because the page was opened.
+    fetchWikiTree(repoId, { cachedOnly: true })
       .then((tree) => {
         if (!cancelled) setWikiPages(tree.pages ?? []);
       })

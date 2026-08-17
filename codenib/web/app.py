@@ -361,9 +361,18 @@ async def list_repos() -> list[RepoInfo]:
 
 
 @app.get("/api/repos/{repo_id}/wiki")
-async def wiki_tree(repo_id: str) -> dict:
+async def wiki_tree(repo_id: str, cached_only: bool = False) -> dict:
     builder = _wiki(repo_id)
-    pages = await asyncio.to_thread(builder.page_tree)
+    if cached_only:
+        cached_page_tree = getattr(builder, "cached_page_tree", None)
+        pages = (
+            await asyncio.to_thread(cached_page_tree)
+            if callable(cached_page_tree)
+            else None
+        )
+        pages = pages or []
+    else:
+        pages = await asyncio.to_thread(builder.page_tree)
     return {"repo": _bundle(repo_id).entry.repo, "pages": pages}
 
 
