@@ -485,6 +485,30 @@ def test_repo_views_keep_bm25_only_for_legacy_source_fingerprint(
     assert bundle.vector_store is None
 
 
+def test_repo_views_reject_legacy_vector_without_current_bm25(monkeypatch):
+    monkeypatch.setattr(
+        "codenib.web.repo_registry._vector_store_type",
+        lambda: pytest.fail("legacy vector must not be opened"),
+    )
+    vector_entry = SimpleNamespace(path="/idx/vector", config={})
+    manifest = SimpleNamespace(
+        source_fingerprint="",
+        indexes={"vector": vector_entry},
+        index_is_current=lambda index_type: index_type == "vector",
+    )
+    bundle = SimpleNamespace(entry=SimpleNamespace(), manifest=manifest)
+    registry = RepoRegistry(
+        QAConfig(mode="hybrid"),
+        native_index_authorization_resolver=lambda *_args: pytest.fail(
+            "legacy vector must be skipped before authorization"
+        ),
+        allow_missing_native_index_authorization=True,
+    )
+
+    with pytest.raises(ValueError, match="no current BM25 fallback is available"):
+        registry._load_repo_views(bundle)
+
+
 @pytest.mark.parametrize("resolver_kind", ["missing", "declines"])
 def test_repo_views_fail_closed_when_required_authority_is_missing(
     monkeypatch,
@@ -588,7 +612,7 @@ def test_repo_views_propagate_vector_integrity_failures(
         )
 
 
-def test_hybrid_requires_a_current_vector_unless_explicitly_optional(monkeypatch):
+def test_hybrid_requires_a_current_vector_or_current_bm25_fallback(monkeypatch):
     manifest = SimpleNamespace(
         indexes={},
         index_is_current=lambda _index_type: False,
@@ -606,8 +630,8 @@ def test_hybrid_requires_a_current_vector_unless_explicitly_optional(monkeypatch
         QAConfig(mode="hybrid"),
         allow_missing_native_index_authorization=True,
     )
-    optional._load_repo_views(bundle)
-    assert bundle.vector_store is None
+    with pytest.raises(ValueError, match="no current BM25 fallback is available"):
+        optional._load_repo_views(bundle)
 
 
 def test_vector_authority_is_preflighted_before_model_initialization(monkeypatch):

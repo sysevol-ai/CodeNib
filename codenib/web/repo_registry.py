@@ -680,6 +680,13 @@ class RepoRegistry:
         vector_store: Optional["CodeVectorStore"] = None
         index_types = set(self._config.index_types())
 
+        def use_bm25_fallback(reason: str) -> None:
+            if bm25_index is None:
+                raise ValueError(f"{reason}; no current BM25 fallback is available")
+            logger.warning("%s; BM25 remains available", reason)
+            bundle.vector_store = None
+            bundle.bm25 = bm25_index
+
         bm25_entry = manifest.indexes.get("bm25")
         if (
             "bm25" in index_types
@@ -694,16 +701,11 @@ class RepoRegistry:
         if "vector" in index_types:
             if vec_entry is None or not manifest.index_is_current("vector"):
                 if self._allow_missing_native_index_authorization:
-                    logger.warning(
-                        "Skipping missing or stale optional vector view; "
-                        "BM25 remains available"
-                    )
+                    use_bm25_fallback("Skipping missing or stale optional vector view")
                 else:
                     raise ValueError(
                         "hybrid mode requires a current vector manifest entry"
                     )
-                bundle.vector_store = None
-                bundle.bm25 = bm25_index
                 return
 
             if (
@@ -712,15 +714,12 @@ class RepoRegistry:
                     getattr(manifest, "source_fingerprint", None)
                 )
             ):
-                logger.warning(
-                    "Skipping legacy native vector view at %s without source "
-                    "fingerprint v2; BM25 remains available. Rebuild the "
-                    "repository manifest and vector artifact to restore hybrid "
-                    "retrieval.",
-                    vec_entry.path,
+                use_bm25_fallback(
+                    "Skipping legacy native vector view at "
+                    f"{vec_entry.path} without source fingerprint v2; rebuild "
+                    "the repository manifest and vector artifact to restore "
+                    "hybrid retrieval"
                 )
-                bundle.vector_store = None
-                bundle.bm25 = bm25_index
                 return
 
             authorization = None
@@ -729,11 +728,11 @@ class RepoRegistry:
                 authorization = resolver(bundle.entry, manifest, vec_entry)
             if authorization is None:
                 if self._allow_missing_native_index_authorization:
-                    logger.warning(
-                        "Skipping optional native vector view at %s without "
-                        "external authorization; BM25 remains available",
-                        vec_entry.path,
+                    use_bm25_fallback(
+                        "Skipping optional native vector view at "
+                        f"{vec_entry.path} without external authorization"
                     )
+                    return
                 else:
                     from ..native_index_authorization import (
                         MissingNativeIndexAuthorizationError,

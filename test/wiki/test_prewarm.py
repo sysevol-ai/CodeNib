@@ -131,6 +131,48 @@ def test_prewarm_dry_run_plans_a_missing_outline_without_generating_it():
     ]
 
 
+@pytest.mark.parametrize(
+    ("max_pages", "expected_tree_calls", "expected_page_calls", "counts"),
+    [
+        (0, 0, [], {"skipped_limit": 1}),
+        (1, 1, [], {"skipped_limit": 1, "warmed": 1}),
+    ],
+)
+def test_prewarm_counts_cold_outline_against_page_limit(
+    max_pages,
+    expected_tree_calls,
+    expected_page_calls,
+    counts,
+):
+    class ColdOutlineWiki(_Wiki):
+        def __init__(self):
+            super().__init__()
+            self.tree_calls = 0
+
+        def cached_page_tree(self):
+            return None
+
+        def page_tree(self):
+            self.tree_calls += 1
+            return super().page_tree()
+
+    wiki = ColdOutlineWiki()
+
+    report = prewarm_wiki_cache(
+        _registry(wiki),
+        wiki_factory=lambda bundle: bundle.wiki,
+        max_pages=max_pages,
+    )
+
+    assert wiki.tree_calls == expected_tree_calls
+    assert wiki.calls == expected_page_calls
+    assert report["selected_for_generation"] == max_pages
+    assert report["counts"] == counts
+    assert next(page for page in report["pages"] if page["id"] == "outline")[
+        "status"
+    ] == ("warmed" if max_pages else "skipped_limit")
+
+
 def test_prewarm_rejects_unknown_repository_selectors():
     wiki = _Wiki()
 

@@ -90,7 +90,7 @@ def test_edge_label_request_bounds_text_fields() -> None:
         )
 
 
-def _node(file, start, end, name="fn", score=1.0):
+def _node(file, start, end, name="fn", score=1.0, content="def fn(): ..."):
     return QueriedNode(
         node_name=name,
         type="function",
@@ -98,7 +98,7 @@ def _node(file, start, end, name="fn", score=1.0):
         start_line=start,
         end_line=end,
         score=score,
-        content="def fn(): ...",
+        content=content,
     )
 
 
@@ -391,6 +391,46 @@ def test_citations_read_from_the_indexed_commit_instead_of_live_source(
     assert response.citations[0].content == (
         "def indexed_runtime():\n    return 'snapshot'\n"
     )
+
+
+def test_citations_keep_indexed_content_for_non_git_prebuilt_snapshot(tmp_path):
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "runtime.py").write_text(
+        "def mutable_runtime():\n    return 'live'\n",
+        encoding="utf-8",
+    )
+    result = AgentResult(
+        answer="`indexed_runtime()` is implemented in `src/runtime.py`.",
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "repository_search",
+                {},
+                result=[
+                    _node(
+                        "src/runtime.py",
+                        1,
+                        2,
+                        "src/runtime.py:indexed_runtime()",
+                        content="def indexed_runtime():\n    return 'snapshot'\n",
+                    )
+                ],
+            )
+        ],
+    )
+
+    response = agent_result_to_response(
+        result,
+        repo_path=str(tmp_path),
+        repo_commit="a" * 40,
+    )
+
+    assert len(response.citations) == 1
+    assert response.citations[0].content == (
+        "def indexed_runtime():\n    return 'snapshot'\n"
+    )
+    assert "mutable_runtime" not in response.citations[0].content
 
 
 def test_plain_prose_does_not_match_a_generic_main_symbol():
