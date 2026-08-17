@@ -36,6 +36,9 @@ class _Wiki:
             },
         ]
 
+    def cached_page_tree(self):
+        return self.page_tree()
+
     def page(self, page_id):
         self.calls.append(page_id)
         return {
@@ -96,6 +99,36 @@ def test_prewarm_dry_run_never_requests_a_page():
         "skipped_limit": 1,
         "skipped_ready": 1,
     }
+
+
+def test_prewarm_dry_run_plans_a_missing_outline_without_generating_it():
+    class ColdOutlineWiki(_Wiki):
+        def cached_page_tree(self):
+            return None
+
+        def page_tree(self):
+            raise AssertionError("dry-run must not generate an outline")
+
+    wiki = ColdOutlineWiki()
+
+    report = prewarm_wiki_cache(
+        _registry(wiki),
+        wiki_factory=lambda bundle: bundle.wiki,
+        dry_run=True,
+    )
+
+    assert wiki.calls == []
+    assert report["counts"] == {"planned": 1}
+    assert report["pages"] == [
+        {
+            "repo": "owner__repo",
+            "id": "outline",
+            "title": "Wiki outline",
+            "kind": "outline",
+            "before": "missing",
+            "status": "planned",
+        }
+    ]
 
 
 def test_prewarm_rejects_unknown_repository_selectors():

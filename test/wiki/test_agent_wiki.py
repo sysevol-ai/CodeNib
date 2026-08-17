@@ -6655,6 +6655,58 @@ def test_agent_wiki_adopts_legacy_timestamp_cache_into_stable_key(tmp_path):
         assert json.load(handle)["model"] == "old-model"
 
 
+def test_agent_wiki_cached_page_tree_reads_without_generating_or_migrating(
+    tmp_path, monkeypatch
+):
+    view = SimpleNamespace(
+        status="fresh",
+        commit="abc123",
+        source_fingerprint="",
+        built_at_epoch=1.0,
+        config={},
+        metadata={},
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={"bm25": view}),
+    )
+    cache_dir = tmp_path / "wiki-cache"
+    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+    stable, legacy = wiki._cache_candidate_paths("outline")
+    wiki._atomic_write_cache(
+        legacy,
+        {
+            "model": "old-model",
+            "data": {"pages": [{"id": "runtime", "title": "Runtime", "children": []}]},
+        },
+    )
+    monkeypatch.setattr(
+        wiki,
+        "outline",
+        lambda: (_ for _ in ()).throw(AssertionError("must not generate outline")),
+    )
+
+    tree = wiki.cached_page_tree()
+
+    assert tree == [
+        {
+            "id": "runtime",
+            "title": "Runtime",
+            "cache_state": "cold",
+            "children": [],
+        }
+    ]
+    assert not os.path.exists(stable)
+
+
 def test_agent_wiki_atomic_cache_write_preserves_previous_entry_on_failure(
     tmp_path, monkeypatch
 ):

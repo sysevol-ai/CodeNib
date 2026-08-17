@@ -94,6 +94,30 @@ def _configure_process_safe_directories(repo_paths: list[str]) -> None:
     os.environ["GIT_CONFIG_COUNT"] = str(offset + len(set(repo_paths)))
 
 
+def _select_registry_bundles(
+    registry,
+    repo_ids: list[str] | None,
+    max_repos: int | None,
+) -> list:
+    """Validate selectors against the full registry before limiting work."""
+
+    infos = list(registry.list_infos())
+    selected = {str(repo_id) for repo_id in repo_ids or ()}
+    available = {str(info.id) for info in infos}
+    missing = sorted(selected - available)
+    if missing:
+        raise ValueError(f"Unknown repository ids: {missing}")
+    bundles = [
+        registry.get(str(info.id))
+        for info in infos
+        if not selected or str(info.id) in selected
+    ]
+    bundles = [bundle for bundle in bundles if bundle is not None]
+    if max_repos is not None:
+        bundles = bundles[: max(0, max_repos)]
+    return bundles
+
+
 def _builders(
     config,
     manifest: RepoManifest,
@@ -322,18 +346,10 @@ def main(argv: list[str] | None = None) -> int:
         allow_missing_native_index_authorization=True,
     )
     registry.load_all()
-    selected = set(args.repos or ())
-    bundles = [
-        registry.get(str(info.id))
-        for info in registry.list_infos()
-        if not selected or str(info.id) in selected
-    ]
-    bundles = [bundle for bundle in bundles if bundle is not None]
-    if args.max_repos is not None:
-        bundles = bundles[: max(0, args.max_repos)]
-    missing = sorted(selected - {str(bundle.entry.instance_id) for bundle in bundles})
-    if missing:
-        print(f"Unknown repository ids: {missing}", file=sys.stderr)
+    try:
+        bundles = _select_registry_bundles(registry, args.repos, args.max_repos)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
         return 2
     _configure_process_safe_directories(
         [str(bundle.entry.repo_dir) for bundle in bundles]

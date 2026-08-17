@@ -416,9 +416,13 @@ make demo-ask-benchmark \
 ```
 
 The report records end-to-end and backend-reported latency, citation location
-validity, expected-file recall, and expected-term coverage. Compare candidates
-with identical indexes, backend settings, cases, and repeat counts; a successful
-model ping is not a demo-quality or latency result.
+validity, expected-file recall, and expected-term coverage. The command exits
+nonzero if any case has invalid citation locations or falls below the default
+0.3 file-recall or term-coverage threshold. Use `--min-file-recall` and
+`--min-term-coverage` to raise those per-case thresholds for a release gate.
+Compare candidates with identical indexes, backend settings, cases, thresholds,
+and repeat counts; a successful model ping is not a demo-quality or latency
+result.
 
 Wiki prose has a separate gate because it uses a separate model and quality
 contract. It reuses each repository's current cached outline, writes candidate

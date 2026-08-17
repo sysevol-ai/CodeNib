@@ -11,6 +11,7 @@ from scripts.build_qa_index import _vector_builder
 from scripts.rebuild_demo_indexes import (
     _builders,
     _parse_repo_ignore_dirs,
+    _select_registry_bundles,
     _validated_graph_node_count,
 )
 
@@ -119,3 +120,28 @@ def test_demo_rebuild_records_explicit_repository_dependency_exclusions():
 def test_demo_rebuild_rejects_ambiguous_dependency_exclusions(value):
     with pytest.raises(ValueError, match="REPO_ID:DIR_NAME"):
         _parse_repo_ignore_dirs([value])
+
+
+def test_demo_rebuild_validates_selectors_before_applying_the_limit():
+    bundles = {
+        "owner__a": SimpleNamespace(entry=SimpleNamespace(instance_id="owner__a")),
+        "owner__b": SimpleNamespace(entry=SimpleNamespace(instance_id="owner__b")),
+    }
+    registry = SimpleNamespace(
+        list_infos=lambda: [SimpleNamespace(id=repo_id) for repo_id in bundles],
+        get=bundles.get,
+    )
+
+    selected = _select_registry_bundles(
+        registry,
+        ["owner__a", "owner__b"],
+        max_repos=1,
+    )
+
+    assert [bundle.entry.instance_id for bundle in selected] == ["owner__a"]
+    with pytest.raises(ValueError, match="Unknown repository ids.*owner__missing"):
+        _select_registry_bundles(
+            registry,
+            ["owner__a", "owner__missing"],
+            max_repos=1,
+        )

@@ -100,8 +100,15 @@ def test_read_only_pipeline_skips_all_project_preparation(tmp_path, monkeypatch)
 def test_read_only_pipeline_uses_external_config_for_jsconfig(tmp_path, monkeypatch):
     project = tmp_path / "repo"
     project.mkdir()
-    (project / "jsconfig.json").write_text("{}\n", encoding="utf-8")
-    indexer = SCIPTypeScriptIndexer(project, output_dir=tmp_path / "index")
+    (project / "jsconfig.json").write_text(
+        json.dumps({"exclude": ["custom/**"]}) + "\n",
+        encoding="utf-8",
+    )
+    indexer = SCIPTypeScriptIndexer(
+        project,
+        output_dir=tmp_path / "index",
+        exclude_patterns=["dist/**"],
+    )
     observed: dict[str, object] = {}
 
     def run_pipeline(_self, **kwargs):
@@ -124,7 +131,40 @@ def test_read_only_pipeline_uses_external_config_for_jsconfig(tmp_path, monkeypa
     assert isinstance(config, dict)
     assert config["extends"] == str((project / "jsconfig.json").resolve())
     assert f"{project.resolve()}/**/*.js" in config["include"]
+    root = project.resolve().as_posix()
+    assert config["exclude"] == [f"{root}/custom/**", f"{root}/dist/**"]
     assert not (project / "tsconfig.json").exists()
+    assert not (tmp_path / "index" / ".tsconfig.scip.readonly.json").exists()
+
+
+def test_read_only_pipeline_anchors_repository_excludes_to_the_checkout(
+    tmp_path, monkeypatch
+):
+    project = tmp_path / "repo"
+    project.mkdir()
+    indexer = SCIPTypeScriptIndexer(
+        project,
+        output_dir=tmp_path / "index",
+        exclude_patterns=["dist/**", "**/vendor/**"],
+    )
+    observed: dict[str, object] = {}
+
+    def run_pipeline(_self, **kwargs):
+        observed["config"] = json.loads(
+            Path(kwargs["patched_tsconfig"]).read_text(encoding="utf-8")
+        )
+        return "graph"
+
+    monkeypatch.setattr(SCIPIndexerBase, "run_pipeline", run_pipeline)
+
+    assert (
+        indexer.run_pipeline(allow_project_preparation=False, report_profile=False)
+        == "graph"
+    )
+    config = observed["config"]
+    assert isinstance(config, dict)
+    root = project.resolve().as_posix()
+    assert config["exclude"] == [f"{root}/dist/**", f"{root}/**/vendor/**"]
     assert not (tmp_path / "index" / ".tsconfig.scip.readonly.json").exists()
 
 

@@ -48,6 +48,19 @@ _DEFAULT_CASES = (
     },
 )
 
+_DEFAULT_MIN_FILE_RECALL = 0.3
+_DEFAULT_MIN_TERM_COVERAGE = 0.3
+
+
+def _unit_fraction(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number from 0 to 1") from exc
+    if not 0.0 <= parsed <= 1.0:
+        raise argparse.ArgumentTypeError("must be a number from 0 to 1")
+    return parsed
+
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -60,6 +73,18 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=300.0)
+    parser.add_argument(
+        "--min-file-recall",
+        type=_unit_fraction,
+        default=_DEFAULT_MIN_FILE_RECALL,
+        help="Minimum expected-file recall required for every case (default: 0.3)",
+    )
+    parser.add_argument(
+        "--min-term-coverage",
+        type=_unit_fraction,
+        default=_DEFAULT_MIN_TERM_COVERAGE,
+        help="Minimum expected-term coverage required for every case (default: 0.3)",
+    )
     parser.add_argument("--compact", action="store_true")
     return parser
 
@@ -148,6 +173,22 @@ def _summary(values: list[float]) -> dict[str, float | int | None]:
     }
 
 
+def _grounding_failures(
+    result: dict[str, Any],
+    *,
+    min_file_recall: float,
+    min_term_coverage: float,
+) -> list[str]:
+    failures = []
+    if not result["citation_locations_valid"]:
+        failures.append("citation_locations_invalid")
+    if float(result["expected_file_recall"]) < min_file_recall:
+        failures.append("expected_file_recall_below_threshold")
+    if float(result["expected_term_coverage"]) < min_term_coverage:
+        failures.append("expected_term_coverage_below_threshold")
+    return failures
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.case_file:
@@ -173,9 +214,19 @@ def main(argv: list[str] | None = None) -> int:
                     timeout=max(1.0, args.timeout),
                 )
                 record.update(evaluate_response(case, response))
+                grounding_failures = _grounding_failures(
+                    record,
+                    min_file_recall=args.min_file_recall,
+                    min_term_coverage=args.min_term_coverage,
+                )
+                grounding_passed = not grounding_failures
+                if not grounding_passed:
+                    failed = True
                 record.update(
                     {
-                        "status": "ok",
+                        "status": "ok" if grounding_passed else "grounding_failed",
+                        "grounding_passed": grounding_passed,
+                        "grounding_failures": grounding_failures,
                         "wall_ms": wall_ms,
                         "server_timing": server_timing,
                     }
@@ -185,35 +236,43 @@ def main(argv: list[str] | None = None) -> int:
                 record.update({"status": "error", "error": str(exc)})
             runs.append(record)
 
-    successful = [run for run in runs if run["status"] == "ok"]
+    completed = [run for run in runs if run["status"] != "error"]
+    successful = [run for run in completed if run["status"] == "ok"]
     report = {
         "schema_version": 1,
         "candidate": args.candidate,
         "endpoint": args.endpoint,
         "case_count": len(cases),
         "repeat": max(1, args.repeat),
+        "thresholds": {
+            "min_file_recall": args.min_file_recall,
+            "min_term_coverage": args.min_term_coverage,
+        },
         "summary": {
             "successful": len(successful),
             "failed": len(runs) - len(successful),
-            "wall_ms": _summary([float(run["wall_ms"]) for run in successful]),
+            "grounding_failed": sum(
+                run["status"] == "grounding_failed" for run in completed
+            ),
+            "wall_ms": _summary([float(run["wall_ms"]) for run in completed]),
             "expected_file_recall_mean": (
                 round(
                     statistics.mean(
-                        float(run["expected_file_recall"]) for run in successful
+                        float(run["expected_file_recall"]) for run in completed
                     ),
                     3,
                 )
-                if successful
+                if completed
                 else None
             ),
             "expected_term_coverage_mean": (
                 round(
                     statistics.mean(
-                        float(run["expected_term_coverage"]) for run in successful
+                        float(run["expected_term_coverage"]) for run in completed
                     ),
                     3,
                 )
-                if successful
+                if completed
                 else None
             ),
         },

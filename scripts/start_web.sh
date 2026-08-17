@@ -12,9 +12,11 @@ CONDA_ENV="${CONDA_ENV:-codenib}"
 BACKEND_PORT="${CODENIB_DEMO_PORT:-8000}"
 LLM_PORT="${LLM_PORT:-8080}"
 DEFAULT_GPU_HOST="vscode-dsmlp-l40s"
+LOCAL_MODEL_FALLBACK="openai/qwen2.5-coder"
 PROFILE="${CODENIB_DEMO_PROFILE:-local}"
 MODEL_OVERRIDE="${CODENIB_DEMO_MODEL:-}"
-CONFIG_PATH="${CODENIB_DEMO_CONFIG:-}"
+CONFIG_OVERRIDE="${CODENIB_DEMO_CONFIG:-}"
+CONFIG_PATH="$CONFIG_OVERRIDE"
 
 case "$PROFILE" in
     local|api) ;;
@@ -81,7 +83,18 @@ REGISTRY=$(printf '%s\n' "$CONFIG_DETAILS" | sed -n '1p')
 CONFIG_MODEL=$(printf '%s\n' "$CONFIG_DETAILS" | sed -n '2p')
 CONFIG_API_BASE=$(printf '%s\n' "$CONFIG_DETAILS" | sed -n '3p')
 CONFIG_HAS_API_KEY=$(printf '%s\n' "$CONFIG_DETAILS" | sed -n '4p')
-SELECTED_MODEL="${MODEL_OVERRIDE:-$CONFIG_MODEL}"
+if [ -n "$MODEL_OVERRIDE" ]; then
+    SELECTED_MODEL="$MODEL_OVERRIDE"
+elif [ "$PROFILE" = "local" ] \
+    && [ -z "$CONFIG_OVERRIDE" ] \
+    && [ "$CONFIG_PATH" = "qa_config.yaml" ]; then
+    # The tracked base profile targets hosted OpenAI by default. Preserve the
+    # documented no-edit local route when no local overlay or explicit config
+    # selected another model.
+    SELECTED_MODEL="$LOCAL_MODEL_FALLBACK"
+else
+    SELECTED_MODEL="$CONFIG_MODEL"
+fi
 if [ ! -f "$REGISTRY" ]; then
     echo "ERROR: No repo registry found at $REGISTRY"
     echo ""
@@ -165,10 +178,8 @@ echo "────────────────────────�
 echo ""
 
 export CODENIB_DEMO_CONFIG="$CONFIG_PATH"
+export CODENIB_DEMO_MODEL="$SELECTED_MODEL"
 export CODENIB_DEMO_PORT="$BACKEND_PORT"
-if [ -n "$MODEL_OVERRIDE" ]; then
-    export CODENIB_DEMO_MODEL="$MODEL_OVERRIDE"
-fi
 
 if [ "$PROFILE" = "local" ]; then
     export OPENAI_API_KEY="fake"

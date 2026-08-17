@@ -2,6 +2,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import json
+
+from scripts import benchmark_demo_ask
 from scripts.benchmark_demo_ask import _parser, evaluate_response
 
 
@@ -48,3 +51,96 @@ def test_evaluate_response_rejects_missing_or_reversed_citation_ranges():
     )
 
     assert result["citation_locations_valid"] is False
+
+
+def test_main_fails_when_a_successful_response_is_not_grounded(
+    tmp_path, monkeypatch, capsys
+):
+    cases = [
+        {
+            "id": "runtime",
+            "repo": "owner__repo",
+            "question": "How does it run?",
+            "expected_files": ["src/runtime.py"],
+            "expected_terms": ["dispatch"],
+        }
+    ]
+    case_file = tmp_path / "cases.json"
+    case_file.write_text(json.dumps(cases), encoding="utf-8")
+    monkeypatch.setattr(
+        benchmark_demo_ask,
+        "_request",
+        lambda *_args, **_kwargs: (
+            {"answer": "No source evidence.", "citations": []},
+            12.0,
+            None,
+        ),
+    )
+
+    result = benchmark_demo_ask.main(
+        ["--candidate", "test", "--case-file", str(case_file), "--compact"]
+    )
+    report = json.loads(capsys.readouterr().out)
+
+    assert result == 1
+    assert report["summary"]["successful"] == 0
+    assert report["summary"]["grounding_failed"] == 1
+    assert report["runs"][0]["status"] == "grounding_failed"
+    assert report["runs"][0]["grounding_failures"] == [
+        "citation_locations_invalid",
+        "expected_file_recall_below_threshold",
+        "expected_term_coverage_below_threshold",
+    ]
+
+
+def test_main_accepts_a_response_that_meets_explicit_grounding_thresholds(
+    tmp_path, monkeypatch, capsys
+):
+    case_file = tmp_path / "cases.json"
+    case_file.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "runtime",
+                    "repo": "owner__repo",
+                    "question": "How does it run?",
+                    "expected_files": ["src/runtime.py", "src/router.py"],
+                    "expected_terms": ["dispatch", "queue"],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        benchmark_demo_ask,
+        "_request",
+        lambda *_args, **_kwargs: (
+            {
+                "answer": "dispatch handles the request",
+                "citations": [
+                    {"file": "src/runtime.py", "start_line": 1, "end_line": 4}
+                ],
+            },
+            12.0,
+            None,
+        ),
+    )
+
+    result = benchmark_demo_ask.main(
+        [
+            "--candidate",
+            "test",
+            "--case-file",
+            str(case_file),
+            "--min-file-recall",
+            "0.5",
+            "--min-term-coverage",
+            "0.5",
+            "--compact",
+        ]
+    )
+    report = json.loads(capsys.readouterr().out)
+
+    assert result == 0
+    assert report["runs"][0]["grounding_passed"] is True
+    assert report["summary"]["successful"] == 1

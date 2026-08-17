@@ -3368,6 +3368,21 @@ class AgentWiki:
             return envelope.get("data")
         return None
 
+    def _read_cache_read_only(self, suffix: str) -> Optional[Any]:
+        """Read one cache entry without migrating or publishing cache data."""
+
+        for path in self._cache_candidate_paths(suffix):
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    envelope = json.load(handle)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(envelope, dict) and "data" in envelope:
+                return envelope.get("data")
+        return None
+
     @staticmethod
     def _atomic_write_cache(
         path: str,
@@ -3563,18 +3578,24 @@ class AgentWiki:
             p["id"] = pid
             self._normalize(p.get("children", []) or [], seen, first=False)
 
-    def page_tree(self) -> List[dict]:
-        outline_pages = self.outline().get("pages", [])
-
+    def _page_tree_refs(
+        self,
+        outline_pages: List[Dict[str, Any]],
+        *,
+        read_only: bool = False,
+    ) -> List[dict]:
         def refs(pages: List[Dict[str, Any]], *, top_level: bool = False) -> List[dict]:
             return [
                 {
                     "id": p["id"],
                     "title": p.get("title", p["id"]),
                     "cache_state": self._page_cache_state(
-                        self._overview_page_meta(p, outline_pages[1:])
-                        if top_level and p.get("id") == "overview"
-                        else p
+                        (
+                            self._overview_page_meta(p, outline_pages[1:])
+                            if top_level and p.get("id") == "overview"
+                            else p
+                        ),
+                        read_only=read_only,
                     ),
                     "children": refs(p.get("children", []) or []),
                 }
@@ -3583,13 +3604,33 @@ class AgentWiki:
 
         return refs(outline_pages, top_level=True)
 
-    def _page_cache_state(self, meta: Dict[str, Any]) -> str:
+    def page_tree(self) -> List[dict]:
+        outline_pages = self.outline().get("pages", [])
+        return self._page_tree_refs(outline_pages)
+
+    def cached_page_tree(self) -> Optional[List[dict]]:
+        """Return the cached page tree without generating or publishing data."""
+
+        outline = self._outline
+        if outline is None:
+            outline = self._read_cache_read_only("outline")
+        if not isinstance(outline, dict) or not isinstance(outline.get("pages"), list):
+            return None
+        return self._page_tree_refs(outline["pages"], read_only=True)
+
+    def _page_cache_state(
+        self,
+        meta: Dict[str, Any],
+        *,
+        read_only: bool = False,
+    ) -> str:
         """Return a reader-facing cache state without generating the page."""
 
         page_id = str(meta.get("id") or "")
         page = self._pages.get(page_id)
         if page is None:
-            page = self._read_cache(self._page_cache_suffix(meta))
+            reader = self._read_cache_read_only if read_only else self._read_cache
+            page = reader(self._page_cache_suffix(meta))
         if not isinstance(page, dict):
             return "cold"
         invalid = self._cached_page_is_degraded(page)

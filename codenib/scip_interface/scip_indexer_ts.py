@@ -471,8 +471,55 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                 f"{self.project_root.resolve()}/**/*.tsx",
             ],
         }
+        project_root = self.project_root.resolve().as_posix().rstrip("/")
+        anchored_excludes = []
+        for raw_pattern in self.exclude_patterns:
+            pattern = str(raw_pattern).strip()
+            if not pattern:
+                continue
+            candidate = Path(pattern)
+            anchored = (
+                candidate.as_posix()
+                if candidate.is_absolute()
+                else f"{project_root}/{pattern.lstrip('/')}"
+            )
+            if anchored not in anchored_excludes:
+                anchored_excludes.append(anchored)
+        if anchored_excludes:
+            payload["exclude"] = anchored_excludes
         if base_config is not None:
             payload["extends"] = str(base_config.resolve())
+            try:
+                raw_content = base_config.read_text(encoding="utf-8")
+                stripped = re.sub(
+                    r'"(?:[^"\\]|\\.)*"|(/\*.*?\*/|//[^\n]*)',
+                    lambda match: "" if match.group(1) else match.group(0),
+                    raw_content,
+                    flags=re.DOTALL,
+                )
+                stripped = re.sub(r",\s*([}\]])", r"\1", stripped)
+                inherited_config = json.loads(stripped)
+            except (OSError, json.JSONDecodeError):
+                inherited_config = {}
+            if not isinstance(inherited_config, dict):
+                inherited_config = {}
+            inherited_excludes = inherited_config.get("exclude")
+            if isinstance(inherited_excludes, list):
+                anchored_excludes = []
+                for raw_pattern in [*inherited_excludes, *self.exclude_patterns]:
+                    pattern = str(raw_pattern).strip()
+                    if not pattern:
+                        continue
+                    candidate = Path(pattern)
+                    anchored = (
+                        candidate.as_posix()
+                        if candidate.is_absolute()
+                        else f"{project_root}/{pattern.lstrip('/')}"
+                    )
+                    if anchored not in anchored_excludes:
+                        anchored_excludes.append(anchored)
+                if anchored_excludes:
+                    payload["exclude"] = anchored_excludes
         self.output_dir.mkdir(parents=True, exist_ok=True)
         config_path = self.output_dir / self._READ_ONLY_TSCONFIG_NAME
         config_path.write_text(

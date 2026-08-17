@@ -87,7 +87,11 @@ def prewarm_wiki_cache(
         repo_results: list[dict[str, Any]] = []
         wiki = wiki_factory(bundle)
         try:
-            tree = wiki.page_tree()
+            if dry_run:
+                cached_page_tree = getattr(wiki, "cached_page_tree", None)
+                tree = cached_page_tree() if callable(cached_page_tree) else None
+            else:
+                tree = wiki.page_tree()
         except Exception as exc:  # noqa: BLE001 - report one repo, keep the batch
             repo_results.append(
                 {
@@ -100,18 +104,32 @@ def prewarm_wiki_cache(
                 }
             )
         else:
-            scoped = _scope_pages(tree, scope)
-            if scope == "overview" and not scoped:
+            if dry_run and tree is None:
                 repo_results.append(
                     {
                         "repo": repo_id,
-                        "id": "overview",
-                        "title": "Overview",
+                        "id": "outline",
+                        "title": "Wiki outline",
+                        "kind": "outline",
                         "before": "missing",
-                        "status": "error",
-                        "error": "outline has no Overview page",
+                        "status": "planned",
                     }
                 )
+                scoped = []
+            else:
+                scoped = _scope_pages(tree or [], scope)
+            if scope == "overview" and not scoped:
+                if not (dry_run and tree is None):
+                    repo_results.append(
+                        {
+                            "repo": repo_id,
+                            "id": "overview",
+                            "title": "Overview",
+                            "before": "missing",
+                            "status": "error",
+                            "error": "outline has no Overview page",
+                        }
+                    )
             else:
                 for page_ref in scoped:
                     page_id = str(page_ref.get("id") or "")
