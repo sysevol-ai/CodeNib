@@ -437,9 +437,9 @@ new outline, so every candidate receives the same source-bound page plan. A run
 fails when generation errors, falls back to diagnostic mode, or produces a page
 that does not pass the normal Wiki quality gate.
 
-The August 2026 production comparison of Qwen3.6, Qwen3.8-27B, DeepSeek V4
-Flash, and Muse Glimmer 30B is recorded in
-[Demo model and cold-start bake-off](experiments/demo_model_bakeoff_2026-08.md).
+Use the retained JSON reports to compare Qwen3.6, Qwen3.8-27B, DeepSeek V4
+Flash, Muse Glimmer 30B, or another candidate under the same indexes, backend
+settings, cases, and repeat counts.
 
 ## Running over SSH
 
