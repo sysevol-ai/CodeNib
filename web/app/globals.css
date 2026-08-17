@@ -3854,9 +3854,12 @@ a.codepanel-name:hover {
 .frag-head {
   position: sticky;
   top: 0;
-  z-index: 1;
+  /* `.hl-pre` and `.hl-gutter` are positioned at z-index: 1. Keep the whole
+     sticky source label above them so code cannot paint through its surface. */
+  z-index: 3;
+  isolation: isolate;
   padding: 8px 14px;
-  background: var(--surface-2);
+  background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 0 var(--border);
   display: flex;
