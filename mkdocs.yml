@@ -163,6 +163,9 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Blog:
+      - blog/index.md
+      - One Repository Index for Humans and Agents: blog/local-code-intelligence-dgx-spark.md
   - Get Started:
       - get-started/index.md
       - Quickstart: quickstart.md
