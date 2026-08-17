@@ -3422,11 +3422,13 @@ class AgentWiki:
         if not isinstance(page, dict):
             return False
         generation = page.get("generation") or {}
+        grounding = page.get("grounding") or {}
         return bool(
             generation.get("mode") == "degraded"
             and (
                 generation.get("fallback") == "fact_plan"
                 or (page.get("quality") or {}).get("valid") is False
+                or grounding.get("valid") is False
             )
         )
 
@@ -3479,23 +3481,11 @@ class AgentWiki:
             previous.get("generation") if isinstance(previous, dict) else None
         ) or {}
         previous_retry = previous_generation.get("retry") or {}
-        previous_retryable = bool(
-            previous_generation.get("mode") == "degraded"
-            and (
-                previous_generation.get("fallback") == "fact_plan"
-                or (previous.get("quality") or {}).get("valid") is False
-            )
-        )
+        previous_retryable = AgentWiki._cached_page_is_degraded(previous)
         attempts = int(previous_retry.get("attempts") or 0)
         if previous_retryable:
             attempts += 1
-        retryable = bool(
-            generation.get("mode") == "degraded"
-            and (
-                generation.get("fallback") == "fact_plan"
-                or (page.get("quality") or {}).get("valid") is False
-            )
-        )
+        retryable = AgentWiki._cached_page_is_degraded(page)
         if not retryable and not previous_retryable:
             return
         now = time() if now_epoch is None else float(now_epoch)

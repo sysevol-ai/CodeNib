@@ -6868,6 +6868,27 @@ def test_agent_wiki_retries_quality_invalid_cache_with_a_cooldown():
     assert AgentWiki._cached_page_needs_regeneration(legacy_invalid) is False
 
 
+def test_agent_wiki_retries_grounding_invalid_cache_with_a_cooldown():
+    grounding_invalid = {
+        "generation": {
+            "mode": "degraded",
+            "fallback": None,
+            "reason": "quality_guard",
+        },
+        "grounding": {"valid": False},
+        "quality": {"valid": True},
+    }
+
+    assert AgentWiki._cached_page_needs_regeneration(grounding_invalid) is True
+
+    AgentWiki._record_page_retry(grounding_invalid, now_epoch=10_000_000_000.0)
+    retry = grounding_invalid["generation"]["retry"]
+    assert retry["state"] == "scheduled"
+    assert retry["attempts"] == 0
+    assert retry["next_attempt_epoch"] > 10_000_000_000.0
+    assert AgentWiki._cached_page_needs_regeneration(grounding_invalid) is False
+
+
 def test_agent_wiki_stops_retrying_after_bounded_failed_attempts():
     previous = {
         "generation": {
