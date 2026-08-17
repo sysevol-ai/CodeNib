@@ -868,6 +868,36 @@ def test_uri_scheme_is_not_an_identifier():
     assert grounding_report(md, [item], [])["unsupported_identifiers"] == []
 
 
+def test_multi_backtick_code_span_does_not_consume_surrounding_prose():
+    from codenib.wiki.evidence import EvidenceItem, grounding_report
+
+    item = EvidenceItem(
+        id="E1",
+        file="scripts/builders.ts",
+        start_line=1,
+        end_line=8,
+        symbol="generateBuilders",
+        kind="function",
+        content=(
+            'const kind = "lowercase.ts";\n'
+            "function generateBuilders() {\n"
+            "  return generateLowercaseBuilders();\n"
+            "}\n"
+            "function generateLowercaseBuilders() {}"
+        ),
+    )
+    markdown = (
+        "`generateBuilders()` calls `generateLowercaseBuilders()` when the kind "
+        "is ``lowercase.ts``. `generateBuilders()` calls "
+        "`generateLowercaseBuilders()` for that branch. [E1]"
+    )
+
+    report = grounding_report(markdown, [item], [])
+
+    assert report["unsupported_identifiers"] == []
+    assert report["valid"] is True
+
+
 def test_an_invented_symbol_still_flags():
     from codenib.wiki.evidence import grounding_report
 

@@ -26,6 +26,13 @@ _CITATION_TAIL_RE = re.compile(
     r"(?:\s*\[(?:E|R)\d+\])+\s*[.!?]?\s*$",
 )
 _CODE_RE = re.compile(r"`([^`\n]+)`")
+# Markdown permits a code span to use any run of backticks as long as the
+# closing run has the same length. Parsing only single ticks makes adjacent
+# spans around ``double-fenced`` code look like bogus identifiers taken from
+# the prose between them (for example "." and "calls").
+_MARKDOWN_CODE_SPAN_RE = re.compile(
+    r"(?<!`)(?P<fence>`+)(?!`)(?P<code>[^\n]*?)(?<!`)(?P=fence)(?!`)",
+)
 # Publication floor: at least half a page's blocks must carry their source.
 _MIN_CITATION_COVERAGE = 0.5
 _TABLE_DIVIDER_RE = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
@@ -41,6 +48,16 @@ def is_internal_wiki_navigation(block: str) -> bool:
     return bool(lines) and all(
         _INTERNAL_WIKI_NAV_ITEM_RE.fullmatch(line) for line in lines
     )
+
+
+def _markdown_code_spans(text: str) -> List[str]:
+    """Return complete inline-code values without crossing Markdown fences."""
+
+    return [
+        match.group("code")
+        for match in _MARKDOWN_CODE_SPAN_RE.finditer(text or "")
+        if match.group("code").strip()
+    ]
 
 
 def _corpus_contains_exact(corpus: str, value: str) -> bool:
@@ -902,7 +919,7 @@ def grounding_report(
 
     known_files = {item.file.lower().lstrip("./") for item in evidence}
     unsupported_identifiers = []
-    for identifier in _CODE_RE.findall(without_fences):
+    for identifier in _markdown_code_spans(without_fences):
         normalized = identifier.strip()
         source_name = re.sub(r":\d+(?:-\d+)?$", "", normalized)
         call_name_match = re.fullmatch(
