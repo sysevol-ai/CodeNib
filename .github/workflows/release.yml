@@ -53,7 +53,11 @@ jobs:
 
   registry-auth-preflight:
     name: Verify MCP Registry ownership
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    # The protected environment admits only v* tags. Branch dispatches still
+    # exercise release verification without requesting its production secret.
+    if: >-
+      github.ref_type == 'tag' &&
+      startsWith(github.ref_name, 'v')
     needs: verify
     runs-on: ubuntu-latest
     environment:
@@ -86,7 +90,12 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    if: github.ref_type == 'tag'
+    # A manual tag dispatch may diagnose Registry authentication, but must
+    # never replay a production publication.
+    if: >-
+      github.event_name == 'push' &&
+      github.ref_type == 'tag' &&
+      startsWith(github.ref_name, 'v')
     needs: registry-auth-preflight
     runs-on: ubuntu-latest
     environment:
@@ -106,7 +115,10 @@ jobs:
 
   publish-mcp-registry:
     name: Publish to MCP Registry
-    if: github.ref_type == 'tag'
+    if: >-
+      github.event_name == 'push' &&
+      github.ref_type == 'tag' &&
+      startsWith(github.ref_name, 'v')
     needs: verify-pypi-install
     runs-on: ubuntu-latest
     environment:
@@ -151,7 +163,10 @@ jobs:
 
   verify-pypi-install:
     name: Verify installed PyPI package
-    if: github.ref_type == 'tag'
+    if: >-
+      github.event_name == 'push' &&
+      github.ref_type == 'tag' &&
+      startsWith(github.ref_name, 'v')
     needs: publish-pypi
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -228,7 +243,10 @@ jobs:
 
   github-release:
     name: Create GitHub Release
-    if: github.ref_type == 'tag'
+    if: >-
+      github.event_name == 'push' &&
+      github.ref_type == 'tag' &&
+      startsWith(github.ref_name, 'v')
     needs:
       - publish-pypi
       - publish-mcp-registry

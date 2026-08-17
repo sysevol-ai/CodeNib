@@ -104,6 +104,21 @@ authentication before PyPI upload; the Registry job repeats it immediately
 before publication. The DNS record belongs at the domain apex, not
 `_mcp-auth.codenib.ai`.
 
+A manual Release workflow dispatch from a branch performs release-artifact and
+Registry-metadata verification but deliberately skips protected DNS
+authentication, because the `mcp-registry-publish` environment admits only
+`v*` tags. To repeat only the authenticated ownership preflight, dispatch the
+workflow against a `v*` tag whose checked-in `release.yml` contains the manual
+dispatch guard:
+
+```bash
+gh workflow run release.yml --ref v<version>
+```
+
+Inspect older tags before dispatching them. Production PyPI, MCP Registry, and
+GitHub Release jobs must require both a `push` event and a `v*` tag; a manual
+tag dispatch must never replay publication.
+
 ## Public Surface Gate
 
 Before the production tag, make the repository public and manually dispatch

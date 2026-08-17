@@ -233,6 +233,11 @@ def test_registry_publishers_use_separate_workflows() -> None:
     )
     assert "docs/releases/**" in production["on"]["pull_request"]["paths"]
 
+    release_tag_push = (
+        "github.event_name == 'push' && github.ref_type == 'tag' && "
+        "startsWith(github.ref_name, 'v')"
+    )
+
     assert set(production["jobs"]) == {
         "verify",
         "registry-auth-preflight",
@@ -243,7 +248,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
     }
     registry_preflight = production["jobs"]["registry-auth-preflight"]
     assert registry_preflight["if"] == (
-        "github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'"
+        "github.ref_type == 'tag' && startsWith(github.ref_name, 'v')"
     )
     assert registry_preflight["needs"] == "verify"
     assert registry_preflight["runs-on"] == "ubuntu-latest"
@@ -254,12 +259,14 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert "--connect-timeout 10 --max-time 90" in preflight_download
     assert "login dns" in preflight_steps["Verify branded namespace ownership"]["run"]
     production_publisher = production["jobs"]["publish-pypi"]
+    assert production_publisher["if"] == release_tag_push
     assert production_publisher["needs"] == "registry-auth-preflight"
     assert production_publisher["environment"]["name"] == "pypi"
     assert production_publisher["permissions"] == {"id-token": "write"}
     assert "password" not in publisher_step(production_publisher).get("with", {})
     assert "PYPI_API_TOKEN" not in str(production_publisher)
     pypi_install = production["jobs"]["verify-pypi-install"]
+    assert pypi_install["if"] == release_tag_push
     assert pypi_install["needs"] == "publish-pypi"
     assert pypi_install["runs-on"] == "ubuntu-latest"
     pypi_install_steps = {step["name"]: step for step in pypi_install["steps"]}
@@ -273,6 +280,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
         in pypi_install_steps["Exercise public Wiki and MCP services"]["run"]
     )
     registry_publisher = production["jobs"]["publish-mcp-registry"]
+    assert registry_publisher["if"] == release_tag_push
     assert registry_publisher["needs"] == "verify-pypi-install"
     assert registry_publisher["runs-on"] == "ubuntu-latest"
     assert registry_publisher["environment"]["name"] == "mcp-registry-publish"
@@ -294,6 +302,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "publish-pypi",
         "publish-mcp-registry",
     ]
+    assert production["jobs"]["github-release"]["if"] == release_tag_push
     release_steps = {
         step["name"]: step for step in production["jobs"]["github-release"]["steps"]
     }
