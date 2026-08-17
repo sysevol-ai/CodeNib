@@ -288,7 +288,16 @@ export async function fetchWikiPage(
   })();
   wikiPageRequests.set(cacheKey, request);
   try {
-    return await request;
+    const page = await request;
+    if (
+      page.generation?.mode === "degraded" &&
+      wikiPageRequests.get(cacheKey) === request
+    ) {
+      // Preserve coalescing for the current request, but let later navigation
+      // reach the server once a bounded degraded-page retry becomes due.
+      wikiPageRequests.delete(cacheKey);
+    }
+    return page;
   } catch (error) {
     if (wikiPageRequests.get(cacheKey) === request) {
       wikiPageRequests.delete(cacheKey);

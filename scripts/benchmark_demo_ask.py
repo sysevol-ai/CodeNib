@@ -195,8 +195,12 @@ def main(argv: list[str] | None = None) -> int:
         cases = json.loads(args.case_file.read_text(encoding="utf-8"))
     else:
         cases = list(_DEFAULT_CASES)
-    if not isinstance(cases, list) or not all(isinstance(case, dict) for case in cases):
-        raise ValueError("benchmark cases must be a JSON list of objects")
+    if (
+        not isinstance(cases, list)
+        or not cases
+        or not all(isinstance(case, dict) for case in cases)
+    ):
+        raise ValueError("benchmark cases must be a non-empty JSON list of objects")
 
     runs: list[dict[str, Any]] = []
     failed = False

@@ -320,6 +320,22 @@ def test_bundle_explains_schema_mismatch_without_advertising_codemap(
     assert bundle.info().capabilities["codemap"] is False
 
 
+def test_bundle_graph_diagnostic_does_not_import_optional_igraph(monkeypatch):
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(indexes={}),
+    )
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.find_spec",
+        lambda name: None if name == "igraph" else object(),
+    )
+
+    assert bundle.graph_unavailable_note() == (
+        "Dependency graph support is unavailable. Install CodeNib with the "
+        "graph extra to inspect symbol_graph artifacts."
+    )
+
+
 def test_config_index_types_for_mode():
     assert QAConfig(mode="sparse").index_types() == ["bm25"]
     assert QAConfig(mode="hybrid").index_types() == ["bm25", "vector"]

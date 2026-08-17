@@ -106,6 +106,37 @@ describe("fetchWikiPage", () => {
     await fetchWikiPage("cache-test", "runtime", { refresh: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("evicts degraded pages so later navigation can retry", async () => {
+    const payload = {
+      id: "runtime",
+      title: "Runtime",
+      markdown: "Temporarily unavailable",
+      citations: [],
+      diagram: "",
+      generation: {
+        mode: "degraded",
+        model: "test-model",
+        retry: {
+          state: "scheduled",
+          attempts: 0,
+          max_attempts: 2,
+          last_attempt_epoch: 1,
+          next_attempt_epoch: 2,
+        },
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => payload,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchWikiPage("degraded-cache-test", "runtime");
+    await fetchWikiPage("degraded-cache-test", "runtime");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("fetchWikiTree", () => {

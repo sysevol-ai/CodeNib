@@ -344,7 +344,19 @@ class RepoBundle:
     def graph_unavailable_note(self) -> str:
         """Return an actionable reason when the dependency graph cannot load."""
 
-        from ..graph.code_graph import current_graph_schema_version
+        if find_spec("igraph") is None:
+            return (
+                "Dependency graph support is unavailable. Install CodeNib with "
+                "the graph extra to inspect symbol_graph artifacts."
+            )
+        try:
+            from ..graph.code_graph import current_graph_schema_version
+        except ModuleNotFoundError as exc:
+            return (
+                "Dependency graph support is unavailable because the optional "
+                f"dependency {exc.name!r} is missing. Install CodeNib with the "
+                "graph extra."
+            )
 
         persisted_schema = self._graph_schema_version()
         current_schema = current_graph_schema_version()

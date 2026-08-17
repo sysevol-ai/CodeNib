@@ -4,6 +4,8 @@
 
 import json
 
+import pytest
+
 from scripts import benchmark_demo_ask
 from scripts.benchmark_demo_ask import _parser, evaluate_response
 
@@ -12,6 +14,23 @@ def test_default_endpoint_matches_the_demo_backend():
     args = _parser().parse_args(["--candidate", "test-model"])
 
     assert args.endpoint == "http://127.0.0.1:8000"
+
+
+def test_main_rejects_an_empty_case_file_before_requesting_the_candidate(
+    tmp_path, monkeypatch
+):
+    case_file = tmp_path / "cases.json"
+    case_file.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(
+        benchmark_demo_ask,
+        "_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("empty gate must not call the candidate")
+        ),
+    )
+
+    with pytest.raises(ValueError, match="non-empty JSON list"):
+        benchmark_demo_ask.main(["--candidate", "test", "--case-file", str(case_file)])
 
 
 def test_evaluate_response_reports_source_and_term_coverage():
