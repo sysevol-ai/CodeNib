@@ -132,6 +132,37 @@ def test_prewarm_dry_run_plans_a_missing_outline_without_generating_it():
 
 
 @pytest.mark.parametrize(
+    ("max_pages", "status", "selected"),
+    [(0, "skipped_limit", 0), (1, "planned", 1)],
+)
+def test_prewarm_dry_run_applies_limit_to_missing_outline(
+    max_pages,
+    status,
+    selected,
+):
+    class ColdOutlineWiki(_Wiki):
+        def cached_page_tree(self):
+            return None
+
+        def page_tree(self):
+            raise AssertionError("dry-run must not generate an outline")
+
+    wiki = ColdOutlineWiki()
+
+    report = prewarm_wiki_cache(
+        _registry(wiki),
+        wiki_factory=lambda bundle: bundle.wiki,
+        max_pages=max_pages,
+        dry_run=True,
+    )
+
+    assert wiki.calls == []
+    assert report["selected_for_generation"] == selected
+    assert report["counts"] == {status: 1}
+    assert report["pages"][0]["status"] == status
+
+
+@pytest.mark.parametrize(
     ("max_pages", "expected_tree_calls", "expected_page_calls", "counts"),
     [
         (0, 0, [], {"skipped_limit": 1}),

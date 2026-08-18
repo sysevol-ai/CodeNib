@@ -433,6 +433,50 @@ def test_citations_keep_indexed_content_for_non_git_prebuilt_snapshot(tmp_path):
     assert "mutable_runtime" not in response.citations[0].content
 
 
+def test_citations_drop_unresolved_content_for_git_backed_snapshot(
+    monkeypatch,
+    tmp_path,
+):
+    (tmp_path / ".git").mkdir()
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "runtime.py").write_text(
+        "def mutable_runtime():\n    return 'live'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "codenib.web.schemas.git_source_slice",
+        lambda *_args, **_kwargs: None,
+    )
+    result = AgentResult(
+        answer="`indexed_runtime()` is implemented in `src/runtime.py`.",
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "repository_search",
+                {},
+                result=[
+                    _node(
+                        "src/runtime.py",
+                        1,
+                        2,
+                        "src/runtime.py:indexed_runtime()",
+                        content="def stale_runtime():\n    return 'index'\n",
+                    )
+                ],
+            )
+        ],
+    )
+
+    response = agent_result_to_response(
+        result,
+        repo_path=str(tmp_path),
+        repo_commit="a" * 40,
+    )
+
+    assert response.citations == []
+
+
 def test_plain_prose_does_not_match_a_generic_main_symbol():
     result = AgentResult(
         answer="The main entry point delegates to `index_repository()`.",

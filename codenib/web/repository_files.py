@@ -27,6 +27,17 @@ def valid_commit(commit: object) -> bool:
     return isinstance(commit, str) and _COMMIT_RE.fullmatch(commit) is not None
 
 
+def has_git_metadata(repo_dir: str) -> bool:
+    """Return whether *repo_dir* declares its own Git metadata boundary.
+
+    A read-only prebuilt source snapshot intentionally has no ``.git`` entry.
+    Broken or inaccessible metadata still counts as present so callers fail
+    closed instead of treating a Git error as permission to use stale content.
+    """
+
+    return os.path.lexists(os.path.join(os.path.realpath(repo_dir), ".git"))
+
+
 def safe_repo_relative_path(repo_dir: str, file_path: str) -> Optional[str]:
     """Return a repo-relative POSIX path without permitting an outside read.
 

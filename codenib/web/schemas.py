@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from codenib.agent.boundary import to_agent_repr
 
-from .repository_files import git_source_slice, live_source_slice
+from .repository_files import git_source_slice, has_git_metadata, live_source_slice
 
 _MAX_REPO_ID_CHARS = 512
 _MAX_PATH_CHARS = 4096
@@ -334,6 +334,8 @@ def _select_answer_citations(
                     # retrieval result is the authenticated snapshot payload;
                     # retain it instead of reading the mutable live path or
                     # dropping the citation altogether.
+                    if has_git_metadata(repo_path):
+                        continue
                     if (
                         not isinstance(citation.content, str)
                         or not citation.content.strip()

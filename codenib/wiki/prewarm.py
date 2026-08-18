@@ -86,11 +86,12 @@ def prewarm_wiki_cache(
     def process_repo(repo_id: str, bundle: Any) -> list[dict[str, Any]]:
         repo_results: list[dict[str, Any]] = []
         outline_limited = False
+        outline_planned = False
         try:
             wiki = wiki_factory(bundle)
             cached_page_tree = getattr(wiki, "cached_page_tree", None)
             tree = cached_page_tree() if callable(cached_page_tree) else None
-            if not dry_run and tree is None:
+            if tree is None:
                 if not reserve_generation():
                     outline_limited = True
                     repo_results.append(
@@ -101,6 +102,18 @@ def prewarm_wiki_cache(
                             "kind": "outline",
                             "before": "missing",
                             "status": "skipped_limit",
+                        }
+                    )
+                elif dry_run:
+                    outline_planned = True
+                    repo_results.append(
+                        {
+                            "repo": repo_id,
+                            "id": "outline",
+                            "title": "Wiki outline",
+                            "kind": "outline",
+                            "before": "missing",
+                            "status": "planned",
                         }
                     )
                 else:
@@ -133,24 +146,12 @@ def prewarm_wiki_cache(
                 }
             )
         else:
-            if outline_limited:
-                scoped = []
-            elif dry_run and tree is None:
-                repo_results.append(
-                    {
-                        "repo": repo_id,
-                        "id": "outline",
-                        "title": "Wiki outline",
-                        "kind": "outline",
-                        "before": "missing",
-                        "status": "planned",
-                    }
-                )
+            if outline_limited or outline_planned:
                 scoped = []
             else:
                 scoped = _scope_pages(tree or [], scope)
             if scope == "overview" and not scoped:
-                if not (outline_limited or (dry_run and tree is None)):
+                if not (outline_limited or outline_planned):
                     repo_results.append(
                         {
                             "repo": repo_id,
