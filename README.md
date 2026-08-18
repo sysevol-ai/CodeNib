@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/sysevol-ai-codenib-badge.png)](https://mseep.ai/app/sysevol-ai-codenib)
+
 <!--
 SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
