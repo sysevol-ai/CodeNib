@@ -328,10 +328,10 @@ CODENIB_DEMO_PROFILE=api bash scripts/start_web.sh</code></pre>
         <p>Warm cached startup was about five minutes for A3B and 6.4–7.0 minutes for DFlash2, where most of the latter was target and draft loading plus prefill CUDA-graph capture. Both coexisted with the embedding server and completed the tests without an OOM or container restart. Only concurrency one was validated.</p>
 
         <div class="callout">
-          <p class="callout-label">What we would run today</p>
-          <p><strong>Local interactive default:</strong> Qwen3.6 A3B with one MTP token; it wins on steady-state latency, startup, and operational simplicity.</p>
-          <p><strong>Experimental Qwen3.8 profile:</strong> DFlash2; it is a real acceleration over the dense target and showed stronger evidence exploration in this small sample, but remains slower end to end and requires a pinned post-merge runtime.</p>
-          <p><strong>Public demo:</strong> hosted generation remains the latency-oriented default. Local profiles demonstrate private and offline deployment without changing the verified repository artifact beneath them.</p>
+          <p class="callout-label">Choose the profile that fits your workflow</p>
+          <p><strong>For fast local interaction:</strong> start with Qwen3.6 A3B and one MTP token. On our DGX Spark it had the shortest startup and response times, making it the practical first profile to reproduce.</p>
+          <p><strong>To explore Qwen3.8 locally:</strong> pair it with DFlash2. Speculative decoding made the dense target substantially faster, and it explored more evidence in our small quality sample, although A3B still finished faster end to end.</p>
+          <p><strong>To use another inference backend:</strong> keep the same CodeNib index. Repository retrieval, source citations, and commit verification remain consistent whether generation runs locally or through a hosted API.</p>
         </div>
 
         <h2>Local and hosted are deployment profiles</h2>

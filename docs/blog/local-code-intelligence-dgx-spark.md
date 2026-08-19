@@ -368,16 +368,17 @@ DFlash2, where most of the latter was target and draft loading plus prefill
 CUDA-graph capture. Both coexisted with the embedding server and completed the
 tests without an OOM or container restart. Only concurrency one was validated.
 
-Our current choice is consequently layered:
+Choose the profile that fits your workflow:
 
-- **Local interactive default:** Qwen3.6 A3B with one MTP token. It wins on
-  steady-state latency, startup, and operational simplicity.
-- **Experimental Qwen3.8 profile:** DFlash2. It is a real acceleration over the
-  dense target and showed stronger evidence exploration in this small sample,
-  but it remains slower end to end and requires a pinned post-merge runtime.
-- **Public demo:** hosted generation remains the latency-oriented default. The
-  local profiles demonstrate private and offline deployment without changing
-  the verified repository artifact beneath them.
+- **For fast local interaction:** start with Qwen3.6 A3B and one MTP token. On
+  our DGX Spark it had the shortest startup and response times, making it the
+  practical first profile to reproduce.
+- **To explore Qwen3.8 locally:** pair it with DFlash2. Speculative decoding
+  made the dense target substantially faster, and it explored more evidence in
+  our small quality sample, although A3B still finished faster end to end.
+- **To use another inference backend:** keep the same CodeNib index. Repository
+  retrieval, source citations, and commit verification remain consistent
+  whether generation runs locally or through a hosted API.
 
 ## Local and Hosted Are Deployment Profiles
 
