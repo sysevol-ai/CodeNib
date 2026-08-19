@@ -13,6 +13,7 @@ import pytest
 
 from codenib.web.repository_files import (
     git_grep_paths,
+    git_source_slice,
     git_tree_paths,
     live_source_slice,
 )
@@ -67,6 +68,31 @@ def test_git_snapshot_caches_evict_old_commits(tmp_path: Path) -> None:
     git_grep_paths(str(tmp_path), commits[0], "generated")
     assert git_tree_paths.cache_info().misses == tree_misses + 1
     assert git_grep_paths.cache_info().misses == grep_misses + 1
+
+
+def test_git_snapshot_reads_shared_owner_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test")
+    (tmp_path / "source.py").write_text("VALUE = 'indexed'\n", encoding="utf-8")
+    _git(tmp_path, "add", "source.py")
+    _git(tmp_path, "commit", "-qm", "indexed source")
+    commit = _git(tmp_path, "rev-parse", "HEAD")
+
+    # Git's own test hook reproduces a checkout owned by another account.
+    monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+
+    assert git_tree_paths(str(tmp_path), commit) == frozenset({"source.py"})
+    assert git_grep_paths(str(tmp_path), commit, "indexed") == frozenset({"source.py"})
+    assert git_source_slice(str(tmp_path), commit, "source.py", 1, 1) == {
+        "file": "source.py",
+        "start_line": 1,
+        "end_line": 1,
+        "content": "VALUE = 'indexed'\n",
+    }
 
 
 def test_live_source_slice_bounds_explicit_line_ranges(tmp_path: Path) -> None:

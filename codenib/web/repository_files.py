@@ -38,6 +38,20 @@ def has_git_metadata(repo_dir: str) -> bool:
     return os.path.lexists(os.path.join(os.path.realpath(repo_dir), ".git"))
 
 
+def _git_command(repo_dir: str, *args: str) -> list[str]:
+    """Build a Git command that trusts only the requested repository root.
+
+    Published indexes are often served from a checkout owned by a build or
+    storage account rather than the runtime user.  Git otherwise rejects that
+    checkout as dubious before it can read the immutable indexed commit.  A
+    command-scoped ``safe.directory`` keeps the exception local to this exact,
+    canonical path instead of mutating the user's global Git configuration.
+    """
+
+    root = os.path.realpath(repo_dir)
+    return ["git", "-c", f"safe.directory={root}", "-C", root, *args]
+
+
 def safe_repo_relative_path(repo_dir: str, file_path: str) -> Optional[str]:
     """Return a repo-relative POSIX path without permitting an outside read.
 
@@ -85,7 +99,7 @@ def _git_blob(
     process: Optional[subprocess.Popen[bytes]] = None
     try:
         process = subprocess.Popen(
-            ["git", "-C", repo_dir, "show", f"{commit}:{relative}"],
+            _git_command(repo_dir, "show", f"{commit}:{relative}"),
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
@@ -122,9 +136,7 @@ def git_grep_paths(repo_dir: str, commit: str, pattern: str) -> frozenset[str]:
         return frozenset()
     try:
         result = subprocess.run(
-            [
-                "git",
-                "-C",
+            _git_command(
                 repo_dir,
                 "grep",
                 "-I",
@@ -134,7 +146,7 @@ def git_grep_paths(repo_dir: str, commit: str, pattern: str) -> frozenset[str]:
                 pattern,
                 commit,
                 "--",
-            ],
+            ),
             check=False,
             capture_output=True,
             text=True,
@@ -159,7 +171,7 @@ def git_tree_paths(repo_dir: str, commit: str) -> Optional[frozenset[str]]:
         return None
     try:
         result = subprocess.run(
-            ["git", "-C", repo_dir, "ls-tree", "-r", "-z", "--name-only", commit],
+            _git_command(repo_dir, "ls-tree", "-r", "-z", "--name-only", commit),
             check=False,
             capture_output=True,
             timeout=20,
