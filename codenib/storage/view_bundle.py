@@ -28,6 +28,7 @@ from threading import RLock
 from typing import Any, BinaryIO, Callable, Iterable, Iterator, Mapping, TypeVar
 
 from .._atomic_directory import (
+    _MAX_ORDERED_ACTION_CANCELLATION_RETRIES,
     DirectoryOrphan,
     PublicationDirectoryReader,
     TreeFileRecord,
@@ -100,6 +101,9 @@ _ZIP64_LIMIT = (1 << 31) - 1
 _ZIP_FILECOUNT_LIMIT = (1 << 16) - 1
 _BUNDLE_STREAM_CLOSE_RECOVERY_LIMIT = 64
 _BUNDLE_STREAM_REVOKE_RECOVERY_LIMIT = 64
+_VERIFIED_BUNDLE_STREAM_CLOSE_RECOVERY_LIMIT = (
+    _MAX_ORDERED_ACTION_CANCELLATION_RETRIES + 1
+)
 _FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 _VIEW_TYPE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z", re.ASCII)
 _WINDOWS_RESERVED_NAMES = frozenset(
@@ -779,7 +783,7 @@ class _CallbackScopedVerifiedBundleFile:
         "_primary_error",
     )
 
-    def __init__(self, archive: BinaryIO) -> None:
+    def __init__(self, archive: BinaryIO | None = None) -> None:
         self._archive = archive
         self._cleanup_attempts = 0
         self._first_cleanup_error: BaseException | None = None
@@ -799,18 +803,34 @@ class _CallbackScopedVerifiedBundleFile:
         # completion boundary for its arbitrary ``close`` implementation.  Do
         # not close a captured integer fd behind a still-open Python file: a
         # later file-object close could otherwise target a reused descriptor.
-        return self._archive.closed is True
+        archive = self._archive
+        return archive is None or archive.closed is True
+
+    def _acquire_archive(self, callback: Callable[[], BinaryIO]) -> BinaryIO:
+        if self._archive is not None:
+            raise RuntimeError("temporary view-bundle stream is already acquired")
+        # The revocable facade and its ordered cleanup action exist before the
+        # native temporary-file call.  Only the native return-to-STORE_ATTR edge
+        # remains outside Python's ownership boundary.
+        self._archive = callback()
+        return self._archive
 
     def _cleanup_complete(self) -> bool:
         return not self._lifetime.active and self._archive_is_closed()
 
     def _require_active(self) -> None:
-        if self._lifetime.process_id != os.getpid() or not self._lifetime.active:
+        if (
+            self._lifetime.process_id != os.getpid()
+            or not self._lifetime.active
+            or self._archive is None
+        ):
             raise ValueError("I/O operation on closed file.")
 
     def _invoke(self, name: str, *args: Any, **kwargs: Any) -> Any:
         self._require_active()
-        method = getattr(self._archive, name)
+        archive = self._archive
+        assert archive is not None
+        method = getattr(archive, name)
         result = method(*args, **kwargs)
         self._require_active()
         return result
@@ -932,8 +952,12 @@ class _CallbackScopedVerifiedBundleFile:
         # code.  Even a persistent close failure then leaves only this private
         # cleanup owner with access to the real tempfile.
         self._lifetime.active = False
+        archive = self._archive
+        if archive is None:
+            _forget_verified_bundle_stream_cleanup_owner(self)
+            return
         try:
-            self._archive.close()
+            archive.close()
         except BaseException as error:  # noqa: B036 - cleanup boundary
             try:
                 physically_closed = self._archive_is_closed()
@@ -978,7 +1002,7 @@ class _CallbackScopedVerifiedBundleFile:
             self._first_cleanup_error = error
         if self._cleanup_complete():
             return False
-        if self._cleanup_attempts < _BUNDLE_STREAM_CLOSE_RECOVERY_LIMIT:
+        if self._cleanup_attempts < _VERIFIED_BUNDLE_STREAM_CLOSE_RECOVERY_LIMIT:
             return True
         primary = (
             self._primary_error
@@ -997,10 +1021,28 @@ class _CallbackScopedVerifiedBundleFile:
             return
         self._prepare_cleanup()
         action = _verified_bundle_stream_close_action(self)
-        with _run_context_with_cleanup_actions(lambda: (action,)):
+        with _run_context_with_cleanup_actions((action,)):
             pass
         if self._cleanup_complete():
             _forget_verified_bundle_stream_cleanup_owner(self)
+
+
+class _CallbackScopedVerifiedBundleCleanupOwner:
+    """Retry physical stream cleanup after callback authority is revoked."""
+
+    __slots__ = ("_stream",)
+
+    def __init__(self, stream: _CallbackScopedVerifiedBundleFile) -> None:
+        self._stream = stream
+
+    @property
+    def closed(self) -> bool:
+        if _verified_bundle_stream_cleanup_owner_is_retained(self._stream):
+            return True
+        return self._stream._cleanup_complete()
+
+    def close(self) -> None:
+        self._stream._close_for_cleanup()
 
 
 _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS: list[
@@ -1030,6 +1072,17 @@ def _register_verified_bundle_stream_cleanup_owner(
             for owner in _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS
         ):
             _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS.append(cleanup_owner)
+
+
+def _verified_bundle_stream_cleanup_owner_is_retained(
+    cleanup_owner: _CallbackScopedVerifiedBundleFile,
+) -> bool:
+    _synchronize_verified_bundle_stream_cleanup_process()
+    with _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_LOCK:
+        return any(
+            owner is cleanup_owner
+            for owner in _RETAINED_VERIFIED_BUNDLE_STREAM_CLEANUP_OWNERS
+        )
 
 
 def _forget_verified_bundle_stream_cleanup_owner(
@@ -1081,6 +1134,7 @@ def _verified_bundle_stream_close_action(
         action=stream._close_for_cleanup,
         complete=stream._cleanup_complete,
         retry_incomplete=stream._retry_incomplete_cleanup,
+        incomplete_owner=_CallbackScopedVerifiedBundleCleanupOwner(stream),
     )
 
 
@@ -1136,17 +1190,19 @@ def consume_verified_view_bundle_stream(
     if not callable(read):
         raise StorageIntegrityError("view bundle stream cannot be read")
 
-    try:
-        archive = tempfile.TemporaryFile(mode="w+b")
-    except Exception as exc:
-        raise StorageIntegrityError(
-            "view bundle temporary copy could not be opened"
-        ) from exc
-    callback_file = _CallbackScopedVerifiedBundleFile(archive)
+    callback_file = _CallbackScopedVerifiedBundleFile()
     callback_file._prepare_cleanup()
     close_action = _verified_bundle_stream_close_action(callback_file)
-    with _run_context_with_cleanup_actions(lambda: (close_action,)):
+    with _run_context_with_cleanup_actions((close_action,)):
         try:
+            try:
+                archive = callback_file._acquire_archive(
+                    lambda: tempfile.TemporaryFile(mode="w+b")
+                )
+            except Exception as exc:
+                raise StorageIntegrityError(
+                    "view bundle temporary copy could not be opened"
+                ) from exc
             observed = hashlib.sha256()
             remaining = byte_size
             while remaining:
