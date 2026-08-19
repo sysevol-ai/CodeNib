@@ -14,6 +14,7 @@ from codenib.storage import (
     RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS,
     RETAINED_IMPORT_RESPONSE_MAX_NODES,
     RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS,
+    ReceiptRetainingObjectStore,
     RetainedImportCatalog,
     RetainedImportObjectStore,
     StreamingObjectStore,
@@ -45,6 +46,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
     try:
         assert isinstance(object_store, ObjectStore)
         assert isinstance(object_store, ReceiptVerifyingObjectStore)
+        assert isinstance(object_store, ReceiptRetainingObjectStore)
         assert isinstance(object_store, StreamingObjectStore)
         assert isinstance(object_store, RetainedImportObjectStore)
         assert isinstance(catalog, IndexCatalog)
@@ -127,7 +129,7 @@ def test_receipt_verification_is_an_additive_object_store_capability() -> None:
     assert not isinstance(legacy, StreamingObjectStore)
 
 
-def test_streaming_is_additive_to_receipt_verifying_object_store() -> None:
+def test_receipt_retention_is_narrower_than_retained_import_capability() -> None:
     class ReceiptOnlyObjectStore:
         def put_bytes(self, data):
             raise NotImplementedError
@@ -157,8 +159,42 @@ def test_streaming_is_additive_to_receipt_verifying_object_store() -> None:
 
     assert isinstance(receipt_only, ObjectStore)
     assert isinstance(receipt_only, ReceiptVerifyingObjectStore)
+    assert not isinstance(receipt_only, ReceiptRetainingObjectStore)
     assert not isinstance(receipt_only, StreamingObjectStore)
     assert not isinstance(receipt_only, RetainedImportObjectStore)
+
+    class RetainingObjectStore(ReceiptOnlyObjectStore):
+        def retain_receipts(self, expected, callback):
+            raise NotImplementedError
+
+    retaining = RetainingObjectStore()
+
+    assert isinstance(retaining, ObjectStore)
+    assert isinstance(retaining, ReceiptVerifyingObjectStore)
+    assert isinstance(retaining, ReceiptRetainingObjectStore)
+    assert not isinstance(retaining, StreamingObjectStore)
+    assert not isinstance(retaining, RetainedImportObjectStore)
+
+    class StreamingVerifyingObjectStore(ReceiptOnlyObjectStore):
+        def put_chunks(self, chunks, expected_digest, expected_size):
+            raise NotImplementedError
+
+    streaming_verifying = StreamingVerifyingObjectStore()
+
+    assert isinstance(streaming_verifying, StreamingObjectStore)
+    assert isinstance(streaming_verifying, ReceiptVerifyingObjectStore)
+    assert not isinstance(streaming_verifying, ReceiptRetainingObjectStore)
+    assert not isinstance(streaming_verifying, RetainedImportObjectStore)
+
+    class ImportObjectStore(RetainingObjectStore):
+        def put_chunks(self, chunks, expected_digest, expected_size):
+            raise NotImplementedError
+
+    retained_import = ImportObjectStore()
+
+    assert isinstance(retained_import, ReceiptRetainingObjectStore)
+    assert isinstance(retained_import, StreamingObjectStore)
+    assert isinstance(retained_import, RetainedImportObjectStore)
 
 
 def test_retained_import_capability_requires_streaming_and_receipt_checks() -> None:
@@ -192,6 +228,7 @@ def test_retained_import_capability_requires_streaming_and_receipt_checks() -> N
     assert isinstance(streaming_only, ObjectStore)
     assert isinstance(streaming_only, StreamingObjectStore)
     assert not isinstance(streaming_only, ReceiptVerifyingObjectStore)
+    assert not isinstance(streaming_only, ReceiptRetainingObjectStore)
     assert not isinstance(streaming_only, RetainedImportObjectStore)
 
 

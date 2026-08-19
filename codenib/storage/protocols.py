@@ -118,7 +118,8 @@ class ObjectStore(Protocol):
     implementations.  A separate ``open`` after verification is not pinned by
     that earlier result.  This protocol gains a longer lifetime only with an
     explicit pin or lease.  Publication coordinators use the additive
-    :class:`RetainedImportObjectStore` callback scope for that longer lifetime.
+    :class:`ReceiptRetainingObjectStore` callback scope for that longer
+    lifetime.
     """
 
     def put_bytes(self, data: bytes) -> BlobInfo: ...
@@ -156,6 +157,27 @@ class ReceiptVerifyingObjectStore(ObjectStore, Protocol):
 
 
 @runtime_checkable
+class ReceiptRetainingObjectStore(ReceiptVerifyingObjectStore, Protocol):
+    """Additive capability for callback-scoped exact receipt retention."""
+
+    def retain_receipts(
+        self,
+        expected: tuple[BlobInfo, ...],
+        callback: Callable[[], _RetainedResult],
+    ) -> _RetainedResult:
+        """Verify and retain exact objects while *callback* uses them.
+
+        Implementations must serialize garbage collection or reclamation
+        against this scope.  Every receipt is revalidated before ``callback``
+        starts, and its canonical storage key remains resolvable until the
+        callback returns or raises.  This callback-shaped lease prevents a
+        caller from accidentally escaping a backend-specific pin token.
+        """
+
+        ...
+
+
+@runtime_checkable
 class StreamingObjectStore(ObjectStore, Protocol):
     """Additive capability for bounded, expected-identity object ingestion.
 
@@ -179,31 +201,16 @@ class StreamingObjectStore(ObjectStore, Protocol):
 @runtime_checkable
 class RetainedImportObjectStore(
     StreamingObjectStore,
-    ReceiptVerifyingObjectStore,
+    ReceiptRetainingObjectStore,
     Protocol,
 ):
     """Capabilities required by retained artifact import coordinators.
 
-    This intersection remains additive: neither capability is added to the
-    baseline :class:`ObjectStore`, so existing adapters keep their runtime
-    protocol shape until they explicitly implement retained imports.
+    This intersection remains additive: streaming and receipt retention are
+    not added to the baseline :class:`ObjectStore`, so existing adapters keep
+    their runtime protocol shape until they explicitly implement retained
+    imports.
     """
-
-    def retain_receipts(
-        self,
-        expected: tuple[BlobInfo, ...],
-        callback: Callable[[], _RetainedResult],
-    ) -> _RetainedResult:
-        """Verify and retain exact objects while *callback* publishes them.
-
-        Implementations must serialize garbage collection or reclamation
-        against this scope.  Every receipt is revalidated before ``callback``
-        starts, and its canonical storage key remains resolvable until the
-        callback returns or raises.  This callback-shaped lease prevents a
-        caller from accidentally escaping a backend-specific pin token.
-        """
-
-        ...
 
 
 @runtime_checkable
@@ -448,6 +455,7 @@ __all__ = [
     "IndexCatalog",
     "JobCatalog",
     "ObjectStore",
+    "ReceiptRetainingObjectStore",
     "ReceiptVerifyingObjectStore",
     "RETAINED_IMPORT_CATALOG_CONTRACT",
     "RETAINED_IMPORT_RESPONSE_MAX_DEPTH",
