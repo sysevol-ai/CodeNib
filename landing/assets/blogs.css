@@ -241,6 +241,10 @@ pre,
   padding: 14px 0 112px;
 }
 
+.posts article + article {
+  margin-top: 28px;
+}
+
 .section-label {
   margin-bottom: 22px;
   color: var(--ink-2);

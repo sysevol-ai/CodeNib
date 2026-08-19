@@ -1,0 +1,105 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">CodeNib local reference stack on one DGX Spark</title>
+  <desc id="desc">A repository is compiled into a verified manifest with lexical, vector, source, and graph views. Local Qwen generation and embeddings serve a Wiki, Ask, and MCP agents from one DGX Spark.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/>
+      <stop offset="1" stop-color="#0d1b34"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#42d7e8"/>
+      <stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#13243f"/>
+      <stop offset="1" stop-color="#0e1c32"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#020617" flood-opacity=".34"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#background)"/>
+  <circle cx="1090" cy="75" r="176" fill="#172554" opacity=".55"/>
+  <circle cx="1110" cy="60" r="110" fill="#1e3a8a" opacity=".3"/>
+  <path d="M0 510C190 452 296 594 492 528c170-58 298-42 708 52v50H0z" fill="#0f2d47" opacity=".42"/>
+
+  <g font-family="Inter, Geist, Arial, sans-serif">
+    <text x="64" y="64" fill="#8ea3c2" font-size="15" font-weight="650" letter-spacing="3">CODENIB · LOCAL REFERENCE STACK</text>
+    <text x="64" y="126" fill="#f8fafc" font-size="48" font-weight="700" letter-spacing="-1.8">One repository index.</text>
+    <text x="64" y="180" fill="url(#accent)" font-size="48" font-weight="700" letter-spacing="-1.8">One DGX Spark.</text>
+    <text x="66" y="218" fill="#aebed6" font-size="18">Source-linked Wiki · hybrid retrieval · CodeGraph · MCP</text>
+
+    <g transform="translate(856 54)" filter="url(#shadow)">
+      <rect width="280" height="174" rx="18" fill="url(#card)" stroke="#294568"/>
+      <circle cx="28" cy="31" r="7" fill="#5eead4"/>
+      <text x="46" y="37" fill="#d8e5f7" font-size="14" font-weight="650" letter-spacing="1.2">LOCAL ON LOOPBACK</text>
+      <text x="24" y="76" fill="#fff" font-size="21" font-weight="680">NVIDIA DGX Spark</text>
+      <text x="24" y="105" fill="#9eb2cf" font-size="14">GB10 · Arm64 · 128 GB unified</text>
+      <line x1="24" y1="126" x2="256" y2="126" stroke="#294568"/>
+      <text x="24" y="151" fill="#67e8f9" font-family="ui-monospace, SFMono-Regular, monospace" font-size="13">Qwen3.6 + vLLM</text>
+      <text x="201" y="151" fill="#a5b4fc" font-family="ui-monospace, SFMono-Regular, monospace" font-size="13">:8080</text>
+    </g>
+
+    <g transform="translate(64 292)" filter="url(#shadow)">
+      <rect width="224" height="176" rx="18" fill="url(#card)" stroke="#294568"/>
+      <text x="22" y="35" fill="#8399b8" font-size="12" font-weight="650" letter-spacing="1.4">INPUT</text>
+      <text x="22" y="75" fill="#f8fafc" font-size="20" font-weight="680">Repository</text>
+      <text x="22" y="103" fill="#aebed6" font-size="14">commit + fingerprint</text>
+      <rect x="22" y="127" width="180" height="27" rx="7" fill="#091526" stroke="#294568"/>
+      <text x="34" y="146" fill="#67e8f9" font-family="ui-monospace, SFMono-Regular, monospace" font-size="12">source verified</text>
+    </g>
+
+    <path d="M300 380h56" stroke="#4fd1e1" stroke-width="2"/>
+    <path d="m350 372 10 8-10 8" fill="none" stroke="#4fd1e1" stroke-width="2"/>
+
+    <g transform="translate(372 270)" filter="url(#shadow)">
+      <rect width="304" height="220" rx="18" fill="url(#card)" stroke="#294568"/>
+      <text x="22" y="35" fill="#8399b8" font-size="12" font-weight="650" letter-spacing="1.4">COMPILE ONCE</text>
+      <text x="22" y="72" fill="#f8fafc" font-size="20" font-weight="680">Independent views</text>
+      <g font-family="ui-monospace, SFMono-Regular, monospace" font-size="13">
+        <rect x="22" y="94" width="122" height="34" rx="8" fill="#0b1a2e" stroke="#315178"/>
+        <text x="38" y="116" fill="#d8e5f7">BM25</text>
+        <rect x="160" y="94" width="122" height="34" rx="8" fill="#0b1a2e" stroke="#315178"/>
+        <text x="176" y="116" fill="#d8e5f7">dense</text>
+        <rect x="22" y="141" width="122" height="34" rx="8" fill="#0b1a2e" stroke="#315178"/>
+        <text x="38" y="163" fill="#d8e5f7">source</text>
+        <rect x="160" y="141" width="122" height="34" rx="8" fill="#0b1a2e" stroke="#315178"/>
+        <text x="176" y="163" fill="#d8e5f7">graph</text>
+      </g>
+      <text x="22" y="201" fill="#9eb2cf" font-size="13">Incremental · capability-bearing</text>
+    </g>
+
+    <path d="M688 380h56" stroke="#7186f3" stroke-width="2"/>
+    <path d="m738 372 10 8-10 8" fill="none" stroke="#7186f3" stroke-width="2"/>
+
+    <g transform="translate(760 292)" filter="url(#shadow)">
+      <rect width="376" height="176" rx="18" fill="url(#card)" stroke="#294568"/>
+      <text x="22" y="35" fill="#8399b8" font-size="12" font-weight="650" letter-spacing="1.4">ONE VERIFIED MANIFEST</text>
+      <g transform="translate(22 61)">
+        <rect width="96" height="68" rx="11" fill="#0b1a2e" stroke="#315178"/>
+        <text x="48" y="31" fill="#fff" font-size="16" font-weight="660" text-anchor="middle">Wiki</text>
+        <text x="48" y="50" fill="#8ea3c2" font-size="11" text-anchor="middle">humans</text>
+      </g>
+      <g transform="translate(132 61)">
+        <rect width="96" height="68" rx="11" fill="#0b1a2e" stroke="#315178"/>
+        <text x="48" y="31" fill="#fff" font-size="16" font-weight="660" text-anchor="middle">Ask</text>
+        <text x="48" y="50" fill="#8ea3c2" font-size="11" text-anchor="middle">Qwen</text>
+      </g>
+      <g transform="translate(242 61)">
+        <rect width="112" height="68" rx="11" fill="#0b1a2e" stroke="#315178"/>
+        <text x="56" y="31" fill="#fff" font-size="16" font-weight="660" text-anchor="middle">MCP</text>
+        <text x="56" y="50" fill="#8ea3c2" font-size="11" text-anchor="middle">agents</text>
+      </g>
+      <text x="22" y="153" fill="#67e8f9" font-size="13">Exact paths · line ranges · commit identity</text>
+    </g>
+
+    <text x="64" y="562" fill="#8297b6" font-size="14">Generation and embeddings can stay local. BM25 and CodeGraph remain model-free.</text>
+    <text x="64" y="596" fill="#d8e5f7" font-size="15" font-weight="630">Index once. Explore it as a Wiki. Serve it to any coding agent.</text>
+    <text x="1136" y="596" fill="#8399b8" font-size="13" text-anchor="end">codenib.ai</text>
+  </g>
+</svg>

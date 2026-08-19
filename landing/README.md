@@ -18,6 +18,8 @@ The site uses real directory indexes for nested routes:
 
 - `/` is `landing/index.html`;
 - `/blogs/` is `landing/blogs/index.html`;
+- `/blogs/local-code-intelligence-dgx-spark/` is the reproducible local
+  deployment reference;
 - each article lives at `landing/blogs/<slug>/index.html`.
 
 Nested pages should reference shared assets from `/assets/...` so the same URL
