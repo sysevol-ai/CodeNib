@@ -238,8 +238,8 @@ closed in staging, binding, BM25 reads, and MCP reads.  The shared credential
 classifier lives outside both artifacts and storage so the artifact layer does
 not depend on the catalog implementation.  These gates close the current
 portable context publication surface; they are a prerequisite for, but do not
-complete, the remaining legacy manifest import/export adapter or a future
-streaming payload revision.
+complete, retained filesystem materialization, production compiler/runtime
+wiring, or a future streaming payload revision.
 
 Local filesystem publication now has an explicit strict-authority gate. Regular
 files are written through caller-owned staged descriptors, installed with
@@ -453,9 +453,9 @@ publication cannot move the old ref. If cancellation lands after SQLite commits
 but before the caller observes the result, the direct M1 call is at-least-once:
 an exact retry idempotently resolves to the already-published snapshot without
 advancing the ref again. This is the direct M1 bootstrap path, not the M2 fenced
-job-success transaction. Retained
-materialization/export, production compiler/runtime wiring, and a production
-GC implementation and policy remain outstanding, so M1 remains in progress.
+job-success transaction. Retained materialization, production compiler/runtime
+wiring, and a production GC implementation and policy remain outstanding, so
+M1 remains in progress.
 
 The first read-only retained `RepoManifest` exporter now closes the data-only
 round trip without introducing path authority. It accepts the additive
@@ -470,9 +470,11 @@ are checked source-free while native vector indexes remain inert. Unselected
 entries are omitted from the emitted manifest, unknown capability extensions
 are preserved, and the built-in sparse/dense/hybrid/symbol capabilities are
 recomputed from the retained selection. A final receipt sweep precedes return
-of canonical `RepoManifest` v1.1 bytes and a point-in-time observation receipt.
-That receipt is neither a GC pin nor a materialization/native-load authority;
-filesystem output and runtime activation remain separate future boundaries.
+of canonical `RepoManifest` v1.1 bytes and a point-in-time observation receipt
+that carries the attested namespace ID, canonical repository key, and derived
+repository ID. It is neither a GC pin nor a materialization/native-load
+authority; filesystem output and runtime activation remain separate future
+boundaries.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable
