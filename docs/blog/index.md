@@ -13,6 +13,7 @@ context for people and coding agents.
 
 ### [One Repository Index for Humans and Agents](local-code-intelligence-dgx-spark.md)
 
-**August 17, 2026** — A complete local CodeNib deployment on NVIDIA DGX Spark,
-with Qwen3.6 served through vLLM, a local embedding endpoint, a source-linked
-Wiki, CodeGraph, and MCP clients sharing one verified repository manifest.
+**August 19, 2026** — A complete local CodeNib deployment on NVIDIA DGX Spark,
+including a measured Qwen3.6 A3B versus Qwen3.8 plus DFlash2 comparison, local
+embeddings, a source-linked Wiki, CodeGraph, and MCP clients sharing one
+verified repository manifest.

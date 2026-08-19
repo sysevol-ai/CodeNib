@@ -8,10 +8,10 @@ SPDX-License-Identifier: Apache-2.0
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>How We Run CodeNib Locally on One DGX Spark — CodeNib</title>
-  <meta name="description" content="A reproducible CodeNib reference profile with Qwen generation, local embeddings, layered local and hosted configuration, source-linked Wiki, CodeGraph, and MCP on one NVIDIA DGX Spark.">
+  <meta name="description" content="A reproducible CodeNib reference profile with local embeddings, Wiki, CodeGraph, MCP, and a measured Qwen3.6 A3B versus Qwen3.8 plus DFlash2 comparison on one NVIDIA DGX Spark.">
   <meta name="author" content="CodeNib Team">
   <meta property="og:title" content="How We Run CodeNib Locally on One DGX Spark">
-  <meta property="og:description" content="One verified repository manifest, local Qwen generation and embeddings, and the same source-linked context for Wiki readers and coding agents.">
+  <meta property="og:description" content="One verified repository manifest, two measured local Qwen serving paths, and the same source-linked context for Wiki readers and coding agents.">
   <meta property="og:image" content="https://codenib.ai/assets/blogs/local-code-intelligence-dgx-spark.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -26,7 +26,7 @@ SPDX-License-Identifier: Apache-2.0
   <meta property="article:tag" content="Qwen">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="How We Run CodeNib Locally on One DGX Spark">
-  <meta name="twitter:description" content="The exact local model, embedding, repository, Wiki, and MCP layers behind our recorded CodeNib reference stack.">
+  <meta name="twitter:description" content="The exact local stack and our measured Qwen3.6 A3B versus Qwen3.8 plus DFlash2 tradeoff on DGX Spark.">
   <meta name="twitter:image" content="https://codenib.ai/assets/blogs/local-code-intelligence-dgx-spark.png">
   <meta name="twitter:image:alt" content="CodeNib local reference architecture on one NVIDIA DGX Spark.">
   <link rel="canonical" href="https://codenib.ai/blogs/local-code-intelligence-dgx-spark/">
@@ -37,7 +37,7 @@ SPDX-License-Identifier: Apache-2.0
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     "headline": "How We Run CodeNib Locally on One DGX Spark",
-    "description": "A reproducible CodeNib reference profile with local Qwen generation and embeddings, layered configuration, Wiki, CodeGraph, and MCP.",
+    "description": "A reproducible CodeNib reference profile with local Qwen generation and embeddings, layered configuration, Wiki, CodeGraph, MCP, and a measured A3B versus DFlash2 comparison.",
     "image": "https://codenib.ai/assets/blogs/local-code-intelligence-dgx-spark.png",
     "datePublished": "2026-08-19T00:00:00-07:00",
     "dateModified": "2026-08-19T00:00:00-07:00",
@@ -81,10 +81,10 @@ SPDX-License-Identifier: Apache-2.0
         <div class="post-meta">
           <span class="tag">Local deployment</span>
           <time datetime="2026-08-19">August 19, 2026</time>
-          <span>7 min read</span>
+          <span>11 min read</span>
         </div>
         <h1 class="technical-title" id="article-title">How We Run CodeNib Locally on One DGX Spark</h1>
-        <p class="deck">The exact model, embedding, repository, Wiki, and MCP layers behind our local reference stack—and the boundary between a reproducible configuration and an experimental model candidate.</p>
+        <p class="deck">The exact model, embedding, repository, Wiki, and MCP layers behind our local reference stack—plus a same-machine Qwen3.6 A3B versus Qwen3.8 and DFlash2 comparison.</p>
       </header>
 
       <div class="article-body article-lead">
@@ -255,17 +255,84 @@ CODENIB_DEMO_PROFILE=api bash scripts/start_web.sh</code></pre>
           </div>
         </div>
 
-        <p>In one August 2026 acceptance smoke across 26 repositories, warm dense queries took 11–25 ms. Generated Overview pages already on disk returned in roughly 3–4 ms on their first read after a backend restart and around 0.7 ms warm. Full repository authorization and view loading ranged from about 0.5 seconds for Requests and bat to 16.2 seconds for Babel. Three fixed local Qwen3.6 Ask cases took 19.6–23.5 seconds end to end.</p>
+        <p>In one August 2026 acceptance smoke across 26 repositories, warm dense queries took 11–25 ms. Generated Overview pages already on disk returned in roughly 3–4 ms on their first read after a backend restart and around 0.7 ms warm. Full repository authorization and view loading ranged from about 0.5 seconds for Requests and bat to 16.2 seconds for Babel. In an earlier three-turn smoke, three fixed local Qwen3.6 Ask cases took 19.6–23.5 seconds end to end.</p>
 
         <p class="scope-note">These are operational observations from one host, not a model leaderboard. The generation sample is too small for a quality or throughput claim. A publishable comparison also needs model and runtime revisions, context length, cache state, TTFT, output tokens per second, and request concurrency.</p>
 
-        <h2>Qwen3.8 plus DFlash2 is our next candidate, not this baseline</h2>
+        <h2>Qwen3.8 plus DFlash2 versus the A3B baseline</h2>
 
-        <p><a href="https://huggingface.co/incoai/Qwen3.8-27B-DFlash2"><code>incoai/Qwen3.8-27B-DFlash2</code></a> is a roughly 2B-parameter, 3.85 GB BF16 draft checkpoint for <a href="https://huggingface.co/Qwen/Qwen3.8-27B"><code>Qwen/Qwen3.8-27B</code></a>. It is not a standalone 27B replacement. A speculative server loads the 27B target and the draft together; the target verifies every proposed block so the decoding result remains lossless.</p>
+        <p>We have now run the comparison on the same DGX Spark. It is important to name the systems precisely because this is not a same-model engine benchmark. <a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B-FP8"><code>Qwen/Qwen3.6-35B-A3B-FP8</code></a> is a mixture-of-experts model with 35 billion total parameters and about 3 billion activated per token; we serve it with vLLM and one built-in MTP draft token. <a href="https://huggingface.co/Qwen/Qwen3.8-27B-FP8"><code>Qwen/Qwen3.8-27B-FP8</code></a> is a dense 27-billion-parameter target. <a href="https://huggingface.co/incoai/Qwen3.8-27B-DFlash2"><code>incoai/Qwen3.8-27B-DFlash2</code></a> is a five-layer draft model, not a standalone replacement: we configured an eight-position speculation block and the 27B target verifies its proposals.</p>
 
-        <p>The capacity fits our 128 GB system, and we have already booted the Qwen3.8-27B FP8 target on GB10 with a 65,536-token cap and its built-in MTP path. DFlash2 itself remains an experimental A/B candidate on this host. As of August 19, 2026, its official vLLM instructions install the head of <a href="https://github.com/vllm-project/vllm/pull/52816">an open vLLM pull request</a>; <a href="https://github.com/ggml-org/llama.cpp/pull/27342">llama.cpp support is also still under review</a>. We will not replace the stable demo endpoint until the pinned runtime passes startup, tool calling, source-citation, long-context, and repeated latency gates on GB10.</p>
+        <p>Our pins were Qwen3.6 revision <code>95a723d08a9490559dae23d0cff1d9466213d989</code> on vLLM <code>0.19.2rc1.dev134+gfe9c3d6c5</code>; Qwen3.8 target revision <code>017b9c7af6b5689d5dd426a76e0bc077eb5ca20a</code>; DFlash2 draft revision <code>dedf8df68adfb1afeaf7b7480c0a0243108177b4</code>; and SGLang commit <a href="https://github.com/sgl-project/sglang/commit/c14312a66420b75ca9a11bf1817c4db1fa26b097"><code>c14312a</code></a>, which contains the merged DFlash2 path. The tested alternative endpoint was:</p>
 
-        <p>This is also why we do not copy H200 throughput numbers into a DGX Spark claim. The useful comparison is the same Qwen3.8 target, prompts, cache state, context, and output limits across autoregressive, built-in MTP, and DFlash2 on this machine.</p>
+        <pre><code>python -m sglang.launch_server \
+  --model-path Qwen/Qwen3.8-27B-FP8 \
+  --served-model-name qwen3.8-27b-dflash2 \
+  --host 127.0.0.1 \
+  --port 8082 \
+  --context-length 65536 \
+  --mem-fraction-static 0.65 \
+  --max-running-requests 1 \
+  --reasoning-parser qwen3 \
+  --tool-call-parser qwen3_coder \
+  --speculative-algorithm DFLASH \
+  --speculative-draft-model-path incoai/Qwen3.8-27B-DFlash2 \
+  --speculative-num-draft-tokens 8 \
+  --disable-overlap-schedule</code></pre>
+
+        <h3>Direct decode</h3>
+
+        <p>Both systems used the same host, loaded local embedding service, 65,536-token context cap, request concurrency of one, temperature zero, disabled thinking, and 256 output tokens. These are warm steady-state client measurements; model download time is excluded.</p>
+
+        <div class="data-table" role="region" aria-label="Direct generation comparison between Qwen3.6 A3B with MTP and Qwen3.8 with DFlash2" tabindex="0">
+          <table>
+            <caption class="sr-only">Steady-state direct generation on one DGX Spark.</caption>
+            <thead>
+              <tr><th scope="col">Prompt</th><th scope="col">Qwen3.6 A3B + MTP</th><th scope="col">Qwen3.8 + DFlash2</th><th scope="col">A3B total</th><th scope="col">DFlash2 total</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Python LRU cache</th><td>68.39 tok/s</td><td>38.25 tok/s</td><td>3.86 s</td><td>6.82 s</td></tr>
+              <tr><th scope="row">Git three-way merge</th><td>62.28 tok/s</td><td>23.30 tok/s</td><td>4.21 s</td><td>11.10 s</td></tr>
+              <tr><th scope="row">Integer sequence</th><td>69.19 tok/s</td><td>48.65 tok/s</td><td>3.81 s</td><td>5.39 s</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>DFlash2 works: compared with ordinary decoding of the same Qwen3.8 target at about 7.9 tok/s, it accelerated these prompts by 2.95–6.17×. But the cross-model product decision has a different winner. The A3B model's much smaller active parameter path was still 1.42–2.67× faster in decode and 1.41–2.63× lower in end-to-end latency than Qwen3.8 plus DFlash2 on this GB10.</p>
+
+        <p>Acceptance was workload-dependent. DFlash2 accepted roughly 39–40% of proposed tokens on the code and prose prompts and 76% on the integer sequence. A highly repetitive warm sequence reached 99%. This is why an advertised accelerator speedup cannot be treated as one fixed number.</p>
+
+        <h3>Source-linked Ask</h3>
+
+        <p>Raw decode is only one part of CodeNib latency. We also ran the same fixed Requests, Gin, and Vue questions through the complete retrieval, tool-call, evidence-review, and citation path. Both models received five turns and used the same repository artifacts and embedding endpoint.</p>
+
+        <div class="data-table" role="region" aria-label="End-to-end CodeNib Ask comparison between local Qwen candidates" tabindex="0">
+          <table>
+            <caption class="sr-only">Five-turn CodeNib Ask results on three fixed repository questions.</caption>
+            <thead>
+              <tr><th scope="col">Candidate</th><th scope="col">Completed</th><th scope="col">Wall time</th><th scope="col">Expected files</th><th scope="col">Named terms</th><th scope="col">Citation ranges</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Qwen3.6 A3B + MTP</th><td>3/3</td><td>27.89–33.99 s; p50 28.38 s</td><td>0.722</td><td>1.000</td><td>3/3 valid</td></tr>
+              <tr><th scope="row">Qwen3.8 + DFlash2</th><td>3/3</td><td>47.12–104.23 s; p50 52.34 s</td><td>0.889</td><td>1.000</td><td>3/3 valid</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>The A3B path is the clear latency choice. The small quality sample is less one-sided: both models named every required symbol and returned valid source ranges, while Qwen3.8 retrieved more of the expected files. It also made 5–7 retrieval calls per case, versus five for A3B, which partly explains both the extra evidence and the longer tail.</p>
+
+        <p>We manually reviewed a fourth, adversarial Requests question about cookie precedence. A shallow reading of <code>merge_cookies()</code> suggests that session cookies win because one branch passes <code>overwrite=False</code>. In the actual <code>Session.prepare_request()</code> path, the request dictionary has already become a <code>CookieJar</code>; <code>RequestsCookieJar.update()</code> therefore overwrites a cookie with the same name, domain, and path. Qwen3.8 used its fifth turn to retrieve that method and corrected the answer. Qwen3.6 still made the shallow precedence claim with the same five-turn budget. This is useful evidence for retrieval behavior, not a general quality ranking: three fixed questions and one trap are far too small for that.</p>
+
+        <p>The code and sequence outputs from DFlash2 matched our ordinary Qwen3.8 hashes; the prose output did not. The target still verifies proposed tokens, but a different numerical kernel path can move a greedy boundary. We therefore do not describe this GB10 stack as byte-identical without a broader conformance test.</p>
+
+        <p>Warm cached startup was about five minutes for A3B and 6.4–7.0 minutes for DFlash2, where most of the latter was target and draft loading plus prefill CUDA-graph capture. Both coexisted with the embedding server and completed the tests without an OOM or container restart. Only concurrency one was validated.</p>
+
+        <div class="callout">
+          <p class="callout-label">What we would run today</p>
+          <p><strong>Local interactive default:</strong> Qwen3.6 A3B with one MTP token; it wins on steady-state latency, startup, and operational simplicity.</p>
+          <p><strong>Experimental Qwen3.8 profile:</strong> DFlash2; it is a real acceleration over the dense target and showed stronger evidence exploration in this small sample, but remains slower end to end and requires a pinned post-merge runtime.</p>
+          <p><strong>Public demo:</strong> hosted generation remains the latency-oriented default. Local profiles demonstrate private and offline deployment without changing the verified repository artifact beneath them.</p>
+        </div>
 
         <h2>Local and hosted are deployment profiles</h2>
 

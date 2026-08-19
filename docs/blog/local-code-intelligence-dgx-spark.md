@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 _Running a source-linked Wiki, CodeGraph, and MCP context locally on NVIDIA
 DGX Spark._
 
-**Published August 17, 2026**
+**Published August 19, 2026**
 
 Most code RAG systems end with chunks in a vector database and one chatbot.
 That is useful, but it leaves every other consumer to build another partial
@@ -249,8 +249,9 @@ Our August 2026 demo acceptance smoke covered 26 repositories. Warm dense
 queries took 11-25 ms. After a backend restart, already generated Overview
 pages were served in roughly 3-4 ms on their first cache read and around 0.7 ms
 warm. Repository authorization and full-view loading ranged from about 0.5
-seconds for Requests and bat to 16.2 seconds for Babel. Three fixed local
-Qwen3.6 Ask cases completed in 19.6-23.5 seconds end to end.
+seconds for Requests and bat to 16.2 seconds for Babel. In an earlier
+three-turn smoke, three fixed local Qwen3.6 Ask cases completed in 19.6-23.5
+seconds end to end.
 
 Those numbers are operational smoke evidence from one host, not a general
 model leaderboard. The sample of generation questions is too small for a
@@ -262,6 +263,121 @@ views loaded in about 0.6 seconds.
 For published performance comparisons, we will report model revision,
 runtime, context length, TTFT, output tokens per second, cold index time,
 incremental update time, cache state, and end-to-end latency separately.
+
+## Qwen3.8 Plus DFlash2 Versus the A3B Baseline
+
+We have now run that comparison on the same DGX Spark. It is important to name
+the two systems precisely because this is not a same-model engine benchmark:
+
+- [`Qwen/Qwen3.6-35B-A3B-FP8`](https://huggingface.co/Qwen/Qwen3.6-35B-A3B-FP8)
+  is a mixture-of-experts model with 35 billion total parameters and about 3
+  billion activated per token. We served it with vLLM and one built-in MTP
+  draft token.
+- [`Qwen/Qwen3.8-27B-FP8`](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) is a
+  dense 27-billion-parameter target.
+  [`incoai/Qwen3.8-27B-DFlash2`](https://huggingface.co/incoai/Qwen3.8-27B-DFlash2)
+  is a five-layer draft model, not a standalone replacement. We configured an
+  eight-position speculation block and the 27B target verifies its proposals.
+
+Our reproducibility pins were Qwen3.6 revision
+`95a723d08a9490559dae23d0cff1d9466213d989` on vLLM
+`0.19.2rc1.dev134+gfe9c3d6c5`; Qwen3.8 target revision
+`017b9c7af6b5689d5dd426a76e0bc077eb5ca20a`; DFlash2 draft revision
+`dedf8df68adfb1afeaf7b7480c0a0243108177b4`; and SGLang commit
+[`c14312a66420b75ca9a11bf1817c4db1fa26b097`](https://github.com/sgl-project/sglang/commit/c14312a66420b75ca9a11bf1817c4db1fa26b097),
+which contains the merged DFlash2 path. The tested alternative endpoint was:
+
+```bash
+python -m sglang.launch_server \
+  --model-path Qwen/Qwen3.8-27B-FP8 \
+  --served-model-name qwen3.8-27b-dflash2 \
+  --host 127.0.0.1 \
+  --port 8082 \
+  --context-length 65536 \
+  --mem-fraction-static 0.65 \
+  --max-running-requests 1 \
+  --reasoning-parser qwen3 \
+  --tool-call-parser qwen3_coder \
+  --speculative-algorithm DFLASH \
+  --speculative-draft-model-path incoai/Qwen3.8-27B-DFlash2 \
+  --speculative-num-draft-tokens 8 \
+  --disable-overlap-schedule
+```
+
+### Direct Decode
+
+Both systems used the same host, loaded local embedding service, 65,536-token
+context cap, request concurrency of one, temperature zero, disabled thinking,
+and 256 output tokens. These are warm steady-state client measurements; model
+download time is excluded.
+
+| Prompt | Qwen3.6 A3B + MTP | Qwen3.8 + DFlash2 | A3B total | DFlash2 total |
+| --- | ---: | ---: | ---: | ---: |
+| Python LRU cache | 68.39 tok/s | 38.25 tok/s | 3.86 s | 6.82 s |
+| Git three-way merge | 62.28 tok/s | 23.30 tok/s | 4.21 s | 11.10 s |
+| Integer sequence | 69.19 tok/s | 48.65 tok/s | 3.81 s | 5.39 s |
+
+DFlash2 works: compared with ordinary decoding of the same Qwen3.8 target at
+about 7.9 tok/s, it accelerated these prompts by 2.95-6.17x. But the cross-model
+product decision has a different winner. The A3B model's much smaller active
+parameter path was still 1.42-2.67x faster in decode and 1.41-2.63x lower in
+end-to-end latency than Qwen3.8 plus DFlash2 on this GB10.
+
+Acceptance was workload-dependent. DFlash2 accepted roughly 39-40% of proposed
+tokens on the code and prose prompts and 76% on the integer sequence. A highly
+repetitive warm sequence reached 99%. This is why an advertised accelerator
+speedup cannot be treated as one fixed number.
+
+### Source-Linked Ask
+
+Raw decode is only one part of CodeNib latency. We also ran the same fixed
+Requests, Gin, and Vue questions through the complete retrieval, tool-call,
+evidence-review, and citation path. Both models received five turns and used
+the same repository artifacts and embedding endpoint.
+
+| Candidate | Completed | Wall time | Expected files | Named terms | Citation ranges |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.6 A3B + MTP | 3/3 | 27.89-33.99 s; p50 28.38 s | 0.722 | 1.000 | 3/3 valid |
+| Qwen3.8 + DFlash2 | 3/3 | 47.12-104.23 s; p50 52.34 s | 0.889 | 1.000 | 3/3 valid |
+
+The A3B path is the clear latency choice. The small quality sample is less
+one-sided: both models named every required symbol and returned valid source
+ranges, while Qwen3.8 retrieved more of the expected files. It also made 5-7
+retrieval calls per case, versus five for A3B, which partly explains both the
+extra evidence and the longer tail.
+
+We manually reviewed a fourth, adversarial Requests question about cookie
+precedence. A shallow reading of `merge_cookies()` suggests that session
+cookies win because one branch passes `overwrite=False`. In the actual
+`Session.prepare_request()` path, the request dictionary has already become a
+`CookieJar`; `RequestsCookieJar.update()` therefore overwrites a cookie with the
+same name, domain, and path. Qwen3.8 used its fifth turn to retrieve that method
+and corrected the answer. Qwen3.6 still made the shallow precedence claim with
+the same five-turn budget. This is useful evidence for retrieval behavior, not
+a general quality ranking: three fixed questions and one trap are far too
+small for that.
+
+The code and sequence outputs from DFlash2 matched our ordinary Qwen3.8 hashes;
+the prose output did not. The target still verifies proposed tokens, but a
+different numerical kernel path can move a greedy boundary. We therefore do
+not describe this GB10 stack as byte-identical without a broader conformance
+test.
+
+Warm cached startup was about five minutes for A3B and 6.4-7.0 minutes for
+DFlash2, where most of the latter was target and draft loading plus prefill
+CUDA-graph capture. Both coexisted with the embedding server and completed the
+tests without an OOM or container restart. Only concurrency one was validated.
+
+Our current choice is consequently layered:
+
+- **Local interactive default:** Qwen3.6 A3B with one MTP token. It wins on
+  steady-state latency, startup, and operational simplicity.
+- **Experimental Qwen3.8 profile:** DFlash2. It is a real acceleration over the
+  dense target and showed stronger evidence exploration in this small sample,
+  but it remains slower end to end and requires a pinned post-merge runtime.
+- **Public demo:** hosted generation remains the latency-oriented default. The
+  local profiles demonstrate private and offline deployment without changing
+  the verified repository artifact beneath them.
 
 ## Local and Hosted Are Deployment Profiles
 
@@ -286,10 +402,9 @@ test is whether each client can consume the existing MCP surface reliably and
 preserve its source citations.
 
 CodeNib also includes an experimental retrieval-augmented speculative serving
-runtime with an OpenAI-compatible endpoint. We treat that as a separate
-acceleration track. The deployment above uses vLLM as the stable model-serving
-layer; speculative serving will be promoted only with reproducible wall-clock
-comparisons and clearly stated request limitations.
+runtime with an OpenAI-compatible endpoint. That is a separate acceleration
+track from model-level DFlash2. Either path will be promoted only with
+reproducible wall-clock comparisons and clearly stated request limitations.
 
 The product principle remains simple:
 
