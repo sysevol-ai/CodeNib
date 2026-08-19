@@ -237,9 +237,9 @@ checkout; absolute, outside, looping, raced, and reparse-point paths fail
 closed in staging, binding, BM25 reads, and MCP reads.  The shared credential
 classifier lives outside both artifacts and storage so the artifact layer does
 not depend on the catalog implementation.  These gates close the current
-portable context publication surface; they are a prerequisite for, but do not
-complete, retained filesystem materialization, production compiler/runtime
-wiring, or a future streaming payload revision.
+portable context publication surface, and the injectable retained materializer
+described below now closes the retained filesystem boundary. Production
+compiler/runtime wiring and a future streaming payload revision remain.
 
 Local filesystem publication now has an explicit strict-authority gate. Regular
 files are written through caller-owned staged descriptors, installed with
@@ -353,11 +353,12 @@ repository fingerprint, and caller configuration into an exact workspace plan.
 It then replays and validates the same bytes through that contract before and
 after replacement without consulting mutable public source projections. Its
 `PlannedBm25View` is a short-lived in-process replay subject, not a catalog
-profile or durable job payload. The Linux local provider deliberately accepts
-only missing destinations, while strict BM25 requests
-`provider-bound-exact`; BM25 therefore still lacks a concrete production
-provider. Whole-context publication can use the local provider explicitly, but
-no compiler or runtime route constructs either producer yet. M1 remains in
+profile or durable job payload. Strict whole-context and retained
+materialization APIs are now available as injectable library producers. The
+Linux local provider deliberately accepts only missing destinations, so
+whole-context retained materialization can use it explicitly, while strict BM25
+requests `provider-bound-exact` and still lacks a concrete production provider.
+No compiler or runtime route constructs these producers yet. M1 remains in
 progress and the M2 BM25 profile adapter is still outstanding.
 
 Strict whole-context publication can now aggregate already-normalized BM25 and
@@ -383,17 +384,19 @@ gates. `BlobInfo` is an exact point-in-time CAS receipt, and
 the additive `ReceiptVerifyingObjectStore.verify_receipt` capability
 revalidates its digest, byte size, and canonical storage key before a metadata
 boundary without pretending that the receipt itself is a pin. The additive
-`RetainedImportObjectStore.retain_receipts` callback verifies an exact receipt
-set and serializes compliant reclamation until catalog publication and
-attestation finish; LocalCAS uses its cancellation-safe lifecycle lock as that
+`ReceiptRetainingObjectStore.retain_receipts` callback verifies an exact receipt
+set and serializes compliant reclamation until the guarded operation and
+attestation finish; retained import adds streaming ingestion to that narrower
+read capability. LocalCAS uses its cancellation-safe lifecycle lock as that
 fence, which any future local GC must share. A public
 physical archive-size gate lets import coordinators reject impossible view
 bundles before object-store byte access. Published snapshot summaries also
 close namespace and repository identity alongside source, profile, generation,
-object, and view identity. Retained materialized-bundle consumption still needs
-a non-forgeable owner and tracked streaming-resource lifecycle; no path or
-ordinary dataclass is treated as that authority. Outside the bounded retention
-callback, receipts remain point-in-time checks rather than lifetime pins.
+object, and view identity. Retained materialized-bundle consumption now uses a
+caller-owned publication receipt plus tracked streaming-resource lifecycles; no
+path or ordinary dataclass is treated as that authority. Outside the bounded
+retention callback, receipts remain point-in-time checks rather than lifetime
+pins.
 
 A pure retained-manifest planning layer now closes the data-only side of that
 boundary for current portable `RepoManifest` v1.1 projections. It accepts only
@@ -412,8 +415,9 @@ Planning performs no source or artifact reads, native parsing, CAS/catalog
 operation, receipt minting, or ref publication. Execution is a separate
 authority-bearing API, so inspecting or serializing a plan cannot publish it.
 The retained exporter described below now supplies equivalent canonical v1.1
-bytes. Retained filesystem materialization and production runtime wiring remain
-outstanding, so M1 and M2 remain in progress.
+bytes, and the injectable retained materializer closes their filesystem
+publication boundary. Production provider/compiler/runtime wiring and GC policy
+remain outstanding, so M1 and M2 remain in progress.
 
 The retained-import foundation now also exposes schema-v4 compound-generation
 identity as one backend-neutral model rule, including the canonical member
@@ -471,9 +475,8 @@ publication cannot move the old ref. If cancellation lands after SQLite commits
 but before the caller observes the result, the direct M1 call is at-least-once:
 an exact retry idempotently resolves to the already-published snapshot without
 advancing the ref again. This is the direct M1 bootstrap path, not the M2 fenced
-job-success transaction. Retained materialization, production compiler/runtime
-wiring, and a production GC implementation and policy remain outstanding, so
-M1 remains in progress.
+job-success transaction. Production compiler/runtime wiring and a production GC
+implementation and policy remain outstanding, so M1 remains in progress.
 
 The first read-only retained `RepoManifest` exporter now closes the data-only
 round trip without introducing path authority. It accepts the additive
@@ -491,8 +494,26 @@ recomputed from the retained selection. A final receipt sweep precedes return
 of canonical `RepoManifest` v1.1 bytes and a point-in-time observation receipt
 that carries the attested namespace ID, canonical repository key, and derived
 repository ID. It is neither a GC pin nor a materialization/native-load
-authority; filesystem output and runtime activation remain separate future
-boundaries.
+authority; filesystem output and runtime activation remain separate authority
+boundaries rather than implicit powers of the export receipt.
+
+The first retained context materializer now turns that data-only export into
+one exact, query-compatible filesystem generation without treating the export
+receipt as authority. It requires an additive receipt-retaining object store,
+bounded-reads the retained v2 projection, reconstructs its source, public view,
+internal projection, and snapshot identities, and cross-binds the emitted
+manifest and point-in-time receipt to that immutable closure. It then
+authenticates each canonical view bundle, cross-binds bundle inventory and
+member receipts, and preserves canonical `0644`/`0755` member modes under
+`views/<type>/`. A PID-bound, serialized, one-shot retention callback is revoked
+synchronously before the API can return; that callback spans all member reads,
+a final pre-rename receipt sweep, missing-only strict-workspace publication, and
+both staged and published semantic verification. Static metadata is `0600`,
+directories are `0700`, and the caller-precreated output receipt owner remains
+the sole authority for the published generation. The API is backend-neutral
+and injectable, and it can use `LocalWorkspaceProvider` for a missing
+destination. No default compiler/runtime route constructs that provider or
+manages the output receipt lifetime yet.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable
@@ -501,9 +522,8 @@ per-ref leases.  Catalog reads revalidate the normalized view rows against the
 canonical request; the M2 publication transaction must repeat that gate before
 associating outputs.  An explicit acquire may atomically retire an expired
 holder while taking over its slot; this slice adds no background reaper and is
-not wired to the compiler or Web workers. Retained materialization and
-production compiler/runtime wiring remain the outstanding M1 deliverables;
-fenced job publication remains M2 work.
+not wired to the compiler or Web workers. Production compiler/runtime wiring
+remains the outstanding M1 deliverable; fenced job publication remains M2 work.
 
 The shared compiler-cache lock is a cooperative serialization boundary for
 compiler and importer processes using a cache namespace private to one OS
