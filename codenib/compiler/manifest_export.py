@@ -1290,6 +1290,48 @@ def _require_bundle_semantics(
         raise StorageIntegrityError("snapshot vector semantic inventory conflicts")
 
 
+def _portable_export_manifest_bytes(
+    plan: RepoManifestImportPlan,
+    *,
+    selected: tuple[str, ...],
+    max_manifest_bytes: int,
+) -> bytes:
+    """Emit the canonical selected-view manifest shared by export consumers."""
+
+    export_manifest = json.loads(plan.manifest_json)
+    export_manifest["indexes"] = {
+        view_type: export_manifest["indexes"][view_type] for view_type in selected
+    }
+    capabilities = dict(export_manifest["capabilities"])
+    capabilities.update(
+        {
+            "sparse_search": "bm25" in selected,
+            "dense_search": "vector" in selected,
+            "hybrid_search": {"bm25", "vector"} <= set(selected),
+            "symbol_navigation": "symbol_graph" in selected,
+        }
+    )
+    export_manifest["capabilities"] = capabilities
+    manifest_bytes = canonical_json(export_manifest).encode("ascii")
+    if len(manifest_bytes) > max_manifest_bytes:
+        raise StorageIntegrityError(
+            f"exported repository manifest exceeds {max_manifest_bytes} bytes"
+        )
+    try:
+        emitted = plan_repo_manifest_import_bytes(
+            manifest_bytes,
+            required_views=selected,
+            max_manifest_bytes=max_manifest_bytes,
+        )
+    except StorageValidationError as exc:
+        raise StorageIntegrityError(
+            "exported repository manifest cannot be replanned"
+        ) from exc
+    if emitted.selection.selected_views != selected:
+        raise StorageIntegrityError("exported repository manifest changed its views")
+    return manifest_bytes
+
+
 def _validate_projection(
     projection: dict[str, Any],
     *,
@@ -1515,37 +1557,11 @@ def _validate_projection(
             )
         )
 
-    export_manifest = json.loads(plan.manifest_json)
-    export_manifest["indexes"] = {
-        view_type: export_manifest["indexes"][view_type] for view_type in selected
-    }
-    capabilities = dict(export_manifest["capabilities"])
-    capabilities.update(
-        {
-            "sparse_search": "bm25" in selected,
-            "dense_search": "vector" in selected,
-            "hybrid_search": {"bm25", "vector"} <= set(selected),
-            "symbol_navigation": "symbol_graph" in selected,
-        }
+    manifest_bytes = _portable_export_manifest_bytes(
+        plan,
+        selected=selected,
+        max_manifest_bytes=max_manifest_bytes,
     )
-    export_manifest["capabilities"] = capabilities
-    manifest_bytes = canonical_json(export_manifest).encode("ascii")
-    if len(manifest_bytes) > max_manifest_bytes:
-        raise StorageIntegrityError(
-            f"exported repository manifest exceeds {max_manifest_bytes} bytes"
-        )
-    try:
-        emitted = plan_repo_manifest_import_bytes(
-            manifest_bytes,
-            required_views=selected,
-            max_manifest_bytes=max_manifest_bytes,
-        )
-    except StorageValidationError as exc:
-        raise StorageIntegrityError(
-            "exported repository manifest cannot be replanned"
-        ) from exc
-    if emitted.selection.selected_views != selected:
-        raise StorageIntegrityError("exported repository manifest changed its views")
     return _ValidatedProjection(
         manifest_bytes=manifest_bytes,
         plan=plan,

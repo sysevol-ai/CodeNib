@@ -40,6 +40,9 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         RepoManifestImportResult,
         import_retained_repo_manifest,
     )
+    from codenib.compiler.manifest_materialization import (
+        materialize_retained_context_artifact,
+    )
     from codenib.compiler.manifest_storage import (
         RepoManifestImportPlan,
         SourceIntent,
@@ -114,6 +117,10 @@ _EXPORTS = {
         "codenib.compiler.manifest_import",
         "import_retained_repo_manifest",
     ),
+    "materialize_retained_context_artifact": (
+        "codenib.compiler.manifest_materialization",
+        "materialize_retained_context_artifact",
+    ),
     "export_retained_repo_manifest_ref": (
         "codenib.compiler.manifest_export",
         "export_retained_repo_manifest_ref",
@@ -162,6 +169,7 @@ __all__ = [
     "plan_repo_manifest_import",
     "plan_repo_manifest_import_bytes",
     "import_retained_repo_manifest",
+    "materialize_retained_context_artifact",
     "export_retained_repo_manifest_ref",
     "export_retained_repo_manifest_snapshot",
     # Resources
