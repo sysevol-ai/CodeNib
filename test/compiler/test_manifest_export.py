@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import copy
+import dis
 import hashlib
 import json
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -17,6 +19,10 @@ import pytest
 import codenib.compiler.manifest_export as manifest_export_module
 from codenib._captured_directory import PublishedWorkspaceReceiptOwner
 from codenib.artifacts import stage_context_artifact_strict
+from codenib.artifacts.portable_views import (
+    MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
+    MAX_PORTABLE_FAISS_INDEX_BYTES,
+)
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import RepoManifest
 from codenib.compiler.manifest_export import (
@@ -41,7 +47,10 @@ from codenib.storage import (
     ArtifactMember,
     BlobInfo,
     LocalCAS,
+    NamespaceIdentity,
+    ObjectRecord,
     PublishConflict,
+    RepositoryIdentity,
     SQLiteCatalog,
     StorageIntegrityError,
     StorageValidationError,
@@ -67,6 +76,123 @@ def _exception_notes(error: BaseException) -> tuple[str, ...]:
         *tuple(getattr(error, "__notes__", ())),
         *tuple(getattr(error, "_codenib_cleanup_notes", ())),
     )
+
+
+def _interrupt_after_owned_acquire(
+    callback: Any,
+    *,
+    error: BaseException,
+) -> None:
+    function = manifest_export_module._CloseableResourceOwner.acquire
+    code = function.__code__
+    instructions = tuple(dis.get_instructions(function))
+    store_indexes = {
+        index
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.opname == "STORE_ATTR" and instruction.argval == "_resource"
+    }
+    opcode_offsets_after_store = {
+        instructions[index + 1].offset for index in store_indexes
+    }
+    store_offsets = {instructions[index].offset for index in store_indexes}
+    line_offsets_after_store = {
+        instruction.offset
+        for instruction in instructions
+        if instruction.starts_line is not None
+        and any(instruction.offset > store_offset for store_offset in store_offsets)
+    }
+    assert len(store_indexes) == 1
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: Any, event: str, _arg: object) -> Any:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and frame.f_code is code
+            and (
+                (event == "opcode" and frame.f_lasti in opcode_offsets_after_store)
+                or (event == "line" and frame.f_lasti in line_offsets_after_store)
+            )
+            and frame.f_locals["self"]._resource is not manifest_export_module._MISSING
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to interrupt after owned resource result store"
+
+
+def _interrupt_after_owned_operation(
+    callback: Any,
+    *,
+    error: BaseException,
+) -> None:
+    function = manifest_export_module._run_with_owned_close
+    code = function.__code__
+    instructions = tuple(dis.get_instructions(function))
+    store_indexes = {
+        index
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.opname == "STORE_FAST"
+        and instruction.argval == "operation_succeeded"
+        and instructions[index - 1].opname == "LOAD_CONST"
+        and instructions[index - 1].argval is True
+    }
+    opcode_offsets_after_store = {
+        instructions[index + 1].offset for index in store_indexes
+    }
+    store_offsets = {instructions[index].offset for index in store_indexes}
+    line_offsets_after_store = {
+        instruction.offset
+        for instruction in instructions
+        if instruction.starts_line is not None
+        and any(instruction.offset > store_offset for store_offset in store_offsets)
+    }
+    assert len(store_indexes) == 1
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: Any, event: str, _arg: object) -> Any:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and frame.f_code is code
+            and (
+                (event == "opcode" and frame.f_lasti in opcode_offsets_after_store)
+                or (event == "line" and frame.f_lasti in line_offsets_after_store)
+            )
+            and frame.f_locals["operation_succeeded"] is True
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to interrupt after owned operation result store"
+
+
+def _publication_cleanup_owners(error: BaseException) -> tuple[Any, ...]:
+    return BaseException.__getattribute__(error, "publication_cleanup_owners")
 
 
 def _vector_context_fixture(
@@ -183,6 +309,10 @@ def test_real_import_round_trips_ref_and_snapshot_as_canonical_v11_bytes(
 
         assert isinstance(ref_export, RepoManifestExportResult)
         assert ref_export.canonical_manifest_bytes == expected
+        summary = catalog.get_manifest_summary(imported.snapshot_id)
+        assert ref_export.receipt.namespace_id == summary["namespace"]["namespace_id"]
+        assert ref_export.receipt.repository_id == imported.repository_id
+        assert ref_export.receipt.repository_key == _REPOSITORY_KEY
         assert ref_export.receipt.snapshot_id == imported.snapshot_id
         assert ref_export.receipt.ref_name == "main"
         assert ref_export.receipt.ref_generation == 1
@@ -444,23 +574,511 @@ def test_expected_ref_generation_conflicts_before_snapshot_or_object_access() ->
         )
 
 
+def test_open_object_acquisition_interruption_closes_owned_reader() -> None:
+    interruption = KeyboardInterrupt("object reader acquisition interrupted")
+
+    class Reader:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class Store:
+        def __init__(self) -> None:
+            self.reader = Reader()
+
+        @staticmethod
+        def verify_receipt(expected: BlobInfo) -> BlobInfo:
+            return expected
+
+        def open(self, _digest: str) -> Reader:
+            return self.reader
+
+    store = Store()
+    record = ObjectRecord(
+        digest="0" * 64,
+        byte_size=0,
+        storage_key="objects/00/acquisition",
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_after_owned_acquire(
+            lambda: manifest_export_module._run_open_object(
+                store,  # type: ignore[arg-type]
+                record,
+                lambda _reader: None,
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert store.reader.closed
+
+
+def test_zip_entry_acquisition_interruption_closes_owned_reader() -> None:
+    interruption = SystemExit("ZIP entry acquisition interrupted")
+
+    class Entry:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class Archive:
+        def __init__(self) -> None:
+            self.entry = Entry()
+
+        def open(self, _path: str, *, mode: str) -> Entry:
+            assert mode == "r"
+            return self.entry
+
+    archive = Archive()
+    member = ArtifactMember(
+        path="config.json",
+        digest="0" * 64,
+        byte_size=1,
+    )
+
+    with pytest.raises(SystemExit) as caught:
+        _interrupt_after_owned_acquire(
+            lambda: manifest_export_module._read_zip_json(
+                archive,  # type: ignore[arg-type]
+                {member.path: member},
+                member.path,
+                label="snapshot test config",
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert archive.entry.closed
+
+
+@pytest.mark.parametrize(
+    ("path", "label", "require_source_field"),
+    (
+        ("documents.json", "snapshot BM25 documents", False),
+        (
+            "root/documents_root.json",
+            "snapshot vector root documents",
+            True,
+        ),
+    ),
+    ids=("bm25", "vector"),
+)
+def test_canonical_documents_acquisition_interruption_closes_owned_reader(
+    path: str,
+    label: str,
+    require_source_field: bool,
+) -> None:
+    interruption = KeyboardInterrupt(f"{label} acquisition interrupted")
+
+    class Entry:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class Archive:
+        def __init__(self) -> None:
+            self.entry = Entry()
+
+        def open(self, observed_path: str, *, mode: str) -> Entry:
+            assert observed_path == f"payload/{path}"
+            assert mode == "r"
+            return self.entry
+
+    archive = Archive()
+    member = ArtifactMember(path=path, digest="0" * 64, byte_size=1)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_after_owned_acquire(
+            lambda: manifest_export_module._read_canonical_documents(
+                archive,  # type: ignore[arg-type]
+                member,
+                path,
+                label=label,
+                require_source_field=require_source_field,
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert archive.entry.closed
+
+
+def test_canonical_documents_rejects_oversized_member_before_open() -> None:
+    class Archive:
+        @staticmethod
+        def open(_path: str, *, mode: str) -> None:
+            raise AssertionError(f"oversized member was opened in {mode!r} mode")
+
+    member = ArtifactMember(
+        path="documents.json",
+        digest="0" * 64,
+        byte_size=MAX_PORTABLE_DOCUMENTS_JSON_BYTES + 1,
+    )
+
+    with pytest.raises(StorageIntegrityError, match="exceeds its byte limit"):
+        manifest_export_module._read_canonical_documents(
+            Archive(),  # type: ignore[arg-type]
+            member,
+            member.path,
+            label="snapshot test documents",
+            require_source_field=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "expected_file", "max_bytes"),
+    (
+        (
+            "l2/documents_test__model.json",
+            "documents_test__model.json",
+            MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
+        ),
+        (
+            "l2/index_test__model.faiss",
+            "index_test__model.faiss",
+            MAX_PORTABLE_FAISS_INDEX_BYTES,
+        ),
+    ),
+    ids=("documents", "faiss-index"),
+)
+def test_vector_record_rejects_member_above_portable_limit(
+    relative_path: str,
+    expected_file: str,
+    max_bytes: int,
+) -> None:
+    digest = "0" * 64
+    byte_size = max_bytes + 1
+    member = ArtifactMember(
+        path=relative_path,
+        digest=digest,
+        byte_size=byte_size,
+    )
+    record = {
+        "file": expected_file,
+        "size": byte_size,
+        "sha256": digest,
+    }
+
+    with pytest.raises(StorageIntegrityError, match="exceeds its byte limit"):
+        manifest_export_module._require_vector_record(
+            record,
+            {relative_path: member},
+            relative_path=relative_path,
+            expected_file=expected_file,
+            label="snapshot vector l2 artifact",
+            max_bytes=max_bytes,
+        )
+
+
+def test_zip_archive_acquisition_interruption_closes_owned_archive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    interruption = KeyboardInterrupt("ZIP archive acquisition interrupted")
+
+    class Archive:
+        def __init__(self) -> None:
+            self.fp: object | None = object()
+
+        def close(self) -> None:
+            self.fp = None
+
+    archive = Archive()
+    monkeypatch.setattr(
+        manifest_export_module.zipfile,
+        "ZipFile",
+        lambda _handle, mode: archive,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_after_owned_acquire(
+            lambda: manifest_export_module._run_zip_archive(
+                object(),  # type: ignore[arg-type]
+                label="snapshot test archive",
+                operation=lambda _archive: None,
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert archive.fp is None
+
+
+def test_owned_close_preserves_post_operation_ordinary_interruption() -> None:
+    primary = LookupError("post-operation ordinary interruption")
+
+    class Reader:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    reader = Reader()
+    with pytest.raises(LookupError) as caught:
+        _interrupt_after_owned_operation(
+            lambda: manifest_export_module._run_with_owned_close(
+                lambda: reader,
+                lambda _reader: "result",
+                complete=lambda resource: resource.closed is True,
+                cleanup_label="test reader close also failed",
+                close_failure="test reader close failed",
+            ),
+            error=primary,
+        )
+
+    assert caught.value is primary
+    assert reader.closed
+
+
+def test_owned_close_preserves_unrelated_finalizer_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = RuntimeError("unrelated cleanup finalizer failure")
+
+    class Reader:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    reader = Reader()
+    real_context = manifest_export_module._run_context_with_cleanup_actions
+
+    @contextmanager
+    def fail_after_cleanup(actions: Any) -> Iterator[None]:
+        with real_context(actions):
+            yield
+        raise primary
+
+    monkeypatch.setattr(
+        manifest_export_module,
+        "_run_context_with_cleanup_actions",
+        fail_after_cleanup,
+    )
+    with pytest.raises(RuntimeError) as caught:
+        manifest_export_module._run_with_owned_close(
+            lambda: reader,
+            lambda _reader: "result",
+            complete=lambda resource: resource.closed is True,
+            cleanup_label="test reader close also failed",
+            close_failure="test reader close failed",
+        )
+
+    assert caught.value is primary
+    assert reader.closed
+
+
+def test_owned_close_preserves_completion_observer_cancellation() -> None:
+    primary = KeyboardInterrupt("one-shot close observation cancellation")
+
+    class Reader:
+        physically_closed = False
+        observations = 0
+
+        @property
+        def closed(self) -> bool:
+            self.observations += 1
+            if self.observations == 1:
+                raise primary
+            return self.physically_closed
+
+        def close(self) -> None:
+            self.physically_closed = True
+
+    reader = Reader()
+    with pytest.raises(KeyboardInterrupt) as caught:
+        manifest_export_module._run_with_owned_close(
+            lambda: reader,
+            lambda _reader: "result",
+            complete=lambda resource: resource.closed is True,
+            cleanup_label="test reader close also failed",
+            close_failure="test reader close failed",
+        )
+
+    assert caught.value is primary
+    assert reader.physically_closed
+    assert reader.observations >= 2
+
+
+def test_owned_close_persistent_observer_failure_exposes_retry_owner() -> None:
+    primary = OSError("persistent close observation failure")
+    close_error = OSError("persistent physical close failure")
+
+    class Reader:
+        physically_closed = False
+        allow_close = False
+        allow_observation = False
+
+        @property
+        def closed(self) -> bool:
+            if not self.allow_observation:
+                raise primary
+            return self.physically_closed
+
+        def close(self) -> None:
+            if not self.allow_close:
+                raise close_error
+            self.physically_closed = True
+
+    reader = Reader()
+    with pytest.raises(OSError) as caught:
+        manifest_export_module._run_with_owned_close(
+            lambda: reader,
+            lambda _reader: "result",
+            complete=lambda resource: resource.closed is True,
+            cleanup_label="test reader close also failed",
+            close_failure="test reader close failed",
+        )
+
+    assert caught.value is primary
+    owners = _publication_cleanup_owners(primary)
+    assert len(owners) == 1
+    with pytest.raises(OSError) as retry:
+        owners[0].close()
+    assert retry.value is close_error
+    reader.allow_close = True
+    reader.allow_observation = True
+    owners[0].close()
+    assert owners[0].closed
+    assert reader.physically_closed
+
+
+def test_owned_close_does_not_wrap_shared_operation_primary() -> None:
+    primary = OSError("shared operation and close failure")
+
+    class Reader:
+        closed = False
+        allow_close = False
+
+        def close(self) -> None:
+            if not self.allow_close:
+                raise primary
+            self.closed = True
+
+    reader = Reader()
+    with pytest.raises(OSError) as caught:
+        manifest_export_module._run_with_owned_close(
+            lambda: reader,
+            lambda _reader: (_ for _ in ()).throw(primary),
+            complete=lambda resource: resource.closed is True,
+            cleanup_label="test reader close also failed",
+            close_failure="test reader close failed",
+        )
+
+    assert caught.value is primary
+    owners = _publication_cleanup_owners(primary)
+    assert len(owners) == 1
+    reader.allow_close = True
+    owners[0].close()
+    assert reader.closed
+
+
+def test_open_object_persistent_close_exposes_retry_owner() -> None:
+    class Reader:
+        closed = False
+        allow_close = False
+
+        def close(self) -> None:
+            if not self.allow_close:
+                raise OSError("persistent object reader close failure")
+            self.closed = True
+
+    class Store:
+        def __init__(self) -> None:
+            self.reader = Reader()
+
+        @staticmethod
+        def verify_receipt(expected: BlobInfo) -> BlobInfo:
+            return expected
+
+        def open(self, _digest: str) -> Reader:
+            return self.reader
+
+    store = Store()
+    record = ObjectRecord(
+        digest="0" * 64,
+        byte_size=0,
+        storage_key="objects/00/persistent-close",
+    )
+
+    with pytest.raises(StorageIntegrityError, match="reader close failed") as caught:
+        manifest_export_module._run_open_object(
+            store,  # type: ignore[arg-type]
+            record,
+            lambda _reader: None,
+        )
+
+    owners = _publication_cleanup_owners(caught.value)
+    assert len(owners) == 1
+    assert not owners[0].closed
+    store.reader.allow_close = True
+    owners[0].close()
+    assert owners[0].closed
+    assert store.reader.closed
+
+
+def test_zip_archive_persistent_close_exposes_retry_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Archive:
+        def __init__(self) -> None:
+            self.fp: object | None = object()
+            self.allow_close = False
+
+        def close(self) -> None:
+            if not self.allow_close:
+                raise OSError("persistent ZIP archive close failure")
+            self.fp = None
+
+    archive = Archive()
+    monkeypatch.setattr(
+        manifest_export_module.zipfile,
+        "ZipFile",
+        lambda _handle, mode: archive,
+    )
+
+    with pytest.raises(StorageIntegrityError, match="archive close failed") as caught:
+        manifest_export_module._run_zip_archive(
+            object(),  # type: ignore[arg-type]
+            label="snapshot test archive",
+            operation=lambda _archive: None,
+        )
+
+    owners = _publication_cleanup_owners(caught.value)
+    assert len(owners) == 1
+    assert not owners[0].closed
+    archive.allow_close = True
+    owners[0].close()
+    assert owners[0].closed
+    assert archive.fp is None
+
+
 def test_zip_json_entry_close_failure_preserves_read_cancellation() -> None:
     primary = KeyboardInterrupt("cancelled while reading ZIP entry")
 
     class FailingEntry:
+        closed = False
+        allow_close = False
+
         @staticmethod
         def read(_limit: int) -> bytes:
             raise primary
 
-        @staticmethod
-        def close() -> None:
-            raise OSError("ZIP entry close failed")
+        def close(self) -> None:
+            if not self.allow_close:
+                raise OSError("ZIP entry close failed")
+            self.closed = True
 
     class Archive:
-        @staticmethod
-        def open(_path: str, *, mode: str) -> FailingEntry:
+        def __init__(self) -> None:
+            self.entry = FailingEntry()
+
+        def open(self, _path: str, *, mode: str) -> FailingEntry:
             assert mode == "r"
-            return FailingEntry()
+            return self.entry
 
     member = ArtifactMember(
         path="config.json",
@@ -468,9 +1086,10 @@ def test_zip_json_entry_close_failure_preserves_read_cancellation() -> None:
         byte_size=1,
     )
 
+    archive = Archive()
     with pytest.raises(BaseException) as caught:
         manifest_export_module._read_zip_json(
-            Archive(),  # type: ignore[arg-type]
+            archive,  # type: ignore[arg-type]
             {member.path: member},
             member.path,
             label="snapshot test config",
@@ -482,6 +1101,13 @@ def test_zip_json_entry_close_failure_preserves_read_cancellation() -> None:
         and "ZIP entry close failed" in note
         for note in _exception_notes(primary)
     )
+    owners = _publication_cleanup_owners(primary)
+    assert len(owners) == 1
+    assert not owners[0].closed
+    archive.entry.allow_close = True
+    owners[0].close()
+    assert owners[0].closed
+    assert archive.entry.closed
 
 
 @pytest.mark.parametrize(
@@ -509,8 +1135,17 @@ def test_zip_json_entry_close_failure_preserves_read_cancellation() -> None:
                 }
             ],
         ),
+        (
+            {"project_root": "source", "max_k": 17, "language": "english"},
+            [
+                {
+                    "page_content": "Bearer audit-secret-value",
+                    "metadata": {"file": "sample.py", "node_id": "sample.VALUE"},
+                }
+            ],
+        ),
     ),
-    ids=("metadata-conflict", "document-traversal"),
+    ids=("metadata-conflict", "document-traversal", "document-secret"),
 )
 def test_coherently_reclosed_bm25_bundle_rejects_bad_portable_semantics(
     tmp_path: Path,
@@ -696,10 +1331,14 @@ def test_export_receipt_rejects_noncanonical_skipped_view_closure(
     skipped_items: tuple[tuple[str, str], ...],
 ) -> None:
     blob, view = _receipt_fixture()
+    namespace = NamespaceIdentity("default")
+    repository = RepositoryIdentity(namespace.namespace_id, _REPOSITORY_KEY)
 
     with pytest.raises(StorageValidationError, match="not canonical"):
         RepoManifestExportReceipt(
-            repository_id="repository",
+            namespace_id=namespace.namespace_id,
+            repository_id=repository.repository_id,
+            repository_key=repository.repository_key,
             source_revision_id="source_revision",
             snapshot_id="snapshot",
             snapshot_published_at="2026-08-10T00:00:00+00:00",
@@ -712,4 +1351,28 @@ def test_export_receipt_rejects_noncanonical_skipped_view_closure(
             projection_receipt=blob,
             view_receipts=(view,),
             skipped_items=skipped_items,
+        )
+
+
+def test_export_receipt_rejects_inconsistent_repository_identity() -> None:
+    blob, view = _receipt_fixture()
+    namespace = NamespaceIdentity("default")
+
+    with pytest.raises(StorageValidationError, match="identity is inconsistent"):
+        RepoManifestExportReceipt(
+            namespace_id=namespace.namespace_id,
+            repository_id="repo_" + "0" * 64,
+            repository_key=_REPOSITORY_KEY,
+            source_revision_id="source_revision",
+            snapshot_id="snapshot",
+            snapshot_published_at="2026-08-10T00:00:00+00:00",
+            ref_name=None,
+            ref_generation=None,
+            ref_updated_at=None,
+            manifest_digest="1" * 64,
+            manifest_byte_size=1,
+            projection_generation_id="projection_generation",
+            projection_receipt=blob,
+            view_receipts=(view,),
+            skipped_items=(),
         )

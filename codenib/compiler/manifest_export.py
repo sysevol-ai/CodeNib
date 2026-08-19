@@ -23,10 +23,18 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, BinaryIO, Callable
 
-from .._atomic_directory import _annotate_secondary_error
+from .._atomic_directory import (
+    _attach_publication_cleanup_owner,
+    _OrderedAction,
+    _run_context_with_cleanup_actions,
+)
 from .._bounded_json import canonical_json_array_chunks, iter_bounded_json_array
 from .._secret_fields import SecretFieldError, assert_no_secret_fields
-from ..artifacts.portable_views import validate_portable_vector_persistence_semantics
+from ..artifacts.portable_views import (
+    MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
+    MAX_PORTABLE_FAISS_INDEX_BYTES,
+    validate_portable_vector_persistence_semantics,
+)
 from ..index.embedding.artifact_integrity import VECTOR_PERSISTENCE_SCHEMA
 from ..provider_routes import normalize_provider, resolve_embedding_artifact_route
 from ..storage.cas import BlobInfo
@@ -35,6 +43,7 @@ from ..storage.models import (
     ArtifactMember,
     ObjectRecord,
     PublishConflict,
+    RepositoryIdentity,
     StorageIntegrityError,
     StorageValidationError,
     canonical_json,
@@ -179,7 +188,9 @@ class RepoManifestExportReceipt:
     materialization authority.
     """
 
+    namespace_id: str
     repository_id: str
+    repository_key: str
     source_revision_id: str
     snapshot_id: str
     snapshot_published_at: str
@@ -199,12 +210,25 @@ class RepoManifestExportReceipt:
                 "manifest export receipt must use the exact receipt type"
             )
         for value, label in (
+            (self.namespace_id, "export namespace ID"),
             (self.repository_id, "export repository ID"),
+            (self.repository_key, "export repository key"),
             (self.source_revision_id, "export source revision ID"),
             (self.snapshot_id, "export snapshot ID"),
             (self.projection_generation_id, "export projection generation ID"),
         ):
             _exact_text(value, label)
+        try:
+            repository = RepositoryIdentity(
+                namespace_id=self.namespace_id,
+                repository_key=self.repository_key,
+            )
+        except StorageValidationError as exc:
+            raise StorageValidationError(
+                "export repository identity is invalid"
+            ) from exc
+        if repository.repository_id != self.repository_id:
+            raise StorageValidationError("export repository identity is inconsistent")
         if (
             type(self.manifest_digest) is not str
             or _DIGEST_RE.fullmatch(self.manifest_digest) is None
@@ -370,6 +394,85 @@ class _ValidatedProjection:
         return MappingProxyType(dict(self.view_items))
 
 
+class _CloseableResourceOwner:
+    """Own one callback-acquired closeable across interruption boundaries."""
+
+    __slots__ = ("_complete", "_first_close_error", "_resource")
+
+    def __init__(self, complete: Callable[[Any], bool]) -> None:
+        self._complete = complete
+        self._first_close_error: BaseException | None = None
+        self._resource: Any = _MISSING
+
+    @property
+    def closed(self) -> bool:
+        resource = self._resource
+        if resource is _MISSING:
+            return True
+        return self._complete(resource) is True
+
+    @property
+    def first_close_error(self) -> BaseException | None:
+        return self._first_close_error
+
+    def acquire(self, callback: Callable[[], Any]) -> Any:
+        if self._resource is not _MISSING:
+            raise RuntimeError("closeable resource is already acquired")
+        # The owner and its cleanup action exist before this call.  As with the
+        # repository's descriptor owners, only the native-return-to-STORE_ATTR
+        # edge remains outside Python's control.
+        self._resource = callback()
+        return self._resource
+
+    def close(self) -> None:
+        resource = self._resource
+        if resource is _MISSING:
+            return
+        try:
+            resource.close()
+        except BaseException as error:  # noqa: B036 - preserve exact close primary
+            if self._first_close_error is None:
+                self._first_close_error = error
+            raise
+
+
+def _run_with_owned_close(
+    acquire: Callable[[], Any],
+    operation: Callable[[Any], Any],
+    *,
+    complete: Callable[[Any], bool],
+    cleanup_label: str,
+    close_failure: str,
+) -> Any:
+    """Acquire and close one resource under the shared ordered-cleanup fence."""
+
+    owner = _CloseableResourceOwner(complete)
+    close_action = _OrderedAction(
+        label=cleanup_label,
+        action=owner.close,
+        complete=lambda: owner.closed,
+        retry_incomplete="cancellation",
+        incomplete_owner=owner,
+    )
+    operation_succeeded = False
+    try:
+        with _run_context_with_cleanup_actions((close_action,)):
+            resource = owner.acquire(acquire)
+            result = operation(resource)
+            operation_succeeded = True
+            return result
+    except BaseException as error:  # noqa: B036 - preserve operation primary
+        if (
+            operation_succeeded
+            and error is owner.first_close_error
+            and isinstance(error, Exception)
+        ):
+            wrapped = StorageIntegrityError(close_failure)
+            _attach_publication_cleanup_owner(wrapped, owner)
+            raise wrapped from error
+        raise
+
+
 def _exact_text(value: object, label: str, *, max_length: int = _MAX_TEXT) -> str:
     if type(value) is not str:
         raise StorageValidationError(f"{label} must be exact text")
@@ -463,39 +566,26 @@ def _run_open_object(
     operation: Callable[[BinaryIO], Any],
 ) -> Any:
     _verify_receipt(object_store, record)
-    try:
-        source = object_store.open(record.digest)
-    except StorageIntegrityError:
-        raise
-    except BaseException as error:  # noqa: B036 - backend boundary
-        if isinstance(error, (GeneratorExit, KeyboardInterrupt, SystemExit)):
-            raise
-        raise StorageIntegrityError("object-store read could not be opened") from error
-    primary: BaseException | None = None
-    try:
-        return operation(source)
-    except BaseException as error:  # noqa: B036 - preserve primary
-        primary = error
-        raise
-    finally:
+
+    def acquire() -> BinaryIO:
         try:
-            close = source.close
-            close()
-        except BaseException as close_error:  # noqa: B036 - backend cleanup
-            if primary is None:
-                if isinstance(
-                    close_error,
-                    (GeneratorExit, KeyboardInterrupt, SystemExit),
-                ):
-                    raise
-                raise StorageIntegrityError(
-                    "object-store reader close failed"
-                ) from close_error
-            _annotate_secondary_error(
-                primary,
-                "object-store reader close also failed",
-                close_error,
-            )
+            return object_store.open(record.digest)
+        except StorageIntegrityError:
+            raise
+        except BaseException as error:  # noqa: B036 - backend boundary
+            if isinstance(error, (GeneratorExit, KeyboardInterrupt, SystemExit)):
+                raise
+            raise StorageIntegrityError(
+                "object-store read could not be opened"
+            ) from error
+
+    return _run_with_owned_close(
+        acquire,
+        operation,
+        complete=lambda source: source.closed is True,
+        cleanup_label="object-store reader close also failed",
+        close_failure="object-store reader close failed",
+    )
 
 
 def _read_exact_bytes(source: BinaryIO, record: ObjectRecord) -> bytes:
@@ -698,74 +788,72 @@ def _read_zip_json(
     member = member_by_path.get(path)
     if member is None or member.byte_size > _MAX_CONFIG_BYTES:
         raise StorageIntegrityError(f"{label} is missing or exceeds its byte limit")
-    try:
-        source = archive.open(f"{VIEW_BUNDLE_PAYLOAD}/{path}", mode="r")
-    except (KeyError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
-        raise StorageIntegrityError(f"{label} cannot be opened") from exc
 
-    primary: BaseException | None = None
-    try:
-        payload = source.read(_MAX_CONFIG_BYTES + 1)
-        if type(payload) is not bytes or len(payload) > _MAX_CONFIG_BYTES:
-            raise StorageIntegrityError(f"{label} exceeds its byte limit")
-        value = json.loads(
-            payload.decode("utf-8", errors="strict"),
-            object_pairs_hook=lambda pairs: _strict_object_pairs(pairs, label=label),
-            parse_constant=lambda value: (_ for _ in ()).throw(
-                ValueError(f"non-finite number: {value}")
-            ),
-        )
-        value = snapshot_retained_import_response(value, label=label)
-        if (
-            type(value) is not dict
-            or _portable_json_bytes(value) != payload
-            or hashlib.sha256(payload).hexdigest() != member.digest
-            or len(payload) != member.byte_size
-        ):
-            raise StorageIntegrityError(f"{label} is not canonical JSON")
-        assert_no_secret_fields(value, source=label)
-        return value
-    except BaseException as error:  # noqa: B036 - preserve semantic primary
-        if isinstance(
-            error,
-            (StorageIntegrityError, GeneratorExit, KeyboardInterrupt, SystemExit),
-        ):
-            primary = error
-            raise
-        if isinstance(
-            error,
-            (
-                KeyError,
-                OSError,
-                RecursionError,
-                SecretFieldError,
-                TypeError,
-                UnicodeError,
-                ValueError,
-                zipfile.BadZipFile,
-            ),
-        ):
-            wrapped = StorageIntegrityError(f"{label} is invalid")
-            primary = wrapped
-            raise wrapped from error
-        primary = error
-        raise
-    finally:
+    def acquire() -> BinaryIO:
         try:
-            source.close()
-        except BaseException as close_error:  # noqa: B036 - cleanup boundary
-            if primary is None:
-                if isinstance(
-                    close_error,
-                    (GeneratorExit, KeyboardInterrupt, SystemExit),
-                ):
-                    raise
-                raise StorageIntegrityError(f"{label} close failed") from close_error
-            _annotate_secondary_error(
-                primary,
-                f"{label} close also failed",
-                close_error,
+            return archive.open(f"{VIEW_BUNDLE_PAYLOAD}/{path}", mode="r")
+        except (KeyError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
+            raise StorageIntegrityError(f"{label} cannot be opened") from exc
+
+    def read(source: BinaryIO) -> dict[str, Any]:
+        try:
+            payload = source.read(_MAX_CONFIG_BYTES + 1)
+            if type(payload) is not bytes or len(payload) > _MAX_CONFIG_BYTES:
+                raise StorageIntegrityError(f"{label} exceeds its byte limit")
+            value = json.loads(
+                payload.decode("utf-8", errors="strict"),
+                object_pairs_hook=lambda pairs: _strict_object_pairs(
+                    pairs,
+                    label=label,
+                ),
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"non-finite number: {value}")
+                ),
             )
+            value = snapshot_retained_import_response(value, label=label)
+            if (
+                type(value) is not dict
+                or _portable_json_bytes(value) != payload
+                or hashlib.sha256(payload).hexdigest() != member.digest
+                or len(payload) != member.byte_size
+            ):
+                raise StorageIntegrityError(f"{label} is not canonical JSON")
+            assert_no_secret_fields(value, source=label)
+            return value
+        except BaseException as error:  # noqa: B036 - preserve semantic primary
+            if isinstance(
+                error,
+                (
+                    StorageIntegrityError,
+                    GeneratorExit,
+                    KeyboardInterrupt,
+                    SystemExit,
+                ),
+            ):
+                raise
+            if isinstance(
+                error,
+                (
+                    KeyError,
+                    OSError,
+                    RecursionError,
+                    SecretFieldError,
+                    TypeError,
+                    UnicodeError,
+                    ValueError,
+                    zipfile.BadZipFile,
+                ),
+            ):
+                raise StorageIntegrityError(f"{label} is invalid") from error
+            raise
+
+    return _run_with_owned_close(
+        acquire,
+        read,
+        complete=lambda source: source.closed is True,
+        cleanup_label=f"{label} close also failed",
+        close_failure=f"{label} close failed",
+    )
 
 
 def _run_zip_archive(
@@ -774,33 +862,19 @@ def _run_zip_archive(
     label: str,
     operation: Callable[[zipfile.ZipFile], Any],
 ) -> Any:
-    try:
-        archive = zipfile.ZipFile(archive_handle, mode="r")
-    except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as exc:
-        raise StorageIntegrityError(f"{label} cannot be opened") from exc
-
-    primary: BaseException | None = None
-    try:
-        return operation(archive)
-    except BaseException as error:  # noqa: B036 - preserve semantic primary
-        primary = error
-        raise
-    finally:
+    def acquire() -> zipfile.ZipFile:
         try:
-            archive.close()
-        except BaseException as close_error:  # noqa: B036 - cleanup boundary
-            if primary is None:
-                if isinstance(
-                    close_error,
-                    (GeneratorExit, KeyboardInterrupt, SystemExit),
-                ):
-                    raise
-                raise StorageIntegrityError(f"{label} close failed") from close_error
-            _annotate_secondary_error(
-                primary,
-                f"{label} close also failed",
-                close_error,
-            )
+            return zipfile.ZipFile(archive_handle, mode="r")
+        except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as exc:
+            raise StorageIntegrityError(f"{label} cannot be opened") from exc
+
+    return _run_with_owned_close(
+        acquire,
+        operation,
+        complete=lambda archive: archive.fp is None,
+        cleanup_label=f"{label} close also failed",
+        close_failure=f"{label} close failed",
+    )
 
 
 def _strict_object_pairs(
@@ -838,77 +912,85 @@ def _read_canonical_documents(
     label: str,
     require_source_field: bool,
 ) -> int:
-    try:
-        source = archive.open(f"{VIEW_BUNDLE_PAYLOAD}/{path}", mode="r")
-    except (KeyError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
-        raise StorageIntegrityError(f"{label} cannot be opened") from exc
-    primary: BaseException | None = None
-    count = 0
-    size = 0
-    digest = hashlib.sha256()
+    if member.byte_size > MAX_PORTABLE_DOCUMENTS_JSON_BYTES:
+        raise StorageIntegrityError(f"{label} exceeds its byte limit")
 
-    def documents():
-        nonlocal count
-        for index, document in enumerate(iter_bounded_json_array(source, label=label)):
-            if (
-                type(document) is not dict
-                or set(document) != {"page_content", "metadata"}
-                or type(document["page_content"]) is not str
-                or type(document["metadata"]) is not dict
-            ):
-                raise StorageIntegrityError(
-                    f"{label} document {index} has an invalid shape"
-                )
-            try:
-                assert_no_secret_fields(
-                    document["metadata"],
-                    source=f"{label} document {index} metadata",
-                )
-            except SecretFieldError as exc:
-                raise StorageIntegrityError(
-                    f"{label} document {index} metadata is not publishable"
-                ) from exc
-            raw_file = document["metadata"].get("file")
-            if require_source_field and "file" not in document["metadata"]:
-                raise StorageIntegrityError(
-                    f"{label} document {index} has no source path"
-                )
-            if raw_file is not None:
-                _require_portable_source_path(
-                    raw_file,
-                    label=f"{label} document {index} source path",
-                )
-            count += 1
-            yield document
-
-    try:
-        for chunk in canonical_json_array_chunks(documents()):
-            size += len(chunk)
-            digest.update(chunk)
-        if size != member.byte_size or digest.hexdigest() != member.digest:
-            raise StorageIntegrityError(f"{label} is not canonical JSON")
-    except BaseException as error:  # noqa: B036 - preserve semantic primary
-        primary = error
-        if isinstance(
-            error,
-            (StorageIntegrityError, GeneratorExit, KeyboardInterrupt, SystemExit),
-        ):
-            raise
-        raise StorageIntegrityError(f"{label} is invalid") from error
-    finally:
+    def acquire() -> BinaryIO:
         try:
-            source.close()
-        except BaseException as close_error:  # noqa: B036 - cleanup boundary
-            if primary is None:
-                if isinstance(
-                    close_error, (GeneratorExit, KeyboardInterrupt, SystemExit)
+            return archive.open(f"{VIEW_BUNDLE_PAYLOAD}/{path}", mode="r")
+        except (KeyError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
+            raise StorageIntegrityError(f"{label} cannot be opened") from exc
+
+    def read(source: BinaryIO) -> int:
+        count = 0
+        size = 0
+        digest = hashlib.sha256()
+
+        def documents():
+            nonlocal count
+            for index, document in enumerate(
+                iter_bounded_json_array(source, label=label)
+            ):
+                if (
+                    type(document) is not dict
+                    or set(document) != {"page_content", "metadata"}
+                    or type(document["page_content"]) is not str
+                    or type(document["metadata"]) is not dict
                 ):
-                    raise
-                raise StorageIntegrityError(f"{label} close failed") from close_error
-            _annotate_secondary_error(
-                primary, f"{label} close also failed", close_error
-            )
-    return count
+                    raise StorageIntegrityError(
+                        f"{label} document {index} has an invalid shape"
+                    )
+                try:
+                    assert_no_secret_fields(
+                        document,
+                        source=f"{label} document {index}",
+                    )
+                except SecretFieldError as exc:
+                    raise StorageIntegrityError(
+                        f"{label} document {index} is not publishable"
+                    ) from exc
+                raw_file = document["metadata"].get("file")
+                if require_source_field and "file" not in document["metadata"]:
+                    raise StorageIntegrityError(
+                        f"{label} document {index} has no source path"
+                    )
+                if raw_file is not None:
+                    _require_portable_source_path(
+                        raw_file,
+                        label=f"{label} document {index} source path",
+                    )
+                count += 1
+                yield document
+
+        try:
+            for chunk in canonical_json_array_chunks(documents()):
+                size += len(chunk)
+                if size > MAX_PORTABLE_DOCUMENTS_JSON_BYTES:
+                    raise StorageIntegrityError(f"{label} exceeds its byte limit")
+                digest.update(chunk)
+            if size != member.byte_size or digest.hexdigest() != member.digest:
+                raise StorageIntegrityError(f"{label} is not canonical JSON")
+        except BaseException as error:  # noqa: B036 - preserve semantic primary
+            if isinstance(
+                error,
+                (
+                    StorageIntegrityError,
+                    GeneratorExit,
+                    KeyboardInterrupt,
+                    SystemExit,
+                ),
+            ):
+                raise
+            raise StorageIntegrityError(f"{label} is invalid") from error
+        return count
+
+    return _run_with_owned_close(
+        acquire,
+        read,
+        complete=lambda source: source.closed is True,
+        cleanup_label=f"{label} close also failed",
+        close_failure=f"{label} close failed",
+    )
 
 
 def _require_portable_source_path(value: object, *, label: str) -> str:
@@ -946,13 +1028,17 @@ def _require_vector_record(
     relative_path: str,
     expected_file: str,
     label: str,
+    max_bytes: int,
 ) -> None:
+    member = member_by_path.get(relative_path)
     _require_fingerprint(
         value,
-        member_by_path.get(relative_path),
+        member,
         expected_file=expected_file,
         label=label,
     )
+    if member is None or member.byte_size > max_bytes:
+        raise StorageIntegrityError(f"{label} exceeds its byte limit")
 
 
 def _require_level_config(
@@ -1133,6 +1219,7 @@ def _require_bundle_semantics(
                 relative_path=documents_path,
                 expected_file=documents_name,
                 label=f"snapshot vector {level} documents",
+                max_bytes=MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
             )
             _require_vector_record(
                 artifacts["index"],
@@ -1140,6 +1227,7 @@ def _require_bundle_semantics(
                 relative_path=index_path,
                 expected_file=index_name,
                 label=f"snapshot vector {level} index",
+                max_bytes=MAX_PORTABLE_FAISS_INDEX_BYTES,
             )
             observed_count = _read_canonical_documents(
                 archive,
@@ -1658,7 +1746,9 @@ def _export_snapshot(
         _verify_receipt(object_store, record)
     manifest_digest = hashlib.sha256(validated.manifest_bytes).hexdigest()
     receipt = RepoManifestExportReceipt(
+        namespace_id=retained.namespace.namespace_id,
         repository_id=retained.repository.repository_id,
+        repository_key=retained.repository.repository_key,
         source_revision_id=retained.source.source_revision_id,
         snapshot_id=retained.snapshot.snapshot_id,
         snapshot_published_at=retained.published_at,

@@ -799,7 +799,7 @@ def test_portable_documents_contract_has_a_fixed_nonconfigurable_cap(
         view_config={},
     )
     monkeypatch.setattr(
-        "codenib.artifacts.portable_views._MAX_DOCUMENTS_JSON_BYTES",
+        "codenib.artifacts.portable_views.MAX_PORTABLE_DOCUMENTS_JSON_BYTES",
         1,
     )
 
