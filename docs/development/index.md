@@ -48,6 +48,15 @@ surface at the right test tier, and keep evaluation artifacts reproducible.
 
     [Prepare a release →](../releasing.md)
 
+-   <span class="codenib-card-eyebrow">Storage</span>
+
+    **Local workspace provider**
+
+    Publish a validated missing-directory generation through the Linux native
+    ownership boundary and manage its caller-owned receipt lifecycle.
+
+    [Use the local provider →](local-workspace-provider.md)
+
 -   <span class="codenib-card-eyebrow">Measure</span>
 
     **Evaluation workflows**

@@ -13,39 +13,65 @@ installed distribution metadata generated from it.
 ## Automated Gates
 
 The reusable Release verification workflow runs from both publishing
-workflows. Pull requests build and inspect the distribution once. Pushes to
-`main`, version tags, and explicit TestPyPI dispatches run the complete gate:
+workflows. Pull requests build and inspect the complete distribution contract,
+including the native ABI smoke. Pushes to `main`, version tags, and explicit
+TestPyPI dispatches additionally run the heavier installed-service gates:
 
 1. Tests and production-builds the packaged Wiki frontend.
-2. Builds one sdist and one universal wheel.
-3. Runs `twine check` and validates package contents and metadata.
-4. Installs the wheel on every supported Python minor version.
-5. Builds a real BM25 index through the installed `codenib` command.
-6. Installs the public 0.1.0 package, upgrades it to the candidate wheel,
+2. Builds one source-only sdist and two `cp310-abi3-manylinux_2_28` wheels, one
+   each for x86-64 and AArch64.
+3. Compiles the C extension against CPython 3.10's limited API with
+   `-Wall -Wextra -Werror`, then runs `twine check` and validates artifact
+   contents, metadata, and tags.
+4. Installs the sdist with compilation deliberately disabled, proving that the
+   core remains usable and local workspace support fails closed.
+5. Installs the native wheel on Python 3.10 through 3.14 and publishes, retains,
+   and closes one real `LocalWorkspaceProvider` generation.
+6. Builds a real BM25 index through the installed `codenib` command.
+7. Installs the public 0.1.0 package, upgrades it to the candidate wheel,
    verifies that an incompatible BM25 view rebuilds once, and then verifies
    that the rebuilt view is reused.
-7. Exercises the installed Wiki and MCP services end to end.
-8. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
+8. Exercises the installed Wiki and MCP services end to end.
+9. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
    real BM25 tool call, final answer, and source citation, without installing
    semantic or graph extras.
-9. Installs the graph extra and a pinned Python SCIP provider, then verifies
+10. Installs the graph extra and a pinned Python SCIP provider, then verifies
    repository-aware diagnostics, a real caller-to-callee graph edge, source
    anchors, and the installed Dependency Map API.
 
 Manually dispatching the TestPyPI Release workflow from `main` runs these gates,
 publishes to TestPyPI, then downloads that exact version from TestPyPI's public
-simple index. The workflow byte-compares the downloaded wheel with the verified
-build before installing it in a fresh environment and exercising a real BM25
-index build. Production publishing remains in the separate Release workflow
+simple index. The workflow selects the current host's compatible wheel and
+byte-compares it with the corresponding verified build before installing it in
+a fresh environment and exercising a real BM25 index build. Production
+publishing remains in the separate Release workflow
 and requires a `v<version>` tag that exactly matches `project.version`. Before
 any upload, the production workflow proves MCP DNS ownership so a missing
 record cannot leave a partial release. It then publishes to PyPI,
-downloads and byte-compares the exact public wheel, exercises its installed
-Wiki and MCP services, publishes `ai.codenib/codenib` to the official MCP
-Registry, and verifies Registry discovery. The final GitHub Release contains
-the distributions and `SHA256SUMS`; stable versions are marked latest and PEP
-440 prereleases remain prereleases. TestPyPI does not feed the MCP Registry
-because the Registry accepts only official PyPI packages.
+downloads and byte-compares the compatible public wheel, exercises its
+installed Wiki and MCP services, publishes `ai.codenib/codenib` to the official
+MCP Registry, and verifies Registry discovery. The final GitHub Release
+contains both Linux wheels, the sdist, and `SHA256SUMS`; stable versions are
+marked latest and PEP 440 prereleases remain prereleases. TestPyPI does not feed
+the MCP Registry because the Registry accepts only official PyPI packages.
+
+## Native Artifact Contract
+
+The production artifact set is exact:
+
+- `codenib-<version>-cp310-abi3-manylinux_2_28_x86_64.whl`
+- `codenib-<version>-cp310-abi3-manylinux_2_28_aarch64.whl`
+- `codenib-<version>.tar.gz`
+
+Each wheel contains exactly one `_workspace_owner_impl.abi3.so`. The sdist
+contains `native/workspace_owner.c` and no compiled extension. This lets
+compiler-less, macOS, Windows, and other environments without a compatible
+native extension install the Python core from source; the local workspace
+provider then remains unavailable and fails before mutation. CodeNib does not
+publish a prebuilt musllinux wheel, although a Linux source build can provide
+the extension when a compatible C toolchain is available. Do not replace this
+set with a universal wheel: its tag would falsely claim that the native
+ownership boundary works on every platform.
 
 ## Trusted Publisher Setup
 

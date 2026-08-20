@@ -260,8 +260,19 @@ to exact, scanner-bounded directory plans. Its side-effect-free capability
 probe fails before provisioning on unsupported hosts; descriptor-bound writes
 return the authenticated file record, and staged and published validators run
 inside the same atomic publication boundary. The caller-owned receipt keeps its
-authenticated reader pinned through synchronous consumption. This remains a
-provider-neutral foundation: no compiler or context producer is wired to it.
+authenticated reader pinned through synchronous consumption. The contract
+remains provider-neutral, and a concrete `LocalWorkspaceProvider` now supplies
+it on Linux for missing destinations below one private, quiescent root owned by
+the current effective UID with exact mode `0700`. Native workspace-owner
+protocol v2 pins the namespace
+and owns every file descriptor, acquires and writes files without exposing raw
+file descriptors to Python, and gates the only forward rename with a one-shot
+publish permit. The caller-owned receipt slot is the publication-authority
+linearization point: unreceipted same-process failures quarantine the exact
+candidate, while a fork child authenticates and closes only its inherited
+descriptor pairs. The provider is an authority boundary for trusted callbacks,
+not an in-process Python sandbox. No compiler or runtime route constructs it by
+default yet.
 
 Callback-scoped directory results are likewise provisional until ordered
 reader-validity, exact-ownership, child-namespace, and parent-authority
@@ -275,19 +286,22 @@ idempotent owner on the primary exception for explicit retry. Later independent
 cleanup actions still run. An identity-reused foreign resource is diagnosed and
 never closed when its immutable identity observably differs from the owned
 resource. An exact same-inode descriptor ABA or same-FILE_ID HANDLE reuse is not
-distinguishable in Python and remains a native-owner promotion gate. One
-C-level trampoline gives runner entry, re-entry, planning, action, and loop
-failures the same per-action retry state while keeping Python stack and
-diagnostic space constant. Exhausting the nine-attempt window retains an
-incomplete idempotent owner on the primary and continues later actions. The
-first local callback, postflight, or cleanup failure stays primary; later
-failures are diagnostic only. Pure Python cannot guarantee execution when
-repeated interruption lands before the trampoline itself starts. A known
-primary therefore protects pending owners before that handoff, and the first
-outer-entry failure becomes the primary and protects them when no earlier
-failure exists. Closing that remaining arbitrary call-entry gap, the raw
-resource-return gap, and exact-identity ABA requires native ownership. This
-does not complete M1 producer wiring.
+distinguishable in Python and remains a native-owner promotion gate for the
+generic POSIX and Windows publishers. The Linux workspace owner closes the
+equivalent workspace-file return and OFD-identity gaps for
+`LocalWorkspaceProvider` by acquiring, writing, authenticating, and closing the
+file inside the native aggregate. One C-level trampoline gives runner entry,
+re-entry, planning, action, and loop failures the same per-action retry state
+while keeping Python stack and diagnostic space constant. Exhausting the
+nine-attempt window retains an incomplete idempotent owner on the primary and
+continues later actions. The first local callback, postflight, or cleanup
+failure stays primary; later failures are diagnostic only. Pure Python cannot
+guarantee execution when repeated interruption lands before the trampoline
+itself starts. A known primary therefore protects pending owners before that
+handoff, and the first outer-entry failure becomes the primary and protects
+them when no earlier failure exists. Closing those remaining gaps outside the
+Linux local provider still requires native promotion. This does not complete
+M1 producer wiring.
 
 Native vector parsing is now a separate local-authority boundary. Portable
 validation and normalization remain inert: they authenticate the declared
@@ -339,8 +353,11 @@ repository fingerprint, and caller configuration into an exact workspace plan.
 It then replays and validates the same bytes through that contract before and
 after replacement without consulting mutable public source projections. Its
 `PlannedBm25View` is a short-lived in-process replay subject, not a catalog
-profile or durable job payload. No production provider, compiler integration,
-or whole-context producer is wired to the strict contract yet, so M1 remains in
+profile or durable job payload. The Linux local provider deliberately accepts
+only missing destinations, while strict BM25 requests
+`provider-bound-exact`; BM25 therefore still lacks a concrete production
+provider. Whole-context publication can use the local provider explicitly, but
+no compiler or runtime route constructs either producer yet. M1 remains in
 progress and the M2 BM25 profile adapter is still outstanding.
 
 Strict whole-context publication can now aggregate already-normalized BM25 and
@@ -354,11 +371,12 @@ context-manifest, and exact-tree checks before the caller receives a durable
 output receipt. Large canonical documents remain element-streamed, and vector
 indexes stay authenticated but native-inert throughout context assembly.
 Planning and publication never consult mutable public source projections after
-that identity is captured. This slice does not normalize native vector state,
-provision a production workspace provider, or route compiler output. Its
-retained receipt is now accepted by the direct M1 importer below, but it is not
-yet an M2 fenced job output and is not wired into production compiler/runtime
-paths.
+that identity is captured. The producer can now use a caller-supplied
+`LocalWorkspaceProvider` for a missing destination, but no compiler/runtime
+route constructs the provider or manages the output receipt lifetime by
+default. This slice does not normalize native vector state or route compiler
+output. Its retained receipt is now accepted by the direct M1 importer below,
+but it is not yet an M2 fenced job output.
 
 Retained manifest import now has additional backend-neutral prerequisite
 gates. `BlobInfo` is an exact point-in-time CAS receipt, and

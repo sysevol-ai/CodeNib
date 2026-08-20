@@ -207,6 +207,7 @@ nav:
           - CI/CD: ci_cd.md
       - Project Maintenance:
           - Releasing: releasing.md
+          - Local Workspace Provider: development/local-workspace-provider.md
           - Naming: branding.md
       - Benchmarks & Evaluation:
           - evaluation/index.md
