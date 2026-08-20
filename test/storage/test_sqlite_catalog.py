@@ -110,6 +110,24 @@ def _prepare_delete_journal_catalog(path: Path) -> bytes:
     return path.read_bytes()
 
 
+def _schema_snapshot(path: Path) -> tuple[tuple[object, ...], ...]:
+    connection = sqlite3.connect(path)
+    try:
+        return tuple(
+            tuple(row)
+            for row in connection.execute(
+                """
+                SELECT type, name, tbl_name, sql
+                FROM sqlite_master
+                WHERE substr(name, 1, 7) != 'sqlite_'
+                ORDER BY type, name, tbl_name
+                """
+            )
+        )
+    finally:
+        connection.close()
+
+
 def test_initializes_pragmas_default_namespace_and_idempotent_reopen(tmp_path):
     path = tmp_path / "catalog.sqlite3"
 
@@ -379,6 +397,69 @@ def test_existing_only_mode_rejects_empty_or_foreign_databases(tmp_path):
         connection.close()
     assert not Path(f"{migration_db}-wal").exists()
     assert not Path(f"{migration_db}-shm").exists()
+
+
+def test_existing_only_rejects_a_foreign_claimed_complete_version_before_wal(
+    tmp_path,
+):
+    path = tmp_path / "foreign-version-claim.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.execute(sqlite_catalog_module._SCHEMA_MIGRATIONS_SQL)
+    for table in sorted(
+        sqlite_catalog_module._V1_CATALOG_TABLES - {"schema_migrations"}
+    ):
+        connection.execute(f"CREATE TABLE {table} (foreign_value TEXT)")
+    connection.executemany(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (?, 'foreign')",
+        ((version,) for version in range(1, LATEST_SCHEMA_VERSION + 1)),
+    )
+    connection.execute(f"PRAGMA user_version = {LATEST_SCHEMA_VERSION:d}")
+    connection.commit()
+    connection.close()
+    schema_before = _schema_snapshot(path)
+
+    with pytest.raises(CatalogError, match="initialized CodeNib catalog"):
+        SQLiteCatalog(path, create=False)
+
+    assert _schema_snapshot(path) == schema_before
+    connection = sqlite3.connect(path)
+    try:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == (
+            LATEST_SCHEMA_VERSION
+        )
+    finally:
+        connection.close()
+    assert not Path(f"{path}-wal").exists()
+    assert not Path(f"{path}-shm").exists()
+
+
+def test_existing_only_forward_migrates_an_exact_older_catalog_schema(tmp_path):
+    path = tmp_path / "version-one.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.execute(sqlite_catalog_module._SCHEMA_MIGRATIONS_SQL)
+    for statement in sqlite_catalog_module._MIGRATIONS[1]:
+        connection.execute(statement)
+    connection.execute(
+        """
+        INSERT INTO namespaces(namespace_id, name, created_at)
+        VALUES (?, 'default', '2026-01-01T00:00:00+00:00')
+        """,
+        (DEFAULT_NAMESPACE_ID,),
+    )
+    connection.execute(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (1, 'legacy')"
+    )
+    connection.execute("PRAGMA user_version = 1")
+    connection.commit()
+    connection.close()
+
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert catalog.schema_version == LATEST_SCHEMA_VERSION
+        assert catalog.create_namespace("default") == DEFAULT_NAMESPACE_ID
+
+    with SQLiteCatalog(path, create=False) as reopened:
+        assert reopened.schema_version == LATEST_SCHEMA_VERSION
 
 
 def test_existing_only_mode_maps_corrupt_database_errors(tmp_path):

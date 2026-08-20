@@ -34,10 +34,10 @@ view, or advance a ref. Prepare all three authorities before running it:
   The database file must be a single-linked regular file. The CLI binds its
   captured `(st_dev, st_ino, st_nlink=1)` identity into the existing-only open;
   SQLite rechecks it immediately before and after `sqlite3.connect`, before
-  schema inspection, WAL activation, or migration. Its resolved ancestor chain
-  and WAL/SHM sidecar namespace must remain trusted and quiescent for the entire
-  invocation. These identity checks are not a filesystem sandbox against an
-  actor racing arbitrary renames.
+  complete claimed-version schema authentication, WAL activation, or
+  migration. Its resolved ancestor chain and WAL/SHM sidecar namespace must
+  remain trusted and quiescent for the entire invocation. These identity checks
+  are not a filesystem sandbox against an actor racing arbitrary renames.
 - `--cas-root` names a fully preprovisioned strict `LocalCAS` layout. The
   command will not create the root, `sha256` directory, or 256 digest shards.
   Provision the layout once, while its namespace is trusted and quiescent, with
@@ -45,10 +45,11 @@ view, or advance a ref. Prepare all three authorities before running it:
   CLI.
 - `--workspace-root` names an existing Linux directory owned by the current
   effective UID with exact mode `0700`. The catalog path, CAS root, and
-  workspace root must not overlap. `--output` must be a missing child below the
+  workspace root must not overlap or resolve through distinct directory names
+  to the same filesystem identity. `--output` must be a missing child below the
   workspace root, and every existing output-parent component must be a real
-  directory on the workspace root filesystem. An existing file, directory, or
-  symlink is never replaced.
+  directory on the workspace root filesystem without a nested mount point. An
+  existing file, directory, or symlink is never replaced.
 
 For example, materialize the current generation of the `main` ref:
 

@@ -47,6 +47,7 @@ _RETAINED_REPOSITORY_RE = re.compile(
     re.ASCII,
 )
 _SIGNED_INT64_MAX = 9_223_372_036_854_775_807
+_MAX_PROC_MOUNTINFO_BYTES = 16 * 1024 * 1024
 
 
 class CLIError(RuntimeError):
@@ -1009,6 +1010,98 @@ def _resolved_retained_materialization_path(
         raise CLIError(f"{label} path could not be resolved safely") from exc
 
 
+def _retained_real_directory_identity(
+    path: Path,
+    *,
+    label: str,
+) -> tuple[int, int]:
+    try:
+        metadata = path.lstat()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(f"{label} cannot be inspected safely") from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or not metadata.st_dev
+        or not metadata.st_ino
+    ):
+        raise CLIError(f"{label} must resolve to one real directory")
+    return int(metadata.st_dev), int(metadata.st_ino)
+
+
+def _retained_directory_ancestry(
+    path: Path,
+    *,
+    label: str,
+) -> tuple[tuple[Path, tuple[int, int]], ...]:
+    ancestry: list[tuple[Path, tuple[int, int]]] = []
+    current = path
+    while True:
+        ancestry.append(
+            (
+                current,
+                _retained_real_directory_identity(current, label=label),
+            )
+        )
+        parent = current.parent
+        if parent == current:
+            return tuple(ancestry)
+        current = parent
+
+
+def _require_distinct_directory_ancestry(
+    first: tuple[tuple[Path, tuple[int, int]], ...],
+    first_label: str,
+    second: tuple[tuple[Path, tuple[int, int]], ...],
+    second_label: str,
+) -> None:
+    for first_path, first_identity in first:
+        for second_path, second_identity in second:
+            if first_identity == second_identity and first_path != second_path:
+                raise CLIError(
+                    f"{first_label} must not physically alias the {second_label}"
+                )
+
+
+def _decode_mountinfo_path(value: bytes) -> Path:
+    decoded = value
+    for escaped, replacement in (
+        (b"\\040", b" "),
+        (b"\\011", b"\t"),
+        (b"\\012", b"\n"),
+        (b"\\134", b"\\"),
+    ):
+        decoded = decoded.replace(escaped, replacement)
+    path = Path(os.fsdecode(decoded))
+    if not path.is_absolute():
+        raise CLIError("Linux mount information contains a relative mount point")
+    return path
+
+
+def _retained_linux_mount_points() -> frozenset[Path]:
+    mountinfo = Path("/proc/self/mountinfo")
+    try:
+        with mountinfo.open("rb") as stream:
+            payload = stream.read(_MAX_PROC_MOUNTINFO_BYTES + 1)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError("Linux mount information could not be inspected safely") from exc
+    if len(payload) > _MAX_PROC_MOUNTINFO_BYTES:
+        raise CLIError("Linux mount information exceeds the safe size limit")
+    mount_points: set[Path] = set()
+    for line in payload.splitlines():
+        fields = line.split(b" ")
+        try:
+            separator = fields.index(b"-")
+        except ValueError as exc:
+            raise CLIError("Linux mount information is malformed") from exc
+        if separator < 6 or len(fields) < separator + 4:
+            raise CLIError("Linux mount information is malformed")
+        mount_points.add(_decode_mountinfo_path(fields[4]))
+    if not mount_points:
+        raise CLIError("Linux mount information is empty")
+    return frozenset(mount_points)
+
+
 def _retained_catalog_file_identity(path: Path) -> tuple[int, int, int]:
     try:
         metadata = path.lstat()
@@ -1070,24 +1163,33 @@ def _require_retained_materialization_topology(
         strict=True,
     )
     catalog_identity = _retained_catalog_file_identity(resolved_catalog)
-    try:
-        workspace_metadata = resolved_workspace.lstat()
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise CLIError("workspace root cannot be inspected safely") from exc
-    if (
-        not stat.S_ISDIR(workspace_metadata.st_mode)
-        or stat.S_ISLNK(workspace_metadata.st_mode)
-        or not workspace_metadata.st_dev
-    ):
-        raise CLIError("workspace root must resolve to one real directory")
-    workspace_device = int(workspace_metadata.st_dev)
+    mount_points = _retained_linux_mount_points()
+    if resolved_catalog in mount_points:
+        raise CLIError("catalog must not be a mounted file")
+    catalog_ancestry = _retained_directory_ancestry(
+        resolved_catalog.parent,
+        label="catalog parent",
+    )
+    cas_ancestry = _retained_directory_ancestry(
+        resolved_cas,
+        label="CAS root",
+    )
+    workspace_ancestry = _retained_directory_ancestry(
+        resolved_workspace,
+        label="workspace root",
+    )
+    workspace_identity = workspace_ancestry[0][1]
+    workspace_device = workspace_identity[0]
     try:
         relative_parent = output.parent.relative_to(workspace_root)
     except ValueError as exc:  # pragma: no cover - lexical preflight already binds it
         raise CLIError("output parent escaped the workspace root") from exc
     current_parent = workspace_root
+    output_ancestry: list[tuple[Path, tuple[int, int]]] = []
+    resolved_current_parent = resolved_workspace
     for component in relative_parent.parts:
         current_parent = current_parent / component
+        resolved_current_parent = resolved_current_parent / component
         try:
             metadata = current_parent.lstat()
         except FileNotFoundError as exc:
@@ -1098,6 +1200,16 @@ def _require_retained_materialization_topology(
             raise CLIError("output parent must contain only existing real directories")
         if metadata.st_dev != workspace_device:
             raise CLIError("output parent must remain on the workspace filesystem")
+        if not metadata.st_ino:
+            raise CLIError("output parent directory identity is invalid")
+        if resolved_current_parent in mount_points:
+            raise CLIError("output parent must not cross a nested mount point")
+        output_ancestry.append(
+            (
+                resolved_current_parent,
+                (int(metadata.st_dev), int(metadata.st_ino)),
+            )
+        )
     resolved_output_parent = _resolved_retained_materialization_path(
         current_parent,
         label="output parent",
@@ -1119,6 +1231,19 @@ def _require_retained_materialization_topology(
             raise CLIError(
                 f"{first_label} must not physically overlap the {second_label}"
             )
+    for first, first_label, second, second_label in (
+        (catalog_ancestry, "catalog", cas_ancestry, "CAS root"),
+        (catalog_ancestry, "catalog", workspace_ancestry, "workspace root"),
+        (cas_ancestry, "CAS root", workspace_ancestry, "workspace root"),
+        (tuple(output_ancestry), "output parent", catalog_ancestry, "catalog"),
+        (tuple(output_ancestry), "output parent", cas_ancestry, "CAS root"),
+    ):
+        _require_distinct_directory_ancestry(
+            first,
+            first_label,
+            second,
+            second_label,
+        )
     return _RetainedMaterializationTopology(
         catalog_path=resolved_catalog,
         catalog_identity=catalog_identity,

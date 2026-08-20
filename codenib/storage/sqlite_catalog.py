@@ -20,6 +20,7 @@ import sqlite3
 import stat
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -1040,6 +1041,51 @@ _MIGRATIONS: dict[int, tuple[str, ...]] = {
     4: _SCHEMA_V4,
 }
 
+_SCHEMA_MIGRATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL
+)
+"""
+
+
+def _catalog_schema_signature(
+    connection: sqlite3.Connection,
+) -> tuple[tuple[object, ...], ...]:
+    """Return every caller-defined schema object in a stable order."""
+
+    return tuple(
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT type, name, tbl_name, sql
+            FROM sqlite_master
+            WHERE substr(name, 1, 7) != 'sqlite_'
+            ORDER BY type, name, tbl_name
+            """
+        )
+    )
+
+
+@lru_cache(maxsize=LATEST_SCHEMA_VERSION)
+def _expected_catalog_schema_signature(
+    version: int,
+) -> tuple[tuple[object, ...], ...]:
+    """Build the exact schema authorized by the immutable migration sequence."""
+
+    reference = sqlite3.connect(":memory:", isolation_level=None)
+    try:
+        reference.execute(_SCHEMA_MIGRATIONS_SQL)
+        for migration_version in range(1, version + 1):
+            statements = _MIGRATIONS.get(migration_version)
+            if statements is None:  # pragma: no cover - module invariant
+                raise CatalogError(f"missing catalog migration {migration_version}")
+            for statement in statements:
+                reference.execute(statement)
+        return _catalog_schema_signature(reference)
+    finally:
+        reference.close()
+
 
 class SQLiteCatalog:
     """Transactional SQLite catalog for immutable index snapshots."""
@@ -1241,6 +1287,10 @@ class SQLiteCatalog:
                 "catalog schema is newer than this CodeNib version: "
                 f"{user_version} > {LATEST_SCHEMA_VERSION}"
             )
+        if _catalog_schema_signature(
+            self._connection
+        ) != _expected_catalog_schema_signature(user_version):
+            raise CatalogError("existing file is not an initialized CodeNib catalog")
 
     def __enter__(self) -> SQLiteCatalog:
         return self
@@ -1271,14 +1321,7 @@ class SQLiteCatalog:
 
     def _migrate(self) -> None:
         with self._transaction():
-            self._connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS schema_migrations (
-                    version INTEGER PRIMARY KEY,
-                    applied_at TEXT NOT NULL
-                )
-                """
-            )
+            self._connection.execute(_SCHEMA_MIGRATIONS_SQL)
             rows = self._connection.execute(
                 "SELECT version FROM schema_migrations ORDER BY version"
             ).fetchall()

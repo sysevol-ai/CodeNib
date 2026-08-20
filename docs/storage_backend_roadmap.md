@@ -532,11 +532,14 @@ read-only: it enables WAL and may apply forward migrations, while rejecting a
 missing, empty, foreign, or corrupt database. The database must be a
 single-linked regular file. Existing-only open binds its captured `(st_dev,
 st_ino, st_nlink=1)` identity across `sqlite3.connect` and rechecks it before
-schema inspection, WAL activation, or migration. Its resolved ancestor chain
-and WAL/SHM sidecar namespace are an explicit trusted, quiescent deployment
-boundary for the whole invocation; the identity checks do not claim a
-path-based sandbox against arbitrary concurrent renames. Every existing output-
-parent component must be a real directory on the workspace root filesystem.
+authenticating the complete schema declared by its migration version, WAL
+activation, or migration. Its resolved ancestor chain and WAL/SHM sidecar
+namespace are an explicit trusted, quiescent deployment boundary for the whole
+invocation; the identity checks do not claim a path-based sandbox against
+arbitrary concurrent renames. Physical preflight rejects distinct storage
+paths whose ancestor directory identities alias, plus mounted catalog files and
+nested mount points below the workspace root. Every existing output-parent
+component must be a real directory on the workspace root filesystem.
 The command resolves either one ref (optionally guarded by its expected
 generation) or one explicit immutable snapshot, materializes the retained
 portable generation, then closes the CLI-owned caller receipt, strict CAS

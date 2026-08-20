@@ -598,6 +598,120 @@ def test_artifact_materialize_rejects_cross_device_output_parent_before_storage(
         cli._run_artifact_materialize(args)
 
 
+def test_artifact_materialize_rejects_directory_identity_alias_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    resolved_workspace = workspace_root.resolve(strict=True)
+    resolved_cas = cas_root.resolve(strict=True)
+    workspace_identity = cli._retained_real_directory_identity(
+        resolved_workspace,
+        label="workspace root",
+    )
+    real_identity = cli._retained_real_directory_identity
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            pass
+
+    def aliased_identity(path: Path, *, label: str) -> tuple[int, int]:
+        if path == resolved_cas:
+            return workspace_identity
+        return real_identity(path, label=label)
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_retained_real_directory_identity",
+        aliased_identity,
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: pytest.fail("CAS must not be opened"),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+    args = SimpleNamespace(
+        repository="owner/repo",
+        namespace="default",
+        ref="main",
+        snapshot=None,
+        expected_generation=None,
+        catalog=str(catalog_path),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        output=str(workspace_root / "context"),
+    )
+
+    with pytest.raises(cli.CLIError, match="physically alias the workspace root"):
+        cli._run_artifact_materialize(args)
+
+
+def test_artifact_materialize_rejects_nested_mount_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    mounted_parent = workspace_root / "mounted"
+    mounted_parent.mkdir()
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            pass
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_retained_linux_mount_points",
+        lambda: frozenset({mounted_parent.resolve(strict=True)}),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: pytest.fail("CAS must not be opened"),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+    args = SimpleNamespace(
+        repository="owner/repo",
+        namespace="default",
+        ref="main",
+        snapshot=None,
+        expected_generation=None,
+        catalog=str(catalog_path),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        output=str(mounted_parent / "context"),
+    )
+
+    with pytest.raises(cli.CLIError, match="nested mount point"):
+        cli._run_artifact_materialize(args)
+
+
 def test_artifact_materialize_provider_failure_precedes_storage_open(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
