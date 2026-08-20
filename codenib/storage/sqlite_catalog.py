@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import stat
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +62,20 @@ CatalogValidationError = StorageValidationError
 
 _DB_NOW_MS_SQL = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
 _SQLITE_INT64_MAX = 9_223_372_036_854_775_807
+_V1_CATALOG_TABLES = frozenset(
+    {
+        "namespaces",
+        "objects",
+        "refs",
+        "repositories",
+        "schema_migrations",
+        "snapshot_views",
+        "snapshots",
+        "source_revisions",
+        "view_generations",
+        "view_profiles",
+    }
+)
 
 
 def _now() -> str:
@@ -1039,27 +1054,90 @@ class SQLiteCatalog:
         path: str | Path,
         *,
         busy_timeout_ms: int = 5_000,
+        create: bool = True,
+        expected_file_identity: tuple[int, int, int] | None = None,
     ) -> None:
+        """Open a catalog, optionally requiring an initialized existing file.
+
+        ``create=False`` prevents path creation and rejects empty, foreign, or
+        corrupt databases.  A recognized older CodeNib catalog is still opened
+        read-write, switched to WAL, and forward-migrated transactionally.  An
+        expected file identity binds that existing-only open to one resolved
+        single-linked regular inode across ``sqlite3.connect``.
+        """
+
         if (
             isinstance(busy_timeout_ms, bool)
             or not isinstance(busy_timeout_ms, int)
             or busy_timeout_ms < 0
         ):
             raise ValueError("busy_timeout_ms must be a non-negative integer")
+        if type(create) is not bool:
+            raise TypeError("create must be a boolean")
+        if expected_file_identity is not None:
+            if create:
+                raise ValueError("expected_file_identity requires create=False")
+            if (
+                type(expected_file_identity) is not tuple
+                or len(expected_file_identity) != 3
+                or any(type(value) is not int for value in expected_file_identity)
+            ):
+                raise TypeError(
+                    "expected_file_identity must be an exact 3-tuple of integers"
+                )
+            if any(value < 1 for value in expected_file_identity):
+                raise ValueError(
+                    "expected_file_identity must contain positive integers"
+                )
+            if expected_file_identity[2] != 1:
+                raise ValueError("expected_file_identity link count must be 1")
 
         raw_path = str(path)
+        connection_target = raw_path
+        use_uri = False
         if raw_path != ":memory:":
             resolved = Path(path).expanduser().resolve()
-            resolved.parent.mkdir(parents=True, exist_ok=True)
             raw_path = str(resolved)
+            if create:
+                resolved.parent.mkdir(parents=True, exist_ok=True)
+                connection_target = raw_path
+            else:
+                connection_target = f"{resolved.as_uri()}?mode=rw"
+                use_uri = True
+        elif not create:
+            raise ValueError(
+                "an in-memory SQLite catalog cannot be opened existing-only"
+            )
         self.path = raw_path
-        self._connection = sqlite3.connect(
-            raw_path,
-            timeout=busy_timeout_ms / 1_000,
-            isolation_level=None,
-        )
+        if expected_file_identity is not None:
+            self._require_expected_file_identity(resolved, expected_file_identity)
+        try:
+            connection = sqlite3.connect(
+                connection_target,
+                timeout=busy_timeout_ms / 1_000,
+                isolation_level=None,
+                uri=use_uri,
+            )
+        except sqlite3.Error as exc:
+            if not create:
+                raise CatalogError(
+                    f"existing SQLite catalog could not be opened: {raw_path}"
+                ) from exc
+            raise
+        try:
+            if expected_file_identity is not None:
+                self._require_expected_file_identity(
+                    resolved,
+                    expected_file_identity,
+                )
+        except BaseException:
+            connection.close()
+            raise
+        self._connection = connection
         self._connection.row_factory = sqlite3.Row
         try:
+            if not create:
+                self._require_existing_catalog_identity()
             self._connection.execute("PRAGMA foreign_keys = ON")
             self._connection.execute("PRAGMA recursive_triggers = ON")
             if self._connection.execute("PRAGMA recursive_triggers").fetchone()[0] != 1:
@@ -1076,13 +1154,93 @@ class SQLiteCatalog:
             self._connection.execute("PRAGMA journal_mode = WAL")
             self._connection.execute("PRAGMA synchronous = FULL")
             self._migrate()
+        except sqlite3.Error as exc:
+            self._connection.close()
+            if not create:
+                raise CatalogError(
+                    f"existing SQLite catalog could not be initialized: {raw_path}"
+                ) from exc
+            raise
         except BaseException:
             self._connection.close()
             raise
 
+    @staticmethod
+    def _require_expected_file_identity(
+        path: Path,
+        expected: tuple[int, int, int],
+    ) -> None:
+        try:
+            metadata = path.lstat()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise CatalogError(
+                "existing SQLite catalog file identity could not be verified"
+            ) from exc
+        observed = (
+            int(metadata.st_dev),
+            int(metadata.st_ino),
+            int(metadata.st_nlink),
+        )
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_dev < 1
+            or metadata.st_ino < 1
+            or metadata.st_nlink != 1
+            or observed != expected
+        ):
+            raise CatalogError("existing SQLite catalog file identity changed")
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self._connection.close()
+
+    def _require_existing_catalog_identity(self) -> None:
+        observed_tables = frozenset(
+            row["name"]
+            for row in self._connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        )
+        if not _V1_CATALOG_TABLES.issubset(observed_tables):
+            raise CatalogError("existing file is not an initialized CodeNib catalog")
+        migration_columns = tuple(
+            (row["name"], row["type"], row["notnull"], row["pk"])
+            for row in self._connection.execute("PRAGMA table_info(schema_migrations)")
+        )
+        if migration_columns != (
+            ("version", "INTEGER", 0, 1),
+            ("applied_at", "TEXT", 1, 0),
+        ):
+            raise CatalogError("existing file is not an initialized CodeNib catalog")
+        migration_rows = self._connection.execute(
+            "SELECT version, applied_at FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        versions: list[int] = []
+        for row in migration_rows:
+            version = row["version"]
+            applied_at = row["applied_at"]
+            if (
+                type(version) is not int
+                or version < 1
+                or version > _SQLITE_INT64_MAX
+                or type(applied_at) is not str
+                or not applied_at
+            ):
+                raise CatalogError(
+                    "existing file is not an initialized CodeNib catalog"
+                )
+            versions.append(version)
+        if not versions or versions != list(range(1, len(versions) + 1)):
+            raise CatalogError("existing file is not an initialized CodeNib catalog")
+        user_version = self._connection.execute("PRAGMA user_version").fetchone()[0]
+        if type(user_version) is not int or user_version != versions[-1]:
+            raise CatalogError("existing file is not an initialized CodeNib catalog")
+        if user_version > LATEST_SCHEMA_VERSION:
+            raise CatalogError(
+                "catalog schema is newer than this CodeNib version: "
+                f"{user_version} > {LATEST_SCHEMA_VERSION}"
+            )
 
     def __enter__(self) -> SQLiteCatalog:
         return self

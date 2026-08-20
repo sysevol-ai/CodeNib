@@ -259,7 +259,7 @@ def test_forward_migrates_v1_catalog_without_losing_existing_rows(
     monkeypatch.setattr(
         sqlite_catalog_module, "LATEST_SCHEMA_VERSION", LATEST_SCHEMA_VERSION
     )
-    with SQLiteCatalog(path) as catalog:
+    with SQLiteCatalog(path, create=False) as catalog:
         assert catalog.schema_version == LATEST_SCHEMA_VERSION
         assert catalog.create_repository("owner/repo") == repository_id
         assert (

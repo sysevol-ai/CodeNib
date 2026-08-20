@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Barrier
 
 import pytest
 
 import codenib.storage.protocols as storage_protocols
+import codenib.storage.sqlite_catalog as sqlite_catalog_module
 from codenib.storage.cas import LocalCAS
 from codenib.storage.models import (
     ObjectRecord,
@@ -90,6 +92,24 @@ def _setup_staged_view(catalog: SQLiteCatalog, suffix: str = "a"):
     return repository_id, source_revision_id, profile_id, object_digest, view_id
 
 
+def _catalog_file_identity(path: Path) -> tuple[int, int, int]:
+    metadata = path.lstat()
+    return int(metadata.st_dev), int(metadata.st_ino), int(metadata.st_nlink)
+
+
+def _prepare_delete_journal_catalog(path: Path) -> bytes:
+    with SQLiteCatalog(path):
+        pass
+    connection = sqlite3.connect(path)
+    try:
+        assert connection.execute("PRAGMA journal_mode = DELETE").fetchone()[0] == (
+            "delete"
+        )
+    finally:
+        connection.close()
+    return path.read_bytes()
+
+
 def test_initializes_pragmas_default_namespace_and_idempotent_reopen(tmp_path):
     path = tmp_path / "catalog.sqlite3"
 
@@ -116,6 +136,269 @@ def test_initializes_pragmas_default_namespace_and_idempotent_reopen(tmp_path):
             "SELECT COUNT(*) FROM schema_migrations"
         ).fetchone()[0]
         assert migration_count == LATEST_SCHEMA_VERSION
+
+
+def test_existing_only_mode_never_creates_a_missing_catalog(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+
+    with pytest.raises(CatalogError, match="existing SQLite catalog"):
+        SQLiteCatalog(path, create=False)
+
+    assert not path.exists()
+
+    nested = tmp_path / "missing" / "catalog.sqlite3"
+    with pytest.raises(CatalogError, match="existing SQLite catalog"):
+        SQLiteCatalog(nested, create=False)
+    assert not nested.parent.exists()
+
+    with SQLiteCatalog(path) as created:
+        assert created.schema_version == LATEST_SCHEMA_VERSION
+    with SQLiteCatalog(path, create=False) as reopened:
+        assert reopened.schema_version == LATEST_SCHEMA_VERSION
+
+    escaped = tmp_path / "catalog #%25.sqlite3"
+    with SQLiteCatalog(escaped):
+        pass
+    with SQLiteCatalog(escaped, create=False) as reopened:
+        assert reopened.schema_version == LATEST_SCHEMA_VERSION
+
+
+@pytest.mark.parametrize(
+    ("identity", "error", "message"),
+    (
+        ([1, 2, 1], TypeError, "exact 3-tuple"),
+        ((1, 2), TypeError, "exact 3-tuple"),
+        ((True, 2, 1), TypeError, "exact 3-tuple"),
+        ((0, 2, 1), ValueError, "positive integers"),
+        ((1, 0, 1), ValueError, "positive integers"),
+        ((1, 2, 2), ValueError, "link count must be 1"),
+    ),
+)
+def test_existing_only_expected_file_identity_is_an_exact_single_link_token(
+    tmp_path,
+    identity,
+    error,
+    message,
+):
+    path = tmp_path / "catalog.sqlite3"
+
+    with pytest.raises(error, match=message):
+        SQLiteCatalog(
+            path,
+            create=False,
+            expected_file_identity=identity,
+        )
+
+    assert not path.exists()
+
+
+def test_expected_file_identity_is_existing_only(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+
+    with pytest.raises(ValueError, match="requires create=False"):
+        SQLiteCatalog(path, expected_file_identity=(1, 2, 1))
+
+    assert not path.exists()
+
+
+def test_existing_only_rejects_stable_replacement_before_connect(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_delete_journal_catalog(path)
+    expected_identity = _catalog_file_identity(path)
+    replacement = tmp_path / "replacement.sqlite3"
+    expected_bytes = _prepare_delete_journal_catalog(replacement)
+    replacement.replace(path)
+    real_connect = sqlite3.connect
+    connect_calls = 0
+
+    def forbidden_connect(*_args, **_kwargs):
+        nonlocal connect_calls
+        connect_calls += 1
+        pytest.fail("a persistently replaced catalog must be rejected before connect")
+
+    monkeypatch.setattr(sqlite_catalog_module.sqlite3, "connect", forbidden_connect)
+
+    with pytest.raises(CatalogError, match="file identity changed"):
+        SQLiteCatalog(
+            path,
+            create=False,
+            expected_file_identity=expected_identity,
+        )
+
+    assert connect_calls == 0
+    assert path.read_bytes() == expected_bytes
+    assert not Path(f"{path}-wal").exists()
+    assert not Path(f"{path}-shm").exists()
+    connection = real_connect(path)
+    try:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == (
+            LATEST_SCHEMA_VERSION
+        )
+    finally:
+        connection.close()
+
+
+def test_existing_only_rejects_persistent_replacement_during_connect(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_delete_journal_catalog(path)
+    expected_identity = _catalog_file_identity(path)
+    replacement = tmp_path / "replacement.sqlite3"
+    expected_bytes = _prepare_delete_journal_catalog(replacement)
+    real_connect = sqlite3.connect
+    opened_connections: list[sqlite3.Connection] = []
+    schema_checks = 0
+    migration_calls = 0
+
+    def replacing_connect(database, *args, **kwargs):
+        replacement.replace(path)
+        connection = real_connect(database, *args, **kwargs)
+        opened_connections.append(connection)
+        return connection
+
+    def forbidden_schema_check(_catalog):
+        nonlocal schema_checks
+        schema_checks += 1
+        pytest.fail("replacement must be rejected before catalog schema inspection")
+
+    def forbidden_migration(_catalog):
+        nonlocal migration_calls
+        migration_calls += 1
+        pytest.fail("replacement must be rejected before migration")
+
+    monkeypatch.setattr(sqlite_catalog_module.sqlite3, "connect", replacing_connect)
+    monkeypatch.setattr(
+        SQLiteCatalog,
+        "_require_existing_catalog_identity",
+        forbidden_schema_check,
+    )
+    monkeypatch.setattr(SQLiteCatalog, "_migrate", forbidden_migration)
+
+    with pytest.raises(CatalogError, match="file identity changed"):
+        SQLiteCatalog(
+            path,
+            create=False,
+            expected_file_identity=expected_identity,
+        )
+
+    assert len(opened_connections) == 1
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        opened_connections[0].execute("SELECT 1")
+    assert schema_checks == 0
+    assert migration_calls == 0
+    assert path.read_bytes() == expected_bytes
+    assert not Path(f"{path}-wal").exists()
+    assert not Path(f"{path}-shm").exists()
+    connection = real_connect(path)
+    try:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == (
+            LATEST_SCHEMA_VERSION
+        )
+    finally:
+        connection.close()
+
+
+def test_existing_only_mode_rejects_empty_or_foreign_databases(tmp_path):
+    empty = tmp_path / "empty.sqlite3"
+    empty.touch()
+
+    with pytest.raises(CatalogError, match="initialized CodeNib catalog"):
+        SQLiteCatalog(empty, create=False)
+
+    assert empty.stat().st_size == 0
+    assert not Path(f"{empty}-wal").exists()
+    assert not Path(f"{empty}-shm").exists()
+
+    foreign = tmp_path / "foreign.sqlite3"
+    connection = sqlite3.connect(foreign)
+    connection.execute("CREATE TABLE sentinel(value TEXT NOT NULL)")
+    connection.execute("INSERT INTO sentinel(value) VALUES ('preserved')")
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(CatalogError, match="initialized CodeNib catalog"):
+        SQLiteCatalog(foreign, create=False)
+
+    connection = sqlite3.connect(foreign)
+    try:
+        tables = tuple(
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+            )
+        )
+        assert tables == ("sentinel",)
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert connection.execute("SELECT value FROM sentinel").fetchone()[0] == (
+            "preserved"
+        )
+    finally:
+        connection.close()
+    assert not Path(f"{foreign}-wal").exists()
+    assert not Path(f"{foreign}-shm").exists()
+
+    migration_db = tmp_path / "foreign-migrations.sqlite3"
+    connection = sqlite3.connect(migration_db)
+    connection.execute(
+        """
+        CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (1, 'foreign')"
+    )
+    connection.execute("PRAGMA user_version = 1")
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(CatalogError, match="initialized CodeNib catalog"):
+        SQLiteCatalog(migration_db, create=False)
+
+    connection = sqlite3.connect(migration_db)
+    try:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert tuple(
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+            )
+        ) == ("schema_migrations",)
+    finally:
+        connection.close()
+    assert not Path(f"{migration_db}-wal").exists()
+    assert not Path(f"{migration_db}-shm").exists()
+
+
+def test_existing_only_mode_maps_corrupt_database_errors(tmp_path):
+    path = tmp_path / "corrupt.sqlite3"
+    path.write_bytes(b"not a sqlite database")
+
+    with pytest.raises(CatalogError, match="could not be initialized") as raised:
+        SQLiteCatalog(path, create=False)
+
+    assert isinstance(raised.value.__cause__, sqlite3.DatabaseError)
+    assert path.read_bytes() == b"not a sqlite database"
+
+
+def test_existing_only_mode_requires_an_exact_boolean(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+
+    with pytest.raises(TypeError, match="create must be a boolean"):
+        SQLiteCatalog(path, create=1)  # type: ignore[arg-type]
+
+    assert not path.exists()
 
 
 def test_reopen_rejects_mismatched_schema_version_records(tmp_path):
