@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 graft web
+include native/workspace_owner.c
 include CHANGELOG.md
 include CONTRIBUTING.md
 include server.json

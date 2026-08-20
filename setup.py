@@ -2,14 +2,14 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Setuptools hooks for release-only non-Python assets."""
+"""Setuptools hooks for optional native and prebuilt release assets."""
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
-from setuptools import setup
+from setuptools import Extension, setup
 from setuptools.command.build_py import build_py as _build_py
 
 
@@ -30,4 +30,17 @@ class BuildPy(_build_py):
         shutil.copytree(source, target)
 
 
-setup(cmdclass={"build_py": BuildPy})
+workspace_owner = Extension(
+    "codenib._workspace_owner_impl",
+    sources=["native/workspace_owner.c"],
+    define_macros=[("Py_LIMITED_API", "0x030A0000")],
+    py_limited_api=True,
+    optional=True,
+)
+
+
+setup(
+    cmdclass={"build_py": BuildPy},
+    ext_modules=[workspace_owner],
+    options={"bdist_wheel": {"py_limited_api": "cp310"}},
+)
