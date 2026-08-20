@@ -541,6 +541,7 @@ def _snapshot_exported(
     max_manifest_bytes: int,
     max_bundle_files: int,
     max_context_files: int,
+    max_context_bytes: int,
 ) -> RepoManifestExportResult:
     """Detach all forgeable frozen dataclasses before acquiring authority."""
 
@@ -551,6 +552,10 @@ def _snapshot_exported(
     if len(payload) > max_manifest_bytes:
         raise StorageValidationError(
             f"exported repository manifest exceeds {max_manifest_bytes} bytes"
+        )
+    if len(payload) > max_context_bytes:
+        raise StorageValidationError(
+            f"retained context exceeds {max_context_bytes} inventoried bytes"
         )
     if type(source_receipt) is not RepoManifestExportReceipt:
         raise StorageValidationError("exported manifest receipt is invalid")
@@ -568,6 +573,7 @@ def _snapshot_exported(
 
     detached_views: list[RepoManifestViewExportReceipt] = []
     member_count = 0
+    inventoried_byte_count = len(payload)
     for source_view in source_views:
         if type(source_view) is not RepoManifestViewExportReceipt:
             raise StorageValidationError("exported view receipt is invalid")
@@ -589,15 +595,16 @@ def _snapshot_exported(
                 raise StorageValidationError(
                     "exported view member receipt entry is invalid"
                 )
-            detached_members.append(
-                (
-                    item[0],
-                    _snapshot_blob(
-                        item[1],
-                        label="exported view member receipt",
-                    ),
-                )
+            member_receipt = _snapshot_blob(
+                item[1],
+                label="exported view member receipt",
             )
+            if member_receipt.byte_size > (max_context_bytes - inventoried_byte_count):
+                raise StorageValidationError(
+                    f"retained context exceeds {max_context_bytes} inventoried bytes"
+                )
+            inventoried_byte_count += member_receipt.byte_size
+            detached_members.append((item[0], member_receipt))
         detached_views.append(
             RepoManifestViewExportReceipt(
                 view_type=source_view.view_type,
@@ -1699,6 +1706,7 @@ def materialize_retained_context_artifact(
         max_manifest_bytes=max_manifest_bytes,
         max_bundle_files=max_bundle_files,
         max_context_files=max_context_files,
+        max_context_bytes=max_context_bytes,
     )
     try:
         parsed = plan_repo_manifest_import_bytes(

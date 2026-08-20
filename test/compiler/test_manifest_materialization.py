@@ -47,6 +47,7 @@ from codenib.storage import (
     LocalCAS,
     RepositoryIdentity,
     StorageIntegrityError,
+    StorageValidationError,
 )
 
 from .test_manifest_export import _retained_fixture
@@ -665,6 +666,45 @@ def test_conflicting_duplicate_receipt_fails_before_retention_or_provider(
             assert store.retention_requests == []
             assert provider.run_count == 0
             assert owner.state == "empty"
+        finally:
+            owner.close()
+
+
+def test_context_byte_limit_fails_before_retention_or_bundle_reads(
+    tmp_path: Path,
+) -> None:
+    with _retained_fixture(tmp_path / "retained") as (
+        _fixture,
+        imported,
+        object_store,
+        catalog,
+    ):
+        exported = _export_snapshot(imported, object_store, catalog)
+        inventoried_bytes = len(exported.canonical_manifest_bytes) + sum(
+            member_receipt.byte_size
+            for view in exported.receipt.view_receipts
+            for _path, member_receipt in view.member_receipt_items
+        )
+        assert len(exported.receipt.view_receipts) == 2
+        store = _RetainingReadStore(object_store)
+        provider = _TestWorkspaceProvider()
+        owner = PublishedWorkspaceReceiptOwner()
+        destination = tmp_path / "artifact"
+        try:
+            with pytest.raises(StorageValidationError, match="inventoried bytes"):
+                materialize_retained_context_artifact(
+                    exported,
+                    destination,
+                    object_store=store,
+                    workspace_provider=provider,
+                    output_receipt_owner=owner,
+                    max_context_bytes=inventoried_bytes - 1,
+                )
+            assert store.retention_requests == []
+            assert store.opened == []
+            assert provider.run_count == 0
+            assert owner.state == "empty"
+            assert not destination.exists()
         finally:
             owner.close()
 
