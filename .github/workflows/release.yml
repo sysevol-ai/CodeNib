@@ -11,6 +11,7 @@ on:
       - ".github/workflows/release-test.yml"
       - ".github/workflows/release-verify.yml"
       - "codenib/**"
+      - "native/**"
       - "scripts/smoke_release_install.py"
       - "scripts/smoke_release_services.py"
       - "scripts/smoke_release_upgrade.py"
@@ -218,10 +219,10 @@ jobs:
           done
           test "$FOUND" = 1
 
-          BUILT_WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
-          PYPI_WHEEL="$(find "$FETCH_DIR" -maxdepth 1 -name '*.whl' -print -quit)"
-          test -n "$BUILT_WHEEL"
-          test -n "$PYPI_WHEEL"
+          BUILT_WHEEL="$(python scripts/verify_release_artifacts.py \
+            dist --print-compatible-wheel)"
+          PYPI_WHEEL="$(python scripts/verify_release_artifacts.py \
+            "$FETCH_DIR" --print-compatible-wheel)"
           test "$(sha256sum "$BUILT_WHEEL" | cut -d' ' -f1)" = \
             "$(sha256sum "$PYPI_WHEEL" | cut -d' ' -f1)"
           echo "CODENIB_VERSION=$VERSION" >> "$GITHUB_ENV"

@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and inspect distributions
+  build-sdist:
+    name: Build source distribution
     # This job executes package and frontend build code from pull requests.
     # Keep it off the persistent self-hosted runner.
     runs-on: ubuntu-latest
@@ -45,20 +45,162 @@ jobs:
           npm test
           npm run build
 
-      - name: Build Python distributions
+      - name: Build source distribution
         run: |
-          BUILD_VENV="$RUNNER_TEMP/codenib-release-build-${{ github.run_id }}-${{ github.run_attempt }}"
+          BUILD_VENV="$RUNNER_TEMP/codenib-release-sdist-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$BUILD_VENV"
+          "$BUILD_VENV/bin/python" -m pip install --upgrade pip build
+          "$BUILD_VENV/bin/python" -m build --sdist
+
+      - name: Upload source distribution
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: python-build-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  build-wheel:
+    name: Build ${{ matrix.arch }} wheel
+    needs: build-sdist
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - x86_64
+          - aarch64
+    steps:
+      - name: Download source distribution
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: python-build-sdist
+          path: source-dist
+
+      - name: Resolve source distribution
+        id: sdist
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          sources = list(Path("source-dist").glob("*.tar.gz"))
+          if len(sources) != 1:
+              raise SystemExit(f"expected one source distribution, found {sources!r}")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"path={sources[0]}\n")
+          PY
+
+      - name: Set up QEMU for aarch64
+        if: matrix.arch == 'aarch64'
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          platforms: arm64
+
+      - name: Build and smoke-test wheel
+        uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
+        with:
+          package-dir: ${{ steps.sdist.outputs.path }}
+          output-dir: wheelhouse
+        env:
+          CIBW_ARCHS_LINUX: ${{ matrix.arch }}
+          CIBW_BUILD: cp310-manylinux_${{ matrix.arch }}
+          CIBW_CONTAINER_ENGINE: "docker; create_args: --cap-add SYS_PTRACE"
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
+            auditwheel repair --plat manylinux_2_28_${{ matrix.arch }}
+            -w {dest_dir} {wheel}
+          CIBW_TEST_COMMAND: >-
+            python -c "import platform;
+            import codenib._workspace_owner_impl as implementation;
+            from codenib import _workspace_owner;
+            assert platform.machine() == '${{ matrix.arch }}';
+            assert implementation.workspace_owner_protocol_version == 2;
+            assert implementation.require_support() is None;
+            _workspace_owner.require_support()"
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: python-build-wheel-${{ matrix.arch }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 1
+
+  limited-abi-compile:
+    name: Strict CPython 3.10 limited-ABI compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.10"
+
+      - name: Compile the native extension against the limited API
+        run: |
+          INCLUDE_DIR="$(python - <<'PY'
+          import sysconfig
+
+          print(sysconfig.get_config_var("INCLUDEPY"))
+          PY
+          )"
+          cc \
+            -std=c11 \
+            -D_GNU_SOURCE=1 \
+            -DPy_LIMITED_API=0x030A0000 \
+            -Wall \
+            -Wextra \
+            -Werror \
+            -fPIC \
+            -I"$INCLUDE_DIR" \
+            -c native/workspace_owner.c \
+            -o "$RUNNER_TEMP/workspace-owner-limited-api.o"
+          test -s "$RUNNER_TEMP/workspace-owner-limited-api.o"
+
+  build:
+    name: Inspect production distributions
+    needs:
+      - build-sdist
+      - build-wheel
+      - limited-abi-compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Download distributions
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: python-build-*
+          path: dist
+          merge-multiple: true
+
+      - name: Inspect Python distributions
+        run: |
+          BUILD_VENV="$RUNNER_TEMP/codenib-release-inspect-${{ github.run_id }}-${{ github.run_attempt }}"
           python -m venv "$BUILD_VENV"
           "$BUILD_VENV/bin/python" -m pip install \
-            --upgrade pip build "jsonschema>=4,<5" twine
-          "$BUILD_VENV/bin/python" -m build
+            --upgrade pip "jsonschema>=4,<5" twine
           "$BUILD_VENV/bin/python" -m twine check dist/*
-          "$BUILD_VENV/bin/python" \
-            scripts/verify_release_artifacts.py dist
+          "$BUILD_VENV/bin/python" scripts/verify_release_artifacts.py dist
 
       - name: Validate MCP Registry metadata
         run: |
-          BUILD_VENV="$RUNNER_TEMP/codenib-release-build-${{ github.run_id }}-${{ github.run_attempt }}"
+          BUILD_VENV="$RUNNER_TEMP/codenib-release-inspect-${{ github.run_id }}-${{ github.run_attempt }}"
           curl --fail --location --retry 3 --retry-all-errors \
             --connect-timeout 10 --max-time 90 \
             --output "$RUNNER_TEMP/mcp-server.schema.json" \
@@ -93,6 +235,191 @@ jobs:
             dist/*.tar.gz
           if-no-files-found: error
           retention-days: 14
+
+  source-smoke:
+    name: Source install without native extension
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout smoke harness
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Download distributions
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install source distribution without a compiler
+        env:
+          CC: /bin/false
+        run: |
+          SOURCE_VENV="$RUNNER_TEMP/codenib-release-source-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$SOURCE_VENV"
+          echo "$SOURCE_VENV/bin" >> "$GITHUB_PATH"
+          "$SOURCE_VENV/bin/python" -m pip install --upgrade pip
+          "$SOURCE_VENV/bin/python" -m pip install --no-cache-dir dist/*.tar.gz
+
+      - name: Exercise core and fail-closed workspace support
+        working-directory: ${{ runner.temp }}
+        run: |
+          codenib --version
+          codenib doctor --require core
+          python "$GITHUB_WORKSPACE/scripts/smoke_release_install.py"
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          if importlib.util.find_spec("codenib._workspace_owner_impl") is not None:
+              raise SystemExit("source install unexpectedly built the native extension")
+
+          from codenib import LocalWorkspaceProvider
+          from codenib import _workspace_owner
+          from codenib._captured_directory import UnsupportedWorkspaceCreation
+
+          try:
+              _workspace_owner.require_support()
+          except RuntimeError:
+              pass
+          else:
+              raise SystemExit("workspace support did not fail closed")
+
+          with TemporaryDirectory() as root:
+              provider = LocalWorkspaceProvider(Path(root))
+              try:
+                  provider.require_support()
+              except UnsupportedWorkspaceCreation:
+                  pass
+              else:
+                  raise SystemExit("local workspace provider did not fail closed")
+          PY
+
+  abi3-smoke:
+    name: Native ABI3 smoke (Python ${{ matrix.python-version }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+    steps:
+      - name: Checkout smoke harness
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download distributions
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install the compatible ABI3 wheel
+        run: |
+          ABI3_VENV="$RUNNER_TEMP/codenib-release-abi3-${{ matrix.python-version }}-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$ABI3_VENV"
+          echo "$ABI3_VENV/bin" >> "$GITHUB_PATH"
+          "$ABI3_VENV/bin/python" -m pip install --upgrade pip
+          WHEEL="$(python scripts/verify_release_artifacts.py \
+            dist --print-compatible-wheel)"
+          "$ABI3_VENV/bin/python" -m pip install --no-deps "$WHEEL"
+
+      - name: Exercise native ABI and local workspace lifecycle
+        working-directory: ${{ runner.temp }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import stat
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          import codenib._workspace_owner_impl as implementation
+          from codenib import LocalWorkspaceProvider, PublishedWorkspaceReceiptOwner
+          from codenib import _workspace_owner
+          from codenib._captured_directory import (
+              WorkspaceDirectory,
+              WorkspaceFile,
+              WorkspacePlan,
+          )
+          from codenib._workspace_provider import (
+              StrictWorkspaceRequest,
+              run_strict_workspace,
+          )
+
+          assert Path(implementation.__file__).name == "_workspace_owner_impl.abi3.so"
+          assert implementation.workspace_owner_protocol_version == 2
+          assert implementation.require_support() is None
+          assert _workspace_owner.require_support() is None
+
+          payload = b'{"release-smoke":"ok"}'
+          with TemporaryDirectory() as temporary:
+              root = Path(temporary) / "authority"
+              root.mkdir(mode=0o700)
+              root.chmod(0o700)
+              assert stat.S_IMODE(root.stat().st_mode) == 0o700
+              destination = root / "published"
+              provider = LocalWorkspaceProvider(root)
+              provider.require_support()
+              receipt_owner = PublishedWorkspaceReceiptOwner()
+              plan = WorkspacePlan(
+                  subject_digest=hashlib.sha256(b"release-smoke").hexdigest(),
+                  directories=(WorkspaceDirectory(Path("data")),),
+                  files=(
+                      WorkspaceFile(
+                          Path("data/result.json"),
+                          mode=0o600,
+                          max_bytes=1 << 20,
+                      ),
+                  ),
+              )
+              request = StrictWorkspaceRequest(
+                  purpose="release-smoke",
+                  destination=destination,
+                  plan=plan,
+              )
+
+              def write_and_publish(session):
+                  record = session.write_file("data/result.json", (payload,))
+                  return session.publish_validated(
+                      lambda reader: (
+                          record,
+                          reader.capture_ownership(allow_empty_root=True),
+                      )
+                  )
+
+              record, ownership = run_strict_workspace(
+                  provider,
+                  request,
+                  receipt_owner=receipt_owner,
+                  operation=write_and_publish,
+              )
+              output = destination / "data/result.json"
+              assert record.sha256 == hashlib.sha256(payload).hexdigest()
+              assert ownership.file_records == (record,)
+              assert receipt_owner.active
+              assert output.read_bytes() == payload
+
+              receipt_owner.close()
+
+              assert receipt_owner.closed
+              assert output.read_bytes() == payload
+          PY
 
   install-smoke:
     name: Install smoke (Python ${{ matrix.python-version }})
@@ -130,7 +457,9 @@ jobs:
           python -m venv "$SMOKE_VENV"
           echo "$SMOKE_VENV/bin" >> "$GITHUB_PATH"
           "$SMOKE_VENV/bin/python" -m pip install --upgrade pip
-          "$SMOKE_VENV/bin/python" -m pip install dist/*.whl
+          WHEEL="$(python scripts/verify_release_artifacts.py \
+            dist --print-compatible-wheel)"
+          "$SMOKE_VENV/bin/python" -m pip install "$WHEEL"
 
       - name: Exercise installed CLI
         working-directory: ${{ runner.temp }}
@@ -170,8 +499,8 @@ jobs:
               print(tomllib.load(handle)["project"]["version"])
           PY
           )"
-          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
-          test -n "$WHEEL"
+          WHEEL="$(python scripts/verify_release_artifacts.py \
+            dist --print-compatible-wheel)"
           python scripts/smoke_release_upgrade.py \
             --wheel "$WHEEL" \
             --expected-version "$VERSION"
@@ -203,8 +532,8 @@ jobs:
           python -m venv "$SERVICE_VENV"
           echo "$SERVICE_VENV/bin" >> "$GITHUB_PATH"
           "$SERVICE_VENV/bin/python" -m pip install --upgrade pip
-          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
-          test -n "$WHEEL"
+          WHEEL="$(python scripts/verify_release_artifacts.py \
+            dist --print-compatible-wheel)"
           "$SERVICE_VENV/bin/python" -m pip install "${WHEEL}[mcp]"
 
       - name: Verify optional runtime boundary
@@ -264,8 +593,8 @@ jobs:
           python -m venv "$AGENT_VENV"
           echo "$AGENT_VENV/bin" >> "$GITHUB_PATH"
           "$AGENT_VENV/bin/python" -m pip install --upgrade pip
-          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
-          test -n "$WHEEL"
+          WHEEL="$(python scripts/verify_release_artifacts.py \
+            dist --print-compatible-wheel)"
           "$AGENT_VENV/bin/python" -m pip install "${WHEEL}[agent]"
 
       - name: Verify sparse agent dependency boundary
@@ -321,8 +650,8 @@ jobs:
           python -m venv "$GRAPH_VENV"
           echo "$GRAPH_VENV/bin" >> "$GITHUB_PATH"
           "$GRAPH_VENV/bin/python" -m pip install --upgrade pip
-          WHEEL="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
-          test -n "$WHEEL"
+          WHEEL="$(python scripts/verify_release_artifacts.py \
+            dist --print-compatible-wheel)"
           "$GRAPH_VENV/bin/python" -m pip install "${WHEEL}[graph,mcp]"
 
       - name: Provision the Python SCIP provider

@@ -9,16 +9,12 @@ from __future__ import annotations
 
 import argparse
 import email
+import platform
 import sys
 import tarfile
 import zipfile
 from pathlib import Path
 from typing import Sequence
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
-    import tomli as tomllib
 
 
 class ReleaseValidationError(RuntimeError):
@@ -31,6 +27,28 @@ README_CITATION_MARKERS = (
     "@misc{yu2026codenibmultiviewdataserving,",
 )
 MCP_OWNERSHIP_MARKER = "mcp-name: ai.codenib/codenib"
+WORKSPACE_OWNER_EXTENSION = "codenib/_workspace_owner_impl.abi3.so"
+PRODUCTION_WHEEL_TAGS = (
+    "cp310-abi3-manylinux_2_28_x86_64",
+    "cp310-abi3-manylinux_2_28_aarch64",
+)
+_MACHINE_ARCHITECTURES = {
+    "amd64": "x86_64",
+    "arm64": "aarch64",
+    "aarch64": "aarch64",
+    "x86_64": "x86_64",
+}
+_COMPILED_BINARY_SUFFIXES = (
+    ".a",
+    ".dll",
+    ".dylib",
+    ".exe",
+    ".lib",
+    ".o",
+    ".obj",
+    ".pyd",
+    ".so",
+)
 
 
 def validate_readme_citation(readme: str) -> None:
@@ -51,6 +69,11 @@ def validate_readme_mcp_ownership(readme: str) -> None:
 
 
 def project_identity(project_file: Path) -> tuple[str, str]:
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+        import tomli as tomllib
+
     with project_file.open("rb") as handle:
         project = tomllib.load(handle)["project"]
     return str(project["name"]), str(project["version"])
@@ -107,6 +130,41 @@ def _single(paths: list[Path], kind: str) -> Path:
     return paths[0]
 
 
+def _wheel_name(name: str, version: str, tag: str) -> str:
+    normalized = name.replace("-", "_")
+    return f"{normalized}-{version}-{tag}.whl"
+
+
+def _is_compiled_binary(member: str) -> bool:
+    filename = Path(member).name.lower()
+    return filename.endswith(_COMPILED_BINARY_SUFFIXES) or ".so." in filename
+
+
+def select_compatible_wheel(
+    dist_dir: Path,
+    *,
+    system: str | None = None,
+    machine: str | None = None,
+) -> Path:
+    """Select the one production wheel compatible with this Linux machine."""
+    current_system = sys.platform if system is None else system
+    current_machine = platform.machine() if machine is None else machine
+    if not current_system.startswith("linux"):
+        raise ReleaseValidationError(
+            f"production wheels require Linux, found {current_system!r}"
+        )
+    architecture = _MACHINE_ARCHITECTURES.get(current_machine.lower())
+    if architecture is None:
+        raise ReleaseValidationError(
+            f"no production wheel supports machine {current_machine!r}"
+        )
+    suffix = f"-cp310-abi3-manylinux_2_28_{architecture}.whl"
+    return _single(
+        sorted(path for path in dist_dir.glob("*.whl") if path.name.endswith(suffix)),
+        f"compatible {architecture} wheel",
+    )
+
+
 def _validate_wheel(wheel: Path, name: str, version: str) -> None:
     required = {
         "codenib/__init__.py",
@@ -123,7 +181,8 @@ def _validate_wheel(wheel: Path, name: str, version: str) -> None:
         "codenib/web/frontend/runtime-config.js",
     }
     with zipfile.ZipFile(wheel) as archive:
-        members = set(archive.namelist())
+        member_names = archive.namelist()
+        members = set(member_names)
         missing = sorted(required - members)
         if missing:
             raise ReleaseValidationError(
@@ -135,6 +194,18 @@ def _validate_wheel(wheel: Path, name: str, version: str) -> None:
         ):
             raise ReleaseValidationError(
                 f"{wheel.name} has no compiled Wiki JavaScript assets"
+            )
+
+        workspace_owner_members = [
+            member
+            for member in member_names
+            if member.startswith("codenib/_workspace_owner_impl")
+        ]
+        if workspace_owner_members != [WORKSPACE_OWNER_EXTENSION]:
+            found = ", ".join(workspace_owner_members) or "none"
+            raise ReleaseValidationError(
+                f"{wheel.name} must contain exactly one "
+                f"{WORKSPACE_OWNER_EXTENSION}, found: {found}"
             )
 
         metadata_members = sorted(
@@ -179,16 +250,27 @@ def _validate_sdist(sdist: Path, name: str, version: str) -> None:
         f"{root}/CHANGELOG.md",
         f"{root}/LICENSE",
         f"{root}/README.md",
+        f"{root}/native/workspace_owner.c",
         f"{root}/server.json",
         f"{root}/pyproject.toml",
         f"{root}/web/package-lock.json",
     }
     with tarfile.open(sdist, mode="r:gz") as archive:
-        members = {member.name for member in archive.getmembers()}
+        archive_members = archive.getmembers()
+        members = {member.name for member in archive_members}
         missing = sorted(required - members)
         if missing:
             raise ReleaseValidationError(
                 f"{sdist.name} is missing source-release files: {', '.join(missing)}"
+            )
+        binary_members = sorted(
+            member.name
+            for member in archive_members
+            if member.isfile() and _is_compiled_binary(member.name)
+        )
+        if binary_members:
+            raise ReleaseValidationError(
+                f"{sdist.name} contains compiled binaries: " + ", ".join(binary_members)
             )
         readme_file = archive.extractfile(f"{root}/README.md")
         if readme_file is None:  # guarded by the required-members check
@@ -203,28 +285,39 @@ def validate_release(
     *,
     project_file: Path,
     tag: str | None = None,
-) -> tuple[Path, Path]:
+) -> tuple[tuple[Path, ...], Path]:
     name, version = project_identity(project_file)
     validate_tag(tag, version)
     validate_release_notes(project_file)
 
-    wheel = _single(sorted(dist_dir.glob("*.whl")), "wheel")
+    wheels = tuple(sorted(dist_dir.glob("*.whl")))
     sdist = _single(sorted(dist_dir.glob("*.tar.gz")), "sdist")
-    normalized = name.replace("-", "_")
-    wheel_prefix = f"{normalized}-{version}-"
+    expected_wheel_names = {
+        _wheel_name(name, version, tag) for tag in PRODUCTION_WHEEL_TAGS
+    }
+    actual_wheel_names = {wheel.name for wheel in wheels}
     sdist_name = f"{name}-{version}.tar.gz"
-    if not wheel.name.startswith(wheel_prefix):
+    if actual_wheel_names != expected_wheel_names:
+        missing = sorted(expected_wheel_names - actual_wheel_names)
+        unexpected = sorted(actual_wheel_names - expected_wheel_names)
+        details = []
+        if missing:
+            details.append("missing " + ", ".join(missing))
+        if unexpected:
+            details.append("unexpected " + ", ".join(unexpected))
         raise ReleaseValidationError(
-            f"wheel filename {wheel.name!r} must start with {wheel_prefix!r}"
+            "production wheels must be exactly the cp310-abi3 manylinux_2_28 "
+            "x86_64 and aarch64 artifacts: " + "; ".join(details)
         )
     if sdist.name != sdist_name:
         raise ReleaseValidationError(
             f"sdist filename {sdist.name!r} must equal {sdist_name!r}"
         )
 
-    _validate_wheel(wheel, name, version)
+    for wheel in wheels:
+        _validate_wheel(wheel, name, version)
     _validate_sdist(sdist, name, version)
-    return wheel, sdist
+    return wheels, sdist
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -236,16 +329,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=Path("pyproject.toml"),
     )
     parser.add_argument("--tag")
+    parser.add_argument(
+        "--print-compatible-wheel",
+        action="store_true",
+        help="print the current Linux architecture's production wheel",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     try:
-        wheel, sdist = validate_release(
-            args.dist_dir,
-            project_file=args.project_file,
-            tag=args.tag,
+        if args.print_compatible_wheel:
+            print(select_compatible_wheel(args.dist_dir))
+            return 0
+        wheels, sdist = validate_release(
+            args.dist_dir, project_file=args.project_file, tag=args.tag
         )
     except (
         OSError,
@@ -255,7 +354,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     ) as exc:
         print(f"release validation failed: {exc}", file=sys.stderr)
         return 1
-    print(f"Release artifacts verified: {wheel.name}, {sdist.name}")
+    artifacts = ", ".join([*(wheel.name for wheel in wheels), sdist.name])
+    print(f"Release artifacts verified: {artifacts}")
     return 0
 
 

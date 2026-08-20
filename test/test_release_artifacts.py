@@ -4,7 +4,10 @@
 
 from __future__ import annotations
 
+import io
 import subprocess
+import tarfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -15,11 +18,127 @@ from scripts.verify_release_artifacts import (
     ReleaseValidationError,
     expected_tag,
     project_identity,
+    select_compatible_wheel,
     validate_readme_citation,
     validate_readme_mcp_ownership,
+    validate_release,
     validate_release_notes,
     validate_tag,
 )
+
+_PACKAGED_README = """# CodeNib
+
+<!-- mcp-name: ai.codenib/codenib -->
+
+## Citation
+
+https://arxiv.org/abs/2607.25431
+
+@misc{yu2026codenibmultiviewdataserving,
+"""
+
+
+def _write_project_release_contract(root: Path) -> Path:
+    project = root / "pyproject.toml"
+    project.write_text(
+        '[project]\nname = "codenib"\nversion = "0.2.1"\n',
+        encoding="utf-8",
+    )
+    notes = root / "docs" / "releases"
+    notes.mkdir(parents=True)
+    (notes / "0.2.1.md").write_text(
+        "# CodeNib 0.2.1\n\nInstall with `codenib==0.2.1`.\n",
+        encoding="utf-8",
+    )
+    return project
+
+
+def _write_test_wheel(path: Path, *, native_member: str) -> None:
+    metadata = f"""Metadata-Version: 2.4
+Name: codenib
+Version: 0.2.1
+License-Expression: Apache-2.0
+Description-Content-Type: text/markdown
+
+{_PACKAGED_README}
+"""
+    members = {
+        "codenib/__init__.py": "",
+        "codenib/__main__.py": "",
+        "codenib/agent/tools/sandbox.py": "",
+        "codenib/cli.py": "",
+        "codenib/sandbox/__init__.py": "",
+        "codenib/sandbox/docker.py": "",
+        "codenib/sandbox/protocol.py": "",
+        "codenib/sandbox/types.py": "",
+        "codenib/toolchains.py": "",
+        "codenib/web/frontend/index.html": "",
+        "codenib/web/frontend/codenib-icon.svg": "",
+        "codenib/web/frontend/runtime-config.js": "",
+        "codenib/web/frontend/assets/index.js": "",
+        native_member: "native",
+        "codenib-0.2.1.dist-info/METADATA": metadata,
+        "codenib-0.2.1.dist-info/entry_points.txt": (
+            "[console_scripts]\ncodenib = codenib.cli:main\n"
+        ),
+    }
+    with zipfile.ZipFile(path, mode="w") as archive:
+        for member, contents in members.items():
+            archive.writestr(member, contents)
+
+
+def _write_test_sdist(
+    path: Path,
+    *,
+    include_native_source: bool = True,
+    binary_member: str | None = None,
+) -> None:
+    root = "codenib-0.2.1"
+    members = {
+        f"{root}/CHANGELOG.md": "",
+        f"{root}/LICENSE": "",
+        f"{root}/README.md": _PACKAGED_README,
+        f"{root}/server.json": "{}",
+        f"{root}/pyproject.toml": "[project]\n",
+        f"{root}/web/package-lock.json": "{}",
+    }
+    if include_native_source:
+        members[f"{root}/native/workspace_owner.c"] = "/* source */\n"
+    if binary_member is not None:
+        members[f"{root}/{binary_member}"] = "native"
+    with tarfile.open(path, mode="w:gz") as archive:
+        for member, contents in members.items():
+            payload = contents.encode("utf-8")
+            info = tarfile.TarInfo(member)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+
+
+def _write_test_release(
+    root: Path,
+    *,
+    x86_native: str = "codenib/_workspace_owner_impl.abi3.so",
+    arm_native: str = "codenib/_workspace_owner_impl.abi3.so",
+    include_native_source: bool = True,
+    sdist_binary: str | None = None,
+) -> tuple[Path, Path]:
+    project = _write_project_release_contract(root)
+    dist = root / "dist"
+    dist.mkdir()
+    _write_test_wheel(
+        dist / "codenib-0.2.1-cp310-abi3-manylinux_2_28_x86_64.whl",
+        native_member=x86_native,
+    )
+    _write_test_wheel(
+        dist / "codenib-0.2.1-cp310-abi3-manylinux_2_28_aarch64.whl",
+        native_member=arm_native,
+    )
+    _write_test_sdist(
+        dist / "codenib-0.2.1.tar.gz",
+        include_native_source=include_native_source,
+        binary_member=sdist_binary,
+    )
+    return project, dist
 
 
 def test_release_service_smoke_accepts_authenticated_source_mismatch(
@@ -140,6 +259,98 @@ def test_packaged_readme_requires_mcp_registry_ownership() -> None:
         validate_readme_mcp_ownership("# CodeNib\n")
 
 
+def test_release_requires_both_native_abi3_manylinux_wheels(tmp_path: Path) -> None:
+    project, dist = _write_test_release(tmp_path)
+
+    wheels, sdist = validate_release(dist, project_file=project)
+
+    assert {wheel.name for wheel in wheels} == {
+        "codenib-0.2.1-cp310-abi3-manylinux_2_28_x86_64.whl",
+        "codenib-0.2.1-cp310-abi3-manylinux_2_28_aarch64.whl",
+    }
+    assert sdist.name == "codenib-0.2.1.tar.gz"
+
+    wheels[0].unlink()
+    with pytest.raises(
+        ReleaseValidationError, match="production wheels must be exactly"
+    ):
+        validate_release(dist, project_file=project)
+
+    _write_test_wheel(wheels[0], native_member="codenib/_workspace_owner_impl.abi3.so")
+    (dist / "codenib-0.2.1-py3-none-any.whl").touch()
+    with pytest.raises(ReleaseValidationError, match="unexpected .*py3-none-any"):
+        validate_release(dist, project_file=project)
+
+
+def test_release_wheel_requires_exact_native_extension_name(tmp_path: Path) -> None:
+    project, dist = _write_test_release(
+        tmp_path,
+        x86_native="codenib/_workspace_owner_impl.cpython-310-x86_64-linux-gnu.so",
+    )
+
+    with pytest.raises(
+        ReleaseValidationError,
+        match="must contain exactly one codenib/_workspace_owner_impl.abi3.so",
+    ):
+        validate_release(dist, project_file=project)
+
+    x86_wheel = dist / "codenib-0.2.1-cp310-abi3-manylinux_2_28_x86_64.whl"
+    _write_test_wheel(x86_wheel, native_member="codenib/_workspace_owner_impl.abi3.so")
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        with zipfile.ZipFile(x86_wheel, mode="a") as archive:
+            archive.writestr("codenib/_workspace_owner_impl.abi3.so", "duplicate")
+    with pytest.raises(ReleaseValidationError, match="must contain exactly one"):
+        validate_release(dist, project_file=project)
+
+
+@pytest.mark.parametrize(
+    ("include_native_source", "sdist_binary", "message"),
+    (
+        (False, None, "native/workspace_owner.c"),
+        (True, "codenib/_workspace_owner_impl.abi3.so", "compiled binaries"),
+    ),
+)
+def test_release_sdist_is_source_only(
+    tmp_path: Path,
+    include_native_source: bool,
+    sdist_binary: str | None,
+    message: str,
+) -> None:
+    project, dist = _write_test_release(
+        tmp_path,
+        include_native_source=include_native_source,
+        sdist_binary=sdist_binary,
+    )
+
+    with pytest.raises(ReleaseValidationError, match=message):
+        validate_release(dist, project_file=project)
+
+
+@pytest.mark.parametrize(
+    ("machine", "architecture"),
+    (("x86_64", "x86_64"), ("AMD64", "x86_64"), ("aarch64", "aarch64")),
+)
+def test_select_compatible_wheel_uses_current_architecture(
+    tmp_path: Path,
+    machine: str,
+    architecture: str,
+) -> None:
+    _, dist = _write_test_release(tmp_path)
+
+    selected = select_compatible_wheel(dist, system="linux", machine=machine)
+
+    assert selected.name.endswith(f"manylinux_2_28_{architecture}.whl")
+
+
+def test_select_compatible_wheel_rejects_unsupported_platform(tmp_path: Path) -> None:
+    _, dist = _write_test_release(tmp_path)
+
+    with pytest.raises(ReleaseValidationError, match="require Linux"):
+        select_compatible_wheel(dist, system="darwin", machine="arm64")
+    with pytest.raises(ReleaseValidationError, match="no production wheel"):
+        select_compatible_wheel(dist, system="linux", machine="ppc64le")
+
+
 def test_stable_release_notes_describe_the_codegraph_product_path() -> None:
     root = Path(__file__).resolve().parents[1]
     notes = (root / "docs" / "releases" / "0.2.1.md").read_text(encoding="utf-8")
@@ -232,6 +443,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "${{ github.ref_type != 'tag' }}"
     )
     assert "docs/releases/**" in production["on"]["pull_request"]["paths"]
+    assert "native/**" in production["on"]["pull_request"]["paths"]
 
     release_tag_push = (
         "github.event_name == 'push' && github.ref_type == 'tag' && "
@@ -275,6 +487,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
     ]
     assert '"codenib==$VERSION"' in public_download
     assert "sha256sum" in public_download
+    assert public_download.count("--print-compatible-wheel") == 2
     assert (
         "scripts/smoke_release_services.py"
         in pypi_install_steps["Exercise public Wiki and MCP services"]["run"]
@@ -348,6 +561,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert "--index-url https://test.pypi.org/simple/" in download
     assert "--no-deps" in download
     assert "hashlib.sha256" in download
+    assert "select_compatible_wheel" in download
     exercise = install_steps["Exercise the installed CLI"]["run"]
     assert "doctor --require core --require wiki" in exercise
     assert "scripts/smoke_release_install.py" in exercise
@@ -358,13 +572,143 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "type": "boolean",
         "default": "true",
     }
-    verification_steps = {
-        step["name"]: step for step in verification["jobs"]["build"]["steps"]
+    assert set(verification["jobs"]) == {
+        "build-sdist",
+        "build-wheel",
+        "limited-abi-compile",
+        "build",
+        "source-smoke",
+        "abi3-smoke",
+        "install-smoke",
+        "upgrade-smoke",
+        "service-smoke",
+        "agent-smoke",
+        "graph-smoke",
     }
+    sdist_job = verification["jobs"]["build-sdist"]
+    sdist_steps = {step["name"]: step for step in sdist_job["steps"]}
+    assert "--sdist" in sdist_steps["Build source distribution"]["run"]
+    assert sdist_steps["Upload source distribution"]["with"]["path"] == (
+        "dist/*.tar.gz"
+    )
+
+    wheel_job = verification["jobs"]["build-wheel"]
+    assert wheel_job["needs"] == "build-sdist"
+    assert wheel_job["strategy"]["matrix"]["arch"] == ["x86_64", "aarch64"]
+    wheel_steps = {step["name"]: step for step in wheel_job["steps"]}
+    qemu = wheel_steps["Set up QEMU for aarch64"]
+    assert qemu["if"] == "matrix.arch == 'aarch64'"
+    assert qemu["uses"] == (
+        "docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8"
+    )
+    wheel_build = wheel_steps["Build and smoke-test wheel"]
+    assert wheel_build["uses"] == (
+        "pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c"
+    )
+    wheel_env = wheel_build["env"]
+    assert wheel_env["CIBW_BUILD"] == "cp310-manylinux_${{ matrix.arch }}"
+    assert wheel_env["CIBW_ARCHS_LINUX"] == "${{ matrix.arch }}"
+    assert "--cap-add SYS_PTRACE" in wheel_env["CIBW_CONTAINER_ENGINE"]
+    assert wheel_env["CIBW_MANYLINUX_X86_64_IMAGE"] == "manylinux_2_28"
+    assert wheel_env["CIBW_MANYLINUX_AARCH64_IMAGE"] == "manylinux_2_28"
+    assert (
+        "manylinux_2_28_${{ matrix.arch }}"
+        in wheel_env["CIBW_REPAIR_WHEEL_COMMAND_LINUX"]
+    )
+    wheel_smoke = wheel_env["CIBW_TEST_COMMAND"]
+    assert "workspace_owner_protocol_version == 2" in wheel_smoke
+    assert "implementation.require_support() is None" in wheel_smoke
+    assert "_workspace_owner.require_support()" in wheel_smoke
+
+    limited_abi_job = verification["jobs"]["limited-abi-compile"]
+    assert "if" not in limited_abi_job
+    limited_abi_steps = {step["name"]: step for step in limited_abi_job["steps"]}
+    limited_abi_compile = limited_abi_steps[
+        "Compile the native extension against the limited API"
+    ]["run"]
+    assert "-DPy_LIMITED_API=0x030A0000" in limited_abi_compile
+    assert "-Wall" in limited_abi_compile
+    assert "-Wextra" in limited_abi_compile
+    assert "-Werror" in limited_abi_compile
+    assert "-c native/workspace_owner.c" in limited_abi_compile
+
+    build_job = verification["jobs"]["build"]
+    assert build_job["needs"] == [
+        "build-sdist",
+        "build-wheel",
+        "limited-abi-compile",
+    ]
+    verification_steps = {step["name"]: step for step in build_job["steps"]}
+    inspect_distributions = verification_steps["Inspect Python distributions"]["run"]
+    assert "scripts/verify_release_artifacts.py dist" in inspect_distributions
+    assert '"jsonschema>=4,<5"' in inspect_distributions
+    assert verification_steps["Upload distributions"]["with"]["path"] == (
+        "dist/*.whl\ndist/*.tar.gz\n"
+    )
     assert (
         "--connect-timeout 10 --max-time 90"
         in verification_steps["Validate MCP Registry metadata"]["run"]
     )
+
+    source_job = verification["jobs"]["source-smoke"]
+    assert "if" not in source_job
+    source_steps = {step["name"]: step for step in source_job["steps"]}
+    source_install = source_steps["Install source distribution without a compiler"]
+    assert source_install["env"] == {"CC": "/bin/false"}
+    assert "--no-cache-dir" in source_install["run"]
+    assert "dist/*.tar.gz" in source_install["run"]
+    source_exercise = source_steps["Exercise core and fail-closed workspace support"][
+        "run"
+    ]
+    assert "doctor --require core" in source_exercise
+    assert "scripts/smoke_release_install.py" in source_exercise
+    assert 'find_spec("codenib._workspace_owner_impl")' in source_exercise
+    assert "_workspace_owner.require_support()" in source_exercise
+    assert "LocalWorkspaceProvider(Path(root))" in source_exercise
+    assert "provider.require_support()" in source_exercise
+    assert "UnsupportedWorkspaceCreation" in source_exercise
+
+    abi3_job = verification["jobs"]["abi3-smoke"]
+    assert "if" not in abi3_job
+    assert abi3_job["strategy"]["matrix"]["python-version"] == [
+        "3.10",
+        "3.11",
+        "3.12",
+        "3.13",
+        "3.14",
+    ]
+    abi3_steps = {step["name"]: step for step in abi3_job["steps"]}
+    abi3_install = abi3_steps["Install the compatible ABI3 wheel"]["run"]
+    assert "--print-compatible-wheel" in abi3_install
+    assert "--no-deps" in abi3_install
+    abi3_exercise = abi3_steps["Exercise native ABI and local workspace lifecycle"][
+        "run"
+    ]
+    assert 'name == "_workspace_owner_impl.abi3.so"' in abi3_exercise
+    assert "workspace_owner_protocol_version == 2" in abi3_exercise
+    assert "implementation.require_support() is None" in abi3_exercise
+    assert "_workspace_owner.require_support() is None" in abi3_exercise
+    assert "LocalWorkspaceProvider(root)" in abi3_exercise
+    assert "run_strict_workspace(" in abi3_exercise
+    assert "root.mkdir(mode=0o700)" in abi3_exercise
+    assert "session.write_file" in abi3_exercise
+    assert "session.publish_validated" in abi3_exercise
+    assert "receipt_owner.active" in abi3_exercise
+    assert "receipt_owner.close()" in abi3_exercise
+    assert "receipt_owner.closed" in abi3_exercise
+    assert abi3_exercise.count("assert output.read_bytes() == payload") == 2
+
+    compatible_install_steps = {
+        "abi3-smoke": "Install the compatible ABI3 wheel",
+        "install-smoke": "Install wheel",
+        "upgrade-smoke": "Exercise the supported upgrade boundary",
+        "service-smoke": "Install wheel with MCP support",
+        "agent-smoke": "Install wheel with agent support",
+        "graph-smoke": "Install wheel, Python graph runtime, and MCP",
+    }
+    for job_name, step_name in compatible_install_steps.items():
+        steps = {step["name"]: step for step in verification["jobs"][job_name]["steps"]}
+        assert "--print-compatible-wheel" in steps[step_name]["run"]
     for job_name in (
         "install-smoke",
         "upgrade-smoke",
@@ -374,3 +718,13 @@ def test_registry_publishers_use_separate_workflows() -> None:
     ):
         assert verification["jobs"][job_name]["if"] == "inputs.full"
     assert not any(name.startswith("publish-") for name in verification["jobs"])
+
+    for workflow in (production, test, verification):
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                action = step.get("uses")
+                if action is None or action.startswith("./"):
+                    continue
+                revision = action.rpartition("@")[2]
+                assert len(revision) == 40
+                assert all(character in "0123456789abcdef" for character in revision)

@@ -110,20 +110,18 @@ jobs:
           import os
           from pathlib import Path
 
-          built = list(Path("dist").glob("*.whl"))
-          fetched = list(Path(os.environ["FETCH_DIR"]).glob("*.whl"))
-          if len(built) != 1 or len(fetched) != 1:
-              raise SystemExit(
-                  f"expected one built and fetched wheel, got {built!r}, {fetched!r}"
-              )
+          from scripts.verify_release_artifacts import select_compatible_wheel
+
+          built = select_compatible_wheel(Path("dist"))
+          fetched = select_compatible_wheel(Path(os.environ["FETCH_DIR"]))
 
           def digest(path: Path) -> str:
               return hashlib.sha256(path.read_bytes()).hexdigest()
 
-          if digest(built[0]) != digest(fetched[0]):
+          if digest(built) != digest(fetched):
               raise SystemExit("TestPyPI wheel does not match the verified build")
           with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
-              handle.write(f"TESTPYPI_WHEEL={fetched[0].resolve()}\n")
+              handle.write(f"TESTPYPI_WHEEL={fetched.resolve()}\n")
           PY
 
       - name: Install the registry wheel
