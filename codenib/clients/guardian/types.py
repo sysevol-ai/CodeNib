@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import tempfile
 import uuid
@@ -18,6 +19,33 @@ from ..execution import AgentRunResult, ExecutionIsolation, TokenUsage
 
 _REVISION = re.compile(r"^[0-9a-f]{7,40}$")
 MAX_EXPLORERS = 12
+
+
+def _task_context_id(
+    content: str, source: TaskContextSource, fidelity: ContextFidelity
+) -> str:
+    """Derive a task-context locator that is stable across review cycles.
+
+    Callers rebuild task context on every cycle. A random locator would
+    invalidate remembered task evidence each time. Source and fidelity are
+    folded in so items that differ only by provenance keep distinct ids.
+    """
+
+    material = "\0".join((content.strip(), source.value, fidelity.value))
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
+    return f"CTX-{digest[:12]}"
+
+
+def _solver_context_id(content: str) -> str:
+    """Derive a solver-message locator that is stable across review cycles.
+
+    A controller rebuilds the request from the same participant messages on
+    every cycle. A random locator would invalidate remembered solver evidence
+    each time and degrade every later review.
+    """
+
+    digest = hashlib.sha256(content.strip().encode("utf-8")).hexdigest()
+    return f"CTX-solver-{digest[:8]}"
 
 
 class TaskContextSource(str, Enum):
@@ -52,7 +80,9 @@ class TaskContext:
             and fidelity is not ContextFidelity.DERIVED
         ):
             raise ValueError("solver summaries must be marked as derived")
-        context_id = self.context_id.strip() or f"CTX-{uuid.uuid4().hex[:12]}"
+        context_id = self.context_id.strip() or _task_context_id(
+            content, source, fidelity
+        )
         object.__setattr__(self, "content", content)
         object.__setattr__(self, "source", source)
         object.__setattr__(self, "fidelity", fidelity)
@@ -467,7 +497,7 @@ class GuardianRequest:
                         content=message.content,
                         source=TaskContextSource.SOLVER_SUMMARY,
                         fidelity=ContextFidelity.DERIVED,
-                        context_id=f"CTX-solver-{uuid.uuid4().hex[:8]}",
+                        context_id=_solver_context_id(message.content),
                     ),
                 )
         if sum(len(item.content.encode("utf-8")) for item in task_context) > 512 * 1024:

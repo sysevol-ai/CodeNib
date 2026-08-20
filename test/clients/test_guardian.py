@@ -51,7 +51,11 @@ from codenib.clients.guardian.aggregation import (
     adjudicate_records,
 )
 from codenib.clients.guardian.contribution import explorer_contribution_report
-from codenib.clients.guardian.evidence import validate_candidates, validate_evidence
+from codenib.clients.guardian.evidence import (
+    revalidate_memory_evidence,
+    validate_candidates,
+    validate_evidence,
+)
 from codenib.clients.guardian.normalization import (
     GuardianResponseError,
     parse_explorer_output,
@@ -2590,3 +2594,96 @@ def test_canonical_repository_remains_unchanged(tmp_path: Path) -> None:
     assert result.status is ReviewStatus.COMPLETE
     assert _git(request.workspace, "status", "--porcelain=v1") == before
     assert _git(request.workspace, "rev-parse", "HEAD") == request.candidate_commit
+
+
+def _cycle_request(
+    tmp_path: Path, workspace: Path, base: str, candidate: str, cycle: int
+) -> GuardianRequest:
+    """Build the request a controller derives on one review cycle.
+
+    Each cycle re-reads the same participant messages and rebuilds the request,
+    so anything derived from them must be identical across cycles.
+    """
+
+    return GuardianRequest(
+        workspace=workspace,
+        base_commit=base,
+        candidate_commit=candidate,
+        change_patch="-    return {'mode': 'safe'}\n+    return {}",
+        context=(ContextMessage("I believe state copies are complete."),),
+        artifact_dir=tmp_path / f"artifacts-{cycle}",
+    )
+
+
+def _solver_context(request: GuardianRequest) -> TaskContext:
+    return next(
+        item
+        for item in request.task_context
+        if item.source is TaskContextSource.SOLVER_SUMMARY
+    )
+
+
+def test_solver_context_ids_are_stable_across_review_cycles(tmp_path: Path) -> None:
+    seed = _request(tmp_path)
+    first = _cycle_request(
+        tmp_path, seed.workspace, seed.base_commit, seed.candidate_commit, 1
+    )
+    second = _cycle_request(
+        tmp_path, seed.workspace, seed.base_commit, seed.candidate_commit, 2
+    )
+
+    assert _solver_context(first).context_id == _solver_context(second).context_id
+
+
+def test_remembered_solver_evidence_stays_fresh_in_a_later_cycle(
+    tmp_path: Path,
+) -> None:
+    seed = _request(tmp_path)
+    first = _cycle_request(
+        tmp_path, seed.workspace, seed.base_commit, seed.candidate_commit, 1
+    )
+    remembered = Evidence(
+        path=_solver_context(first).context_id,
+        line_start=1,
+        line_end=1,
+        description="The solver claims state copies are complete.",
+        source_type=EvidenceSourceType.SOLVER_MESSAGE,
+        authority=EvidenceAuthority.DERIVED,
+        evidence_id="EV-solver",
+        quote="I believe state copies are complete.",
+    )
+
+    second = _cycle_request(
+        tmp_path, seed.workspace, seed.base_commit, seed.candidate_commit, 2
+    )
+    revalidated, errors = revalidate_memory_evidence(second, (remembered,))
+
+    assert errors == ()
+    assert revalidated[0].fresh
+
+
+def test_task_context_auto_ids_are_stable_for_equivalent_items() -> None:
+    def build() -> TaskContext:
+        return TaskContext(
+            content="Every copied state must preserve its configured mode.",
+            source=TaskContextSource.ISSUE,
+            fidelity=ContextFidelity.VERBATIM,
+        )
+
+    assert build().context_id == build().context_id
+
+
+def test_task_context_auto_ids_separate_distinct_sources() -> None:
+    content = "Every copied state must preserve its configured mode."
+    verbatim = TaskContext(
+        content=content,
+        source=TaskContextSource.ISSUE,
+        fidelity=ContextFidelity.VERBATIM,
+    )
+    derived = TaskContext(
+        content=content,
+        source=TaskContextSource.SOLVER_SUMMARY,
+        fidelity=ContextFidelity.DERIVED,
+    )
+
+    assert verbatim.context_id != derived.context_id
