@@ -28,6 +28,7 @@ from ._captured_directory import (
     OwnedWorkspaceAuthority,
     PublishedWorkspaceReceiptOwner,
     WorkspacePlan,
+    _snapshot_workspace_plan,
     require_owned_workspace_publication_support,
 )
 from ._owned_file_publication import _CancellationSafeRLock
@@ -137,11 +138,11 @@ class StrictWorkspaceRequest:
         if requested_destination.name in {"", ".", ".."}:
             raise ValueError("strict workspace destination must name one directory")
         destination = Path(os.path.abspath(os.fspath(requested_destination)))
-        if not isinstance(self.plan, WorkspacePlan):
-            raise TypeError("strict workspace request plan must be WorkspacePlan")
+        plan = _snapshot_workspace_plan(self.plan)
         if self.destination_expectation not in {"missing", "provider-bound-exact"}:
             raise ValueError("strict workspace destination expectation is invalid")
         object.__setattr__(self, "destination", destination)
+        object.__setattr__(self, "plan", plan)
 
 
 class StrictWorkspaceSession(Protocol):

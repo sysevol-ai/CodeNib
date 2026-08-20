@@ -16,6 +16,8 @@ from ._lazy import exported_dir, load_export
 from ._version import __version__
 
 if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
+    from codenib._captured_directory import PublishedWorkspaceReceiptOwner
+    from codenib._local_workspace_provider import LocalWorkspaceProvider
     from codenib.agent.extract_agent import KeywordExtractor
     from codenib.agent.rerank_agent import RerankAgent
     from codenib.code_chunker import CodeChunker, RepoChunkingConfig
@@ -30,6 +32,14 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     from codenib.search import CodeSearchEngine
 
 _EXPORTS = {
+    "PublishedWorkspaceReceiptOwner": (
+        "codenib._captured_directory",
+        "PublishedWorkspaceReceiptOwner",
+    ),
+    "LocalWorkspaceProvider": (
+        "codenib._local_workspace_provider",
+        "LocalWorkspaceProvider",
+    ),
     "LSIndexer": ("codenib.ls_router", "LSIndexer"),
     "CodeGraph": ("codenib.graph.code_graph", "CodeGraph"),
     "BM25CodeIndexer": (
@@ -54,6 +64,8 @@ _EXPORTS = {
 
 __all__ = [
     "__version__",
+    "PublishedWorkspaceReceiptOwner",
+    "LocalWorkspaceProvider",
     "LSIndexer",
     "CodeGraph",
     "BM25CodeIndexer",

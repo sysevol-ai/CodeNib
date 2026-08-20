@@ -221,6 +221,25 @@ def test_request_is_lexical_and_rejects_invalid_contract(tmp_path: Path) -> None
     with pytest.raises(ValueError, match="name one directory"):
         StrictWorkspaceRequest("test", tmp_path / "parent" / "..", _plan())
 
+    class DerivedWorkspacePlan(WorkspacePlan):
+        pass
+
+    original = _plan()
+    with pytest.raises(TypeError, match="exact WorkspacePlan"):
+        StrictWorkspaceRequest(
+            "test",
+            destination,
+            DerivedWorkspacePlan(
+                subject_digest=original.subject_digest,
+                directories=original.directories,
+                files=original.files,
+                root_mode=original.root_mode,
+            ),
+        )
+    object.__setattr__(original, "digest", "0" * 64)
+    with pytest.raises(ValueError, match="digest is inconsistent"):
+        StrictWorkspaceRequest("test", destination, original)
+
 
 def test_provider_runs_one_callback_scoped_validated_publication(
     tmp_path: Path,

@@ -16,11 +16,13 @@ from typing import Any, TypeVar
 import pytest
 
 import codenib.artifacts.strict_bm25 as strict_bm25_module
+from codenib import LocalWorkspaceProvider
 from codenib._atomic_directory import TreeFileRecord
 from codenib._bounded_json import canonical_json_value_chunks
 from codenib._captured_directory import (
     OwnedWorkspaceAuthority,
     PublishedWorkspaceReceiptOwner,
+    UnsupportedWorkspaceCreation,
     WorkspaceFile,
     WorkspacePlan,
 )
@@ -322,6 +324,47 @@ def test_strict_bm25_plans_replays_and_serves_same_query_semantics(
         ]
     finally:
         output_owner.close()
+
+
+def test_strict_bm25_rejects_missing_only_local_provider_before_mutation(
+    strict_generation,
+    tmp_path: Path,
+) -> None:
+    fixture = strict_generation
+    view_config = {"builder_schema": 2, "tokenizer": "code-aware-v1"}
+    planned = plan_bm25_view_strict(
+        fixture.source_owner,
+        repository_source=fixture.repository_source,
+        view_config=view_config,
+        environ={},
+    )
+    os.chmod(tmp_path, 0o700)
+    provider = LocalWorkspaceProvider(tmp_path)
+    try:
+        provider.require_support()
+    except UnsupportedWorkspaceCreation as error:
+        pytest.skip(f"native local workspace provider is unavailable: {error}")
+    output_owner = PublishedWorkspaceReceiptOwner()
+
+    with pytest.raises(
+        UnsupportedWorkspaceCreation,
+        match="requires a missing destination",
+    ):
+        publish_planned_bm25_view_strict(
+            fixture.destination,
+            planned=planned,
+            source_generation=fixture.source_owner,
+            repository_source=fixture.repository_source,
+            workspace_provider=provider,
+            output_receipt_owner=output_owner,
+            view_config=view_config,
+            environ={},
+        )
+
+    assert output_owner.state == "empty"
+    assert fixture.source_owner.active
+    assert not tuple(tmp_path.glob(".codenib-workspace-stage-*"))
+    assert not tuple(tmp_path.glob(".codenib-workspace-orphan-*"))
 
 
 def test_strict_bm25_high_level_freezes_caller_mappings_once(

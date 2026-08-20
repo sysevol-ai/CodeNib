@@ -18,9 +18,11 @@ import pytest
 import codenib.artifacts as artifacts_module
 import codenib.artifacts.portable_views as portable_views_module
 import codenib.artifacts.strict_context as strict_context_module
+from codenib import LocalWorkspaceProvider
 from codenib._captured_directory import (
     OwnedWorkspaceAuthority,
     PublishedWorkspaceReceiptOwner,
+    UnsupportedWorkspaceCreation,
     WorkspaceDirectory,
     WorkspaceFile,
     WorkspacePlan,
@@ -390,6 +392,16 @@ def _fixture(tmp_path: Path, views: tuple[str, ...]) -> _Fixture:
         raise
 
 
+def _native_local_provider(root: Path) -> LocalWorkspaceProvider:
+    root.mkdir(mode=0o700)
+    provider = LocalWorkspaceProvider(root)
+    try:
+        provider.require_support()
+    except UnsupportedWorkspaceCreation as error:
+        pytest.skip(f"native local workspace provider is unavailable: {error}")
+    return provider
+
+
 @pytest.mark.parametrize(
     "views",
     [("bm25",), ("vector",), ("bm25", "vector")],
@@ -433,6 +445,41 @@ def test_strict_context_publishes_portable_view_combinations(
             expected_commit=_COMMIT,
         )
         assert verified.views == tuple(sorted(views))
+        assert verified.file_count == result.file_count
+        assert verified.byte_count == result.byte_count
+    finally:
+        output_owner.close()
+        fixture.close()
+
+
+def test_strict_context_publishes_with_native_local_provider(tmp_path: Path) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    fixture = _fixture(input_root, ("bm25", "vector"))
+    provider = _native_local_provider(tmp_path / "authority")
+    output_owner = PublishedWorkspaceReceiptOwner()
+    destination = provider.allowed_root / "context"
+    try:
+        result = stage_context_artifact_strict(
+            destination,
+            manifest=fixture.manifest,
+            repository="owner/repo",
+            repository_source=fixture.repository_source,
+            view_generations=fixture.owners,
+            workspace_provider=provider,
+            output_receipt_owner=output_owner,
+            environ={},
+        )
+
+        assert result.output_dir == destination
+        assert result.views == ("bm25", "vector")
+        assert output_owner.active
+        verified = verify_context_artifact(
+            destination,
+            expected_repository="owner/repo",
+            expected_commit=_COMMIT,
+        )
+        assert verified.views == result.views
         assert verified.file_count == result.file_count
         assert verified.byte_count == result.byte_count
     finally:
