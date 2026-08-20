@@ -21,10 +21,12 @@ from .._atomic_directory import (
     PublicationDirectoryReader,
     TreeFileRecord,
     _annotate_secondary_error,
+    capture_directory_ownership,
     directory_ownership_digest,
     directory_ownership_file_records,
     directory_ownership_inventory,
     lexical_directory_path,
+    reopen_authenticated_directory,
 )
 from .._bounded_json import (
     canonical_json_array_chunks,
@@ -174,6 +176,37 @@ def _preflight_publication_authorities(
             raise TypeError("strict workspace provider has an invalid contract")
 
 
+def _preflight_recapture_publication_authorities(
+    *,
+    repository_source: RepositorySourceBinding,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+) -> None:
+    """Reject unusable recapture authority before source or provider mutation."""
+
+    if type(repository_source) is not RepositorySourceBinding:
+        raise TypeError("strict BM25 repository source has an invalid type")
+    if type(output_receipt_owner) is not PublishedWorkspaceReceiptOwner:
+        raise TypeError("strict BM25 output receipt owner has an invalid type")
+    if not repository_source.usable:
+        raise RuntimeError("strict BM25 repository source is not usable")
+    if output_receipt_owner.state != "empty":
+        raise RuntimeError("strict BM25 output receipt owner must be empty")
+
+    require_owned_workspace_publication_support()
+    for member in ("require_support", "run_workspace"):
+        try:
+            raw = inspect.getattr_static(workspace_provider, member)
+        except AttributeError as exc:
+            raise TypeError(
+                "strict workspace provider has an invalid contract"
+            ) from exc
+        if isinstance(raw, (classmethod, staticmethod)):
+            raw = raw.__func__
+        if not callable(raw):
+            raise TypeError("strict workspace provider has an invalid contract")
+
+
 def _authenticated_repository_identity(
     repository_source: RepositorySourceBinding,
 ) -> RepositorySourceIdentitySnapshot:
@@ -233,6 +266,104 @@ def _preflight_view_location(
             "strict BM25 normalization must replace its exact source generation"
         )
     return source_receipt, lexical_destination
+
+
+def _path_relation(path: Path, boundary: Path) -> str:
+    if path == boundary:
+        return "same"
+    if boundary in path.parents:
+        return "descendant"
+    if path in boundary.parents:
+        return "ancestor"
+    return "disjoint"
+
+
+def _resolved_recapture_path(path: Path, *, strict: bool, label: str) -> Path:
+    try:
+        return path.resolve(strict=strict)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"strict BM25 {label} cannot be authenticated") from exc
+
+
+def _require_missing_recapture_destination(destination: Path) -> None:
+    try:
+        destination.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise ValueError(
+            "strict BM25 recapture destination cannot be authenticated"
+        ) from exc
+    raise FileExistsError("strict BM25 recapture destination must be missing")
+
+
+def _recapture_locations(
+    source: Path,
+    destination: Path,
+    *,
+    repository_identity: RepositorySourceIdentitySnapshot,
+) -> tuple[Path, Path]:
+    """Authenticate denial-only topology for an ordinary cache recapture."""
+
+    lexical_source = lexical_directory_path(source)
+    lexical_destination = lexical_directory_path(destination)
+    repository = lexical_directory_path(repository_identity.root)
+    source_relation = _path_relation(lexical_source, repository)
+    physical_source = _resolved_recapture_path(
+        lexical_source,
+        strict=True,
+        label="recapture source location",
+    )
+    physical_repository = _resolved_recapture_path(
+        repository,
+        strict=True,
+        label="repository location",
+    )
+    physical_source_relation = _path_relation(
+        physical_source,
+        physical_repository,
+    )
+    if source_relation != physical_source_relation:
+        raise ValueError(
+            "strict BM25 recapture source has inconsistent lexical and physical "
+            "repository topology"
+        )
+    if source_relation in {"same", "ancestor"}:
+        raise ValueError(
+            "strict BM25 recapture source must not contain the source repository"
+        )
+    if source_relation == "descendant":
+        relative = lexical_source.relative_to(repository).as_posix()
+        prefix = relative + "/"
+        if any(
+            record.path == relative or record.path.startswith(prefix)
+            for record in repository_identity.file_records
+        ):
+            raise ValueError(
+                "strict BM25 recapture source inside the repository must be "
+                "excluded from its authenticated source identity"
+            )
+
+    physical_destination = _resolved_recapture_path(
+        lexical_destination,
+        strict=False,
+        label="recapture destination location",
+    )
+    if any(
+        _path_relation(candidate, boundary) != "disjoint"
+        for candidate, boundary in (
+            (lexical_destination, lexical_source),
+            (lexical_destination, repository),
+            (physical_destination, physical_source),
+            (physical_destination, physical_repository),
+        )
+    ):
+        raise ValueError(
+            "strict BM25 recapture destination must be disjoint from source and "
+            "repository"
+        )
+    _require_missing_recapture_destination(lexical_destination)
+    return lexical_source, lexical_destination
 
 
 def _entry_policy(relative: str, kind: str, mode: int, size: int) -> None:
@@ -718,17 +849,30 @@ class PlannedBm25View:
         }
 
 
+def _captured_source_view(
+    expected_ownership: object,
+    publication: PublicationDirectoryReader,
+    *,
+    label: str,
+) -> tuple[object, tuple[TreeFileRecord, ...], _PublicationBm25Reader]:
+    ownership = publication.capture_ownership(entry_policy=_entry_policy)
+    if ownership != expected_ownership:
+        raise RuntimeError(f"{label} changed")
+    records = tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
+    if {record.path for record in records} != _STRICT_BM25_FILES:
+        raise ValueError(f"{label} is incomplete")
+    return ownership, records, _PublicationBm25Reader(publication, ownership)
+
+
 def _source_view(
     receipt: PublishedWorkspaceReceipt,
     publication: PublicationDirectoryReader,
 ) -> tuple[object, tuple[TreeFileRecord, ...], _PublicationBm25Reader]:
-    ownership = publication.capture_ownership(entry_policy=_entry_policy)
-    if ownership != receipt.ownership:
-        raise RuntimeError("strict BM25 source generation changed")
-    records = tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
-    if {record.path for record in records} != _STRICT_BM25_FILES:
-        raise ValueError("strict BM25 source generation is incomplete")
-    return ownership, records, _PublicationBm25Reader(publication, ownership)
+    return _captured_source_view(
+        receipt.ownership,
+        publication,
+        label="strict BM25 source generation",
+    )
 
 
 def _repository_files(
@@ -768,6 +912,63 @@ def _policy(
     )
 
 
+def _planned_view_from_publication(
+    publication: PublicationDirectoryReader,
+    expected_ownership: object,
+    *,
+    repository_identity: RepositorySourceIdentitySnapshot,
+    config_digest: str,
+    forbidden_paths: tuple[Path, ...],
+    environ: Mapping[str, str],
+    authenticated_source_files: frozenset[str],
+    source_label: str,
+) -> PlannedBm25View:
+    ownership, source_records, reader = _captured_source_view(
+        expected_ownership,
+        publication,
+        label=source_label,
+    )
+    metadata_bytes, document_chunks = _payloads(
+        reader,
+        repository_identity.root,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
+        authenticated_source_files=authenticated_source_files,
+    )
+    documents_record = _record_chunks(
+        "documents.json",
+        document_chunks,
+        max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
+    )
+    metadata_record = TreeFileRecord(
+        path="bm25_metadata.json",
+        mode=0o600,
+        size=len(metadata_bytes),
+        sha256=hashlib.sha256(metadata_bytes).hexdigest(),
+    )
+    reader.verify_root()
+    output_records = tuple(
+        sorted((documents_record, metadata_record), key=lambda item: item.path)
+    )
+    source_digest = directory_ownership_digest(ownership)  # type: ignore[arg-type]
+    plan = _workspace_plan(
+        source_digest=source_digest,
+        source_records=source_records,
+        output_records=output_records,
+        view_config_digest=config_digest,
+        repository_fingerprint=repository_identity.fingerprint,
+    )
+    return PlannedBm25View(
+        plan=plan,
+        source_ownership=ownership,
+        source_digest=source_digest,
+        source_records=source_records,
+        output_records=output_records,
+        view_config_digest=config_digest,
+        repository_fingerprint=repository_identity.fingerprint,
+    )
+
+
 def _plan_bm25_view_with_identity(
     source_generation: PublishedWorkspaceReceiptOwner,
     *,
@@ -788,45 +989,15 @@ def _plan_bm25_view_with_identity(
         receipt: PublishedWorkspaceReceipt,
         publication: PublicationDirectoryReader,
     ) -> PlannedBm25View:
-        ownership, source_records, reader = _source_view(receipt, publication)
-        metadata_bytes, document_chunks = _payloads(
-            reader,
-            repository_identity.root,
+        return _planned_view_from_publication(
+            publication,
+            receipt.ownership,
+            repository_identity=repository_identity,
+            config_digest=config_digest,
             forbidden_paths=forbidden,
             environ=environ,
             authenticated_source_files=authenticated_files,
-        )
-        documents_record = _record_chunks(
-            "documents.json",
-            document_chunks,
-            max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
-        )
-        metadata_record = TreeFileRecord(
-            path="bm25_metadata.json",
-            mode=0o600,
-            size=len(metadata_bytes),
-            sha256=hashlib.sha256(metadata_bytes).hexdigest(),
-        )
-        reader.verify_root()
-        output_records = tuple(
-            sorted((documents_record, metadata_record), key=lambda item: item.path)
-        )
-        source_digest = directory_ownership_digest(ownership)  # type: ignore[arg-type]
-        plan = _workspace_plan(
-            source_digest=source_digest,
-            source_records=source_records,
-            output_records=output_records,
-            view_config_digest=config_digest,
-            repository_fingerprint=repository_identity.fingerprint,
-        )
-        return PlannedBm25View(
-            plan=plan,
-            source_ownership=ownership,
-            source_digest=source_digest,
-            source_records=source_records,
-            output_records=output_records,
-            view_config_digest=config_digest,
-            repository_fingerprint=repository_identity.fingerprint,
+            source_label="strict BM25 source generation",
         )
 
     with repository_source.read_session():
@@ -872,21 +1043,21 @@ def plan_bm25_view_strict(
     )
 
 
-def _require_plan(
+def _require_plan_for_ownership(
     planned: PlannedBm25View,
     *,
-    source_receipt: PublishedWorkspaceReceipt,
+    source_ownership: object,
     repository_identity: RepositorySourceIdentitySnapshot,
     view_config_digest: str,
 ) -> None:
     if type(planned) is not PlannedBm25View:
         raise TypeError("strict BM25 execution requires a PlannedBm25View")
     if (
-        planned.source_ownership != source_receipt.ownership
+        planned.source_ownership != source_ownership
         or planned.source_records
-        != tuple(directory_ownership_file_records(source_receipt.ownership))  # type: ignore[arg-type]
+        != tuple(directory_ownership_file_records(source_ownership))  # type: ignore[arg-type]
         or planned.source_digest
-        != directory_ownership_digest(source_receipt.ownership)  # type: ignore[arg-type]
+        != directory_ownership_digest(source_ownership)  # type: ignore[arg-type]
     ):
         raise ValueError("strict BM25 plan belongs to another source generation")
     if planned.repository_fingerprint != repository_identity.fingerprint:
@@ -902,6 +1073,21 @@ def _require_plan(
     )
     if planned.plan != expected:
         raise ValueError("strict BM25 workspace plan is not canonical")
+
+
+def _require_plan(
+    planned: PlannedBm25View,
+    *,
+    source_receipt: PublishedWorkspaceReceipt,
+    repository_identity: RepositorySourceIdentitySnapshot,
+    view_config_digest: str,
+) -> None:
+    _require_plan_for_ownership(
+        planned,
+        source_ownership=source_receipt.ownership,
+        repository_identity=repository_identity,
+        view_config_digest=view_config_digest,
+    )
 
 
 def _candidate_records(
@@ -1098,6 +1284,314 @@ def publish_planned_bm25_view_strict(
     )
 
 
+def _plan_recaptured_bm25_view_with_identity(
+    lexical_source: Path,
+    *,
+    repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
+    view_config: Mapping[str, Any],
+    forbidden_paths: tuple[Path, ...],
+    environ: Mapping[str, str],
+) -> PlannedBm25View:
+    config_digest, forbidden, authenticated_files = _policy(
+        repository_identity,
+        view_config,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
+    )
+    source_ownership = capture_directory_ownership(
+        lexical_source,
+        entry_policy=_entry_policy,
+    )
+
+    def consume_source(publication: PublicationDirectoryReader) -> PlannedBm25View:
+        return _planned_view_from_publication(
+            publication,
+            source_ownership,
+            repository_identity=repository_identity,
+            config_digest=config_digest,
+            forbidden_paths=forbidden,
+            environ=environ,
+            authenticated_source_files=authenticated_files,
+            source_label="strict BM25 recapture source",
+        )
+
+    with repository_source.read_session():
+        return reopen_authenticated_directory(
+            lexical_source,
+            source_ownership,  # type: ignore[arg-type]
+            consume_source,
+        )
+
+
+def _plan_recaptured_bm25_view(
+    source: Path,
+    destination: Path,
+    *,
+    repository_source: RepositorySourceBinding,
+    view_config: Mapping[str, Any],
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+) -> PlannedBm25View:
+    """Privately pre-plan an ordinary BM25 tree without workspace mutation."""
+
+    if type(repository_source) is not RepositorySourceBinding:
+        raise TypeError("strict BM25 repository source has an invalid type")
+    if not repository_source.usable:
+        raise RuntimeError("strict BM25 repository source is not usable")
+    repository_identity = _authenticated_repository_identity(repository_source)
+    lexical_source, _lexical_destination = _recapture_locations(
+        source,
+        destination,
+        repository_identity=repository_identity,
+    )
+    config_snapshot = _json_object_snapshot(
+        view_config,
+        label="portable BM25 view config",
+    )
+    environment = _environment_snapshot(environ)
+    forbidden_tail = tuple(forbidden_paths)
+    return _plan_recaptured_bm25_view_with_identity(
+        lexical_source,
+        repository_source=repository_source,
+        repository_identity=repository_identity,
+        view_config=config_snapshot,
+        forbidden_paths=forbidden_tail,
+        environ=environment,
+    )
+
+
+def _publish_recaptured_bm25_view_with_identity(
+    lexical_source: Path,
+    lexical_destination: Path,
+    *,
+    planned: PlannedBm25View,
+    repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+    view_config: Mapping[str, Any],
+    forbidden_paths: tuple[Path, ...],
+    environ: Mapping[str, str],
+) -> dict[str, Any]:
+    config_digest, forbidden, authenticated_files = _policy(
+        repository_identity,
+        view_config,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
+    )
+    if type(planned) is not PlannedBm25View:
+        raise TypeError("strict BM25 execution requires a PlannedBm25View")
+    _require_plan_for_ownership(
+        planned,
+        source_ownership=planned.source_ownership,
+        repository_identity=repository_identity,
+        view_config_digest=config_digest,
+    )
+    observed_source_ownership = capture_directory_ownership(
+        lexical_source,
+        entry_policy=_entry_policy,
+    )
+    _require_plan_for_ownership(
+        planned,
+        source_ownership=observed_source_ownership,
+        repository_identity=repository_identity,
+        view_config_digest=config_digest,
+    )
+    request = StrictWorkspaceRequest(
+        purpose="portable-bm25-recapture",
+        destination=lexical_destination,
+        plan=planned.plan,
+        destination_expectation="missing",
+    )
+
+    def operation(session: StrictWorkspaceSession) -> None:
+        if session.request != request:
+            raise RuntimeError("strict BM25 provider changed its request")
+
+        def replay_source(publication: PublicationDirectoryReader) -> None:
+            ownership, source_records, reader = _captured_source_view(
+                planned.source_ownership,
+                publication,
+                label="strict BM25 recapture source",
+            )
+            if (
+                ownership != planned.source_ownership
+                or source_records != planned.source_records
+            ):
+                raise ValueError("strict BM25 recapture source changed after planning")
+            metadata_bytes, document_chunks = _payloads(
+                reader,
+                repository_identity.root,
+                forbidden_paths=forbidden,
+                environ=environ,
+                authenticated_source_files=authenticated_files,
+            )
+            written = tuple(
+                sorted(
+                    (
+                        session.write_file("documents.json", document_chunks),
+                        session.write_file("bm25_metadata.json", (metadata_bytes,)),
+                    ),
+                    key=lambda item: item.path,
+                )
+            )
+            reader.verify_root()
+            if written != planned.output_records:
+                raise RuntimeError("strict BM25 replay differs from its exact plan")
+
+        def validate_candidate(candidate: PublicationDirectoryReader) -> None:
+            with repository_source.read_session():
+                if (
+                    _candidate_records(
+                        candidate,
+                        planned=planned,
+                        repository_identity=repository_identity,
+                        forbidden_paths=forbidden,
+                        environ=environ,
+                        authenticated_source_files=authenticated_files,
+                    )
+                    != planned.output_records
+                ):
+                    raise RuntimeError("strict BM25 candidate is not canonical")
+
+        with repository_source.read_session():
+            reopen_authenticated_directory(
+                lexical_source,
+                planned.source_ownership,  # type: ignore[arg-type]
+                replay_source,
+            )
+        session.publish_validated(validate_candidate)
+
+    # Recheck mutable authority state after the potentially long source scan
+    # and immediately before the provider can provision its first workspace.
+    _preflight_recapture_publication_authorities(
+        repository_source=repository_source,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    _require_missing_recapture_destination(lexical_destination)
+    run_strict_workspace(
+        workspace_provider,
+        request,
+        receipt_owner=output_receipt_owner,
+        operation=operation,
+    )
+    if not output_receipt_owner.active:
+        raise RuntimeError("strict BM25 publication returned without a receipt")
+    receipt = output_receipt_owner.receipt
+    if receipt.path != lexical_destination or receipt.plan != planned.plan:
+        raise RuntimeError("strict BM25 publication returned the wrong receipt")
+    return planned.adjustments
+
+
+def _publish_recaptured_bm25_view(
+    source: Path,
+    destination: Path,
+    *,
+    planned: PlannedBm25View,
+    repository_source: RepositorySourceBinding,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+    view_config: Mapping[str, Any],
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Privately publish one exact pre-planned ordinary BM25 tree."""
+
+    _preflight_recapture_publication_authorities(
+        repository_source=repository_source,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    repository_identity = _authenticated_repository_identity(repository_source)
+    lexical_source, lexical_destination = _recapture_locations(
+        source,
+        destination,
+        repository_identity=repository_identity,
+    )
+    config_snapshot = _json_object_snapshot(
+        view_config,
+        label="portable BM25 view config",
+    )
+    environment = _environment_snapshot(environ)
+    forbidden_tail = tuple(forbidden_paths)
+    return _publish_recaptured_bm25_view_with_identity(
+        lexical_source,
+        lexical_destination,
+        planned=planned,
+        repository_source=repository_source,
+        repository_identity=repository_identity,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+        view_config=config_snapshot,
+        forbidden_paths=forbidden_tail,
+        environ=environment,
+    )
+
+
+def recapture_bm25_view_strict(
+    source: Path,
+    destination: Path,
+    *,
+    repository_source: RepositorySourceBinding,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+    view_config: Mapping[str, Any],
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Recapture one ordinary BM25 tree into a missing strict workspace."""
+
+    _preflight_recapture_publication_authorities(
+        repository_source=repository_source,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    repository_identity = _authenticated_repository_identity(repository_source)
+    lexical_source, lexical_destination = _recapture_locations(
+        source,
+        destination,
+        repository_identity=repository_identity,
+    )
+    config_snapshot = _json_object_snapshot(
+        view_config,
+        label="portable BM25 view config",
+    )
+    environment = _environment_snapshot(environ)
+    forbidden_tail = tuple(forbidden_paths)
+    planned = _plan_recaptured_bm25_view_with_identity(
+        lexical_source,
+        repository_source=repository_source,
+        repository_identity=repository_identity,
+        view_config=config_snapshot,
+        forbidden_paths=forbidden_tail,
+        environ=environment,
+    )
+    _preflight_recapture_publication_authorities(
+        repository_source=repository_source,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    lexical_source, lexical_destination = _recapture_locations(
+        lexical_source,
+        lexical_destination,
+        repository_identity=repository_identity,
+    )
+    return _publish_recaptured_bm25_view_with_identity(
+        lexical_source,
+        lexical_destination,
+        planned=planned,
+        repository_source=repository_source,
+        repository_identity=repository_identity,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+        view_config=config_snapshot,
+        forbidden_paths=forbidden_tail,
+        environ=environment,
+    )
+
+
 def normalize_owned_query_view_strict(
     destination: Path,
     *,
@@ -1166,4 +1660,5 @@ __all__ = [
     "normalize_owned_query_view_strict",
     "plan_bm25_view_strict",
     "publish_planned_bm25_view_strict",
+    "recapture_bm25_view_strict",
 ]

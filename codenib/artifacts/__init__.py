@@ -37,6 +37,7 @@ from .strict_bm25 import (
     normalize_owned_query_view_strict,
     plan_bm25_view_strict,
     publish_planned_bm25_view_strict,
+    recapture_bm25_view_strict,
 )
 from .strict_context import (
     PlannedContextArtifact,
@@ -70,6 +71,7 @@ __all__ = [
     "publish_planned_bm25_view_strict",
     "publish_planned_context_artifact_strict",
     "query_context_artifact",
+    "recapture_bm25_view_strict",
     "validate_portable_query_view",
     "resolve_github_context_artifact",
     "render_artifact_mcp_config",

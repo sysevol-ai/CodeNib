@@ -37,6 +37,7 @@ from codenib.artifacts import (
     normalize_owned_query_view_strict,
     plan_bm25_view_strict,
     publish_planned_bm25_view_strict,
+    recapture_bm25_view_strict,
     validate_portable_query_view,
 )
 from codenib.artifacts.strict_bm25 import _record_chunks
@@ -226,6 +227,38 @@ def _publish_source(
     return destination, owner
 
 
+def _write_raw_bm25_source(
+    source: Path,
+    repository: Path,
+) -> tuple[bytes, bytes]:
+    documents = _canonical_bytes(
+        [
+            {
+                "page_content": "alpha VALUE omega",
+                "metadata": {
+                    "file": str(repository / "sample.py"),
+                    "node_id": "sample.VALUE",
+                },
+            },
+            {
+                "page_content": "beta helper",
+                "metadata": {"file": "sample.py", "node_id": "sample.helper"},
+            },
+        ]
+    )
+    metadata = _canonical_bytes(
+        {
+            "project_root": str(repository),
+            "max_k": 17,
+            "language": "english",
+        }
+    )
+    source.mkdir(parents=True)
+    (source / "documents.json").write_bytes(documents)
+    (source / "bm25_metadata.json").write_bytes(metadata)
+    return documents, metadata
+
+
 @pytest.fixture
 def strict_generation(tmp_path: Path):
     repository = _repository(tmp_path)
@@ -324,6 +357,445 @@ def test_strict_bm25_plans_replays_and_serves_same_query_semantics(
         ]
     finally:
         output_owner.close()
+
+
+def test_strict_bm25_recaptures_raw_directory_with_missing_test_provider(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    source = tmp_path / "legacy-bm25"
+    destination = tmp_path / "strict-output" / "bm25"
+    source_documents, source_metadata = _write_raw_bm25_source(source, repository)
+    repository_source = capture_repository_source(repository)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider(expected_destination=None)
+    view_config = {"builder_schema": 2, "tokenizer": "code-aware-v1"}
+    try:
+        planned = strict_bm25_module._plan_recaptured_bm25_view(
+            source,
+            destination,
+            repository_source=repository_source,
+            view_config=view_config,
+            environ={},
+        )
+        assert isinstance(planned, PlannedBm25View)
+        assert not destination.exists()
+        assert planned.output_records == (
+            TreeFileRecord(
+                path="bm25_metadata.json",
+                mode=0o600,
+                size=71,
+                sha256=(
+                    "579b6c52fa161af428ca5fc99969fbe4eb7f68c28ff00aadfda3c1522be3bcad"
+                ),
+            ),
+            TreeFileRecord(
+                path="documents.json",
+                mode=0o600,
+                size=264,
+                sha256=(
+                    "31da28af246dec6b8069d7128da2f2f108c514dcba9718c1faa3bb165eb81a41"
+                ),
+            ),
+        )
+
+        adjustments = strict_bm25_module._publish_recaptured_bm25_view(
+            source,
+            destination,
+            planned=planned,
+            repository_source=repository_source,
+            workspace_provider=provider,
+            output_receipt_owner=output_owner,
+            view_config=view_config,
+            environ={},
+        )
+
+        assert provider.support_count == 1
+        assert provider.run_count == 1
+        assert provider.requests[0].destination_expectation == "missing"
+        assert provider.requests[0].plan == planned.plan
+        assert output_owner.active
+        assert output_owner.receipt.path == destination
+        assert output_owner.receipt.plan == planned.plan
+        assert adjustments == planned.adjustments
+        assert (source / "documents.json").read_bytes() == source_documents
+        assert (source / "bm25_metadata.json").read_bytes() == source_metadata
+        assert json.loads(
+            (destination / "bm25_metadata.json").read_text(encoding="utf-8")
+        ) == {
+            "project_root": "source",
+            "max_k": 17,
+            "language": "english",
+        }
+        output_documents = json.loads(
+            (destination / "documents.json").read_text(encoding="utf-8")
+        )
+        assert [item["metadata"]["file"] for item in output_documents] == [
+            "sample.py",
+            "sample.py",
+        ]
+        validate_portable_query_view(
+            destination,
+            repo_path=repository,
+            view_type="bm25",
+            view_config={**view_config, **adjustments},
+            environ={},
+        )
+    finally:
+        output_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_recapture_has_public_package_export() -> None:
+    assert recapture_bm25_view_strict is strict_bm25_module.recapture_bm25_view_strict
+
+
+def test_strict_bm25_public_recapture_uses_local_missing_provider(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    source = tmp_path / "legacy-bm25"
+    _write_raw_bm25_source(source, repository)
+    workspace_root = tmp_path / "private-workspaces"
+    workspace_root.mkdir(mode=0o700)
+    os.chmod(workspace_root, 0o700)
+    destination = workspace_root / "published-bm25"
+    provider = LocalWorkspaceProvider(workspace_root)
+    try:
+        provider.require_support()
+    except UnsupportedWorkspaceCreation as error:
+        pytest.skip(f"native local workspace provider is unavailable: {error}")
+    repository_source = capture_repository_source(repository)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    try:
+        adjustments = strict_bm25_module.recapture_bm25_view_strict(
+            source,
+            destination,
+            repository_source=repository_source,
+            workspace_provider=provider,
+            output_receipt_owner=output_owner,
+            view_config={"builder_schema": 2},
+            environ={},
+        )
+        assert output_owner.active
+        assert output_owner.receipt.path == destination
+        assert set(adjustments["artifact_file_fingerprints"]) == {
+            "bm25_metadata.json",
+            "documents.json",
+        }
+        assert destination.is_dir()
+    finally:
+        output_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_recapture_accepts_excluded_source_inside_repository(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    source = repository / "compiler-cache" / "bm25"
+    _write_raw_bm25_source(source, repository)
+    repository_source = capture_repository_source(
+        repository,
+        exclude_roots=(source,),
+    )
+    destination = tmp_path / "strict-output" / "bm25"
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider(expected_destination=None)
+    try:
+        identity = repository_source.authenticated_identity_snapshot()
+        assert not any(
+            record.path.startswith("compiler-cache/bm25/")
+            for record in identity.file_records
+        )
+        strict_bm25_module.recapture_bm25_view_strict(
+            source,
+            destination,
+            repository_source=repository_source,
+            workspace_provider=provider,
+            output_receipt_owner=output_owner,
+            view_config={},
+            environ={},
+        )
+        assert output_owner.active
+        assert provider.run_count == 1
+    finally:
+        output_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_recapture_rejects_included_repository_source_before_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _repository(tmp_path)
+    source = repository / "compiler-cache" / "bm25"
+    _write_raw_bm25_source(source, repository)
+    repository_source = capture_repository_source(repository)
+    destination = tmp_path / "strict-output" / "bm25"
+
+    def forbidden_capture(*_args, **_kwargs):
+        raise AssertionError("source capture ran before repository exclusion proof")
+
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "capture_directory_ownership",
+        forbidden_capture,
+    )
+    try:
+        with pytest.raises(ValueError, match="must be excluded"):
+            strict_bm25_module._plan_recaptured_bm25_view(
+                source,
+                destination,
+                repository_source=repository_source,
+                view_config={},
+                environ={},
+            )
+        assert not destination.exists()
+    finally:
+        repository_source.close()
+
+
+@pytest.mark.parametrize("destination_kind", ["existing", "repository"])
+def test_strict_bm25_recapture_rejects_destination_preflight_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    destination_kind: str,
+) -> None:
+    repository = _repository(tmp_path)
+    source = tmp_path / "legacy-bm25"
+    source_documents, source_metadata = _write_raw_bm25_source(source, repository)
+    repository_source = capture_repository_source(repository)
+    if destination_kind == "existing":
+        destination = tmp_path / "occupied"
+        destination.mkdir()
+        marker = destination / "marker"
+        marker.write_text("retained\n", encoding="utf-8")
+    else:
+        destination = repository / "strict-output"
+        marker = None
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider(expected_destination=None)
+
+    def forbidden_capture(*_args, **_kwargs):
+        raise AssertionError("source capture ran after invalid destination preflight")
+
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "capture_directory_ownership",
+        forbidden_capture,
+    )
+    try:
+        with pytest.raises((FileExistsError, ValueError), match="destination"):
+            strict_bm25_module.recapture_bm25_view_strict(
+                source,
+                destination,
+                repository_source=repository_source,
+                workspace_provider=provider,
+                output_receipt_owner=output_owner,
+                view_config={},
+                environ={},
+            )
+        assert provider.run_count == 0
+        assert provider.support_count == 0
+        assert output_owner.state == "empty"
+        assert (source / "documents.json").read_bytes() == source_documents
+        assert (source / "bm25_metadata.json").read_bytes() == source_metadata
+        if marker is not None:
+            assert marker.read_text(encoding="utf-8") == "retained\n"
+    finally:
+        output_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_recapture_rejects_source_drift_before_provider(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    source = tmp_path / "legacy-bm25"
+    _write_raw_bm25_source(source, repository)
+    destination = tmp_path / "strict-output" / "bm25"
+    repository_source = capture_repository_source(repository)
+    planned = strict_bm25_module._plan_recaptured_bm25_view(
+        source,
+        destination,
+        repository_source=repository_source,
+        view_config={},
+        environ={},
+    )
+    (source / "documents.json").write_bytes(_canonical_bytes([]))
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider(expected_destination=None)
+    try:
+        with pytest.raises(ValueError, match="another source generation"):
+            strict_bm25_module._publish_recaptured_bm25_view(
+                source,
+                destination,
+                planned=planned,
+                repository_source=repository_source,
+                workspace_provider=provider,
+                output_receipt_owner=output_owner,
+                view_config={},
+                environ={},
+            )
+        assert provider.run_count == 0
+        assert provider.support_count == 0
+        assert output_owner.state == "empty"
+        assert not destination.exists()
+    finally:
+        output_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_recapture_rejects_plan_tamper_before_source_reopen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _repository(tmp_path)
+    source = tmp_path / "legacy-bm25"
+    _write_raw_bm25_source(source, repository)
+    destination = tmp_path / "strict-output" / "bm25"
+    repository_source = capture_repository_source(repository)
+    planned = strict_bm25_module._plan_recaptured_bm25_view(
+        source,
+        destination,
+        repository_source=repository_source,
+        view_config={},
+        environ={},
+    )
+    tampered = replace(
+        planned,
+        plan=WorkspacePlan(
+            subject_digest=hashlib.sha256(b"tampered-recapture-plan").hexdigest(),
+            files=planned.plan.files,
+        ),
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider(expected_destination=None)
+
+    def forbidden_capture(*_args, **_kwargs):
+        raise AssertionError("source was recaptured before plan validation")
+
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "capture_directory_ownership",
+        forbidden_capture,
+    )
+    try:
+        with pytest.raises(ValueError, match="not canonical"):
+            strict_bm25_module._publish_recaptured_bm25_view(
+                source,
+                destination,
+                planned=tampered,
+                repository_source=repository_source,
+                workspace_provider=provider,
+                output_receipt_owner=output_owner,
+                view_config={},
+                environ={},
+            )
+        assert provider.run_count == 0
+        assert output_owner.state == "empty"
+        assert not destination.exists()
+    finally:
+        output_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_recapture_detects_tamper_at_reopen_and_rolls_back(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    source = tmp_path / "legacy-bm25"
+    _write_raw_bm25_source(source, repository)
+    destination = tmp_path / "strict-output" / "bm25"
+    repository_source = capture_repository_source(repository)
+    planned = strict_bm25_module._plan_recaptured_bm25_view(
+        source,
+        destination,
+        repository_source=repository_source,
+        view_config={},
+        environ={},
+    )
+
+    def tamper_before_workspace() -> None:
+        (source / "documents.json").write_bytes(_canonical_bytes([]))
+
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider(
+        expected_destination=None,
+        support_hook=tamper_before_workspace,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="differs|changed"):
+            strict_bm25_module._publish_recaptured_bm25_view(
+                source,
+                destination,
+                planned=planned,
+                repository_source=repository_source,
+                workspace_provider=provider,
+                output_receipt_owner=output_owner,
+                view_config={},
+                environ={},
+            )
+        assert provider.support_count == 1
+        assert provider.run_count == 1
+        assert output_owner.state == "empty"
+        assert not destination.exists()
+    finally:
+        output_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_recapture_rejects_forbidden_policy_postflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _repository(tmp_path)
+    source = tmp_path / "legacy-bm25"
+    _write_raw_bm25_source(source, repository)
+    destination = tmp_path / "strict-output" / "bm25"
+    forbidden = tmp_path / "private-build-root"
+    repository_source = capture_repository_source(repository)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider(expected_destination=None)
+    candidate_calls = 0
+    real_candidate_records = strict_bm25_module._candidate_records
+
+    def reject_published_candidate(*args, **kwargs):
+        nonlocal candidate_calls
+        assert kwargs["forbidden_paths"] == (repository, forbidden)
+        records = real_candidate_records(*args, **kwargs)
+        candidate_calls += 1
+        if candidate_calls == 2:
+            raise ValueError("strict BM25 forbidden path postflight failed")
+        return records
+
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "_candidate_records",
+        reject_published_candidate,
+    )
+    try:
+        with pytest.raises(
+            (RuntimeError, ValueError),
+            match="forbidden path postflight|identity failed validation",
+        ):
+            strict_bm25_module.recapture_bm25_view_strict(
+                source,
+                destination,
+                repository_source=repository_source,
+                workspace_provider=provider,
+                output_receipt_owner=output_owner,
+                view_config={},
+                forbidden_paths=(forbidden,),
+                environ={},
+            )
+        assert candidate_calls == 2
+        assert provider.run_count == 1
+        assert not output_owner.active
+    finally:
+        output_owner.close()
+        repository_source.close()
 
 
 def test_strict_bm25_rejects_missing_only_local_provider_before_mutation(
