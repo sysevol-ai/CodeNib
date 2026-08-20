@@ -175,7 +175,9 @@ class StrictWorkspaceProvider(Protocol):
     expectation or share the revocation gate.
     """
 
-    def require_support(self) -> None: ...
+    def require_support(self) -> None:
+        """Repeatably probe support without provisioning or consuming authority."""
+        ...
 
     def run_workspace(
         self,

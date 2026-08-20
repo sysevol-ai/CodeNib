@@ -60,8 +60,10 @@ from ..source_fingerprint import is_secure_source_fingerprint_v2
 from ..storage.cas import BlobInfo
 from ..storage.models import (
     ArtifactMember,
+    NamespaceIdentity,
     ObjectRecord,
     PublishedSnapshot,
+    RepositoryIdentity,
     SnapshotView,
     SourceRevision,
     StorageIntegrityError,
@@ -70,7 +72,7 @@ from ..storage.models import (
     ViewProfile,
     canonical_json,
 )
-from ..storage.protocols import ReceiptRetainingObjectStore
+from ..storage.protocols import ReceiptRetainingObjectStore, RetainedSnapshotCatalog
 from ..storage.view_bundle import (
     DEFAULT_MAX_BUNDLE_BYTES,
     DEFAULT_MAX_BUNDLE_FILES,
@@ -92,11 +94,15 @@ from .manifest_export import (
     _require_bundle_semantics,
     _run_with_owned_close,
     _strict_json_bytes,
+    export_retained_repo_manifest_ref,
+    export_retained_repo_manifest_snapshot,
 )
 from .manifest_import import (
     DEFAULT_MAX_CONTEXT_BYTES,
     DEFAULT_MAX_CONTEXT_FILES,
     DEFAULT_MAX_PROJECTION_BYTES,
+    DEFAULT_NAMESPACE_NAME,
+    DEFAULT_REF_NAME,
 )
 from .manifest_storage import (
     DEFAULT_MAX_MANIFEST_BYTES,
@@ -132,6 +138,48 @@ _REPOSITORY_RE = re.compile(
 _MISSING = object()
 _UNSET_RESULT = object()
 _CALLBACK_RECOVERY_LIMIT = 64
+
+
+@dataclass(frozen=True, slots=True)
+class RepoManifestMaterializationResult:
+    """Data result for one retained export plus filesystem materialization."""
+
+    artifact: ContextArtifactResult
+    export_receipt: RepoManifestExportReceipt
+
+    def __post_init__(self) -> None:
+        if type(self) is not RepoManifestMaterializationResult:
+            raise StorageValidationError(
+                "retained materialization result must use the exact model type"
+            )
+        if type(self.artifact) is not ContextArtifactResult:
+            raise StorageValidationError(
+                "retained materialization result artifact is invalid"
+            )
+        if type(self.export_receipt) is not RepoManifestExportReceipt:
+            raise StorageValidationError(
+                "retained materialization result export receipt is invalid"
+            )
+        if (
+            self.artifact.repository != self.export_receipt.repository_key
+            or self.artifact.views != self.export_receipt.views
+        ):
+            raise StorageIntegrityError(
+                "retained materialization result identity is inconsistent"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class _MaterializationPreflight:
+    destination: Path
+    environment: Mapping[str, str]
+    max_manifest_bytes: int
+    max_projection_bytes: int
+    max_context_files: int
+    max_context_bytes: int
+    max_bundle_files: int
+    max_bundle_bytes: int
+    max_bundle_metadata_bytes: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -1653,31 +1701,22 @@ def _preflight_authorities(
     )
 
 
-def materialize_retained_context_artifact(
-    exported: RepoManifestExportResult,
+def _preflight_materialization_request(
     destination: Path,
     *,
-    object_store: ReceiptRetainingObjectStore,
-    workspace_provider: StrictWorkspaceProvider,
-    output_receipt_owner: PublishedWorkspaceReceiptOwner,
-    max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
-    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
-    max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
-    max_context_bytes: int = DEFAULT_MAX_CONTEXT_BYTES,
-    max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
-    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
-    max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
-    environ: Mapping[str, str] | None = None,
-) -> ContextArtifactResult:
-    """Publish one retained export as an exact, query-compatible artifact.
-
-    ``output_receipt_owner`` is caller-owned and must be empty.  On success it
-    remains active and is the only authority for the published generation;
-    this function never closes it, including after a post-publication failure.
-    """
-
-    if type(exported) is not RepoManifestExportResult:
-        raise TypeError("retained context materialization requires an exact export")
+    object_store: object,
+    workspace_provider: object,
+    output_receipt_owner: object,
+    max_manifest_bytes: object,
+    max_projection_bytes: object,
+    max_context_files: object,
+    max_context_bytes: object,
+    max_bundle_files: object,
+    max_bundle_bytes: object,
+    max_bundle_metadata_bytes: object,
+    environ: Mapping[str, str] | None,
+    probe_provider_support: bool = False,
+) -> _MaterializationPreflight:
     if not isinstance(destination, Path):
         raise TypeError("retained context destination must be a Path")
     _preflight_authorities(
@@ -1685,22 +1724,64 @@ def materialize_retained_context_artifact(
         workspace_provider=workspace_provider,
         output_receipt_owner=output_receipt_owner,
     )
-    max_manifest_bytes = _positive_limit(max_manifest_bytes, "manifest byte limit")
-    max_projection_bytes = _positive_limit(
-        max_projection_bytes,
-        "projection byte limit",
-    )
-    max_context_files = _positive_limit(max_context_files, "context file limit")
-    max_context_bytes = _positive_limit(max_context_bytes, "context byte limit")
-    max_bundle_files = _positive_limit(max_bundle_files, "bundle file limit")
-    max_bundle_bytes = _positive_limit(max_bundle_bytes, "bundle byte limit")
-    max_bundle_metadata_bytes = _positive_limit(
+    if probe_provider_support:
+        workspace_provider.require_support()  # type: ignore[union-attr]
+    manifest_limit = _positive_limit(max_manifest_bytes, "manifest byte limit")
+    projection_limit = _positive_limit(max_projection_bytes, "projection byte limit")
+    context_files = _positive_limit(max_context_files, "context file limit")
+    context_bytes = _positive_limit(max_context_bytes, "context byte limit")
+    bundle_files = _positive_limit(max_bundle_files, "bundle file limit")
+    bundle_bytes = _positive_limit(max_bundle_bytes, "bundle byte limit")
+    bundle_metadata = _positive_limit(
         max_bundle_metadata_bytes,
         "bundle metadata byte limit",
     )
     environment = _snapshot_environment(environ)
     lexical_destination = lexical_directory_path(destination)
     _require_missing_destination(lexical_destination)
+    return _MaterializationPreflight(
+        destination=lexical_destination,
+        environment=environment,
+        max_manifest_bytes=manifest_limit,
+        max_projection_bytes=projection_limit,
+        max_context_files=context_files,
+        max_context_bytes=context_bytes,
+        max_bundle_files=bundle_files,
+        max_bundle_bytes=bundle_bytes,
+        max_bundle_metadata_bytes=bundle_metadata,
+    )
+
+
+def _recheck_materialization_target(
+    preflight: _MaterializationPreflight,
+    *,
+    object_store: object,
+    workspace_provider: object,
+    output_receipt_owner: object,
+) -> None:
+    _preflight_authorities(
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    _require_missing_destination(preflight.destination)
+
+
+def _materialize_retained_context_artifact_preflighted(
+    exported: RepoManifestExportResult,
+    preflight: _MaterializationPreflight,
+    *,
+    object_store: ReceiptRetainingObjectStore,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+) -> ContextArtifactResult:
+    max_manifest_bytes = preflight.max_manifest_bytes
+    max_projection_bytes = preflight.max_projection_bytes
+    max_context_files = preflight.max_context_files
+    max_context_bytes = preflight.max_context_bytes
+    max_bundle_files = preflight.max_bundle_files
+    max_bundle_bytes = preflight.max_bundle_bytes
+    max_bundle_metadata_bytes = preflight.max_bundle_metadata_bytes
     frozen = _snapshot_exported(
         exported,
         max_manifest_bytes=max_manifest_bytes,
@@ -1780,13 +1861,13 @@ def materialize_retained_context_artifact(
             max_context_bytes=max_context_bytes,
         )
         return _publish_plan(
-            lexical_destination,
+            preflight.destination,
             planned=planned,
             retained_receipts=retained_receipts,
             object_store=object_store,
             workspace_provider=workspace_provider,
             output_receipt_owner=output_receipt_owner,
-            environment=environment,
+            environment=preflight.environment,
             max_context_files=max_context_files,
             max_context_bytes=max_context_bytes,
         )
@@ -1794,4 +1875,278 @@ def materialize_retained_context_artifact(
     return _run_retention_callback(object_store, retained_receipts, retained)
 
 
-__all__ = ["materialize_retained_context_artifact"]
+def materialize_retained_context_artifact(
+    exported: RepoManifestExportResult,
+    destination: Path,
+    *,
+    object_store: ReceiptRetainingObjectStore,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+    max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
+    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
+    max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
+    max_context_bytes: int = DEFAULT_MAX_CONTEXT_BYTES,
+    max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    environ: Mapping[str, str] | None = None,
+) -> ContextArtifactResult:
+    """Publish one retained export as an exact, query-compatible artifact.
+
+    ``output_receipt_owner`` is caller-owned and must be empty.  On success it
+    remains active and is the only authority for the published generation;
+    this function never closes it, including after a post-publication failure.
+    """
+
+    if type(exported) is not RepoManifestExportResult:
+        raise TypeError("retained context materialization requires an exact export")
+    preflight = _preflight_materialization_request(
+        destination,
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+        max_manifest_bytes=max_manifest_bytes,
+        max_projection_bytes=max_projection_bytes,
+        max_context_files=max_context_files,
+        max_context_bytes=max_context_bytes,
+        max_bundle_files=max_bundle_files,
+        max_bundle_bytes=max_bundle_bytes,
+        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        environ=environ,
+    )
+    return _materialize_retained_context_artifact_preflighted(
+        exported,
+        preflight,
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+
+
+def _retained_repository_id(repository_key: str, namespace_name: str) -> str:
+    if type(repository_key) is not str:
+        raise TypeError("retained materialization repository key must be exact text")
+    if type(namespace_name) is not str:
+        raise TypeError("retained materialization namespace name must be exact text")
+    if (
+        not repository_key
+        or len(repository_key) > _MAX_TEXT
+        or "\x00" in repository_key
+        or repository_key != repository_key.strip()
+    ):
+        raise StorageValidationError(
+            "retained materialization repository key must be a canonical slug"
+        )
+    namespace = NamespaceIdentity(namespace_name)
+    if namespace.name != namespace_name:
+        raise StorageValidationError(
+            "retained materialization namespace name must be canonical"
+        )
+    try:
+        normalized_repository = normalize_repo(repository_key)
+    except ValueError as exc:
+        raise StorageValidationError(
+            "retained materialization repository key is invalid"
+        ) from exc
+    if (
+        normalized_repository != repository_key
+        or _REPOSITORY_RE.fullmatch(repository_key) is None
+    ):
+        raise StorageValidationError(
+            "retained materialization repository key must be a canonical slug"
+        )
+    return RepositoryIdentity(
+        namespace_id=namespace.namespace_id,
+        repository_key=repository_key,
+    ).repository_id
+
+
+def _retained_selector_text(value: object, label: str) -> str:
+    if type(value) is not str:
+        raise StorageValidationError(f"{label} must be exact text")
+    if not value or value != value.strip() or "\x00" in value or len(value) > _MAX_TEXT:
+        raise StorageValidationError(f"{label} is not canonical")
+    return value
+
+
+def _retained_expected_generation(value: object) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int or not 0 < value <= _INT64_MAX:
+        raise StorageValidationError(
+            "expected ref generation must be a positive signed 64-bit integer"
+        )
+    return value
+
+
+def _materialize_retained_export(
+    exported: RepoManifestExportResult,
+    preflight: _MaterializationPreflight,
+    *,
+    object_store: ReceiptRetainingObjectStore,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+) -> RepoManifestMaterializationResult:
+    artifact = _materialize_retained_context_artifact_preflighted(
+        exported,
+        preflight,
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    return RepoManifestMaterializationResult(
+        artifact=artifact,
+        export_receipt=exported.receipt,
+    )
+
+
+def materialize_retained_repo_manifest_ref(
+    repository_key: str,
+    destination: Path,
+    *,
+    catalog: RetainedSnapshotCatalog,
+    object_store: ReceiptRetainingObjectStore,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+    namespace_name: str = DEFAULT_NAMESPACE_NAME,
+    ref_name: str = DEFAULT_REF_NAME,
+    expected_generation: int | None = None,
+    max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
+    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
+    max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
+    max_context_bytes: int = DEFAULT_MAX_CONTEXT_BYTES,
+    max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    environ: Mapping[str, str] | None = None,
+) -> RepoManifestMaterializationResult:
+    """Resolve one retained ref and publish its exact context generation.
+
+    ``output_receipt_owner`` is caller-owned and must be empty.  This function
+    never closes it.  Success leaves it active, and a failure after publication
+    may also leave it active so the caller can settle the published authority.
+    """
+
+    repository_id = _retained_repository_id(repository_key, namespace_name)
+    ref_name = _retained_selector_text(ref_name, "retained materialization ref name")
+    expected_generation = _retained_expected_generation(expected_generation)
+    preflight = _preflight_materialization_request(
+        destination,
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+        max_manifest_bytes=max_manifest_bytes,
+        max_projection_bytes=max_projection_bytes,
+        max_context_files=max_context_files,
+        max_context_bytes=max_context_bytes,
+        max_bundle_files=max_bundle_files,
+        max_bundle_bytes=max_bundle_bytes,
+        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        environ=environ,
+        probe_provider_support=True,
+    )
+    exported = export_retained_repo_manifest_ref(
+        repository_id,
+        catalog=catalog,
+        object_store=object_store,
+        ref_name=ref_name,
+        expected_generation=expected_generation,
+        max_manifest_bytes=preflight.max_manifest_bytes,
+        max_projection_bytes=preflight.max_projection_bytes,
+        max_bundle_files=preflight.max_bundle_files,
+        max_bundle_bytes=preflight.max_bundle_bytes,
+        max_bundle_metadata_bytes=preflight.max_bundle_metadata_bytes,
+    )
+    _recheck_materialization_target(
+        preflight,
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    return _materialize_retained_export(
+        exported,
+        preflight,
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+
+
+def materialize_retained_repo_manifest_snapshot(
+    repository_key: str,
+    snapshot_id: str,
+    destination: Path,
+    *,
+    catalog: RetainedSnapshotCatalog,
+    object_store: ReceiptRetainingObjectStore,
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+    namespace_name: str = DEFAULT_NAMESPACE_NAME,
+    max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
+    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
+    max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
+    max_context_bytes: int = DEFAULT_MAX_CONTEXT_BYTES,
+    max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    environ: Mapping[str, str] | None = None,
+) -> RepoManifestMaterializationResult:
+    """Read one retained immutable snapshot and publish its exact context.
+
+    ``output_receipt_owner`` is caller-owned and must be empty.  This function
+    never closes it.  Success leaves it active, and a failure after publication
+    may also leave it active so the caller can settle the published authority.
+    """
+
+    repository_id = _retained_repository_id(repository_key, namespace_name)
+    snapshot_id = _retained_selector_text(
+        snapshot_id,
+        "retained materialization snapshot ID",
+    )
+    preflight = _preflight_materialization_request(
+        destination,
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+        max_manifest_bytes=max_manifest_bytes,
+        max_projection_bytes=max_projection_bytes,
+        max_context_files=max_context_files,
+        max_context_bytes=max_context_bytes,
+        max_bundle_files=max_bundle_files,
+        max_bundle_bytes=max_bundle_bytes,
+        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        environ=environ,
+        probe_provider_support=True,
+    )
+    exported = export_retained_repo_manifest_snapshot(
+        repository_id,
+        snapshot_id,
+        catalog=catalog,
+        object_store=object_store,
+        max_manifest_bytes=preflight.max_manifest_bytes,
+        max_projection_bytes=preflight.max_projection_bytes,
+        max_bundle_files=preflight.max_bundle_files,
+        max_bundle_bytes=preflight.max_bundle_bytes,
+        max_bundle_metadata_bytes=preflight.max_bundle_metadata_bytes,
+    )
+    _recheck_materialization_target(
+        preflight,
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    return _materialize_retained_export(
+        exported,
+        preflight,
+        object_store=object_store,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+
+
+__all__ = [
+    "RepoManifestMaterializationResult",
+    "materialize_retained_context_artifact",
+    "materialize_retained_repo_manifest_ref",
+    "materialize_retained_repo_manifest_snapshot",
+]

@@ -41,7 +41,10 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         import_retained_repo_manifest,
     )
     from codenib.compiler.manifest_materialization import (
+        RepoManifestMaterializationResult,
         materialize_retained_context_artifact,
+        materialize_retained_repo_manifest_ref,
+        materialize_retained_repo_manifest_snapshot,
     )
     from codenib.compiler.manifest_storage import (
         RepoManifestImportPlan,
@@ -121,6 +124,18 @@ _EXPORTS = {
         "codenib.compiler.manifest_materialization",
         "materialize_retained_context_artifact",
     ),
+    "RepoManifestMaterializationResult": (
+        "codenib.compiler.manifest_materialization",
+        "RepoManifestMaterializationResult",
+    ),
+    "materialize_retained_repo_manifest_ref": (
+        "codenib.compiler.manifest_materialization",
+        "materialize_retained_repo_manifest_ref",
+    ),
+    "materialize_retained_repo_manifest_snapshot": (
+        "codenib.compiler.manifest_materialization",
+        "materialize_retained_repo_manifest_snapshot",
+    ),
     "export_retained_repo_manifest_ref": (
         "codenib.compiler.manifest_export",
         "export_retained_repo_manifest_ref",
@@ -169,7 +184,10 @@ __all__ = [
     "plan_repo_manifest_import",
     "plan_repo_manifest_import_bytes",
     "import_retained_repo_manifest",
+    "RepoManifestMaterializationResult",
     "materialize_retained_context_artifact",
+    "materialize_retained_repo_manifest_ref",
+    "materialize_retained_repo_manifest_snapshot",
     "export_retained_repo_manifest_ref",
     "export_retained_repo_manifest_snapshot",
     # Resources
