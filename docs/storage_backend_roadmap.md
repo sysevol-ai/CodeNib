@@ -238,8 +238,9 @@ closed in staging, binding, BM25 reads, and MCP reads.  The shared credential
 classifier lives outside both artifacts and storage so the artifact layer does
 not depend on the catalog implementation.  These gates close the current
 portable context publication surface, and the injectable retained materializer
-described below now closes the retained filesystem boundary. Production
-compiler/runtime wiring and a future streaming payload revision remain.
+described below now closes the retained filesystem boundary. The explicit local
+CLI bridge described below can invoke it, but default compiler/import/runtime
+wiring and a future streaming payload revision remain.
 
 Local filesystem publication now has an explicit strict-authority gate. Regular
 files are written through caller-owned staged descriptors, installed with
@@ -271,8 +272,9 @@ publish permit. The caller-owned receipt slot is the publication-authority
 linearization point: unreceipted same-process failures quarantine the exact
 candidate, while a fork child authenticates and closes only its inherited
 descriptor pairs. The provider is an authority boundary for trusted callbacks,
-not an in-process Python sandbox. No compiler or runtime route constructs it by
-default yet.
+not an in-process Python sandbox. The explicit retained-artifact CLI constructs
+it for one operator-requested publication; no compiler, import, or runtime
+route constructs it by default yet.
 
 Callback-scoped directory results are likewise provisional until ordered
 reader-validity, exact-ownership, child-namespace, and parent-authority
@@ -358,8 +360,10 @@ materialization APIs are now available as injectable library producers. The
 Linux local provider deliberately accepts only missing destinations, so
 whole-context retained materialization can use it explicitly, while strict BM25
 requests `provider-bound-exact` and still lacks a concrete production provider.
-No compiler or runtime route constructs these producers yet. M1 remains in
-progress and the M2 BM25 profile adapter is still outstanding.
+The explicit retained-artifact CLI can now construct the whole-context producer
+for one existing catalog selection, but no default compiler/import/runtime route
+constructs these producers. M1 remains in progress and the M2 BM25 profile
+adapter is still outstanding.
 
 Strict whole-context publication can now aggregate already-normalized BM25 and
 vector generations retained by active workspace receipt owners. The plan binds
@@ -373,11 +377,12 @@ output receipt. Large canonical documents remain element-streamed, and vector
 indexes stay authenticated but native-inert throughout context assembly.
 Planning and publication never consult mutable public source projections after
 that identity is captured. The producer can now use a caller-supplied
-`LocalWorkspaceProvider` for a missing destination, but no compiler/runtime
-route constructs the provider or manages the output receipt lifetime by
-default. This slice does not normalize native vector state or route compiler
-output. Its retained receipt is now accepted by the direct M1 importer below,
-but it is not yet an M2 fenced job output.
+`LocalWorkspaceProvider` for a missing destination. The explicit CLI bridge now
+constructs that provider and closes its output receipt for one invocation, but
+no default compiler/import/runtime route manages either lifecycle. This slice
+does not normalize native vector state or route compiler output. Its retained
+receipt is now accepted by the direct M1 importer below, but it is not yet an M2
+fenced job output.
 
 Retained manifest import now has additional backend-neutral prerequisite
 gates. `BlobInfo` is an exact point-in-time CAS receipt, and
@@ -416,8 +421,11 @@ operation, receipt minting, or ref publication. Execution is a separate
 authority-bearing API, so inspecting or serializing a plan cannot publish it.
 The retained exporter described below now supplies equivalent canonical v1.1
 bytes, and the injectable retained materializer closes their filesystem
-publication boundary. Production provider/compiler/runtime wiring and GC policy
-remain outstanding, so M1 and M2 remain in progress.
+publication boundary. The explicit local CLI bridge uses the concrete local
+provider only for an operator-selected retained ref or snapshot. Default
+compiler/import/runtime wiring remains outstanding, so M1 remains in progress.
+Profile adapters and fenced publication remain M2 work;
+production retention and garbage collection remain M5 work.
 
 The retained-import foundation now also exposes schema-v4 compound-generation
 identity as one backend-neutral model rule, including the canonical member
@@ -475,8 +483,8 @@ publication cannot move the old ref. If cancellation lands after SQLite commits
 but before the caller observes the result, the direct M1 call is at-least-once:
 an exact retry idempotently resolves to the already-published snapshot without
 advancing the ref again. This is the direct M1 bootstrap path, not the M2 fenced
-job-success transaction. Production compiler/runtime wiring and a production GC
-implementation and policy remain outstanding, so M1 remains in progress.
+job-success transaction. Default compiler/import/runtime wiring remains the M1
+gap; production retention and garbage collection remain M5 work.
 
 The first read-only retained `RepoManifest` exporter now closes the data-only
 round trip without introducing path authority. It accepts the additive
@@ -512,8 +520,39 @@ both staged and published semantic verification. Static metadata is `0600`,
 directories are `0700`, and the caller-precreated output receipt owner remains
 the sole authority for the published generation. The API is backend-neutral
 and injectable, and it can use `LocalWorkspaceProvider` for a missing
-destination. No default compiler/runtime route constructs that provider or
-manages the output receipt lifetime yet.
+destination.
+
+The first explicit local bridge over this API is now
+`codenib artifact materialize`. It requires an existing initialized CodeNib
+SQLite catalog, a fully preprovisioned strict `LocalCAS`, an existing private
+Linux workspace root owned by the current effective UID with exact mode `0700`,
+and a missing output below that root. The three storage/authority locations
+must not overlap. Existing-only catalog open is read-write rather than
+read-only: it enables WAL and may apply forward migrations, while rejecting a
+missing, empty, foreign, or corrupt database. The database must be a
+single-linked regular file. Existing-only open binds its captured `(st_dev,
+st_ino, st_nlink=1)` identity across `sqlite3.connect` and rechecks it before
+schema inspection, WAL activation, or migration. Its resolved ancestor chain
+and WAL/SHM sidecar namespace are an explicit trusted, quiescent deployment
+boundary for the whole invocation; the identity checks do not claim a
+path-based sandbox against arbitrary concurrent renames. Every existing output-
+parent component must be a real directory on the workspace root filesystem.
+The command resolves either one ref (optionally guarded by its expected
+generation) or one explicit immutable snapshot, materializes the retained
+portable generation, then closes the CLI-owned caller receipt, strict CAS
+anchors, and catalog connection before it prints success. Receipt closure
+releases native authority without deleting the published output. The printed
+handoff starts a separate query-only process with `codenib mcp --artifact
+<output> --repository <owner/repository>`. A post-publication failure may
+therefore leave a valid missing-only output; the CLI warns when the path exists
+rather than deleting it.
+
+This command does not initialize or populate the control plane, import a legacy
+cache, build views, advance refs, or make retained storage the default. It is
+the first explicit local bridge only. Default compiler/import/runtime wiring
+remains the outstanding M1 deliverable, and strict BM25 still lacks the
+`provider-bound-exact` production provider; fenced job publication remains M2
+work.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable
@@ -522,8 +561,9 @@ per-ref leases.  Catalog reads revalidate the normalized view rows against the
 canonical request; the M2 publication transaction must repeat that gate before
 associating outputs.  An explicit acquire may atomically retire an expired
 holder while taking over its slot; this slice adds no background reaper and is
-not wired to the compiler or Web workers. Production compiler/runtime wiring
-remains the outstanding M1 deliverable; fenced job publication remains M2 work.
+not wired to the compiler or Web workers. Default compiler/import/runtime
+wiring remains the outstanding M1 deliverable; fenced job publication remains
+M2 work.
 
 The shared compiler-cache lock is a cooperative serialization boundary for
 compiler and importer processes using a cache namespace private to one OS
