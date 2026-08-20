@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import io
 import json
@@ -16,10 +17,15 @@ from typing import Any, BinaryIO, TypeVar
 from unittest.mock import patch
 
 import pytest
+from mcp import Client
 
 import codenib.compiler as compiler_module
 import codenib.compiler.manifest_materialization as materialization_module
-from codenib._captured_directory import PublishedWorkspaceReceiptOwner
+from codenib import LocalWorkspaceProvider
+from codenib._captured_directory import (
+    PublishedWorkspaceReceiptOwner,
+    UnsupportedWorkspaceCreation,
+)
 from codenib._workspace_provider import StrictWorkspaceRequest, StrictWorkspaceSession
 from codenib.artifacts import (
     bind_context_artifact,
@@ -33,6 +39,7 @@ from codenib.compiler.manifest_export import (
 from codenib.compiler.manifest_materialization import (
     materialize_retained_context_artifact,
 )
+from codenib.mcp import server as mcp_server
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.search import search_bm25_impl
 from codenib.storage import (
@@ -330,6 +337,17 @@ def _export_snapshot(
     )
 
 
+def _local_workspace_provider(root: Path) -> LocalWorkspaceProvider:
+    root.mkdir(parents=True, mode=0o700)
+    root.chmod(0o700)
+    provider = LocalWorkspaceProvider(root)
+    try:
+        provider.require_support()
+    except UnsupportedWorkspaceCreation as error:
+        pytest.skip(f"native local workspace provider is unavailable: {error}")
+    return provider
+
+
 def test_materializer_is_available_through_the_lazy_compiler_api() -> None:
     assert (
         compiler_module.materialize_retained_context_artifact
@@ -477,6 +495,102 @@ def test_materializes_retained_export_as_exact_query_compatible_artifact(
             owner.close()
         assert owner.closed
         assert destination.is_dir()
+
+
+def test_local_provider_materializes_real_retained_snapshot_for_mcp_bm25(
+    tmp_path: Path,
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (fixture, imported, object_store, catalog):
+        assert imported.changed
+        assert imported.generation == 1
+        assert imported.views == ("bm25",)
+        resolved = catalog.resolve_ref(imported.repository_id, imported.ref_name)
+        assert resolved["snapshot_id"] == imported.snapshot_id
+        assert resolved["generation"] == imported.generation
+
+        exported = _export_snapshot(imported, object_store, catalog)
+        assert exported.receipt.repository_id == imported.repository_id
+        assert exported.receipt.snapshot_id == imported.snapshot_id
+
+        provider = _local_workspace_provider(tmp_path / "local-workspaces")
+        destination = provider.allowed_root / "context"
+        owner = PublishedWorkspaceReceiptOwner()
+        binding = None
+        context: ServerContext | None = None
+        original_context = mcp_server._ctx
+        original_surface = mcp_server.mcp.tool_surface
+        try:
+            assert owner.state == "empty"
+            result = materialize_retained_context_artifact(
+                exported,
+                destination,
+                object_store=object_store,
+                workspace_provider=provider,
+                output_receipt_owner=owner,
+            )
+
+            assert owner.active
+            assert owner.receipt.path == destination
+            assert result.output_dir == destination
+            assert result.views == ("bm25",)
+            verified = verify_context_artifact(
+                destination,
+                expected_repository="owner/repo",
+                expected_commit="a" * 40,
+            )
+            assert verified.views == ("bm25",)
+            assert verified.file_count == result.file_count
+            assert verified.byte_count == result.byte_count
+
+            binding = query_context_artifact(
+                destination,
+                expected_repository="owner/repo",
+                expected_commit="a" * 40,
+            )
+            assert not binding.source_bound
+            context = ServerContext.load(
+                binding.manifest,
+                views=("bm25",),
+                artifact_binding=binding,
+            )
+            assert context.loaded_views == frozenset({"bm25"})
+            assert context.errors == {}
+
+            mcp_server._ctx = context
+            mcp_server.configure_tool_surface("full")
+
+            async def search() -> Any:
+                async with Client(mcp_server.mcp, mode="auto", cache=None) as client:
+                    return await client.call_tool(
+                        "search_bm25",
+                        {"query": "VALUE", "top_k": 5},
+                    )
+
+            response = asyncio.run(search())
+            assert response.is_error is False
+            assert response.structured_content is not None
+            hits = response.structured_content["result"]
+            assert len(hits) == 1
+            assert hits[0]["node_name"] == "sample.VALUE"
+            assert hits[0]["node_id"] == "sample.VALUE"
+            assert hits[0]["file"] == "sample.py"
+            assert "content" not in hits[0]
+            assert owner.active
+        finally:
+            mcp_server._ctx = original_context
+            mcp_server.configure_tool_surface(original_surface)
+            if context is not None:
+                context.close()
+            if binding is not None:
+                binding.close()
+            owner.close()
+
+        assert owner.closed
+        assert destination.is_dir()
+        assert fixture.repository.is_dir()
 
 
 def test_materializer_requires_retention_without_requiring_ingestion(
