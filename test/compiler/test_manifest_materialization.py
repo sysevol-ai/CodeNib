@@ -8,6 +8,7 @@ import asyncio
 import inspect
 import io
 import json
+import sqlite3
 import stat
 import sys
 from collections.abc import Callable
@@ -19,9 +20,12 @@ from unittest.mock import patch
 import pytest
 from mcp import Client
 
+import codenib as codenib_module
 import codenib.compiler as compiler_module
 import codenib.compiler.manifest_materialization as materialization_module
+import codenib.storage as storage_module
 from codenib import LocalWorkspaceProvider
+from codenib import cli as cli_module
 from codenib._captured_directory import (
     PublishedWorkspaceReceiptOwner,
     UnsupportedWorkspaceCreation,
@@ -894,6 +898,297 @@ def test_local_provider_materializes_real_retained_snapshot_for_mcp_bm25(
         assert owner.closed
         assert destination.is_dir()
         assert fixture.repository.is_dir()
+
+
+def test_cli_materializes_existing_ref_and_snapshot_for_mcp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (fixture, imported, object_store, catalog):
+        catalog_path = Path(catalog.path)
+        cas_root = object_store.root
+        catalog.close()
+        object_store.close()
+        catalog_identity = cli_module._retained_catalog_file_identity(catalog_path)
+        with LocalCAS.provision(cas_root):
+            pass
+
+        workspace_root = tmp_path / "local-workspaces"
+        provider = _local_workspace_provider(workspace_root)
+        ref_output = workspace_root / "ref-context"
+        snapshot_output = workspace_root / "snapshot-context"
+        owners: list[PublishedWorkspaceReceiptOwner] = []
+        stores: list[LocalCAS] = []
+        catalogs: list[Any] = []
+        real_owner = PublishedWorkspaceReceiptOwner
+        real_store = LocalCAS
+        real_catalog = storage_module.SQLiteCatalog
+
+        def owner_factory() -> PublishedWorkspaceReceiptOwner:
+            owner = real_owner()
+            owners.append(owner)
+            return owner
+
+        def store_factory(
+            root: str | Path,
+            *,
+            require_preprovisioned: bool = False,
+        ) -> LocalCAS:
+            assert require_preprovisioned is True
+            store = real_store(root, require_preprovisioned=True)
+            stores.append(store)
+            return store
+
+        def catalog_factory(
+            path: str | Path,
+            *,
+            create: bool = True,
+            expected_file_identity: tuple[int, int, int] | None = None,
+        ) -> Any:
+            assert create is False
+            assert type(expected_file_identity) is tuple
+            assert expected_file_identity == catalog_identity
+            opened = real_catalog(
+                path,
+                create=False,
+                expected_file_identity=expected_file_identity,
+            )
+            catalogs.append(opened)
+            return opened
+
+        monkeypatch.setattr(
+            cli_module,
+            "_new_retained_output_receipt_owner",
+            owner_factory,
+        )
+        monkeypatch.setattr(storage_module, "LocalCAS", store_factory)
+        monkeypatch.setattr(storage_module, "SQLiteCatalog", catalog_factory)
+        monkeypatch.setattr(
+            codenib_module,
+            "LocalWorkspaceProvider",
+            lambda _root: provider,
+        )
+
+        common = [
+            "artifact",
+            "materialize",
+            "--catalog",
+            str(catalog_path),
+            "--cas-root",
+            str(cas_root),
+            "--workspace-root",
+            str(workspace_root),
+            "--repository",
+            "owner/repo",
+        ]
+        ref_args = cli_module.build_parser().parse_args(
+            [
+                *common,
+                "--ref",
+                imported.ref_name,
+                "--expected-generation",
+                str(imported.generation),
+                "--output",
+                str(ref_output),
+            ]
+        )
+        snapshot_args = cli_module.build_parser().parse_args(
+            [
+                *common,
+                "--snapshot",
+                imported.snapshot_id,
+                "--output",
+                str(snapshot_output),
+            ]
+        )
+        assert ref_args.handler(ref_args) == 0
+        assert snapshot_args.handler(snapshot_args) == 0
+
+        assert len(owners) == 2
+        assert all(owner.closed for owner in owners)
+        assert len(stores) == 2
+        for store in stores:
+            with pytest.raises(StorageIntegrityError, match="closed"):
+                store.has("0" * 64)
+        assert len(catalogs) == 2
+        for opened_catalog in catalogs:
+            with pytest.raises(sqlite3.ProgrammingError):
+                opened_catalog._connection.execute("SELECT 1")
+        for output in (ref_output, snapshot_output):
+            verified = verify_context_artifact(
+                output,
+                expected_repository="owner/repo",
+                expected_commit="a" * 40,
+            )
+            assert verified.views == ("bm25",)
+            assert output.is_dir()
+
+        binding = query_context_artifact(
+            snapshot_output,
+            expected_repository="owner/repo",
+            expected_commit="a" * 40,
+        )
+        context: ServerContext | None = None
+        original_context = mcp_server._ctx
+        original_surface = mcp_server.mcp.tool_surface
+        try:
+            assert not binding.source_bound
+            context = ServerContext.load(
+                binding.manifest,
+                views=("bm25",),
+                artifact_binding=binding,
+            )
+            mcp_server._ctx = context
+            mcp_server.configure_tool_surface("full")
+
+            async def search() -> Any:
+                async with Client(mcp_server.mcp, mode="auto", cache=None) as client:
+                    return await client.call_tool(
+                        "search_bm25",
+                        {"query": "VALUE", "top_k": 5},
+                    )
+
+            response = asyncio.run(search())
+            assert response.is_error is False
+            assert response.structured_content is not None
+            hits = response.structured_content["result"]
+            assert len(hits) == 1
+            assert hits[0]["node_name"] == "sample.VALUE"
+            assert hits[0]["file"] == "sample.py"
+            assert "content" not in hits[0]
+        finally:
+            mcp_server._ctx = original_context
+            mcp_server.configure_tool_surface(original_surface)
+            if context is not None:
+                context.close()
+            binding.close()
+
+        assert fixture.repository.is_dir()
+        cli_output = capsys.readouterr().out
+        assert cli_output.count(f"Snapshot:         {imported.snapshot_id}") == 2
+        assert (
+            f"Selection:        {imported.ref_name}@{imported.generation}" in cli_output
+        )
+        assert "Selection:        immutable snapshot" in cli_output
+        assert cli_output.count("codenib mcp --artifact") == 2
+
+
+def test_cli_post_commit_cancellation_closes_authorities_and_warns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (_fixture, imported, object_store, catalog):
+        catalog_path = Path(catalog.path)
+        cas_root = object_store.root
+        catalog.close()
+        object_store.close()
+        catalog_identity = cli_module._retained_catalog_file_identity(catalog_path)
+        with LocalCAS.provision(cas_root):
+            pass
+
+        workspace_root = tmp_path / "local-workspaces"
+        workspace_root.mkdir(mode=0o700)
+        output = workspace_root / "context"
+        cancellation = KeyboardInterrupt("after CLI commit")
+        provider = _PostCommitFailureProvider(cancellation)
+        owners: list[PublishedWorkspaceReceiptOwner] = []
+        stores: list[LocalCAS] = []
+        catalogs: list[Any] = []
+        real_store = LocalCAS
+        real_catalog = storage_module.SQLiteCatalog
+
+        def owner_factory() -> PublishedWorkspaceReceiptOwner:
+            owner = PublishedWorkspaceReceiptOwner()
+            owners.append(owner)
+            return owner
+
+        def store_factory(
+            root: str | Path,
+            *,
+            require_preprovisioned: bool = False,
+        ) -> LocalCAS:
+            assert require_preprovisioned is True
+            opened = real_store(root, require_preprovisioned=True)
+            stores.append(opened)
+            return opened
+
+        def catalog_factory(
+            path: str | Path,
+            *,
+            create: bool = True,
+            expected_file_identity: tuple[int, int, int] | None = None,
+        ) -> Any:
+            assert create is False
+            assert type(expected_file_identity) is tuple
+            assert expected_file_identity == catalog_identity
+            opened = real_catalog(
+                path,
+                create=False,
+                expected_file_identity=expected_file_identity,
+            )
+            catalogs.append(opened)
+            return opened
+
+        monkeypatch.setattr(
+            cli_module,
+            "_new_retained_output_receipt_owner",
+            owner_factory,
+        )
+        monkeypatch.setattr(storage_module, "LocalCAS", store_factory)
+        monkeypatch.setattr(storage_module, "SQLiteCatalog", catalog_factory)
+        monkeypatch.setattr(
+            codenib_module,
+            "LocalWorkspaceProvider",
+            lambda _root: provider,
+        )
+        args = cli_module.build_parser().parse_args(
+            [
+                "artifact",
+                "materialize",
+                "--catalog",
+                str(catalog_path),
+                "--cas-root",
+                str(cas_root),
+                "--workspace-root",
+                str(workspace_root),
+                "--repository",
+                "owner/repo",
+                "--ref",
+                imported.ref_name,
+                "--expected-generation",
+                str(imported.generation),
+                "--output",
+                str(output),
+            ]
+        )
+
+        with pytest.raises(KeyboardInterrupt) as raised:
+            args.handler(args)
+
+        assert raised.value is cancellation
+        assert len(owners) == 1
+        assert owners[0].closed
+        assert len(stores) == 1
+        with pytest.raises(StorageIntegrityError, match="closed"):
+            stores[0].has("0" * 64)
+        assert len(catalogs) == 1
+        with pytest.raises(sqlite3.ProgrammingError):
+            catalogs[0]._connection.execute("SELECT 1")
+        assert verify_context_artifact(
+            output,
+            expected_repository="owner/repo",
+            expected_commit="a" * 40,
+        ).views == ("bm25",)
+        assert output.is_dir()
+        assert "may have been published" in capsys.readouterr().err
 
 
 def test_materializer_requires_retention_without_requiring_ingestion(

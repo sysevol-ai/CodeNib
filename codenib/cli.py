@@ -13,6 +13,7 @@ import os
 import re
 import shlex
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -41,6 +42,11 @@ _PRESET_CHOICES = ("auto", *_PRESET_VIEWS)
 _REMOTE_EMBEDDING_DEFAULTS = {
     "openai": ("text-embedding-3-small", 1536),
 }
+_RETAINED_REPOSITORY_RE = re.compile(
+    r"[a-z0-9_.-]+(?:/[a-z0-9_.-]+)*\Z",
+    re.ASCII,
+)
+_SIGNED_INT64_MAX = 9_223_372_036_854_775_807
 
 
 class CLIError(RuntimeError):
@@ -66,6 +72,16 @@ def _optional_int(value: object, *, source: str) -> int | None:
         raise CLIError(f"{source} must be a positive integer") from exc
     if parsed <= 0:
         raise CLIError(f"{source} must be a positive integer")
+    return parsed
+
+
+def _argparse_positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed < 1 or parsed > _SIGNED_INT64_MAX:
+        raise argparse.ArgumentTypeError("must be a positive signed 64-bit integer")
     return parsed
 
 
@@ -860,6 +876,484 @@ def _run_artifact_fetch(args: argparse.Namespace) -> int:
     if result.record is not None:
         print(f"GitHub artifact:  {result.record.artifact_id}")
     return 0
+
+
+def _retained_materialization_identity(
+    repository: object,
+    namespace: object,
+) -> tuple[str, str]:
+    from .compiler.snapshot_store import normalize_repo
+    from .storage.models import NamespaceIdentity, RepositoryIdentity
+
+    if type(repository) is not str:
+        raise CLIError("retained repository must be exact text")
+    if (
+        not repository
+        or len(repository) > 32_768
+        or "\x00" in repository
+        or repository != repository.strip()
+    ):
+        raise CLIError("retained repository must be a canonical owner/repository slug")
+    try:
+        normalized_repository = normalize_repo(repository)
+    except ValueError as exc:
+        raise CLIError(
+            "retained repository must be a canonical owner/repository slug"
+        ) from exc
+    if (
+        normalized_repository != repository
+        or _RETAINED_REPOSITORY_RE.fullmatch(repository) is None
+    ):
+        raise CLIError("retained repository must be a canonical owner/repository slug")
+    if type(namespace) is not str:
+        raise CLIError("retained namespace must be exact text")
+    try:
+        namespace_identity = NamespaceIdentity(namespace)
+        RepositoryIdentity(
+            namespace_id=namespace_identity.namespace_id,
+            repository_key=repository,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise CLIError(str(exc)) from exc
+    if namespace_identity.name != namespace:
+        raise CLIError("retained namespace must be canonical")
+    return repository, namespace
+
+
+def _retained_materialization_selector(
+    *,
+    ref_name: object,
+    snapshot_id: object,
+    expected_generation: object,
+) -> tuple[str | None, str | None, int | None]:
+    generation = _optional_int(
+        expected_generation,
+        source="expected ref generation",
+    )
+    if generation is not None and generation > _SIGNED_INT64_MAX:
+        raise CLIError("expected ref generation exceeds signed 64-bit range")
+    if snapshot_id is not None:
+        if generation is not None:
+            raise CLIError("--expected-generation requires ref selection")
+        if (
+            type(snapshot_id) is not str
+            or not snapshot_id
+            or snapshot_id != snapshot_id.strip()
+            or "\x00" in snapshot_id
+            or len(snapshot_id) > 32_768
+        ):
+            raise CLIError("retained snapshot ID is not canonical")
+        return None, snapshot_id, None
+    selected_ref = "main" if ref_name is None else ref_name
+    if (
+        type(selected_ref) is not str
+        or not selected_ref
+        or selected_ref != selected_ref.strip()
+        or "\x00" in selected_ref
+        or len(selected_ref) > 32_768
+    ):
+        raise CLIError("retained ref name is not canonical")
+    return selected_ref, None, generation
+
+
+def _lexical_cli_path(value: object, *, label: str) -> Path:
+    if type(value) is not str or not value:
+        raise CLIError(f"{label} path is required")
+    if "\x00" in value:
+        raise CLIError(f"{label} path is invalid")
+    try:
+        return Path(os.path.abspath(os.fspath(Path(value).expanduser())))
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(f"{label} path is invalid") from exc
+
+
+def _retained_materialization_paths(args: argparse.Namespace) -> tuple[Path, ...]:
+    """Freeze lexical paths without touching the destination namespace."""
+
+    catalog_path = _lexical_cli_path(args.catalog, label="catalog")
+    cas_root = _lexical_cli_path(args.cas_root, label="CAS root")
+    workspace_root = _lexical_cli_path(args.workspace_root, label="workspace root")
+    output = _lexical_cli_path(args.output, label="output")
+    try:
+        output_relative = output.relative_to(workspace_root)
+    except ValueError as exc:
+        raise CLIError("output must be below the workspace root") from exc
+    if not output_relative.parts:
+        raise CLIError("output must be a child of the workspace root")
+    for first, first_label, second, second_label in (
+        (catalog_path, "catalog", cas_root, "CAS root"),
+        (catalog_path, "catalog", workspace_root, "workspace root"),
+        (cas_root, "CAS root", workspace_root, "workspace root"),
+    ):
+        if _paths_overlap(first, second):
+            raise CLIError(f"{first_label} must not overlap the {second_label}")
+    return catalog_path, cas_root, workspace_root, output
+
+
+@dataclass(frozen=True, slots=True)
+class _RetainedMaterializationTopology:
+    catalog_path: Path
+    catalog_identity: tuple[int, int, int]
+    cas_root: Path
+
+
+def _resolved_retained_materialization_path(
+    path: Path,
+    *,
+    label: str,
+    strict: bool,
+) -> Path:
+    try:
+        return path.resolve(strict=strict)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(f"{label} path could not be resolved safely") from exc
+
+
+def _retained_catalog_file_identity(path: Path) -> tuple[int, int, int]:
+    try:
+        metadata = path.lstat()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError("catalog file cannot be inspected safely") from exc
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or not metadata.st_dev
+        or not metadata.st_ino
+        or metadata.st_nlink != 1
+    ):
+        raise CLIError("catalog must resolve to one single-linked regular file")
+    return int(metadata.st_dev), int(metadata.st_ino), int(metadata.st_nlink)
+
+
+def _require_retained_catalog_binding(
+    path: Path,
+    expected_identity: tuple[int, int, int],
+) -> None:
+    try:
+        observed_identity = _retained_catalog_file_identity(path)
+    except CLIError as exc:
+        raise CLIError("catalog changed after physical topology validation") from exc
+    if observed_identity != expected_identity:
+        raise CLIError("catalog changed after physical topology validation")
+
+
+def _require_retained_materialization_topology(
+    catalog_path: Path,
+    cas_root: Path,
+    workspace_root: Path,
+    output: Path,
+) -> _RetainedMaterializationTopology:
+    """Deny stable physical aliases before opening the retained authorities."""
+
+    try:
+        output.lstat()
+    except FileNotFoundError:
+        pass
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError("output cannot be inspected safely") from exc
+    else:
+        raise CLIError("output must be missing")
+
+    resolved_catalog = _resolved_retained_materialization_path(
+        catalog_path,
+        label="catalog",
+        strict=True,
+    )
+    resolved_cas = _resolved_retained_materialization_path(
+        cas_root,
+        label="CAS root",
+        strict=True,
+    )
+    resolved_workspace = _resolved_retained_materialization_path(
+        workspace_root,
+        label="workspace root",
+        strict=True,
+    )
+    catalog_identity = _retained_catalog_file_identity(resolved_catalog)
+    try:
+        workspace_metadata = resolved_workspace.lstat()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError("workspace root cannot be inspected safely") from exc
+    if (
+        not stat.S_ISDIR(workspace_metadata.st_mode)
+        or stat.S_ISLNK(workspace_metadata.st_mode)
+        or not workspace_metadata.st_dev
+    ):
+        raise CLIError("workspace root must resolve to one real directory")
+    workspace_device = int(workspace_metadata.st_dev)
+    try:
+        relative_parent = output.parent.relative_to(workspace_root)
+    except ValueError as exc:  # pragma: no cover - lexical preflight already binds it
+        raise CLIError("output parent escaped the workspace root") from exc
+    current_parent = workspace_root
+    for component in relative_parent.parts:
+        current_parent = current_parent / component
+        try:
+            metadata = current_parent.lstat()
+        except FileNotFoundError as exc:
+            raise CLIError("output parent must already exist") from exc
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise CLIError("output parent cannot be inspected safely") from exc
+        if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+            raise CLIError("output parent must contain only existing real directories")
+        if metadata.st_dev != workspace_device:
+            raise CLIError("output parent must remain on the workspace filesystem")
+    resolved_output_parent = _resolved_retained_materialization_path(
+        current_parent,
+        label="output parent",
+        strict=True,
+    )
+    resolved_output = resolved_output_parent / output.name
+    try:
+        resolved_output_relative = resolved_output.relative_to(resolved_workspace)
+    except ValueError as exc:
+        raise CLIError("output must remain below the physical workspace root") from exc
+    if not resolved_output_relative.parts:
+        raise CLIError("output must be a child of the physical workspace root")
+    for first, first_label, second, second_label in (
+        (resolved_catalog, "catalog", resolved_cas, "CAS root"),
+        (resolved_catalog, "catalog", resolved_workspace, "workspace root"),
+        (resolved_cas, "CAS root", resolved_workspace, "workspace root"),
+    ):
+        if _paths_overlap(first, second):
+            raise CLIError(
+                f"{first_label} must not physically overlap the {second_label}"
+            )
+    return _RetainedMaterializationTopology(
+        catalog_path=resolved_catalog,
+        catalog_identity=catalog_identity,
+        cas_root=resolved_cas,
+    )
+
+
+def _warn_possible_retained_publication(output: Path) -> None:
+    try:
+        output.lstat()
+    except (OSError, RuntimeError, ValueError):
+        return
+    print(
+        "warning: retained context output now exists and may have been published; "
+        f"verify it before reuse: {output}",
+        file=sys.stderr,
+    )
+
+
+def _new_retained_output_receipt_owner():
+    from ._captured_directory import PublishedWorkspaceReceiptOwner
+
+    return PublishedWorkspaceReceiptOwner()
+
+
+_RETAINED_RESOURCE_MISSING = object()
+
+
+class _RetainedMaterializationResourceOwner:
+    """Keep one CLI-opened resource retryable across ordered cleanup."""
+
+    __slots__ = ("_resource",)
+
+    def __init__(self) -> None:
+        self._resource: object = _RETAINED_RESOURCE_MISSING
+
+    @property
+    def closed(self) -> bool:
+        return self._resource is _RETAINED_RESOURCE_MISSING
+
+    def acquire(self, factory):
+        if self._resource is not _RETAINED_RESOURCE_MISSING:
+            raise RuntimeError("retained materialization resource is already acquired")
+        # The cleanup owner is reachable before the factory runs.  A direct
+        # attribute store leaves only the native-return-to-STORE_ATTR edge that
+        # Python cannot protect without a constructor-owned handoff protocol.
+        self._resource = factory()
+        return self._resource
+
+    def close(self) -> None:
+        resource = self._resource
+        if resource is _RETAINED_RESOURCE_MISSING:
+            return
+        resource.close()  # type: ignore[attr-defined]
+        self._resource = _RETAINED_RESOURCE_MISSING
+
+
+def _run_artifact_materialize(args: argparse.Namespace) -> int:
+    from . import LocalWorkspaceProvider
+    from ._atomic_directory import (
+        _annotate_secondary_error,
+        _OrderedAction,
+        _run_context_with_cleanup_actions,
+    )
+    from .compiler.manifest_materialization import (
+        materialize_retained_repo_manifest_ref,
+        materialize_retained_repo_manifest_snapshot,
+    )
+    from .storage import LocalCAS, SQLiteCatalog
+
+    repository, namespace = _retained_materialization_identity(
+        args.repository,
+        args.namespace,
+    )
+    ref_name, snapshot_id, expected_generation = _retained_materialization_selector(
+        ref_name=args.ref,
+        snapshot_id=args.snapshot,
+        expected_generation=args.expected_generation,
+    )
+    catalog_path, cas_root, workspace_root, output = _retained_materialization_paths(
+        args
+    )
+    try:
+        provider = LocalWorkspaceProvider(workspace_root)
+        # Fail before opening the catalog or CAS.  The strict publication frame
+        # repeats this non-mutating probe immediately before provisioning.
+        provider.require_support()
+        topology = _require_retained_materialization_topology(
+            catalog_path,
+            cas_root,
+            workspace_root,
+            output,
+        )
+    except CLIError:
+        raise
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise CLIError(str(exc)) from exc
+
+    summary: tuple[str, str, str, str, tuple[str, ...], Path] | None = None
+    try:
+        owner = _new_retained_output_receipt_owner()
+        object_store_owner = _RetainedMaterializationResourceOwner()
+        catalog_owner = _RetainedMaterializationResourceOwner()
+        cleanup_actions = (
+            _OrderedAction(
+                label="retained SQLite catalog cleanup also failed",
+                action=catalog_owner.close,
+                complete=lambda: catalog_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=catalog_owner,
+            ),
+            _OrderedAction(
+                label="retained local CAS cleanup also failed",
+                action=object_store_owner.close,
+                complete=lambda: object_store_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=object_store_owner,
+            ),
+            _OrderedAction(
+                label="retained output receipt cleanup also failed",
+                action=owner.close,
+                complete=lambda: owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=owner,
+            ),
+        )
+        with _run_context_with_cleanup_actions(cleanup_actions):
+            object_store = object_store_owner.acquire(
+                lambda: LocalCAS(topology.cas_root, require_preprovisioned=True)
+            )
+            # Python's sqlite3 API reopens a pathname and its WAL/SHM sidecars;
+            # it cannot consume a caller-owned descriptor.  The documented
+            # deployment boundary therefore keeps that resolved namespace
+            # quiescent and excludes an A-B-A rename during connect, while the
+            # identity handoff and surrounding checks reject persistent
+            # rebinding around authority acquisition and SQLite construction.
+            _require_retained_catalog_binding(
+                topology.catalog_path,
+                topology.catalog_identity,
+            )
+            catalog = catalog_owner.acquire(
+                lambda: SQLiteCatalog(
+                    topology.catalog_path,
+                    create=False,
+                    expected_file_identity=topology.catalog_identity,
+                )
+            )
+            _require_retained_catalog_binding(
+                topology.catalog_path,
+                topology.catalog_identity,
+            )
+            if snapshot_id is None:
+                result = materialize_retained_repo_manifest_ref(
+                    repository,
+                    output,
+                    namespace_name=namespace,
+                    ref_name=ref_name or "main",
+                    expected_generation=expected_generation,
+                    catalog=catalog,
+                    object_store=object_store,
+                    workspace_provider=provider,
+                    output_receipt_owner=owner,
+                )
+            else:
+                result = materialize_retained_repo_manifest_snapshot(
+                    repository,
+                    snapshot_id,
+                    output,
+                    namespace_name=namespace,
+                    catalog=catalog,
+                    object_store=object_store,
+                    workspace_provider=provider,
+                    output_receipt_owner=owner,
+                )
+            receipt = result.export_receipt
+            selector = (
+                f"{receipt.ref_name}@{receipt.ref_generation}"
+                if receipt.ref_name is not None
+                else "immutable snapshot"
+            )
+            summary = (
+                result.artifact.repository,
+                receipt.snapshot_id,
+                selector,
+                result.artifact.commit,
+                result.artifact.views,
+                result.artifact.output_dir,
+            )
+        if summary is None:  # pragma: no cover - successful producer always sets it
+            raise RuntimeError("retained materialization returned no summary")
+
+        (
+            materialized_repository,
+            materialized_snapshot,
+            selector,
+            commit,
+            views,
+            root,
+        ) = summary
+        print(f"Context artifact: {root}")
+        print(f"Repository:       {materialized_repository}")
+        print(f"Snapshot:         {materialized_snapshot}")
+        print(f"Selection:        {selector}")
+        print(f"Commit:           {commit}")
+        print(f"Views:            {', '.join(views)}")
+        print(
+            "Next:             "
+            + shlex.join(
+                [
+                    "codenib",
+                    "mcp",
+                    "--artifact",
+                    os.fspath(root),
+                    "--repository",
+                    materialized_repository,
+                ]
+            )
+        )
+        return 0
+    except BaseException as primary_error:  # noqa: B036 - preserve cancellation
+        try:
+            _warn_possible_retained_publication(output)
+        except BaseException as warning_error:  # noqa: B036 - diagnostic only
+            _annotate_secondary_error(
+                primary_error,
+                "retained publication warning also failed",
+                warning_error,
+            )
+        if isinstance(primary_error, CLIError):
+            raise
+        if isinstance(
+            primary_error, (OSError, RuntimeError, ValueError, sqlite3.Error)
+        ):
+            raise CLIError(str(primary_error)) from primary_error
+        raise
 
 
 def _run_artifact_mcp_config(args: argparse.Namespace) -> int:
@@ -2685,6 +3179,57 @@ def build_parser() -> argparse.ArgumentParser:
         help="current view to include; repeat or use a comma-separated list",
     )
     artifact_pack_parser.set_defaults(handler=_run_artifact_pack)
+
+    artifact_materialize_parser = artifact_subparsers.add_parser(
+        "materialize",
+        help="materialize one retained catalog ref or snapshot as a context artifact",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    artifact_materialize_parser.add_argument(
+        "--catalog",
+        required=True,
+        help="existing initialized SQLite catalog path",
+    )
+    artifact_materialize_parser.add_argument(
+        "--cas-root",
+        required=True,
+        help="existing fully preprovisioned local CAS root",
+    )
+    artifact_materialize_parser.add_argument(
+        "--workspace-root",
+        required=True,
+        help="existing private owner-only LocalWorkspaceProvider root",
+    )
+    artifact_materialize_parser.add_argument(
+        "--repository",
+        required=True,
+        help="canonical owner/repository key",
+    )
+    artifact_materialize_parser.add_argument(
+        "--namespace",
+        default="default",
+        help="logical catalog namespace",
+    )
+    materialize_selector = artifact_materialize_parser.add_mutually_exclusive_group()
+    materialize_selector.add_argument(
+        "--ref",
+        help="repository ref to resolve; defaults to main",
+    )
+    materialize_selector.add_argument(
+        "--snapshot",
+        help="immutable snapshot ID to materialize instead of a ref",
+    )
+    artifact_materialize_parser.add_argument(
+        "--expected-generation",
+        type=_argparse_positive_int,
+        help="required current generation for optimistic ref resolution",
+    )
+    artifact_materialize_parser.add_argument(
+        "--output",
+        required=True,
+        help="missing output directory below the workspace root",
+    )
+    artifact_materialize_parser.set_defaults(handler=_run_artifact_materialize)
 
     artifact_verify_parser = artifact_subparsers.add_parser(
         "verify",

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import dis
 import errno
 import json
 import sys
@@ -14,11 +15,21 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+import codenib
+import codenib.compiler.manifest_materialization as materialization_module
+import codenib.storage as storage_module
 import codenib.web.local as local_module
 from codenib import cli
 from codenib.source_fingerprint import RepositorySourceBinding
 from codenib.web import launcher
 from codenib.web.local import prepare_local_wiki
+
+
+def _cleanup_notes(error: BaseException) -> tuple[str, ...]:
+    return (
+        *tuple(getattr(error, "__notes__", ())),
+        *tuple(getattr(error, "_codenib_cleanup_notes", ())),
+    )
 
 
 def test_parser_exposes_release_commands() -> None:
@@ -142,6 +153,794 @@ def test_publish_and_artifact_parsers_expose_distribution_options() -> None:
     assert publish.embedding_provider == "openai"
     assert artifact.artifact_command == "pack"
     assert artifact.view == ["bm25,vector"]
+
+
+def test_artifact_materialize_parser_exposes_strict_storage_inputs() -> None:
+    base = [
+        "artifact",
+        "materialize",
+        "--catalog",
+        "/state/catalog.sqlite3",
+        "--cas-root",
+        "/state/cas",
+        "--workspace-root",
+        "/state/workspaces",
+        "--repository",
+        "owner/repo",
+        "--output",
+        "/state/workspaces/context",
+    ]
+    ref = cli.build_parser().parse_args(
+        [*base, "--ref", "release", "--expected-generation", "7"]
+    )
+    snapshot = cli.build_parser().parse_args([*base, "--snapshot", "snap_123"])
+
+    assert ref.handler is cli._run_artifact_materialize
+    assert ref.ref == "release"
+    assert ref.snapshot is None
+    assert ref.expected_generation == 7
+    assert snapshot.ref is None
+    assert snapshot.snapshot == "snap_123"
+    assert snapshot.expected_generation is None
+
+    with pytest.raises(SystemExit) as both:
+        cli.build_parser().parse_args(
+            [*base, "--ref", "main", "--snapshot", "snap_123"]
+        )
+    assert both.value.code == 2
+    with pytest.raises(SystemExit) as nonpositive:
+        cli.build_parser().parse_args([*base, "--expected-generation", "0"])
+    assert nonpositive.value.code == 2
+
+
+def test_artifact_materialize_preflight_rejects_unsafe_selection_and_paths(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(cli.CLIError, match="requires ref"):
+        cli._retained_materialization_selector(
+            ref_name=None,
+            snapshot_id="snap_123",
+            expected_generation=1,
+        )
+
+    args = cli.build_parser().parse_args(
+        [
+            "artifact",
+            "materialize",
+            "--catalog",
+            str(tmp_path / "catalog.sqlite3"),
+            "--cas-root",
+            str(tmp_path / "cas"),
+            "--workspace-root",
+            str(tmp_path / "workspaces"),
+            "--repository",
+            "owner/repo",
+            "--output",
+            str(tmp_path / "outside"),
+        ]
+    )
+    with pytest.raises(cli.CLIError, match="below the workspace root"):
+        cli._retained_materialization_paths(args)
+
+    with pytest.raises(cli.CLIError, match="path is invalid"):
+        cli._lexical_cli_path("bad\x00path", label="catalog")
+    with pytest.raises(cli.CLIError, match="path is invalid"):
+        cli._lexical_cli_path("~__codenib_missing_user__/catalog", label="catalog")
+
+
+def test_artifact_materialize_rejects_physical_storage_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    catalog_target = workspace_root / "catalog.sqlite3"
+    catalog_target.touch()
+    catalog_link = tmp_path / "catalog-link.sqlite3"
+    catalog_link.symlink_to(catalog_target)
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    output = workspace_root / "context"
+
+    with pytest.raises(cli.CLIError, match="physically overlap the workspace"):
+        cli._require_retained_materialization_topology(
+            catalog_link,
+            cas_root,
+            workspace_root,
+            output,
+        )
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    redirected_parent = workspace_root / "redirected"
+    redirected_parent.symlink_to(outside, target_is_directory=True)
+    outside_catalog = tmp_path / "catalog.sqlite3"
+    outside_catalog.touch()
+    with pytest.raises(cli.CLIError, match="existing real directories"):
+        cli._require_retained_materialization_topology(
+            outside_catalog,
+            cas_root,
+            workspace_root,
+            redirected_parent / "context",
+        )
+
+    real_parent = workspace_root / "real-parent"
+    real_parent.mkdir()
+    aliased_parent = workspace_root / "aliased-parent"
+    aliased_parent.symlink_to(real_parent, target_is_directory=True)
+    with pytest.raises(cli.CLIError, match="existing real directories"):
+        cli._require_retained_materialization_topology(
+            outside_catalog,
+            cas_root,
+            workspace_root,
+            aliased_parent / "context",
+        )
+    with pytest.raises(cli.CLIError, match="parent must already exist"):
+        cli._require_retained_materialization_topology(
+            outside_catalog,
+            cas_root,
+            workspace_root,
+            workspace_root / "missing-parent" / "context",
+        )
+
+    hardlink = tmp_path / "catalog-hardlink.sqlite3"
+    hardlink.hardlink_to(outside_catalog)
+    with pytest.raises(cli.CLIError, match="single-linked regular file"):
+        cli._require_retained_materialization_topology(
+            outside_catalog,
+            cas_root,
+            workspace_root,
+            output,
+        )
+    hardlink.unlink()
+
+    support_calls = 0
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            nonlocal support_calls
+            support_calls += 1
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: pytest.fail("CAS must not be opened"),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+    args = SimpleNamespace(
+        repository="owner/repo",
+        namespace="default",
+        ref="main",
+        snapshot=None,
+        expected_generation=None,
+        catalog=str(catalog_link),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        output=str(output),
+    )
+    with pytest.raises(cli.CLIError, match="physically overlap the workspace"):
+        cli._run_artifact_materialize(args)
+    assert support_calls == 1
+
+
+def test_artifact_materialize_opens_frozen_physical_storage_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    outside_catalog = tmp_path / "catalog.sqlite3"
+    outside_catalog.touch()
+    inside_catalog = workspace_root / "catalog.sqlite3"
+    inside_catalog.touch()
+    catalog_link = tmp_path / "catalog-link.sqlite3"
+    catalog_link.symlink_to(outside_catalog)
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    catalog_identity = cli._retained_catalog_file_identity(outside_catalog)
+    opened_catalogs: list[tuple[Path, dict[str, object]]] = []
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            pass
+
+    class Closeable:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = Closeable()
+    store = Closeable()
+
+    def store_factory(root: Path, **_kwargs: object) -> Closeable:
+        assert root == cas_root.resolve(strict=True)
+        catalog_link.unlink()
+        catalog_link.symlink_to(inside_catalog)
+        return store
+
+    def catalog_factory(path: Path, **_kwargs: object) -> None:
+        opened_catalogs.append((path, _kwargs))
+        raise RuntimeError("stop after catalog path capture")
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(cli, "_new_retained_output_receipt_owner", lambda: owner)
+    monkeypatch.setattr(storage_module, "LocalCAS", store_factory)
+    monkeypatch.setattr(storage_module, "SQLiteCatalog", catalog_factory)
+    args = SimpleNamespace(
+        repository="owner/repo",
+        namespace="default",
+        ref="main",
+        snapshot=None,
+        expected_generation=None,
+        catalog=str(catalog_link),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        output=str(workspace_root / "context"),
+    )
+
+    with pytest.raises(cli.CLIError, match="stop after catalog path capture"):
+        cli._run_artifact_materialize(args)
+
+    assert catalog_link.resolve(strict=True) == inside_catalog
+    assert opened_catalogs == [
+        (
+            outside_catalog.resolve(strict=True),
+            {
+                "create": False,
+                "expected_file_identity": catalog_identity,
+            },
+        )
+    ]
+    assert store.closed
+    assert owner.closed
+
+
+def test_artifact_materialize_rejects_catalog_leaf_rebinding_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    replacement = workspace_root / "replacement.sqlite3"
+    replacement.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    catalog_opened = False
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            pass
+
+    class Closeable:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = Closeable()
+    store = Closeable()
+
+    def store_factory(root: Path, **_kwargs: object) -> Closeable:
+        assert root == cas_root.resolve(strict=True)
+        catalog_path.unlink()
+        catalog_path.symlink_to(replacement)
+        return store
+
+    def catalog_factory(*_args: object, **_kwargs: object) -> None:
+        nonlocal catalog_opened
+        catalog_opened = True
+        pytest.fail("rebound catalog must not be opened")
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(cli, "_new_retained_output_receipt_owner", lambda: owner)
+    monkeypatch.setattr(storage_module, "LocalCAS", store_factory)
+    monkeypatch.setattr(storage_module, "SQLiteCatalog", catalog_factory)
+    args = SimpleNamespace(
+        repository="owner/repo",
+        namespace="default",
+        ref="main",
+        snapshot=None,
+        expected_generation=None,
+        catalog=str(catalog_path),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        output=str(workspace_root / "context"),
+    )
+
+    with pytest.raises(cli.CLIError, match="changed after physical topology"):
+        cli._run_artifact_materialize(args)
+
+    assert catalog_path.resolve(strict=True) == replacement
+    assert not catalog_opened
+    assert store.closed
+    assert owner.closed
+
+
+def test_artifact_materialize_rejects_catalog_rebinding_during_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    replacement = workspace_root / "replacement.sqlite3"
+    replacement.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    catalog_identity = cli._retained_catalog_file_identity(catalog_path)
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            pass
+
+    class Closeable:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = Closeable()
+    store = Closeable()
+    catalog = Closeable()
+
+    def catalog_factory(path: Path, **kwargs: object) -> Closeable:
+        assert path == catalog_path
+        assert kwargs == {
+            "create": False,
+            "expected_file_identity": catalog_identity,
+        }
+        catalog_path.unlink()
+        catalog_path.symlink_to(replacement)
+        return catalog
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(cli, "_new_retained_output_receipt_owner", lambda: owner)
+    monkeypatch.setattr(storage_module, "LocalCAS", lambda *_args, **_kwargs: store)
+    monkeypatch.setattr(storage_module, "SQLiteCatalog", catalog_factory)
+    args = SimpleNamespace(
+        repository="owner/repo",
+        namespace="default",
+        ref="main",
+        snapshot=None,
+        expected_generation=None,
+        catalog=str(catalog_path),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        output=str(workspace_root / "context"),
+    )
+
+    with pytest.raises(cli.CLIError, match="changed after physical topology"):
+        cli._run_artifact_materialize(args)
+
+    assert catalog_path.resolve(strict=True) == replacement
+    assert catalog.closed
+    assert store.closed
+    assert owner.closed
+
+
+def test_artifact_materialize_rejects_cross_device_output_parent_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    mounted_parent = workspace_root / "mounted"
+    mounted_parent.mkdir()
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    mounted_metadata = mounted_parent.lstat()
+    original_lstat = Path.lstat
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            pass
+
+    def lstat_with_mount(path: Path):
+        metadata = original_lstat(path)
+        if path == mounted_parent:
+            return SimpleNamespace(
+                st_mode=metadata.st_mode,
+                st_dev=mounted_metadata.st_dev + 1,
+            )
+        return metadata
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(Path, "lstat", lstat_with_mount)
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: pytest.fail("CAS must not be opened"),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+    args = SimpleNamespace(
+        repository="owner/repo",
+        namespace="default",
+        ref="main",
+        snapshot=None,
+        expected_generation=None,
+        catalog=str(catalog_path),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        output=str(mounted_parent / "context"),
+    )
+
+    with pytest.raises(cli.CLIError, match="workspace filesystem"):
+        cli._run_artifact_materialize(args)
+
+
+def test_artifact_materialize_provider_failure_precedes_storage_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing_output = tmp_path / "workspaces" / "context"
+    existing_output.mkdir(parents=True)
+
+    class UnsupportedProvider:
+        def __init__(self, root: Path) -> None:
+            assert root == tmp_path / "workspaces"
+
+        def require_support(self) -> None:
+            raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", UnsupportedProvider)
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: pytest.fail("CAS must not be opened"),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+    args = cli.build_parser().parse_args(
+        [
+            "artifact",
+            "materialize",
+            "--catalog",
+            str(tmp_path / "catalog.sqlite3"),
+            "--cas-root",
+            str(tmp_path / "cas"),
+            "--workspace-root",
+            str(tmp_path / "workspaces"),
+            "--repository",
+            "owner/repo",
+            "--output",
+            str(existing_output),
+        ]
+    )
+
+    with pytest.raises(cli.CLIError, match="provider unavailable"):
+        args.handler(args)
+
+
+def _materialize_cli_test_args(tmp_path: Path) -> SimpleNamespace:
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    return SimpleNamespace(
+        repository="owner/repo",
+        namespace="default",
+        ref="main",
+        snapshot=None,
+        expected_generation=None,
+        catalog=str(catalog),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        output=str(workspace_root / "context"),
+    )
+
+
+def test_artifact_materialize_resource_store_interruption_closes_authorities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    interruption = KeyboardInterrupt("resource result stored")
+
+    class Provider:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def require_support(self) -> None:
+            pass
+
+    class Closeable:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = Closeable()
+    store = Closeable()
+    acquire = cli._RetainedMaterializationResourceOwner.acquire
+    instructions = tuple(dis.get_instructions(acquire))
+    store_indexes = {
+        index
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.opname == "STORE_ATTR" and instruction.argval == "_resource"
+    }
+    assert len(store_indexes) == 1
+    injection_offsets = {instructions[index + 1].offset for index in store_indexes}
+    injected = False
+    previous_trace = sys.gettrace()
+
+    def trace(frame, event: str, _arg: object):
+        nonlocal injected
+        if event == "call" and frame.f_code is acquire.__code__:
+            frame.f_trace_opcodes = True
+            return trace
+        if (
+            not injected
+            and event == "opcode"
+            and frame.f_code is acquire.__code__
+            and frame.f_lasti in injection_offsets
+            and frame.f_locals["self"]._resource is store
+        ):
+            injected = True
+            sys.settrace(None)
+            raise interruption
+        return trace
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(cli, "_new_retained_output_receipt_owner", lambda: owner)
+    monkeypatch.setattr(storage_module, "LocalCAS", lambda *_args, **_kwargs: store)
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+    sys.settrace(trace)
+    try:
+        with pytest.raises(KeyboardInterrupt) as raised:
+            cli._run_artifact_materialize(_materialize_cli_test_args(tmp_path))
+    finally:
+        sys.settrace(previous_trace)
+
+    assert injected
+    assert raised.value is interruption
+    assert store.closed
+    assert owner.closed
+
+
+def test_artifact_materialize_cleanup_failures_preserve_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = KeyboardInterrupt("materialization primary")
+
+    class Provider:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def require_support(self) -> None:
+            pass
+
+    class ReceiptOwner:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class RetryableResource:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.allow_close = False
+            self.closed = False
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+            if not self.allow_close:
+                raise OSError(f"{self.label} close failed")
+            self.closed = True
+
+    owner = ReceiptOwner()
+    store = RetryableResource("CAS")
+    catalog = RetryableResource("catalog")
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(cli, "_new_retained_output_receipt_owner", lambda: owner)
+    monkeypatch.setattr(storage_module, "LocalCAS", lambda *_args, **_kwargs: store)
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: catalog,
+    )
+
+    def fail_materialization(*_args: object, **_kwargs: object) -> None:
+        raise primary
+
+    monkeypatch.setattr(
+        materialization_module,
+        "materialize_retained_repo_manifest_ref",
+        fail_materialization,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        cli._run_artifact_materialize(_materialize_cli_test_args(tmp_path))
+
+    assert raised.value is primary
+    assert owner.closed
+    assert store.close_calls == 1
+    assert catalog.close_calls == 1
+    notes = _cleanup_notes(primary)
+    assert any("SQLite catalog cleanup" in note for note in notes)
+    assert any("local CAS cleanup" in note for note in notes)
+    retained = primary.publication_cleanup_owners  # type: ignore[attr-defined]
+    assert type(retained) is tuple
+    assert len(retained) == 2
+    store.allow_close = True
+    catalog.allow_close = True
+    for cleanup_owner in retained:
+        cleanup_owner.close()
+        assert cleanup_owner.closed
+    assert store.closed
+    assert catalog.closed
+
+
+def test_artifact_materialize_warning_failure_is_secondary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = KeyboardInterrupt("materialization primary")
+    warning_error = OSError("warning failed")
+
+    class Provider:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def require_support(self) -> None:
+            pass
+
+    class Closeable:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = Closeable()
+    store = Closeable()
+    catalog = Closeable()
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(cli, "_new_retained_output_receipt_owner", lambda: owner)
+    monkeypatch.setattr(storage_module, "LocalCAS", lambda *_args, **_kwargs: store)
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: catalog,
+    )
+    monkeypatch.setattr(
+        materialization_module,
+        "materialize_retained_repo_manifest_ref",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(primary),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_warn_possible_retained_publication",
+        lambda _output: (_ for _ in ()).throw(warning_error),
+    )
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        cli._run_artifact_materialize(_materialize_cli_test_args(tmp_path))
+
+    assert raised.value is primary
+    assert owner.closed
+    assert store.closed
+    assert catalog.closed
+    assert any(
+        "retained publication warning also failed" in note
+        for note in _cleanup_notes(primary)
+    )
+
+
+def test_artifact_materialize_print_interruption_warns_after_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = KeyboardInterrupt("success output interrupted")
+
+    class Provider:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def require_support(self) -> None:
+            pass
+
+    class Closeable:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = Closeable()
+    store = Closeable()
+    catalog = Closeable()
+    args = _materialize_cli_test_args(tmp_path)
+    output = Path(args.output)
+
+    def materialize(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        output.mkdir()
+        return SimpleNamespace(
+            export_receipt=SimpleNamespace(
+                ref_name="main",
+                ref_generation=1,
+                snapshot_id="snapshot-id",
+            ),
+            artifact=SimpleNamespace(
+                repository="owner/repo",
+                commit="a" * 40,
+                views=("bm25",),
+                output_dir=output,
+            ),
+        )
+
+    warning_outputs: list[Path] = []
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(cli, "_new_retained_output_receipt_owner", lambda: owner)
+    monkeypatch.setattr(storage_module, "LocalCAS", lambda *_args, **_kwargs: store)
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: catalog,
+    )
+    monkeypatch.setattr(
+        materialization_module,
+        "materialize_retained_repo_manifest_ref",
+        materialize,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_warn_possible_retained_publication",
+        warning_outputs.append,
+    )
+
+    def interrupt_print(*_args: object, **_kwargs: object) -> None:
+        raise primary
+
+    monkeypatch.setattr("builtins.print", interrupt_print)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        cli._run_artifact_materialize(args)
+
+    assert raised.value is primary
+    assert owner.closed
+    assert store.closed
+    assert catalog.closed
+    assert output.is_dir()
+    assert warning_outputs == [output]
 
 
 def test_wiki_parser_accepts_headless_quality_audit() -> None:
