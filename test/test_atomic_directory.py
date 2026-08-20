@@ -625,7 +625,9 @@ def test_authority_publish_helper_borrows_authority_and_commits_exact_once(
         sealed: object,
         published: object,
         previous: DirectoryOrphan | None,
+        publication_token: object | None,
     ) -> None:
+        assert publication_token is None
         assert events == ["verified", "synced"]
         events.append("committed")
         observed.append((sealed, published, previous))
@@ -694,8 +696,8 @@ def test_authority_publish_helper_does_not_commit_before_validation_finishes(
                 stage,
                 destination,
                 validate_published_destination=fail_validation,
-                commit_callback=lambda sealed, _published, _previous: commits.append(
-                    sealed
+                commit_callback=lambda sealed, _published, _previous, _token: (
+                    commits.append(sealed)
                 ),
             )
         assert not authority._closed
@@ -745,8 +747,8 @@ def test_authority_publish_helper_rechecks_exact_tree_after_orphan_receipt(
                 authority,
                 stage,
                 destination,
-                commit_callback=lambda sealed, _published, _previous: commits.append(
-                    sealed
+                commit_callback=lambda sealed, _published, _previous, _token: (
+                    commits.append(sealed)
                 ),
             )
         assert not authority._closed
@@ -789,8 +791,8 @@ def test_authority_publish_helper_fsync_failure_prevents_commit(
                 authority,
                 stage,
                 destination,
-                commit_callback=lambda sealed, _published, _previous: commits.append(
-                    sealed
+                commit_callback=lambda sealed, _published, _previous, _token: (
+                    commits.append(sealed)
                 ),
             )
         assert caught.value is error
@@ -828,8 +830,8 @@ def test_authority_publish_helper_rejects_unsupported_durable_commit(
                 authority,
                 stage,
                 destination,
-                commit_callback=lambda sealed, _published, _previous: commits.append(
-                    sealed
+                commit_callback=lambda sealed, _published, _previous, _token: (
+                    commits.append(sealed)
                 ),
             )
         assert not authority._closed
@@ -876,7 +878,9 @@ def test_authority_publish_helper_never_rolls_back_commit_interruptions(
         sealed: object,
         published: object,
         previous: DirectoryOrphan | None,
+        publication_token: object | None,
     ) -> None:
+        assert publication_token is None
         assert synced
         observed.append((sealed, published, previous))
         raise error_type("injected commit interruption")

@@ -31,6 +31,7 @@ from typing import (
 )
 
 from . import _windows_fs_authority as _windows_fs
+from . import _workspace_owner as _native_workspace_owner
 
 _WINDOWS_DELETE = _windows_fs.DELETE
 _WINDOWS_FILE_ATTRIBUTE_DIRECTORY = _windows_fs.FILE_ATTRIBUTE_DIRECTORY
@@ -64,7 +65,9 @@ _RENAME_NOREPLACE = 1
 _RENAME_EXCL = 0x4
 _MAX_ORPHAN_NAME_ATTEMPTS = 128
 _MAX_ORDERED_ACTION_CANCELLATION_RETRIES = 8
-_DURABLE_PUBLICATION_FSYNC_BACKENDS = frozenset({"linux-renameat2"})
+_DURABLE_PUBLICATION_FSYNC_BACKENDS = frozenset(
+    {"linux-native-workspace-owner", "linux-renameat2"}
+)
 _WINDOWS_RESERVED_BASENAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL"}
     | {f"COM{number}" for number in range(1, 10)}
@@ -2616,6 +2619,7 @@ class _PublicationAuthority:
         "_metadata_callback",
         "_reader_callback",
         "_rename_callback",
+        "_sync_callback",
         "_verify_callback",
         "_close_complete_callback",
         "_close_state",
@@ -2641,9 +2645,10 @@ class _PublicationAuthority:
             ],
             _T,
         ],
-        rename_callback: Callable[[str, str], None],
+        rename_callback: Callable[[str, str], object | None],
         verify_callback: Callable[[], None],
         close_complete_callback: Callable[[], bool],
+        sync_callback: Callable[[], None] | None = None,
     ) -> None:
         self.display_parent = display_parent
         self.identity = identity
@@ -2653,6 +2658,9 @@ class _PublicationAuthority:
         self._metadata_callback = metadata_callback
         self._reader_callback = reader_callback
         self._rename_callback = rename_callback
+        self._sync_callback = (
+            sync_callback if sync_callback is not None else lambda: os.fsync(resource)
+        )
         self._verify_callback = verify_callback
         self._close_complete_callback = close_complete_callback
         self._close_state = False
@@ -2738,11 +2746,11 @@ class _PublicationAuthority:
             ),
         )
 
-    def rename_noreplace(self, source: str, destination: str) -> None:
+    def rename_noreplace(self, source: str, destination: str) -> object | None:
         self._require_process()
         if self._closed:
             raise RuntimeError("publication authority is closed")
-        self._rename_callback(
+        return self._rename_callback(
             _simple_child_name(source, label="rename source"),
             _simple_child_name(destination, label="rename destination"),
         )
@@ -2752,6 +2760,14 @@ class _PublicationAuthority:
         if self._closed:
             raise RuntimeError("publication authority is closed")
         self._verify_callback()
+
+    def sync_parent(self) -> None:
+        """Durably synchronize the authenticated parent authority."""
+
+        self._require_process()
+        if self._closed:
+            raise RuntimeError("publication authority is closed")
+        self._sync_callback()
 
     def close(self) -> None:
         if self._close_state:
@@ -3139,6 +3155,7 @@ def _open_posix_publication_authority(
             metadata_callback=metadata_callback,
             reader_callback=reader_callback,
             rename_callback=rename_callback,
+            sync_callback=lambda: os.fsync(owned_descriptor),
             verify_callback=verify_callback,
             close_complete_callback=lambda: resources.closed,
         )
@@ -3188,6 +3205,159 @@ def _open_publication_authority(
             authority_owner=authority_owner,
         )
     raise RuntimeError("atomic directory publication is unsupported on this host")
+
+
+def _adopt_native_posix_publication_authority(
+    path: Path,
+    *,
+    native_owner: object,
+    publication_permit: object,
+    authority_owner: _PublicationAuthorityOwner,
+) -> _PublicationAuthority:
+    """Borrow publication callbacks from one exact native aggregate owner.
+
+    The native aggregate remains the sole descriptor owner.  Borrowing these
+    integers creates no Python close authority and performs no ``open`` or
+    ``dup`` operation during adoption.
+    """
+
+    if not sys.platform.startswith("linux"):
+        raise RuntimeError("native workspace adoption requires Linux")
+    if authority_owner.authority is not None:
+        raise RuntimeError("publication authority owner is already active")
+    owner = _native_workspace_owner.require_exact_owner(native_owner)
+    rename_with_permit = _native_workspace_owner._bind_owner_publish_permit(
+        publication_permit
+    )
+    parent_descriptor = _native_workspace_owner.borrow_owner_parent_descriptor(owner)
+    root_descriptor = _native_workspace_owner.borrow_owner_root_descriptor(owner)
+    identity = publication_parent_identity(parent_descriptor)
+    root_identity = _directory_inode_identity(os.fstat(root_descriptor))
+
+    def verify_callback() -> None:
+        _native_workspace_owner.verify_owner_authority(owner)
+        if publication_parent_identity(parent_descriptor) != identity:
+            raise RuntimeError("native workspace parent authority changed")
+        if _directory_inode_identity(os.fstat(root_descriptor)) != root_identity:
+            raise RuntimeError("native workspace root authority changed")
+
+    def metadata_callback(
+        name: str,
+        display_path: Path,
+        label: str,
+    ) -> os.stat_result | None:
+        try:
+            metadata = os.stat(
+                name,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return None
+        if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError(f"{label} is not a directory or is a link: {display_path}")
+        return metadata
+
+    def reader_callback(
+        name: str,
+        display_path: Path,
+        label: str,
+        expected_ownership: _TreeOwnership | None,
+        callback: Callable[[_PublicationTreeReader], _T],
+    ) -> _T:
+        metadata = metadata_callback(name, display_path, label)
+        if metadata is None:
+            raise RuntimeError(f"{label} disappeared: {display_path}")
+        if _directory_inode_identity(metadata) != root_identity:
+            raise RuntimeError(f"{label} differs from the native workspace root")
+        verify_callback()
+        reader: _PublicationTreeReader | None = None
+
+        def deactivate_reader() -> None:
+            if reader is not None:
+                reader._deactivate()
+
+        cleanup_actions = (
+            _OrderedAction(
+                label="publication reader deactivation also failed",
+                action=deactivate_reader,
+                complete=lambda: reader is None or not reader._lifetime.active,
+                retry_incomplete="cancellation",
+            ),
+        )
+        with _run_context_with_cleanup_actions(cleanup_actions):
+            reader = _PublicationTreeReader(
+                display_path,
+                root_identity,
+                lambda required_root_file, allow_empty_root, entry_policy: (
+                    _capture_posix_directory_descriptor(
+                        root_descriptor,
+                        display_path,
+                        required_root_file=required_root_file,
+                        allow_empty_root=allow_empty_root,
+                        entry_policy=entry_policy,
+                    )
+                ),
+                lambda relative, max_bytes, expected: (
+                    _open_posix_authenticated_file(
+                        root_descriptor,
+                        display_path,
+                        relative,
+                        max_bytes=max_bytes,
+                        expected=expected,
+                    )
+                ),
+                expected_ownership,
+            )
+
+            def validate_child_binding() -> None:
+                observed = metadata_callback(name, display_path, label)
+                if (
+                    observed is None
+                    or _directory_inode_identity(observed) != root_identity
+                ):
+                    raise RuntimeError(f"{label} namespace binding changed")
+                verify_callback()
+
+            return _run_publication_reader_callback(
+                reader,
+                callback,
+                validate_child_binding,
+            )
+
+    def rename_callback(source: str, destination: str) -> object | None:
+        return rename_with_permit(
+            os.fsencode(source),
+            os.fsencode(destination),
+        )
+
+    facade_closed = False
+
+    def close_callback(_resource: int) -> None:
+        nonlocal facade_closed
+        facade_closed = True
+
+    authority = _PublicationAuthority(
+        display_parent=path,
+        identity=identity,
+        backend_tag="linux-native-workspace-owner",
+        resource=parent_descriptor,
+        close_callback=close_callback,
+        metadata_callback=metadata_callback,
+        reader_callback=reader_callback,
+        rename_callback=rename_callback,
+        verify_callback=verify_callback,
+        close_complete_callback=lambda: facade_closed,
+        sync_callback=lambda: _native_workspace_owner.sync_owner_parent(owner),
+    )
+    try:
+        verify_callback()
+        authority_owner.install(authority)
+    except BaseException as primary_error:  # noqa: B036 - facade-only cleanup
+        if authority_owner.authority is authority:
+            authority_owner.close_after_error(primary_error)
+        raise
+    return authority
 
 
 def _require_publication_parent_path(
@@ -4379,6 +4549,7 @@ def _open_windows_publication_authority(
             metadata_callback=metadata_callback,
             reader_callback=reader_callback,
             rename_callback=rename_callback,
+            sync_callback=lambda: None,
             verify_callback=verify_callback,
             close_complete_callback=resources_closed,
         )
@@ -5986,7 +6157,7 @@ def _fsync_publication_parent_for_commit(
 ) -> None:
     """Durably order a supported strict commit before its ownership handoff."""
 
-    os.fsync(publication_authority.resource)
+    publication_authority.sync_parent()
 
 
 def _publish_staged_directory_with_authority(
@@ -6012,7 +6183,16 @@ def _publish_staged_directory_with_authority(
         Callable[[PublicationDirectoryReader], None] | None
     ) = None,
     commit_callback: (
-        Callable[[_TreeOwnership, _TreeOwnership, DirectoryOrphan | None], None] | None
+        Callable[
+            [
+                _TreeOwnership,
+                _TreeOwnership,
+                DirectoryOrphan | None,
+                object | None,
+            ],
+            None,
+        ]
+        | None
     ) = None,
 ) -> DirectoryOrphan | None:
     """Publish a complete stage through a caller-owned parent authority.
@@ -6024,10 +6204,13 @@ def _publish_staged_directory_with_authority(
 
     This helper borrows ``publication_authority``.  It never acquires, closes,
     or transfers that authority.  ``commit_callback`` receives the sealed
-    pre-rename token, a fresh post-rename token, and the previous orphan.  It is
-    the final fallible action after publication is fully authenticated and the
-    supported parent namespace has been durably synchronized; once the callback
-    starts, its failures propagate without rolling the publication back.
+    pre-rename token, a fresh post-rename token, the previous orphan, and an
+    optional backend-private receipt capability.  The capability is held only
+    in this protected publication frame until every validator has succeeded.
+    The callback is the final fallible action after publication is fully
+    authenticated and the supported parent namespace has been durably
+    synchronized; once it starts, its failures propagate without rolling the
+    publication back.
 
     Parent fsync orders only the namespace publication.  Strict callers must
     durably seal every staged file and directory before invoking this helper;
@@ -6108,6 +6291,13 @@ def _publish_staged_directory_with_authority(
             path=destination_display,
             label="destination",
         )
+        native_candidate_cleanup = (
+            publication_authority.backend_tag == "linux-native-workspace-owner"
+        )
+        if native_candidate_cleanup and destination_metadata is not None:
+            raise FileExistsError(
+                "native workspace publication requires a missing destination"
+            )
         observed_destination_ownership = (
             None
             if destination_metadata is None
@@ -6249,11 +6439,17 @@ def _publish_staged_directory_with_authority(
             raise
 
         try:
-            publication_authority.rename_noreplace(
+            publication_token = publication_authority.rename_noreplace(
                 stage_display.name,
                 destination_display.name,
             )
         except BaseException:
+            if native_candidate_cleanup:
+                # The aggregate owner still holds the exact candidate and its
+                # original stage/destination binding.  The outer receipt
+                # reconciliation aborts and quarantines it without exposing a
+                # second arbitrary rename capability here.
+                raise
             # If the kernel completed the rename before an asynchronous error,
             # isolate only a tree that still matches the complete stage token.
             try:
@@ -6315,6 +6511,11 @@ def _publish_staged_directory_with_authority(
                     allow_root_rename=True,
                 )
         except BaseException as boundary_error:  # noqa: B036 - safe rollback
+            if native_candidate_cleanup:
+                # Preserve the exact validator/observation error.  The caller
+                # has not installed a receipt yet, so its reserved transfer
+                # deterministically invokes the native owner's abort path.
+                raise
             quarantine = _quarantine_destination(
                 destination_display,
                 parent_authority=publication_authority,
@@ -6415,7 +6616,12 @@ def _publish_staged_directory_with_authority(
         publication_authority.verify_path_binding()
         if commit_callback is not None:
             _fsync_publication_parent_for_commit(publication_authority)
-            commit_callback(stage_ownership, published_ownership, previous_orphan)
+            commit_callback(
+                stage_ownership,
+                published_ownership,
+                previous_orphan,
+                publication_token,
+            )
         return previous_orphan
 
     return perform_publication()

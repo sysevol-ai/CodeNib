@@ -25,12 +25,14 @@ except ImportError:  # pragma: no cover - Windows fails closed when requested
     _fcntl = None  # type: ignore[assignment]
 
 from . import _windows_fs_authority as _windows_fs
+from . import _workspace_owner as _native_workspace_owner
 from ._atomic_directory import (
     _MAX_OWNERSHIP_COMPONENT_BYTES,
     _SAFE_OWNERSHIP_DIRECTORY_FDS,
     DirectoryOrphan,
     PublicationDirectoryReader,
     TreeFileRecord,
+    _adopt_native_posix_publication_authority,
     _annotate_secondary_error,
     _open_publication_authority,
     _PosixResourceOwner,
@@ -641,6 +643,8 @@ class _WorkspaceReservation:
 @dataclass(slots=True)
 class _WorkspaceCleanup:
     transfer: _WorkspacePublicationTransfer
+    abort_unreceipted: bool
+    native_receipt_token: object | None = None
     attempted: bool = False
 
 
@@ -656,6 +660,7 @@ class PublishedWorkspaceReceipt:
         "orphan",
         "durable",
         "_transfer",
+        "_native_receipt_token",
         "_owner_pid",
     )
 
@@ -669,6 +674,7 @@ class PublishedWorkspaceReceipt:
         published_ownership: object,
         parent_identity: tuple[int, ...],
         orphan: DirectoryOrphan | None,
+        native_receipt_token: object | None,
     ) -> None:
         # Store the shared aggregate first.  A constructor interruption can
         # therefore be reconciled against the same transfer held by the owner.
@@ -680,6 +686,7 @@ class PublishedWorkspaceReceipt:
         self.parent_identity = parent_identity
         self.orphan = orphan
         self.durable = True
+        self._native_receipt_token = native_receipt_token
         self._owner_pid = os.getpid()
 
     @property
@@ -721,7 +728,18 @@ class PublishedWorkspaceReceipt:
     def _close_from_owner(self, close_authority: object) -> None:
         if close_authority is not _WORKSPACE_RECEIPT_CLOSE:
             raise RuntimeError("published workspace receipt close authority is invalid")
-        self._transfer.workspace._close_publication_transfer(self._transfer)
+        self._transfer.workspace._close_publication_transfer(
+            self._transfer,
+            abort_unreceipted=False,
+            native_receipt_token=self._native_receipt_token,
+        )
+
+
+# Keep the runtime receipt discriminator independent from the public module
+# attribute. Publication validators run between the native rename and the
+# caller-owned slot store; replacing that public name during the callback must
+# not change owner-state reconciliation after the callback returns.
+_PUBLISHED_WORKSPACE_RECEIPT_TYPE = PublishedWorkspaceReceipt
 
 
 class PublishedWorkspaceReceiptOwner:
@@ -759,7 +777,7 @@ class PublishedWorkspaceReceiptOwner:
 
         def borrow() -> PublishedWorkspaceReceipt:
             self._normalize_closed_locked()
-            if not isinstance(self._slot, PublishedWorkspaceReceipt):
+            if not isinstance(self._slot, _PUBLISHED_WORKSPACE_RECEIPT_TYPE):
                 raise RuntimeError(
                     "published workspace receipt owner is "
                     f"{self._state_locked()}, expected active"
@@ -785,7 +803,7 @@ class PublishedWorkspaceReceiptOwner:
 
         def consume_locked() -> _WorkspaceResult:
             self._normalize_closed_locked()
-            if not isinstance(self._slot, PublishedWorkspaceReceipt):
+            if not isinstance(self._slot, _PUBLISHED_WORKSPACE_RECEIPT_TYPE):
                 raise RuntimeError(
                     "published workspace receipt owner is "
                     f"{self._state_locked()}, expected active"
@@ -842,11 +860,20 @@ class PublishedWorkspaceReceiptOwner:
             # cannot wait for or affect the parent's in-flight publication,
             # so revoke the child copy and run the transfer's raw inherited-fd
             # cleanup before reporting the PID boundary.
-            cleanup = _WorkspaceCleanup(self._slot.transfer, attempted=True)
+            cleanup = _WorkspaceCleanup(
+                self._slot.transfer,
+                abort_unreceipted=True,
+                attempted=True,
+            )
             self._slot = cleanup
-        if isinstance(self._slot, PublishedWorkspaceReceipt):
+        if isinstance(self._slot, _PUBLISHED_WORKSPACE_RECEIPT_TYPE):
             receipt = self._slot
-            cleanup = _WorkspaceCleanup(receipt._transfer, attempted=True)
+            cleanup = _WorkspaceCleanup(
+                receipt._transfer,
+                abort_unreceipted=False,
+                native_receipt_token=receipt._native_receipt_token,
+                attempted=True,
+            )
             self._slot = cleanup
         elif isinstance(self._slot, _WorkspaceCleanup):
             cleanup = self._slot
@@ -856,7 +883,11 @@ class PublishedWorkspaceReceiptOwner:
 
         primary_error: BaseException | None = None
         try:
-            cleanup.transfer.workspace._close_publication_transfer(cleanup.transfer)
+            cleanup.transfer.workspace._close_publication_transfer(
+                cleanup.transfer,
+                abort_unreceipted=cleanup.abort_unreceipted,
+                native_receipt_token=cleanup.native_receipt_token,
+            )
         except BaseException as close_error:  # noqa: B036 - settle aggregate
             primary_error = close_error
         try:
@@ -924,21 +955,42 @@ class PublishedWorkspaceReceiptOwner:
     def _has_active_transfer(self, transfer: _WorkspacePublicationTransfer) -> bool:
         def active() -> bool:
             return (
-                isinstance(self._slot, PublishedWorkspaceReceipt)
+                isinstance(self._slot, _PUBLISHED_WORKSPACE_RECEIPT_TYPE)
                 and self._slot._transfer is transfer
             )
 
         return self._lock.run(active)
 
     def _transfer_state(self, transfer: _WorkspacePublicationTransfer) -> str:
-        def observe() -> str:
-            if isinstance(self._slot, PublishedWorkspaceReceipt):
-                return "active" if self._slot._transfer is transfer else "absent"
+        return self._transfer_state_and_receipt_token(transfer)[0]
+
+    def _transfer_state_and_receipt_token(
+        self,
+        transfer: _WorkspacePublicationTransfer,
+    ) -> tuple[str, object | None]:
+        def observe() -> tuple[str, object | None]:
+            if isinstance(self._slot, _PUBLISHED_WORKSPACE_RECEIPT_TYPE):
+                if self._slot._transfer is transfer:
+                    return "active", self._slot._native_receipt_token
+                return "absent", None
             if isinstance(self._slot, _WorkspaceReservation):
-                return "reserved" if self._slot.transfer is transfer else "absent"
+                return (
+                    ("reserved", None)
+                    if self._slot.transfer is transfer
+                    else ("absent", None)
+                )
             if isinstance(self._slot, _WorkspaceCleanup):
-                return "cleanup" if self._slot.transfer is transfer else "absent"
-            return "absent"
+                if self._slot.transfer is not transfer:
+                    return "absent", None
+                return (
+                    (
+                        "cleanup-abort"
+                        if self._slot.abort_unreceipted
+                        else "cleanup-retain"
+                    ),
+                    self._slot.native_receipt_token,
+                )
+            return "absent", None
 
         return self._lock.run(observe)
 
@@ -972,7 +1024,10 @@ class PublishedWorkspaceReceiptOwner:
         reservation: _WorkspaceReservation,
     ) -> bool:
         if self._slot is reservation:
-            self._slot = _WorkspaceCleanup(reservation.transfer)
+            self._slot = _WorkspaceCleanup(
+                reservation.transfer,
+                abort_unreceipted=True,
+            )
         return self._slot is not reservation
 
     def _normalize_closed_locked(self) -> None:
@@ -989,7 +1044,7 @@ class PublishedWorkspaceReceiptOwner:
             return self._slot.transfer
         if isinstance(self._slot, _WorkspaceCleanup):
             return self._slot.transfer
-        if isinstance(self._slot, PublishedWorkspaceReceipt):
+        if isinstance(self._slot, _PUBLISHED_WORKSPACE_RECEIPT_TYPE):
             return self._slot._transfer
         return None
 
@@ -1000,7 +1055,7 @@ class PublishedWorkspaceReceiptOwner:
             return "closed"
         if isinstance(self._slot, _WorkspaceReservation):
             return "reserved"
-        if isinstance(self._slot, PublishedWorkspaceReceipt):
+        if isinstance(self._slot, _PUBLISHED_WORKSPACE_RECEIPT_TYPE):
             return "active"
         if isinstance(self._slot, _WorkspaceCleanup):
             return "close-failed" if self._slot.attempted else "cleanup"
@@ -2035,6 +2090,7 @@ class OwnedWorkspaceAuthority:
         self._sealed_ownership: object | None = None
         self._publication_transfer: _WorkspacePublicationTransfer | None = None
         self._resources_transferred = False
+        self._native_owner: object | None = None
 
     @property
     def state(self) -> str:
@@ -2120,6 +2176,105 @@ class OwnedWorkspaceAuthority:
             )
         )
 
+    def adopt_provisioned(
+        self,
+        *,
+        destination: Path,
+        stage_name: str,
+        provisioned_owner: object,
+        publication_permit: object,
+        plan: WorkspacePlan,
+        expected_destination: object | None,
+    ) -> None:
+        """Adopt a native-owned skeleton without duplicating its descriptors."""
+
+        self._require_owner_pid()
+        if not sys.platform.startswith("linux"):
+            raise UnsupportedWorkspaceCreation(
+                "native provisioned workspace adoption requires Linux"
+            )
+        self._reject_reentrant("adopt provisioned workspace")
+        self._lock.run(
+            lambda: self._adopt_provisioned_locked(
+                destination=destination,
+                stage_name=stage_name,
+                provisioned_owner=provisioned_owner,
+                publication_permit=publication_permit,
+                plan=plan,
+                expected_destination=expected_destination,
+            )
+        )
+
+    def _adopt_provisioned_locked(
+        self,
+        *,
+        destination: Path,
+        stage_name: str,
+        provisioned_owner: object,
+        publication_permit: object,
+        plan: WorkspacePlan,
+        expected_destination: object | None,
+    ) -> None:
+        self._require_owner_pid()
+        if self._state != "empty" or self._native_owner is not None:
+            raise RuntimeError("owned workspace authority is not empty")
+        if expected_destination is not None:
+            raise UnsupportedWorkspaceCreation(
+                "native local workspaces currently require a missing destination"
+            )
+        detached_plan = _snapshot_workspace_plan(plan)
+        destination_path = lexical_directory_path(destination)
+        stage_relative = _relative_path(stage_name)
+        if len(stage_relative.parts) != 1:
+            raise ValueError("workspace stage name must be one bounded file name")
+        owner = _native_workspace_owner.require_exact_owner(provisioned_owner)
+        _native_workspace_owner.verify_owner_adoption_binding(
+            owner,
+            os.fsencode(destination_path),
+            os.fsencode(stage_relative.name),
+            detached_plan.digest.encode("ascii"),
+        )
+        try:
+            # This is the native ownership handoff.  It precedes every
+            # borrowed-descriptor read and remains inside failure settlement.
+            self._native_owner = owner
+            directory_descriptors = {
+                item.path.as_posix(): (
+                    _native_workspace_owner.borrow_owner_directory_descriptor(
+                        owner,
+                        os.fsencode(item.path.as_posix()),
+                    )
+                )
+                for item in detached_plan.directories
+            }
+            self._adopt_locked(
+                destination=destination_path,
+                stage_name=stage_relative.name,
+                parent_descriptor=(
+                    _native_workspace_owner.borrow_owner_parent_descriptor(owner)
+                ),
+                root_descriptor=(
+                    _native_workspace_owner.borrow_owner_root_descriptor(owner)
+                ),
+                directory_descriptors=directory_descriptors,
+                plan=detached_plan,
+                expected_destination=None,
+                native_publication_permit=publication_permit,
+            )
+        except BaseException as adoption_error:  # noqa: B036 - settle owner
+            if self._state == "empty":
+                self._state = "failed"
+                try:
+                    _native_workspace_owner.abort_owner(owner)
+                except BaseException as cleanup_error:  # noqa: B036
+                    _attach_cleanup_owner(adoption_error, owner)
+                    _annotate_secondary_error(
+                        adoption_error,
+                        "native workspace adoption cleanup also failed",
+                        cleanup_error,
+                    )
+            raise
+
     def _adopt_locked(
         self,
         *,
@@ -2133,6 +2288,7 @@ class OwnedWorkspaceAuthority:
         ],
         plan: WorkspacePlan,
         expected_destination: object | None,
+        native_publication_permit: object | None = None,
     ) -> None:
         self._require_owner_pid()
         if self._state != "empty":
@@ -2188,12 +2344,26 @@ class OwnedWorkspaceAuthority:
         self._expected_destination = expected_destination
         self._file_specs = {item.path.as_posix(): item for item in plan.files}
         try:
-            _open_publication_authority(
-                destination_path.parent,
-                parent_resource=parent_descriptor,
-                expected_parent_identity=publication_parent_identity(parent_descriptor),
-                authority_owner=self._parent_owner,
-            )
+            if self._native_owner is None:
+                _open_publication_authority(
+                    destination_path.parent,
+                    parent_resource=parent_descriptor,
+                    expected_parent_identity=publication_parent_identity(
+                        parent_descriptor
+                    ),
+                    authority_owner=self._parent_owner,
+                )
+            else:
+                if native_publication_permit is None:
+                    raise RuntimeError(
+                        "native workspace publication capability is missing"
+                    )
+                _adopt_native_posix_publication_authority(
+                    destination_path.parent,
+                    native_owner=self._native_owner,
+                    publication_permit=native_publication_permit,
+                    authority_owner=self._parent_owner,
+                )
             authority = self._require_parent_authority()
             flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
             flags |= getattr(os, "O_CLOEXEC", 0) | getattr(
@@ -2201,11 +2371,14 @@ class OwnedWorkspaceAuthority:
                 "O_NONBLOCK",
                 0,
             )
-            self._root_descriptor = self._resources.open(
-                ".",
-                flags,
-                dir_fd=root_descriptor,
-            )
+            if self._native_owner is None:
+                self._root_descriptor = self._resources.open(
+                    ".",
+                    flags,
+                    dir_fd=root_descriptor,
+                )
+            else:
+                self._root_descriptor = root_descriptor
             root_metadata = os.fstat(self._root_descriptor)
             if not stat.S_ISDIR(root_metadata.st_mode):
                 raise ValueError("workspace root descriptor is not a directory")
@@ -2271,11 +2444,14 @@ class OwnedWorkspaceAuthority:
             self._directory_identities = {"": self._root_identity}
             for item in plan.directories:
                 path = item.path.as_posix()
-                descriptor = self._resources.open(
-                    ".",
-                    flags,
-                    dir_fd=normalized_descriptors[path],
-                )
+                if self._native_owner is None:
+                    descriptor = self._resources.open(
+                        ".",
+                        flags,
+                        dir_fd=normalized_descriptors[path],
+                    )
+                else:
+                    descriptor = normalized_descriptors[path]
                 metadata = os.fstat(descriptor)
                 identity = _root_identity(metadata)
                 if (
@@ -2330,9 +2506,21 @@ class OwnedWorkspaceAuthority:
                     raise RuntimeError("owned workspace destination changed")
             authority.verify_path_binding()
             self._refresh_locked(require_complete=False)
+            if self._native_owner is not None:
+                _native_workspace_owner.mark_owner_adopted(self._native_owner)
             self._state = "adopted"
         except BaseException as refresh_error:
             self._state = "failed"
+            if self._native_owner is not None:
+                try:
+                    _native_workspace_owner.abort_owner(self._native_owner)
+                except BaseException as cleanup_error:  # noqa: B036
+                    _attach_cleanup_owner(refresh_error, self._native_owner)
+                    _annotate_secondary_error(
+                        refresh_error,
+                        "native workspace adoption cleanup also failed",
+                        cleanup_error,
+                    )
             self._close_resources_after_error_locked(refresh_error)
             raise
 
@@ -2360,6 +2548,8 @@ class OwnedWorkspaceAuthority:
             raise ValueError(f"workspace file is absent from its plan: {path}")
         if path in self._written_files:
             raise ValueError(f"workspace file was already written: {path}")
+        if self._native_owner is not None:
+            return self._write_native_file_locked(normalized, path, spec, chunks)
 
         descriptor = -1
         descriptor_record = _WorkspaceFileOwner(_DescriptorOwner())
@@ -2492,6 +2682,140 @@ class OwnedWorkspaceAuthority:
             raise
         return public_record
 
+    def _write_native_file_locked(
+        self,
+        normalized: PurePosixPath,
+        path: str,
+        spec: WorkspaceFile,
+        chunks: Iterable[bytes],
+    ) -> TreeFileRecord:
+        owner = self._native_owner
+        if owner is None:  # pragma: no cover - caller selects this branch
+            raise RuntimeError("native workspace owner is unavailable")
+        iterator = None
+        primary_error: BaseException | None = None
+        record: tuple[tuple[int, ...], int, int, str] | None = None
+        try:
+            self._refresh_locked(require_complete=False)
+            iterator = iter(chunks)
+            parent_path = normalized.parent.as_posix()
+            if parent_path == ".":
+                parent_path = ""
+            _native_workspace_owner.begin_owner_file(
+                owner,
+                os.fsencode(parent_path),
+                os.fsencode(normalized.name),
+                0o600,
+            )
+            byte_count = 0
+            digest = hashlib.sha256()
+            for chunk in iterator:
+                if not isinstance(chunk, bytes):
+                    raise TypeError("owned workspace file chunks must be bytes")
+                byte_count += len(chunk)
+                if byte_count > spec.max_bytes:
+                    raise ValueError(
+                        f"workspace file exceeds its {spec.max_bytes}-byte limit: "
+                        f"{path}"
+                    )
+                digest.update(chunk)
+                for offset in range(0, len(chunk), _COPY_BYTES):
+                    _native_workspace_owner.write_owner_file(
+                        owner,
+                        chunk[offset : offset + _COPY_BYTES],
+                    )
+            metadata = _native_workspace_owner.finish_owner_file(owner, spec.mode)
+            identity = (
+                metadata[0],
+                metadata[1],
+                stat.S_IFMT(metadata[2]),
+                metadata[7],
+            )
+            if (
+                not stat.S_ISREG(metadata[2])
+                or stat.S_IMODE(metadata[2]) != spec.mode
+                or metadata[3] != byte_count
+                or metadata[6] != 1
+                or self._root_identity is None
+                or identity[0] != self._root_identity[0]
+            ):
+                raise RuntimeError(f"owned workspace file changed: {path}")
+            record = (identity, spec.mode, byte_count, digest.hexdigest())
+        except BaseException as exc:  # noqa: B036 - settle native owner
+            primary_error = exc
+        finally:
+            try:
+                close_iterator = getattr(iterator, "close", None)
+            except BaseException as close_error:  # noqa: B036
+                if primary_error is None:
+                    primary_error = close_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "workspace producer cleanup lookup also failed",
+                        close_error,
+                    )
+            else:
+                if callable(close_iterator):
+                    try:
+                        close_iterator()
+                    except BaseException as close_error:  # noqa: B036
+                        if primary_error is None:
+                            primary_error = close_error
+                        else:
+                            _annotate_secondary_error(
+                                primary_error,
+                                "workspace producer cleanup also failed",
+                                close_error,
+                            )
+            if primary_error is not None:
+                try:
+                    _native_workspace_owner.abort_owner_file(owner)
+                except BaseException as cleanup_error:  # noqa: B036
+                    _annotate_secondary_error(
+                        primary_error,
+                        "native workspace file cleanup also failed",
+                        cleanup_error,
+                    )
+
+        if primary_error is not None:
+            self._state = "failed"
+            self._abort_native_after_error_locked(primary_error)
+            raise primary_error.with_traceback(primary_error.__traceback__)
+        assert record is not None
+        try:
+            self._written_files[path] = record
+            public_record = TreeFileRecord(
+                path=path,
+                mode=record[1],
+                size=record[2],
+                sha256=record[3],
+            )
+            self._refresh_locked(require_complete=False)
+            self._state = "writing"
+        except BaseException as transition_error:
+            self._state = "failed"
+            self._abort_native_after_error_locked(transition_error)
+            raise
+        return public_record
+
+    def _abort_native_after_error_locked(
+        self,
+        primary_error: BaseException,
+    ) -> None:
+        owner = self._native_owner
+        if owner is not None:
+            try:
+                _native_workspace_owner.abort_owner(owner)
+            except BaseException as cleanup_error:  # noqa: B036
+                _attach_cleanup_owner(primary_error, owner)
+                _annotate_secondary_error(
+                    primary_error,
+                    "native workspace abort also failed",
+                    cleanup_error,
+                )
+        self._close_resources_after_error_locked(primary_error)
+
     def seal(self) -> object:
         self._require_owner_pid()
         self._reject_reentrant("seal")
@@ -2508,7 +2832,10 @@ class OwnedWorkspaceAuthority:
                 ownership = self._refresh_locked(require_complete=True)
             except BaseException as primary_error:
                 self._state = "failed"
-                self._close_resources_after_error_locked(primary_error)
+                if self._native_owner is None:
+                    self._close_resources_after_error_locked(primary_error)
+                else:
+                    self._abort_native_after_error_locked(primary_error)
                 raise
             self._sealed_ownership = ownership
             self._state = "sealed"
@@ -2518,6 +2845,10 @@ class OwnedWorkspaceAuthority:
 
     def _fsync_directories_locked(self) -> None:
         """Persist the complete pre-opened skeleton from leaves to its root."""
+
+        if self._native_owner is not None:
+            _native_workspace_owner.seal_owner_directories(self._native_owner)
+            return
 
         ordered_paths = sorted(
             self._directory_descriptors,
@@ -2602,11 +2933,20 @@ class OwnedWorkspaceAuthority:
         destination = self._destination
         plan = self._plan
         authority = self._require_parent_authority()
+        # Freeze every token-receiving Python callable before either validator
+        # runs.  Fault-injection may replace these before publish_into enters,
+        # but validator-time module/class mutation cannot intercept the private
+        # capability between the native rename and the caller-owned slot store.
+        receipt_type = _PUBLISHED_WORKSPACE_RECEIPT_TYPE
+        receipt_new = receipt_type.__new__
+        receipt_init = receipt_type.__init__
+        install_receipt_exact = PublishedWorkspaceReceiptOwner._install
 
         def install_receipt(
             committed_sealed: object,
             published_ownership: object,
             previous_orphan: DirectoryOrphan | None,
+            native_receipt_token: object | None,
         ) -> None:
             if committed_sealed != sealed_ownership:
                 raise RuntimeError("published workspace sealed token changed")
@@ -2616,7 +2956,9 @@ class OwnedWorkspaceAuthority:
                 label="published workspace",
                 allow_root_rename=True,
             )
-            receipt = PublishedWorkspaceReceipt(
+            receipt = receipt_new(receipt_type)
+            receipt_init(
+                receipt,
                 transfer=transfer,
                 path=destination,
                 plan=_snapshot_workspace_plan(plan),
@@ -2624,12 +2966,14 @@ class OwnedWorkspaceAuthority:
                 published_ownership=published_ownership,
                 parent_identity=authority.identity,
                 orphan=previous_orphan,
+                native_receipt_token=native_receipt_token,
             )
-            # State is written before install.  If install is interrupted
-            # before its slot store, the outer reconciliation demotes this to
-            # failed; after the store no later state write is required.
+            # This slot store is the unique authority linearization point.
+            # Before it, reconciliation aborts a native candidate; after it,
+            # every active/retain path idempotently commits that candidate.
+            install_receipt_exact(receipt_owner, reservation, receipt)
+            self._ensure_native_receipted_locked(native_receipt_token)
             self._state = "published"
-            receipt_owner._install(reservation, receipt)
 
         _publish_staged_directory_with_authority(
             authority,
@@ -2714,7 +3058,7 @@ class OwnedWorkspaceAuthority:
         if not publication_started:
             return True
 
-        transfer_state = self._receipt_transfer_state_after_error(
+        transfer_state, native_receipt_token = self._receipt_transfer_state_after_error(
             receipt_owner,
             transfer,
             primary_error,
@@ -2723,7 +3067,10 @@ class OwnedWorkspaceAuthority:
             raise RuntimeError("workspace receipt ownership is unknown")
         if transfer_state == "reserved":
             receipt_owner._cancel_reservation(reservation)
-            transfer_state = self._receipt_transfer_state_after_error(
+            (
+                transfer_state,
+                native_receipt_token,
+            ) = self._receipt_transfer_state_after_error(
                 receipt_owner,
                 transfer,
                 primary_error,
@@ -2739,11 +3086,13 @@ class OwnedWorkspaceAuthority:
             # checked again before touching workspace state.
             if self._publication_transfer is not transfer:
                 return
-            if transfer_state == "active":
+            if transfer_state in {"active", "cleanup-retain"}:
+                self._ensure_native_receipted_locked(native_receipt_token)
                 self._state = "published"
                 return
-            if transfer_state == "cleanup":
+            if transfer_state == "cleanup-abort":
                 self._state = "failed"
+                self._abort_native_owner_locked()
                 return
             if transfer_state != "absent":
                 raise RuntimeError(
@@ -2754,6 +3103,7 @@ class OwnedWorkspaceAuthority:
             # the transfer marker last so an interrupted settle can resume.
             self._resources_transferred = False
             self._state = "failed"
+            self._abort_native_owner_locked()
             self._close_resources_after_error_locked(primary_error)
             self._publication_transfer = None
 
@@ -2765,11 +3115,11 @@ class OwnedWorkspaceAuthority:
         receipt_owner: PublishedWorkspaceReceiptOwner,
         transfer: _WorkspacePublicationTransfer,
         primary_error: BaseException,
-    ) -> str:
+    ) -> tuple[str, object | None]:
         deferred: BaseException | None = None
         for _attempt in range(_WORKSPACE_OWNER_RECOVERY_LIMIT):
             try:
-                state = receipt_owner._transfer_state(transfer)
+                state = receipt_owner._transfer_state_and_receipt_token(transfer)
             except BaseException as state_error:  # noqa: B036 - bounded recovery
                 if deferred is None:
                     deferred = state_error
@@ -2802,7 +3152,7 @@ class OwnedWorkspaceAuthority:
             recovery_error,
         )
         # Unknown ownership must never trigger a competing resource close.
-        return "unknown"
+        return "unknown", None
 
     def _consume_published_workspace(
         self,
@@ -2823,6 +3173,7 @@ class OwnedWorkspaceAuthority:
                 or self._plan != receipt._plan
             ):
                 raise RuntimeError("published workspace receipt is not active")
+            self._ensure_native_receipted_locked(receipt._native_receipt_token)
             authority = self._require_parent_authority()
             if authority.identity != receipt.parent_identity:
                 raise RuntimeError("published workspace parent authority changed")
@@ -2873,6 +3224,9 @@ class OwnedWorkspaceAuthority:
     def _close_publication_transfer(
         self,
         transfer: _WorkspacePublicationTransfer,
+        *,
+        abort_unreceipted: bool,
+        native_receipt_token: object | None,
     ) -> None:
         current_pid = os.getpid()
         if current_pid != self._owner_pid:
@@ -2905,7 +3259,10 @@ class OwnedWorkspaceAuthority:
             self._require_publication_transfer_locked(transfer)
             primary_error: BaseException | None = None
             try:
-                self._close_resources_locked()
+                self._close_resources_locked(
+                    abort_unreceipted=abort_unreceipted,
+                    native_receipt_token=native_receipt_token,
+                )
             except BaseException as close_error:  # noqa: B036 - reconcile transfer
                 primary_error = close_error
             try:
@@ -2957,6 +3314,36 @@ class OwnedWorkspaceAuthority:
         self._require_publication_transfer_locked(transfer)
         self._resources_transferred = False
         self._publication_transfer = None
+
+    def _ensure_native_receipted_locked(
+        self,
+        native_receipt_token: object | None,
+    ) -> None:
+        owner = self._native_owner
+        if owner is None:
+            return
+        if _native_workspace_owner.owner_closed(owner):
+            if self._state != "closed":
+                raise RuntimeError(
+                    "native workspace owner closed before receipt settlement"
+                )
+            return
+        if _native_workspace_owner.owner_state(owner) != "receipted":
+            if native_receipt_token is None:
+                raise RuntimeError("native workspace receipt capability is missing")
+            _native_workspace_owner.commit_owner_receipt(native_receipt_token)
+        if _native_workspace_owner.owner_state(owner) != "receipted":
+            raise RuntimeError("native workspace receipt did not commit")
+
+    def _abort_native_owner_locked(self) -> None:
+        owner = self._native_owner
+        if owner is None or _native_workspace_owner.owner_closed(owner):
+            return
+        if _native_workspace_owner.owner_state(owner) == "receipted":
+            raise RuntimeError("receipted native workspace cannot be aborted")
+        _native_workspace_owner.abort_owner(owner)
+        if not _native_workspace_owner.owner_closed(owner):
+            raise RuntimeError("native workspace abort did not close its owner")
 
     def _refresh_locked(self, *, require_complete: bool) -> object:
         authority = self._require_parent_authority()
@@ -3137,12 +3524,86 @@ class OwnedWorkspaceAuthority:
         if close_error is not None:
             raise close_error
 
+    def _settle_provider_owner(self, native_owner: object) -> None:
+        """Abort pre-transfer resources or defer to the caller receipt."""
+
+        current_pid = os.getpid()
+        if current_pid != self._owner_pid:
+            child_lock = self._process_locks.setdefault(
+                current_pid,
+                _CancellationSafeRLock(),
+            )
+
+            def settle_inherited() -> None:
+                exact_owner = _native_workspace_owner.require_exact_owner(native_owner)
+                if self._native_owner is None:
+                    _native_workspace_owner.close_owner_exact(exact_owner)
+                    return
+                if self._native_owner is not exact_owner:
+                    raise RuntimeError("workspace provider native owner changed")
+                self._close_inherited_resources_locked()
+
+            child_lock.run(settle_inherited)
+            return
+        self._require_owner_pid()
+
+        def settle() -> None:
+            if self._resources_transferred:
+                return
+            exact_owner = _native_workspace_owner.require_exact_owner(native_owner)
+            if self._native_owner is None:
+                if not _native_workspace_owner.owner_closed(exact_owner):
+                    _native_workspace_owner.abort_owner(exact_owner)
+            elif self._native_owner is not exact_owner:
+                raise RuntimeError("workspace provider native owner changed")
+            self._close_resources_locked(abort_unreceipted=True)
+
+        self._lock.run(settle)
+
+    def _provider_owner_settled(self, native_owner: object) -> bool:
+        """Return whether provider cleanup is terminal or receipt-transferred."""
+
+        current_pid = os.getpid()
+        if current_pid != self._owner_pid:
+            child_lock = self._process_locks.setdefault(
+                current_pid,
+                _CancellationSafeRLock(),
+            )
+
+            def inherited_settled() -> bool:
+                exact_owner = _native_workspace_owner.require_exact_owner(native_owner)
+                if self._native_owner is None:
+                    return _native_workspace_owner.owner_closed(exact_owner)
+                if self._native_owner is not exact_owner:
+                    raise RuntimeError("workspace provider native owner changed")
+                return self._state == "closed" and _native_workspace_owner.owner_closed(
+                    exact_owner
+                )
+
+            return child_lock.run(inherited_settled)
+        self._require_owner_pid()
+
+        def settled() -> bool:
+            exact_owner = _native_workspace_owner.require_exact_owner(native_owner)
+            if self._resources_transferred:
+                return True
+            return self._state == "closed" and _native_workspace_owner.owner_closed(
+                exact_owner
+            )
+
+        return self._lock.run(settled)
+
     def _close_inherited_resources_locked(self) -> None:
         """Close only this fork child's inherited descriptor references."""
 
         if self._state == "closed":
             return
         primary_error: BaseException | None = None
+        if self._native_owner is not None:
+            try:
+                _native_workspace_owner.close_owner_exact(self._native_owner)
+            except BaseException as close_error:  # noqa: B036 - child cleanup
+                primary_error = close_error
         for record in reversed(tuple(self._file_owners)):
             descriptor = record.owner.descriptor
             if descriptor < 0:
@@ -3187,6 +3648,10 @@ class OwnedWorkspaceAuthority:
                 all(record.owner.descriptor < 0 for record in self._file_owners)
                 and self._resources.closed
                 and self._parent_owner.authority is None
+                and (
+                    self._native_owner is None
+                    or _native_workspace_owner.owner_closed(self._native_owner)
+                )
             )
         except BaseException as reconciliation_error:  # noqa: B036
             if primary_error is None:
@@ -3264,10 +3729,24 @@ class OwnedWorkspaceAuthority:
         record.owner._identity = None
         record.owner._close_cookie = None
 
-    def _close_resources_locked(self) -> None:
+    def _close_resources_locked(
+        self,
+        *,
+        abort_unreceipted: bool = True,
+        native_receipt_token: object | None = None,
+    ) -> None:
         if self._state == "closed":
             return
         primary_error: BaseException | None = None
+        if self._native_owner is not None:
+            try:
+                if abort_unreceipted:
+                    self._abort_native_owner_locked()
+                else:
+                    self._ensure_native_receipted_locked(native_receipt_token)
+                    _native_workspace_owner.close_owner_exact(self._native_owner)
+            except BaseException as close_error:  # noqa: B036 - cleanup all
+                primary_error = close_error
         for record in reversed(tuple(self._file_owners)):
             descriptor = record.owner.descriptor
             if descriptor < 0:
@@ -3318,6 +3797,10 @@ class OwnedWorkspaceAuthority:
                 all(record.owner.descriptor < 0 for record in self._file_owners)
                 and self._resources.closed
                 and self._parent_owner.authority is None
+                and (
+                    self._native_owner is None
+                    or _native_workspace_owner.owner_closed(self._native_owner)
+                )
             )
         except BaseException as reconciliation_error:  # noqa: B036
             if primary_error is None:
