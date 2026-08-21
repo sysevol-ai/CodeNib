@@ -16,7 +16,9 @@ import pytest
 import yaml
 
 import codenib
+import codenib.compiler.cache_import as cache_import_module
 import codenib.compiler.manifest_materialization as materialization_module
+import codenib.source_fingerprint as source_fingerprint_module
 import codenib.storage as storage_module
 import codenib.web.local as local_module
 from codenib import cli
@@ -153,6 +155,483 @@ def test_publish_and_artifact_parsers_expose_distribution_options() -> None:
     assert publish.embedding_provider == "openai"
     assert artifact.artifact_command == "pack"
     assert artifact.view == ["bm25,vector"]
+
+
+def test_artifact_import_cache_parser_exposes_existing_storage_inputs() -> None:
+    base = [
+        "artifact",
+        "import-cache",
+        "/src/repo",
+        "--cache-dir",
+        "/src/repo/.codenib_index",
+        "--catalog",
+        "/state/catalog.sqlite3",
+        "--cas-root",
+        "/state/cas",
+        "--workspace-root",
+        "/state/workspaces",
+        "--repository",
+        "owner/repo",
+    ]
+    args = cli.build_parser().parse_args(
+        [
+            *base,
+            "--namespace",
+            "production",
+            "--ref",
+            "release",
+            "--expected-generation",
+            "0",
+        ]
+    )
+    defaults = cli.build_parser().parse_args(base)
+
+    assert args.handler is cli._run_artifact_import_cache
+    assert args.artifact_command == "import-cache"
+    assert args.repo == "/src/repo"
+    assert args.cache_dir == "/src/repo/.codenib_index"
+    assert args.namespace == "production"
+    assert args.ref == "release"
+    assert args.expected_generation == 0
+    assert defaults.namespace == "default"
+    assert defaults.ref == "main"
+    assert defaults.expected_generation == 0
+    assert cli._compiler_cache_import_selection(
+        ref_name=None,
+        expected_generation=None,
+    ) == ("main", 0)
+
+    with pytest.raises(SystemExit) as negative:
+        cli.build_parser().parse_args([*base, "--expected-generation", "-1"])
+    assert negative.value.code == 2
+    with pytest.raises(SystemExit) as overflow:
+        cli.build_parser().parse_args([*base, "--expected-generation", str(2**63)])
+    assert overflow.value.code == 2
+
+
+def test_artifact_import_cache_freezes_missing_disjoint_topology(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cache = repo / ".codenib_index"
+    cache.mkdir()
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: "a" * 32)
+    args = SimpleNamespace(
+        repo=str(repo),
+        cache_dir=str(cache),
+        catalog=str(catalog),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+    )
+
+    paths = cli._compiler_cache_import_paths(args)
+    topology = cli._require_compiler_cache_import_topology(paths)
+
+    prefix = ".codenib-cache-import-" + "a" * 32
+    assert topology.cache_dir == cache.resolve(strict=True)
+    assert topology.catalog_path == catalog.resolve(strict=True)
+    assert topology.cas_root == cas_root.resolve(strict=True)
+    assert paths.bm25_destination == workspace_root / f"{prefix}-bm25"
+    assert paths.context_destination == workspace_root / f"{prefix}-context"
+    assert paths.suggested_materialization == (
+        workspace_root / f"{prefix}-materialized"
+    )
+
+    paths.context_destination.mkdir()
+    with pytest.raises(cli.CLIError, match="output must be missing"):
+        cli._require_compiler_cache_import_topology(paths)
+    paths.context_destination.rmdir()
+
+    cache_alias = tmp_path / "cache-alias"
+    cache_alias.symlink_to(workspace_root, target_is_directory=True)
+    alias_paths = cli._compiler_cache_import_paths(
+        SimpleNamespace(
+            repo=str(repo),
+            cache_dir=str(cache_alias),
+            catalog=str(catalog),
+            cas_root=str(cas_root),
+            workspace_root=str(workspace_root),
+        )
+    )
+    with pytest.raises(cli.CLIError, match="physically overlap the workspace"):
+        cli._require_compiler_cache_import_topology(alias_paths)
+
+
+def test_artifact_import_cache_rejects_directory_identity_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _cache_import_cli_test_args(tmp_path)
+    monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: "e" * 32)
+    paths = cli._compiler_cache_import_paths(args)
+    workspace = Path(args.workspace_root).resolve(strict=True)
+    workspace_identity = cli._retained_real_directory_identity(
+        workspace,
+        label="workspace root",
+    )
+    real_ancestry = cli._retained_directory_ancestry
+
+    def aliased_ancestry(
+        path: Path,
+        *,
+        label: str,
+    ) -> tuple[tuple[Path, tuple[int, int]], ...]:
+        ancestry = real_ancestry(path, label=label)
+        if label == "cache directory":
+            return ((ancestry[0][0], workspace_identity), *ancestry[1:])
+        return ancestry
+
+    monkeypatch.setattr(cli, "_retained_directory_ancestry", aliased_ancestry)
+
+    with pytest.raises(
+        cli.CLIError,
+        match="cache directory must not physically alias the workspace root",
+    ):
+        cli._require_compiler_cache_import_topology(paths)
+
+
+def _cache_import_cli_test_args(tmp_path: Path) -> SimpleNamespace:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cache = repo / ".codenib_index"
+    cache.mkdir()
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir(mode=0o700)
+    return SimpleNamespace(
+        repo=str(repo),
+        cache_dir=str(cache),
+        catalog=str(catalog),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        repository="owner/repo",
+        namespace="default",
+        ref="main",
+        expected_generation=0,
+    )
+
+
+def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    args = _cache_import_cli_test_args(tmp_path)
+    nonce = "b" * 32
+    monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: nonce)
+    workspace_root = Path(args.workspace_root)
+    cache = Path(args.cache_dir)
+    catalog_path = Path(args.catalog)
+    cas_root = Path(args.cas_root)
+    bm25_destination = workspace_root / f".codenib-cache-import-{nonce}-bm25"
+    context_destination = workspace_root / f".codenib-cache-import-{nonce}-context"
+    suggested = workspace_root / f".codenib-cache-import-{nonce}-materialized"
+    events: list[str] = []
+    bridge_calls: list[tuple[Path, dict[str, object]]] = []
+    capture_calls: list[tuple[Path, tuple[Path, ...]]] = []
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+            events.append("provider")
+
+        def require_support(self) -> None:
+            events.append("provider-support")
+
+    class Closeable:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.closed = False
+
+        def close(self) -> None:
+            events.append(f"{self.label}-close")
+            self.closed = True
+
+    bm25_owner = Closeable("bm25")
+    context_owner = Closeable("context")
+    source = Closeable("source")
+    store = Closeable("cas")
+    catalog = Closeable("catalog")
+    receipt_owners = iter((bm25_owner, context_owner))
+    catalog_identity = cli._retained_catalog_file_identity(catalog_path)
+
+    def capture(
+        root: Path,
+        *,
+        exclude_roots: tuple[Path, ...],
+        _source_owner,
+    ) -> Closeable:
+        events.append("capture")
+        capture_calls.append((root, exclude_roots))
+        _source_owner(source)
+        return source
+
+    def open_store(root: Path, **kwargs: object) -> Closeable:
+        events.append("cas-open")
+        assert root == cas_root.resolve(strict=True)
+        assert kwargs == {"require_preprovisioned": True}
+        return store
+
+    def open_catalog(path: Path, **kwargs: object) -> Closeable:
+        events.append("catalog-open")
+        assert path == catalog_path.resolve(strict=True)
+        assert kwargs == {
+            "create": False,
+            "expected_file_identity": catalog_identity,
+        }
+        return catalog
+
+    def import_cache(cache_dir: Path, **kwargs: object) -> SimpleNamespace:
+        events.append("bridge")
+        bridge_calls.append((cache_dir, kwargs))
+        bm25_destination.mkdir()
+        context_destination.mkdir()
+        return SimpleNamespace(
+            import_result=SimpleNamespace(
+                snapshot_id="snapshot-id",
+                ref_name="main",
+                generation=1,
+            )
+        )
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_new_retained_output_receipt_owner",
+        lambda: next(receipt_owners),
+    )
+    monkeypatch.setattr(source_fingerprint_module, "capture_repository_source", capture)
+    monkeypatch.setattr(storage_module, "LocalCAS", open_store)
+    monkeypatch.setattr(storage_module, "SQLiteCatalog", open_catalog)
+    monkeypatch.setattr(
+        cache_import_module,
+        "import_compiler_cache_bm25",
+        import_cache,
+    )
+    real_print = print
+
+    def print_after_cleanup(*values: object, **kwargs: object) -> None:
+        assert bm25_owner.closed
+        assert context_owner.closed
+        assert source.closed
+        assert store.closed
+        assert catalog.closed
+        real_print(*values, **kwargs)
+
+    monkeypatch.setattr("builtins.print", print_after_cleanup)
+
+    assert cli._run_artifact_import_cache(args) == 0
+
+    assert capture_calls == [
+        (
+            Path(args.repo),
+            (cache, bm25_destination, context_destination, suggested),
+        )
+    ]
+    assert len(bridge_calls) == 1
+    passed_cache, passed = bridge_calls[0]
+    assert passed_cache == cache.resolve(strict=True)
+    assert passed["repository_source"] is source
+    assert passed["bm25_output_owner"] is bm25_owner
+    assert passed["context_output_owner"] is context_owner
+    assert passed["bm25_destination"] == bm25_destination
+    assert passed["context_destination"] == context_destination
+    assert passed["repository_key"] == "owner/repo"
+    assert passed["namespace_name"] == "default"
+    assert passed["ref_name"] == "main"
+    assert passed["expected_generation"] == 0
+    forbidden = passed["forbidden_paths"]
+    assert bm25_destination in forbidden
+    assert context_destination in forbidden
+    assert events.index("provider-support") < events.index("capture")
+    assert events.index("capture") < events.index("cas-open")
+    assert events.index("cas-open") < events.index("catalog-open")
+    assert events.index("catalog-open") < events.index("bridge")
+    assert events[-5:] == [
+        "catalog-close",
+        "cas-close",
+        "context-close",
+        "bm25-close",
+        "source-close",
+    ]
+    assert bm25_destination.is_dir()
+    assert context_destination.is_dir()
+    assert not suggested.exists()
+    output = capsys.readouterr().out
+    assert "Snapshot:           snapshot-id" in output
+    assert "Ref:                main" in output
+    assert "Generation:         1" in output
+    assert f"BM25 generation:    {bm25_destination}" in output
+    assert f"Context generation: {context_destination}" in output
+    assert f"Suggested output:   {suggested} (not reserved)" in output
+    assert "codenib artifact materialize" in output
+    assert "--snapshot snapshot-id" in output
+
+
+def test_artifact_import_cache_failure_preserves_primary_and_published_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    args = _cache_import_cli_test_args(tmp_path)
+    nonce = "c" * 32
+    monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: nonce)
+    workspace_root = Path(args.workspace_root)
+    bm25_destination = workspace_root / f".codenib-cache-import-{nonce}-bm25"
+    context_destination = workspace_root / f".codenib-cache-import-{nonce}-context"
+    primary = KeyboardInterrupt("import interrupted after publication")
+
+    class Provider:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def require_support(self) -> None:
+            pass
+
+    class RetryableCloseable:
+        def __init__(self) -> None:
+            self.allow_close = False
+            self.closed = False
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+            if not self.allow_close:
+                raise OSError("injected cache import cleanup failure")
+            self.closed = True
+
+    bm25_owner = RetryableCloseable()
+    context_owner = RetryableCloseable()
+    source = RetryableCloseable()
+    store = RetryableCloseable()
+    catalog = RetryableCloseable()
+    receipt_owners = iter((bm25_owner, context_owner))
+
+    def capture(
+        *_args: object,
+        _source_owner,
+        **_kwargs: object,
+    ) -> RetryableCloseable:
+        _source_owner(source)
+        return source
+
+    def fail_after_publication(*_args: object, **_kwargs: object) -> None:
+        bm25_destination.mkdir()
+        context_destination.mkdir()
+        raise primary
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_new_retained_output_receipt_owner",
+        lambda: next(receipt_owners),
+    )
+    monkeypatch.setattr(source_fingerprint_module, "capture_repository_source", capture)
+    monkeypatch.setattr(storage_module, "LocalCAS", lambda *_args, **_kwargs: store)
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: catalog,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "import_compiler_cache_bm25",
+        fail_after_publication,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        cli._run_artifact_import_cache(args)
+
+    assert raised.value is primary
+    assert not bm25_owner.closed
+    assert not context_owner.closed
+    assert not source.closed
+    assert not store.closed
+    assert not catalog.closed
+    assert bm25_owner.close_calls == 1
+    assert context_owner.close_calls == 1
+    assert source.close_calls == 1
+    assert store.close_calls == 1
+    assert catalog.close_calls == 1
+    notes = _cleanup_notes(primary)
+    assert any("SQLite catalog cleanup" in note for note in notes)
+    assert any("local CAS cleanup" in note for note in notes)
+    assert any("context receipt cleanup" in note for note in notes)
+    assert any("BM25 receipt cleanup" in note for note in notes)
+    assert any("repository source cleanup" in note for note in notes)
+    assert bm25_destination.is_dir()
+    assert context_destination.is_dir()
+    warnings = capsys.readouterr().err
+    assert "cache import BM25 generation now exists" in warnings
+    assert "cache import context generation now exists" in warnings
+
+    retained = primary.publication_cleanup_owners  # type: ignore[attr-defined]
+    assert type(retained) is tuple
+    assert len(retained) == 5
+    for resource in (bm25_owner, context_owner, source, store, catalog):
+        resource.allow_close = True
+    for cleanup_owner in retained:
+        cleanup_owner.close()
+        assert cleanup_owner.closed
+    assert bm25_owner.closed
+    assert context_owner.closed
+    assert source.closed
+    assert store.closed
+    assert catalog.closed
+
+
+def test_artifact_import_cache_rejects_existing_destination_before_authorities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _cache_import_cli_test_args(tmp_path)
+    nonce = "d" * 32
+    monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: nonce)
+    destination = Path(args.workspace_root) / f".codenib-cache-import-{nonce}-bm25"
+    destination.mkdir()
+
+    class Provider:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def require_support(self) -> None:
+            pass
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_new_retained_output_receipt_owner",
+        lambda: pytest.fail("receipt owners must not be created"),
+    )
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "capture_repository_source",
+        lambda *_args, **_kwargs: pytest.fail("source must not be captured"),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: pytest.fail("CAS must not be opened"),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+
+    with pytest.raises(cli.CLIError, match="output must be missing"):
+        cli._run_artifact_import_cache(args)
 
 
 def test_artifact_materialize_parser_exposes_strict_storage_inputs() -> None:

@@ -86,6 +86,16 @@ def _argparse_positive_int(value: str) -> int:
     return parsed
 
 
+def _argparse_nonnegative_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a non-negative integer") from exc
+    if parsed < 0 or parsed > _SIGNED_INT64_MAX:
+        raise argparse.ArgumentTypeError("must be a non-negative signed 64-bit integer")
+    return parsed
+
+
 def _embedding_route_for_args(args: argparse.Namespace) -> InferenceRoute:
     """Resolve the secret-free embedding identity selected by CLI and env."""
 
@@ -1301,6 +1311,228 @@ class _RetainedMaterializationResourceOwner:
         self._resource = _RETAINED_RESOURCE_MISSING
 
 
+def _compiler_cache_import_selection(
+    *,
+    ref_name: object,
+    expected_generation: object,
+) -> tuple[str, int]:
+    selected_ref = "main" if ref_name is None else ref_name
+    if (
+        type(selected_ref) is not str
+        or not selected_ref
+        or selected_ref != selected_ref.strip()
+        or "\x00" in selected_ref
+        or len(selected_ref) > 32_768
+    ):
+        raise CLIError("retained ref name is not canonical")
+    raw_generation = 0 if expected_generation is None else expected_generation
+    if isinstance(raw_generation, bool):
+        raise CLIError("expected ref generation must be a non-negative integer")
+    try:
+        generation = int(raw_generation)
+    except (TypeError, ValueError) as exc:
+        raise CLIError(
+            "expected ref generation must be a non-negative integer"
+        ) from exc
+    if generation < 0 or generation > _SIGNED_INT64_MAX:
+        raise CLIError(
+            "expected ref generation must be a non-negative signed 64-bit integer"
+        )
+    return selected_ref, generation
+
+
+def _new_compiler_cache_import_nonce() -> str:
+    import secrets
+
+    nonce = secrets.token_hex(16)
+    if re.fullmatch(r"[0-9a-f]{32}", nonce, flags=re.ASCII) is None:
+        raise RuntimeError("cache import destination nonce is invalid")
+    return nonce
+
+
+@dataclass(frozen=True, slots=True)
+class _CompilerCacheImportPaths:
+    repo_path: Path
+    cache_dir: Path
+    catalog_path: Path
+    cas_root: Path
+    workspace_root: Path
+    bm25_destination: Path
+    context_destination: Path
+    suggested_materialization: Path
+
+
+def _compiler_cache_import_paths(args: argparse.Namespace) -> _CompilerCacheImportPaths:
+    """Freeze all user paths and allocate missing-only generation names."""
+
+    repo_path = resolve_repo_path(args.repo)
+    cache_dir = _lexical_cli_path(args.cache_dir, label="cache directory")
+    catalog_path = _lexical_cli_path(args.catalog, label="catalog")
+    cas_root = _lexical_cli_path(args.cas_root, label="CAS root")
+    workspace_root = _lexical_cli_path(args.workspace_root, label="workspace root")
+    for first, first_label, second, second_label in (
+        (catalog_path, "catalog", cas_root, "CAS root"),
+        (catalog_path, "catalog", workspace_root, "workspace root"),
+        (cas_root, "CAS root", workspace_root, "workspace root"),
+        (repo_path, "repository", catalog_path, "catalog"),
+        (repo_path, "repository", cas_root, "CAS root"),
+        (repo_path, "repository", workspace_root, "workspace root"),
+        (cache_dir, "cache directory", catalog_path, "catalog"),
+        (cache_dir, "cache directory", cas_root, "CAS root"),
+        (cache_dir, "cache directory", workspace_root, "workspace root"),
+    ):
+        if _paths_overlap(first, second):
+            raise CLIError(f"{first_label} must not overlap the {second_label}")
+    if cache_dir == repo_path or cache_dir in repo_path.parents:
+        raise CLIError("cache directory must not contain the repository")
+
+    nonce = _new_compiler_cache_import_nonce()
+    prefix = f".codenib-cache-import-{nonce}"
+    return _CompilerCacheImportPaths(
+        repo_path=repo_path,
+        cache_dir=cache_dir,
+        catalog_path=catalog_path,
+        cas_root=cas_root,
+        workspace_root=workspace_root,
+        bm25_destination=workspace_root / f"{prefix}-bm25",
+        context_destination=workspace_root / f"{prefix}-context",
+        suggested_materialization=workspace_root / f"{prefix}-materialized",
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _CompilerCacheImportTopology:
+    cache_dir: Path
+    catalog_path: Path
+    catalog_identity: tuple[int, int, int]
+    cas_root: Path
+
+
+def _require_compiler_cache_import_topology(
+    paths: _CompilerCacheImportPaths,
+) -> _CompilerCacheImportTopology:
+    """Freeze existing inputs and deny physical storage/source aliases."""
+
+    materialization_topologies = tuple(
+        _require_retained_materialization_topology(
+            paths.catalog_path,
+            paths.cas_root,
+            paths.workspace_root,
+            destination,
+        )
+        for destination in (
+            paths.bm25_destination,
+            paths.context_destination,
+            paths.suggested_materialization,
+        )
+    )
+    first = materialization_topologies[0]
+    if any(candidate != first for candidate in materialization_topologies[1:]):
+        raise CLIError("storage topology changed while allocating import outputs")
+
+    resolved_repo = _resolved_retained_materialization_path(
+        paths.repo_path,
+        label="repository",
+        strict=True,
+    )
+    resolved_cache = _resolved_retained_materialization_path(
+        paths.cache_dir,
+        label="cache directory",
+        strict=True,
+    )
+    repository_ancestry = _retained_directory_ancestry(
+        resolved_repo,
+        label="repository",
+    )
+    cache_ancestry = _retained_directory_ancestry(
+        resolved_cache,
+        label="cache directory",
+    )
+    if resolved_cache == resolved_repo or resolved_cache in resolved_repo.parents:
+        raise CLIError("cache directory must not physically contain the repository")
+
+    resolved_workspace = _resolved_retained_materialization_path(
+        paths.workspace_root,
+        label="workspace root",
+        strict=True,
+    )
+    catalog_ancestry = _retained_directory_ancestry(
+        first.catalog_path.parent,
+        label="catalog parent",
+    )
+    cas_ancestry = _retained_directory_ancestry(
+        first.cas_root,
+        label="CAS root",
+    )
+    workspace_ancestry = _retained_directory_ancestry(
+        resolved_workspace,
+        label="workspace root",
+    )
+    for source, source_label in (
+        (resolved_repo, "repository"),
+        (resolved_cache, "cache directory"),
+    ):
+        for storage, storage_label in (
+            (first.catalog_path, "catalog"),
+            (first.cas_root, "CAS root"),
+            (resolved_workspace, "workspace root"),
+        ):
+            if _paths_overlap(source, storage):
+                raise CLIError(
+                    f"{source_label} must not physically overlap the {storage_label}"
+                )
+    for first_ancestry, first_label, second_ancestry, second_label in (
+        (repository_ancestry, "repository", cache_ancestry, "cache directory"),
+        (repository_ancestry, "repository", catalog_ancestry, "catalog"),
+        (repository_ancestry, "repository", cas_ancestry, "CAS root"),
+        (
+            repository_ancestry,
+            "repository",
+            workspace_ancestry,
+            "workspace root",
+        ),
+        (cache_ancestry, "cache directory", catalog_ancestry, "catalog"),
+        (cache_ancestry, "cache directory", cas_ancestry, "CAS root"),
+        (
+            cache_ancestry,
+            "cache directory",
+            workspace_ancestry,
+            "workspace root",
+        ),
+        (catalog_ancestry, "catalog", cas_ancestry, "CAS root"),
+        (catalog_ancestry, "catalog", workspace_ancestry, "workspace root"),
+        (cas_ancestry, "CAS root", workspace_ancestry, "workspace root"),
+    ):
+        _require_distinct_directory_ancestry(
+            first_ancestry,
+            first_label,
+            second_ancestry,
+            second_label,
+        )
+    return _CompilerCacheImportTopology(
+        cache_dir=resolved_cache,
+        catalog_path=first.catalog_path,
+        catalog_identity=first.catalog_identity,
+        cas_root=first.cas_root,
+    )
+
+
+def _warn_possible_compiler_cache_import_publication(
+    destination: Path,
+    *,
+    label: str,
+) -> None:
+    try:
+        destination.lstat()
+    except (OSError, RuntimeError, ValueError):
+        return
+    print(
+        f"warning: cache import {label} now exists and may have been published; "
+        f"verify it before reuse: {destination}",
+        file=sys.stderr,
+    )
+
+
 def _run_artifact_materialize(args: argparse.Namespace) -> int:
     from . import LocalWorkspaceProvider
     from ._atomic_directory import (
@@ -1472,6 +1704,214 @@ def _run_artifact_materialize(args: argparse.Namespace) -> int:
                 "retained publication warning also failed",
                 warning_error,
             )
+        if isinstance(primary_error, CLIError):
+            raise
+        if isinstance(
+            primary_error, (OSError, RuntimeError, ValueError, sqlite3.Error)
+        ):
+            raise CLIError(str(primary_error)) from primary_error
+        raise
+
+
+def _run_artifact_import_cache(args: argparse.Namespace) -> int:
+    from . import LocalWorkspaceProvider
+    from ._atomic_directory import (
+        _annotate_secondary_error,
+        _OrderedAction,
+        _run_context_with_cleanup_actions,
+    )
+    from .artifacts.runtime import SourceBindingCleanupOwner
+    from .compiler.cache_import import import_compiler_cache_bm25
+    from .source_fingerprint import capture_repository_source
+    from .storage import LocalCAS, SQLiteCatalog
+
+    repository, namespace = _retained_materialization_identity(
+        args.repository,
+        args.namespace,
+    )
+    ref_name, expected_generation = _compiler_cache_import_selection(
+        ref_name=args.ref,
+        expected_generation=args.expected_generation,
+    )
+    paths = _compiler_cache_import_paths(args)
+    try:
+        provider = LocalWorkspaceProvider(paths.workspace_root)
+        provider.require_support()
+        topology = _require_compiler_cache_import_topology(paths)
+    except CLIError:
+        raise
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise CLIError(str(exc)) from exc
+
+    source_exclusions = tuple(
+        dict.fromkeys(
+            (
+                paths.cache_dir,
+                topology.cache_dir,
+                paths.bm25_destination,
+                paths.context_destination,
+                paths.suggested_materialization,
+            )
+        )
+    )
+    publication_forbidden_paths = tuple(
+        dict.fromkeys(
+            (
+                paths.cache_dir,
+                topology.cache_dir,
+                topology.catalog_path,
+                topology.cas_root,
+                paths.workspace_root,
+                paths.bm25_destination,
+                paths.context_destination,
+                paths.suggested_materialization,
+            )
+        )
+    )
+    summary: tuple[str, str, int] | None = None
+    try:
+        bm25_owner = _new_retained_output_receipt_owner()
+        context_owner = _new_retained_output_receipt_owner()
+        source_owner = SourceBindingCleanupOwner()
+        object_store_owner = _RetainedMaterializationResourceOwner()
+        catalog_owner = _RetainedMaterializationResourceOwner()
+        cleanup_actions = (
+            _OrderedAction(
+                label="cache import SQLite catalog cleanup also failed",
+                action=catalog_owner.close,
+                complete=lambda: catalog_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=catalog_owner,
+            ),
+            _OrderedAction(
+                label="cache import local CAS cleanup also failed",
+                action=object_store_owner.close,
+                complete=lambda: object_store_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=object_store_owner,
+            ),
+            _OrderedAction(
+                label="cache import context receipt cleanup also failed",
+                action=context_owner.close,
+                complete=lambda: context_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=context_owner,
+            ),
+            _OrderedAction(
+                label="cache import BM25 receipt cleanup also failed",
+                action=bm25_owner.close,
+                complete=lambda: bm25_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=bm25_owner,
+            ),
+            _OrderedAction(
+                label="cache import repository source cleanup also failed",
+                action=source_owner.close,
+                complete=lambda: source_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=source_owner,
+            ),
+        )
+        with _run_context_with_cleanup_actions(cleanup_actions):
+            repository_source = capture_repository_source(
+                paths.repo_path,
+                exclude_roots=source_exclusions,
+                _source_owner=source_owner.retain,
+            )
+            object_store = object_store_owner.acquire(
+                lambda: LocalCAS(topology.cas_root, require_preprovisioned=True)
+            )
+            _require_retained_catalog_binding(
+                topology.catalog_path,
+                topology.catalog_identity,
+            )
+            catalog = catalog_owner.acquire(
+                lambda: SQLiteCatalog(
+                    topology.catalog_path,
+                    create=False,
+                    expected_file_identity=topology.catalog_identity,
+                )
+            )
+            _require_retained_catalog_binding(
+                topology.catalog_path,
+                topology.catalog_identity,
+            )
+            result = import_compiler_cache_bm25(
+                topology.cache_dir,
+                repository_source=repository_source,
+                bm25_output_owner=bm25_owner,
+                context_output_owner=context_owner,
+                bm25_destination=paths.bm25_destination,
+                context_destination=paths.context_destination,
+                workspace_provider=provider,
+                repository_key=repository,
+                catalog=catalog,
+                object_store=object_store,
+                namespace_name=namespace,
+                ref_name=ref_name,
+                expected_generation=expected_generation,
+                forbidden_paths=publication_forbidden_paths,
+                environ=_publication_environment(),
+            )
+            imported = result.import_result
+            summary = (
+                imported.snapshot_id,
+                imported.ref_name,
+                imported.generation,
+            )
+        if summary is None:  # pragma: no cover - successful producer always sets it
+            raise RuntimeError("compiler cache import returned no summary")
+
+        snapshot_id, published_ref, generation = summary
+        print(f"Snapshot:           {snapshot_id}")
+        print(f"Ref:                {published_ref}")
+        print(f"Generation:         {generation}")
+        print(f"BM25 generation:    {paths.bm25_destination}")
+        print(f"Context generation: {paths.context_destination}")
+        print(
+            "Suggested output:   " f"{paths.suggested_materialization} (not reserved)"
+        )
+        print(
+            "Next:               "
+            + shlex.join(
+                [
+                    "codenib",
+                    "artifact",
+                    "materialize",
+                    "--catalog",
+                    os.fspath(topology.catalog_path),
+                    "--cas-root",
+                    os.fspath(topology.cas_root),
+                    "--workspace-root",
+                    os.fspath(paths.workspace_root),
+                    "--repository",
+                    repository,
+                    "--namespace",
+                    namespace,
+                    "--snapshot",
+                    snapshot_id,
+                    "--output",
+                    os.fspath(paths.suggested_materialization),
+                ]
+            )
+        )
+        return 0
+    except BaseException as primary_error:  # noqa: B036 - preserve cancellation
+        for destination, label in (
+            (paths.bm25_destination, "BM25 generation"),
+            (paths.context_destination, "context generation"),
+        ):
+            try:
+                _warn_possible_compiler_cache_import_publication(
+                    destination,
+                    label=label,
+                )
+            except BaseException as warning_error:  # noqa: B036 - diagnostic only
+                _annotate_secondary_error(
+                    primary_error,
+                    f"cache import {label} warning also failed",
+                    warning_error,
+                )
         if isinstance(primary_error, CLIError):
             raise
         if isinstance(
@@ -3304,6 +3744,58 @@ def build_parser() -> argparse.ArgumentParser:
         help="current view to include; repeat or use a comma-separated list",
     )
     artifact_pack_parser.set_defaults(handler=_run_artifact_pack)
+
+    artifact_import_cache_parser = artifact_subparsers.add_parser(
+        "import-cache",
+        help="import an existing compiler BM25 cache into retained storage",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    artifact_import_cache_parser.add_argument(
+        "repo",
+        help="existing repository source captured for the imported cache",
+    )
+    artifact_import_cache_parser.add_argument(
+        "--cache-dir",
+        required=True,
+        help="existing compiler cache containing repo_manifest.json and BM25",
+    )
+    artifact_import_cache_parser.add_argument(
+        "--catalog",
+        required=True,
+        help="existing initialized SQLite catalog path",
+    )
+    artifact_import_cache_parser.add_argument(
+        "--cas-root",
+        required=True,
+        help="existing fully preprovisioned local CAS root",
+    )
+    artifact_import_cache_parser.add_argument(
+        "--workspace-root",
+        required=True,
+        help="existing private owner-only LocalWorkspaceProvider root",
+    )
+    artifact_import_cache_parser.add_argument(
+        "--repository",
+        required=True,
+        help="canonical owner/repository key",
+    )
+    artifact_import_cache_parser.add_argument(
+        "--namespace",
+        default="default",
+        help="logical catalog namespace",
+    )
+    artifact_import_cache_parser.add_argument(
+        "--ref",
+        default="main",
+        help="repository ref advanced by the import",
+    )
+    artifact_import_cache_parser.add_argument(
+        "--expected-generation",
+        type=_argparse_nonnegative_int,
+        default=0,
+        help="required current generation for optimistic ref publication",
+    )
+    artifact_import_cache_parser.set_defaults(handler=_run_artifact_import_cache)
 
     artifact_materialize_parser = artifact_subparsers.add_parser(
         "materialize",
