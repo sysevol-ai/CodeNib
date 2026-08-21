@@ -25,8 +25,11 @@ import faiss
 import numpy as np
 
 from ... import compat_pickle
-from ..._atomic_directory import _annotate_secondary_error
-from ..._bounded_json import iter_bounded_json_array
+from ..._atomic_directory import (
+    PublicationDirectoryReader,
+    _annotate_secondary_error,
+)
+from ..._bounded_json import canonical_json_array_chunks, iter_bounded_json_array
 from ..._captured_directory import AuthenticatedSnapshotReader
 from ...log_utils import get_logger
 from ...native_index_authorization import (
@@ -39,10 +42,12 @@ from ...provider_routes import normalize_provider
 from ...types import NodeInfo
 from .artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    VECTOR_ROW_MAPPING_CONTRACT,
     VECTOR_VIEW_UPDATE_MARKER,
     AuthenticatedVectorView,
     _attach_vector_view_cleanup_owner,
     capture_authenticated_vector_view,
+    validate_schema_8_vector_document_row,
     vector_level_artifact_records,
 )
 from .model_policy import (
@@ -57,6 +62,10 @@ from .text_policy import (
 logger = get_logger(__name__)
 
 Level = Literal["l0", "l2"]
+
+_MAX_PORTABLE_DOCUMENTS_JSON_BYTES = 256 * 1024 * 1024
+_MAX_VECTOR_CONFIG_BYTES = 16 * 1024 * 1024
+_MAX_FAISS_INDEX_BYTES = 8 * 1024 * 1024 * 1024
 
 _UNSET = object()
 _MODEL_IDENTITY_KEYS = frozenset({"code_revision", "revision", "trust_remote_code"})
@@ -169,6 +178,34 @@ def _atomic_json_dump(target: Path, value: object) -> None:
         with path.open("w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2)
             handle.write("\n")
+
+    _atomic_replace(target, _write)
+
+
+def _atomic_canonical_document_dump(
+    target: Path,
+    documents: List["_Document"],
+) -> None:
+    """Atomically stream one bounded canonical document array."""
+
+    def values():
+        for document in documents:
+            yield {
+                "page_content": document.page_content,
+                "metadata": dict(document.metadata),
+            }
+
+    def _write(path: Path) -> None:
+        size = 0
+        with path.open("wb") as handle:
+            for chunk in canonical_json_array_chunks(values()):
+                size += len(chunk)
+                if size > _MAX_PORTABLE_DOCUMENTS_JSON_BYTES:
+                    raise ValueError(
+                        "canonical vector documents exceed their "
+                        f"{_MAX_PORTABLE_DOCUMENTS_JSON_BYTES}-byte limit"
+                    )
+                handle.write(chunk)
 
     _atomic_replace(target, _write)
 
@@ -307,6 +344,356 @@ def _attach_vector_index_cleanup_owner(
         primary.vector_index_cleanup_owner = owner  # type: ignore[attr-defined]
     except BaseException:  # noqa: B036 - traceback still retains cleanup error
         pass
+
+
+def _validate_faiss_row_ids(
+    index: faiss.Index,
+    *,
+    relative: str,
+    document_count: int,
+) -> None:
+    """Require FAISS labels to be the canonical document-array positions."""
+
+    if isinstance(index, faiss.IndexFlat):
+        # A bare IndexFlat has no user-supplied label table. Its labels are
+        # necessarily the insertion positions 0..ntotal-1.
+        return
+    if not isinstance(index, faiss.IndexIVFFlat):
+        raise ValueError(f"FAISS index type cannot bind row IDs at {relative}")
+
+    nlist = int(index.nlist)
+    if nlist <= 0 or (document_count > 0 and nlist > document_count):
+        raise ValueError(f"FAISS IVF list count is invalid at {relative}")
+    if document_count == 0:
+        return
+    seen = bytearray(document_count)
+    observed = 0
+    for list_number in range(nlist):
+        list_size = int(index.invlists.list_size(list_number))
+        if list_size < 0 or list_size > document_count - observed:
+            raise ValueError(f"FAISS IVF row count is invalid at {relative}")
+        if list_size == 0:
+            continue
+        ids = None
+        try:
+            ids = index.invlists.get_ids(list_number)
+            for raw_row_id in faiss.rev_swig_ptr(ids, list_size):
+                row_id = int(raw_row_id)
+                if row_id < 0 or row_id >= document_count or seen[row_id]:
+                    raise ValueError(f"FAISS row IDs are not canonical at {relative}")
+                seen[row_id] = 1
+                observed += 1
+        finally:
+            if ids is not None:
+                index.invlists.release_ids(list_number, ids)
+    if observed != document_count or any(value == 0 for value in seen):
+        raise ValueError(f"FAISS row IDs are not canonical at {relative}")
+
+
+def _validate_faiss_index_contract(
+    index: faiss.Index,
+    *,
+    relative: str,
+    document_count: int,
+    expected_dimension: int,
+    expected_metric: str,
+    expected_index_type: str,
+) -> None:
+    if int(index.d) != expected_dimension:
+        raise ValueError(
+            f"FAISS dimension mismatch at {relative}: expected "
+            f"{expected_dimension}, found {int(index.d)}"
+        )
+    if int(index.ntotal) != document_count:
+        raise ValueError(
+            f"FAISS document count mismatch at {relative}: expected "
+            f"{document_count}, found {int(index.ntotal)}"
+        )
+    expected_metric_type = {
+        "ip": faiss.METRIC_INNER_PRODUCT,
+        "l2": faiss.METRIC_L2,
+    }.get(expected_metric)
+    if expected_metric_type is None:
+        raise ValueError(f"Unsupported index_metric: {expected_metric!r}")
+    if int(index.metric_type) != int(expected_metric_type):
+        raise ValueError(
+            f"FAISS metric mismatch at {relative}: expected "
+            f"{expected_metric}, found {int(index.metric_type)}"
+        )
+    if expected_index_type == "flat":
+        valid_type = isinstance(index, faiss.IndexFlat)
+    elif expected_index_type == "ivf":
+        valid_type = isinstance(index, faiss.IndexIVFFlat)
+    else:
+        raise ValueError(f"Unsupported index_type: {expected_index_type!r}")
+    if not valid_type:
+        raise ValueError(
+            f"FAISS index type mismatch at {relative}: expected {expected_index_type}"
+        )
+    if document_count > 0 and not bool(index.is_trained):
+        raise ValueError(f"FAISS index is not trained at {relative}")
+    _validate_faiss_row_ids(
+        index,
+        relative=relative,
+        document_count=document_count,
+    )
+
+
+def _decode_generation_config(payload: bytes, *, relative: str) -> dict[str, Any]:
+    def reject_duplicate(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        decoded: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in decoded:
+                raise ValueError(f"duplicate JSON object key: {key}")
+            decoded[key] = value
+        return decoded
+
+    def reject_nonfinite(value: str) -> None:
+        raise ValueError(f"non-finite JSON number: {value}")
+
+    try:
+        decoded = json.loads(
+            payload.decode("utf-8", errors="strict"),
+            object_pairs_hook=reject_duplicate,
+            parse_constant=reject_nonfinite,
+        )
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid vector generation config: {relative}") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError(f"vector generation config must be an object: {relative}")
+    return decoded
+
+
+def _require_committed_publication_record(
+    reader: PublicationDirectoryReader,
+    relative: str,
+    expected: object,
+) -> None:
+    if not isinstance(expected, Mapping) or set(expected) != {
+        "file",
+        "size",
+        "sha256",
+    }:
+        raise ValueError(f"invalid committed vector artifact record: {relative}")
+    record = next(
+        (
+            candidate
+            for candidate in reader.file_records()
+            if candidate.path == relative
+        ),
+        None,
+    )
+    if (
+        record is None
+        or expected.get("file") != PurePosixPath(relative).name
+        or (
+            expected.get("size") != record.size
+            or expected.get("sha256") != record.sha256
+        )
+    ):
+        raise ValueError(f"committed vector artifact does not match: {relative}")
+
+
+def _validate_schema_8_native_generation_reader(
+    reader: PublicationDirectoryReader,
+    *,
+    model_suffix: str,
+    artifact_identity: Mapping[str, Any],
+    expected_dimension: int,
+    expected_metric: str,
+    expected_index_type: str,
+    expected_counts: Mapping[str, int],
+) -> None:
+    """Validate the persisted schema-8 receipt inside its publication sandwich."""
+
+    if type(reader) is not PublicationDirectoryReader:
+        raise TypeError("vector producer validation requires its publication reader")
+    config_relative = f"config_{model_suffix}.json"
+    config = _decode_generation_config(
+        reader.read_bytes(config_relative, max_bytes=_MAX_VECTOR_CONFIG_BYTES),
+        relative=config_relative,
+    )
+    expected_root_fields = {
+        "embedding_model",
+        "embedding_provider",
+        "embedding_revision",
+        "dimension",
+        "index_type",
+        "index_metric",
+        "l0_documents",
+        "l2_documents",
+        "persistence_schema",
+        "row_mapping",
+        "level_artifacts",
+        "artifact",
+    }
+    if set(config) != expected_root_fields:
+        raise ValueError("schema-8 vector generation root config shape is invalid")
+    persisted_identity = config.get("artifact")
+    if (
+        not isinstance(persisted_identity, dict)
+        or type(persisted_identity.get("builder_schema")) is not int
+        or persisted_identity.get("builder_schema") != 8
+        or persisted_identity != dict(artifact_identity)
+    ):
+        raise ValueError("schema-8 vector generation artifact identity is invalid")
+    if config.get("row_mapping") != VECTOR_ROW_MAPPING_CONTRACT:
+        raise ValueError("schema-8 vector generation has an invalid row mapping")
+    if config.get("persistence_schema") != VECTOR_PERSISTENCE_SCHEMA:
+        raise ValueError("schema-8 vector generation persistence schema is invalid")
+    if config.get("dimension") != expected_dimension:
+        raise ValueError("schema-8 vector generation dimension is invalid")
+    if config.get("index_metric") != expected_metric:
+        raise ValueError("schema-8 vector generation metric is invalid")
+    if config.get("index_type") != expected_index_type:
+        raise ValueError("schema-8 vector generation index type is invalid")
+    from ...artifacts.portable_views import (
+        validate_portable_vector_persistence_semantics,
+    )
+
+    validate_portable_vector_persistence_semantics(config, artifact_identity)
+    if set(expected_counts) != {"l0", "l2"}:
+        raise ValueError("schema-8 vector producer counts are invalid")
+    if any(
+        type(expected_counts[level]) is not int or expected_counts[level] < 0
+        for level in ("l0", "l2")
+    ):
+        raise ValueError("schema-8 vector producer counts are invalid")
+    committed_levels = config.get("level_artifacts")
+    if not isinstance(committed_levels, dict):
+        raise ValueError("schema-8 vector generation committed levels are invalid")
+    expected_nonempty = {level for level in ("l0", "l2") if expected_counts[level] > 0}
+    if set(committed_levels) != expected_nonempty:
+        raise ValueError("schema-8 vector generation committed levels are invalid")
+
+    for level in ("l0", "l2"):
+        count = expected_counts[level]
+        if (
+            type(count) is not int
+            or count < 0
+            or config.get(f"{level}_documents") != count
+        ):
+            raise ValueError(f"schema-8 vector generation {level} count is invalid")
+        if count == 0:
+            continue
+        artifacts = committed_levels[level]
+        if not isinstance(artifacts, dict) or set(artifacts) != {
+            "index",
+            "documents",
+        }:
+            raise ValueError(
+                f"schema-8 vector generation {level} artifacts are invalid"
+            )
+        documents_relative = f"{level}/documents_{model_suffix}.json"
+        index_relative = f"{level}/index_{model_suffix}.faiss"
+        _require_committed_publication_record(
+            reader,
+            documents_relative,
+            artifacts["documents"],
+        )
+        _require_committed_publication_record(
+            reader,
+            index_relative,
+            artifacts["index"],
+        )
+
+        document_size = 0
+        document_digest = hashlib.sha256()
+        document_count = 0
+        with reader.open_authenticated_file(
+            documents_relative,
+            max_bytes=_MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
+        ) as source:
+            documents = iter_bounded_json_array(
+                source,
+                label=f"schema-8 vector documents {documents_relative}",
+                max_element_bytes=_MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
+            )
+
+            def counted_documents(
+                documents=documents,
+                level=level,
+            ):
+                nonlocal document_count
+                for document in documents:
+                    validate_schema_8_vector_document_row(
+                        document,
+                        row_index=document_count,
+                        level=level,
+                    )
+                    document_count += 1
+                    yield document
+
+            for chunk in canonical_json_array_chunks(counted_documents()):
+                document_size += len(chunk)
+                if document_size > _MAX_PORTABLE_DOCUMENTS_JSON_BYTES:
+                    raise ValueError(
+                        "schema-8 vector documents exceed their byte limit: "
+                        f"{documents_relative}"
+                    )
+                document_digest.update(chunk)
+        documents_record = artifacts["documents"]
+        if (
+            document_count != count
+            or documents_record.get("size") != document_size
+            or documents_record.get("sha256") != document_digest.hexdigest()
+        ):
+            raise ValueError(
+                f"schema-8 vector {level} documents do not bind their rows"
+            )
+
+        level_config_relative = f"{level}/config_{model_suffix}.json"
+        level_config = _decode_generation_config(
+            reader.read_bytes(
+                level_config_relative,
+                max_bytes=_MAX_VECTOR_CONFIG_BYTES,
+            ),
+            relative=level_config_relative,
+        )
+        expected_level_config = {
+            "embedding_model": config["embedding_model"],
+            "embedding_provider": config["embedding_provider"],
+            "embedding_revision": config["embedding_revision"],
+            "dimension": expected_dimension,
+            "index_type": expected_index_type,
+            "index_metric": expected_metric,
+            "level": level,
+            "num_documents": count,
+        }
+        if level_config != expected_level_config:
+            raise ValueError(
+                f"schema-8 vector generation {level} config differs from root"
+            )
+
+        index = None
+        try:
+            with reader.open_authenticated_file(
+                index_relative,
+                max_bytes=_MAX_FAISS_INDEX_BYTES,
+            ) as source:
+                index = faiss.read_index(faiss.PyCallbackIOReader(source.read))
+            _validate_faiss_index_contract(
+                index,
+                relative=index_relative,
+                document_count=count,
+                expected_dimension=expected_dimension,
+                expected_metric=expected_metric,
+                expected_index_type=expected_index_type,
+            )
+        except BaseException as primary_error:
+            if index is not None:
+                try:
+                    _VectorIndexCleanupOwner((index,)).close()
+                except BaseException as cleanup_error:  # noqa: B036
+                    _attach_vector_index_cleanup_owner(primary_error, cleanup_error)
+                    _annotate_secondary_error(
+                        primary_error,
+                        "producer FAISS validation cleanup also failed",
+                        cleanup_error,
+                    )
+            raise
+        else:
+            _VectorIndexCleanupOwner((index,)).close()
 
 
 class _HuggingFaceEmbeddingWrapper:
@@ -1478,13 +1865,18 @@ class CodeVectorStore:
         level_state = {}
         for level in ("l0", "l2"):
             index, documents = self._get_index_and_docs(level)
-            if documents:
-                if index is None or int(index.ntotal) != len(documents):
-                    vector_count = 0 if index is None else int(index.ntotal)
-                    raise ValueError(
-                        f"Cannot save misaligned {level} vector store: "
-                        f"{vector_count} vectors for {len(documents)} documents"
-                    )
+            if documents and (index is None or int(index.ntotal) != len(documents)):
+                vector_count = 0 if index is None else int(index.ntotal)
+                raise ValueError(
+                    f"Cannot save misaligned {level} vector store: "
+                    f"{vector_count} vectors for {len(documents)} documents"
+                )
+            if index is not None:
+                self._validate_loaded_faiss_index(
+                    index,
+                    relative=f"{level}/index_{model_suffix}.faiss",
+                    document_count=len(documents),
+                )
             level_state[level] = (index, documents)
 
         config_path = save_path / f"config_{model_suffix}.json"
@@ -1517,6 +1909,11 @@ class CodeVectorStore:
             }
             if self.artifact_metadata:
                 config["artifact"] = self.artifact_metadata
+            if (
+                type(self.artifact_metadata.get("builder_schema")) is int
+                and self.artifact_metadata.get("builder_schema") == 8
+            ):
+                config["row_mapping"] = VECTOR_ROW_MAPPING_CONTRACT
             # This config is the commit record for both levels. Publishing it
             # last makes an interrupted multi-file save detectable on load.
             _atomic_json_dump(config_path, config)
@@ -1561,9 +1958,21 @@ class CodeVectorStore:
         index_path = level_path / f"{index_name}.faiss"
         _atomic_replace(index_path, lambda path: faiss.write_index(index, str(path)))
 
-        # Save documents (list of _Document)
-        docs_path = level_path / f"documents_{model_suffix}.pkl"
-        _atomic_pickle_dump(docs_path, documents)
+        if (
+            type(self.artifact_metadata.get("builder_schema")) is int
+            and self.artifact_metadata.get("builder_schema") == 8
+        ):
+            # Commit the ordered row-to-document mapping as canonical, inert
+            # JSON.  Its array position is the FAISS row receipt.
+            docs_path = level_path / f"documents_{model_suffix}.json"
+            _atomic_canonical_document_dump(docs_path, documents)
+            (level_path / f"documents_{model_suffix}.pkl").unlink(missing_ok=True)
+        else:
+            # Preserve the legacy local persistence contract for unversioned
+            # and schema-7 callers.  Strict compiler-cache ingress rejects it.
+            docs_path = level_path / f"documents_{model_suffix}.pkl"
+            _atomic_pickle_dump(docs_path, documents)
+            (level_path / f"documents_{model_suffix}.json").unlink(missing_ok=True)
         artifacts = vector_level_artifact_records(
             level_path,
             model_suffix,
@@ -1777,6 +2186,37 @@ class CodeVectorStore:
             elif expected_artifact.get("embedding_fingerprint") is not None:
                 raise ValueError("Vector config is missing embedding artifact identity")
 
+            saved_builder_schema = (
+                saved_artifact.get("builder_schema")
+                if isinstance(saved_artifact, dict)
+                else None
+            )
+            expected_builder_schema = expected_artifact.get("builder_schema")
+            retained_schema_selected = (
+                type(expected_builder_schema) is int and expected_builder_schema >= 7
+            ) or (type(saved_builder_schema) is int and saved_builder_schema >= 7)
+            if retained_schema_selected and not (
+                type(expected_builder_schema) is int
+                and type(saved_builder_schema) is int
+                and saved_builder_schema == expected_builder_schema
+            ):
+                raise ValueError(
+                    "Retained vector authorization and root artifact builder schemas "
+                    "must match exactly"
+                )
+            schema_8_selected = (
+                type(expected_builder_schema) is int
+                and expected_builder_schema == 8
+                and type(saved_builder_schema) is int
+                and saved_builder_schema == 8
+            )
+            if schema_8_selected and config.get("row_mapping") != (
+                VECTOR_ROW_MAPPING_CONTRACT
+            ):
+                raise ValueError("Schema-8 vector config has an invalid row mapping")
+            if not schema_8_selected and config.get("row_mapping") is not None:
+                raise ValueError("Legacy vector config has an unsupported row mapping")
+
             for level in ("l0", "l2"):
                 value = config.get(f"{level}_documents")
                 if value is None:
@@ -1805,6 +2245,21 @@ class CodeVectorStore:
                     raise ValueError(
                         "Vector config with committed artifacts requires level counts"
                     )
+                if schema_8_selected:
+                    for level, records in committed_levels.items():
+                        documents_record = (
+                            records.get("documents")
+                            if isinstance(records, dict)
+                            else None
+                        )
+                        expected_name = f"documents_{model_suffix}.json"
+                        if not isinstance(documents_record, dict) or (
+                            documents_record.get("file") != expected_name
+                        ):
+                            raise ValueError(
+                                "Schema-8 vector config has an invalid canonical "
+                                f"document record for {level}"
+                            )
         elif expected_artifact.get("embedding_fingerprint") is not None:
             raise ValueError("Vector store is missing its top-level configuration")
 
@@ -2109,22 +2564,14 @@ class CodeVectorStore:
         relative: str,
         document_count: int,
     ) -> None:
-        expected_metric = self._faiss_metric()
-        if int(index.metric_type) != int(expected_metric):
-            raise ValueError(
-                f"FAISS metric mismatch at {relative}: expected "
-                f"{self.index_metric}, found {int(index.metric_type)}"
-            )
-        if self.index_type == "flat":
-            valid_type = isinstance(index, faiss.IndexFlat)
-        else:
-            valid_type = isinstance(index, faiss.IndexIVF)
-        if not valid_type:
-            raise ValueError(
-                f"FAISS index type mismatch at {relative}: expected {self.index_type}"
-            )
-        if document_count > 0 and not bool(index.is_trained):
-            raise ValueError(f"FAISS index is not trained at {relative}")
+        _validate_faiss_index_contract(
+            index,
+            relative=relative,
+            document_count=document_count,
+            expected_dimension=self.dimension,
+            expected_metric=self.index_metric,
+            expected_index_type=self.index_type,
+        )
 
     @staticmethod
     def _load_documents_json(

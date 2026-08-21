@@ -600,7 +600,7 @@ def test_unknown_builder_schemas_fail_closed(view_type: str) -> None:
     manifest = _manifest()
     _set_entry_field(manifest.indexes[view_type], "builder_schema", 999)
 
-    with pytest.raises(StorageValidationError, match="current portable schema"):
+    with pytest.raises(StorageValidationError, match="supported portable schema"):
         plan_repo_manifest_import(manifest, views=[view_type])
 
     optional = plan_repo_manifest_import(
@@ -609,6 +609,18 @@ def test_unknown_builder_schemas_fail_closed(view_type: str) -> None:
         optional_views=[view_type],
     )
     assert optional.selection.skipped_views[view_type] == "incomplete_profile"
+
+
+@pytest.mark.parametrize("builder_schema", [7, 8])
+def test_retained_vector_schema_7_and_current_schema_8_are_supported(
+    builder_schema: int,
+) -> None:
+    manifest = _manifest()
+    _set_entry_field(manifest.indexes["vector"], "builder_schema", builder_schema)
+
+    plan = plan_repo_manifest_import(manifest, views=["vector"])
+
+    assert plan.view_map["vector"].profile.config["builder_schema"] == builder_schema
 
 
 @pytest.mark.parametrize("view_type", ["bm25", "vector"])

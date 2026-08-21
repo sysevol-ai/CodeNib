@@ -22,7 +22,7 @@ from ..._atomic_directory import (
     directory_ownership_inventory,
     lexical_directory_path,
 )
-from ..._bounded_json import iter_bounded_json_array
+from ..._bounded_json import canonical_json_array_chunks, iter_bounded_json_array
 from ..._captured_directory import AuthenticatedFile, CapturedDirectoryReader
 from ...native_index_authorization import (
     NativeIndexAuthorization,
@@ -32,6 +32,7 @@ from ...native_index_authorization import (
 )
 
 VECTOR_PERSISTENCE_SCHEMA = 1
+VECTOR_ROW_MAPPING_CONTRACT = "codenib.vector-documents-array-index.v1"
 VECTOR_VIEW_UPDATE_MARKER = ".vector-view.update-in-progress"
 _DIGEST_BYTES = 1024 * 1024
 _MAX_CONFIG_BYTES = 16 * 1024 * 1024
@@ -40,6 +41,21 @@ _MAX_FAISS_BYTES = 8 * 1024 * 1024 * 1024
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _UPDATE_MARKER_PAYLOAD = b'{"schema":"codenib.vector-view-update.v1"}\n'
 _VECTOR_LEVELS = frozenset({"l0", "l2"})
+_VECTOR_DOCUMENT_METADATA_FIELDS = frozenset(
+    {
+        "chunk_id",
+        "chunk_type",
+        "name",
+        "file",
+        "start_line",
+        "end_line",
+        "node_id",
+        "level",
+        "content_hash",
+    }
+)
+_MAX_SOURCE_PATH_BYTES = 4_096
+_MAX_SOURCE_PATH_COMPONENTS = 256
 _MUTABLE_ROOT_FILES = frozenset(
     {
         "chunk_store.json",
@@ -505,6 +521,101 @@ def vector_config_artifact_record(
     return _file_record(Path(root) / f"config_{model_suffix}.json")
 
 
+def validate_schema_8_vector_document_row(
+    document: object,
+    *,
+    row_index: int,
+    level: str,
+) -> tuple[str, dict[str, Any]]:
+    """Validate the source-independent schema-8 document/row contract."""
+
+    if type(row_index) is not int or row_index < 0:
+        raise ValueError("schema-8 vector document row index is invalid")
+    if level not in _VECTOR_LEVELS:
+        raise ValueError("schema-8 vector document level is invalid")
+    if not isinstance(document, dict) or set(document) != {
+        "page_content",
+        "metadata",
+    }:
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} has an invalid shape"
+        )
+    page_content = document["page_content"]
+    metadata = document["metadata"]
+    if not isinstance(page_content, str) or not isinstance(metadata, dict):
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} has invalid content"
+        )
+    if set(metadata) != _VECTOR_DOCUMENT_METADATA_FIELDS:
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} metadata has an "
+            "invalid shape"
+        )
+    if type(metadata["chunk_id"]) is not int or metadata["chunk_id"] != row_index:
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} has an invalid row"
+        )
+    start_line = metadata["start_line"]
+    end_line = metadata["end_line"]
+    if (
+        type(start_line) is not int
+        or type(end_line) is not int
+        or start_line < 0
+        or end_line < start_line
+    ):
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} has invalid lines"
+        )
+    for key in ("chunk_type", "name", "node_id"):
+        value = metadata[key]
+        if not isinstance(value, str) or "\x00" in value:
+            raise ValueError(
+                f"schema-8 vector {level} document {row_index} has invalid {key}"
+            )
+    if metadata["level"] != level:
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} has the wrong level"
+        )
+    expected_hash = hashlib.md5(  # noqa: S324 - producer compatibility only
+        page_content.encode("utf-8", errors="replace"),
+        usedforsecurity=False,
+    ).hexdigest()
+    if metadata["content_hash"] != expected_hash:
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} has an invalid "
+            "content hash"
+        )
+    source_file = metadata["file"]
+    if not isinstance(source_file, str) or not source_file:
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} file is invalid"
+        )
+    try:
+        encoded = source_file.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} file is invalid"
+        ) from exc
+    parts = source_file.split("/")
+    normalized = PurePosixPath(source_file)
+    if (
+        len(encoded) > _MAX_SOURCE_PATH_BYTES
+        or len(normalized.parts) > _MAX_SOURCE_PATH_COMPONENTS
+        or any(
+            ord(character) < 32 or ord(character) == 127 for character in source_file
+        )
+        or source_file.startswith(("/", "~"))
+        or "\\" in source_file
+        or normalized.is_absolute()
+        or any(part in {"", ".", ".."} for part in parts)
+        or normalized.as_posix() != source_file
+    ):
+        raise ValueError(
+            f"schema-8 vector {level} document {row_index} file is invalid"
+        )
+    return page_content, dict(metadata)
+
+
 def require_complete_vector_view(root: str | Path) -> None:
     """Reject a vector view whose multi-artifact update did not finish."""
 
@@ -617,6 +728,49 @@ def validate_vector_level_artifacts(
     return paths["index"], paths["documents"]
 
 
+def _schema_8_document_count(path: Path, *, expected_sha256: str) -> int:
+    """Authenticate canonical ordered JSON and return its array length."""
+
+    descriptor, opened = _open_stable_regular(path)
+    try:
+        if opened.st_size > _MAX_DOCUMENT_BYTES:
+            raise ValueError(
+                f"schema-8 vector documents exceed their byte limit: {path}"
+            )
+        count = 0
+
+        def values():
+            nonlocal count
+            with os.fdopen(os.dup(descriptor), "rb") as source:
+                for document in iter_bounded_json_array(
+                    source,
+                    label=f"schema-8 vector documents {path}",
+                    max_element_bytes=_MAX_DOCUMENT_BYTES,
+                ):
+                    count += 1
+                    yield document
+
+        size = 0
+        digest = hashlib.sha256()
+        for chunk in canonical_json_array_chunks(values()):
+            size += len(chunk)
+            if size > _MAX_DOCUMENT_BYTES:
+                raise ValueError(
+                    f"schema-8 vector documents exceed their byte limit: {path}"
+                )
+            digest.update(chunk)
+        _verify_open_file(descriptor, opened, path)
+        if size != opened.st_size or digest.hexdigest() != expected_sha256:
+            raise ValueError(f"schema-8 vector documents are not canonical: {path}")
+        return count
+    except OSError as exc:
+        raise ValueError(
+            f"schema-8 vector documents could not be read: {path}"
+        ) from exc
+    finally:
+        os.close(descriptor)
+
+
 def validate_vector_generation_artifacts(
     root: str | Path,
     model_suffix: str,
@@ -625,6 +779,16 @@ def validate_vector_generation_artifacts(
 
     config_path = Path(root) / f"config_{model_suffix}.json"
     config = _load_config(config_path)
+
+    artifact = config.get("artifact")
+    builder_schema = (
+        artifact.get("builder_schema") if isinstance(artifact, Mapping) else None
+    )
+    schema_8 = type(builder_schema) is int and builder_schema == 8
+    if schema_8 and config.get("row_mapping") != (VECTOR_ROW_MAPPING_CONTRACT):
+        raise ValueError("schema-8 vector generation has an invalid row mapping")
+    if not schema_8 and config.get("row_mapping") is not None:
+        raise ValueError("legacy vector generation has an unsupported row mapping")
 
     persistence_schema = config.get("persistence_schema")
     committed_levels = config.get("level_artifacts")
@@ -658,17 +822,46 @@ def validate_vector_generation_artifacts(
             raise ValueError(
                 f"vector generation is missing committed artifacts for {level}"
             )
-        validate_vector_level_artifacts(
+        if schema_8:
+            documents = (
+                artifacts.get("documents") if isinstance(artifacts, Mapping) else None
+            )
+            if not isinstance(documents, Mapping) or documents.get("file") != (
+                f"documents_{model_suffix}.json"
+            ):
+                raise ValueError(
+                    f"schema-8 vector generation has invalid {level} documents"
+                )
+        _index_path, documents_path = validate_vector_level_artifacts(
             Path(root) / level,
             model_suffix,
             artifacts,
         )
+        if schema_8:
+            documents_record = artifacts["documents"]
+            if not isinstance(documents_record, Mapping) or not isinstance(
+                documents_record.get("sha256"), str
+            ):
+                raise ValueError(
+                    f"schema-8 vector generation has invalid {level} documents"
+                )
+            if (
+                _schema_8_document_count(
+                    documents_path,
+                    expected_sha256=documents_record["sha256"],
+                )
+                != count
+            ):
+                raise ValueError(
+                    f"schema-8 vector {level} document count does not match its config"
+                )
     return config
 
 
 __all__ = [
     "AuthenticatedVectorView",
     "VECTOR_PERSISTENCE_SCHEMA",
+    "VECTOR_ROW_MAPPING_CONTRACT",
     "VECTOR_VIEW_UPDATE_MARKER",
     "begin_vector_view_update",
     "capture_authenticated_vector_view",
@@ -678,6 +871,7 @@ __all__ = [
     "validate_vector_config_artifact",
     "validate_vector_generation_artifacts",
     "validate_vector_level_artifacts",
+    "validate_schema_8_vector_document_row",
     "vector_config_artifact_record",
     "vector_level_artifact_records",
 ]

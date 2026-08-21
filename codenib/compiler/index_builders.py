@@ -417,9 +417,11 @@ class VectorIndexBuilder:
     ) -> Dict[str, Any]:
         route = self._embedding_route()
         identity = {
-            # v7 deterministically bounds remote document inputs in addition
-            # to committing vector, chunk, cache, and incremental state.
-            "builder_schema": 7,
+            # v8 commits ordered canonical JSON documents beside each native
+            # index.  Strict cache ingress can therefore authenticate and
+            # publish a portable generation without deserializing pickle or
+            # asking FAISS to parse attacker-controlled bytes.
+            "builder_schema": 8,
             "embedding_model": route.model,
             "embedding_provider": route.provider,
             "embedding_dimension": self.embedding_dimension,
@@ -572,10 +574,37 @@ class VectorIndexBuilder:
                 generation_ownership = build_root.capture_ownership(
                     required_root_file=f"config_{model_suffix}.json",
                 )
+                from ..index.embedding.vector_store import (
+                    _validate_schema_8_native_generation_reader,
+                )
+
+                document_count = status.metadata.get("document_count")
+                if not isinstance(document_count, dict):
+                    raise RuntimeError(
+                        "vector builder returned invalid document counts"
+                    )
+                expected_counts = {
+                    level: document_count.get(level, 0) for level in ("l0", "l2")
+                }
+
+                def validate_and_copy_generation(
+                    reader: PublicationDirectoryReader,
+                ) -> None:
+                    _validate_schema_8_native_generation_reader(
+                        reader,
+                        model_suffix=model_suffix,
+                        artifact_identity=self.artifact_identity(),
+                        expected_dimension=self.embedding_dimension,
+                        expected_metric=self.index_metric,
+                        expected_index_type="flat",
+                        expected_counts=expected_counts,
+                    )
+                    copy_generation(reader)
+
                 reopen_authenticated_directory(
                     build_path,
                     generation_ownership,
-                    copy_generation,
+                    validate_and_copy_generation,
                 )
 
             publication_stage.publish()
@@ -730,6 +759,31 @@ class VectorIndexBuilder:
         )
         with build_root_guard.path_operation("incremental state seed save"):
             inc_state.save(Path(output_dir))
+        from ..index.embedding.artifact_integrity import (
+            validate_vector_generation_artifacts,
+        )
+
+        model_suffix = self._embedding_route().model.replace("/", "__")
+        with build_root_guard.path_operation("schema-8 vector generation validation"):
+            persisted_config = validate_vector_generation_artifacts(
+                output_dir,
+                model_suffix,
+            )
+        if persisted_config.get("artifact") != artifact_identity:
+            raise ValueError(
+                "schema-8 vector generation artifact identity differs from builder"
+            )
+        configured_levels = set(self.build_levels)
+        for level in ("l0", "l2"):
+            expected_count = len(getattr(vs, f"{level}_documents"))
+            if persisted_config.get(f"{level}_documents") != expected_count:
+                raise ValueError(
+                    f"schema-8 vector generation {level} count differs from builder"
+                )
+            if expected_count > 0 and level not in configured_levels:
+                raise ValueError(
+                    f"schema-8 vector generation emitted unconfigured level {level}"
+                )
         with build_root_guard.path_operation("persistence fingerprint read"):
             persistence_config = self._persistence_config_fingerprint(output_dir)
 

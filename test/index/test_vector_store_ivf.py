@@ -23,10 +23,14 @@ import faiss
 import numpy as np
 import pytest
 
+import codenib.index.embedding.vector_store as vector_store_module
+from codenib._bounded_json import canonical_json_array_chunks
 from codenib.index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    VECTOR_ROW_MAPPING_CONTRACT,
     VECTOR_VIEW_UPDATE_MARKER,
     capture_authenticated_vector_view,
+    validate_vector_generation_artifacts,
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
@@ -220,6 +224,183 @@ def test_ivf_save_load_roundtrip(tmp_path):
     assert res and res[0].node_name == chunks[1]["name"]
 
 
+def test_schema_8_save_commits_bounded_canonical_json_row_mapping(tmp_path):
+    path = tmp_path / "vs"
+    store = _make_store(
+        embedding_model="test/model",
+        artifact_metadata={"builder_schema": 8},
+    )
+    store.add_code_chunks(_chunks(2))
+    store.save(str(path))
+
+    config = json.loads((path / "config_test__model.json").read_text())
+    documents_path = path / "l2/documents_test__model.json"
+    payload = documents_path.read_bytes()
+    assert config["row_mapping"] == VECTOR_ROW_MAPPING_CONTRACT
+    assert config["level_artifacts"]["l2"]["documents"]["file"] == (documents_path.name)
+    assert payload == b"".join(canonical_json_array_chunks(json.loads(payload)))
+    assert not (path / "l2/documents_test__model.pkl").exists()
+    assert not (path / "l0").exists()
+    validate_vector_generation_artifacts(path, "test__model")
+
+
+def test_schema_8_save_enforces_canonical_document_byte_cap(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "vs"
+    store = _make_store(
+        embedding_model="test/model",
+        artifact_metadata={"builder_schema": 8},
+    )
+    store.add_code_chunks(_chunks(1))
+    monkeypatch.setattr(
+        vector_store_module,
+        "_MAX_PORTABLE_DOCUMENTS_JSON_BYTES",
+        64,
+    )
+
+    with pytest.raises(ValueError, match="canonical vector documents exceed"):
+        store.save(str(path))
+
+    assert (path / ".config_test__model.json.save-in-progress").is_file()
+    assert not (path / "config_test__model.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("saved_schema", "expected_schema"),
+    [(8, 7), (7, 8)],
+)
+def test_schema_8_loader_rejects_cross_labeled_identity_before_native_parse(
+    tmp_path,
+    monkeypatch,
+    saved_schema,
+    expected_schema,
+):
+    path = tmp_path / "vs"
+    saved = _make_store(
+        embedding_model="test/model",
+        artifact_metadata={"builder_schema": saved_schema},
+    )
+    saved.add_code_chunks(_chunks(1))
+    saved.save(str(path))
+    loaded = _make_store(
+        embedding_model="test/model",
+        store_path=str(path),
+        artifact_metadata={"builder_schema": expected_schema},
+    )
+    monkeypatch.setattr(
+        vector_store_module.faiss,
+        "read_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("cross-labeled schema reached FAISS")
+        ),
+    )
+    monkeypatch.setattr(
+        vector_store_module.compat_pickle,
+        "load",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("cross-labeled schema reached pickle")
+        ),
+    )
+
+    with pytest.raises(ValueError, match="builder schemas must match exactly"):
+        _load_trusted(loaded)
+
+
+@pytest.mark.parametrize("saved_schema", [6, None])
+def test_schema_7_loader_rejects_downgraded_or_missing_root_label_before_parse(
+    tmp_path,
+    monkeypatch,
+    saved_schema,
+):
+    path = tmp_path / "vs"
+    saved = _make_store(
+        embedding_model="test/model",
+        artifact_metadata={"builder_schema": 7},
+    )
+    saved.add_code_chunks(_chunks(1))
+    saved.save(str(path))
+    config_path = path / "config_test__model.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    if saved_schema is None:
+        config.pop("artifact")
+    else:
+        config["artifact"]["builder_schema"] = saved_schema
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    loaded = _make_store(
+        embedding_model="test/model",
+        store_path=str(path),
+        artifact_metadata={"builder_schema": 7},
+    )
+    monkeypatch.setattr(
+        vector_store_module.faiss,
+        "read_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("downgraded schema reached FAISS")
+        ),
+    )
+    monkeypatch.setattr(
+        vector_store_module.compat_pickle,
+        "load",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("downgraded schema reached pickle")
+        ),
+    )
+
+    with pytest.raises(ValueError, match="builder schemas must match exactly"):
+        _load_trusted(loaded)
+
+
+@pytest.mark.parametrize("mutation", ["missing-row-mapping", "pickle-record"])
+def test_schema_8_loader_rejects_invalid_contract_before_native_parse(
+    tmp_path,
+    monkeypatch,
+    mutation,
+):
+    path = tmp_path / "vs"
+    identity = {"builder_schema": 8}
+    saved = _make_store(
+        embedding_model="test/model",
+        artifact_metadata=identity,
+    )
+    saved.add_code_chunks(_chunks(1))
+    saved.save(str(path))
+    config_path = path / "config_test__model.json"
+    config = json.loads(config_path.read_text())
+    if mutation == "missing-row-mapping":
+        config.pop("row_mapping")
+        expected = "row mapping"
+    else:
+        config["level_artifacts"]["l2"]["documents"][
+            "file"
+        ] = "documents_test__model.pkl"
+        expected = "canonical document record"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    loaded = _make_store(
+        embedding_model="test/model",
+        store_path=str(path),
+        artifact_metadata=identity,
+    )
+    monkeypatch.setattr(
+        vector_store_module.faiss,
+        "read_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("invalid schema-8 contract reached FAISS")
+        ),
+    )
+    monkeypatch.setattr(
+        vector_store_module.compat_pickle,
+        "load",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("invalid schema-8 contract reached pickle")
+        ),
+    )
+
+    with pytest.raises(ValueError, match=expected):
+        _load_trusted(loaded)
+
+
 def test_save_removes_persisted_level_after_last_document_is_deleted(tmp_path):
     path = tmp_path / "vs"
     store = _make_store(embedding_model="test/model")
@@ -246,6 +427,32 @@ def test_save_rejects_misaligned_vectors_and_documents(tmp_path):
     store.l2_documents.pop()
 
     with pytest.raises(ValueError, match="2 vectors for 1 documents"):
+        store.save(str(tmp_path / "vs"))
+
+
+def test_save_rejects_noncanonical_ivf_row_ids(tmp_path):
+    store = _make_store(
+        embedding_model="test/model",
+        index_type="ivf",
+        ivf_nlist=1,
+    )
+    chunks = _chunks(2)
+    store.add_code_chunks(chunks)
+    vectors = np.asarray(
+        store.embedding.embed_documents([chunk["content"] for chunk in chunks]),
+        dtype=np.float32,
+    )
+    index = faiss.IndexIVFFlat(
+        faiss.IndexFlatIP(_DIM),
+        _DIM,
+        1,
+        faiss.METRIC_INNER_PRODUCT,
+    )
+    index.train(vectors)
+    index.add_with_ids(vectors, np.asarray([0, 2], dtype=np.int64))
+    store.l2_index = index
+
+    with pytest.raises(ValueError, match="row IDs are not canonical"):
         store.save(str(tmp_path / "vs"))
 
 

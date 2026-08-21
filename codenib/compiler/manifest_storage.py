@@ -53,7 +53,14 @@ REPO_MANIFEST_BM25_GENERATION_CONTRACT = "codenib.repo-manifest-bm25-generation.
 REPO_MANIFEST_VECTOR_GENERATION_CONTRACT = "codenib.repo-manifest-vector-generation.v1"
 
 PORTABLE_STORAGE_VIEWS = frozenset({"bm25", "vector"})
-CURRENT_PORTABLE_BUILDER_SCHEMAS = {"bm25": 8, "vector": 7}
+CURRENT_PORTABLE_BUILDER_SCHEMAS = {"bm25": 8, "vector": 8}
+SUPPORTED_PORTABLE_BUILDER_SCHEMAS = {
+    "bm25": frozenset({8}),
+    # Retained schema-7 vector generations remain query-compatible.  Schema 8
+    # is the current producer/strict-ingress contract because it additionally
+    # commits the canonical ordered document-to-row mapping.
+    "vector": frozenset({7, 8}),
+}
 
 DEFAULT_MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 _MAX_JSON_DEPTH = 64
@@ -1667,9 +1674,9 @@ def _profile_config(
     builder_schema = _positive_int(
         config["builder_schema"], f"view {view_type!r} builder_schema"
     )
-    if builder_schema != CURRENT_PORTABLE_BUILDER_SCHEMAS[view_type]:
+    if builder_schema not in SUPPORTED_PORTABLE_BUILDER_SCHEMAS[view_type]:
         raise _IncompleteProfile(
-            f"view {view_type!r} builder_schema is not the current portable schema"
+            f"view {view_type!r} builder_schema is not a supported portable schema"
         )
     _text_list(config["languages"], f"view {view_type!r} languages")
     _positive_int(
@@ -2710,6 +2717,7 @@ def _encode_bounded_manifest_text(value: str, *, limit: int) -> bytes:
 
 __all__ = [
     "BM25_PROFILE_AXES",
+    "CURRENT_PORTABLE_BUILDER_SCHEMAS",
     "DEFAULT_MAX_MANIFEST_BYTES",
     "PORTABLE_STORAGE_VIEWS",
     "REPO_MANIFEST_BM25_GENERATION_CONTRACT",
@@ -2720,6 +2728,7 @@ __all__ = [
     "REPO_MANIFEST_VECTOR_GENERATION_CONTRACT",
     "RepoManifestImportPlan",
     "SourceIntent",
+    "SUPPORTED_PORTABLE_BUILDER_SCHEMAS",
     "VECTOR_PROFILE_AXES",
     "ViewImportIntent",
     "ViewSelection",

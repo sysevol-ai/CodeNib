@@ -250,6 +250,10 @@ def _vector_identity(
     if manifest_version == LEGACY_MANIFEST_VERSION:
         identity.pop("source_selection_digest")
         identity["repository_filter_policy"] = 3
+    # This fixture deliberately exercises compatibility with an already-retained
+    # schema-7 portable generation.  Current raw compiler caches use schema 8 and
+    # must carry the ordered JSON row-mapping receipt.
+    identity["builder_schema"] = 7
     return identity
 
 

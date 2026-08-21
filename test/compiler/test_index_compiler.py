@@ -19,6 +19,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import ANY, MagicMock, patch
 
+import faiss
+import numpy as np
 import pytest
 
 import codenib.compiler.index_compiler as index_compiler_module
@@ -27,6 +29,7 @@ from codenib._atomic_directory import (
     directory_ownership_digest,
     directory_ownership_root_identity,
 )
+from codenib._bounded_json import canonical_json_array_chunks
 from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
 from codenib.compiler.index_builders import (
     BM25IndexBuilder,
@@ -50,8 +53,16 @@ from codenib.compiler.resources import (
     IndexStatus,
     ResourceResolver,
 )
-from codenib.index.embedding.artifact_integrity import VECTOR_VIEW_UPDATE_MARKER
-from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
+from codenib.index.embedding.artifact_integrity import (
+    VECTOR_PERSISTENCE_SCHEMA,
+    VECTOR_ROW_MAPPING_CONTRACT,
+    VECTOR_VIEW_UPDATE_MARKER,
+    vector_level_artifact_records,
+)
+from codenib.index.embedding.model_policy import (
+    DEFAULT_EMBEDDING_REVISION,
+    resolve_embedding_artifact_load_policy_from_options,
+)
 from codenib.index.incremental import IncrementalState
 from codenib.ls_router import GraphBuildResult
 from codenib.native_index_authorization import (
@@ -361,17 +372,125 @@ class TestBM25IndexBuilder:
 # ---------------------------------------------------------------------------
 
 
-def _write_mock_vector_generation(root: Path, model_suffix: str) -> None:
+def _write_mock_vector_generation(
+    root: Path,
+    model_suffix: str,
+    *,
+    artifact_metadata: dict | None = None,
+    l0_count: int = 0,
+    l2_count: int = 1,
+    dimension: int = 384,
+    index_metric: str = "ip",
+) -> None:
     root.mkdir(parents=True, exist_ok=True)
+    if artifact_metadata is None:
+        (root / f"config_{model_suffix}.json").write_text(
+            '{"level_artifacts": {}}',
+            encoding="utf-8",
+        )
+        level = root / "l2"
+        level.mkdir()
+        (level / f"config_{model_suffix}.json").write_text("{}", encoding="utf-8")
+        (level / f"index_{model_suffix}.faiss").write_bytes(b"new-vector")
+        (level / f"documents_{model_suffix}.pkl").write_bytes(b"new-documents")
+        return
+
+    level_artifacts = {}
+    embedding_model = artifact_metadata["embedding_model"]
+    embedding_provider = artifact_metadata["embedding_provider"]
+    embedding_revision = (
+        resolve_embedding_artifact_load_policy_from_options(
+            embedding_model,
+            artifact_metadata["embedding_kwargs"],
+        ).revision
+        if embedding_provider == "huggingface"
+        else None
+    )
+    for level, count in (("l0", l0_count), ("l2", l2_count)):
+        if count == 0:
+            continue
+        level_path = root / level
+        level_path.mkdir()
+        (level_path / f"config_{model_suffix}.json").write_text(
+            json.dumps(
+                {
+                    "embedding_model": embedding_model,
+                    "embedding_provider": embedding_provider,
+                    "embedding_revision": embedding_revision,
+                    "dimension": dimension,
+                    "index_type": "flat",
+                    "index_metric": index_metric,
+                    "level": level,
+                    "num_documents": count,
+                }
+            ),
+            encoding="utf-8",
+        )
+        if index_metric == "ip":
+            index = faiss.IndexFlatIP(dimension)
+        else:
+            index = faiss.IndexFlatL2(dimension)
+        vectors = np.zeros((count, dimension), dtype=np.float32)
+        vectors[:, 0] = np.arange(1, count + 1, dtype=np.float32)
+        index.add(vectors)
+        faiss.write_index(
+            index,
+            str(level_path / f"index_{model_suffix}.faiss"),
+        )
+        documents_file = f"documents_{model_suffix}.json"
+
+        def documents(
+            count=count,
+            level=level,
+        ):
+            for index in range(count):
+                content = f"{level}-document-{index}"
+                yield {
+                    "page_content": content,
+                    "metadata": {
+                        "chunk_id": index,
+                        "chunk_type": "function",
+                        "name": f"document_{index}",
+                        "file": f"source_{index}.py",
+                        "start_line": index,
+                        "end_line": index,
+                        "node_id": f"source_{index}.py::document_{index}",
+                        "level": level,
+                        "content_hash": hashlib.md5(  # noqa: S324
+                            content.encode("utf-8"),
+                            usedforsecurity=False,
+                        ).hexdigest(),
+                    },
+                }
+
+        (level_path / documents_file).write_bytes(
+            b"".join(canonical_json_array_chunks(documents()))
+        )
+        level_artifacts[level] = vector_level_artifact_records(
+            level_path,
+            model_suffix,
+            documents_file=documents_file,
+        )
+
     (root / f"config_{model_suffix}.json").write_text(
-        '{"level_artifacts": {}}',
+        json.dumps(
+            {
+                "artifact": artifact_metadata,
+                "dimension": dimension,
+                "embedding_model": artifact_metadata["embedding_model"],
+                "embedding_provider": artifact_metadata["embedding_provider"],
+                "embedding_revision": embedding_revision,
+                "index_metric": index_metric,
+                "index_type": "flat",
+                "l0_documents": l0_count,
+                "l2_documents": l2_count,
+                "level_artifacts": level_artifacts,
+                "persistence_schema": VECTOR_PERSISTENCE_SCHEMA,
+                "row_mapping": VECTOR_ROW_MAPPING_CONTRACT,
+            }
+        ),
         encoding="utf-8",
     )
-    level = root / "l2"
-    level.mkdir()
-    (level / f"config_{model_suffix}.json").write_text("{}", encoding="utf-8")
-    (level / f"index_{model_suffix}.faiss").write_bytes(b"new-vector")
-    (level / f"documents_{model_suffix}.pkl").write_bytes(b"new-documents")
 
 
 def _tree_file_bytes(root: Path) -> dict[str, bytes]:
@@ -445,7 +564,13 @@ class TestVectorIndexBuilder:
 
         def build_vector(**kwargs):
             build_path = Path(kwargs["index_path"])
-            _write_mock_vector_generation(build_path, "test-model")
+            _write_mock_vector_generation(
+                build_path,
+                "test-model",
+                artifact_metadata=kwargs["artifact_metadata"],
+                l0_count=2,
+                l2_count=3,
+            )
             return mock_vs
 
         mock_build_fn.side_effect = build_vector
@@ -563,6 +688,174 @@ class TestVectorIndexBuilder:
                 output_dir=str(tmp_path / "vector"),
             )
 
+    @patch("codenib.index.embedding.builders.build_hierarchical_vector_store")
+    def test_build_rejects_unreceipted_schema_8_generation(
+        self,
+        mock_build_fn,
+        tmp_path,
+    ):
+        mock_vs = MagicMock(
+            l0_documents=[],
+            l2_documents=[SimpleNamespace(metadata={"file": "source_0.py"})],
+        )
+
+        def build_vector(**kwargs):
+            build_path = Path(kwargs["index_path"])
+            _write_mock_vector_generation(build_path, "test-model")
+            level_artifacts = {
+                "l2": vector_level_artifact_records(
+                    build_path / "l2",
+                    "test-model",
+                    documents_file="documents_test-model.pkl",
+                )
+            }
+            (build_path / "config_test-model.json").write_text(
+                json.dumps(
+                    {
+                        "artifact": kwargs["artifact_metadata"],
+                        "l0_documents": 0,
+                        "l2_documents": 1,
+                        "level_artifacts": level_artifacts,
+                        "persistence_schema": VECTOR_PERSISTENCE_SCHEMA,
+                        "row_mapping": VECTOR_ROW_MAPPING_CONTRACT,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return mock_vs
+
+        mock_build_fn.side_effect = build_vector
+        output_path = tmp_path / "vector"
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+
+        with pytest.raises(ValueError, match="invalid l2 documents"):
+            builder.build(
+                scope="current_repo",
+                repo_path="/fake/repo",
+                output_dir=str(output_path),
+            )
+
+        assert not output_path.exists()
+
+    @pytest.mark.parametrize("mutation", ["corrupt", "wrong-count"])
+    @patch("codenib.index.embedding.builders.build_hierarchical_vector_store")
+    def test_build_rejects_invalid_persisted_faiss_receipt(
+        self,
+        mock_build_fn,
+        tmp_path,
+        mutation,
+    ):
+        mock_vs = MagicMock(
+            l0_documents=[],
+            l2_documents=[SimpleNamespace(metadata={"file": "source_0.py"})],
+        )
+
+        def build_vector(**kwargs):
+            build_path = Path(kwargs["index_path"])
+            _write_mock_vector_generation(
+                build_path,
+                "test-model",
+                artifact_metadata=kwargs["artifact_metadata"],
+            )
+            index_path = build_path / "l2/index_test-model.faiss"
+            if mutation == "corrupt":
+                index_path.write_bytes(b"not-a-faiss-index")
+            else:
+                index = faiss.IndexFlatIP(384)
+                index.add(np.zeros((2, 384), dtype=np.float32))
+                faiss.write_index(index, str(index_path))
+            config_path = build_path / "config_test-model.json"
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config["level_artifacts"]["l2"] = vector_level_artifact_records(
+                build_path / "l2",
+                "test-model",
+                documents_file="documents_test-model.json",
+            )
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            return mock_vs
+
+        mock_build_fn.side_effect = build_vector
+        output_path = tmp_path / "vector"
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+        expected_error = RuntimeError if mutation == "corrupt" else ValueError
+
+        with pytest.raises(expected_error):
+            builder.build(
+                scope="current_repo",
+                repo_path="/fake/repo",
+                output_dir=str(output_path),
+            )
+
+        assert not output_path.exists()
+
+    @pytest.mark.parametrize("mutation", ["root", "level", "metadata"])
+    @patch("codenib.index.embedding.builders.build_hierarchical_vector_store")
+    def test_build_rejects_incomplete_schema_8_structural_contract(
+        self,
+        mock_build_fn,
+        tmp_path,
+        mutation,
+    ):
+        mock_vs = MagicMock(
+            l0_documents=[],
+            l2_documents=[SimpleNamespace(metadata={"file": "source_0.py"})],
+        )
+
+        def build_vector(**kwargs):
+            build_path = Path(kwargs["index_path"])
+            _write_mock_vector_generation(
+                build_path,
+                "test-model",
+                artifact_metadata=kwargs["artifact_metadata"],
+            )
+            config_path = build_path / "config_test-model.json"
+            if mutation == "root":
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                config.pop("embedding_model")
+                config_path.write_text(json.dumps(config), encoding="utf-8")
+            elif mutation == "level":
+                (build_path / "l2/config_test-model.json").write_text(
+                    "{}",
+                    encoding="utf-8",
+                )
+            else:
+                documents_path = build_path / "l2/documents_test-model.json"
+                documents = json.loads(documents_path.read_text(encoding="utf-8"))
+                documents[0]["metadata"].pop("content_hash")
+                documents_path.write_bytes(
+                    b"".join(canonical_json_array_chunks(documents))
+                )
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                config["level_artifacts"]["l2"] = vector_level_artifact_records(
+                    build_path / "l2",
+                    "test-model",
+                    documents_file="documents_test-model.json",
+                )
+                config_path.write_text(json.dumps(config), encoding="utf-8")
+            return mock_vs
+
+        mock_build_fn.side_effect = build_vector
+        output_path = tmp_path / "vector"
+        builder = VectorIndexBuilder(
+            embedding_model="test-model",
+            embedding_dimension=384,
+        )
+
+        with pytest.raises(ValueError):
+            builder.build(
+                scope="current_repo",
+                repo_path="/fake/repo",
+                output_dir=str(output_path),
+            )
+
+        assert not output_path.exists()
+
     def test_build_publishes_one_complete_generation_without_stale_state(
         self,
         monkeypatch,
@@ -601,7 +894,11 @@ class TestVectorIndexBuilder:
             calls.append(kwargs)
             build_path = Path(kwargs["index_path"])
             assert (build_path / VECTOR_VIEW_UPDATE_MARKER).is_file()
-            _write_mock_vector_generation(build_path, "test-model")
+            _write_mock_vector_generation(
+                build_path,
+                "test-model",
+                artifact_metadata=kwargs["artifact_metadata"],
+            )
             return vector_store
 
         monkeypatch.setattr(
@@ -629,7 +926,7 @@ class TestVectorIndexBuilder:
             "embeddings_cache.pkl",
             "incremental_state.json",
             "l2/config_test-model.json",
-            "l2/documents_test-model.pkl",
+            "l2/documents_test-model.json",
             "l2/index_test-model.faiss",
         }
         assert files["config_test-model.json"] != b"old-config"
@@ -770,7 +1067,11 @@ class TestVectorIndexBuilder:
             raise exception_type(f"interrupt during {phase}")
 
         def build_vector(**kwargs):
-            _write_mock_vector_generation(Path(kwargs["index_path"]), "test-model")
+            _write_mock_vector_generation(
+                Path(kwargs["index_path"]),
+                "test-model",
+                artifact_metadata=kwargs["artifact_metadata"],
+            )
             if phase == "vector_save":
                 interrupt()
             return vector_store
@@ -1300,7 +1601,7 @@ class TestVectorIndexBuilder:
 
         identity = builder.artifact_identity()
         assert identity == {
-            "builder_schema": 7,
+            "builder_schema": 8,
             "embedding_model": "test-model",
             "embedding_provider": "huggingface",
             "embedding_dimension": 384,
@@ -1386,6 +1687,8 @@ class TestVectorIndexBuilder:
             _write_mock_vector_generation(
                 build_path,
                 "text-embedding-3-small",
+                artifact_metadata=kwargs["artifact_metadata"],
+                dimension=1536,
             )
             return mock_vs
 

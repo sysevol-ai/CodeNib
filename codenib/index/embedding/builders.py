@@ -384,6 +384,47 @@ def _require_selected_documents(
         )
 
 
+def _schema_8_repository_chunk(chunk: Any, repo_root: Path) -> Any:
+    """Bind one producer document to a portable repository-relative source."""
+
+    raw_file = getattr(chunk, "file", None)
+    if (
+        not isinstance(raw_file, str)
+        or not raw_file
+        or (os.name != "nt" and "\\" in raw_file)
+    ):
+        raise ValueError("schema-8 vector chunk has an invalid source path")
+    candidate = Path(raw_file)
+    if not candidate.is_absolute():
+        candidate = repo_root / candidate
+    try:
+        if any(part in {"", ".", ".."} for part in candidate.parts):
+            raise ValueError("non-canonical lexical path")
+        lexical = Path(os.path.abspath(os.fspath(candidate)))
+        relative = lexical.relative_to(repo_root)
+        physical = lexical.resolve(strict=True)
+        metadata = lexical.lstat()
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            "schema-8 vector chunk source is outside its repository"
+        ) from exc
+    if physical != lexical or not stat.S_ISREG(metadata.st_mode):
+        raise ValueError(
+            "schema-8 vector chunk source must be a regular lexical repository file"
+        )
+    relative_text = relative.as_posix()
+    if (
+        not relative.parts
+        or any(part in {"", ".", ".."} for part in relative.parts)
+        or relative_text.startswith(("/", "~"))
+    ):
+        raise ValueError("schema-8 vector chunk has an invalid source path")
+    replace = getattr(chunk, "_replace", None)
+    if not callable(replace):
+        raise TypeError("schema-8 vector chunk has an invalid type")
+    return replace(file=relative_text)
+
+
 def build_hierarchical_vector_store(
     *,
     repo_path: str,
@@ -496,6 +537,12 @@ def build_hierarchical_vector_store(
         )
     languages = languages or ["python"]
     build_levels = normalized_levels
+    repository_root = Path(repo_path).resolve()
+    schema_8_documents = (
+        isinstance(artifact_metadata, dict)
+        and type(artifact_metadata.get("builder_schema")) is int
+        and artifact_metadata.get("builder_schema") == 8
+    )
     repo_cfg = RepoChunkingConfig(
         languages=languages,
         source_selection=selected,
@@ -535,9 +582,14 @@ def build_hierarchical_vector_store(
             f"chunking_{level}",
             {"level": level, "language": languages[0]},
         ):
-            chunks_by_level[level] = chunker.chunk_repository(
+            chunks = chunker.chunk_repository(
                 repo_path=repo_path,
                 strict=strict_chunking,
+            )
+            chunks_by_level[level] = (
+                [_schema_8_repository_chunk(chunk, repository_root) for chunk in chunks]
+                if schema_8_documents
+                else chunks
             )
         _require_selected_paths(
             selected,

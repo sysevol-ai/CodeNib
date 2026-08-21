@@ -2,12 +2,14 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 import codenib._atomic_directory as atomic_directory
+from codenib.code_chunking.base import CodeChunk
 from codenib.index.embedding import builders
 from codenib.index.embedding.artifact_integrity import VECTOR_VIEW_UPDATE_MARKER
 from codenib.native_index_authorization import (
@@ -48,6 +50,67 @@ def _record_fake_documents(store, chunks, level):
         else:
             source_path = getattr(chunk, "file", None)
         documents.append(SimpleNamespace(metadata={"file": source_path}))
+
+
+def test_schema_8_chunk_source_is_repository_relative_posix(tmp_path):
+    repository = tmp_path / "repository"
+    source = repository / "pkg" / "source.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    chunk = CodeChunk(
+        content="VALUE = 1",
+        start_line=0,
+        end_line=0,
+        chunk_type="module",
+        name="source",
+        file=str(source),
+        node_id="pkg/source.py",
+    )
+
+    normalized = builders._schema_8_repository_chunk(
+        chunk,
+        repository.resolve(strict=True),
+    )
+
+    assert normalized.file == "pkg/source.py"
+    if os.name != "nt":
+        with pytest.raises(ValueError, match="invalid source path"):
+            builders._schema_8_repository_chunk(
+                chunk._replace(file=r"pkg\source.py"),
+                repository.resolve(strict=True),
+            )
+
+
+@pytest.mark.parametrize("target_location", ["inside", "outside"])
+def test_schema_8_chunk_source_rejects_symlink_alias(
+    tmp_path,
+    target_location,
+):
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    target = (
+        repository / "target.py"
+        if target_location == "inside"
+        else tmp_path / "outside.py"
+    )
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+    alias = repository / "alias.py"
+    alias.symlink_to(target)
+    chunk = CodeChunk(
+        content="VALUE = 1",
+        start_line=0,
+        end_line=0,
+        chunk_type="module",
+        name="alias",
+        file=str(alias),
+        node_id="alias.py",
+    )
+
+    with pytest.raises(ValueError, match="regular lexical repository file"):
+        builders._schema_8_repository_chunk(
+            chunk,
+            repository.resolve(strict=True),
+        )
 
 
 def test_cached_builder_closes_store_when_load_fails(monkeypatch, tmp_path):
