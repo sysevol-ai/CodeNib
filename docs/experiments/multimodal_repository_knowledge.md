@@ -119,6 +119,13 @@ bundle = build_multimodal_repository_knowledge(repo)
 view = bundle["knowledge_view"]
 ```
 
+The same deterministic bundle can be written from the command line:
+
+```text
+python scripts/build_multimodal_knowledge.py /path/to/repository \
+  --output /tmp/multimodal-knowledge.json
+```
+
 ```python
 from codenib.wiki import OpenAICompatibleVisualFactExtractor
 
