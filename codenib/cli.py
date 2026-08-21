@@ -10,6 +10,7 @@ import argparse
 import importlib.util
 import json
 import os
+import posixpath
 import re
 import shlex
 import shutil
@@ -19,7 +20,7 @@ import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable, Sequence
 
 from ._version import package_version
@@ -47,7 +48,10 @@ _RETAINED_REPOSITORY_RE = re.compile(
     re.ASCII,
 )
 _SIGNED_INT64_MAX = 9_223_372_036_854_775_807
-_MAX_PROC_MOUNTINFO_BYTES = 16 * 1024 * 1024
+_MAX_RETAINED_MOUNTINFO_ENTRIES = 65_536
+_MAX_RETAINED_MOUNTINFO_LINE_BYTES = 64 * 1024
+_MAX_RETAINED_ALIAS_COMPONENTS = 256
+_MAX_RETAINED_ALIAS_PATH_BYTES = 4_096
 
 
 class CLIError(RuntimeError):
@@ -1001,11 +1005,408 @@ def _retained_materialization_paths(args: argparse.Namespace) -> tuple[Path, ...
     return catalog_path, cas_root, workspace_root, output
 
 
+def _retained_open_directory_identity(authority: object) -> tuple[int, ...]:
+    """Read one stable directory object identity from its opened authority."""
+
+    from ._atomic_directory import publication_parent_identity
+
+    try:
+        resource = authority.resource  # type: ignore[attr-defined]
+        observed = publication_parent_identity(resource)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise CLIError("directory authority identity could not be verified") from exc
+    if (
+        type(observed) is not tuple
+        or len(observed) < 2
+        or any(type(value) is not int for value in observed)
+        or observed[0] < 1
+        or observed[1] < 1
+    ):
+        raise CLIError("directory authority has no reliable filesystem identity")
+    return observed
+
+
 @dataclass(frozen=True, slots=True)
+class _RetainedDirectoryBinding:
+    label: str
+    path: Path
+    identity: tuple[int, ...]
+    owner: object = field(repr=False, compare=False)
+
+    @property
+    def authority(self) -> object:
+        authority = self.owner.authority  # type: ignore[attr-defined]
+        if authority is None:
+            raise CLIError(f"{self.label} directory authority is closed")
+        return authority
+
+    def verify(self) -> tuple[int, ...]:
+        authority = self.authority
+        try:
+            authority.verify_path_binding()  # type: ignore[attr-defined]
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise CLIError(f"{self.label} directory binding changed") from exc
+        observed = _retained_open_directory_identity(authority)
+        if observed != self.identity:
+            raise CLIError(f"{self.label} directory authority identity changed")
+        return observed
+
+
+def _retained_descendant_paths(ancestor: Path, descendant: Path) -> tuple[Path, ...]:
+    try:
+        relative = descendant.relative_to(ancestor)
+    except ValueError as exc:
+        raise CLIError("physical storage ancestry changed") from exc
+    current = ancestor
+    paths: list[Path] = []
+    for component in relative.parts:
+        current = current / component
+        paths.append(current)
+    return tuple(paths)
+
+
+@dataclass(frozen=True, slots=True)
+class _RetainedLinuxMountMapping:
+    mount_id: int
+    device: str
+    root: PurePosixPath
+    mount_point: Path
+
+
+@dataclass(frozen=True, slots=True)
+class _RetainedLinuxPhysicalPath:
+    device: str
+    path: PurePosixPath
+
+
+def _retained_physical_paths_overlap(
+    first: _RetainedLinuxPhysicalPath,
+    second: _RetainedLinuxPhysicalPath,
+) -> bool:
+    if first.device != second.device:
+        return False
+    return (
+        first.path == second.path
+        or first.path in second.path.parents
+        or second.path in first.path.parents
+    )
+
+
+def _retained_linux_mount_mappings() -> tuple[_RetainedLinuxMountMapping, ...]:
+    """Snapshot bounded Linux mount roots needed for physical path mapping."""
+
+    if not sys.platform.startswith("linux"):
+        return ()
+    from ._atomic_directory import _mountinfo_path
+
+    mappings: list[_RetainedLinuxMountMapping] = []
+    try:
+        with open("/proc/self/mountinfo", "rb") as mountinfo:
+            for index, line in enumerate(mountinfo):
+                if index >= _MAX_RETAINED_MOUNTINFO_ENTRIES:
+                    raise CLIError("Linux mount table exceeds its safe entry limit")
+                if len(line) > _MAX_RETAINED_MOUNTINFO_LINE_BYTES:
+                    raise CLIError("Linux mount table contains an oversized entry")
+                fields = line.split()
+                try:
+                    separator = fields.index(b"-")
+                except ValueError as exc:
+                    raise CLIError(
+                        "Linux mount table contains a malformed entry"
+                    ) from exc
+                if separator < 6 or len(fields) < separator + 4:
+                    raise CLIError("Linux mount table contains a malformed entry")
+                try:
+                    mount_id = int(fields[0])
+                except ValueError as exc:
+                    raise CLIError(
+                        "Linux mount table contains an invalid mount ID"
+                    ) from exc
+                device = os.fsdecode(fields[2])
+                device_parts = device.split(":", 1)
+                if (
+                    mount_id < 1
+                    or len(device_parts) != 2
+                    or any(not part.isdigit() for part in device_parts)
+                ):
+                    raise CLIError("Linux mount table contains an invalid identity")
+                root_text = posixpath.normpath(_mountinfo_path(os.fsdecode(fields[3])))
+                mount_text = os.path.normpath(_mountinfo_path(os.fsdecode(fields[4])))
+                root = PurePosixPath(root_text)
+                mount_point = Path(mount_text)
+                # nsfs and similar pseudo mounts expose opaque roots such as
+                # ``net:[id]``. They cannot contain a regular SQLite catalog
+                # and have no filesystem-relative suffix to map.
+                if not root.is_absolute():
+                    continue
+                if not mount_point.is_absolute():
+                    raise CLIError("Linux mount table contains a relative path")
+                mappings.append(
+                    _RetainedLinuxMountMapping(
+                        mount_id=mount_id,
+                        device=device,
+                        root=root,
+                        mount_point=mount_point,
+                    )
+                )
+    except CLIError:
+        raise
+    except (OSError, UnicodeError) as exc:
+        raise CLIError("Linux mount table could not be inspected safely") from exc
+    if not mappings:
+        raise CLIError("Linux mount table is empty")
+    return tuple(mappings)
+
+
+def _retained_linux_physical_path(
+    path: Path,
+    mappings: tuple[_RetainedLinuxMountMapping, ...],
+) -> _RetainedLinuxPhysicalPath | None:
+    candidates = tuple(
+        mapping
+        for mapping in mappings
+        if path == mapping.mount_point or mapping.mount_point in path.parents
+    )
+    if not candidates:
+        return None
+    deepest = max(len(mapping.mount_point.parts) for mapping in candidates)
+    selected_candidates = tuple(
+        mapping for mapping in candidates if len(mapping.mount_point.parts) == deepest
+    )
+    if len(selected_candidates) != 1:
+        raise CLIError("Linux mount table contains an ambiguous stacked mapping")
+    selected = selected_candidates[0]
+    try:
+        relative = path.relative_to(selected.mount_point)
+    except ValueError as exc:  # pragma: no cover - candidates prove containment
+        raise CLIError("Linux mount mapping changed") from exc
+    internal = PurePosixPath(
+        posixpath.normpath(
+            posixpath.join(selected.root.as_posix(), relative.as_posix())
+        )
+    )
+    if not internal.is_absolute():  # pragma: no cover - normalized absolute root
+        raise CLIError("Linux mount mapping produced a relative physical path")
+    return _RetainedLinuxPhysicalPath(selected.device, internal)
+
+
+def _retained_alias_file_identity(path: Path) -> tuple[int, int] | None:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError("mapped catalog alias could not be inspected safely") from exc
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or not metadata.st_dev
+        or not metadata.st_ino
+    ):
+        raise CLIError("mapped catalog alias is not one real regular file")
+    return int(metadata.st_dev), int(metadata.st_ino)
+
+
+def _require_catalog_outside_retained_roots(
+    catalog_path: Path,
+    catalog_identity: tuple[int, int, int],
+    bindings: tuple[_RetainedDirectoryBinding, ...],
+    mappings: tuple[_RetainedLinuxMountMapping, ...],
+) -> None:
+    """Deny one exact catalog suffix reachable through a protected mount."""
+
+    catalog_physical = _retained_linux_physical_path(catalog_path, mappings)
+    if catalog_physical is None:
+        return
+    expected_device = f"{os.major(catalog_identity[0])}:{os.minor(catalog_identity[0])}"
+    if catalog_physical.device != expected_device:
+        raise CLIError("catalog mount mapping differs from its file authority")
+    for binding in bindings:
+        root_physical = _retained_linux_physical_path(binding.path, mappings)
+        if root_physical is None or root_physical.device != catalog_physical.device:
+            continue
+        try:
+            suffix = catalog_physical.path.relative_to(root_physical.path)
+        except ValueError:
+            continue
+        if (
+            not suffix.parts
+            or len(suffix.parts) > _MAX_RETAINED_ALIAS_COMPONENTS
+            or len(os.fsencode(suffix.as_posix())) > _MAX_RETAINED_ALIAS_PATH_BYTES
+            or any(component in {"", ".", ".."} for component in suffix.parts)
+        ):
+            raise CLIError("catalog mount alias has an unsafe relative path")
+        candidate = binding.path.joinpath(*suffix.parts)
+        candidate_physical = _retained_linux_physical_path(candidate, mappings)
+        if candidate_physical != catalog_physical:
+            continue
+        candidate_identity = _retained_alias_file_identity(candidate)
+        if candidate_identity is None:
+            raise CLIError("mapped catalog alias disappeared during validation")
+        if candidate_identity != catalog_identity[:2]:
+            raise CLIError("mapped catalog alias identity changed during validation")
+        raise CLIError(f"catalog is physically reachable below the {binding.label}")
+
+
+def _require_retained_mount_topology(
+    catalog_path: Path,
+    catalog_identity: tuple[int, int, int],
+    cas: _RetainedDirectoryBinding,
+    workspace: _RetainedDirectoryBinding,
+    output_parent: _RetainedDirectoryBinding,
+) -> None:
+    """Reject mount crossings that can re-enter another protected tree."""
+
+    from ._atomic_directory import _path_is_mount_point
+
+    mappings = _retained_linux_mount_mappings()
+    mount_points = frozenset(
+        os.path.normpath(os.fspath(mapping.mount_point)) for mapping in mappings
+    )
+    if os.path.normpath(os.path.realpath(catalog_path)) in mount_points:
+        raise CLIError("catalog must not be a file mount point")
+    _require_catalog_outside_retained_roots(
+        catalog_path,
+        catalog_identity,
+        (cas, workspace, output_parent),
+        mappings,
+    )
+    for candidate in _retained_descendant_paths(
+        workspace.path,
+        output_parent.path,
+    ):
+        if _path_is_mount_point(candidate, mount_points=mount_points):
+            raise CLIError("output parent must not cross a mount point")
+
+    cas_physical = _retained_linux_physical_path(cas.path, mappings)
+    workspace_physical = _retained_linux_physical_path(workspace.path, mappings)
+    if (
+        cas_physical is not None
+        and workspace_physical is not None
+        and _retained_physical_paths_overlap(cas_physical, workspace_physical)
+    ):
+        raise CLIError("retained roots must not traverse a same-device mount alias")
+
+
+@dataclass(slots=True)
 class _RetainedMaterializationTopology:
     catalog_path: Path
     catalog_identity: tuple[int, int, int]
     cas_root: Path
+    workspace_root: Path
+    output: Path
+    cas_binding: _RetainedDirectoryBinding
+    workspace_binding: _RetainedDirectoryBinding
+    output_parent_binding: _RetainedDirectoryBinding
+    _closed: bool = field(default=False, init=False, repr=False)
+
+    @property
+    def closed(self) -> bool:
+        if not self._closed and all(
+            binding.owner.closed  # type: ignore[attr-defined]
+            for binding in self._bindings
+        ):
+            self._closed = True
+        return self._closed
+
+    @property
+    def _bindings(self) -> tuple[_RetainedDirectoryBinding, ...]:
+        return (
+            self.cas_binding,
+            self.workspace_binding,
+            self.output_parent_binding,
+        )
+
+    def verify_bindings(self) -> None:
+        if self.closed:
+            raise CLIError("retained materialization topology authority is closed")
+        cas_identity = self.cas_binding.verify()
+        workspace_identity = self.workspace_binding.verify()
+        output_parent_identity = self.output_parent_binding.verify()
+        if cas_identity == workspace_identity:
+            raise CLIError("CAS root and workspace root are the same physical object")
+        if cas_identity == output_parent_identity:
+            raise CLIError("output parent physically aliases the CAS root")
+        if (
+            self.output_parent_binding.path != self.workspace_binding.path
+            and workspace_identity == output_parent_identity
+        ):
+            raise CLIError("output parent physically aliases the workspace root")
+        _require_retained_mount_topology(
+            self.catalog_path,
+            self.catalog_identity,
+            self.cas_binding,
+            self.workspace_binding,
+            self.output_parent_binding,
+        )
+
+    def verify(self) -> None:
+        self.verify_bindings()
+        try:
+            output_metadata = self.output_parent_binding.authority.child_metadata(  # type: ignore[attr-defined]
+                self.output.name,
+                path=self.output,
+                label="output",
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise CLIError("output cannot be inspected through its authority") from exc
+        if output_metadata is not None:
+            raise CLIError("output must be missing")
+
+    def close(self) -> None:
+        from ._atomic_directory import _annotate_secondary_error
+
+        if self.closed:
+            return
+        primary_error: BaseException | None = None
+        for binding in reversed(self._bindings):
+            try:
+                binding.owner.close()  # type: ignore[attr-defined]
+            except BaseException as close_error:  # noqa: B036 - visit every owner
+                if primary_error is None:
+                    primary_error = close_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "retained directory authority cleanup also failed",
+                        close_error,
+                    )
+        self._closed = all(
+            binding.owner.closed  # type: ignore[attr-defined]
+            for binding in self._bindings
+        )
+        if primary_error is not None:
+            raise primary_error
+
+
+@dataclass(frozen=True, slots=True)
+class _RetainedTopologyWorkspaceProvider:
+    """Recheck retained path authorities before provider provisioning."""
+
+    delegate: object
+    topology: _RetainedMaterializationTopology
+
+    def require_support(self) -> None:
+        self.topology.verify()
+        self.delegate.require_support()  # type: ignore[attr-defined]
+        self.topology.verify()
+
+    def run_workspace(
+        self,
+        request: object,
+        *,
+        receipt_owner: object,
+        operation: object,
+    ) -> object:
+        self.topology.verify()
+        result = self.delegate.run_workspace(  # type: ignore[attr-defined]
+            request,
+            receipt_owner=receipt_owner,
+            operation=operation,
+            _expected_parent_identity=self.topology.output_parent_binding.identity,
+        )
+        self.topology.verify_bindings()
+        return result
 
 
 def _resolved_retained_materialization_path(
@@ -1073,45 +1474,6 @@ def _require_distinct_directory_ancestry(
                 )
 
 
-def _decode_mountinfo_path(value: bytes) -> Path:
-    decoded = value
-    for escaped, replacement in (
-        (b"\\040", b" "),
-        (b"\\011", b"\t"),
-        (b"\\012", b"\n"),
-        (b"\\134", b"\\"),
-    ):
-        decoded = decoded.replace(escaped, replacement)
-    path = Path(os.fsdecode(decoded))
-    if not path.is_absolute():
-        raise CLIError("Linux mount information contains a relative mount point")
-    return path
-
-
-def _retained_linux_mount_points() -> frozenset[Path]:
-    mountinfo = Path("/proc/self/mountinfo")
-    try:
-        with mountinfo.open("rb") as stream:
-            payload = stream.read(_MAX_PROC_MOUNTINFO_BYTES + 1)
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise CLIError("Linux mount information could not be inspected safely") from exc
-    if len(payload) > _MAX_PROC_MOUNTINFO_BYTES:
-        raise CLIError("Linux mount information exceeds the safe size limit")
-    mount_points: set[Path] = set()
-    for line in payload.splitlines():
-        fields = line.split(b" ")
-        try:
-            separator = fields.index(b"-")
-        except ValueError as exc:
-            raise CLIError("Linux mount information is malformed") from exc
-        if separator < 6 or len(fields) < separator + 4:
-            raise CLIError("Linux mount information is malformed")
-        mount_points.add(_decode_mountinfo_path(fields[4]))
-    if not mount_points:
-        raise CLIError("Linux mount information is empty")
-    return frozenset(mount_points)
-
-
 def _retained_catalog_file_identity(path: Path) -> tuple[int, int, int]:
     try:
         metadata = path.lstat()
@@ -1146,7 +1508,14 @@ def _require_retained_materialization_topology(
     workspace_root: Path,
     output: Path,
 ) -> _RetainedMaterializationTopology:
-    """Deny stable physical aliases before opening the retained authorities."""
+    """Open and retain physical authorities for every mutable storage root."""
+
+    from ._atomic_directory import (
+        _annotate_secondary_error,
+        _attach_publication_cleanup_owner,
+        _open_publication_authority,
+        _PublicationAuthorityOwner,
+    )
 
     try:
         output.lstat()
@@ -1173,33 +1542,24 @@ def _require_retained_materialization_topology(
         strict=True,
     )
     catalog_identity = _retained_catalog_file_identity(resolved_catalog)
-    mount_points = _retained_linux_mount_points()
-    if resolved_catalog in mount_points:
-        raise CLIError("catalog must not be a mounted file")
-    catalog_ancestry = _retained_directory_ancestry(
-        resolved_catalog.parent,
-        label="catalog parent",
-    )
-    cas_ancestry = _retained_directory_ancestry(
-        resolved_cas,
-        label="CAS root",
-    )
-    workspace_ancestry = _retained_directory_ancestry(
-        resolved_workspace,
-        label="workspace root",
-    )
-    workspace_identity = workspace_ancestry[0][1]
-    workspace_device = workspace_identity[0]
+    try:
+        workspace_metadata = resolved_workspace.lstat()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError("workspace root cannot be inspected safely") from exc
+    if (
+        not stat.S_ISDIR(workspace_metadata.st_mode)
+        or stat.S_ISLNK(workspace_metadata.st_mode)
+        or not workspace_metadata.st_dev
+    ):
+        raise CLIError("workspace root must resolve to one real directory")
+    workspace_device = int(workspace_metadata.st_dev)
     try:
         relative_parent = output.parent.relative_to(workspace_root)
     except ValueError as exc:  # pragma: no cover - lexical preflight already binds it
         raise CLIError("output parent escaped the workspace root") from exc
     current_parent = workspace_root
-    output_ancestry: list[tuple[Path, tuple[int, int]]] = []
-    resolved_current_parent = resolved_workspace
     for component in relative_parent.parts:
         current_parent = current_parent / component
-        resolved_current_parent = resolved_current_parent / component
         try:
             metadata = current_parent.lstat()
         except FileNotFoundError as exc:
@@ -1210,16 +1570,6 @@ def _require_retained_materialization_topology(
             raise CLIError("output parent must contain only existing real directories")
         if metadata.st_dev != workspace_device:
             raise CLIError("output parent must remain on the workspace filesystem")
-        if not metadata.st_ino:
-            raise CLIError("output parent directory identity is invalid")
-        if resolved_current_parent in mount_points:
-            raise CLIError("output parent must not cross a nested mount point")
-        output_ancestry.append(
-            (
-                resolved_current_parent,
-                (int(metadata.st_dev), int(metadata.st_ino)),
-            )
-        )
     resolved_output_parent = _resolved_retained_materialization_path(
         current_parent,
         label="output parent",
@@ -1236,29 +1586,70 @@ def _require_retained_materialization_topology(
         (resolved_catalog, "catalog", resolved_cas, "CAS root"),
         (resolved_catalog, "catalog", resolved_workspace, "workspace root"),
         (resolved_cas, "CAS root", resolved_workspace, "workspace root"),
+        (resolved_cas, "CAS root", resolved_output_parent, "output parent"),
     ):
         if _paths_overlap(first, second):
             raise CLIError(
                 f"{first_label} must not physically overlap the {second_label}"
             )
-    for first, first_label, second, second_label in (
-        (catalog_ancestry, "catalog", cas_ancestry, "CAS root"),
-        (catalog_ancestry, "catalog", workspace_ancestry, "workspace root"),
-        (cas_ancestry, "CAS root", workspace_ancestry, "workspace root"),
-        (tuple(output_ancestry), "output parent", catalog_ancestry, "catalog"),
-        (tuple(output_ancestry), "output parent", cas_ancestry, "CAS root"),
-    ):
-        _require_distinct_directory_ancestry(
-            first,
-            first_label,
-            second,
-            second_label,
+
+    owners = tuple(_PublicationAuthorityOwner() for _index in range(3))
+
+    def open_binding(
+        path: Path,
+        label: str,
+        owner: object,
+    ) -> _RetainedDirectoryBinding:
+        authority = _open_publication_authority(
+            path,
+            parent_resource=None,
+            expected_parent_identity=None,
+            authority_owner=owner,  # type: ignore[arg-type]
         )
-    return _RetainedMaterializationTopology(
-        catalog_path=resolved_catalog,
-        catalog_identity=catalog_identity,
-        cas_root=resolved_cas,
-    )
+        return _RetainedDirectoryBinding(
+            label=label,
+            path=path,
+            identity=_retained_open_directory_identity(authority),
+            owner=owner,
+        )
+
+    try:
+        cas_binding = open_binding(resolved_cas, "CAS root", owners[0])
+        workspace_binding = open_binding(
+            resolved_workspace,
+            "workspace root",
+            owners[1],
+        )
+        output_parent_binding = open_binding(
+            resolved_output_parent,
+            "output parent",
+            owners[2],
+        )
+        topology = _RetainedMaterializationTopology(
+            catalog_path=resolved_catalog,
+            catalog_identity=catalog_identity,
+            cas_root=resolved_cas,
+            workspace_root=resolved_workspace,
+            output=resolved_output,
+            cas_binding=cas_binding,
+            workspace_binding=workspace_binding,
+            output_parent_binding=output_parent_binding,
+        )
+        topology.verify()
+        return topology
+    except BaseException as primary_error:  # noqa: B036 - close every authority
+        for owner in reversed(owners):
+            try:
+                owner.close()
+            except BaseException as close_error:  # noqa: B036 - preserve primary
+                _annotate_secondary_error(
+                    primary_error,
+                    "retained directory authority cleanup also failed",
+                    close_error,
+                )
+            finally:
+                _attach_publication_cleanup_owner(primary_error, owner)
+        raise
 
 
 def _warn_possible_retained_publication(output: Path) -> None:
@@ -1309,6 +1700,27 @@ class _RetainedMaterializationResourceOwner:
             return
         resource.close()  # type: ignore[attr-defined]
         self._resource = _RETAINED_RESOURCE_MISSING
+
+
+def _inherit_publication_cleanup_owners(
+    target: BaseException,
+    source: BaseException,
+) -> None:
+    """Preserve incomplete internal cleanup owners across a public wrapper."""
+
+    from ._atomic_directory import _attach_publication_cleanup_owner
+
+    try:
+        owners = BaseException.__getattribute__(
+            source,
+            "publication_cleanup_owners",
+        )
+    except AttributeError:
+        return
+    if type(owners) is not tuple:
+        return
+    for owner in owners:
+        _attach_publication_cleanup_owner(target, owner)
 
 
 def _compiler_cache_import_selection(
@@ -1413,22 +1825,72 @@ def _require_compiler_cache_import_topology(
 ) -> _CompilerCacheImportTopology:
     """Freeze existing inputs and deny physical storage/source aliases."""
 
-    materialization_topologies = tuple(
-        _require_retained_materialization_topology(
-            paths.catalog_path,
-            paths.cas_root,
-            paths.workspace_root,
-            destination,
+    from ._atomic_directory import _OrderedAction, _run_context_with_cleanup_actions
+
+    materialization_snapshots: list[
+        tuple[
+            Path,
+            tuple[int, int, int],
+            Path,
+            Path,
+            Path,
+            tuple[int, ...],
+            tuple[int, ...],
+            tuple[int, ...],
+        ]
+    ] = []
+    for destination in (
+        paths.bm25_destination,
+        paths.context_destination,
+        paths.suggested_materialization,
+    ):
+        topology_owner = _RetainedMaterializationResourceOwner()
+        cleanup_action = _OrderedAction(
+            label="cache import path authority cleanup also failed",
+            action=topology_owner.close,
+            complete=lambda owner=topology_owner: owner.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=topology_owner,
         )
-        for destination in (
-            paths.bm25_destination,
-            paths.context_destination,
-            paths.suggested_materialization,
-        )
-    )
-    first = materialization_topologies[0]
-    if any(candidate != first for candidate in materialization_topologies[1:]):
+
+        def acquire_topology(
+            selected_destination: Path = destination,
+        ) -> _RetainedMaterializationTopology:
+            return _require_retained_materialization_topology(
+                paths.catalog_path,
+                paths.cas_root,
+                paths.workspace_root,
+                selected_destination,
+            )
+
+        with _run_context_with_cleanup_actions((cleanup_action,)):
+            materialization_topology = topology_owner.acquire(acquire_topology)
+            materialization_topology.verify()
+            materialization_snapshots.append(
+                (
+                    materialization_topology.catalog_path,
+                    materialization_topology.catalog_identity,
+                    materialization_topology.cas_root,
+                    materialization_topology.workspace_root,
+                    materialization_topology.output.parent,
+                    materialization_topology.cas_binding.identity,
+                    materialization_topology.workspace_binding.identity,
+                    materialization_topology.output_parent_binding.identity,
+                )
+            )
+    first = materialization_snapshots[0]
+    if any(candidate != first for candidate in materialization_snapshots[1:]):
         raise CLIError("storage topology changed while allocating import outputs")
+    (
+        frozen_catalog_path,
+        frozen_catalog_identity,
+        frozen_cas_root,
+        _frozen_workspace_root,
+        _frozen_output_parent,
+        _frozen_cas_identity,
+        _frozen_workspace_identity,
+        _frozen_output_parent_identity,
+    ) = first
 
     resolved_repo = _resolved_retained_materialization_path(
         paths.repo_path,
@@ -1457,11 +1919,11 @@ def _require_compiler_cache_import_topology(
         strict=True,
     )
     catalog_ancestry = _retained_directory_ancestry(
-        first.catalog_path.parent,
+        frozen_catalog_path.parent,
         label="catalog parent",
     )
     cas_ancestry = _retained_directory_ancestry(
-        first.cas_root,
+        frozen_cas_root,
         label="CAS root",
     )
     workspace_ancestry = _retained_directory_ancestry(
@@ -1473,8 +1935,8 @@ def _require_compiler_cache_import_topology(
         (resolved_cache, "cache directory"),
     ):
         for storage, storage_label in (
-            (first.catalog_path, "catalog"),
-            (first.cas_root, "CAS root"),
+            (frozen_catalog_path, "catalog"),
+            (frozen_cas_root, "CAS root"),
             (resolved_workspace, "workspace root"),
         ):
             if _paths_overlap(source, storage):
@@ -1511,9 +1973,9 @@ def _require_compiler_cache_import_topology(
         )
     return _CompilerCacheImportTopology(
         cache_dir=resolved_cache,
-        catalog_path=first.catalog_path,
-        catalog_identity=first.catalog_identity,
-        cas_root=first.cas_root,
+        catalog_path=frozen_catalog_path,
+        catalog_identity=frozen_catalog_identity,
+        cas_root=frozen_cas_root,
     )
 
 
@@ -1558,25 +2020,10 @@ def _run_artifact_materialize(args: argparse.Namespace) -> int:
     catalog_path, cas_root, workspace_root, output = _retained_materialization_paths(
         args
     )
-    try:
-        provider = LocalWorkspaceProvider(workspace_root)
-        # Fail before opening the catalog or CAS.  The strict publication frame
-        # repeats this non-mutating probe immediately before provisioning.
-        provider.require_support()
-        topology = _require_retained_materialization_topology(
-            catalog_path,
-            cas_root,
-            workspace_root,
-            output,
-        )
-    except CLIError:
-        raise
-    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
-        raise CLIError(str(exc)) from exc
-
     summary: tuple[str, str, str, str, tuple[str, ...], Path] | None = None
     try:
         owner = _new_retained_output_receipt_owner()
+        topology_owner = _RetainedMaterializationResourceOwner()
         object_store_owner = _RetainedMaterializationResourceOwner()
         catalog_owner = _RetainedMaterializationResourceOwner()
         cleanup_actions = (
@@ -1601,8 +2048,30 @@ def _run_artifact_materialize(args: argparse.Namespace) -> int:
                 retry_incomplete="cancellation",
                 incomplete_owner=owner,
             ),
+            _OrderedAction(
+                label="retained path authority cleanup also failed",
+                action=topology_owner.close,
+                complete=lambda: topology_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=topology_owner,
+            ),
         )
         with _run_context_with_cleanup_actions(cleanup_actions):
+            base_provider = LocalWorkspaceProvider(workspace_root)
+            # Preserve provider/platform failure precedence before any storage
+            # authority is opened.  The retained wrapper then repeats the
+            # physical checks at the strict provisioning boundary.
+            base_provider.require_support()
+            topology = topology_owner.acquire(
+                lambda: _require_retained_materialization_topology(
+                    catalog_path,
+                    cas_root,
+                    workspace_root,
+                    output,
+                )
+            )
+            provider = _RetainedTopologyWorkspaceProvider(base_provider, topology)
+            topology.verify()
             object_store = object_store_owner.acquire(
                 lambda: LocalCAS(topology.cas_root, require_preprovisioned=True)
             )
@@ -1709,7 +2178,9 @@ def _run_artifact_materialize(args: argparse.Namespace) -> int:
         if isinstance(
             primary_error, (OSError, RuntimeError, ValueError, sqlite3.Error)
         ):
-            raise CLIError(str(primary_error)) from primary_error
+            wrapped = CLIError(str(primary_error))
+            _inherit_publication_cleanup_owners(wrapped, primary_error)
+            raise wrapped from primary_error
         raise
 
 
@@ -1741,7 +2212,9 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
     except CLIError:
         raise
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
-        raise CLIError(str(exc)) from exc
+        wrapped = CLIError(str(exc))
+        _inherit_publication_cleanup_owners(wrapped, exc)
+        raise wrapped from exc
 
     source_exclusions = tuple(
         dict.fromkeys(
@@ -1917,7 +2390,9 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
         if isinstance(
             primary_error, (OSError, RuntimeError, ValueError, sqlite3.Error)
         ):
-            raise CLIError(str(primary_error)) from primary_error
+            wrapped = CLIError(str(primary_error))
+            _inherit_publication_cleanup_owners(wrapped, primary_error)
+            raise wrapped from primary_error
         raise
 
 

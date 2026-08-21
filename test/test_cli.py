@@ -6,9 +6,13 @@ from __future__ import annotations
 
 import dis
 import errno
+import io
 import json
+import os
+import shutil
+import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from subprocess import CompletedProcess
 from types import SimpleNamespace
 
@@ -320,6 +324,76 @@ def _cache_import_cli_test_args(tmp_path: Path) -> SimpleNamespace:
         ref="main",
         expected_generation=0,
     )
+
+
+def test_artifact_import_cache_retains_failed_topology_cleanup_for_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _cache_import_cli_test_args(tmp_path)
+    monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: "f" * 32)
+    created: list[object] = []
+
+    class Provider:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def require_support(self) -> None:
+            pass
+
+    class RetryableTopology:
+        def __init__(self, output: Path) -> None:
+            self.catalog_path = Path(args.catalog).resolve(strict=True)
+            self.catalog_identity = cli._retained_catalog_file_identity(
+                self.catalog_path
+            )
+            self.cas_root = Path(args.cas_root).resolve(strict=True)
+            self.workspace_root = Path(args.workspace_root).resolve(strict=True)
+            self.output = output
+            self.cas_binding = SimpleNamespace(identity=(1, 11))
+            self.workspace_binding = SimpleNamespace(identity=(1, 12))
+            self.output_parent_binding = SimpleNamespace(identity=(1, 12))
+            self.allow_close = False
+            self.closed = False
+
+        def verify(self) -> None:
+            pass
+
+        def close(self) -> None:
+            if not self.allow_close:
+                raise OSError("injected topology close failure")
+            self.closed = True
+
+    def topology_factory(
+        _catalog: Path,
+        _cas: Path,
+        _workspace: Path,
+        output: Path,
+    ) -> RetryableTopology:
+        topology = RetryableTopology(output)
+        created.append(topology)
+        return topology
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_require_retained_materialization_topology",
+        topology_factory,
+    )
+
+    with pytest.raises(cli.CLIError, match="topology close failure") as caught:
+        cli._run_artifact_import_cache(args)
+
+    assert len(created) == 1
+    topology = created[0]
+    retained = caught.value.publication_cleanup_owners  # type: ignore[attr-defined]
+    assert type(retained) is tuple
+    assert len(retained) == 1
+    assert not retained[0].closed
+    topology.allow_close = True  # type: ignore[attr-defined]
+    retained[0].close()
+    assert retained[0].closed
+    assert topology.closed  # type: ignore[attr-defined]
 
 
 def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
@@ -1077,23 +1151,365 @@ def test_artifact_materialize_rejects_cross_device_output_parent_before_storage(
         cli._run_artifact_materialize(args)
 
 
-def test_artifact_materialize_rejects_directory_identity_alias_before_storage(
+def test_retained_materialization_topology_keeps_independent_authorities(
+    tmp_path: Path,
+) -> None:
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    output_parent = workspace_root / "nested"
+    output_parent.mkdir()
+
+    topology = cli._require_retained_materialization_topology(
+        catalog,
+        cas_root,
+        workspace_root,
+        output_parent / "context",
+    )
+    try:
+        topology.verify()
+        assert topology.cas_binding.identity != topology.workspace_binding.identity
+        assert len(topology.cas_binding.identity) > 2
+        assert not topology.closed
+    finally:
+        topology.close()
+
+    assert topology.closed
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="strict mount-table authentication is Linux-specific",
+)
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        ("", "mount table is empty"),
+        (
+            "1 0 0:1 / / rw shared:1 ext4 /dev/root rw\n",
+            "malformed entry",
+        ),
+    ),
+)
+def test_retained_linux_mount_mappings_fail_closed_on_untrusted_table(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: str,
+    message: str,
+) -> None:
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda *_args, **_kwargs: io.BytesIO(payload.encode()),
+    )
+
+    with pytest.raises(cli.CLIError, match=message):
+        cli._retained_linux_mount_mappings()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="strict mount-table authentication is Linux-specific",
+)
+def test_retained_linux_mount_mappings_accept_non_utf8_filesystem_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mount_point = b"/mnt/non-utf8-\xff"
+    payload = b"1 0 8:1 / " + mount_point + b" rw - ext4 /dev/root rw\n"
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda *_args, **_kwargs: io.BytesIO(payload),
+    )
+
+    mappings = cli._retained_linux_mount_mappings()
+
+    assert len(mappings) == 1
+    assert os.fsencode(mappings[0].mount_point) == mount_point
+
+
+def test_retained_linux_physical_path_rejects_stacked_mount_mapping() -> None:
+    mount_point = Path("/workspace")
+    mappings = (
+        cli._RetainedLinuxMountMapping(
+            mount_id=20,
+            device="8:1",
+            root=PurePosixPath("/first"),
+            mount_point=mount_point,
+        ),
+        cli._RetainedLinuxMountMapping(
+            mount_id=10,
+            device="8:1",
+            root=PurePosixPath("/second"),
+            mount_point=mount_point,
+        ),
+    )
+
+    with pytest.raises(cli.CLIError, match="ambiguous stacked mapping"):
+        cli._retained_linux_physical_path(mount_point / "child", mappings)
+
+
+def test_retained_materialization_topology_partial_open_closes_all_authorities(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    workspace_root = tmp_path / "workspaces"
-    workspace_root.mkdir()
-    catalog_path = tmp_path / "catalog.sqlite3"
-    catalog_path.touch()
+    import codenib._atomic_directory as atomic_directory
+
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
     cas_root = tmp_path / "cas"
     cas_root.mkdir()
-    resolved_workspace = workspace_root.resolve(strict=True)
-    resolved_cas = cas_root.resolve(strict=True)
-    workspace_identity = cli._retained_real_directory_identity(
-        resolved_workspace,
-        label="workspace root",
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    owners: list[object] = []
+    open_calls = 0
+    original_owner = atomic_directory._PublicationAuthorityOwner
+    original_open = atomic_directory._open_publication_authority
+
+    class CapturingOwner(original_owner):
+        def __init__(self) -> None:
+            super().__init__()
+            owners.append(self)
+
+    def fail_second_open(*args: object, **kwargs: object):
+        nonlocal open_calls
+        open_calls += 1
+        if open_calls == 2:
+            raise OSError("second authority open failed")
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_directory,
+        "_PublicationAuthorityOwner",
+        CapturingOwner,
     )
-    real_identity = cli._retained_real_directory_identity
+    monkeypatch.setattr(
+        atomic_directory,
+        "_open_publication_authority",
+        fail_second_open,
+    )
+
+    with pytest.raises(OSError, match="second authority open failed"):
+        cli._require_retained_materialization_topology(
+            catalog,
+            cas_root,
+            workspace_root,
+            workspace_root / "context",
+        )
+
+    assert open_calls == 2
+    assert len(owners) == 3
+    assert all(owner.closed for owner in owners)  # type: ignore[attr-defined]
+
+
+def test_retained_materialization_topology_retains_partial_open_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib._atomic_directory as atomic_directory
+
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    owners: list[object] = []
+    open_calls = 0
+    original_owner = atomic_directory._PublicationAuthorityOwner
+    original_open = atomic_directory._open_publication_authority
+
+    class RetryableOwner(original_owner):
+        allow_close = False
+
+        def __init__(self) -> None:
+            super().__init__()
+            owners.append(self)
+
+        def close(self, *args: object, **kwargs: object) -> None:
+            if self.authority is not None and not self.allow_close:
+                raise OSError("injected authority close failure")
+            super().close(*args, **kwargs)
+
+    def fail_second_open(*args: object, **kwargs: object):
+        nonlocal open_calls
+        open_calls += 1
+        if open_calls == 2:
+            raise OSError("second authority open failed")
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(atomic_directory, "_PublicationAuthorityOwner", RetryableOwner)
+    monkeypatch.setattr(
+        atomic_directory, "_open_publication_authority", fail_second_open
+    )
+
+    with pytest.raises(OSError, match="second authority open failed") as caught:
+        cli._require_retained_materialization_topology(
+            catalog,
+            cas_root,
+            workspace_root,
+            workspace_root / "context",
+        )
+
+    retained = caught.value.publication_cleanup_owners  # type: ignore[attr-defined]
+    assert retained == (owners[0],)
+    owners[0].allow_close = True  # type: ignore[attr-defined]
+    retained[0].close()
+    assert retained[0].closed
+
+
+def test_retained_materialization_topology_close_retries_every_authority(
+    tmp_path: Path,
+) -> None:
+    class RetryableOwner:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.closed = False
+            self.allow_close = False
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+            if not self.allow_close:
+                raise OSError(f"{self.label} authority close failed")
+            self.closed = True
+
+    owners = tuple(RetryableOwner(label) for label in ("CAS", "workspace", "output"))
+    bindings = tuple(
+        cli._RetainedDirectoryBinding(
+            label=owner.label,
+            path=tmp_path / owner.label,
+            identity=(1, index + 1),
+            owner=owner,
+        )
+        for index, owner in enumerate(owners)
+    )
+    topology = cli._RetainedMaterializationTopology(
+        catalog_path=tmp_path / "catalog.sqlite3",
+        catalog_identity=(1, 10, 1),
+        cas_root=tmp_path / "CAS",
+        workspace_root=tmp_path / "workspace",
+        output=tmp_path / "workspace" / "context",
+        cas_binding=bindings[0],
+        workspace_binding=bindings[1],
+        output_parent_binding=bindings[2],
+    )
+
+    with pytest.raises(OSError, match="output authority close failed"):
+        topology.close()
+
+    assert not topology.closed
+    assert tuple(owner.close_calls for owner in owners) == (1, 1, 1)
+    for owner in owners:
+        owner.allow_close = True
+    topology.close()
+
+    assert topology.closed
+    assert tuple(owner.close_calls for owner in owners) == (2, 2, 2)
+
+
+def test_retained_materialization_topology_rechecks_open_identity_before_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    topology = cli._require_retained_materialization_topology(
+        catalog,
+        cas_root,
+        workspace_root,
+        workspace_root / "context",
+    )
+    delegate_called = False
+    original_identity = cli._retained_open_directory_identity
+
+    class Delegate:
+        def run_workspace(self, *_args: object, **_kwargs: object) -> None:
+            nonlocal delegate_called
+            delegate_called = True
+
+    def regressed_identity(authority: object) -> tuple[int, ...]:
+        observed = original_identity(authority)
+        if authority.display_parent == topology.cas_root:  # type: ignore[attr-defined]
+            return observed[:1] + (observed[1] + 1,) + observed[2:]
+        return observed
+
+    monkeypatch.setattr(cli, "_retained_open_directory_identity", regressed_identity)
+    provider = cli._RetainedTopologyWorkspaceProvider(Delegate(), topology)
+    try:
+        with pytest.raises(cli.CLIError, match="authority identity changed"):
+            provider.run_workspace(
+                object(),
+                receipt_owner=object(),
+                operation=object(),
+            )
+    finally:
+        topology.close()
+
+    assert not delegate_called
+
+
+def test_retained_provider_passes_output_parent_identity_to_delegate(
+    tmp_path: Path,
+) -> None:
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    topology = cli._require_retained_materialization_topology(
+        catalog,
+        cas_root,
+        workspace_root,
+        workspace_root / "context",
+    )
+    observed: list[tuple[int, ...] | None] = []
+
+    class Delegate:
+        def run_workspace(
+            self,
+            _request: object,
+            *,
+            receipt_owner: object,
+            operation: object,
+            _expected_parent_identity: tuple[int, ...] | None = None,
+        ) -> str:
+            assert receipt_owner is not None
+            assert operation is not None
+            observed.append(_expected_parent_identity)
+            return "bound"
+
+    provider = cli._RetainedTopologyWorkspaceProvider(Delegate(), topology)
+    try:
+        assert (
+            provider.run_workspace(
+                object(),
+                receipt_owner=object(),
+                operation=object(),
+            )
+            == "bound"
+        )
+    finally:
+        topology.close()
+
+    assert observed == [topology.output_parent_binding.identity]
+
+
+def test_artifact_materialize_rejects_catalog_file_mount_before_storage_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
 
     class Provider:
         def __init__(self, root: Path) -> None:
@@ -1102,16 +1518,20 @@ def test_artifact_materialize_rejects_directory_identity_alias_before_storage(
         def require_support(self) -> None:
             pass
 
-    def aliased_identity(path: Path, *, label: str) -> tuple[int, int]:
-        if path == resolved_cas:
-            return workspace_identity
-        return real_identity(path, label=label)
-
+    catalog_mount = os.path.normpath(os.path.realpath(catalog))
+    catalog_device = catalog.stat().st_dev
     monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
     monkeypatch.setattr(
         cli,
-        "_retained_real_directory_identity",
-        aliased_identity,
+        "_retained_linux_mount_mappings",
+        lambda: (
+            cli._RetainedLinuxMountMapping(
+                mount_id=1,
+                device=f"{os.major(catalog_device)}:{os.minor(catalog_device)}",
+                root=PurePosixPath("/catalog-source.sqlite3"),
+                mount_point=Path(catalog_mount),
+            ),
+        ),
     )
     monkeypatch.setattr(
         storage_module,
@@ -1129,28 +1549,43 @@ def test_artifact_materialize_rejects_directory_identity_alias_before_storage(
         ref="main",
         snapshot=None,
         expected_generation=None,
-        catalog=str(catalog_path),
+        catalog=str(catalog),
         cas_root=str(cas_root),
         workspace_root=str(workspace_root),
         output=str(workspace_root / "context"),
     )
 
-    with pytest.raises(cli.CLIError, match="physically alias the workspace root"):
+    with pytest.raises(cli.CLIError, match="catalog must not be a file mount point"):
         cli._run_artifact_materialize(args)
 
 
-def test_artifact_materialize_rejects_nested_mount_before_storage(
+def test_artifact_materialize_rejects_simulated_catalog_identity_below_cas(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    workspace_root = tmp_path / "workspaces"
-    workspace_root.mkdir()
-    mounted_parent = workspace_root / "mounted"
-    mounted_parent.mkdir()
-    catalog_path = tmp_path / "catalog.sqlite3"
-    catalog_path.touch()
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    catalog_identity = cli._retained_catalog_file_identity(catalog)
     cas_root = tmp_path / "cas"
     cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    device = f"{os.major(catalog_identity[0])}:{os.minor(catalog_identity[0])}"
+    mappings = (
+        cli._RetainedLinuxMountMapping(
+            mount_id=1,
+            device=device,
+            root=PurePosixPath("/"),
+            mount_point=Path("/"),
+        ),
+        cli._RetainedLinuxMountMapping(
+            mount_id=2,
+            device=device,
+            root=PurePosixPath(catalog.parent.as_posix()),
+            mount_point=cas_root,
+        ),
+    )
+    inspected_aliases: list[Path] = []
 
     class Provider:
         def __init__(self, root: Path) -> None:
@@ -1159,12 +1594,13 @@ def test_artifact_materialize_rejects_nested_mount_before_storage(
         def require_support(self) -> None:
             pass
 
+    def alias_identity(path: Path) -> tuple[int, int]:
+        inspected_aliases.append(path)
+        return catalog_identity[:2]
+
     monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
-    monkeypatch.setattr(
-        cli,
-        "_retained_linux_mount_points",
-        lambda: frozenset({mounted_parent.resolve(strict=True)}),
-    )
+    monkeypatch.setattr(cli, "_retained_linux_mount_mappings", lambda: mappings)
+    monkeypatch.setattr(cli, "_retained_alias_file_identity", alias_identity)
     monkeypatch.setattr(
         storage_module,
         "LocalCAS",
@@ -1181,14 +1617,228 @@ def test_artifact_materialize_rejects_nested_mount_before_storage(
         ref="main",
         snapshot=None,
         expected_generation=None,
-        catalog=str(catalog_path),
+        catalog=str(catalog),
         cas_root=str(cas_root),
         workspace_root=str(workspace_root),
-        output=str(mounted_parent / "context"),
+        output=str(workspace_root / "context"),
     )
 
-    with pytest.raises(cli.CLIError, match="nested mount point"):
+    with pytest.raises(cli.CLIError, match="physically reachable below the CAS"):
         cli._run_artifact_materialize(args)
+
+    assert inspected_aliases == [cas_root / catalog.name]
+
+
+def test_retained_materialization_accepts_disjoint_same_device_bind_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    catalog_identity = cli._retained_catalog_file_identity(catalog)
+    device = f"{os.major(catalog_identity[0])}:{os.minor(catalog_identity[0])}"
+    mappings = (
+        cli._RetainedLinuxMountMapping(
+            mount_id=1,
+            device=device,
+            root=PurePosixPath("/"),
+            mount_point=Path("/"),
+        ),
+        cli._RetainedLinuxMountMapping(
+            mount_id=2,
+            device=device,
+            root=PurePosixPath("/backing/cas"),
+            mount_point=cas_root,
+        ),
+        cli._RetainedLinuxMountMapping(
+            mount_id=3,
+            device=device,
+            root=PurePosixPath("/backing/workspaces"),
+            mount_point=workspace_root,
+        ),
+    )
+    monkeypatch.setattr(cli, "_retained_linux_mount_mappings", lambda: mappings)
+
+    def binding(path: Path, label: str) -> cli._RetainedDirectoryBinding:
+        metadata = path.lstat()
+        return cli._RetainedDirectoryBinding(
+            label=label,
+            path=path,
+            identity=(int(metadata.st_dev), int(metadata.st_ino)),
+            owner=object(),
+        )
+
+    cli._require_retained_mount_topology(
+        catalog,
+        catalog_identity,
+        binding(cas_root, "CAS root"),
+        binding(workspace_root, "workspace root"),
+        binding(workspace_root, "output parent"),
+    )
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="bind-mount topology requires Linux mount namespaces",
+)
+@pytest.mark.parametrize(
+    "scenario",
+    (
+        "root-alias",
+        "root-reentry",
+        "output-parent",
+        "catalog-file",
+        "catalog-dir-cas",
+        "catalog-dir-workspace",
+    ),
+)
+def test_retained_materialization_rejects_linux_bind_mount_aliases(
+    tmp_path: Path,
+    scenario: str,
+) -> None:
+    unshare = shutil.which("unshare")
+    mount = shutil.which("mount")
+    if unshare is None or mount is None:
+        pytest.skip("Linux unshare/mount tools are unavailable")
+    probe = subprocess.run(
+        [
+            unshare,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            "--fork",
+            "true",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout).strip() or "permission denied"
+        pytest.skip(f"Linux user/mount namespace is unavailable: {detail}")
+
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    catalog_source = tmp_path / "catalog-source.sqlite3"
+    catalog_source.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    source = tmp_path / "bind-source"
+    source.mkdir()
+    (source / "nested").mkdir()
+    source_catalog = source / "catalog.sqlite3"
+    source_catalog.touch()
+    mounted_parent = workspace_root / "mounted"
+    mounted_parent.mkdir()
+    script = r"""
+import subprocess
+import sys
+from pathlib import Path
+
+from codenib import cli
+
+(
+    scenario,
+    mount,
+    catalog,
+    catalog_source,
+    cas_root,
+    workspace_root,
+    source,
+    source_catalog,
+    mounted_parent,
+) = sys.argv[1:]
+try:
+    if scenario == "root-alias":
+        subprocess.run([mount, "--bind", source, cas_root], check=True)
+        subprocess.run([mount, "--bind", source, workspace_root], check=True)
+        output = Path(workspace_root) / "context"
+    elif scenario == "root-reentry":
+        subprocess.run([mount, "--bind", source, workspace_root], check=True)
+        subprocess.run(
+            [mount, "--bind", str(Path(source) / "nested"), cas_root],
+            check=True,
+        )
+        output = Path(workspace_root) / "context"
+    elif scenario == "output-parent":
+        subprocess.run([mount, "--bind", source, mounted_parent], check=True)
+        output = Path(mounted_parent) / "context"
+    elif scenario == "catalog-file":
+        subprocess.run([mount, "--bind", catalog_source, catalog], check=True)
+        output = Path(workspace_root) / "context"
+    elif scenario == "catalog-dir-cas":
+        subprocess.run([mount, "--bind", source, cas_root], check=True)
+        catalog = source_catalog
+        output = Path(workspace_root) / "context"
+    else:
+        subprocess.run([mount, "--bind", source, workspace_root], check=True)
+        catalog = source_catalog
+        output = Path(workspace_root) / "context"
+except (OSError, subprocess.CalledProcessError) as error:
+    print(f"BIND_UNAVAILABLE: {error}", file=sys.stderr)
+    raise SystemExit(77)
+
+try:
+    cli._require_retained_materialization_topology(
+        Path(catalog),
+        Path(cas_root),
+        Path(workspace_root),
+        output,
+    )
+except cli.CLIError as error:
+    message = str(error)
+    if scenario == "root-alias" and not (
+        "same physical object" in message or "same-device mount alias" in message
+    ):
+        raise
+    if scenario == "root-reentry" and "same-device mount alias" not in message:
+        raise
+    if scenario == "output-parent" and "cross a mount point" not in message:
+        raise
+    if scenario == "catalog-file" and "file mount point" not in message:
+        raise
+    if scenario in {"catalog-dir-cas", "catalog-dir-workspace"} and not (
+        "catalog is physically reachable" in message
+    ):
+        raise
+else:
+    raise AssertionError("bind-mounted storage alias was accepted")
+"""
+    result = subprocess.run(
+        [
+            unshare,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            "--fork",
+            sys.executable,
+            "-c",
+            script,
+            scenario,
+            mount,
+            str(catalog),
+            str(catalog_source),
+            str(cas_root),
+            str(workspace_root),
+            str(source),
+            str(source_catalog),
+            str(mounted_parent),
+        ],
+        capture_output=True,
+        check=False,
+        cwd=Path(__file__).parents[1],
+        text=True,
+    )
+    if result.returncode == 77:
+        detail = (result.stderr or result.stdout).strip()
+        pytest.skip(f"Linux bind mount is unavailable: {detail}")
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_artifact_materialize_provider_failure_precedes_storage_open(
@@ -1255,6 +1905,120 @@ def _materialize_cli_test_args(tmp_path: Path) -> SimpleNamespace:
         workspace_root=str(workspace_root),
         output=str(workspace_root / "context"),
     )
+
+
+def test_artifact_materialize_storage_failure_closes_topology_authorities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[cli._RetainedMaterializationTopology] = []
+    original_topology = cli._require_retained_materialization_topology
+
+    class Provider:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def require_support(self) -> None:
+            pass
+
+    class ReceiptOwner:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    receipt_owner = ReceiptOwner()
+
+    def capture_topology(*args: object, **kwargs: object):
+        topology = original_topology(*args, **kwargs)
+        captured.append(topology)
+        return topology
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_new_retained_output_receipt_owner",
+        lambda: receipt_owner,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_require_retained_materialization_topology",
+        capture_topology,
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("stop after topology acquisition")
+        ),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+
+    with pytest.raises(cli.CLIError, match="stop after topology acquisition"):
+        cli._run_artifact_materialize(_materialize_cli_test_args(tmp_path))
+
+    assert len(captured) == 1
+    topology = captured[0]
+    assert topology.closed
+    assert all(
+        binding.owner.closed  # type: ignore[attr-defined]
+        for binding in topology._bindings
+    )
+    assert receipt_owner.closed
+
+
+def test_artifact_materialize_inherits_failed_topology_cleanup_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_close = cli._RetainedMaterializationTopology.close
+    allow_close = False
+
+    class Provider:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def require_support(self) -> None:
+            pass
+
+    def interrupt_topology_close(self) -> None:
+        if not allow_close:
+            raise OSError("injected topology close failure")
+        original_close(self)
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli._RetainedMaterializationTopology,
+        "close",
+        interrupt_topology_close,
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("stop after topology acquisition")
+        ),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+
+    with pytest.raises(cli.CLIError, match="stop after topology acquisition") as caught:
+        cli._run_artifact_materialize(_materialize_cli_test_args(tmp_path))
+
+    retained = caught.value.publication_cleanup_owners  # type: ignore[attr-defined]
+    assert len(retained) == 1
+    assert not retained[0].closed
+    allow_close = True
+    retained[0].close()
+    assert retained[0].closed
 
 
 def test_artifact_materialize_resource_store_interruption_closes_authorities(

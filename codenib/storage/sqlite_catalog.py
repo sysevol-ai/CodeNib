@@ -16,11 +16,13 @@ can adapt it without coupling the SQLite implementation to application models.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import stat
+import sys
+import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -63,20 +65,18 @@ CatalogValidationError = StorageValidationError
 
 _DB_NOW_MS_SQL = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
 _SQLITE_INT64_MAX = 9_223_372_036_854_775_807
-_V1_CATALOG_TABLES = frozenset(
-    {
-        "namespaces",
-        "objects",
-        "refs",
-        "repositories",
-        "schema_migrations",
-        "snapshot_views",
-        "snapshots",
-        "source_revisions",
-        "view_generations",
-        "view_profiles",
-    }
+_MAX_VALIDATION_NAMESPACE_BYTES = 1_073_741_824
+_MAX_VALIDATION_SHM_BYTES = 16_777_216
+_VALIDATION_COPY_CHUNK_BYTES = 1_048_576
+_MAX_VALIDATION_MOUNTINFO_ENTRIES = 100_000
+_MAX_VALIDATION_MOUNTINFO_LINE_BYTES = 65_536
+_WINDOWS_REPARSE_POINT_ATTRIBUTE = 0x400
+_SCHEMA_MIGRATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL
 )
+"""
 
 
 def _now() -> str:
@@ -1041,50 +1041,495 @@ _MIGRATIONS: dict[int, tuple[str, ...]] = {
     4: _SCHEMA_V4,
 }
 
-_SCHEMA_MIGRATIONS_SQL = """
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version INTEGER PRIMARY KEY,
-    applied_at TEXT NOT NULL
+_CatalogSchemaObject = tuple[str, str, str, str | None]
+_CatalogSchemaSignature = tuple[_CatalogSchemaObject, ...]
+
+_SQLITE_ANALYZE_SCHEMA_OBJECTS = frozenset(
+    {
+        (
+            "table",
+            "sqlite_stat1",
+            "sqlite_stat1",
+            "CREATE TABLE sqlite_stat1(tbl,idx,stat)",
+        ),
+        (
+            "table",
+            "sqlite_stat2",
+            "sqlite_stat2",
+            "CREATE TABLE sqlite_stat2(tbl,idx,sampleno,sample)",
+        ),
+        (
+            "table",
+            "sqlite_stat3",
+            "sqlite_stat3",
+            "CREATE TABLE sqlite_stat3(tbl,idx,neq,nlt,ndlt,sample)",
+        ),
+        (
+            "table",
+            "sqlite_stat4",
+            "sqlite_stat4",
+            "CREATE TABLE sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample)",
+        ),
+    }
 )
-"""
+
+
+def _normalized_schema_sql(sql: str | None) -> str | None:
+    if sql is None:
+        return None
+    return "\n".join(line.strip() for line in sql.strip().splitlines() if line.strip())
 
 
 def _catalog_schema_signature(
     connection: sqlite3.Connection,
-) -> tuple[tuple[object, ...], ...]:
-    """Return every caller-defined schema object in a stable order."""
+) -> _CatalogSchemaSignature:
+    """Return every application schema object in a formatting-stable form."""
 
-    return tuple(
-        tuple(row)
-        for row in connection.execute(
-            """
-            SELECT type, name, tbl_name, sql
-            FROM sqlite_master
-            WHERE substr(name, 1, 7) != 'sqlite_'
-            ORDER BY type, name, tbl_name
-            """
+    signature: list[_CatalogSchemaObject] = []
+    for row in connection.execute(
+        """
+        SELECT type, name, tbl_name, sql
+        FROM sqlite_schema
+        ORDER BY type, name, tbl_name
+        """
+    ):
+        schema_object = (
+            row[0],
+            row[1],
+            row[2],
+            _normalized_schema_sql(row[3]),
         )
+        # ANALYZE can add one of SQLite's exact internal statistics-table
+        # schemas after routine maintenance.  Ignore only those known exact
+        # objects; a forged or malformed ``sqlite_*`` entry remains part of
+        # the authenticated signature and is rejected.
+        if schema_object in _SQLITE_ANALYZE_SCHEMA_OBJECTS:
+            continue
+        signature.append(schema_object)
+    return tuple(signature)
+
+
+def _canonical_catalog_schemas() -> dict[int, _CatalogSchemaSignature]:
+    """Materialize the exact schema produced after each supported migration."""
+
+    connection = sqlite3.connect(":memory:", isolation_level=None)
+    try:
+        connection.execute(_SCHEMA_MIGRATIONS_SQL)
+        schemas: dict[int, _CatalogSchemaSignature] = {}
+        for version in range(1, LATEST_SCHEMA_VERSION + 1):
+            for statement in _MIGRATIONS[version]:
+                connection.execute(statement)
+            schemas[version] = _catalog_schema_signature(connection)
+        return schemas
+    finally:
+        connection.close()
+
+
+_CANONICAL_CATALOG_SCHEMAS = _canonical_catalog_schemas()
+
+
+def _validation_source_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_nlink),
+        int(metadata.st_size),
+        int(metadata.st_mtime_ns),
+        int(metadata.st_ctime_ns),
+        int(getattr(metadata, "st_file_attributes", 0)),
     )
 
 
-@lru_cache(maxsize=LATEST_SCHEMA_VERSION)
-def _expected_catalog_schema_signature(
-    version: int,
-) -> tuple[tuple[object, ...], ...]:
-    """Build the exact schema authorized by the immutable migration sequence."""
+def _validation_linux_mount_points() -> frozenset[str]:
+    """Read a bounded Linux mount table without a fail-open fallback."""
 
-    reference = sqlite3.connect(":memory:", isolation_level=None)
+    if not sys.platform.startswith("linux"):
+        return frozenset()
+    from .._atomic_directory import _mountinfo_path
+
+    points: set[str] = set()
     try:
-        reference.execute(_SCHEMA_MIGRATIONS_SQL)
-        for migration_version in range(1, version + 1):
-            statements = _MIGRATIONS.get(migration_version)
-            if statements is None:  # pragma: no cover - module invariant
-                raise CatalogError(f"missing catalog migration {migration_version}")
-            for statement in statements:
-                reference.execute(statement)
-        return _catalog_schema_signature(reference)
+        with open("/proc/self/mountinfo", "rb") as mountinfo:
+            for index, line in enumerate(mountinfo):
+                if index >= _MAX_VALIDATION_MOUNTINFO_ENTRIES:
+                    raise CatalogError("Linux mount table exceeds its safe entry limit")
+                if len(line) > _MAX_VALIDATION_MOUNTINFO_LINE_BYTES:
+                    raise CatalogError("Linux mount table contains an oversized entry")
+                fields = line.split()
+                try:
+                    separator = fields.index(b"-")
+                except ValueError as exc:
+                    raise CatalogError(
+                        "Linux mount table contains a malformed entry"
+                    ) from exc
+                if separator < 6 or len(fields) < separator + 4:
+                    raise CatalogError("Linux mount table contains a malformed entry")
+                point = os.path.normpath(_mountinfo_path(os.fsdecode(fields[4])))
+                if not os.path.isabs(point):
+                    raise CatalogError("Linux mount table contains a relative path")
+                points.add(point)
+    except CatalogError:
+        raise
+    except (OSError, UnicodeError) as exc:
+        raise CatalogError("Linux mount table could not be inspected safely") from exc
+    if not points:
+        raise CatalogError("Linux mount table is empty")
+    return frozenset(points)
+
+
+def _require_validation_source_not_mount(path: Path, *, label: str) -> None:
+    """Reject a catalog leaf whose bytes are supplied by a mount alias."""
+
+    try:
+        normalized = os.path.normpath(os.path.realpath(path))
+        is_mount = os.path.ismount(path) or os.path.ismount(normalized)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CatalogError(
+            f"existing SQLite catalog {label} mount identity could not be inspected"
+        ) from exc
+    if sys.platform.startswith("linux"):
+        is_mount = is_mount or normalized in _validation_linux_mount_points()
+    if is_mount:
+        raise CatalogError(
+            f"existing SQLite catalog {label} must not be a file mount point"
+        )
+
+
+def _open_validation_source(
+    path: Path,
+    *,
+    label: str,
+    required: bool,
+) -> tuple[int, os.stat_result] | None:
+    try:
+        before = path.lstat()
+    except FileNotFoundError as exc:
+        if not required:
+            return None
+        raise CatalogError(f"existing SQLite catalog {label} is missing") from exc
+    except OSError as exc:
+        raise CatalogError(
+            f"existing SQLite catalog {label} could not be inspected"
+        ) from exc
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or stat.S_ISLNK(before.st_mode)
+        or before.st_dev < 1
+        or before.st_ino < 1
+        or before.st_nlink != 1
+        or before.st_size < 0
+        or getattr(before, "st_file_attributes", 0) & _WINDOWS_REPARSE_POINT_ATTRIBUTE
+    ):
+        raise CatalogError(
+            f"existing SQLite catalog {label} must be a single-linked regular file"
+        )
+    _require_validation_source_not_mount(path, label=label)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise CatalogError(
+            f"existing SQLite catalog {label} could not be opened safely"
+        ) from exc
+    after = before
+    try:
+        after = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(after.st_mode)
+            or after.st_nlink != 1
+            or getattr(after, "st_file_attributes", 0)
+            & _WINDOWS_REPARSE_POINT_ATTRIBUTE
+            or _validation_source_identity(before) != _validation_source_identity(after)
+        ):
+            raise CatalogError(f"existing SQLite catalog {label} changed before copy")
+        _require_validation_source_not_mount(path, label=label)
+    except BaseException as primary_error:  # noqa: B036 - retain failed cleanup
+        _close_validation_descriptor(
+            descriptor,
+            after,
+            primary_error=primary_error,
+            label=label,
+        )
+        raise
+    return descriptor, after
+
+
+def _close_validation_descriptor(
+    descriptor: int,
+    expected: os.stat_result,
+    *,
+    primary_error: BaseException | None,
+    label: str,
+) -> None:
+    """Close one file descriptor while retaining any provably open owner."""
+
+    from .._contained_source import _PosixDescriptorCleanup
+
+    cleanup = _PosixDescriptorCleanup()
+    cleanup.retain(descriptor, expected)
+    _finish_validation_cleanup(
+        cleanup,
+        primary_error=primary_error,
+        label=label,
+    )
+
+
+def _finish_validation_cleanup(
+    cleanup: object,
+    *,
+    primary_error: BaseException | None,
+    label: str,
+) -> None:
+    """Finish one retryable descriptor owner without replacing a primary."""
+
+    from .._atomic_directory import (
+        _annotate_secondary_error,
+        _attach_publication_cleanup_owner,
+    )
+
+    try:
+        cleanup.close()  # type: ignore[attr-defined]
+    except BaseException as close_error:  # noqa: B036 - preserve primary
+        target = close_error if primary_error is None else primary_error
+        if primary_error is not None:
+            _annotate_secondary_error(
+                primary_error,
+                f"SQLite validation {label} cleanup also failed",
+                close_error,
+            )
+        _attach_publication_cleanup_owner(target, cleanup)
+        if primary_error is None:
+            raise
+    else:
+        if primary_error is not None:
+            _attach_publication_cleanup_owner(primary_error, cleanup)
+
+
+def _copy_validation_source(
+    descriptor: int,
+    expected: os.stat_result,
+    destination: Path,
+    *,
+    label: str,
+) -> None:
+    from .._contained_source import _PosixDescriptorCleanup
+
+    destination_cleanup = _PosixDescriptorCleanup()
+    destination_descriptor = -1
+    try:
+        destination_descriptor = os.open(
+            destination,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+        )
+        destination_metadata = os.fstat(destination_descriptor)
+        destination_cleanup.retain(
+            destination_descriptor,
+            destination_metadata,
+        )
+    except OSError as exc:
+        primary_error = CatalogError(
+            f"private SQLite validation {label} could not be created"
+        )
+        if destination_descriptor >= 0:
+            if destination_cleanup.closed:
+                try:
+                    destination_cleanup.retain(destination_descriptor)
+                except BaseException as retention_error:  # noqa: B036
+                    from .._atomic_directory import _annotate_secondary_error
+
+                    _annotate_secondary_error(
+                        primary_error,
+                        "private SQLite validation cleanup ownership also failed",
+                        retention_error,
+                    )
+            _finish_validation_cleanup(
+                destination_cleanup,
+                primary_error=primary_error,
+                label=f"private {label}",
+            )
+        raise primary_error from exc
+    except BaseException as primary_error:  # noqa: B036 - retain acquisition
+        if destination_descriptor >= 0:
+            if destination_cleanup.closed:
+                try:
+                    destination_cleanup.retain(destination_descriptor)
+                except BaseException as retention_error:  # noqa: B036
+                    from .._atomic_directory import _annotate_secondary_error
+
+                    _annotate_secondary_error(
+                        primary_error,
+                        "private SQLite validation cleanup ownership also failed",
+                        retention_error,
+                    )
+            _finish_validation_cleanup(
+                destination_cleanup,
+                primary_error=primary_error,
+                label=f"private {label}",
+            )
+        raise
+    primary_error: BaseException | None = None
+    try:
+        remaining = int(expected.st_size)
+        while remaining:
+            chunk = os.read(
+                descriptor,
+                min(remaining, _VALIDATION_COPY_CHUNK_BYTES),
+            )
+            if not chunk:
+                raise CatalogError(
+                    f"existing SQLite catalog {label} changed during copy"
+                )
+            view = memoryview(chunk)
+            while view:
+                written = os.write(destination_descriptor, view)
+                if written < 1:
+                    raise CatalogError(
+                        f"private SQLite validation {label} copy stalled"
+                    )
+                view = view[written:]
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise CatalogError(f"existing SQLite catalog {label} changed during copy")
+    except OSError as exc:
+        primary_error = CatalogError(
+            f"existing SQLite catalog {label} could not be copied safely"
+        )
+        raise primary_error from exc
+    except BaseException as exc:  # noqa: B036 - preserve primary across cleanup
+        primary_error = exc
+        raise
     finally:
-        reference.close()
+        _finish_validation_cleanup(
+            destination_cleanup,
+            primary_error=primary_error,
+            label=f"private {label}",
+        )
+    try:
+        observed = os.fstat(descriptor)
+    except OSError as exc:
+        raise CatalogError(
+            f"existing SQLite catalog {label} could not be rechecked after copy"
+        ) from exc
+    if _validation_source_identity(observed) != _validation_source_identity(expected):
+        raise CatalogError(f"existing SQLite catalog {label} changed during copy")
+
+
+def _require_no_rollback_journal(path: Path) -> None:
+    journal = Path(f"{path}-journal")
+    try:
+        journal.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise CatalogError(
+            "existing SQLite catalog rollback journal could not be inspected"
+        ) from exc
+    raise CatalogError("existing SQLite catalog rollback journal is not allowed")
+
+
+def _require_safe_shared_memory(path: Path) -> None:
+    source = _open_validation_source(
+        Path(f"{path}-shm"),
+        label="SHM sidecar",
+        required=False,
+    )
+    if source is None:
+        return
+    descriptor, expected = source
+    primary_error: BaseException | None = None
+    try:
+        if expected.st_size > _MAX_VALIDATION_SHM_BYTES:
+            raise CatalogError(
+                "existing SQLite catalog SHM sidecar exceeds "
+                f"{_MAX_VALIDATION_SHM_BYTES} bytes"
+            )
+        try:
+            observed = os.fstat(descriptor)
+        except OSError as exc:
+            raise CatalogError(
+                "existing SQLite catalog SHM sidecar could not be rechecked"
+            ) from exc
+        if _validation_source_identity(observed) != _validation_source_identity(
+            expected
+        ):
+            raise CatalogError("existing SQLite catalog SHM sidecar changed")
+    except BaseException as exc:  # noqa: B036 - preserve primary across cleanup
+        primary_error = exc
+        raise
+    finally:
+        _close_validation_descriptor(
+            descriptor,
+            expected,
+            primary_error=primary_error,
+            label="SHM sidecar",
+        )
+
+
+@contextmanager
+def _catalog_validation_snapshot(path: Path) -> Iterator[Path]:
+    """Copy the SQLite recovery namespace without mutating the source files."""
+
+    from .._contained_source import _PosixDescriptorCleanup
+
+    with tempfile.TemporaryDirectory(prefix="codenib-sqlite-validation-") as root:
+        snapshot = Path(root) / "catalog.sqlite3"
+        _require_no_rollback_journal(path)
+        sources: list[tuple[int, os.stat_result, Path, str]] = []
+        source_cleanup = _PosixDescriptorCleanup()
+        primary_error: BaseException | None = None
+        try:
+            main_source = _open_validation_source(
+                path,
+                label="main file",
+                required=True,
+            )
+            assert main_source is not None
+            source_cleanup.retain(*main_source)
+            sources.append((*main_source, snapshot, "main file"))
+            wal_source = _open_validation_source(
+                Path(f"{path}-wal"),
+                label="WAL sidecar",
+                required=False,
+            )
+            if wal_source is not None:
+                source_cleanup.retain(*wal_source)
+                sources.append((*wal_source, Path(f"{snapshot}-wal"), "WAL sidecar"))
+            total_bytes = sum(source[1].st_size for source in sources)
+            if total_bytes > _MAX_VALIDATION_NAMESPACE_BYTES:
+                raise CatalogError(
+                    "existing SQLite catalog validation namespace exceeds "
+                    f"{_MAX_VALIDATION_NAMESPACE_BYTES} bytes"
+                )
+            for descriptor, metadata, destination, label in sources:
+                _copy_validation_source(
+                    descriptor,
+                    metadata,
+                    destination,
+                    label=label,
+                )
+            _require_no_rollback_journal(path)
+        except BaseException as exc:  # noqa: B036 - preserve primary across cleanup
+            primary_error = exc
+            raise
+        finally:
+            _finish_validation_cleanup(
+                source_cleanup,
+                primary_error=primary_error,
+                label="source namespace",
+            )
+        yield snapshot
 
 
 class SQLiteCatalog:
@@ -1141,6 +1586,7 @@ class SQLiteCatalog:
         raw_path = str(path)
         connection_target = raw_path
         use_uri = False
+        resolved: Path | None = None
         if raw_path != ":memory:":
             resolved = Path(path).expanduser().resolve()
             raw_path = str(resolved)
@@ -1156,7 +1602,52 @@ class SQLiteCatalog:
             )
         self.path = raw_path
         if expected_file_identity is not None:
+            assert resolved is not None
             self._require_expected_file_identity(resolved, expected_file_identity)
+        if not create:
+            assert resolved is not None
+            with _catalog_validation_snapshot(resolved) as validation_path:
+                validation_target = f"{validation_path.as_uri()}?mode=rw"
+                try:
+                    validation_connection = sqlite3.connect(
+                        validation_target,
+                        timeout=busy_timeout_ms / 1_000,
+                        isolation_level=None,
+                        uri=True,
+                    )
+                except sqlite3.Error as exc:
+                    raise CatalogError(
+                        f"existing SQLite catalog could not be opened: {raw_path}"
+                    ) from exc
+                try:
+                    if expected_file_identity is not None:
+                        self._require_expected_file_identity(
+                            resolved,
+                            expected_file_identity,
+                        )
+                    validation_connection.row_factory = sqlite3.Row
+                    self._connection = validation_connection
+                    self._require_existing_catalog_identity()
+                    if expected_file_identity is not None:
+                        self._require_expected_file_identity(
+                            resolved,
+                            expected_file_identity,
+                        )
+                except sqlite3.Error as exc:
+                    raise CatalogError(
+                        f"existing SQLite catalog could not be initialized: {raw_path}"
+                    ) from exc
+                finally:
+                    validation_connection.close()
+            _require_no_rollback_journal(resolved)
+            # The SHM file is a derived WAL index, so the private copy rebuilds
+            # it.  Authenticate the original before SQLite may map or update it.
+            _require_safe_shared_memory(resolved)
+            if expected_file_identity is not None:
+                self._require_expected_file_identity(
+                    resolved,
+                    expected_file_identity,
+                )
         try:
             connection = sqlite3.connect(
                 connection_target,
@@ -1172,6 +1663,7 @@ class SQLiteCatalog:
             raise
         try:
             if expected_file_identity is not None:
+                assert resolved is not None
                 self._require_expected_file_identity(
                     resolved,
                     expected_file_identity,
@@ -1242,26 +1734,20 @@ class SQLiteCatalog:
         self._connection.close()
 
     def _require_existing_catalog_identity(self) -> None:
-        observed_tables = frozenset(
-            row["name"]
-            for row in self._connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
-        )
-        if not _V1_CATALOG_TABLES.issubset(observed_tables):
-            raise CatalogError("existing file is not an initialized CodeNib catalog")
-        migration_columns = tuple(
-            (row["name"], row["type"], row["notnull"], row["pk"])
-            for row in self._connection.execute("PRAGMA table_info(schema_migrations)")
-        )
-        if migration_columns != (
-            ("version", "INTEGER", 0, 1),
-            ("applied_at", "TEXT", 1, 0),
+        observed_schema = _catalog_schema_signature(self._connection)
+        if not any(
+            object_type == "table" and name == "schema_migrations"
+            for object_type, name, _table_name, _sql in observed_schema
         ):
             raise CatalogError("existing file is not an initialized CodeNib catalog")
-        migration_rows = self._connection.execute(
-            "SELECT version, applied_at FROM schema_migrations ORDER BY version"
-        ).fetchall()
+        try:
+            migration_rows = self._connection.execute(
+                "SELECT version, applied_at FROM schema_migrations ORDER BY version"
+            ).fetchall()
+        except sqlite3.Error as exc:
+            raise CatalogError(
+                "existing file is not an initialized CodeNib catalog"
+            ) from exc
         versions: list[int] = []
         for row in migration_rows:
             version = row["version"]
@@ -1287,10 +1773,12 @@ class SQLiteCatalog:
                 "catalog schema is newer than this CodeNib version: "
                 f"{user_version} > {LATEST_SCHEMA_VERSION}"
             )
-        if _catalog_schema_signature(
-            self._connection
-        ) != _expected_catalog_schema_signature(user_version):
-            raise CatalogError("existing file is not an initialized CodeNib catalog")
+        expected_schema = _CANONICAL_CATALOG_SCHEMAS.get(user_version)
+        if expected_schema is None or observed_schema != expected_schema:
+            raise CatalogError(
+                "existing file is not an initialized CodeNib catalog: "
+                f"schema is not canonical for version {user_version}"
+            )
 
     def __enter__(self) -> SQLiteCatalog:
         return self
@@ -2360,12 +2848,13 @@ class SQLiteCatalog:
         normalized_schema_version = _required_text(
             schema_version, "view schema version"
         )
-        normalized_metadata, normalized_member_tuple = (
-            normalize_view_generation_metadata(
-                digest,
-                metadata,
-                member_object_digests=member_object_digests,
-            )
+        (
+            normalized_metadata,
+            normalized_member_tuple,
+        ) = normalize_view_generation_metadata(
+            digest,
+            metadata,
+            member_object_digests=member_object_digests,
         )
         normalized_members = list(normalized_member_tuple)
         metadata_json = canonical_json(normalized_metadata)

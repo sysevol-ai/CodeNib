@@ -25,7 +25,11 @@ from pathlib import Path
 from typing import Callable, TypeVar
 
 from . import _workspace_owner
-from ._atomic_directory import _OrderedAction, _run_context_with_cleanup_actions
+from ._atomic_directory import (
+    _OrderedAction,
+    _run_context_with_cleanup_actions,
+    publication_parent_identity,
+)
 from ._captured_directory import (
     OwnedWorkspaceAuthority,
     PublishedWorkspaceReceiptOwner,
@@ -132,6 +136,7 @@ class LocalWorkspaceProvider:
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _OperationResult],
+        _expected_parent_identity: tuple[int, ...] | None = None,
     ) -> _OperationResult:
         self._require_owner_pid()
         if type(request) is not StrictWorkspaceRequest:
@@ -142,6 +147,12 @@ class LocalWorkspaceProvider:
             raise UnsupportedWorkspaceCreation(
                 "local workspace provider currently requires a missing destination"
             )
+        if _expected_parent_identity is not None and (
+            type(_expected_parent_identity) is not tuple
+            or len(_expected_parent_identity) < 2
+            or any(type(value) is not int for value in _expected_parent_identity)
+        ):
+            raise TypeError("expected workspace parent identity is invalid")
         detached_plan = _snapshot_workspace_plan(request.plan)
         relative_destination = self._relative_destination(request.destination)
         self.require_support()
@@ -177,6 +188,17 @@ class LocalWorkspaceProvider:
                 ),
                 deadline_ns,
             )
+            if _expected_parent_identity is not None:
+                parent_descriptor = _workspace_owner.borrow_owner_parent_descriptor(
+                    native_owner
+                )
+                if (
+                    publication_parent_identity(parent_descriptor)
+                    != _expected_parent_identity
+                ):
+                    raise RuntimeError(
+                        "native workspace parent differs from retained authority"
+                    )
             workspace.adopt_provisioned(
                 destination=request.destination,
                 stage_name=stage_name,

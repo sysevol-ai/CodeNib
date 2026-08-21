@@ -557,19 +557,26 @@ The first explicit local bridge over this API is now
 SQLite catalog, a fully preprovisioned strict `LocalCAS`, an existing private
 Linux workspace root owned by the current effective UID with exact mode `0700`,
 and a missing output below that root. The three storage/authority locations
-must not overlap. Existing-only catalog open is read-write rather than
-read-only: it enables WAL and may apply forward migrations, while rejecting a
-missing, empty, foreign, or corrupt database. The database must be a
-single-linked regular file. Existing-only open binds its captured `(st_dev,
-st_ino, st_nlink=1)` identity across `sqlite3.connect` and rechecks it before
-authenticating the complete schema declared by its migration version, WAL
-activation, or migration. Its resolved ancestor chain and WAL/SHM sidecar
-namespace are an explicit trusted, quiescent deployment boundary for the whole
-invocation; the identity checks do not claim a path-based sandbox against
-arbitrary concurrent renames. Physical preflight rejects distinct storage
-paths whose ancestor directory identities alias, plus mounted catalog files and
-nested mount points below the workspace root. Every existing output-parent
-component must be a real directory on the workspace root filesystem.
+must not overlap or resolve through physical mount aliases. Existing-only
+catalog open is read-write rather than read-only: before opening the original
+namespace, it descriptor-copies a bounded, no-follow main/WAL snapshot and
+requires the complete canonical SQLite schema for the recorded v1-v4 migration
+level. It rejects rollback journals, unsafe or oversized WAL/SHM sidecars, and
+missing, empty, foreign, or corrupt databases without enabling WAL or migrating
+the original. The database must be a single-linked regular file. Existing-only
+open binds its captured `(st_dev, st_ino, st_nlink=1)` identity across
+`sqlite3.connect` and repeats the canonical schema check before WAL activation
+or migration. Its resolved ancestor chain and WAL/SHM sidecar namespace remain
+an explicit trusted, quiescent deployment boundary for the whole invocation;
+the identity checks do not claim a path-based sandbox against arbitrary
+concurrent renames. The CLI retains opened filesystem authorities for the CAS,
+workspace, and output parent through publication, revalidates them immediately
+before provisioning, and passes the retained output-parent identity into the
+native workspace owner so its pinned publication parent must match before any
+callback can publish. It rejects same-object, bind-mount, workspace re-entry,
+ambiguous stacked-mount, and catalog file-mount aliases before opening storage.
+Every existing output-parent component must be a real directory on the
+workspace root filesystem.
 The command resolves either one ref (optionally guarded by its expected
 generation) or one explicit immutable snapshot, materializes the retained
 portable generation, then closes the CLI-owned caller receipt, strict CAS

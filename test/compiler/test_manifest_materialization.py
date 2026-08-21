@@ -200,7 +200,9 @@ class _PostCommitFailureProvider(_TestWorkspaceProvider):
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _Result],
+        _expected_parent_identity: tuple[int, ...] | None = None,
     ) -> _Result:
+        del _expected_parent_identity
         super().run_workspace(
             request,
             receipt_owner=receipt_owner,

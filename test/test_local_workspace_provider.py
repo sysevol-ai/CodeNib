@@ -16,6 +16,7 @@ import pytest
 import codenib
 import codenib._local_workspace_provider as local_provider_module
 import codenib._workspace_owner as workspace_owner
+from codenib._atomic_directory import publication_parent_identity
 from codenib._captured_directory import (
     PublishedWorkspaceReceiptOwner,
     UnsupportedWorkspaceCreation,
@@ -266,6 +267,103 @@ def test_local_provider_native_policy_recheck_rejects_late_root_widening(
     assert receipt_owner.state == "empty"
     assert tuple(root.iterdir()) == ()
     assert not request.destination.exists()
+
+
+def test_local_provider_binds_native_parent_to_expected_identity(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    request = _request(root)
+    receipt_owner = PublishedWorkspaceReceiptOwner()
+    operation_called = False
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        expected = publication_parent_identity(descriptor)
+    finally:
+        os.close(descriptor)
+    wrong = expected[:1] + (expected[1] + 1,) + expected[2:]
+
+    def operation(session: StrictWorkspaceSession) -> object:
+        nonlocal operation_called
+        operation_called = True
+        return _write_and_publish(session, b"forbidden")
+
+    class BoundProvider:
+        def require_support(self) -> None:
+            provider.require_support()
+
+        def run_workspace(
+            self,
+            bound_request: StrictWorkspaceRequest,
+            *,
+            receipt_owner: PublishedWorkspaceReceiptOwner,
+            operation,
+        ) -> object:
+            return provider.run_workspace(
+                bound_request,
+                receipt_owner=receipt_owner,
+                operation=operation,
+                _expected_parent_identity=wrong,
+            )
+
+    with pytest.raises(
+        RuntimeError,
+        match="native workspace parent differs from retained authority",
+    ):
+        run_strict_workspace(
+            BoundProvider(),
+            request,
+            receipt_owner=receipt_owner,
+            operation=operation,
+        )
+
+    assert not operation_called
+    assert receipt_owner.state == "empty"
+    assert not request.destination.exists()
+    assert not tuple(root.glob(".codenib-workspace-stage-*"))
+
+
+def test_local_provider_accepts_matching_expected_parent_identity(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    request = _request(root)
+    receipt_owner = PublishedWorkspaceReceiptOwner()
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        expected = publication_parent_identity(descriptor)
+    finally:
+        os.close(descriptor)
+
+    class BoundProvider:
+        def require_support(self) -> None:
+            provider.require_support()
+
+        def run_workspace(
+            self,
+            bound_request: StrictWorkspaceRequest,
+            *,
+            receipt_owner: PublishedWorkspaceReceiptOwner,
+            operation,
+        ) -> object:
+            return provider.run_workspace(
+                bound_request,
+                receipt_owner=receipt_owner,
+                operation=operation,
+                _expected_parent_identity=expected,
+            )
+
+    run_strict_workspace(
+        BoundProvider(),
+        request,
+        receipt_owner=receipt_owner,
+        operation=lambda session: _write_and_publish(session, b"bound"),
+    )
+
+    assert (request.destination / "data/result.json").read_bytes() == b"bound"
+    receipt_owner.close()
 
 
 def test_local_provider_preserves_an_existing_destination(tmp_path: Path) -> None:

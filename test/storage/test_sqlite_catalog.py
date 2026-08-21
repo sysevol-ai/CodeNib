@@ -6,7 +6,12 @@
 
 from __future__ import annotations
 
+import io
+import os
+import shutil
 import sqlite3
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
@@ -110,20 +115,133 @@ def _prepare_delete_journal_catalog(path: Path) -> bytes:
     return path.read_bytes()
 
 
-def _schema_snapshot(path: Path) -> tuple[tuple[object, ...], ...]:
+def _prepare_supported_schema_version(path: Path, version: int) -> None:
     connection = sqlite3.connect(path)
     try:
-        return tuple(
-            tuple(row)
-            for row in connection.execute(
+        connection.execute(sqlite_catalog_module._SCHEMA_MIGRATIONS_SQL)
+        for migration_version in range(1, version + 1):
+            for statement in sqlite_catalog_module._MIGRATIONS[migration_version]:
+                connection.execute(statement)
+            if migration_version == 1:
+                connection.execute(
+                    """
+                    INSERT INTO namespaces(namespace_id, name, created_at)
+                    VALUES (?, ?, '2026-08-20T00:00:00+00:00')
+                    """,
+                    (
+                        sqlite_catalog_module.DEFAULT_NAMESPACE_ID,
+                        sqlite_catalog_module.DEFAULT_NAMESPACE_NAME,
+                    ),
+                )
+            connection.execute(
                 """
-                SELECT type, name, tbl_name, sql
-                FROM sqlite_master
-                WHERE substr(name, 1, 7) != 'sqlite_'
-                ORDER BY type, name, tbl_name
+                INSERT INTO schema_migrations(version, applied_at)
+                VALUES (?, '2026-08-20T00:00:00+00:00')
+                """,
+                (migration_version,),
+            )
+            connection.execute(f"PRAGMA user_version = {migration_version}")
+        connection.commit()
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+    finally:
+        connection.close()
+
+
+def _catalog_namespace_bytes(path: Path) -> dict[str, bytes | None]:
+    return {
+        suffix: (
+            sidecar.read_bytes()
+            if (sidecar := Path(f"{path}{suffix}")).exists()
+            else None
+        )
+        for suffix in ("", "-wal", "-shm", "-journal")
+    }
+
+
+def _rewrite_schema_sql(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    name: str,
+    old: str,
+    new: str,
+) -> None:
+    row = connection.execute(
+        "SELECT sql FROM sqlite_schema WHERE type = ? AND name = ?",
+        (object_type, name),
+    ).fetchone()
+    assert row is not None
+    sql = row[0]
+    assert old in sql
+    schema_version = connection.execute("PRAGMA schema_version").fetchone()[0]
+    connection.execute("PRAGMA writable_schema = ON")
+    try:
+        connection.execute(
+            "UPDATE sqlite_schema SET sql = ? WHERE type = ? AND name = ?",
+            (sql.replace(old, new, 1), object_type, name),
+        )
+        connection.execute(f"PRAGMA schema_version = {schema_version + 1}")
+    finally:
+        connection.execute("PRAGMA writable_schema = OFF")
+
+
+def _corrupt_catalog_schema(path: Path, corruption: str) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        if corruption == "table":
+            connection.execute("DROP TABLE namespaces")
+        elif corruption == "column":
+            _rewrite_schema_sql(
+                connection,
+                object_type="table",
+                name="objects",
+                old="created_at TEXT NOT NULL",
+                new="created_at BLOB NOT NULL",
+            )
+        elif corruption == "constraint":
+            _rewrite_schema_sql(
+                connection,
+                object_type="table",
+                name="objects",
+                old="byte_size INTEGER NOT NULL CHECK (byte_size >= 0)",
+                new="byte_size INTEGER NOT NULL",
+            )
+        elif corruption == "index":
+            connection.execute("DROP INDEX source_revisions_repository_idx")
+            connection.execute(
+                """
+                CREATE INDEX source_revisions_repository_idx
+                    ON source_revisions(source_revision_id)
                 """
             )
-        )
+        elif corruption == "foreign-key":
+            _rewrite_schema_sql(
+                connection,
+                object_type="table",
+                name="repositories",
+                old=(
+                    "FOREIGN KEY (namespace_id) "
+                    "REFERENCES namespaces(namespace_id)\n"
+                    "            ON DELETE RESTRICT"
+                ),
+                new="CHECK (namespace_id IS NOT NULL)",
+            )
+        elif corruption == "trigger":
+            connection.execute("DROP TRIGGER objects_are_immutable")
+            connection.execute(
+                """
+                CREATE TRIGGER objects_are_immutable
+                BEFORE UPDATE ON objects
+                BEGIN
+                    SELECT 1;
+                END
+                """
+            )
+        elif corruption == "extra-object":
+            connection.execute("CREATE TABLE counterfeit(value TEXT)")
+        else:  # pragma: no cover - the parametrization is closed
+            raise AssertionError(f"unexpected corruption: {corruption}")
+        connection.commit()
     finally:
         connection.close()
 
@@ -179,6 +297,732 @@ def test_existing_only_mode_never_creates_a_missing_catalog(tmp_path):
         pass
     with SQLiteCatalog(escaped, create=False) as reopened:
         assert reopened.schema_version == LATEST_SCHEMA_VERSION
+
+
+@pytest.mark.parametrize("version", range(1, LATEST_SCHEMA_VERSION + 1))
+def test_existing_only_accepts_every_canonical_supported_schema(tmp_path, version):
+    path = tmp_path / f"catalog-v{version}.sqlite3"
+    _prepare_supported_schema_version(path, version)
+
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert catalog.schema_version == LATEST_SCHEMA_VERSION
+        assert (
+            catalog._connection.execute(
+                "SELECT COUNT(*) FROM schema_migrations"
+            ).fetchone()[0]
+            == LATEST_SCHEMA_VERSION
+        )
+
+
+def test_existing_only_accepts_sqlite_analyze_statistics(tmp_path):
+    path = tmp_path / "analyzed-catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("ANALYZE")
+        connection.commit()
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_schema WHERE name = 'sqlite_stat1'"
+        ).fetchone() == (1,)
+    finally:
+        connection.close()
+
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert catalog.schema_version == LATEST_SCHEMA_VERSION
+
+
+def test_existing_only_rejects_malformed_sqlite_statistics_schema(tmp_path):
+    path = tmp_path / "malformed-statistics.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("ANALYZE")
+        _rewrite_schema_sql(
+            connection,
+            object_type="table",
+            name="sqlite_stat1",
+            old="CREATE TABLE sqlite_stat1(tbl,idx,stat)",
+            new="CREATE TABLE sqlite_stat1(tbl,idx,stat,extra)",
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with pytest.raises(CatalogError, match="schema is not canonical"):
+        SQLiteCatalog(path, create=False)
+
+
+def test_existing_only_accepts_schema_and_data_from_uncheckpointed_wal(tmp_path):
+    path = tmp_path / "live-wal.sqlite3"
+
+    with SQLiteCatalog(path) as writer:
+        writer._connection.execute("PRAGMA wal_autocheckpoint = 0")
+        repository_id = writer.create_repository("owner/live-wal")
+        assert Path(f"{path}-wal").stat().st_size > 0
+        assert Path(f"{path}-shm").exists()
+
+        main_only = sqlite3.connect(
+            f"{path.resolve().as_uri()}?mode=ro&immutable=1",
+            uri=True,
+        )
+        try:
+            assert main_only.execute("PRAGMA user_version").fetchone()[0] == 0
+            assert (
+                main_only.execute(
+                    "SELECT name FROM sqlite_schema WHERE name = 'schema_migrations'"
+                ).fetchone()
+                is None
+            )
+        finally:
+            main_only.close()
+
+        with SQLiteCatalog(
+            path,
+            create=False,
+            expected_file_identity=_catalog_file_identity(path),
+        ) as reader:
+            assert reader.schema_version == LATEST_SCHEMA_VERSION
+            assert (
+                reader._connection.execute(
+                    "SELECT repository_id FROM repositories WHERE repository_key = ?",
+                    ("owner/live-wal",),
+                ).fetchone()[0]
+                == repository_id
+            )
+
+
+def test_existing_only_revalidates_original_before_wal_or_migration(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    real_require = SQLiteCatalog._require_existing_catalog_identity
+    schema_checks = 0
+    migration_calls = 0
+
+    def corrupt_after_snapshot_check(catalog):
+        nonlocal schema_checks
+        schema_checks += 1
+        real_require(catalog)
+        if schema_checks == 1:
+            _corrupt_catalog_schema(path, "index")
+
+    def forbidden_migration(_catalog):
+        nonlocal migration_calls
+        migration_calls += 1
+        pytest.fail("noncanonical original must be rejected before migration")
+
+    monkeypatch.setattr(
+        SQLiteCatalog,
+        "_require_existing_catalog_identity",
+        corrupt_after_snapshot_check,
+    )
+    monkeypatch.setattr(SQLiteCatalog, "_migrate", forbidden_migration)
+
+    with pytest.raises(CatalogError, match="schema is not canonical"):
+        SQLiteCatalog(path, create=False)
+
+    assert schema_checks == 2
+    assert migration_calls == 0
+    assert not Path(f"{path}-wal").exists()
+    assert not Path(f"{path}-shm").exists()
+    connection = sqlite3.connect(path)
+    try:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("version", range(1, LATEST_SCHEMA_VERSION + 1))
+@pytest.mark.parametrize(
+    "corruption",
+    (
+        "table",
+        "column",
+        "constraint",
+        "index",
+        "foreign-key",
+        "trigger",
+        "extra-object",
+    ),
+)
+def test_existing_only_rejects_noncanonical_schema_without_mutating_namespace(
+    tmp_path,
+    version,
+    corruption,
+):
+    path = tmp_path / f"catalog-v{version}-{corruption}.sqlite3"
+    _prepare_supported_schema_version(path, version)
+    _corrupt_catalog_schema(path, corruption)
+    before = _catalog_namespace_bytes(path)
+    assert before["-wal"] is None
+    assert before["-shm"] is None
+
+    with pytest.raises(CatalogError, match="schema is not canonical"):
+        SQLiteCatalog(path, create=False)
+
+    assert _catalog_namespace_bytes(path) == before
+
+
+@pytest.mark.parametrize("version", range(1, LATEST_SCHEMA_VERSION + 1))
+def test_existing_only_preserves_existing_sidecars_for_noncanonical_schema(
+    tmp_path,
+    version,
+):
+    path = tmp_path / f"catalog-v{version}.sqlite3"
+    _prepare_supported_schema_version(path, version)
+    _corrupt_catalog_schema(path, "index")
+    Path(f"{path}-wal").write_bytes(b"untrusted WAL must remain byte-exact")
+    Path(f"{path}-shm").write_bytes(b"untrusted SHM must remain byte-exact")
+    before = _catalog_namespace_bytes(path)
+
+    with pytest.raises(CatalogError, match="schema is not canonical"):
+        SQLiteCatalog(path, create=False)
+
+    assert _catalog_namespace_bytes(path) == before
+
+
+def test_existing_only_rejects_symlink_wal_without_reading_its_target(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    protected = tmp_path / "protected"
+    protected.write_bytes(b"must not be copied")
+    wal = Path(f"{path}-wal")
+    wal.symlink_to(protected)
+    before_main = path.read_bytes()
+    before_target = protected.read_bytes()
+
+    with pytest.raises(CatalogError, match="single-linked regular file"):
+        SQLiteCatalog(path, create=False)
+
+    assert path.read_bytes() == before_main
+    assert wal.is_symlink()
+    assert wal.readlink() == protected
+    assert protected.read_bytes() == before_target
+    assert not Path(f"{path}-shm").exists()
+
+
+def test_existing_only_rejects_special_wal_without_blocking_or_mutation(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    wal = Path(f"{path}-wal")
+    os.mkfifo(wal, 0o600)
+    before_main = path.read_bytes()
+
+    with pytest.raises(CatalogError, match="single-linked regular file"):
+        SQLiteCatalog(path, create=False)
+
+    assert path.read_bytes() == before_main
+    assert wal.is_fifo()
+    assert not Path(f"{path}-shm").exists()
+
+
+def test_existing_only_rejects_symlink_shm_without_writing_its_target(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    protected = tmp_path / "protected"
+    protected.write_bytes(b"must not be mapped or changed")
+    shm = Path(f"{path}-shm")
+    shm.symlink_to(protected)
+    before_main = path.read_bytes()
+    before_target = protected.read_bytes()
+
+    with pytest.raises(CatalogError, match="single-linked regular file"):
+        SQLiteCatalog(path, create=False)
+
+    assert path.read_bytes() == before_main
+    assert shm.is_symlink()
+    assert shm.readlink() == protected
+    assert protected.read_bytes() == before_target
+    assert not Path(f"{path}-wal").exists()
+
+
+def test_existing_only_rejects_special_shm_without_blocking_or_mutation(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    shm = Path(f"{path}-shm")
+    os.mkfifo(shm, 0o600)
+    before_main = path.read_bytes()
+
+    with pytest.raises(CatalogError, match="single-linked regular file"):
+        SQLiteCatalog(path, create=False)
+
+    assert path.read_bytes() == before_main
+    assert shm.is_fifo()
+    assert not Path(f"{path}-wal").exists()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="exact file-mount authentication uses Linux mountinfo",
+)
+@pytest.mark.parametrize(
+    ("leaf", "label"),
+    (
+        ("main", "main file"),
+        ("wal", "WAL sidecar"),
+        ("shm", "SHM sidecar"),
+    ),
+)
+def test_existing_only_rejects_mounted_namespace_leaf_before_opening_original(
+    tmp_path,
+    monkeypatch,
+    leaf,
+    label,
+):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    mounted = {
+        "main": path,
+        "wal": Path(f"{path}-wal"),
+        "shm": Path(f"{path}-shm"),
+    }[leaf]
+    if mounted != path:
+        mounted.write_bytes(f"protected {label}".encode())
+    before = _catalog_namespace_bytes(path)
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_validation_linux_mount_points",
+        lambda: frozenset({os.path.normpath(os.path.realpath(mounted))}),
+    )
+
+    with pytest.raises(CatalogError, match=f"{label} must not be a file mount"):
+        SQLiteCatalog(path, create=False)
+
+    assert _catalog_namespace_bytes(path) == before
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="strict mount-table authentication is Linux-specific",
+)
+def test_existing_only_fails_closed_when_mount_table_cannot_be_read(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    before = _catalog_namespace_bytes(path)
+
+    def unavailable():
+        raise CatalogError("Linux mount table could not be inspected safely")
+
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_validation_linux_mount_points",
+        unavailable,
+    )
+
+    with pytest.raises(CatalogError, match="mount table could not be inspected"):
+        SQLiteCatalog(path, create=False)
+
+    assert _catalog_namespace_bytes(path) == before
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="strict mount-table authentication is Linux-specific",
+)
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        ("", "mount table is empty"),
+        (
+            "1 0 0:1 / / rw shared:1 ext4 /dev/root rw\n",
+            "malformed entry",
+        ),
+    ),
+)
+def test_existing_only_fails_closed_on_untrusted_mount_table(
+    tmp_path,
+    monkeypatch,
+    payload,
+    message,
+):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    before = _catalog_namespace_bytes(path)
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda *_args, **_kwargs: io.BytesIO(payload.encode()),
+    )
+
+    with pytest.raises(CatalogError, match=message):
+        SQLiteCatalog(path, create=False)
+
+    assert _catalog_namespace_bytes(path) == before
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="strict mount-table authentication is Linux-specific",
+)
+def test_validation_mount_table_accepts_non_utf8_filesystem_paths(
+    monkeypatch,
+):
+    mount_point = b"/mnt/non-utf8-\xff"
+    payload = b"1 0 8:1 / " + mount_point + b" rw - ext4 /dev/root rw\n"
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda *_args, **_kwargs: io.BytesIO(payload),
+    )
+
+    points = sqlite_catalog_module._validation_linux_mount_points()
+
+    assert {os.fsencode(point) for point in points} == {mount_point}
+
+
+def test_validation_snapshot_closes_all_sources_after_first_close_failure(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "catalog.sqlite3"
+    snapshot = tmp_path / "snapshot.sqlite3"
+    path.touch()
+    wal = tmp_path / "catalog.sqlite3-wal"
+    wal.touch()
+    descriptors = (os.open(path, os.O_RDONLY), os.open(wal, os.O_RDONLY))
+    metadata = tuple(os.fstat(descriptor) for descriptor in descriptors)
+    sources = iter(
+        (
+            (descriptors[0], metadata[0], snapshot, "main file"),
+            (
+                descriptors[1],
+                metadata[1],
+                Path(f"{snapshot}-wal"),
+                "WAL sidecar",
+            ),
+        )
+    )
+    close_calls: list[int] = []
+    original_close = os.close
+    fail_close = True
+
+    def open_source(*_args, **_kwargs):
+        return next(sources)[:2]
+
+    def close_source(descriptor):
+        if descriptor not in descriptors:
+            return original_close(descriptor)
+        close_calls.append(descriptor)
+        if descriptor == descriptors[1] and fail_close:
+            raise OSError("first close failed")
+        return original_close(descriptor)
+
+    monkeypatch.setattr(sqlite_catalog_module, "_open_validation_source", open_source)
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_copy_validation_source",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_require_no_rollback_journal",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(os, "close", close_source)
+
+    try:
+        with pytest.raises(OSError, match="first close failed") as caught:
+            with sqlite_catalog_module._catalog_validation_snapshot(path):
+                pass
+
+        assert close_calls[:2] == [descriptors[1], descriptors[0]]
+        retained = caught.value.publication_cleanup_owners  # type: ignore[attr-defined]
+        assert len(retained) == 1
+        assert not retained[0].closed
+        fail_close = False
+        retained[0].close()
+        assert retained[0].closed
+    finally:
+        for descriptor in descriptors:
+            try:
+                original_close(descriptor)
+            except OSError:
+                pass
+
+
+def test_validation_source_retains_failed_post_open_cleanup(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "catalog.sqlite3"
+    path.write_bytes(b"catalog")
+    opened: list[int] = []
+    mount_checks = 0
+    fail_close = True
+    original_open = os.open
+    original_close = os.close
+
+    def capture_open(*args, **kwargs):
+        descriptor = original_open(*args, **kwargs)
+        opened.append(descriptor)
+        return descriptor
+
+    def reject_post_open(_path, *, label):
+        nonlocal mount_checks
+        mount_checks += 1
+        if mount_checks == 2:
+            raise CatalogError(f"{label} post-open validation failed")
+
+    def interrupt_close(descriptor):
+        if opened and descriptor == opened[0] and fail_close:
+            raise OSError("injected descriptor close failure")
+        return original_close(descriptor)
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "close", interrupt_close)
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_require_validation_source_not_mount",
+        reject_post_open,
+    )
+
+    with pytest.raises(CatalogError, match="post-open validation failed") as caught:
+        sqlite_catalog_module._open_validation_source(
+            path,
+            label="main file",
+            required=True,
+        )
+
+    retained = caught.value.publication_cleanup_owners  # type: ignore[attr-defined]
+    assert len(retained) == 1
+    assert not retained[0].closed
+    fail_close = False
+    retained[0].close()
+    assert retained[0].closed
+
+
+def test_shared_memory_retains_cleanup_after_validation_failure(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "catalog.sqlite3"
+    shm = Path(f"{path}-shm")
+    with shm.open("wb") as stream:
+        stream.truncate(sqlite_catalog_module._MAX_VALIDATION_SHM_BYTES + 1)
+    opened: list[int] = []
+    fail_close = True
+    original_open = os.open
+    original_close = os.close
+
+    def capture_open(*args, **kwargs):
+        descriptor = original_open(*args, **kwargs)
+        opened.append(descriptor)
+        return descriptor
+
+    def interrupt_close(descriptor):
+        if opened and descriptor == opened[0] and fail_close:
+            raise OSError("injected SHM close failure")
+        return original_close(descriptor)
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "close", interrupt_close)
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_require_validation_source_not_mount",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(CatalogError, match="SHM sidecar exceeds") as caught:
+        sqlite_catalog_module._require_safe_shared_memory(path)
+
+    retained = caught.value.publication_cleanup_owners  # type: ignore[attr-defined]
+    assert len(retained) == 1
+    assert not retained[0].closed
+    fail_close = False
+    retained[0].close()
+    assert retained[0].closed
+
+
+def test_validation_copy_preserves_primary_and_retains_destination_cleanup(
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "source"
+    source.write_bytes(b"source")
+    destination = tmp_path / "destination"
+    source_descriptor = os.open(source, os.O_RDONLY)
+    observed = os.fstat(source_descriptor)
+    fields = list(observed)
+    fields[6] = observed.st_size + 1
+    expected = os.stat_result(fields)
+    opened: list[int] = []
+    fail_close = True
+    original_open = os.open
+    original_close = os.close
+
+    def capture_open(*args, **kwargs):
+        descriptor = original_open(*args, **kwargs)
+        opened.append(descriptor)
+        return descriptor
+
+    def interrupt_close(descriptor):
+        if opened and descriptor == opened[0] and fail_close:
+            raise OSError("injected destination close failure")
+        return original_close(descriptor)
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "close", interrupt_close)
+    try:
+        with pytest.raises(CatalogError, match="changed during copy") as caught:
+            sqlite_catalog_module._copy_validation_source(
+                source_descriptor,
+                expected,
+                destination,
+                label="main file",
+            )
+
+        retained = caught.value.publication_cleanup_owners  # type: ignore[attr-defined]
+        assert len(retained) == 1
+        assert not retained[0].closed
+        fail_close = False
+        retained[0].close()
+        assert retained[0].closed
+    finally:
+        original_close(source_descriptor)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="bind-mount regression requires Linux mount namespaces",
+)
+def test_existing_only_rejects_real_shm_file_bind_without_mutating_source(
+    tmp_path,
+):
+    unshare = shutil.which("unshare")
+    mount = shutil.which("mount")
+    if unshare is None or mount is None:
+        pytest.skip("Linux unshare/mount tools are unavailable")
+    probe = subprocess.run(
+        [
+            unshare,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            "--fork",
+            "true",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout).strip() or "permission denied"
+        pytest.skip(f"Linux user/mount namespace is unavailable: {detail}")
+
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    shm = Path(f"{path}-shm")
+    shm.write_bytes(b"destination".ljust(32_768, b"!"))
+    protected = tmp_path / "protected-shm"
+    protected.write_bytes(b"protected".ljust(32_768, b"?"))
+    script = r"""
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from codenib.storage.sqlite_catalog import CatalogError, SQLiteCatalog
+
+mount, catalog, shm, protected = sys.argv[1:]
+subprocess.run([mount, "--bind", protected, shm], check=True)
+catalog_path = Path(catalog)
+shm_path = Path(shm)
+protected_path = Path(protected)
+before = protected_path.read_bytes()
+if (shm_path.stat().st_dev, shm_path.stat().st_ino) != (
+    protected_path.stat().st_dev,
+    protected_path.stat().st_ino,
+):
+    raise SystemExit("bind mount did not alias the protected file")
+try:
+    SQLiteCatalog(catalog_path, create=False)
+except CatalogError as exc:
+    if "SHM sidecar must not be a file mount point" not in str(exc):
+        raise
+else:
+    raise SystemExit("mounted SHM sidecar was accepted")
+if protected_path.read_bytes() != before:
+    raise SystemExit("mounted SHM source bytes changed")
+"""
+    result = subprocess.run(
+        [
+            unshare,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            "--fork",
+            sys.executable,
+            "-c",
+            script,
+            mount,
+            os.fspath(path),
+            os.fspath(shm),
+            os.fspath(protected),
+        ],
+        capture_output=True,
+        check=False,
+        cwd=Path.cwd(),
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_existing_only_rejects_oversized_shm_without_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    Path(f"{path}-shm").write_bytes(b"oversized SHM")
+    monkeypatch.setattr(sqlite_catalog_module, "_MAX_VALIDATION_SHM_BYTES", 3)
+    before = _catalog_namespace_bytes(path)
+
+    with pytest.raises(CatalogError, match="SHM sidecar exceeds"):
+        SQLiteCatalog(path, create=False)
+
+    assert _catalog_namespace_bytes(path) == before
+
+
+@pytest.mark.parametrize("oversized", ("main", "wal"))
+def test_existing_only_rejects_oversized_validation_namespace_without_mutation(
+    tmp_path,
+    monkeypatch,
+    oversized,
+):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    if oversized == "wal":
+        Path(f"{path}-wal").write_bytes(b"oversized WAL")
+        limit = path.stat().st_size + len(b"oversized WAL") - 1
+    else:
+        limit = path.stat().st_size - 1
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_MAX_VALIDATION_NAMESPACE_BYTES",
+        limit,
+    )
+    before = _catalog_namespace_bytes(path)
+
+    with pytest.raises(CatalogError, match="validation namespace exceeds"):
+        SQLiteCatalog(path, create=False)
+
+    assert _catalog_namespace_bytes(path) == before
+
+
+def test_existing_only_rejects_rollback_journal_without_mutation(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    Path(f"{path}-journal").write_bytes(b"untrusted hot rollback journal")
+    before = _catalog_namespace_bytes(path)
+
+    with pytest.raises(CatalogError, match="rollback journal is not allowed"):
+        SQLiteCatalog(path, create=False)
+
+    assert _catalog_namespace_bytes(path) == before
 
 
 @pytest.mark.parametrize(
@@ -397,69 +1241,6 @@ def test_existing_only_mode_rejects_empty_or_foreign_databases(tmp_path):
         connection.close()
     assert not Path(f"{migration_db}-wal").exists()
     assert not Path(f"{migration_db}-shm").exists()
-
-
-def test_existing_only_rejects_a_foreign_claimed_complete_version_before_wal(
-    tmp_path,
-):
-    path = tmp_path / "foreign-version-claim.sqlite3"
-    connection = sqlite3.connect(path)
-    connection.execute(sqlite_catalog_module._SCHEMA_MIGRATIONS_SQL)
-    for table in sorted(
-        sqlite_catalog_module._V1_CATALOG_TABLES - {"schema_migrations"}
-    ):
-        connection.execute(f"CREATE TABLE {table} (foreign_value TEXT)")
-    connection.executemany(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (?, 'foreign')",
-        ((version,) for version in range(1, LATEST_SCHEMA_VERSION + 1)),
-    )
-    connection.execute(f"PRAGMA user_version = {LATEST_SCHEMA_VERSION:d}")
-    connection.commit()
-    connection.close()
-    schema_before = _schema_snapshot(path)
-
-    with pytest.raises(CatalogError, match="initialized CodeNib catalog"):
-        SQLiteCatalog(path, create=False)
-
-    assert _schema_snapshot(path) == schema_before
-    connection = sqlite3.connect(path)
-    try:
-        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == (
-            LATEST_SCHEMA_VERSION
-        )
-    finally:
-        connection.close()
-    assert not Path(f"{path}-wal").exists()
-    assert not Path(f"{path}-shm").exists()
-
-
-def test_existing_only_forward_migrates_an_exact_older_catalog_schema(tmp_path):
-    path = tmp_path / "version-one.sqlite3"
-    connection = sqlite3.connect(path)
-    connection.execute(sqlite_catalog_module._SCHEMA_MIGRATIONS_SQL)
-    for statement in sqlite_catalog_module._MIGRATIONS[1]:
-        connection.execute(statement)
-    connection.execute(
-        """
-        INSERT INTO namespaces(namespace_id, name, created_at)
-        VALUES (?, 'default', '2026-01-01T00:00:00+00:00')
-        """,
-        (DEFAULT_NAMESPACE_ID,),
-    )
-    connection.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (1, 'legacy')"
-    )
-    connection.execute("PRAGMA user_version = 1")
-    connection.commit()
-    connection.close()
-
-    with SQLiteCatalog(path, create=False) as catalog:
-        assert catalog.schema_version == LATEST_SCHEMA_VERSION
-        assert catalog.create_namespace("default") == DEFAULT_NAMESPACE_ID
-
-    with SQLiteCatalog(path, create=False) as reopened:
-        assert reopened.schema_version == LATEST_SCHEMA_VERSION
 
 
 def test_existing_only_mode_maps_corrupt_database_errors(tmp_path):
