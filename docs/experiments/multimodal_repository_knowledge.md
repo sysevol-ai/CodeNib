@@ -83,6 +83,21 @@ surface as an MCP-compatible tool router with stable tool schemas and bounded
 input validation. This keeps the query surface testable before wiring it into a
 server-specific MCP registration path.
 
+### Incremental updates
+
+`codenib.wiki.media_incremental` provides deterministic update planning for
+multimodal views. It compares two media manifests by path and content hash,
+marks artifacts as added, removed, changed, or unchanged, and identifies which
+visual fact packs can be reused without another VLM call.
+
+This is the first step toward incremental multimodal maintenance:
+
+```text
+media unchanged -> reuse existing VisualFactPack
+media changed   -> rerun VLM/extractor for that artifact
+media removed   -> drop stale visual facts and bindings
+```
+
 ## Why evidence stays server-side
 
 Media generation may use bounded source snippets inside provider prompts. Those
