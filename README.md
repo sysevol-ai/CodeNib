@@ -39,12 +39,11 @@ SPDX-License-Identifier: Apache-2.0
     <a href="https://docs.codenib.ai/codegraph/#one-command-setup"><img src="https://img.shields.io/badge/Codex-000?logo=openai&amp;logoColor=fff" alt="Codex supported"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python 3.10+"></a>
-    <img src="https://img.shields.io/badge/Release-0.2.2-2563EB.svg" alt="CodeNib 0.2.2">
   </p>
 </div>
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.2"
+python -m pip install "codenib[graph,mcp]"
 codenib codegraph init /path/to/your/repo
 ```
 
@@ -53,42 +52,6 @@ package-level graph providers it can manage, builds BM25 plus a source-linked
 symbol graph, and registers the resulting MCP server with installed Codex and
 Claude Code clients. It is local, open source, requires no model or cloud, and
 does not write configuration or indexes into the target repository.
-
-## News
-
-- **2026-08-21 — CodeNib 0.2.2 repository source authority.** Authenticated
-  indexing now admits absolute symlinks only when they resolve inside the same
-  pinned checkout, and exact root-relative exclusions persist across indexing,
-  CodeGraph, MCP, Wiki, and Web runtimes.
-  [Release notes](https://docs.codenib.ai/releases/0.2.2/)
-- **2026-08-13 — CodeNib 0.2.1 CodeGraph onboarding.** One command prepares a
-  repository graph and connects it to Codex and Claude Code, with idempotent
-  status, safe uninstall, and installed-wheel MCP graph verification.
-  [CodeGraph guide](https://docs.codenib.ai/codegraph/)
-- **2026-08-08 — RepoNavigator Jump adapter.** The published single-tool
-  [RepoNavigator](https://arxiv.org/abs/2512.20957v6) contract now resolves
-  symbol definitions through a persisted SCIP occurrence or injected LSP
-  signal, with graph-only resolution disclosed as a degraded fallback.
-  [Support boundary](https://docs.codenib.ai/agent_integrations/#reponavigator)
-- **2026-08-05 — CodeNib 0.2.0.** Build a static Wiki and reusable context
-  artifact once, then serve it through Pages or the official MCP package.
-  Hybrid retrieval and managed SCIP/LSP providers ship in the same CLI.
-  [Release notes](https://docs.codenib.ai/releases/0.2.0/)
-- **2026-08-05 — SweRank recipe.** Run
-  [SweRank](https://github.com/SalesforceAIResearch/SweRank) retrieval and
-  reranking over a local checkout. [Example](examples/swerank_retrieve_rerank.py)
-- **2026-08-04 — Native repository explorer.** CodeNib's planner now targets
-  the [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench)
-  source-region protocol.
-  [Validation](docs/evaluation/swe_explore.md)
-- **2026-08-03 — Native LocAgent policy.**
-  [LocAgent](https://github.com/gersteinlab/LocAgent) runs directly on CodeNib
-  views without LocAgent, LiteLLM, or LlamaIndex dependencies.
-  [Support matrix](https://docs.codenib.ai/agent_integrations/)
-- **2026-08-02 — OrcaLoca SearchAgent.**
-  [OrcaLoca](https://github.com/fishmingyu/OrcaLoca)'s six-tool search loop
-  now reuses CodeNib's symbol graph.
-  [Support matrix](https://docs.codenib.ai/agent_integrations/)
 
 ## System Architecture
 
@@ -118,7 +81,7 @@ Requires Python 3.10+ and Git. For an agent-ready CodeGraph with no model or API
 key, install the graph and MCP extras and run one command:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.2"
+python -m pip install "codenib[graph,mcp]"
 codenib codegraph init /path/to/repository
 ```
 
@@ -150,22 +113,19 @@ exactly matches the authenticated checkout and contains no tracked path that
 the default policy excludes. It does not currently support a non-empty custom
 exclusion set. A command that explicitly requests the `zoekt` view, including
 `--preset full`, fails closed when either condition is unmet; use the
-CodeGraph, `fast`, or semantic paths instead.
-In 0.2.2 the authenticated MCP `search_zoekt` runtime requires Linux `/proc`
-so the child process can inherit the exact retained shard generation; other
-platforms fail closed instead of reopening a mutable shard path.
+CodeGraph, `fast`, or semantic paths instead. Authenticated MCP serving for
+Zoekt currently requires Linux `/proc`; see the
+[source-surface boundaries](https://docs.codenib.ai/codegraph/#select-the-repository-source-surface).
 
 For a browser Wiki with hybrid BM25+dense retrieval, install the semantic extra:
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.2"
+python -m pip install "codenib[semantic]"
 codenib wiki /path/to/repository
 ```
 
 Both paths keep reusable state under `~/.codenib/repositories` and leave the
-target checkout unchanged. Set `CODENIB_HOME` to relocate state. The
-[0.2.2 release notes](https://docs.codenib.ai/releases/0.2.2/) record the
-upgrade boundary and installed-product evidence.
+target checkout unchanged. Set `CODENIB_HOME` to relocate state.
 
 Preview the CodeGraph operations without installing, indexing, or configuring
 an agent:
@@ -179,7 +139,7 @@ only their package-level providers; operating-system and project prerequisites
 remain explicit:
 
 ```bash
-python -m pip install "codenib[graph]==0.2.2"
+python -m pip install "codenib[graph]"
 codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
 ```
@@ -221,7 +181,7 @@ The recommended path configures installed Codex and Claude Code clients through
 their native CLIs:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.2"
+python -m pip install "codenib[graph,mcp]"
 codenib codegraph init /path/to/repository
 ```
 
@@ -300,7 +260,7 @@ running the credential- or toolchain-dependent tiers.
 
 ## Status
 
-CodeNib `0.2.2` is a beta release. The CLI and manifest format are usable, but
+CodeNib is currently in beta. The CLI and manifest format are usable, but
 public interfaces may still change before a stable release. Historical
 research artifacts retain their published dataset identifiers; the maintained
 package, import namespace, commands, and repository use `CodeNib`. See
@@ -326,6 +286,8 @@ If you use CodeNib in your research, please cite our
 ## Project
 
 [Website](https://codenib.ai)
+&nbsp;&middot;&nbsp;
+[Releases](https://github.com/sysevol-ai/CodeNib/releases)
 &nbsp;&middot;&nbsp;
 [Changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md)
 &nbsp;&middot;&nbsp;

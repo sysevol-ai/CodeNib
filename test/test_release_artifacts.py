@@ -380,7 +380,6 @@ def test_020_release_notes_retain_pages_permission_contract() -> None:
 @pytest.mark.parametrize(
     "relative_path",
     (
-        "README.md",
         "docs/agent_integrations.md",
         "docs/codegraph.md",
         "docs/index.md",
@@ -406,6 +405,22 @@ def test_public_install_commands_select_the_current_stable_release(
     assert install_lines
     assert "CODENIB_ALPHA_WHEEL=" not in text
     assert all("==0.2.2" in line for line in install_lines)
+
+
+def test_readme_install_commands_remain_unpinned() -> None:
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "README.md").read_text(encoding="utf-8")
+    install_lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.lstrip().startswith(("pip install ", "python -m pip install "))
+        and "codenib" in line
+        and " -e " not in line
+    ]
+
+    assert install_lines
+    assert "CODENIB_ALPHA_WHEEL=" not in text
+    assert all("==" not in line for line in install_lines)
 
 
 def test_registry_publishers_use_separate_workflows() -> None:
