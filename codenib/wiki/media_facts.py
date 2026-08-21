@@ -277,6 +277,12 @@ def build_visual_facts_manifest(
     return manifest.to_dict()
 
 
+def normalize_visual_fact_pack(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize extractor output into the canonical visual fact pack schema."""
+
+    return _fact_pack_from_mapping(value).to_dict()
+
+
 def _artifact_prompt_payload(artifact: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "path": _safe_text(artifact.get("path")),
@@ -556,4 +562,5 @@ __all__ = [
     "build_visual_fact_extraction_prompt",
     "build_visual_facts_manifest",
     "deterministic_visual_facts",
+    "normalize_visual_fact_pack",
 ]

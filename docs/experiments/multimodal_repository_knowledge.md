@@ -51,6 +51,12 @@ The local `deterministic_visual_facts()` fallback extracts conservative facts
 from artifact metadata only. Future VLM backends can replace that extractor
 while keeping the same schema.
 
+`OpenAICompatibleVisualFactExtractor` provides the first provider-neutral VLM
+adapter. It targets an OpenAI-compatible `/chat/completions` endpoint, sends a
+bounded local artifact as a data URL, asks for JSON-only structured visual
+facts, and normalizes the response into the same `VisualFactPack` schema. This
+keeps the multimodal knowledge pipeline independent of a specific model family.
+
 ### VisualGroundingManifest
 
 `codenib.wiki.media_grounding` grounds extracted visual entities to repository
@@ -99,3 +105,18 @@ print(view["entry_count"])
 
 This creates a deterministic local view. A VLM extractor can be added later by
 passing a custom extractor into `build_visual_facts_manifest()`.
+
+```python
+from codenib.wiki import OpenAICompatibleVisualFactExtractor
+
+extractor = OpenAICompatibleVisualFactExtractor(
+    model="qwen-vl",
+    api_base="http://localhost:8000/v1",
+    api_key=None,
+)
+
+facts = build_visual_facts_manifest(
+    media,
+    extractor=lambda artifact: extractor.extract(artifact, repo_path=repo),
+)
+```
