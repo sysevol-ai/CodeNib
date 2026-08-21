@@ -24,6 +24,8 @@ SPDX-License-Identifier: Apache-2.0
     &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/">Documentation</a>
     &nbsp;&middot;&nbsp;
+    <a href="https://docs.codenib.ai/news/">News</a>
+    &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/codegraph/">CodeGraph</a>
     &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/mcp/">MCP</a>
