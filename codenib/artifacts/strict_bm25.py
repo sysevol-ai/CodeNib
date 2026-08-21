@@ -49,6 +49,7 @@ from .._workspace_provider import (
     StrictWorkspaceSession,
     run_strict_workspace,
 )
+from ..repository_source_selection import RepositorySourceSelection
 from ..source_fingerprint import (
     RepositorySourceBinding,
     RepositorySourceIdentitySnapshot,
@@ -63,6 +64,7 @@ _JSON_READ_CHUNK_BYTES = 1024 * 1024
 _WINDOWS_DRIVE_PREFIX = tuple(
     f"{letter}:" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
+_CURRENT_BM25_BUILDER_SCHEMA = 8
 _STRICT_BM25_PLAN_DOMAIN = b"codenib-portable-bm25-strict-workspace-v1"
 _STRICT_BM25_FILES = frozenset({"documents.json", "bm25_metadata.json"})
 
@@ -892,6 +894,25 @@ def _policy(
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
 ) -> tuple[str, tuple[Path, ...], frozenset[str]]:
+    has_selection_digest = "source_selection_digest" in view_config
+    if (
+        type(view_config.get("builder_schema")) is int
+        and view_config.get("builder_schema") == _CURRENT_BM25_BUILDER_SCHEMA
+        and not has_selection_digest
+    ):
+        raise ValueError("current BM25 view config requires a source selection digest")
+    if has_selection_digest:
+        source_selection = repository_identity.source_selection
+        selection_digest = view_config.get("source_selection_digest")
+        if (
+            type(source_selection) is not RepositorySourceSelection
+            or type(selection_digest) is not str
+            or selection_digest != source_selection.digest
+        ):
+            raise ValueError(
+                "BM25 view source selection differs from the authenticated "
+                "repository source"
+            )
     forbidden = (repository_identity.root, *forbidden_paths)
     assert_no_secret_fields(view_config, source="portable BM25 view config")
     _assert_authenticated_publishable_json_value(

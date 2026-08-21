@@ -42,6 +42,7 @@ from codenib.artifacts import (
 )
 from codenib.artifacts.strict_bm25 import _record_chunks
 from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import (
     RepositorySourceBinding,
     RepositorySourceIdentitySnapshot,
@@ -357,6 +358,46 @@ def test_strict_bm25_plans_replays_and_serves_same_query_semantics(
         ]
     finally:
         output_owner.close()
+
+
+@pytest.mark.parametrize(
+    ("view_config", "message"),
+    [
+        ({"builder_schema": 8}, "requires a source selection digest"),
+        (
+            {
+                "builder_schema": 8,
+                "source_selection_digest": RepositorySourceSelection(
+                    ("generated",)
+                ).digest,
+            },
+            "source selection differs",
+        ),
+    ],
+)
+def test_current_bm25_selection_is_bound_before_source_consumption(
+    strict_generation,
+    monkeypatch: pytest.MonkeyPatch,
+    view_config: dict[str, Any],
+    message: str,
+) -> None:
+    fixture = strict_generation
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "_planned_view_from_publication",
+        lambda *_args, **_kwargs: pytest.fail("source generation must not be consumed"),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        plan_bm25_view_strict(
+            fixture.source_owner,
+            repository_source=fixture.repository_source,
+            view_config=view_config,
+            environ={},
+        )
+
+    assert fixture.source_owner.active
+    assert fixture.repository_source.usable
 
 
 def test_strict_bm25_recaptures_raw_directory_with_missing_test_provider(
