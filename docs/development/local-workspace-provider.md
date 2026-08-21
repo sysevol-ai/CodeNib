@@ -16,10 +16,78 @@ missing destination and transfers the generation to a caller-owned
 `PublishedWorkspaceReceiptOwner`.
 
 The provider is not part of CodeNib's default compiler, import, or runtime
-path. The first explicit operator bridge is `codenib artifact materialize`,
-which can publish a retained catalog ref or immutable snapshot to a missing
-portable-artifact directory. The strict BM25 replacement path still requires
-the unsupported `provider-bound-exact` destination mode.
+path. Two explicit operator bridges use it: `codenib artifact import-cache`
+recaptures one current compiler-cache BM25 view into retained storage, and
+`codenib artifact materialize` publishes a retained catalog ref or immutable
+snapshot to a missing portable-artifact directory. The strict BM25 replacement
+path still requires the unsupported `provider-bound-exact` destination mode.
+
+## Import a compiler BM25 cache
+
+`codenib artifact import-cache` imports one exact current BM25 view from an
+existing `IndexCompiler` cache as a ready retained snapshot. This is a
+BM25-only bootstrap: it does not change the default `codenib index` route,
+import vector or graph views, run an M2 fenced job, or hot-switch a runtime.
+
+Prepare these authorities before running it:
+
+- The positional repository must be the source used to build the cache. The
+  retained source-fingerprint-v2 identity must match the manifest, whose commit
+  must be a full lowercase 40-character Git SHA. The manifest must contain one
+  exact current BM25 entry and exact fingerprints for
+  `bm25/documents.json` and `bm25/bm25_metadata.json`.
+- `--cache-dir` must be an existing cache produced by the current compiler. It
+  must already contain `repo_manifest.json`, the fixed BM25 tree, and the
+  single-link regular `.index-compiler.lock`. Run or update the cache with the
+  current `IndexCompiler`; do not add a lock file by hand. Import opens the
+  lease existing-only and never creates the cache or lock. The importer owns
+  that lease, so a library caller must not wrap it in another lock for the same
+  cache; same-thread re-entry fails fast. The lock serializes cooperating
+  CodeNib compiler and importer processes in a private cache namespace. It is
+  not a sandbox against an actor actively replacing cache paths while the lock
+  is held.
+- `--catalog`, `--cas-root`, and `--workspace-root` have the same strict
+  requirements documented for materialization below: an existing initialized
+  SQLite catalog, a fully preprovisioned strict `LocalCAS`, and an existing
+  private Linux workspace root owned by the current effective UID with exact
+  mode `0700`. Repository and cache paths must neither overlap nor physically
+  alias those storage authorities; the cache must not contain the repository.
+
+`codenib index` prints its `repo_manifest.json` location; use that file's
+parent as `--cache-dir`. For example, import the first generation of `main`:
+
+```bash
+codenib artifact import-cache /srv/src/repository \
+  --cache-dir /var/lib/codenib/compiler-cache/repository \
+  --catalog /var/lib/codenib/catalog.sqlite3 \
+  --cas-root /var/lib/codenib/cas \
+  --workspace-root /var/lib/codenib/workspaces \
+  --repository owner/repository \
+  --ref main \
+  --expected-generation 0
+```
+
+Under the cooperative cache lease, the command authenticates the source,
+manifest, and ordinary BM25 files; completes the canonical BM25-only portable
+manifest and import plan; and publishes fresh missing-only BM25 and context
+generations. It then revalidates those exact bytes and releases the lease
+before retained CAS ingestion or catalog/ref publication begins.
+
+Every invocation allocates random
+`.codenib-cache-import-<nonce>-bm25` and
+`.codenib-cache-import-<nonce>-context` directories below the workspace root.
+They remain immutable generation evidence after their receipt owners close,
+including when a later stage fails; the command warns instead of deleting
+them. Their future ownership-aware reclamation belongs to M5. On success, the
+CLI prints the snapshot, ref generation, both evidence paths, and a copyable
+`codenib artifact materialize --snapshot ...` command. Its suggested
+`.codenib-cache-import-<nonce>-materialized` output is not created or reserved.
+
+Use the current ref generation for a changed cache. If a call might have
+committed before its result was observed, retry the exact same source, cache,
+repository, namespace, and ref with the original `--expected-generation`.
+The retry gets fresh missing evidence destinations but resolves the same
+snapshot and generation without advancing the ref again.
 
 ## Materialize a retained artifact
 
@@ -87,10 +155,10 @@ warns that the output now exists, do not assume that the path is disposable or
 retry over it; verify the retained artifact before reuse or reclaim it through
 an ownership-aware workflow.
 
-This is the first explicit local bridge, not completion of the hybrid-storage
-M1 milestone. Default compiler/import/runtime wiring is still missing, as is a
-production provider for the strict BM25 producer's `provider-bound-exact`
-destination contract.
+This retained-read bridge and the BM25 ingress above do not complete the
+hybrid-storage M1 milestone. Default compiler/runtime routing and non-BM25
+cache ingress are still missing, as is a production provider for the strict
+BM25 replacement producer's `provider-bound-exact` destination contract.
 
 ## Lifecycle
 

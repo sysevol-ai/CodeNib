@@ -359,11 +359,11 @@ profile or durable job payload. Strict whole-context and retained
 materialization APIs are now available as injectable library producers. The
 Linux local provider deliberately accepts only missing destinations, so
 whole-context retained materialization can use it explicitly, while strict BM25
-requests `provider-bound-exact` and still lacks a concrete production provider.
-The explicit retained-artifact CLI can now construct the whole-context producer
-for one existing catalog selection, but no default compiler/import/runtime route
-constructs these producers. M1 remains in progress and the M2 BM25 profile
-adapter is still outstanding.
+replacement requests `provider-bound-exact` and still lacks a concrete
+production provider. The explicit retained-artifact CLI can now construct the
+whole-context producer for one existing catalog selection, but no default
+compiler/import/runtime route constructs these producers. M1 remains in
+progress and the M2 BM25 profile adapter is still outstanding.
 
 Strict whole-context publication can now aggregate already-normalized BM25 and
 vector generations retained by active workspace receipt owners. The plan binds
@@ -380,9 +380,9 @@ that identity is captured. The producer can now use a caller-supplied
 `LocalWorkspaceProvider` for a missing destination. The explicit CLI bridge now
 constructs that provider and closes its output receipt for one invocation, but
 no default compiler/import/runtime route manages either lifecycle. This slice
-does not normalize native vector state or route compiler output. Its retained
-receipt is now accepted by the direct M1 importer below, but it is not yet an M2
-fenced job output.
+does not normalize native vector state or route compiler output by default. Its
+retained receipt is now accepted by the direct M1 importer below, but it is not
+yet an M2 fenced job output.
 
 Retained manifest import now has additional backend-neutral prerequisite
 gates. `BlobInfo` is an exact point-in-time CAS receipt, and
@@ -486,6 +486,36 @@ advancing the ref again. This is the direct M1 bootstrap path, not the M2 fenced
 job-success transaction. Default compiler/import/runtime wiring remains the M1
 gap; production retention and garbage collection remain M5 work.
 
+The first BM25-only compiler-cache ingress now connects current
+`IndexCompiler` output to this executor without treating mutable cache paths as
+retained authority. `recapture_bm25_view_strict` converts the ordinary fixed
+two-file BM25 tree into a missing-only strict workspace generation. The
+`import_compiler_cache_bm25` coordinator takes the existing-only cooperative
+cache lease; validates the retained source-fingerprint-v2 identity, exact
+manifest data, full lowercase 40-character Git commit, current BM25 metadata,
+and both file fingerprints; and completes the canonical portable BM25-only
+manifest and retained import plan before the first workspace mutation. While
+the lock is held, it publishes separate immutable BM25 and whole-context
+evidence generations and repeats the source, manifest, byte, and receipt
+checks. It releases the cache lock before any retained CAS or catalog data
+operation, so only the authenticated context receipt crosses the mutable-cache
+boundary.
+
+`codenib artifact import-cache` exposes that coordinator as an explicit local
+bootstrap. It requires an existing initialized SQLite catalog, a fully
+preprovisioned strict `LocalCAS`, an existing private Linux workspace root with
+exact mode `0700`, and a real producer cache with its existing lock. Each call
+chooses fresh missing-only BM25 and context destinations and never recursively
+removes a published directory after a later failure. A changed import
+atomically advances the selected ref and prints an immutable-snapshot
+`artifact materialize` handoff without reserving the suggested output. An
+exact retry uses fresh destinations but the original expected ref generation
+and idempotently returns the already-published snapshot without another ref
+advance. This advances BM25 ingress only. M1 remains in progress: default
+compiler/runtime routing and non-BM25 cache ingress remain. Generic builder
+profiles and fenced job publication remain M2 work, runtime hot switching
+remains M3 work, and evidence retention and reclamation remain M5 work.
+
 The first read-only retained `RepoManifest` exporter now closes the data-only
 round trip without introducing path authority. It accepts the additive
 `RetainedSnapshotCatalog` capability plus a receipt-verifying object store,
@@ -552,10 +582,10 @@ rather than deleting it.
 
 This command does not initialize or populate the control plane, import a legacy
 cache, build views, advance refs, or make retained storage the default. It is
-the first explicit local bridge only. Default compiler/import/runtime wiring
-remains the outstanding M1 deliverable, and strict BM25 still lacks the
-`provider-bound-exact` production provider; fenced job publication remains M2
-work.
+the retained-read bridge only. Default compiler/runtime routing and non-BM25
+cache ingress remain outstanding M1 work, and strict BM25 replacement still
+lacks the `provider-bound-exact` production provider; fenced job publication
+remains M2 work.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable
@@ -580,6 +610,12 @@ exposes it, and an explicit read-only directory fallback otherwise.  Windows
 retains a cooperative `msvcrt` byte lock with pre-entry reparse/link and
 identity checks; a future handle-based implementation is required before
 adversarial junction or path-replacement races can enter its contract.
+The compiler-cache importer borrows this lease existing-only: both the cache
+directory and `.index-compiler.lock` must already have been created by a real
+producer run, and import never creates either one. Manually adding a lock file
+cannot establish prior cooperative discipline. The importer acquires the lease
+itself; same-thread re-entry for the same cache inode fails fast, while nested
+leases for different caches remain valid.
 
 Schema v2 deliberately retains complete job aggregates.  Duplicate-insert
 guards reject `REPLACE` of jobs, requested views, and persistent lease slots
