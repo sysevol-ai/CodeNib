@@ -303,6 +303,155 @@ def test_creates_bounded_entries_without_chmodding_existing_parent(
     assert lock_mode & 0o177 == 0
 
 
+def test_existing_only_lock_rejects_missing_cache_without_creation(
+    tmp_path: Path,
+) -> None:
+    cache = tmp_path / "missing-cache"
+
+    with pytest.raises(RuntimeError, match="open compiler cache directory"):
+        with compiler_cache_lock(cache, create=False):
+            raise AssertionError("unreachable")
+
+    assert not cache.exists()
+
+
+def test_existing_only_lock_rejects_missing_lock_without_creation(
+    tmp_path: Path,
+) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir()
+
+    with pytest.raises(RuntimeError, match="lock does not exist"):
+        with compiler_cache_lock(cache, create=False):
+            raise AssertionError("unreachable")
+
+    assert list(cache.iterdir()) == []
+
+
+def test_existing_only_lock_borrows_existing_cache_and_lock(tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    with compiler_cache_lock(cache):
+        pass
+    lock_path = cache / COMPILER_CACHE_LOCK_FILENAME
+    before = _metadata_identity(lock_path)
+    entered = False
+
+    with compiler_cache_lock(cache, create=False):
+        entered = True
+
+    assert entered is True
+    assert _metadata_identity(lock_path) == before
+
+
+def test_lock_create_policy_rejects_non_bool_before_directory_io(
+    tmp_path: Path,
+) -> None:
+    cache = tmp_path / "missing-cache"
+
+    with pytest.raises(TypeError, match="exact bool"):
+        with compiler_cache_lock(cache, create=1):  # type: ignore[arg-type]
+            raise AssertionError("unreachable")
+
+    assert not cache.exists()
+
+
+@pytest.mark.timeout(5)
+def test_same_thread_same_cache_reentry_fails_fast_and_outer_stays_locked(
+    tmp_path: Path,
+) -> None:
+    cache = tmp_path / "cache"
+    contender_acquired = threading.Event()
+
+    def contend() -> None:
+        with compiler_cache_lock(cache):
+            contender_acquired.set()
+
+    with compiler_cache_lock(cache):
+        with pytest.raises(RuntimeError, match="already held by this thread"):
+            with compiler_cache_lock(cache):
+                raise AssertionError("unreachable")
+
+        contender = threading.Thread(target=contend)
+        contender.start()
+        assert not contender_acquired.wait(timeout=0.25)
+
+    assert contender_acquired.wait(timeout=5)
+    contender.join(timeout=5)
+    assert not contender.is_alive()
+    with compiler_cache_lock(cache, create=False):
+        pass
+
+
+def test_same_thread_can_nest_distinct_cache_locks(tmp_path: Path) -> None:
+    first = tmp_path / "first-cache"
+    second = tmp_path / "second-cache"
+
+    with compiler_cache_lock(first):
+        with compiler_cache_lock(second):
+            assert (first / COMPILER_CACHE_LOCK_FILENAME).is_file()
+            assert (second / COMPILER_CACHE_LOCK_FILENAME).is_file()
+
+
+def test_interruption_after_thread_claim_does_not_leave_ghost_ownership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    with compiler_cache_lock(cache):
+        pass
+    real_claim = lock_module._claim_thread_cache_lock
+    interrupted = False
+
+    def interrupt_after_claim(cache_path: Path, claim: object) -> None:
+        nonlocal interrupted
+        real_claim(cache_path, claim)  # type: ignore[arg-type]
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        lock_module,
+        "_claim_thread_cache_lock",
+        interrupt_after_claim,
+    )
+    with pytest.raises(KeyboardInterrupt):
+        with compiler_cache_lock(cache, create=False):
+            raise AssertionError("unreachable")
+
+    with compiler_cache_lock(cache, create=False):
+        pass
+
+
+def test_interruption_after_thread_claim_release_does_not_leave_ghost_ownership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    with compiler_cache_lock(cache):
+        pass
+    real_release = lock_module._release_thread_cache_lock_claim
+    interrupted = False
+
+    def interrupt_after_release(claim: object) -> None:
+        nonlocal interrupted
+        real_release(claim)  # type: ignore[arg-type]
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        lock_module,
+        "_release_thread_cache_lock_claim",
+        interrupt_after_release,
+    )
+    with pytest.raises(KeyboardInterrupt):
+        with compiler_cache_lock(cache, create=False):
+            pass
+
+    with compiler_cache_lock(cache, create=False):
+        pass
+
+
 def test_serializes_threads(tmp_path: Path) -> None:
     cache = tmp_path / "cache"
     started = threading.Event()
@@ -1424,6 +1573,43 @@ def test_rejects_lock_entry_swap_before_entering_body(
     assert entered is False
     assert stolen.read_bytes() == b"original"
     assert lock_path.read_bytes() == b"replacement"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="exercises POSIX identity binding")
+def test_existing_only_lock_rejects_cache_path_swap_without_creating_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    with compiler_cache_lock(cache):
+        pass
+    moved_cache = tmp_path / "moved-cache"
+    real_validate = lock_module._validate_posix_lock_entry
+    calls = 0
+
+    def replace_cache_after_lock_validation(*args, **kwargs):
+        nonlocal calls
+        identity = real_validate(*args, **kwargs)
+        calls += 1
+        if calls == 2:
+            cache.rename(moved_cache)
+            cache.mkdir()
+        return identity
+
+    monkeypatch.setattr(
+        lock_module,
+        "_validate_posix_lock_entry",
+        replace_cache_after_lock_validation,
+    )
+    entered = False
+
+    with pytest.raises(RuntimeError, match="compiler cache path changed"):
+        with compiler_cache_lock(cache, create=False):
+            entered = True
+
+    assert entered is False
+    assert list(cache.iterdir()) == []
+    assert (moved_cache / COMPILER_CACHE_LOCK_FILENAME).is_file()
 
 
 @pytest.mark.skipif(os.name != "posix", reason="exercises POSIX identity binding")

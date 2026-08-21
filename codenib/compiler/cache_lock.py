@@ -33,6 +33,9 @@ _WINDOWS_LOCK_RETRY_SECONDS = 0.05
 _ACTIVE_POSIX_LOCK_DESCRIPTORS: set[int] = set()
 _POSIX_FORK_GENERATION = 0
 _POSIX_LOCK_LIFECYCLE_DEPTH = threading.local()
+_CACHE_LOCK_THREAD_CLAIMS = threading.local()
+
+_ThreadCacheLockClaim = tuple[int, tuple[int, ...], object]
 
 
 def _posix_lifecycle_guard_depth() -> int:
@@ -462,6 +465,98 @@ def _inode_identity(metadata: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _release_thread_cache_lock_claim(claim: _ThreadCacheLockClaim) -> None:
+    owner_generation, identity, token = claim
+    deferred: BaseException | None = None
+    while True:
+        try:
+            state = getattr(_CACHE_LOCK_THREAD_CLAIMS, "state", None)
+            if state is None:
+                break
+            state_generation, tokens = state
+            if (
+                owner_generation != _POSIX_FORK_GENERATION
+                or state_generation != _POSIX_FORK_GENERATION
+            ):
+                break
+            if type(tokens) is not dict:
+                raise RuntimeError("compiler cache thread claim state is invalid")
+            # ``pop(..., None)`` is deliberately idempotent: if cancellation
+            # arrives after the C operation mutated the dict, retrying remains
+            # safe.  Token identity prevents a failed duplicate claim from
+            # releasing the outer lock's ownership entry.
+            if tokens.get(identity) is token:
+                tokens.pop(identity, None)
+        except BaseException as exc:  # noqa: B036 - finish release first
+            if isinstance(exc, Exception):
+                raise
+            deferred = _remember_cleanup_interruption(deferred, exc)
+            continue
+        break
+    if deferred is not None:
+        raise deferred
+
+
+def _new_thread_cache_lock_claim(
+    identity: tuple[int, ...],
+) -> _ThreadCacheLockClaim:
+    return (_POSIX_FORK_GENERATION, identity, object())
+
+
+def _claim_thread_cache_lock(
+    cache: Path,
+    claim: _ThreadCacheLockClaim,
+) -> None:
+    owner_generation, identity, token = claim
+    if owner_generation != _POSIX_FORK_GENERATION:
+        raise RuntimeError("compiler cache thread claim generation changed")
+    state = getattr(_CACHE_LOCK_THREAD_CLAIMS, "state", None)
+    if state is None or state[0] != owner_generation:
+        tokens: dict[tuple[int, ...], object] = {}
+        _CACHE_LOCK_THREAD_CLAIMS.state = (owner_generation, tokens)
+    else:
+        tokens = state[1]
+        if type(tokens) is not dict:
+            raise RuntimeError("compiler cache thread claim state is invalid")
+    if identity in tokens:
+        raise RuntimeError(
+            f"compiler cache lock is already held by this thread: {cache}"
+        )
+    try:
+        tokens[identity] = token
+    except BaseException as exc:  # noqa: B036 - reconcile ambiguous mutation
+        _finish_cleanup_preserving_primary(
+            exc,
+            "compiler cache thread claim rollback also failed",
+            lambda: _release_thread_cache_lock_claim(claim),
+        )
+        raise
+
+
+def _finish_claimed_lock_cleanup(
+    primary_error: BaseException | None,
+    *,
+    close_label: str,
+    close: Callable[[], None],
+    claim: _ThreadCacheLockClaim,
+) -> None:
+    close_error: BaseException | None = None
+    try:
+        _finish_cleanup_preserving_primary(primary_error, close_label, close)
+    except BaseException as exc:  # noqa: B036 - release claim before propagation
+        close_error = exc
+    cleanup_primary = primary_error if primary_error is not None else close_error
+    try:
+        _finish_cleanup_preserving_primary(
+            cleanup_primary,
+            "compiler cache thread claim release also failed",
+            lambda: _release_thread_cache_lock_claim(claim),
+        )
+    finally:
+        if primary_error is None and close_error is not None:
+            raise close_error
+
+
 def _validate_lock_metadata(metadata: os.stat_result, lock_path: Path) -> None:
     if stat.S_ISLNK(metadata.st_mode) or _is_reparse_point(metadata):
         raise RuntimeError(f"compiler cache lock is a link: {lock_path}")
@@ -534,11 +629,16 @@ def _make_bounded_cache_directories(cache: Path) -> None:
 
 
 @contextmanager
-def _open_posix_cache_directory(cache_dir: str | Path) -> Iterator[tuple[Path, int]]:
+def _open_posix_cache_directory(
+    cache_dir: str | Path,
+    *,
+    create: bool = True,
+) -> Iterator[tuple[Path, int]]:
     _require_posix_primitives()
     cache = _cache_path(cache_dir)
     try:
-        _make_bounded_cache_directories(cache)
+        if create:
+            _make_bounded_cache_directories(cache)
         descriptor = os.open(cache, _directory_open_flags())
     except OSError as exc:
         raise RuntimeError(f"could not open compiler cache directory: {cache}") from exc
@@ -611,6 +711,8 @@ def _open_posix_lock_file(
     cache: Path,
     directory_descriptor: int,
     descriptor_owner: list[int],
+    *,
+    create: bool = True,
 ) -> tuple[int, tuple[int, ...]]:
     lock_path = cache / COMPILER_CACHE_LOCK_FILENAME
     with _PosixLifecycleGuardLease() as acquire_interruption:
@@ -625,8 +727,12 @@ def _open_posix_lock_file(
                     follow_symlinks=False,
                 )
             except FileNotFoundError:
+                if not create:
+                    raise RuntimeError(
+                        f"compiler cache lock does not exist: {lock_path}"
+                    ) from None
                 expected_identity = None
-                create = True
+                create_entry = True
             except OSError as exc:
                 raise RuntimeError(
                     f"could not inspect compiler cache lock: {lock_path}"
@@ -634,13 +740,13 @@ def _open_posix_lock_file(
             else:
                 _validate_lock_metadata(before, lock_path)
                 expected_identity = _inode_identity(before)
-                create = False
+                create_entry = False
 
             descriptor: int | None = None
             try:
                 descriptor = os.open(
                     COMPILER_CACHE_LOCK_FILENAME,
-                    _posix_lock_flags(create=create),
+                    _posix_lock_flags(create=create_entry),
                     0o600,
                     dir_fd=directory_descriptor,
                 )
@@ -727,20 +833,63 @@ def _close_posix_lock_file(
         raise deferred
 
 
+def _validate_posix_cache_entry(cache: Path, descriptor: int) -> None:
+    try:
+        opened = os.fstat(descriptor)
+        visible = cache.lstat()
+    except OSError as exc:
+        raise RuntimeError(f"compiler cache path changed: {cache}") from exc
+    if (
+        not stat.S_ISDIR(opened.st_mode)
+        or not stat.S_ISDIR(visible.st_mode)
+        or stat.S_ISLNK(visible.st_mode)
+        or _is_reparse_point(opened)
+        or _is_reparse_point(visible)
+        or _inode_identity(opened) != _inode_identity(visible)
+    ):
+        raise RuntimeError(f"compiler cache path changed: {cache}")
+
+
 @contextmanager
-def _posix_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
-    with _open_posix_cache_directory(cache_dir) as (cache, directory_descriptor):
+def _posix_compiler_cache_lock(
+    cache_dir: str | Path,
+    *,
+    create: bool = True,
+) -> Iterator[None]:
+    cache_directory = (
+        _open_posix_cache_directory(cache_dir)
+        if create
+        else _open_posix_cache_directory(cache_dir, create=False)
+    )
+    with cache_directory as (
+        cache,
+        directory_descriptor,
+    ):
         owner_generation = _POSIX_FORK_GENERATION
         lock_path = cache / COMPILER_CACHE_LOCK_FILENAME
         descriptor_owner: list[int] = []
+        thread_claim: _ThreadCacheLockClaim | None = None
         locked = False
         primary_error: BaseException | None = None
         try:
-            descriptor, identity = _open_posix_lock_file(
-                cache,
-                directory_descriptor,
-                descriptor_owner,
+            _validate_posix_cache_entry(cache, directory_descriptor)
+            thread_claim = _new_thread_cache_lock_claim(
+                _inode_identity(os.fstat(directory_descriptor)),
             )
+            _claim_thread_cache_lock(cache, thread_claim)
+            if create:
+                descriptor, identity = _open_posix_lock_file(
+                    cache,
+                    directory_descriptor,
+                    descriptor_owner,
+                )
+            else:
+                descriptor, identity = _open_posix_lock_file(
+                    cache,
+                    directory_descriptor,
+                    descriptor_owner,
+                    create=False,
+                )
             assert fcntl is not None  # narrowed by _require_posix_primitives
             fcntl.flock(descriptor, fcntl.LOCK_EX)
             locked = True
@@ -750,6 +899,7 @@ def _posix_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
                 lock_path,
                 expected_identity=identity,
             )
+            _validate_posix_cache_entry(cache, directory_descriptor)
             yield
         except BaseException as exc:  # noqa: B036 - cleanup preserves first fault
             primary_error = exc
@@ -757,7 +907,26 @@ def _posix_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
         finally:
             # The child-side at-fork callback already closed its inherited
             # descriptor.  The generation guard prevents closing a reused fd.
-            if descriptor_owner and _POSIX_FORK_GENERATION == owner_generation:
+            owns_descriptor = bool(
+                descriptor_owner and _POSIX_FORK_GENERATION == owner_generation
+            )
+            if thread_claim is not None:
+                _finish_claimed_lock_cleanup(
+                    primary_error,
+                    close_label="compiler cache lock cleanup also failed",
+                    close=(
+                        (
+                            lambda: _close_posix_lock_file(
+                                descriptor_owner,
+                                locked=locked,
+                            )
+                        )
+                        if owns_descriptor
+                        else (lambda: None)
+                    ),
+                    claim=thread_claim,
+                )
+            elif owns_descriptor:  # pragma: no cover - claim precedes lock open
                 _finish_cleanup_preserving_primary(
                     primary_error,
                     "compiler cache lock cleanup also failed",
@@ -818,6 +987,8 @@ def _validate_windows_lock_entry(
 def _open_windows_lock_file(
     cache: Path,
     descriptor_owner: list[int] | None = None,
+    *,
+    create: bool = True,
 ) -> tuple[int, tuple[int, ...]]:
     lock_path = cache / COMPILER_CACHE_LOCK_FILENAME
     owner = descriptor_owner if descriptor_owner is not None else []
@@ -831,6 +1002,10 @@ def _open_windows_lock_file(
         try:
             before = lock_path.lstat()
         except FileNotFoundError:
+            if not create:
+                raise RuntimeError(
+                    f"compiler cache lock does not exist: {lock_path}"
+                ) from None
             expected_identity = None
             flags = common_flags | os.O_EXCL
         except OSError as exc:
@@ -840,7 +1015,7 @@ def _open_windows_lock_file(
         else:
             _validate_lock_metadata(before, lock_path)
             expected_identity = _windows_identity(before, lock_path)
-            flags = common_flags
+            flags = common_flags if create else common_flags & ~os.O_CREAT
         descriptor: int | None = None
         try:
             descriptor = os.open(lock_path, flags, 0o600)
@@ -941,25 +1116,40 @@ def _close_windows_lock_file(
 
 
 @contextmanager
-def _windows_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
+def _windows_compiler_cache_lock(
+    cache_dir: str | Path,
+    *,
+    create: bool = True,
+) -> Iterator[None]:
     if msvcrt is None:
         raise RuntimeError("compiler cache locking requires Windows msvcrt support")
     cache = _cache_path(cache_dir)
-    try:
-        os.makedirs(cache, mode=0o700, exist_ok=True)
-    except OSError as exc:
-        raise RuntimeError(
-            f"could not create compiler cache directory: {cache}"
-        ) from exc
+    if create:
+        try:
+            os.makedirs(cache, mode=0o700, exist_ok=True)
+        except OSError as exc:
+            raise RuntimeError(
+                f"could not create compiler cache directory: {cache}"
+            ) from exc
     cache_identity = _validate_windows_cache(cache)
     descriptor_owner: list[int] = []
+    thread_claim: _ThreadCacheLockClaim | None = None
     locked = False
     primary_error: BaseException | None = None
     try:
-        descriptor, lock_identity = _open_windows_lock_file(
-            cache,
-            descriptor_owner,
-        )
+        thread_claim = _new_thread_cache_lock_claim(cache_identity)
+        _claim_thread_cache_lock(cache, thread_claim)
+        if create:
+            descriptor, lock_identity = _open_windows_lock_file(
+                cache,
+                descriptor_owner,
+            )
+        else:
+            descriptor, lock_identity = _open_windows_lock_file(
+                cache,
+                descriptor_owner,
+                create=False,
+            )
         _acquire_windows_lock(descriptor)
         locked = True
         if _validate_windows_cache(cache) != cache_identity:
@@ -974,7 +1164,23 @@ def _windows_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
         primary_error = exc
         raise
     finally:
-        if descriptor_owner:
+        if thread_claim is not None:
+            _finish_claimed_lock_cleanup(
+                primary_error,
+                close_label="compiler cache lock cleanup also failed",
+                close=(
+                    (
+                        lambda: _close_windows_lock_file(
+                            descriptor_owner,
+                            locked=locked,
+                        )
+                    )
+                    if descriptor_owner
+                    else (lambda: None)
+                ),
+                claim=thread_claim,
+            )
+        elif descriptor_owner:  # pragma: no cover - claim precedes lock open
             _finish_cleanup_preserving_primary(
                 primary_error,
                 "compiler cache lock cleanup also failed",
@@ -986,7 +1192,11 @@ def _windows_compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
 
 
 @contextmanager
-def compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
+def compiler_cache_lock(
+    cache_dir: str | Path,
+    *,
+    create: bool = True,
+) -> Iterator[None]:
     """Serialize cooperating users of one private compiler cache.
 
     The fixed lock entry is opened read/write without following links or
@@ -995,16 +1205,32 @@ def compiler_cache_lock(cache_dir: str | Path) -> Iterator[None]:
     uses the equivalent cooperative ``msvcrt`` byte lock after rejecting an
     existing reparse-point cache or lock entry.
 
+    Set ``create=False`` for an existing-only lease: both the cache directory
+    and its fixed lock file must already exist, and neither is created while
+    acquiring the lease.
+
     This helper protects participating compiler/importer operations from each
     other.  It does not validate or defend the manifest and view tree against
     a user who actively replaces paths while the lock is held.
     """
 
+    if type(create) is not bool:
+        raise TypeError("compiler cache lock create policy must be an exact bool")
     if os.name == "nt":
-        with _windows_compiler_cache_lock(cache_dir):
+        lock = (
+            _windows_compiler_cache_lock(cache_dir)
+            if create
+            else _windows_compiler_cache_lock(cache_dir, create=False)
+        )
+        with lock:
             yield
         return
-    with _posix_compiler_cache_lock(cache_dir):
+    lock = (
+        _posix_compiler_cache_lock(cache_dir)
+        if create
+        else _posix_compiler_cache_lock(cache_dir, create=False)
+    )
+    with lock:
         yield
 
 
