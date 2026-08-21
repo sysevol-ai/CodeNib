@@ -15,6 +15,7 @@ from .media_artifacts import discover_media_manifest
 from .media_evidence import build_media_evidence_pack
 from .media_facts import build_visual_facts_manifest, deterministic_visual_facts
 from .media_grounding import (
+    VisualGroundingScorer,
     discover_source_symbol_candidates,
     ground_visual_facts_to_sources,
 )
@@ -29,6 +30,7 @@ from .media_vlm import OpenAICompatibleVisualFactExtractor
 __all__ = [
     "WikiBuilder",
     "OpenAICompatibleVisualFactExtractor",
+    "VisualGroundingScorer",
     "build_media_evidence_pack",
     "build_multimodal_knowledge_view",
     "build_visual_facts_manifest",

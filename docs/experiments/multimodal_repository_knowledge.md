@@ -63,7 +63,10 @@ keeps the multimodal knowledge pipeline independent of a specific model family.
 files and symbols. The first implementation uses deterministic lexical scoring
 against a bounded source-symbol inventory derived from the shared language
 registry. Later versions can replace the scorer with BM25, embeddings,
-CodeGraph, LSP facts, or `FactQueryIndex` / `FactBatch`.
+CodeGraph, LSP facts, or `FactQueryIndex` /
+`FactBatch`. The `ground_visual_facts_to_sources(..., scorer=...)` hook already
+accepts a custom scorer, so graph/fact-backed ranking can be added without
+changing the binding manifest schema.
 
 ### MultimodalKnowledgeView
 

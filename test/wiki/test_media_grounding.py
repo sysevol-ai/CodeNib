@@ -284,3 +284,81 @@ def test_grounding_rejects_limits_above_contract_maximum(tmp_path):
         discover_source_symbol_candidates(tmp_path, max_candidates=8193)
     with pytest.raises(ValueError, match="max_bindings_per_entity"):
         ground_visual_facts_to_sources({}, (), max_bindings_per_entity=6)
+
+
+def test_ground_visual_facts_to_sources_accepts_custom_scorer():
+    visual_facts = {
+        "manifest_sha256": "visual-facts-hash",
+        "facts": [
+            {
+                "artifact_path": "docs/architecture.svg",
+                "entities": [{"name": "DiagramBox"}],
+            }
+        ],
+    }
+
+    def scorer(entity, candidate):
+        if entity["name"] == "DiagramBox" and candidate["symbol"] == "WikiService":
+            return {
+                "score": 0.88,
+                "evidence": "graph scorer match",
+                "source_path": "../../forged.py",
+            }
+        return None
+
+    manifest = ground_visual_facts_to_sources(
+        visual_facts,
+        [
+            {
+                "path": "codenib/wiki/service.py",
+                "symbol": "WikiService",
+                "kind": "symbol",
+                "line": 17,
+            }
+        ],
+        scorer=scorer,
+    )
+
+    assert manifest["bindings"] == [
+        {
+            "artifact_path": "docs/architecture.svg",
+            "entity_name": "DiagramBox",
+            "source_path": "codenib/wiki/service.py",
+            "symbol": "WikiService",
+            "kind": "symbol",
+            "line": 17,
+            "score": 0.88,
+            "evidence": "graph scorer match",
+        }
+    ]
+
+
+def test_grounding_rejects_invalid_or_nonfinite_custom_scores():
+    visual_facts = {
+        "manifest_sha256": "visual-facts-hash",
+        "facts": [
+            {
+                "artifact_path": "docs/architecture.svg",
+                "entities": [{"name": "DiagramBox"}],
+            }
+        ],
+    }
+    candidates = [
+        {
+            "path": "codenib/wiki/service.py",
+            "symbol": "WikiService",
+            "kind": "symbol",
+            "line": 17,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="scorer must be callable"):
+        ground_visual_facts_to_sources(visual_facts, candidates, scorer="invalid")
+
+    manifest = ground_visual_facts_to_sources(
+        visual_facts,
+        candidates,
+        scorer=lambda entity, candidate: {"score": float("inf")},
+    )
+
+    assert manifest["binding_count"] == 0
