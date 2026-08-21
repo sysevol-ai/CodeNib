@@ -20,9 +20,12 @@ import pytest
 
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
+from codenib import LocalWorkspaceProvider
+from codenib import cli as cli_module
 from codenib._captured_directory import (
     OwnedWorkspaceAuthority,
     PublishedWorkspaceReceiptOwner,
+    UnsupportedWorkspaceCreation,
 )
 from codenib._workspace_provider import (
     StrictWorkspaceRequest,
@@ -1082,3 +1085,160 @@ def test_real_compiler_cache_import_retry_update_and_latest_query(
         if source_b is not None:
             source_b.close()
         source_a.close()
+
+
+def test_real_cli_import_cache_materialize_snapshot_and_query(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    workspace.chmod(0o700)
+    provider = LocalWorkspaceProvider(workspace)
+    try:
+        provider.require_support()
+    except UnsupportedWorkspaceCreation as error:
+        pytest.skip(f"native local workspace provider is unavailable: {error}")
+
+    repository = tmp_path / "repository"
+    repository.mkdir(mode=0o700)
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.email", "test@example.test"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.name", "CodeNib Test"],
+        check=True,
+    )
+    source_file = repository / "sample.py"
+    source_file.write_text(
+        'CLI_E2E_MARKER = "PRODUCTION_SHAPED_CACHE_IMPORT"\n',
+        encoding="utf-8",
+    )
+    commit = _git_commit(repository, "cli-cache-import")
+
+    registry = IndexBuilderRegistry()
+    registry.register(
+        "bm25",
+        BM25IndexBuilder(languages=["python"], max_k=17),
+    )
+    compiler = IndexCompiler(
+        registry,
+        IndexCompilerConfig(index_types=["bm25"], languages=["python"]),
+    )
+    cache = repository / ".codenib_cache"
+    manifest = compiler.compile_repo(
+        str(repository),
+        index_types=["bm25"],
+        cache_dir=str(cache),
+    )
+    assert manifest.commit == commit
+
+    catalog_path = tmp_path / "catalog.sqlite"
+    with SQLiteCatalog(catalog_path):
+        pass
+    cas_root = tmp_path / "cas"
+    with LocalCAS.provision(cas_root):
+        pass
+
+    nonce = "0123456789abcdef0123456789abcdef"
+    monkeypatch.setattr(cli_module, "_new_compiler_cache_import_nonce", lambda: nonce)
+    parser = cli_module.build_parser()
+    import_args = parser.parse_args(
+        [
+            "artifact",
+            "import-cache",
+            os.fspath(repository),
+            "--cache-dir",
+            os.fspath(cache),
+            "--catalog",
+            os.fspath(catalog_path),
+            "--cas-root",
+            os.fspath(cas_root),
+            "--workspace-root",
+            os.fspath(workspace),
+            "--repository",
+            _REPOSITORY_KEY,
+        ]
+    )
+    assert import_args.handler is cli_module._run_artifact_import_cache
+    assert import_args.handler(import_args) == 0
+
+    import_output = capsys.readouterr().out
+    snapshot_id = next(
+        line.partition(":")[2].strip()
+        for line in import_output.splitlines()
+        if line.startswith("Snapshot:")
+    )
+    assert snapshot_id
+    assert "Generation:         1" in import_output
+
+    prefix = f".codenib-cache-import-{nonce}"
+    bm25_generation = workspace / f"{prefix}-bm25"
+    context_generation = workspace / f"{prefix}-context"
+    suggested_output = workspace / f"{prefix}-materialized"
+    materialized_output = workspace / "materialized"
+    assert bm25_generation.is_dir()
+    assert context_generation.is_dir()
+    assert not suggested_output.exists()
+    assert not materialized_output.exists()
+
+    materialize_args = parser.parse_args(
+        [
+            "artifact",
+            "materialize",
+            "--catalog",
+            os.fspath(catalog_path),
+            "--cas-root",
+            os.fspath(cas_root),
+            "--workspace-root",
+            os.fspath(workspace),
+            "--repository",
+            _REPOSITORY_KEY,
+            "--snapshot",
+            snapshot_id,
+            "--output",
+            os.fspath(materialized_output),
+        ]
+    )
+    assert materialize_args.handler is cli_module._run_artifact_materialize
+    assert materialize_args.handler(materialize_args) == 0
+
+    materialize_output = capsys.readouterr().out
+    assert f"Snapshot:         {snapshot_id}" in materialize_output
+    assert materialized_output.is_dir()
+    assert bm25_generation.is_dir()
+    assert context_generation.is_dir()
+
+    binding = query_context_artifact(
+        materialized_output,
+        expected_repository=_REPOSITORY_KEY,
+        expected_commit=commit,
+    )
+    context: ServerContext | None = None
+    try:
+        context = ServerContext.load(
+            binding.manifest,
+            views=("bm25",),
+            artifact_binding=binding,
+        )
+        assert context.errors == {}
+        assert context.loaded_views == frozenset({"bm25"})
+        assert context.bm25 is not None
+        hits = context.bm25.search(
+            "PRODUCTION_SHAPED_CACHE_IMPORT",
+            top_k=5,
+            return_code_content=True,
+        )
+        assert hits
+        assert hits[0].file == "sample.py"
+        assert any(
+            "production shaped cache import" in document.page_content
+            for document in context.bm25.documents
+        )
+    finally:
+        if context is not None:
+            context.close()
+        binding.close()
