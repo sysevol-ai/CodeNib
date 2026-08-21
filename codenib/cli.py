@@ -3893,9 +3893,9 @@ def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
                 ),
             )
         if report["symbol_graph_manifest_current"] and graph_entry is not None:
-            report[
-                "symbol_graph_artifact_matches"
-            ] = authenticated_graph_artifact_matches(graph_entry)
+            report["symbol_graph_artifact_matches"] = (
+                authenticated_graph_artifact_matches(graph_entry)
+            )
         report["bm25"] = bool(
             report["bm25_manifest_current"] and report["bm25_artifact_matches"]
         )

@@ -115,7 +115,8 @@ def test_repo_discovery_applies_exact_selection_before_file_reads(
         "src/app.py",
         "src/private_api/public.py",
     ]
-    assert inspected == discovered
+    assert sorted(inspected) == discovered
+    assert "src/private/secret.py" not in inspected
 
 
 def test_repo_language_detection_ignores_excluded_subtrees(tmp_path: Path):
