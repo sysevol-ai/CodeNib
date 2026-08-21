@@ -56,7 +56,7 @@ does not write configuration or indexes into the target repository.
 
 ## News
 
-- **2026-08-20 — CodeNib 0.2.2 repository source authority.** Authenticated
+- **2026-08-21 — CodeNib 0.2.2 repository source authority.** Authenticated
   indexing now admits absolute symlinks only when they resolve inside the same
   pinned checkout, and exact root-relative exclusions persist across indexing,
   CodeGraph, MCP, Wiki, and Web runtimes.
