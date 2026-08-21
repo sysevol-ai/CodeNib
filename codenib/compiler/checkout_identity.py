@@ -10,11 +10,11 @@ import subprocess
 from pathlib import Path
 
 from ..source_fingerprint import (
-    fingerprint_repository,
     is_secure_source_fingerprint_v2,
     lexical_repository_path,
 )
 from .manifest import RepoManifest
+from .manifest_source import fingerprint_repository_for_manifest
 
 
 def checkout_commit(repo_path: Path) -> str | None:
@@ -51,8 +51,9 @@ def validate_checkout_identity(
             "(including a missing value). Rebuild the index before serving or "
             "publishing context."
         )
-    actual_source = fingerprint_repository(
+    actual_source = fingerprint_repository_for_manifest(
         repo_path,
+        manifest,
         exclude_roots=excluded_roots,
     ).value
     if actual_source != expected_source:

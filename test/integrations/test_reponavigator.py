@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
 from codenib.compiler.manifest import RepoManifest
 from codenib.integrations._repository import IntegrationCapabilityError
 from codenib.integrations.reponavigator import (
@@ -61,41 +62,61 @@ class NativeOccurrenceIndexStub:
         return []
 
 
+def _write_manifest_occurrence_index(
+    manifest_path: Path,
+    occurrence_index: SCIPOccurrenceIndex,
+) -> Path:
+    manifest = RepoManifest.load(manifest_path)
+    entry = manifest.indexes["symbol_graph"]
+    generation = Path(entry.path)
+    index_path = generation / "lsp_index.pkl"
+    occurrence_index.save(index_path)
+    receipt = {
+        "relative_path": "lsp_index.pkl",
+        **regular_file_fingerprint(index_path),
+    }
+    entry.config["lsp_occurrence_artifact"] = dict(receipt)
+    entry.metadata["lsp_occurrence_artifact"] = dict(receipt)
+    manifest.save(manifest_path)
+    return index_path
+
+
 @pytest.fixture()
 def semantic_manifest(integration_manifest: Path) -> Path:
-    manifest = RepoManifest.load(integration_manifest)
-    graph_path = Path(manifest.indexes["symbol_graph"].path)
-    SCIPOccurrenceIndex(
-        [
-            SCIPOccurrence(
-                "src/service.py",
-                0,
-                6,
-                0,
-                20,
-                "scip-python fixture BillingService#",
-                1,
-            ),
-            SCIPOccurrence(
-                "src/service.py",
-                3,
-                15,
-                3,
-                21,
-                "scip-python fixture helper().",
-                8,
-            ),
-            SCIPOccurrence(
-                "src/service.py",
-                5,
-                4,
-                5,
-                10,
-                "scip-python fixture helper().",
-                1,
-            ),
-        ]
-    ).save(graph_path.with_name("lsp_index.pkl"))
+    _write_manifest_occurrence_index(
+        integration_manifest,
+        SCIPOccurrenceIndex(
+            [
+                SCIPOccurrence(
+                    "src/service.py",
+                    0,
+                    6,
+                    0,
+                    20,
+                    "scip-python fixture BillingService#",
+                    1,
+                ),
+                SCIPOccurrence(
+                    "src/service.py",
+                    3,
+                    15,
+                    3,
+                    21,
+                    "scip-python fixture helper().",
+                    8,
+                ),
+                SCIPOccurrence(
+                    "src/service.py",
+                    5,
+                    4,
+                    5,
+                    10,
+                    "scip-python fixture helper().",
+                    1,
+                ),
+            ]
+        ),
+    )
     return integration_manifest
 
 
@@ -149,9 +170,7 @@ def test_graph_only_manifest_requires_explicit_degraded_opt_in(
 def test_empty_occurrence_signal_is_not_reported_as_semantic(
     integration_manifest: Path,
 ) -> None:
-    manifest = RepoManifest.load(integration_manifest)
-    graph_path = Path(manifest.indexes["symbol_graph"].path)
-    SCIPOccurrenceIndex([]).save(graph_path.with_name("lsp_index.pkl"))
+    _write_manifest_occurrence_index(integration_manifest, SCIPOccurrenceIndex([]))
 
     with pytest.raises(IntegrationCapabilityError, match="semantic definition signal"):
         RepoNavigatorRepositoryProvider.from_manifest(integration_manifest)
@@ -165,6 +184,36 @@ def test_empty_occurrence_signal_is_not_reported_as_semantic(
     assert provider.jump("src/service.py", "helper").startswith(
         'The definition of symbol "helper" is:'
     )
+
+
+def test_unreceipted_occurrence_sidecar_is_not_loaded_from_mutable_path(
+    integration_manifest: Path,
+) -> None:
+    manifest = RepoManifest.load(integration_manifest)
+    generation = Path(manifest.indexes["symbol_graph"].path)
+    SCIPOccurrenceIndex(
+        [
+            SCIPOccurrence(
+                "src/service.py",
+                3,
+                15,
+                3,
+                21,
+                "scip-python fixture helper().",
+                8,
+            )
+        ]
+    ).save(generation / "lsp_index.pkl")
+
+    with pytest.raises(IntegrationCapabilityError, match="semantic definition signal"):
+        RepoNavigatorRepositoryProvider.from_manifest(integration_manifest)
+
+    provider = RepoNavigatorRepositoryProvider.from_manifest(
+        integration_manifest,
+        allow_graph_fallback=True,
+    )
+    assert provider.definition_signal.backend == "symbol_graph_fallback"
+    assert getattr(provider.context.symbol_graph, "lsp_occurrence_index", None) is None
 
 
 def test_empty_graph_attached_occurrence_rebinds_to_graph_only_provider(

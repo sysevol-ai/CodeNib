@@ -26,9 +26,33 @@ import codenib.source_fingerprint as source_fingerprint_module
 import codenib.storage as storage_module
 import codenib.web.local as local_module
 from codenib import cli
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import RepositorySourceBinding
 from codenib.web import launcher
 from codenib.web.local import prepare_local_wiki
+
+_TEST_COMMIT = "c" * 40
+_TEST_SOURCE_FINGERPRINT = "sha256-v2:" + ("d" * 64)
+
+
+def _current_manifest_with_fresh_index(repo: Path, entry) -> object:
+    from codenib.compiler.manifest import RepoManifest
+
+    selection = RepositorySourceSelection()
+    entry.commit = _TEST_COMMIT
+    entry.source_fingerprint = _TEST_SOURCE_FINGERPRINT
+    entry.source_selection_digest = selection.digest
+    return RepoManifest(
+        repo_path=str(repo),
+        commit=_TEST_COMMIT,
+        last_indexed_commit=_TEST_COMMIT,
+        source_fingerprint=_TEST_SOURCE_FINGERPRINT,
+        last_indexed_source_fingerprint=_TEST_SOURCE_FINGERPRINT,
+        source_selection=selection,
+        last_indexed_source_selection_digest=selection.digest,
+        languages=["python"],
+        indexes={entry.index_type: entry},
+    )
 
 
 def _cleanup_notes(error: BaseException) -> tuple[str, ...]:
@@ -55,6 +79,97 @@ def test_parser_exposes_release_commands() -> None:
 
     publish = parser.parse_args(["publish", "."])
     assert publish.preset == "auto"
+
+
+def test_index_parser_accepts_exact_source_exclusions() -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "index",
+            ".",
+            "--exclude-dir",
+            "ios/Pods",
+            "--exclude-dir",
+            "generated/api",
+        ]
+    )
+
+    assert args.exclude_dir == ["ios/Pods", "generated/api"]
+    assert args.clear_exclude_dirs is False
+
+
+def test_source_selection_flags_are_mutually_exclusive() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.build_parser().parse_args(
+            [
+                "codegraph",
+                "init",
+                ".",
+                "--exclude-dir",
+                "ios",
+                "--clear-exclude-dirs",
+            ]
+        )
+
+    assert exc_info.value.code == 2
+
+
+def test_source_selection_reuses_the_persisted_manifest_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler.manifest import MANIFEST_FILENAME, RepoManifest
+    from codenib.paths import repo_index_dir
+
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    selection = RepositorySourceSelection(("generated/api", "ios/Pods"))
+    RepoManifest(repo_path=str(repo), source_selection=selection).save(
+        repo_index_dir(repo) / MANIFEST_FILENAME
+    )
+    args = cli.build_parser().parse_args(["index", str(repo), "--preset", "fast"])
+
+    resolved = cli._resolve_repository_source_selection(repo, args)
+
+    assert resolved.action == "reuse"
+    assert resolved.selection == selection
+    assert resolved.selection is not selection
+
+
+def test_source_selection_migrates_legacy_manifest_without_aliasing_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler.manifest import (
+        LEGACY_MANIFEST_VERSION,
+        MANIFEST_FILENAME,
+        RepoManifest,
+    )
+    from codenib.paths import repo_index_dir
+
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    RepoManifest(
+        version=LEGACY_MANIFEST_VERSION,
+        repo_path=str(repo),
+        source_selection=None,
+    ).save(repo_index_dir(repo) / MANIFEST_FILENAME)
+    args = cli.build_parser().parse_args(["index", str(repo), "--preset", "fast"])
+
+    resolved = cli._resolve_repository_source_selection(repo, args)
+
+    assert resolved.action == "migrate"
+    assert resolved.selection == RepositorySourceSelection()
+
+
+def test_source_selection_rejects_noncanonical_cli_paths(tmp_path: Path) -> None:
+    args = cli.build_parser().parse_args(
+        ["index", str(tmp_path), "--exclude-dir", "ios/../secrets"]
+    )
+
+    with pytest.raises(cli.CLIError, match="invalid --exclude-dir"):
+        cli._resolve_repository_source_selection(tmp_path, args)
 
 
 def test_mcp_artifact_repo_is_explicit() -> None:
@@ -138,6 +253,8 @@ def test_publish_and_artifact_parsers_expose_distribution_options() -> None:
             "/project",
             "--embedding-provider",
             "openai",
+            "--exclude-dir",
+            "ios/Pods",
         ]
     )
     artifact = cli.build_parser().parse_args(
@@ -157,6 +274,8 @@ def test_publish_and_artifact_parsers_expose_distribution_options() -> None:
     assert publish.context_output == "/tmp/context"
     assert publish.repository == "example/project"
     assert publish.embedding_provider == "openai"
+    assert publish.exclude_dir == ["ios/Pods"]
+    assert publish.clear_exclude_dirs is False
     assert artifact.artifact_command == "pack"
     assert artifact.view == ["bm25,vector"]
 
@@ -2784,6 +2903,65 @@ def test_detect_languages_orders_by_file_count_and_skips_generated_dirs(
     assert cli.detect_languages(tmp_path) == ["python", "go"]
 
 
+def test_detect_languages_uses_exact_repository_source_selection(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "kept.py").write_text("VALUE = 1\n")
+    (tmp_path / "ios" / "Pods").mkdir(parents=True)
+    (tmp_path / "ios" / "Pods" / "excluded.go").write_text("package hidden\n")
+    (tmp_path / "packages" / "ios" / "Pods").mkdir(parents=True)
+    (tmp_path / "packages" / "ios" / "Pods" / "kept.go").write_text("package kept\n")
+
+    assert cli.detect_languages(
+        tmp_path,
+        source_selection=RepositorySourceSelection(("ios/Pods",)),
+    ) == ["go", "python"]
+
+
+def test_index_command_resolves_selection_before_language_detection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "kept.py").write_text("VALUE = 1\n")
+    (tmp_path / "ios").mkdir()
+    (tmp_path / "ios" / "excluded.go").write_text("package hidden\n")
+    captured: dict[str, object] = {}
+
+    def fake_index(repo_path, **kwargs):
+        captured.update(repo_path=repo_path, **kwargs)
+        return (
+            SimpleNamespace(
+                repo_path=str(repo_path),
+                languages=kwargs["languages"],
+                source_selection=kwargs["source_selection"],
+                indexes={
+                    "bm25": SimpleNamespace(status="fresh", metadata={}),
+                },
+            ),
+            [],
+        )
+
+    monkeypatch.setattr(cli, "index_repository", fake_index)
+
+    assert (
+        cli.run(
+            [
+                "index",
+                str(tmp_path),
+                "--preset",
+                "fast",
+                "--exclude-dir",
+                "ios",
+            ]
+        )
+        == 0
+    )
+    assert captured["languages"] == ["python"]
+    assert captured["source_selection"] == RepositorySourceSelection(("ios",))
+
+
 def test_normalize_languages_accepts_aliases_and_commas() -> None:
     assert cli.normalize_languages(["py,typescript", "c++"]) == [
         "python",
@@ -2826,11 +3004,12 @@ def test_index_command_auto_preset_falls_back_without_dense_dependencies(
     captured = {}
     monkeypatch.setattr(cli, "_check_module", lambda _module: False)
 
-    def fake_index(repo_path, *, languages, views, rebuild):
+    def fake_index(repo_path, *, languages, views, source_selection, rebuild):
         captured.update(
             repo_path=repo_path,
             languages=languages,
             views=views,
+            source_selection=source_selection,
             rebuild=rebuild,
         )
         entry = SimpleNamespace(
@@ -2851,6 +3030,7 @@ def test_index_command_auto_preset_falls_back_without_dense_dependencies(
         "repo_path": tmp_path,
         "languages": ["python"],
         "views": ["bm25"],
+        "source_selection": RepositorySourceSelection(),
         "rebuild": False,
     }
 
@@ -2883,14 +3063,16 @@ def test_fast_index_builds_fresh_bm25_manifest(
     from codenib.paths import repo_index_dir
 
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
-    (tmp_path / "sample.py").write_text(
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "sample.py").write_text(
         "def greet(name: str) -> str:\n"
         '    """Return a greeting."""\n'
         '    return f"hello {name}"\n'
     )
 
     manifest, failed = cli.index_repository(
-        tmp_path,
+        repo,
         languages=["python"],
         views=["bm25"],
     )
@@ -2898,8 +3080,86 @@ def test_fast_index_builds_fresh_bm25_manifest(
     assert failed == []
     assert manifest.languages == ["python"]
     assert manifest.indexes["bm25"].status == "fresh"
-    assert (repo_index_dir(tmp_path) / "repo_manifest.json").is_file()
-    assert not (tmp_path / ".codenib_cache").exists()
+    assert (repo_index_dir(repo) / "repo_manifest.json").is_file()
+    assert not (repo / ".codenib_cache").exists()
+
+
+def test_fast_index_accepts_expo_style_contained_absolute_directory_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("POSIX Expo-style absolute symlink fixture")
+    from codenib.paths import repo_index_dir
+
+    repo = tmp_path / "repo"
+    package = repo / "node_modules" / ".pnpm" / "dependency" / "package"
+    pods = repo / "ios" / "Pods"
+    package.mkdir(parents=True)
+    pods.mkdir(parents=True)
+    (repo / "sample.py").write_text("def sample():\n    return 1\n")
+    (package / "generated.py").write_text("raise AssertionError('ignored')\n")
+    (pods / "Dependency").symlink_to(package, target_is_directory=True)
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+
+    manifest, failed = cli.index_repository(
+        repo,
+        languages=["python"],
+        views=["bm25"],
+    )
+
+    assert failed == []
+    assert manifest.indexes["bm25"].status == "fresh"
+    assert (repo_index_dir(repo) / "repo_manifest.json").is_file()
+
+
+def test_index_exclusion_handles_expo_pods_symlink_and_is_reused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("POSIX Expo-style absolute symlink fixture")
+    from codenib.compiler.manifest import MANIFEST_FILENAME, RepoManifest
+    from codenib.paths import repo_index_dir
+
+    repo = tmp_path / "repo"
+    package = repo / "node_modules" / ".pnpm" / "dependency" / "package"
+    pods = repo / "ios" / "Pods"
+    package.mkdir(parents=True)
+    pods.mkdir(parents=True)
+    (repo / "sample.py").write_text("def sample():\n    return 1\n")
+    (package / "generated.py").write_text("GENERATED = 1\n")
+    (pods / "Dependency").symlink_to(package, target_is_directory=True)
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+
+    first = cli.run(
+        [
+            "index",
+            str(repo),
+            "--preset",
+            "fast",
+            "--language",
+            "python",
+            "--exclude-dir",
+            "ios/Pods",
+        ]
+    )
+    second = cli.run(
+        [
+            "index",
+            str(repo),
+            "--preset",
+            "fast",
+            "--language",
+            "python",
+        ]
+    )
+    manifest = RepoManifest.load(repo_index_dir(repo) / MANIFEST_FILENAME)
+
+    assert first == 0
+    assert second == 0
+    assert manifest.source_selection == RepositorySourceSelection(("ios/Pods",))
+    assert manifest.indexes["bm25"].status == "fresh"
 
 
 def test_semantic_preset_reports_required_extra(
@@ -2971,7 +3231,8 @@ def test_graph_preset_selects_bm25_and_symbol_graph(
     (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
     captured = {}
 
-    def fake_index(repo_path, *, languages, views, rebuild):
+    def fake_index(repo_path, *, languages, views, source_selection, rebuild):
+        assert source_selection == RepositorySourceSelection()
         captured["views"] = views
         entries = {view: SimpleNamespace(status="fresh", metadata={}) for view in views}
         return (
@@ -3527,9 +3788,11 @@ def test_wiki_audit_exits_without_starting_frontend(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    from codenib.compiler.manifest import RepoManifest
+
     (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
     manifest = tmp_path / "repo_manifest.json"
-    manifest.write_text("{}")
+    RepoManifest(repo_path=str(tmp_path)).save(manifest)
     prepared = SimpleNamespace(repo_id="sample")
     monkeypatch.setattr(cli, "_check_module", lambda _module: True)
     monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest)
@@ -3570,22 +3833,19 @@ def test_wiki_generate_resolves_openai_route(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from codenib.compiler.manifest import IndexEntry, RepoManifest
+    from codenib.compiler.manifest import IndexEntry
 
     (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
     manifest_path = tmp_path / "repo_manifest.json"
-    RepoManifest(
-        repo_path=str(tmp_path),
-        languages=["python"],
-        indexes={
-            "bm25": IndexEntry(
-                index_type="bm25",
-                path=str(tmp_path / "bm25"),
-                built_at="2026-08-04T00:00:00+00:00",
-                built_at_epoch=0.0,
-                status="fresh",
-            )
-        },
+    _current_manifest_with_fresh_index(
+        tmp_path,
+        IndexEntry(
+            index_type="bm25",
+            path=str(tmp_path / "bm25"),
+            built_at="2026-08-04T00:00:00+00:00",
+            built_at_epoch=0.0,
+            status="fresh",
+        ),
     ).save(manifest_path)
     captured = {}
     local = SimpleNamespace(runtime_env={})
@@ -3634,23 +3894,20 @@ def test_wiki_rejects_embedding_route_that_disagrees_with_artifact(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     from codenib.compiler.index_builders import VectorIndexBuilder
-    from codenib.compiler.manifest import IndexEntry, RepoManifest
+    from codenib.compiler.manifest import IndexEntry
 
     (tmp_path / "sample.py").write_text("VALUE = 1\n")
     manifest_path = tmp_path / "repo_manifest.json"
-    RepoManifest(
-        repo_path=str(tmp_path),
-        languages=["python"],
-        indexes={
-            "vector": IndexEntry(
-                index_type="vector",
-                path=str(tmp_path / "vector"),
-                built_at="2026-08-04T00:00:00+00:00",
-                built_at_epoch=0.0,
-                status="fresh",
-                config=VectorIndexBuilder().artifact_identity(),
-            )
-        },
+    _current_manifest_with_fresh_index(
+        tmp_path,
+        IndexEntry(
+            index_type="vector",
+            path=str(tmp_path / "vector"),
+            built_at="2026-08-04T00:00:00+00:00",
+            built_at_epoch=0.0,
+            status="fresh",
+            config=VectorIndexBuilder().artifact_identity(),
+        ),
     ).save(manifest_path)
     monkeypatch.setenv("OPENAI_API_KEY", "runtime-secret")
     monkeypatch.setattr(cli, "_check_module", lambda _module: True)

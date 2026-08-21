@@ -27,13 +27,26 @@ from .._atomic_directory import (
 from .._bounded_json import iter_bounded_json_array
 from .._contained_source import _attach_source_cleanup_owner
 from ..compiler.checkout_identity import checkout_commit
-from ..compiler.manifest import MANIFEST_FILENAME, MANIFEST_VERSION, RepoManifest
+from ..compiler.manifest import (
+    MANIFEST_FILENAME,
+    MANIFEST_VERSION,
+    SUPPORTED_MANIFEST_VERSIONS,
+    RepoManifest,
+)
+from ..compiler.manifest_source import (
+    capture_repository_source_for_manifest as capture_repository_source,
+)
+from ..compiler.manifest_source import require_manifest_source_identity
 from ..compiler.snapshot_store import normalize_repo
+from ..repository_filters import (
+    REPOSITORY_FILTER_POLICY_VERSION,
+    repository_path_is_visible,
+)
+from ..repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 from ..source_fingerprint import (
     RepositorySourceBinding,
     _SourceLifecycleRLock,
     _SourceLockLease,
-    capture_repository_source,
     is_secure_source_fingerprint_v2,
     lexical_repository_path,
 )
@@ -580,6 +593,7 @@ def _document_source_paths(
     *,
     label: str,
     max_bytes: int,
+    require_file: bool,
 ) -> set[str]:
     result: set[str] = set()
     with reader.open_file(relative, max_bytes=max_bytes) as source:
@@ -593,7 +607,12 @@ def _document_source_paths(
                     f"{label} document {index} has invalid content or metadata"
                 )
             raw_file = metadata.get("file")
-            if raw_file is not None and raw_file != "":
+            if raw_file is None or raw_file == "":
+                if require_file:
+                    raise ValueError(
+                        f"{label} document {index} must declare a source file"
+                    )
+            else:
                 result.add(
                     _source_path(
                         raw_file,
@@ -615,6 +634,7 @@ def _validate_view_payloads(
     inventory: Mapping[str, tuple[int, str]],
     *,
     views: tuple[str, ...],
+    require_document_source_paths: bool,
 ) -> tuple[str, ...]:
     source_paths: set[str] = set()
     inventory_paths = set(inventory)
@@ -639,6 +659,7 @@ def _validate_view_payloads(
                 documents_relative,
                 label="portable BM25 documents",
                 max_bytes=_MAX_DOCUMENTS_BYTES,
+                require_file=require_document_source_paths,
             )
         )
 
@@ -667,6 +688,7 @@ def _validate_view_payloads(
                     path,
                     label=f"portable vector documents {relative}",
                     max_bytes=_MAX_DOCUMENTS_BYTES,
+                    require_file=require_document_source_paths,
                 )
             )
     return tuple(sorted(source_paths))
@@ -681,7 +703,16 @@ def _validate_manifest(
     source_fingerprint: str,
     views: tuple[str, ...],
     inventoried_paths: set[str],
+    expected_manifest_version: str | None,
 ) -> tuple[Path, RepoManifest]:
+    if expected_manifest_version is not None and (
+        type(expected_manifest_version) is not str
+        or expected_manifest_version not in SUPPORTED_MANIFEST_VERSIONS
+    ):
+        raise ValueError(
+            "expected context artifact manifest version is unsupported: "
+            f"{expected_manifest_version!r}"
+        )
     manifest_record = metadata.get("manifest")
     if not isinstance(manifest_record, dict):
         raise ValueError("context artifact manifest descriptor must be an object")
@@ -709,10 +740,13 @@ def _validate_manifest(
         manifest = RepoManifest.from_dict(manifest_payload)
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("context artifact repository manifest is invalid") from exc
-    if manifest.version != MANIFEST_VERSION:
+    if (
+        expected_manifest_version is not None
+        and manifest.version != expected_manifest_version
+    ):
         raise ValueError(
             "context artifact repository manifest version is incompatible: "
-            f"expected {MANIFEST_VERSION}, found {manifest.version}"
+            f"expected {expected_manifest_version}, found {manifest.version}"
         )
     if manifest.repo_path != "source":
         raise ValueError("portable repository manifest path must be 'source'")
@@ -751,10 +785,15 @@ def _validate_manifest(
         "commit": commit,
     }:
         raise ValueError("context artifact source-location contract is unsupported")
+    artifact_manifest_version = (
+        manifest.version
+        if expected_manifest_version is None
+        else expected_manifest_version
+    )
     builder = metadata.get("builder")
     if (
         not isinstance(builder, dict)
-        or builder.get("manifest_version") != MANIFEST_VERSION
+        or builder.get("manifest_version") != artifact_manifest_version
         or not isinstance(builder.get("codenib_version"), str)
         or not isinstance(builder.get("compiled_at"), str)
     ):
@@ -768,6 +807,56 @@ def _validate_manifest(
             raise ValueError(f"context artifact view is not current: {view}")
         if entry.index_type != view:
             raise ValueError(f"context artifact view type differs from its key: {view}")
+        expected_filter_policy = (
+            REPOSITORY_FILTER_POLICY_VERSION
+            if manifest.version == MANIFEST_VERSION
+            else 3
+        )
+        if entry.config.get("repository_filter_policy") != expected_filter_policy:
+            raise ValueError(
+                f"context artifact {view} config has a mismatched repository "
+                "filter policy"
+            )
+        if manifest.version == MANIFEST_VERSION:
+            if (
+                manifest.source_selection is None
+                or entry.config.get("source_selection_digest")
+                != manifest.source_selection.digest
+            ):
+                raise ValueError(
+                    f"context artifact {view} config has a mismatched "
+                    "source-selection identity"
+                )
+        elif "source_selection_digest" in entry.config:
+            raise ValueError(
+                f"legacy context artifact {view} config records a current "
+                "source-selection identity"
+            )
+
+        if (
+            "repository_filter_policy" in entry.metadata
+            and entry.metadata["repository_filter_policy"] != expected_filter_policy
+        ):
+            raise ValueError(
+                f"context artifact {view} metadata has a mismatched repository "
+                "filter policy"
+            )
+        if "source_selection_digest" in entry.metadata:
+            if manifest.version == MANIFEST_VERSION:
+                if entry.metadata.get("source_selection_digest") != (
+                    manifest.source_selection.digest
+                    if manifest.source_selection is not None
+                    else None
+                ):
+                    raise ValueError(
+                        f"context artifact {view} metadata has a mismatched "
+                        "source-selection identity"
+                    )
+            else:
+                raise ValueError(
+                    f"legacy context artifact {view} metadata records a "
+                    "current source-selection identity"
+                )
         expected_view_path = f"views/{view}"
         if entry.path != expected_view_path:
             raise ValueError(
@@ -848,6 +937,7 @@ def _verify_context_artifact_reader(
     expected_commit: str | None,
     max_files: int,
     max_bytes: int,
+    expected_manifest_version: str | None,
     capture_final: Callable[[], object],
 ) -> VerifiedContextArtifact:
     metadata_path = root / CONTEXT_ARTIFACT_MANIFEST
@@ -897,13 +987,33 @@ def _verify_context_artifact_reader(
             source_fingerprint=source_fingerprint,
             views=views,
             inventoried_paths=set(inventory),
+            expected_manifest_version=expected_manifest_version,
         )
         source_paths = _validate_view_payloads(
             root,
             reader,
             inventory,
             views=views,
+            require_document_source_paths=manifest.version == MANIFEST_VERSION,
         )
+        source_selection = (
+            manifest.source_selection
+            if manifest.source_selection is not None
+            else DEFAULT_REPOSITORY_SOURCE_SELECTION
+        )
+        excluded_source_paths = [
+            path
+            for path in source_paths
+            if not repository_path_is_visible(
+                path,
+                selection=source_selection,
+            )
+        ]
+        if excluded_source_paths:
+            raise ValueError(
+                "context artifact view contains source paths excluded by "
+                "its repository manifest: " + ", ".join(excluded_source_paths[:5])
+            )
         if expected_repository is not None:
             expected = normalize_repo(expected_repository)
             if repository != expected:
@@ -950,6 +1060,7 @@ def verify_context_artifact_reader(
     *,
     expected_repository: str | None = None,
     expected_commit: str | None = None,
+    expected_manifest_version: str | None = MANIFEST_VERSION,
     max_files: int = _DEFAULT_MAX_FILES,
     max_bytes: int = _DEFAULT_MAX_BYTES,
 ) -> VerifiedContextArtifact:
@@ -974,6 +1085,7 @@ def verify_context_artifact_reader(
         expected_commit=expected_commit,
         max_files=max_files,
         max_bytes=max_bytes,
+        expected_manifest_version=expected_manifest_version,
         capture_final=lambda: publication.capture_ownership(
             entry_policy=policy_factory(),
         ),
@@ -985,6 +1097,7 @@ def verify_context_artifact(
     *,
     expected_repository: str | None = None,
     expected_commit: str | None = None,
+    expected_manifest_version: str | None = MANIFEST_VERSION,
     max_files: int = _DEFAULT_MAX_FILES,
     max_bytes: int = _DEFAULT_MAX_BYTES,
 ) -> VerifiedContextArtifact:
@@ -1024,6 +1137,7 @@ def verify_context_artifact(
             expected_commit=expected_commit,
             max_files=max_files,
             max_bytes=max_bytes,
+            expected_manifest_version=expected_manifest_version,
             capture_final=lambda: publication.capture_ownership(
                 entry_policy=policy_factory(),
             ),
@@ -1053,6 +1167,7 @@ def bind_context_artifact(
         root,
         expected_repository=expected_repository,
         expected_commit=expected_commit,
+        expected_manifest_version=None,
     )
     cleanup_owner = SourceBindingCleanupOwner()
 
@@ -1065,6 +1180,7 @@ def bind_context_artifact(
         repo = lexical_repository_path(repo_path)
         source = capture_repository_source(
             repo,
+            manifest=artifact.manifest,
             exclude_roots=(artifact.root,),
             _source_owner=cleanup_owner.retain,
         )
@@ -1074,14 +1190,14 @@ def bind_context_artifact(
         actual_commit = checkout_commit(repo)
         source_identity = source.authenticated_identity_snapshot()
         authenticated_repo = source_identity.root
-        if source_identity.fingerprint != artifact.source_fingerprint:
-            raise ValueError(
+        require_manifest_source_identity(
+            source_identity,
+            artifact.manifest,
+            label="context artifact repository",
+            mismatch_message=(
                 "repository source files do not match the context artifact fingerprint"
-            )
-        if source_identity.file_count != artifact.manifest.file_count:
-            raise ValueError(
-                "repository file count does not match the context artifact manifest"
-            )
+            ),
+        )
         source_records = {record.path for record in source_identity.file_records}
         missing_source_paths = sorted(set(artifact.source_paths) - source_records)
         if missing_source_paths:
@@ -1164,6 +1280,7 @@ def query_context_artifact(
         root,
         expected_repository=expected_repository,
         expected_commit=expected_commit,
+        expected_manifest_version=None,
     )
     return ContextArtifactBinding(
         artifact=artifact,

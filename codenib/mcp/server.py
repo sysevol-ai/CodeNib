@@ -797,10 +797,11 @@ def init_server(
             if resolved_manifest_path is not None:
                 manifest = RepoManifest.load(resolved_manifest_path)
 
-            from ..source_fingerprint import (
-                capture_repository_source,
-                is_secure_source_fingerprint_v2,
+            from ..compiler.manifest_source import (
+                capture_repository_source_for_manifest,
+                require_manifest_source_identity,
             )
+            from ..source_fingerprint import is_secure_source_fingerprint_v2
 
             source_error: str | None = "source binding has not been verified"
             retained_source = (
@@ -813,13 +814,14 @@ def init_server(
                 manifest.source_fingerprint
             ):
                 retained_identity = retained_source.authenticated_identity_snapshot()
-                if (
-                    retained_identity.fingerprint != manifest.source_fingerprint
-                    or retained_identity.file_count != manifest.file_count
-                ):
-                    raise ValueError(
+                require_manifest_source_identity(
+                    retained_identity,
+                    manifest,
+                    label="MCP repository",
+                    mismatch_message=(
                         "repository source bytes do not match the indexed content"
-                    )
+                    ),
+                )
                 verified = True
             native_authorization = None
             if verified:
@@ -835,22 +837,23 @@ def init_server(
                 else:
                     capture_cleanup_owner = SourceBindingCleanupOwner()
                     try:
-                        retained_source = capture_repository_source(
+                        retained_source = capture_repository_source_for_manifest(
                             repo_path,
+                            manifest,
                             exclude_roots=(resolved_manifest_path.parent,),
                             _source_owner=capture_cleanup_owner.retain,
                         )
                         retained_identity = (
                             retained_source.authenticated_identity_snapshot()
                         )
-                        if (
-                            retained_identity.fingerprint != manifest.source_fingerprint
-                            or retained_identity.file_count != manifest.file_count
-                        ):
-                            raise ValueError(
-                                "repository source bytes do not match the indexed "
-                                "content"
-                            )
+                        require_manifest_source_identity(
+                            retained_identity,
+                            manifest,
+                            label="MCP repository",
+                            mismatch_message=(
+                                "repository source bytes do not match the indexed content"
+                            ),
+                        )
                     except BaseException as exc:  # noqa: B036 - preserve primary
                         cleanup_failure, pending_owner = close_capture_owner(exc)
                         retained_source = None

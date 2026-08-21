@@ -840,12 +840,23 @@ class CodeGraph:
             CodeGraph: Loaded graph instance
         """
         with open(input_path, "rb") as f:
-            data = compat_pickle.load(f)
+            return cls.load_graph_stream(f, input_label=str(input_path))
+
+    @classmethod
+    def load_graph_stream(cls, handle, *, input_label="<authenticated stream>"):
+        """Load a graph from a caller-authenticated binary stream.
+
+        The serialized schema is unchanged.  Runtime loaders use this entry
+        point after binding the bytes to the manifest receipt, so they never
+        need to reopen an already-verified pathname before unpickling it.
+        """
+
+        data = compat_pickle.load(handle)
 
         on_disk = data.get("schema_version")
         if on_disk != _SCHEMA_VERSION:
             raise ValueError(
-                f"graph.pkl at {input_path} has schema_version={on_disk!r}, "
+                f"graph.pkl at {input_label} has schema_version={on_disk!r}, "
                 f"expected {_SCHEMA_VERSION}. Rebuild the repository graph "
                 "with `codenib index <repo> --preset graph --rebuild`."
             )

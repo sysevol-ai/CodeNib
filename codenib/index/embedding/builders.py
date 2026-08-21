@@ -27,6 +27,11 @@ from ..._captured_directory import OwnedDirectoryStage
 from ...code_chunker import CodeChunker, RepoChunkingConfig
 from ...log_utils import get_logger
 from ...profiler import Profiler
+from ...repository_filters import repository_path_is_visible
+from ...repository_source_selection import (
+    RepositorySourceSelection,
+    repository_relative_source_path,
+)
 from ._lifecycle import close_vector_after_failure
 from .artifact_integrity import VECTOR_VIEW_UPDATE_MARKER
 from .vector_store import CodeVectorStore
@@ -316,6 +321,69 @@ def _profiler_section(profiler, label, metadata=None):
     return profiler.section(label, metadata)
 
 
+def _snapshot_source_selection(
+    source_selection: RepositorySourceSelection | None,
+) -> RepositorySourceSelection:
+    """Capture one detached exact-type source-selection policy."""
+
+    if source_selection is None:
+        return RepositorySourceSelection()
+    if type(source_selection) is not RepositorySourceSelection:
+        raise TypeError("source_selection must be a RepositorySourceSelection")
+    return RepositorySourceSelection(source_selection.exclude_subtrees)
+
+
+def _require_selected_paths(
+    source_selection: RepositorySourceSelection,
+    paths: Any,
+    *,
+    repository_root: str,
+    subject: str,
+) -> None:
+    """Reject non-canonical or excluded repository-relative paths."""
+
+    for source_path in paths:
+        try:
+            relative_path = repository_relative_source_path(
+                repository_root,
+                source_path,
+            )
+            allowed = repository_path_is_visible(
+                relative_path,
+                selection=source_selection,
+            )
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"{subject} has a non-canonical repository path: {source_path!r}"
+            ) from exc
+        if not allowed:
+            raise RuntimeError(
+                f"{subject} leaked excluded repository path: {relative_path}"
+            )
+
+
+def _require_selected_documents(
+    vector_store: CodeVectorStore,
+    source_selection: RepositorySourceSelection,
+    *,
+    repository_root: str,
+) -> None:
+    """Validate every vector document path against source selection."""
+
+    for level in ("l0", "l2"):
+        documents = getattr(vector_store, f"{level}_documents", ()) or ()
+        paths = []
+        for document in documents:
+            metadata = getattr(document, "metadata", None)
+            paths.append(metadata.get("file") if isinstance(metadata, dict) else None)
+        _require_selected_paths(
+            source_selection,
+            paths,
+            repository_root=repository_root,
+            subject=f"vector {level} documents",
+        )
+
+
 def build_hierarchical_vector_store(
     *,
     repo_path: str,
@@ -337,6 +405,7 @@ def build_hierarchical_vector_store(
     force_rebuild: bool = False,
     strict_chunking: bool = False,
     additional_ignore_dirs: Optional[List[str]] = None,
+    source_selection: RepositorySourceSelection | None = None,
     artifact_metadata: Optional[Dict[str, Any]] = None,
     native_index_authorization: NativeIndexAuthorization | None = None,
     _atomic_publish: bool = True,
@@ -351,6 +420,7 @@ def build_hierarchical_vector_store(
     complete private tree and atomically switch the directory only after save
     and ownership verification succeed.
     """
+    selected = _snapshot_source_selection(source_selection)
     store_path = Path(index_path)
     if plan_name:
         store_path = store_path / plan_name
@@ -403,6 +473,11 @@ def build_hierarchical_vector_store(
                     str(store_path),
                     native_index_authorization=native_index_authorization,
                 )
+                _require_selected_documents(
+                    vector_store,
+                    selected,
+                    repository_root=repo_path,
+                )
                 return vector_store
             except BaseException as primary:  # noqa: B036 - close partial state
                 close_vector_after_failure(vector_store, primary)
@@ -421,7 +496,10 @@ def build_hierarchical_vector_store(
         )
     languages = languages or ["python"]
     build_levels = normalized_levels
-    repo_cfg = RepoChunkingConfig(languages=languages)
+    repo_cfg = RepoChunkingConfig(
+        languages=languages,
+        source_selection=selected,
+    )
     repo_cfg.ignore_dirs.update(additional_ignore_dirs or ())
 
     chunks_by_level = {}
@@ -461,6 +539,12 @@ def build_hierarchical_vector_store(
                 repo_path=repo_path,
                 strict=strict_chunking,
             )
+        _require_selected_paths(
+            selected,
+            (getattr(chunk, "file", None) for chunk in chunks_by_level[level]),
+            repository_root=repo_path,
+            subject=f"vector {level} chunks",
+        )
         logger.info(
             f"Chunked {len(chunks_by_level[level])} {level} chunks "
             f"(lang={languages[0]})"
@@ -523,6 +607,11 @@ def build_hierarchical_vector_store(
                 vector_store.add_code_chunks(
                     [chunk._asdict() for chunk in l2_chunks], level="l2"
                 )
+        _require_selected_documents(
+            vector_store,
+            selected,
+            repository_root=repo_path,
+        )
         with build_root.path_operation("vector store save"):
             vector_store.save(str(build_path))
         return vector_store
@@ -582,6 +671,11 @@ def build_hierarchical_vector_store(
 
     vector_store.store_path = store_path
     vector_store.chunk_stats = chunk_stats
+    _require_selected_documents(
+        vector_store,
+        selected,
+        repository_root=repo_path,
+    )
     return vector_store
 
 

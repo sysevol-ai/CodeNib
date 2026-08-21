@@ -170,6 +170,7 @@ nav:
       - get-started/index.md
       - Quickstart: quickstart.md
       - Agent-ready CodeGraph: codegraph.md
+      - Release 0.2.2: releases/0.2.2.md
       - Release 0.2.1: releases/0.2.1.md
       - Release 0.2.0: releases/0.2.0.md
       - GitHub Pages: github_pages.md

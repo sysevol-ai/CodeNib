@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional
 
+from ..repository_source_selection import RepositorySourceSelection
 from ..repository_summary import read_bound_repository_summary, read_repository_summary
 from .multimodal import plan_media_slots
 from .narrator import Narrator
@@ -171,7 +172,21 @@ class WikiBuilder:
         self._entry = bundle.entry
         self._language = bundle.entry.language
         self._narrator = narrator or Narrator(enabled=False)
-        self._source_reader = source_reader
+        self._source_reader = (
+            source_reader
+            if source_reader is not None
+            else getattr(bundle, "source_reader", None)
+        )
+        manifest = getattr(bundle, "manifest", None)
+        if (
+            self._source_reader is None
+            and type(getattr(manifest, "source_selection", None))
+            is RepositorySourceSelection
+            and bool(getattr(manifest, "source_fingerprint", ""))
+        ):
+            raise RuntimeError(
+                "manifest-selected Wiki requires an authenticated source reader"
+            )
         self._symbols_cache: Optional[tuple] = None
         self._project_summary_cache: Optional[str] = None
 

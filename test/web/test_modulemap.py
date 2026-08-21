@@ -5,6 +5,7 @@
 """Unit tests for the module-level dependency map."""
 
 from codenib.graph.code_graph import CodeGraph
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.web.modulemap import build_modulemap
 
 
@@ -94,6 +95,22 @@ def test_modulemap_projects_symbol_references_onto_files():
     assert edges[("src/render.js", "src/diff/index.js")] == 3
     assert edges[("src/render.js", "src/create-element.js")] == 1
     assert edges[("src/diff/index.js", "src/create-element.js")] == 1
+
+
+def test_modulemap_applies_historical_source_selection_to_nodes_and_anchors():
+    result = build_modulemap(
+        _repo_graph(),
+        granularity="file",
+        source_selection=RepositorySourceSelection(("src/diff",)),
+    )
+
+    paths = {node["path"] for node in result["nodes"]}
+    assert paths == {"src/render.js", "src/create-element.js"}
+    assert all(
+        not anchor["file"].startswith("src/diff/")
+        for edge in result["edges"]
+        for anchor in edge.get("anchors", [])
+    )
 
 
 def test_modulemap_excludes_tests_and_declarations_but_reports_the_count():
@@ -287,3 +304,30 @@ def test_modulemap_drops_files_with_neither_symbols_nor_dependencies():
 
     assert {node["path"] for node in result["nodes"]} == {"pkg/a.py", "pkg/b.py"}
     assert result["total_modules"] == 2
+
+
+def test_bound_modulemap_never_discovers_entry_points_from_checkout(monkeypatch):
+    class Reader:
+        def captured_relative_path(self, path):
+            return path if path.startswith("src/") else None
+
+        def read_prefix(self, _path, *, max_bytes):
+            assert max_bytes == 2048
+            return b""
+
+    def fail_discovery(_repo_dir):
+        raise AssertionError("bound modulemap must not scan the live checkout")
+
+    monkeypatch.setattr(
+        "codenib.web.modulemap.discover_entry_points",
+        fail_discovery,
+    )
+
+    result = build_modulemap(
+        _repo_graph(),
+        repo_dir="/replaceable/repository",
+        source_reader=Reader(),
+    )
+
+    assert result["available"] is True
+    assert all(node["path"].startswith("src/") for node in result["nodes"])

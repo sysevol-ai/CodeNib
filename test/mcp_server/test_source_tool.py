@@ -18,7 +18,7 @@ import codenib.artifacts.runtime as artifact_runtime_module
 import codenib.mcp.server as server_module
 import codenib.source_fingerprint as source_fingerprint_module
 from codenib._contained_source import read_repository_file
-from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.compiler.manifest import LEGACY_MANIFEST_VERSION, IndexEntry, RepoManifest
 from codenib.mcp.tools._validation import MAX_SOURCE_CONTENT_CHARS
 from codenib.mcp.tools.source import read_source_impl
 from codenib.source_fingerprint import RepositorySourceBinding, fingerprint_repository
@@ -557,8 +557,10 @@ def test_init_server_never_treats_explicit_legacy_identity_as_verified(
 ) -> None:
     legacy_fingerprint = "sha256:" + "a" * 64
     manifest = RepoManifest(
+        version=LEGACY_MANIFEST_VERSION,
         repo_path="/unavailable",
         source_fingerprint=legacy_fingerprint,
+        source_selection=None,
         indexes={
             "vector": IndexEntry(
                 index_type="vector",

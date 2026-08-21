@@ -33,9 +33,12 @@ from ..artifacts.runtime import (
 from ..artifacts.security import assert_publishable_tree_reader
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import RepoManifest
+from ..compiler.manifest_source import (
+    capture_repository_source_for_manifest as capture_repository_source,
+)
+from ..compiler.manifest_source import require_manifest_source_identity
 from ..source_fingerprint import (
     RepositorySourceReader,
-    capture_repository_source,
     is_secure_source_fingerprint_v2,
     lexical_repository_path,
 )
@@ -909,15 +912,17 @@ def export_static_wiki(
             raise ValueError("static export source reads require source fingerprint v2")
         source_binding = capture_repository_source(
             repo_path,
+            manifest=expected_manifest,
             exclude_roots=(manifest_path.parent,),
             _source_owner=cleanup_owner.retain,
         )
         source_identity = source_binding.authenticated_identity_snapshot()
-        if (
-            source_identity.fingerprint != expected_manifest.source_fingerprint
-            or source_identity.file_count != expected_manifest.file_count
-        ):
-            raise ValueError("repository source content does not match the manifest")
+        require_manifest_source_identity(
+            source_identity,
+            expected_manifest,
+            label="static export repository",
+            mismatch_message=("repository source content does not match the manifest"),
+        )
         source_reader = source_binding.borrow_reader()
 
         with source_binding.read_session():
@@ -926,13 +931,14 @@ def export_static_wiki(
                 manifest_path,
                 source_reader=source_reader,
             )
-            if (
-                source_identity.fingerprint != bundle.manifest.source_fingerprint
-                or source_identity.file_count != bundle.manifest.file_count
-            ):
-                raise ValueError(
+            require_manifest_source_identity(
+                source_identity,
+                bundle.manifest,
+                label="static export loaded repository",
+                mismatch_message=(
                     "repository source content does not match the loaded manifest"
-                )
+                ),
+            )
             builder = WikiBuilder(bundle, source_reader=source_reader)
 
             tree = builder.page_tree()

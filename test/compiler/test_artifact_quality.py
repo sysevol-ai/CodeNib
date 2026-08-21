@@ -17,12 +17,19 @@ from codenib import compat_pickle
 from codenib.compiler.artifact_quality import (
     assess_vector_artifact,
     constrain_and_assess_graph_artifact,
+    constrain_graph_to_source_selection,
     vector_artifact_files_match,
 )
 from codenib.git_snapshot import GitSourceSurface
 from codenib.graph.code_graph import CodeGraph
 from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.scip_interface.lsp_occurrence_index import (
+    SCIPOccurrence,
+    SCIPOccurrenceIndex,
+)
+from codenib.types import EDGE_TYPE_REFERENCE
 
 
 def _git(repo, *args):
@@ -129,6 +136,116 @@ def test_graph_quality_reports_malformed_paths_before_constraining(tmp_path):
     assert report["surface"]["invalid_paths_before"]
     assert report["surface"]["invalid_paths_after"] == []
     assert "../generated.py" not in graph.name_to_vertex
+
+
+def test_graph_source_selection_constrains_every_record_and_rebuilds_indexes():
+    graph = CodeGraph("/repo")
+    graph.add_root_node(".")
+    for directory in ("src", "generated", "generated-copy", "empty"):
+        graph.add_directory_node(directory)
+
+    graph.add_file_node("src/main.py")
+    graph.add_symbol_node("kept", 1, 1, 3, "function")
+    graph.add_file_node("generated/private.py")
+    graph.add_symbol_node("private", 1, 1, 3, "function")
+    graph.add_file_node("generated-copy/public.py")
+    graph.add_symbol_node("prefix-safe", 1, 1, 3, "function")
+    graph._add_edge(
+        "kept",
+        "prefix-safe",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="src/main.py",
+        anchor_line=2,
+    )
+    graph._add_edge(
+        "kept",
+        "prefix-safe",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="generated/private.py",
+        anchor_line=2,
+    )
+    graph.lsp_occurrence_index = SCIPOccurrenceIndex(
+        [
+            SCIPOccurrence("src/main.py", 1, 0, 1, 4, "kept"),
+            SCIPOccurrence("generated/private.py", 1, 0, 1, 4, "private"),
+            SCIPOccurrence("generated-copy/public.py", 1, 0, 1, 4, "prefix-safe"),
+        ]
+    )
+    graph.build_range_indexes()
+
+    selection = RepositorySourceSelection(["generated"])
+    report = constrain_graph_to_source_selection(graph, selection)
+
+    assert report["source_selection_digest"] == selection.digest
+    assert report["excluded_paths_after"] == []
+    assert report["invalid_paths_after"] == []
+    assert "generated/private.py" in report["removed_excluded_paths"]
+    assert "private" not in graph.name_to_vertex
+    assert "generated/private.py" not in graph.name_to_vertex
+    assert "generated" not in graph.name_to_vertex
+    assert "empty" not in graph.name_to_vertex
+    assert "kept" in graph.name_to_vertex
+    assert "prefix-safe" in graph.name_to_vertex
+    assert "src" in graph.name_to_vertex
+    assert "generated-copy" in graph.name_to_vertex
+    assert set(graph.symbol_ranges) == {"kept", "prefix-safe"}
+    assert set(graph._file_nodes) == {"src/main.py", "generated-copy/public.py"}
+    assert set(graph._file_edge_anchors) == {"src/main.py"}
+    assert [
+        occurrence.file_path for occurrence in graph.lsp_occurrence_index.occurrences
+    ] == ["src/main.py", "generated-copy/public.py"]
+
+
+def test_graph_source_selection_enforces_default_ignored_paths_when_empty():
+    graph = CodeGraph("/repo")
+    graph.add_root_node(".")
+    graph.add_directory_node("src")
+    graph.add_file_node("src/main.py")
+    graph.add_symbol_node("kept", 1, 1, 3, "function")
+    graph.add_directory_node("node_modules")
+    graph.add_file_node("node_modules/dependency.js")
+    graph.add_symbol_node("dependency", 1, 1, 3, "function")
+    graph.build_range_indexes()
+
+    report = constrain_graph_to_source_selection(
+        graph,
+        RepositorySourceSelection(),
+    )
+
+    assert report["excluded_paths_after"] == []
+    assert "node_modules/dependency.js" in report["removed_excluded_paths"]
+    assert "node_modules/dependency.js" not in graph.name_to_vertex
+    assert "dependency" not in graph.name_to_vertex
+    assert "src/main.py" in graph.name_to_vertex
+
+
+def test_graph_source_selection_removes_defined_symbol_without_source_path():
+    graph = CodeGraph("/repo")
+    graph.add_root_node(".")
+    graph.add_directory_node("src")
+    graph.add_file_node("src/main.py")
+    graph.add_symbol_node("local", 1, 1, 3, "function")
+    local = graph.graph.vs.find(name="local")
+    local["file"] = None
+    local["has_definition"] = True
+    graph.add_symbol_node("external", 1, 1, 3, "function")
+    external = graph.graph.vs.find(name="external")
+    external["file"] = None
+    external["has_definition"] = False
+    graph.build_range_indexes()
+
+    report = constrain_graph_to_source_selection(
+        graph,
+        RepositorySourceSelection(),
+    )
+
+    assert "local" not in graph.name_to_vertex
+    assert "external" in graph.name_to_vertex
+    assert any(
+        "local" not in item and ".file=None" in item
+        for item in report["invalid_paths_before"]
+    )
+    assert report["invalid_paths_after"] == []
 
 
 def test_vector_quality_checks_identity_counts_paths_and_l0_coverage(

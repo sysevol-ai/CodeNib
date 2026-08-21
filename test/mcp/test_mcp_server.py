@@ -11,7 +11,6 @@ Tests server initialization, tool registration, and resource endpoints.
 from __future__ import annotations
 
 import asyncio
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +24,7 @@ from mcp.types import LATEST_PROTOCOL_VERSION
 
 # Import server module components
 import codenib.mcp.server as server_module
+from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.lsp import (
@@ -32,6 +32,10 @@ from codenib.mcp.tools.lsp import (
     lsp_references_impl,
     lsp_route_impl,
 )
+from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
+
+SOURCE_FINGERPRINT = "sha256-v2:" + ("a" * 64)
+SOURCE_SELECTION_DIGEST = DEFAULT_REPOSITORY_SOURCE_SELECTION.digest
 
 
 def test_server_import_keeps_optional_index_runtimes_lazy() -> None:
@@ -131,34 +135,41 @@ def test_search_tool_schemas_publish_bounded_inputs() -> None:
 @pytest.fixture
 def mock_manifest(tmp_path: Path) -> Path:
     """Create a mock manifest file."""
-    manifest_data = {
-        "repo_path": "/fake/repo",
-        "commit": "abc123",
-        "languages": ["python"],
-        "file_count": 100,
-        "capabilities": {"vector_search": True},
-        "compiled_at": "2026-04-20T12:00:00Z",
-        "compiled_at_epoch": 1745323200.0,
-        "indexes": {
-            "vector": {
-                "index_type": "vector",
-                "path": str(tmp_path / "vector"),
-                "built_at": "2026-04-20T12:00:00Z",
-                "built_at_epoch": 1745323200.0,
-                "status": "fresh",
-                "config": {
+    commit = "a" * 40
+    manifest = RepoManifest(
+        repo_path="/fake/repo",
+        commit=commit,
+        last_indexed_commit=commit,
+        source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_selection_digest=SOURCE_SELECTION_DIGEST,
+        languages=["python"],
+        file_count=100,
+        capabilities={"vector_search": True},
+        compiled_at="2026-04-20T12:00:00Z",
+        compiled_at_epoch=1745323200.0,
+        indexes={
+            "vector": IndexEntry(
+                index_type="vector",
+                path=str(tmp_path / "vector"),
+                built_at="2026-04-20T12:00:00Z",
+                built_at_epoch=1745323200.0,
+                status="fresh",
+                config={
                     "embedding_model": "text-embedding-3-small",
                     "embedding_provider": "openai",
                     "dimension": 1536,
                     "index_metric": "ip",
                 },
-                "metadata": {},
-            }
+                commit=commit,
+                source_fingerprint=SOURCE_FINGERPRINT,
+                source_selection_digest=SOURCE_SELECTION_DIGEST,
+            )
         },
-    }
+    )
 
     manifest_path = tmp_path / "repo_manifest.json"
-    manifest_path.write_text(json.dumps(manifest_data, indent=2))
+    manifest.save(manifest_path)
     return manifest_path
 
 

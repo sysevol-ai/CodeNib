@@ -16,6 +16,10 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION
+from codenib.repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    RepositorySourceSelection,
+)
 from codenib.sandbox import (
     DockerSandboxProvider,
     ExecRequest,
@@ -39,6 +43,21 @@ DIGEST = "sha256:" + "a" * 64
 IMAGE = f"registry.example/codenib-agent@{DIGEST}"
 SOURCE_FINGERPRINT = "sha256-v2:" + "e" * 64
 TEST_DOCKER_BINARY = str(Path(sys.executable).resolve(strict=True))
+
+
+def _fingerprint_helper_arguments(
+    source_root: Path | str,
+    *,
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
+) -> list[str]:
+    return [
+        "[]",
+        str(SOURCE_FINGERPRINT_VERSION),
+        str(REPOSITORY_FILTER_POLICY_VERSION),
+        str(source_root),
+        selection.canonical_json(),
+        selection.digest,
+    ]
 
 
 class RecordingCLI:
@@ -146,8 +165,15 @@ def test_container_fingerprint_helper_matches_host_v2_framing(tmp_path: Path) ->
     (source / "package" / "module.py").write_bytes(b"VALUE = 1\n")
     try:
         (source / "relative-link").symlink_to("b")
+        (source / "absolute-link").symlink_to(source / "b")
+        (source / "absolute-lexical-link").symlink_to(source / "package" / ".." / "b")
         (source / "relative-directory-link").symlink_to("package")
+        (source / "absolute-directory-link").symlink_to(source / "package")
         (source / "relative-root-link").symlink_to(".", target_is_directory=True)
+        (source / "absolute-root-link").symlink_to(
+            source,
+            target_is_directory=True,
+        )
         (source / "broken-link").symlink_to("missing")
         (source / "loop-link").symlink_to("loop-link")
         os.mkfifo(source / ".codenib-hidden-pipe")
@@ -181,10 +207,7 @@ def test_container_fingerprint_helper_matches_host_v2_framing(tmp_path: Path) ->
             "-S",
             "-c",
             script,
-            "[]",
-            str(SOURCE_FINGERPRINT_VERSION),
-            str(REPOSITORY_FILTER_POLICY_VERSION),
-            source_label,
+            *_fingerprint_helper_arguments(source_label),
         ],
         check=True,
         capture_output=True,
@@ -225,10 +248,7 @@ def test_container_fingerprint_helper_rejects_outside_directory_symlink(
             "-S",
             "-c",
             script,
-            "[]",
-            str(SOURCE_FINGERPRINT_VERSION),
-            str(REPOSITORY_FILTER_POLICY_VERSION),
-            str(baseline),
+            *_fingerprint_helper_arguments(baseline),
         ],
         check=False,
         capture_output=True,
@@ -236,8 +256,112 @@ def test_container_fingerprint_helper_rejects_outside_directory_symlink(
     )
 
     assert completed.returncode != 0
-    expected_error = "target must be relative" if absolute else "outside the repository"
-    assert expected_error in completed.stderr
+    assert "outside the repository" in completed.stderr
+
+
+def test_container_fingerprint_helper_rejects_absolute_prefix_collision(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "repo"
+    collision = tmp_path / "repo-foreign"
+    source.mkdir()
+    collision.mkdir()
+    (collision / "target.py").write_bytes(b"SECRET = 1\n")
+    (source / "current.py").symlink_to(collision / "target.py")
+
+    with pytest.raises(RepositoryChangedError):
+        fingerprint_repository(source)
+
+    script = _FINGERPRINT_SOURCE_SCRIPT.replace(
+        "pathlib.Path('/workspace')",
+        f"pathlib.Path({str(source)!r})",
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            script,
+            *_fingerprint_helper_arguments(source),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "outside the repository" in completed.stderr
+
+
+def test_container_fingerprint_helper_rejects_absolute_escape_and_reentry(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "repo"
+    source.mkdir()
+    (source / "target.py").write_bytes(b"VALUE = 1\n")
+    raw_target = source / ".." / source.name / "target.py"
+    (source / "current.py").symlink_to(raw_target)
+
+    with pytest.raises(RepositoryChangedError):
+        fingerprint_repository(source)
+
+    script = _FINGERPRINT_SOURCE_SCRIPT.replace(
+        "pathlib.Path('/workspace')",
+        f"pathlib.Path({str(source)!r})",
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            script,
+            *_fingerprint_helper_arguments(source),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "outside the repository" in completed.stderr
+
+
+def test_container_fingerprint_helper_applies_exact_source_selection(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    (source / "ios" / "Pods").mkdir(parents=True)
+    (source / "packages" / "mobile" / "ios" / "Pods").mkdir(parents=True)
+    (source / "ios" / "Pods" / "dependency.py").write_text("EXCLUDED = 1\n")
+    retained = source / "packages" / "mobile" / "ios" / "Pods" / "app.py"
+    retained.write_text("RETAINED = 1\n")
+    selection = RepositorySourceSelection(("ios/Pods",))
+    expected = fingerprint_repository(source, selection=selection)
+    script = _FINGERPRINT_SOURCE_SCRIPT.replace(
+        "pathlib.Path('/workspace')",
+        f"pathlib.Path({str(source)!r})",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            script,
+            *_fingerprint_helper_arguments(source, selection=selection),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert json.loads(completed.stdout) == {
+        "file_count": expected.file_count,
+        "source_fingerprint": expected.value,
+    }
 
 
 def _spec(tmp_path: Path, *, limits=None):

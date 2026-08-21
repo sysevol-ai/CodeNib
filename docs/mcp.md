@@ -13,11 +13,11 @@ then reuse that manifest across agent sessions.
 
 ## Install And Index
 
-For Codex or Claude Code, the recommended 0.2.1 path prepares the graph index
+For Codex or Claude Code, the recommended 0.2.2 path prepares the graph index
 and native client configuration together:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.1"
+python -m pip install "codenib[graph,mcp]==0.2.2"
 codenib codegraph init /path/to/repository
 ```
 
@@ -31,14 +31,14 @@ For a custom MCP client or a retrieval-only setup, build and launch the server
 manually. The smaller no-model fallback is:
 
 ```bash
-python -m pip install "codenib[mcp]==0.2.1"
+python -m pip install "codenib[mcp]==0.2.2"
 codenib index /path/to/repository --preset fast
 ```
 
 Add static navigation and dependency tools without an embedding download:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.1"
+python -m pip install "codenib[graph,mcp]==0.2.2"
 codenib toolchain install /path/to/repository --scope graph
 codenib index /path/to/repository --preset graph
 ```
@@ -120,8 +120,8 @@ absolute path to a repository previously indexed with `codenib index`. The
 declared launch is equivalent to:
 
 ```bash
-uvx --with "codenib[mcp]==0.2.1" \
-  "codenib==0.2.1" mcp /absolute/path/to/repository
+uvx --with "codenib[mcp]==0.2.2" \
+  "codenib==0.2.2" mcp /absolute/path/to/repository
 ```
 
 The Registry path is intentionally query-only and model-free. It can always
@@ -177,15 +177,15 @@ is known. This best-effort fallback examines at most 10,000 graph nodes, retains
 at most 256 query matches and 512 expanded candidates, and stops after 100
 milliseconds.
 
-For a source-verified local C/C++-only checkout, the server can reuse an
-existing project-local clangd index for definition and reference symbol
-queries. This runtime selection never generates clangd data. Position and route
-queries lazily load the compatible complete graph once. Portable artifacts,
-mixed-language repositories, unverified checkouts, and disabled or unavailable
-native support remain on the persisted symbol graph. LSP result rows identify
-their backend, fallback reason, capabilities, and snapshot when provider
-metadata is available; `get_manifest.runtime.lsp_provider` reports the same
-selection even before a result is returned.
+In 0.2.2 every manifest-bound C/C++ checkout uses the verified persisted
+symbol graph. Project-local clangd `.idx` files often live below the
+default-excluded `build/` tree and do not yet carry an authenticated generation
+receipt plus allowed-file proof, so the server does not reuse them directly.
+This is a fail-closed query-time boundary, not a removal of C/C++ graph
+indexing. LSP result rows identify the backend, fallback reason, capabilities,
+and snapshot when provider metadata is available;
+`get_manifest.runtime.lsp_provider` reports the same persisted-graph selection
+before a result is returned.
 
 `search_context` accepts `query`, `top_k` (1-100), `budget`
 (`fast`, `balanced`, or `thorough`), dense `level` (`l0` or `l2`), and
@@ -211,10 +211,16 @@ Parameter and return schemas live in
 The `full` preset requests BM25, vectors, a symbol graph, and Zoekt:
 
 ```bash
-python -m pip install "codenib[full]==0.2.1"
+python -m pip install "codenib[full]==0.2.2"
 codenib toolchain install /path/to/repository --scope graph
 codenib index /path/to/repository --preset full
 ```
+
+This succeeds only with the default source selection, an immutable commit tree
+that exactly matches the authenticated checkout, and no tracked path rejected
+by the default policy. A non-empty custom exclusion set, or a tracked
+default-excluded path, makes the Zoekt build fail closed; see
+[the CodeGraph source-surface boundary](codegraph.md#select-the-repository-source-surface).
 
 Graph and Zoekt construction also require external backend binaries. Check the
 repository's language-specific graph provider before building:
@@ -230,6 +236,11 @@ commands independently:
 command -v zoekt-git-index
 command -v zoekt-webserver
 ```
+
+In 0.2.2 authenticated `search_zoekt` serving is Linux-only. The runtime keeps
+the verified shard generation open and gives `zoekt-webserver` a `/proc`
+descriptor path; macOS and Windows fail closed rather than reopen the mutable
+published directory.
 
 See [SCIP Indexing](scip_index.md) and
 [Language Capabilities](language_capabilities.md) for backend-specific setup

@@ -80,11 +80,11 @@ def scip_consumer_query_mode(
     return _normalize_mode(source.get(SCIP_CONSUMER_QUERY_ENV, "off"))
 
 
-def _default_graph_loader(path: Path) -> Any:
+def _default_graph_loader(path: Path, receipt: Mapping[str, Any]) -> Any:
     # Keep CodeGraph and igraph absent until an admitted request needs them.
-    from ..graph.code_graph import CodeGraph
+    from ..compiler.graph_artifact import load_authenticated_graph_generation
 
-    return CodeGraph.load_graph(str(path))
+    return load_authenticated_graph_generation(path.parent, receipt)
 
 
 def _manifest_language(
@@ -114,7 +114,6 @@ class SCIPHybridQueryProvider:
     ) -> None:
         self.query_index = candidate.index
         self._candidate_receipt = copy.deepcopy(candidate.receipt)
-        self._graph_loader = graph_loader or _default_graph_loader
         self._snapshot_observer = snapshot_observer or observe_fact_query_snapshot
         self._public_fallback_reason = public_fallback_reason
 
@@ -135,6 +134,31 @@ class SCIPHybridQueryProvider:
         query_digest = graph.get("query_surface_sha256")
         if type(query_digest) is not str or len(query_digest) != 64:
             raise ValueError("FactQuery candidate receipt has no graph query digest")
+        if graph_loader is None:
+            graph_size = graph.get("size_bytes")
+            graph_digest = graph.get("sha256")
+            if (
+                isinstance(graph_size, bool)
+                or not isinstance(graph_size, int)
+                or graph_size < 0
+                or not isinstance(graph_digest, str)
+                or len(graph_digest) != 64
+            ):
+                raise ValueError(
+                    "FactQuery candidate receipt has no authenticated graph artifact"
+                )
+            graph_receipt = {
+                "relative_path": "graph.pkl",
+                "size": graph_size,
+                "sha256": graph_digest,
+            }
+
+            def authenticated_graph_loader(path: Path) -> Any:
+                return _default_graph_loader(path, graph_receipt)
+
+            self._graph_loader = authenticated_graph_loader
+        else:
+            self._graph_loader = graph_loader
 
         entry_path = manifest.get("entry_path")
         relative_graph = graph.get("relative_path")

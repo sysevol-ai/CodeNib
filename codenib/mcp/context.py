@@ -32,9 +32,11 @@ from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import RepoManifest
 from ..index.embedding.artifact_integrity import require_authorized_vector_view
 from ..provider_routes import resolve_embedding_artifact_route
+from ..repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 
 if TYPE_CHECKING:
     from ..artifacts.runtime import ContextArtifactBinding
+    from ..compiler.zoekt_artifact import ZoektShardSnapshot
     from ..graph.code_graph import CodeGraph
     from ..index.embedding.vector_store import CodeVectorStore
     from ..index.regex_idx import RegexNodeIndex
@@ -188,6 +190,31 @@ def _stop_zoekt_after_failure(
     context.zoekt = None
 
 
+def _close_zoekt_snapshot_after_failure(
+    context: ServerContext,
+    primary: BaseException,
+) -> None:
+    """Release a private shard generation or retain its retryable owner."""
+
+    snapshot = context._zoekt_snapshot
+    if snapshot is None:
+        return
+    try:
+        snapshot.close()
+    except BaseException as cleanup_error:  # noqa: B036 - preserve priority
+        actual = _retain_context_cleanup_failure(
+            primary,
+            "Zoekt shard snapshot cleanup also failed",
+            cleanup_error,
+        )
+        _attach_context_cleanup_owner(actual, context)
+        if actual is cleanup_error:
+            raise cleanup_error from primary
+        raise primary from cleanup_error
+    if snapshot.closed:
+        context._zoekt_snapshot = None
+
+
 def _retain_context_cleanup_failure(
     deferred: BaseException | None,
     label: str,
@@ -301,6 +328,18 @@ class ServerContext:
         default=None,
         repr=False,
     )
+    _zoekt_snapshot: Optional[ZoektShardSnapshot] = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+
+    def _install_zoekt_snapshot(self, snapshot: ZoektShardSnapshot) -> None:
+        """Publish snapshot ownership before a cancellation can escape."""
+
+        if self._zoekt_snapshot is not None and self._zoekt_snapshot is not snapshot:
+            raise RuntimeError("Zoekt shard snapshot ownership changed")
+        self._zoekt_snapshot = snapshot
 
     @property
     def source_verified(self) -> bool:
@@ -422,6 +461,7 @@ class ServerContext:
             owned_source = ctx._source_binding
 
             if owned_source is not None:
+                from ..compiler.manifest_source import require_manifest_source_identity
                 from ..source_fingerprint import (
                     is_secure_source_fingerprint_v2,
                     lexical_repository_path,
@@ -431,14 +471,20 @@ class ServerContext:
                 if (
                     not owned_source.usable
                     or not is_secure_source_fingerprint_v2(manifest.source_fingerprint)
-                    or source_identity.fingerprint != manifest.source_fingerprint
-                    or source_identity.file_count != manifest.file_count
                     or source_identity.root
                     != lexical_repository_path(manifest.repo_path)
                 ):
                     raise ValueError(
                         "repository source authority does not match the manifest"
                     )
+                require_manifest_source_identity(
+                    source_identity,
+                    manifest,
+                    label="repository source authority",
+                    mismatch_message=(
+                        "repository source authority does not match the manifest"
+                    ),
+                )
 
             ctx.source_error = (
                 None
@@ -601,6 +647,17 @@ class ServerContext:
                     )
                 else:
                     self.zoekt = None
+            if self.zoekt is None and self._zoekt_snapshot is not None:
+                try:
+                    self._zoekt_snapshot.close()
+                except BaseException as exc:  # noqa: B036 - continue cleanup
+                    deferred = _retain_context_cleanup_failure(
+                        deferred,
+                        "Zoekt shard snapshot cleanup also failed",
+                        exc,
+                    )
+                if self._zoekt_snapshot.closed:
+                    self._zoekt_snapshot = None
             if self.vector is not None:
                 try:
                     _close_vector(self.vector)
@@ -694,6 +751,9 @@ class ServerContext:
             project_root=self.manifest.repo_path,
             languages=self.manifest.languages,
             symbol_graph=self.symbol_graph,
+            source_selection=(
+                self.manifest.source_selection or DEFAULT_REPOSITORY_SOURCE_SELECTION
+            ),
             allow_native=allow_native,
             native_disabled_reason=native_disabled_reason,
         )
@@ -769,12 +829,10 @@ class ServerContext:
         if not entry or not self.manifest.index_is_current("symbol_graph"):
             return
         try:
-            from ..graph.code_graph import CodeGraph
+            from ..compiler.graph_artifact import load_authenticated_graph_artifact
 
-            graph_path = Path(entry.path)
-            pkl = graph_path / "graph.pkl" if graph_path.is_dir() else graph_path
-            self.symbol_graph = CodeGraph.load_graph(str(pkl))
-            logger.info("Loaded symbol_graph from %s", pkl)
+            self.symbol_graph = load_authenticated_graph_artifact(entry)
+            logger.info("Loaded symbol_graph from %s", entry.path)
         except Exception as exc:
             self.errors["symbol_graph"] = str(exc)
             logger.warning("Failed to load symbol_graph: %s", exc)
@@ -861,35 +919,55 @@ class ServerContext:
         if not entry or not self.manifest.index_is_current("zoekt"):
             return
         try:
+            from ..compiler.zoekt_artifact import capture_authenticated_zoekt_snapshot
+
+            snapshot = capture_authenticated_zoekt_snapshot(
+                entry,
+                install=self._install_zoekt_snapshot,
+            )
+        except Exception as exc:
+            self.errors["zoekt"] = str(exc)
+            logger.warning("Failed to authenticate Zoekt shards: %s", exc)
+            return
+        except BaseException:
+            raise
+
+        try:
             from ..index.trigram import ZoektSearcher, ZoektUnavailableError
         except Exception as exc:
+            _close_zoekt_snapshot_after_failure(self, exc)
             self.errors["zoekt"] = str(exc)
             logger.warning("Failed to load Zoekt runtime: %s", exc)
             return
 
         searcher = None
         try:
-            searcher = ZoektSearcher(index_dir=entry.path)
+            searcher = ZoektSearcher(index_dir=snapshot.search_path)
             searcher.start()
+            snapshot.verify()
+            port = searcher.port
             logger.info(
                 "Started zoekt-webserver  shards=%s  port=%d",
                 entry.path,
-                searcher.port,
+                port,
             )
             self.zoekt = searcher
         except ZoektUnavailableError as exc:
             if searcher is not None:
                 _stop_zoekt_after_failure(self, searcher, exc)
+            _close_zoekt_snapshot_after_failure(self, exc)
             self.errors["zoekt"] = str(exc)
             logger.warning("Zoekt unavailable: %s", exc)
         except Exception as exc:
             if searcher is not None:
                 _stop_zoekt_after_failure(self, searcher, exc)
+            _close_zoekt_snapshot_after_failure(self, exc)
             self.errors["zoekt"] = str(exc)
             logger.warning("Failed to start zoekt-webserver: %s", exc)
         except BaseException as exc:  # noqa: B036 - cleanup then propagate
             if searcher is not None:
                 _stop_zoekt_after_failure(self, searcher, exc)
+            _close_zoekt_snapshot_after_failure(self, exc)
             raise
 
     def _load_vector(self, *, probe: bool = False) -> None:

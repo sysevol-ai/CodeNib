@@ -30,6 +30,7 @@ from codenib.agent.skills.core import (
 from codenib.agent.skills.registry import SkillRegistry
 from codenib.graph.code_graph import CodeGraph
 from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.scip_interface.lsp_occurrence_index import (
     SCIPOccurrence,
     SCIPOccurrenceIndex,
@@ -296,6 +297,34 @@ def test_unknown_language_alongside_cpp_forces_graph_fallback():
     assert provider.graph is graph
     assert selection["backend"] == "persisted-symbol-graph-v1"
     assert selection["fallback_reason"] == ("mixed_language_requires_persisted_graph")
+
+
+@pytest.mark.parametrize(
+    "selection_policy",
+    (
+        RepositorySourceSelection(),
+        RepositorySourceSelection(("private[1]",)),
+    ),
+)
+def test_manifest_source_policy_disables_unproved_native_cpp_provider(
+    selection_policy,
+):
+    graph = _range_graph()
+
+    with patch("codenib.ls_router.LSIndexer") as indexer:
+        provider, selection = select_checkout_lsp_provider(
+            project_root="/local/repo",
+            languages=["cpp"],
+            symbol_graph=graph,
+            source_selection=selection_policy,
+        )
+
+    indexer.assert_not_called()
+    assert provider.graph is graph
+    assert selection["backend"] == "persisted-symbol-graph-v1"
+    assert selection["fallback_reason"] == (
+        "repository_source_policy_requires_persisted_graph"
+    )
 
 
 def test_runtime_native_off_switch_uses_persisted_provider(monkeypatch):

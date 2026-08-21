@@ -66,12 +66,11 @@ from ..storage.view_bundle import (
     consume_verified_view_bundle_stream,
     validate_view_bundle_physical_size,
 )
-from .manifest import MANIFEST_VERSION, RepoManifest
+from .manifest import MANIFEST_VERSION, SUPPORTED_MANIFEST_VERSIONS, RepoManifest
 from .manifest_import import DEFAULT_MAX_PROJECTION_BYTES
 from .manifest_storage import (
     DEFAULT_MAX_MANIFEST_BYTES,
     PORTABLE_STORAGE_VIEWS,
-    REPO_MANIFEST_IMPORT_PLAN_SCHEMA,
     RepoManifestImportPlan,
     ViewImportIntent,
     plan_repo_manifest_import_bytes,
@@ -1159,11 +1158,15 @@ def _require_bundle_semantics(
             label="snapshot vector root config",
         )
         try:
-            suffix, dimension, revision, metric, index_type = (
-                validate_portable_vector_persistence_semantics(
-                    root,
-                    view_config,
-                )
+            (
+                suffix,
+                dimension,
+                revision,
+                metric,
+                index_type,
+            ) = validate_portable_vector_persistence_semantics(
+                root,
+                view_config,
             )
             provider = resolve_embedding_artifact_route(
                 view_config,
@@ -1332,6 +1335,14 @@ def _portable_export_manifest_bytes(
     return manifest_bytes
 
 
+def _intent_generation_metadata(intent: ViewImportIntent) -> dict[str, Any]:
+    """Keep retained generation identity bound to the embedded manifest."""
+
+    metadata = repo_manifest_generation_metadata(intent)
+    metadata["manifest_version"] = intent.profile.config["manifest_version"]
+    return metadata
+
+
 def _validate_projection(
     projection: dict[str, Any],
     *,
@@ -1356,8 +1367,16 @@ def _validate_projection(
         raise StorageIntegrityError("repository manifest projection shape is invalid")
     if projection["repository_id"] != retained.repository.repository_id:
         raise StorageIntegrityError("repository manifest projection identity conflicts")
+    manifest_value = projection["manifest"]
+    if (
+        type(manifest_value) is not dict
+        or type(manifest_value.get("version")) is not str
+        or manifest_value["version"] not in SUPPORTED_MANIFEST_VERSIONS
+    ):
+        raise StorageIntegrityError("projected repository manifest is invalid")
+    embedded_version = manifest_value["version"]
     projected_source = projection["source"]
-    if type(projected_source) is not dict or set(projected_source) != {
+    expected_source_fields = {
         "source_revision_id",
         "kind",
         "source_fingerprint",
@@ -1367,7 +1386,16 @@ def _validate_projection(
         "source_verified",
         "commit_verified",
         "checkout_state",
-    }:
+    }
+    if embedded_version == MANIFEST_VERSION:
+        expected_source_fields |= {
+            "source_selection",
+            "source_selection_digest",
+        }
+    if (
+        type(projected_source) is not dict
+        or set(projected_source) != expected_source_fields
+    ):
         raise StorageIntegrityError("projected source shape is invalid")
     source = retained.source
     if (
@@ -1415,9 +1443,6 @@ def _validate_projection(
             raise StorageIntegrityError(f"projected {field} is invalid")
     if type(selection["skipped_views"]) is not dict:
         raise StorageIntegrityError("projected skipped views are invalid")
-    manifest_value = projection["manifest"]
-    if type(manifest_value) is not dict:
-        raise StorageIntegrityError("projected repository manifest is invalid")
     full_manifest_bytes = canonical_json(manifest_value).encode("ascii")
     if len(full_manifest_bytes) > max_manifest_bytes:
         raise StorageIntegrityError(
@@ -1438,7 +1463,6 @@ def _validate_projection(
     if (
         not same_exact_json(projection["plan"], expected_plan)
         or not same_exact_json(selection, plan.selection.to_dict())
-        or plan.schema != REPO_MANIFEST_IMPORT_PLAN_SCHEMA
         or plan.source.fingerprint != source.source_fingerprint
         or plan.source.file_count != projected_source["file_count"]
         or plan.source.display_commit != projected_source["display_commit"]
@@ -1446,6 +1470,19 @@ def _validate_projection(
         or plan.manifest.repo_path != "source"
     ):
         raise StorageIntegrityError("projected import plan identity conflicts")
+    source_selection = plan.source.source_selection
+    if embedded_version == MANIFEST_VERSION:
+        if (
+            source_selection is None
+            or not same_exact_json(
+                projected_source["source_selection"],
+                source_selection.to_dict(),
+            )
+            or projected_source["source_selection_digest"] != source_selection.digest
+        ):
+            raise StorageIntegrityError("projected source selection identity conflicts")
+    elif source_selection is not None:  # pragma: no cover - planner invariant
+        raise StorageIntegrityError("legacy projected source has a selection")
     selected = plan.selection.selected_views
     projected_views = projection["views"]
     if type(projected_views) is not dict or set(projected_views) != set(selected):
@@ -1494,7 +1531,7 @@ def _validate_projection(
             )
         metadata = json.loads(catalog_view.generation.metadata_json)
         metadata.pop(VIEW_GENERATION_MEMBERS_METADATA_KEY, None)
-        if not same_exact_json(metadata, repo_manifest_generation_metadata(intent)):
+        if not same_exact_json(metadata, _intent_generation_metadata(intent)):
             raise StorageIntegrityError(
                 f"projected {view_type!r} generation metadata conflicts"
             )
@@ -1614,7 +1651,7 @@ def _read_and_validate_projection(
     metadata.pop(VIEW_GENERATION_MEMBERS_METADATA_KEY, None)
     expected_metadata = {
         "contract": REPO_MANIFEST_PROJECTION_SCHEMA,
-        "manifest_version": MANIFEST_VERSION,
+        "manifest_version": validated.plan.manifest.version,
         "manifest_digest": plan_identity["digest"],
         "plan_digest": validated.plan.plan_digest,
         "projected_views": list(validated.plan.selection.selected_views),

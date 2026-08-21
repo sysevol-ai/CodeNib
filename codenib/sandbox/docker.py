@@ -34,6 +34,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Collection, Dict, Mapping, Sequence, TypedDict
 
 from ..repository_filters import DEFAULT_IGNORED_DIRS, REPOSITORY_FILTER_POLICY_VERSION
+from ..repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 from ..source_fingerprint import SOURCE_FINGERPRINT_VERSION
 from .protocol import (
     SandboxClosedError,
@@ -109,8 +110,67 @@ ignored = set(json.loads(sys.argv[1]))
 fingerprint_version = int(sys.argv[2])
 filter_version = int(sys.argv[3])
 source_root = pathlib.Path(sys.argv[4])
+selection_payload = json.loads(sys.argv[5])
+selection_digest = sys.argv[6]
 if fingerprint_version != 2:
     raise SystemExit('unsupported source fingerprint version')
+if (
+    type(selection_payload) is not dict
+    or set(selection_payload) != {
+        'schema', 'repository_filter_policy', 'exclude_subtrees'
+    }
+    or selection_payload['schema'] != 'codenib.repository-source-selection.v1'
+    or selection_payload['repository_filter_policy'] != filter_version
+    or type(selection_payload['exclude_subtrees']) is not list
+):
+    raise SystemExit('source selection is invalid')
+exclude_subtrees = selection_payload['exclude_subtrees']
+canonical_excludes = []
+canonical_set = set()
+for value in exclude_subtrees:
+    if (
+        type(value) is not str
+        or not value
+        or '\0' in value
+        or '\\' in value
+    ):
+        raise SystemExit('source selection is invalid')
+    path = pathlib.PurePosixPath(value)
+    if (
+        path.is_absolute()
+        or value in {'.', '..'}
+        or '..' in path.parts
+        or path.as_posix() != value
+    ):
+        raise SystemExit('source selection is invalid')
+    try:
+        value.encode('utf-8', errors='strict')
+    except UnicodeEncodeError:
+        raise SystemExit('source selection is invalid')
+    if value in canonical_set:
+        raise SystemExit('source selection is not canonical')
+    canonical_excludes.append(value)
+    canonical_set.add(value)
+if canonical_excludes != sorted(canonical_excludes):
+    raise SystemExit('source selection is not canonical')
+for index, value in enumerate(canonical_excludes):
+    parts = pathlib.PurePosixPath(value).parts
+    if any(
+        '/'.join(parts[:count]) in canonical_set
+        for count in range(1, len(parts))
+    ):
+        raise SystemExit('source selection is not canonical')
+selection_bytes = json.dumps(
+    selection_payload,
+    allow_nan=False,
+    ensure_ascii=True,
+    sort_keys=True,
+    separators=(',', ':'),
+).encode('ascii')
+computed_selection_digest = 'sha256:' + hashlib.sha256(selection_bytes).hexdigest()
+if selection_digest != computed_selection_digest:
+    raise SystemExit('source selection digest is invalid')
+excluded_parts = tuple(tuple(value.split('/')) for value in canonical_excludes)
 hasher = hashlib.sha256()
 hasher.update(b'codenib-source-fingerprint\0\x02')
 def frame_header(domain, payload_size):
@@ -138,10 +198,16 @@ def normalize_target(prefix, target):
     if not target or '\0' in target or len(os.fsencode(target)) > 4096:
         raise SystemExit('source symlink target is invalid')
     if os.path.isabs(target):
-        raise SystemExit('source symlink target must be relative')
+        root_parts = source_root.parts
+        absolute_parts = pathlib.Path(target).parts
+        if absolute_parts[:len(root_parts)] != root_parts:
+            raise SystemExit('source symlink resolves outside the repository')
+        target_parts = absolute_parts[len(root_parts):]
+        resolved = []
     else:
         resolved = list(prefix)
-    for part in target.split('/'):
+        target_parts = target.split('/')
+    for part in target_parts:
         if part in {'', '.'}:
             continue
         if part == '..':
@@ -192,7 +258,13 @@ def resolve_link(relative_parts):
         raise SystemExit('source root is not a directory')
     return 'directory', root, root_metadata
 frame(b'filter-policy-version', str(filter_version).encode('ascii'))
+frame(b'source-selection-digest', selection_digest.encode('ascii'))
 file_count = 0
+def source_selected(relative_parts):
+    return not any(
+        relative_parts[:len(excluded)] == excluded
+        for excluded in excluded_parts
+    )
 def scan_directory(current, prefix):
     global file_count
     with os.scandir(current) as iterator:
@@ -202,6 +274,8 @@ def scan_directory(current, prefix):
         if name in ignored or name.startswith('.codenib'):
             continue
         relative_parts = (*prefix, name)
+        if not source_selected(relative_parts):
+            continue
         path = current / name
         metadata = path.lstat()
         mode = metadata.st_mode
@@ -1061,6 +1135,8 @@ class DockerSandboxProvider:
                 str(SOURCE_FINGERPRINT_VERSION),
                 str(REPOSITORY_FILTER_POLICY_VERSION),
                 os.path.abspath(os.path.expanduser(os.fspath(spec.source_dir))),
+                DEFAULT_REPOSITORY_SOURCE_SELECTION.canonical_json(),
+                DEFAULT_REPOSITORY_SOURCE_SELECTION.digest,
             ]
         )
         completed = self._run_control_container(name, args)

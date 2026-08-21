@@ -12,13 +12,23 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
 from codenib.agent.boundary import to_agent_repr
 
-from .repository_files import git_source_slice, has_git_metadata, live_source_slice
+from ..repository_filters import repository_path_is_visible
+from ..repository_source_selection import RepositorySourceSelection
+from .repository_files import (
+    bound_source_slice,
+    git_source_slice,
+    has_git_metadata,
+    live_source_slice,
+)
+
+if TYPE_CHECKING:
+    from ..source_fingerprint import RepositorySourceReader
 
 _MAX_REPO_ID_CHARS = 512
 _MAX_PATH_CHARS = 4096
@@ -206,7 +216,12 @@ def _repo_relative(path: Optional[str], repo_path: str = "") -> Optional[str]:
     return p.lstrip("/")
 
 
-def _node_to_citation(node: Any, repo_path: str = "") -> Optional[Citation]:
+def _node_to_citation(
+    node: Any,
+    repo_path: str = "",
+    *,
+    source_reader: "RepositorySourceReader | None" = None,
+) -> Optional[Citation]:
     """Coerce a single retrieval result (QueriedNode / dict) into a Citation."""
     if not (
         hasattr(node, "model_dump")
@@ -223,8 +238,15 @@ def _node_to_citation(node: Any, repo_path: str = "") -> Optional[Citation]:
     content = data.get("content")
     if isinstance(content, str) and len(content) > 2000:
         content = content[:2000] + "\n... (truncated)"
+    file = data.get("file")
+    if source_reader is not None and file:
+        file = source_reader.captured_relative_path(file)
+        if file is None:
+            return None
+    else:
+        file = _repo_relative(file, repo_path)
     return Citation(
-        file=_repo_relative(data.get("file"), repo_path),
+        file=file,
         start_line=data.get("start_line"),
         end_line=data.get("end_line"),
         node_name=data.get("node_name") or data.get("name") or "",
@@ -294,6 +316,8 @@ def _select_answer_citations(
     limit: int = 5,
     repo_path: str = "",
     repo_commit: str = "",
+    source_reader: "RepositorySourceReader | None" = None,
+    source_selection: RepositorySourceSelection | None = None,
 ) -> List[Citation]:
     """Keep strong answer citations that resolve to exact repository source."""
 
@@ -317,10 +341,42 @@ def _select_answer_citations(
 
     renderable: List[Citation] = []
     for citation in selected:
-        if repo_path:
+        if source_reader is not None:
+            if not citation.file or citation.start_line is None:
+                continue
+            source = bound_source_slice(
+                source_reader,
+                citation.file,
+                citation.start_line,
+                citation.end_line or citation.start_line,
+            )
+            if not source or not str(source.get("content") or "").strip():
+                continue
+            content = str(source["content"])
+            if len(content) > _MAX_CITATION_CONTENT_CHARS:
+                content = content[:_MAX_CITATION_CONTENT_CHARS] + "\n... (truncated)"
+            citation = citation.model_copy(
+                update={
+                    "file": source.get("file") or citation.file,
+                    "start_line": source.get("start_line") or citation.start_line,
+                    "end_line": source.get("end_line") or citation.end_line,
+                    "content": content,
+                }
+            )
+        elif repo_path:
             if not citation.file or citation.start_line is None:
                 continue
             if repo_commit:
+                historical_selection = (
+                    source_selection
+                    if type(source_selection) is RepositorySourceSelection
+                    else RepositorySourceSelection()
+                )
+                if not repository_path_is_visible(
+                    citation.file,
+                    selection=historical_selection,
+                ):
+                    continue
                 source = git_source_slice(
                     repo_path,
                     repo_commit,
@@ -375,6 +431,9 @@ def agent_result_to_response(
     result: Any,
     repo_path: str = "",
     repo_commit: str = "",
+    *,
+    source_reader: "RepositorySourceReader | None" = None,
+    source_selection: RepositorySourceSelection | None = None,
 ) -> ChatResponse:
     """Flatten an ``AgentResult`` into the API response.
 
@@ -398,7 +457,11 @@ def agent_result_to_response(
             )
         )
         for node in nodes:
-            cit = _node_to_citation(node, repo_path)
+            cit = _node_to_citation(
+                node,
+                repo_path,
+                source_reader=source_reader,
+            )
             if cit is None:
                 continue
             key = (cit.file, cit.start_line, cit.end_line)
@@ -414,6 +477,8 @@ def agent_result_to_response(
             citations,
             repo_path=repo_path,
             repo_commit=repo_commit,
+            source_reader=source_reader,
+            source_selection=source_selection,
         ),
         tool_calls=tool_calls,
         total_turns=result.total_turns,

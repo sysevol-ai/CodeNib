@@ -24,11 +24,21 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
-from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.compiler.manifest import (
+    LEGACY_MANIFEST_VERSION,
+    MANIFEST_VERSION,
+    IndexEntry,
+    RepoManifest,
+)
+from codenib.compiler.manifest_source import (
+    fingerprint_repository_for_manifest,
+    repository_filter_policy_for_manifest,
+)
 from codenib.repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     default_exclude_patterns,
 )
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.scip_interface.scip_filter import (
     matches_exclude_patterns,
     normalize_scip_path,
@@ -317,6 +327,8 @@ def _write_candidate_manifest(
     rust_workspace: bool = False,
     node_count: int = 5,
     edge_count: int = 4,
+    manifest_version: str = MANIFEST_VERSION,
+    source_selection: RepositorySourceSelection | None = None,
 ) -> tuple[Path, RepoManifest]:
     root = tmp_path / "repo"
     root.mkdir(parents=True)
@@ -399,7 +411,20 @@ def _write_candidate_manifest(
     serial_graph.save_graph(str(graph_file))
     index_fingerprint = regular_file_fingerprint(decoded)
     graph_fingerprint = regular_file_fingerprint(graph_file)
-    source = fingerprint_repository(root, exclude_roots=(cache,))
+    persisted_selection = None
+    if manifest_version != LEGACY_MANIFEST_VERSION:
+        persisted_selection = source_selection or RepositorySourceSelection()
+    identity_manifest = RepoManifest(
+        version=manifest_version,
+        repo_path=str(root),
+        source_selection=persisted_selection,
+    )
+    source = fingerprint_repository_for_manifest(
+        root,
+        identity_manifest,
+        exclude_roots=(cache,),
+    )
+    repository_filter_policy = repository_filter_policy_for_manifest(identity_manifest)
     patterns = sorted(default_exclude_patterns())
     artifacts = {
         language: {
@@ -430,7 +455,7 @@ def _write_candidate_manifest(
             }
         }
     metadata = {
-        "builder_schema": 4,
+        "builder_schema": (4 if manifest_version == LEGACY_MANIFEST_VERSION else 6),
         "languages": [language],
         "graph_route": "active",
         "exclude_patterns": patterns,
@@ -438,7 +463,7 @@ def _write_candidate_manifest(
         "allow_partial_index": False,
         "source_coverage_fallback": False,
         "target_dir": None,
-        "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
+        "repository_filter_policy": repository_filter_policy,
         "node_count": node_count,
         "edge_count": edge_count,
         "language": language,
@@ -456,6 +481,25 @@ def _write_candidate_manifest(
         "failed_languages": {},
         "partial": False,
     }
+    if persisted_selection is not None:
+        metadata.update(
+            {
+                "allow_project_preparation": True,
+                "lsp_occurrence_artifact": None,
+                "source_selection_digest": persisted_selection.digest,
+                "source_selection_report": {
+                    "source_selection_digest": persisted_selection.digest,
+                    "nodes_before": node_count,
+                    "nodes_after": node_count,
+                    "edges_before": edge_count,
+                    "edges_after": edge_count,
+                    "removed_excluded_path_count": 0,
+                    "excluded_path_count_after": 0,
+                    "invalid_path_count_before": 0,
+                    "invalid_path_count_after": 0,
+                },
+            }
+        )
     entry = IndexEntry(
         index_type="symbol_graph",
         path=str(artifact_root),
@@ -466,11 +510,19 @@ def _write_candidate_manifest(
         metadata={**copy.deepcopy(metadata), "build_duration_seconds": 1.0},
         commit="",
         source_fingerprint=source.value,
+        source_selection_digest=(
+            "" if persisted_selection is None else persisted_selection.digest
+        ),
     )
     manifest = RepoManifest(
+        version=manifest_version,
         repo_path=str(root),
         source_fingerprint=source.value,
         last_indexed_source_fingerprint=source.value,
+        source_selection=persisted_selection,
+        last_indexed_source_selection_digest=(
+            "" if persisted_selection is None else persisted_selection.digest
+        ),
         languages=[language],
         file_count=source.file_count,
         indexes={"symbol_graph": entry},
@@ -853,14 +905,27 @@ def test_manifest_candidate_binds_source_filter_index_and_native_receipts(
 
     assert candidate.has_symbol("demo") is True
     assert candidate.receipt["language"] == "python"
-    assert candidate.receipt["manifest"]["version"] == "1.1"
+    assert candidate.receipt["manifest"]["version"] == MANIFEST_VERSION
     manifest_fingerprint = regular_file_fingerprint(manifest_path)
     assert candidate.receipt["manifest"]["size_bytes"] == manifest_fingerprint["size"]
     assert candidate.receipt["manifest"]["sha256"] == manifest_fingerprint["sha256"]
-    assert candidate.receipt["manifest"]["builder_schema"] == 4
+    assert candidate.receipt["manifest"]["builder_schema"] == 6
     assert candidate.receipt["manifest"]["document_count"] == 1
     assert candidate.receipt["graph"]["relative_path"] == "graph.pkl"
-    assert candidate.receipt["filters"]["repository_filter_policy"] == 3
+    assert (
+        candidate.receipt["filters"]["repository_filter_policy"]
+        == REPOSITORY_FILTER_POLICY_VERSION
+    )
+    expected_selection = RepositorySourceSelection()
+    assert candidate.receipt["manifest"]["source_selection"] == (
+        expected_selection.to_dict()
+    )
+    assert candidate.receipt["source"]["source_selection_digest"] == (
+        expected_selection.digest
+    )
+    assert candidate.receipt["filters"]["source_selection_digest"] == (
+        expected_selection.digest
+    )
     assert candidate.receipt["filter_identity"]["identity"] is True
     assert candidate.receipt["filter_identity"]["reference_only_count"] == 1
     assert (
@@ -869,6 +934,43 @@ def test_manifest_candidate_binds_source_filter_index_and_native_receipts(
     )
     assert len(candidate.receipt["receipt_sha256"]) == 64
     assert core.calls[0]["language"] == "python"
+
+
+def test_manifest_candidate_preserves_legacy_v11_source_policy(tmp_path: Path) -> None:
+    manifest_path, _ = _write_candidate_manifest(
+        tmp_path,
+        manifest_version=LEGACY_MANIFEST_VERSION,
+    )
+
+    candidate = load_fact_query_candidate(manifest_path, core_module=_MockCore())
+
+    assert candidate.receipt["manifest"]["version"] == LEGACY_MANIFEST_VERSION
+    assert candidate.receipt["manifest"]["source_selection"] is None
+    assert candidate.receipt["source"]["source_selection_digest"] is None
+    assert candidate.receipt["filters"]["repository_filter_policy"] == 3
+    assert candidate.receipt["filter_identity"]["source_selection_digest"] is None
+
+
+def test_manifest_candidate_excludes_selected_subtrees_from_native_proof(
+    tmp_path: Path,
+) -> None:
+    selection = RepositorySourceSelection(("generated",))
+    manifest_path, manifest = _write_candidate_manifest(
+        tmp_path,
+        source_selection=selection,
+    )
+    generated = Path(manifest.repo_path) / "generated" / "ignored.py"
+    generated.parent.mkdir()
+    generated.write_text("SHOULD_NOT_BE_READ = True\n", encoding="utf-8")
+    core = _MockCore()
+
+    candidate = load_fact_query_candidate(manifest_path, core_module=core)
+
+    assert "generated/ignored.py" not in core.index.allowed_files
+    assert candidate.receipt["source"]["source_selection"] == selection.to_dict()
+    assert candidate.receipt["filter_identity"]["source_selection_digest"] == (
+        selection.digest
+    )
 
 
 def test_manifest_change_during_native_decode_rejects_mixed_generation(
@@ -948,7 +1050,7 @@ def test_candidate_rejects_unknown_builder_field_and_report_shape(
     entry.config["unknown"] = "unsafe"
     entry.metadata["unknown"] = "unsafe"
     manifest.save(manifest_path)
-    with pytest.raises(FactQueryCandidateRejected, match="schema v4"):
+    with pytest.raises(FactQueryCandidateRejected, match="builder schema"):
         load_fact_query_candidate(manifest_path, core_module=_MockCore())
 
     manifest_path, manifest = _write_candidate_manifest(tmp_path / "report")
@@ -999,7 +1101,10 @@ def test_candidate_rejects_nonfinite_manifest_times(tmp_path: Path, field: str) 
         entry.built_at_epoch = float("inf")
     else:
         entry.metadata[field] = float("nan")
-    manifest.save(manifest_path)
+    manifest_path.write_text(
+        json.dumps(manifest.to_dict(), allow_nan=True),
+        encoding="utf-8",
+    )
 
     with pytest.raises(FactQueryCandidateRejected, match="malformed"):
         load_fact_query_candidate(manifest_path, core_module=_MockCore())
@@ -1065,6 +1170,7 @@ def test_candidate_binds_live_git_head_before_decode(tmp_path: Path) -> None:
         ("partial", True),
         ("partial_index", True),
         ("source_coverage_fallback", True),
+        ("lsp_occurrence_artifact", {}),
     ],
 )
 def test_manifest_candidate_rejects_unsafe_builder_states(
@@ -1272,7 +1378,7 @@ def test_candidate_rejects_symlinks_old_manifest_and_missing_build_keys(
     del entry.config["target_dir"]
     del entry.metadata["target_dir"]
     manifest.save(manifest_path)
-    with pytest.raises(FactQueryCandidateRejected, match="schema v4"):
+    with pytest.raises(FactQueryCandidateRejected, match="builder schema"):
         load_fact_query_candidate(manifest_path, core_module=_MockCore())
 
     manifest_path, manifest = _write_candidate_manifest(tmp_path / "artifact-link")

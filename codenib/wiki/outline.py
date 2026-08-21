@@ -22,13 +22,15 @@ import os
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 from ..log_utils import get_logger
-from ..repository_filters import walk_repository_files
 from ..types import is_symbol_node
 from .builder import Symbol, WikiBuilder
 from .evidence import promotional_phrases
+
+if TYPE_CHECKING:
+    from ..source_fingerprint import RepositorySourceReader
 
 logger = get_logger(__name__)
 
@@ -158,20 +160,26 @@ def _page_allows_supporting_files(page: Dict[str, Any]) -> bool:
     return bool(terms & _SUPPORTING_PAGE_TOKENS)
 
 
-def _read_readme(repo_dir: str, limit: int = 3500) -> str:
+def _read_readme(
+    source_reader: "RepositorySourceReader | None",
+    limit: int = 3500,
+) -> str:
+    if source_reader is None:
+        return ""
     for name in _README_NAMES:
-        path = os.path.join(repo_dir, name)
-        if os.path.isfile(path):
-            try:
-                with open(path, encoding="utf-8", errors="replace") as fh:
-                    return fh.read()[:limit]
-            except OSError:
-                return ""
+        relative = source_reader.captured_relative_path(name)
+        if relative is None:
+            continue
+        try:
+            payload = source_reader.read_prefix(relative, max_bytes=limit * 4)
+        except ValueError:
+            return ""
+        return payload.decode("utf-8", errors="replace")[:limit]
     return ""
 
 
 def _readme_entry_files(
-    repo_dir: str,
+    source_paths: Iterable[str],
     readme: str,
     *,
     limit: int = 12,
@@ -179,9 +187,10 @@ def _readme_entry_files(
     """Resolve source paths explicitly named by a repository README."""
 
     known = {
-        path.relative_to(repo_dir).as_posix()
-        for path in walk_repository_files(repo_dir)
-        if path.suffix.lower() in _DOCUMENTED_ENTRY_SUFFIXES
+        path
+        for path in source_paths
+        if isinstance(path, str)
+        and Path(path).suffix.lower() in _DOCUMENTED_ENTRY_SUFFIXES
     }
     by_basename: dict[str, List[str]] = defaultdict(list)
     for file in known:
@@ -234,11 +243,12 @@ def _top_files(symbols: List[Symbol], limit: int) -> List[str]:
     ]
 
 
-def _repository_structure(repo_dir: str, limit: int = 16) -> str:
+def _repository_structure(source_paths: Iterable[str], limit: int = 16) -> str:
     counts: Counter[str] = Counter()
-    for path in walk_repository_files(repo_dir):
-        rel = path.relative_to(repo_dir).as_posix()
-        parts = rel.split("/")
+    for relative in source_paths:
+        if not isinstance(relative, str) or not relative:
+            continue
+        parts = relative.split("/")
         area = "/".join(parts[:2]) if len(parts) > 2 else parts[0]
         counts[area] += 1
     if not counts:
@@ -545,9 +555,14 @@ def generate_outline(
     ]
     core_files = _top_files(core_symbols, limit=40)
     supporting_files = _top_files(supporting_symbols, limit=12)
-    repo_dir = getattr(bundle.entry, "repo_dir", "") or ""
-    readme = _read_readme(repo_dir)
-    documented_files = _readme_entry_files(repo_dir, readme)
+    source_reader = getattr(bundle, "source_reader", None)
+    source_paths = (
+        source_reader.file_paths
+        if source_reader is not None
+        else frozenset(symbol.file for symbol in symbols if symbol.file)
+    )
+    readme = _read_readme(source_reader)
+    documented_files = _readme_entry_files(source_paths, readme)
     files = list(dict.fromkeys([*core_files, *documented_files, *supporting_files]))
     languages = ", ".join(getattr(bundle.manifest, "languages", []) or [])
 
@@ -567,7 +582,7 @@ def generate_outline(
         ),
         top_level_pages=breadth_pages,
         children_per_page=breadth_children,
-        structure=_repository_structure(repo_dir),
+        structure=_repository_structure(source_paths),
         core_symbols=_format_symbols(_top_symbols(core_symbols, limit=60)) or "(none)",
         supporting_symbols=_format_symbols(_top_symbols(supporting_symbols, limit=10))
         or "(none)",
@@ -593,7 +608,7 @@ def generate_outline(
 
     data = _validate_outline(
         _parse_outline(text),
-        repo_dir,
+        source_paths,
         symbols=symbols,
         fallback_files=files,
         documented_files=documented_files,
@@ -635,14 +650,14 @@ def generate_outline(
             )
             repaired = _validate_outline(
                 _parse_outline(repaired_text),
-                repo_dir,
+                source_paths,
                 symbols=symbols,
                 fallback_files=files,
                 documented_files=documented_files,
             )
             merged = _validate_outline(
                 _merge_outlines(data, repaired),
-                repo_dir,
+                source_paths,
                 symbols=symbols,
                 fallback_files=files,
                 documented_files=documented_files,
@@ -1076,15 +1091,18 @@ def _parse_outline(text: str) -> Dict[str, Any]:
 
 def _validate_outline(
     data: Dict[str, Any],
-    repo_dir: str,
+    repository_files: Iterable[str],
     *,
     symbols: List[Symbol] | None = None,
     fallback_files: List[str] | None = None,
     documented_files: List[str] | None = None,
 ) -> Dict[str, Any]:
+    if isinstance(repository_files, (str, bytes)):
+        raise TypeError("repository_files must be an iterable of source paths")
     known_files = {
-        path.relative_to(repo_dir).as_posix()
-        for path in walk_repository_files(repo_dir)
+        str(path).replace("\\", "/").strip().lstrip("./")
+        for path in repository_files
+        if isinstance(path, str) and path.strip()
     }
     symbols = symbols or []
     fallback_files = fallback_files or []

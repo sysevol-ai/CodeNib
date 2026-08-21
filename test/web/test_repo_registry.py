@@ -12,13 +12,19 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.agent.skills.registry import SkillRegistry
-from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
+from codenib.compiler.artifact_fingerprints import (
+    bm25_artifact_file_fingerprints,
+    regular_file_fingerprint,
+)
 from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.graph.code_graph import CodeGraph
 from codenib.native_index_authorization import (
     InvalidNativeIndexAuthorizationError,
     MissingNativeIndexAuthorizationError,
     _mint_trusted_local_admin_authorization,
 )
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import capture_repository_source, fingerprint_repository
 from codenib.web.config import (
     QAConfig,
     RepoEntry,
@@ -32,6 +38,33 @@ from codenib.web.repo_registry import (
     RepoRegistry,
     _fresh_registry,
 )
+
+
+def _write_source_manifest(repo, manifest_path, *, selection=None):
+    selected = selection or RepositorySourceSelection()
+    source = fingerprint_repository(repo, selection=selected)
+    manifest = RepoManifest(
+        repo_path=str(repo),
+        commit="abc123",
+        source_fingerprint=source.value,
+        source_selection=selected,
+        languages=["python"],
+        file_count=source.file_count,
+    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest.save(manifest_path)
+    return manifest
+
+
+def _repo_entry(repo, manifest_path, *, instance_id="owner__repo-1"):
+    return RepoEntry(
+        instance_id=instance_id,
+        repo="owner/repo",
+        base_commit="abc123",
+        language="python",
+        repo_dir=str(repo),
+        manifest_path=str(manifest_path),
+    )
 
 
 @pytest.fixture
@@ -68,6 +101,331 @@ def test_ask_prompt_requires_resolving_discovered_identifiers():
     assert "unresolved candidate identifier" in _DEMO_SYSTEM_PROMPT
     assert "combine every unresolved identifier" in _DEMO_SYSTEM_PROMPT
     assert "under 500 words" in _DEMO_SYSTEM_PROMPT
+
+
+def test_registry_retains_manifest_selected_source_until_close(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "runtime.py").write_text("visible\n", encoding="utf-8")
+    (repo / "private").mkdir()
+    (repo / "private" / "secret.py").write_text("secret\n", encoding="utf-8")
+    manifest_path = tmp_path / "artifacts" / "repo_manifest.json"
+    _write_source_manifest(
+        repo,
+        manifest_path,
+        selection=RepositorySourceSelection(("private",)),
+    )
+    entry = _repo_entry(repo, manifest_path)
+    registry = RepoRegistry(QAConfig())
+
+    bundle = registry._load_repo_metadata(entry)
+    registry._bundles[entry.instance_id] = bundle
+    reader = bundle.source_reader
+
+    assert reader is not None
+    assert reader.file_paths == frozenset({"src/runtime.py"})
+    assert entry.instance_id in registry._source_bindings
+    registry.close()
+
+    assert bundle.source_reader is None
+    with pytest.raises(RuntimeError, match="source binding is"):
+        reader.read_prefix("src/runtime.py", max_bytes=32)
+
+
+def test_registry_closes_captured_source_when_manifest_verification_fails(
+    tmp_path, monkeypatch
+):
+    from codenib.compiler import manifest_source
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "runtime.py"
+    source.write_text("before\n", encoding="utf-8")
+    manifest_path = tmp_path / "artifacts" / "repo_manifest.json"
+    _write_source_manifest(repo, manifest_path)
+    source.write_text("after\n", encoding="utf-8")
+    entry = _repo_entry(repo, manifest_path)
+    registry = RepoRegistry(QAConfig())
+    captured = {}
+    original_capture = manifest_source.capture_repository_source_for_manifest
+
+    def observe_capture(*args, **kwargs):
+        binding = original_capture(*args, **kwargs)
+        captured["binding"] = binding
+        return binding
+
+    monkeypatch.setattr(
+        manifest_source,
+        "capture_repository_source_for_manifest",
+        observe_capture,
+    )
+
+    with pytest.raises(ValueError, match="does not match the manifest"):
+        registry._load_repo_metadata(entry)
+
+    assert captured["binding"].closed is True
+    assert registry._source_bindings == {}
+    assert registry._source_cleanup_owners == {}
+
+
+def test_registry_retains_failed_source_cleanup_for_retry(tmp_path, monkeypatch):
+    from codenib.compiler import manifest_source
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "runtime.py").write_text("runtime\n", encoding="utf-8")
+    manifest_path = tmp_path / "artifacts" / "repo_manifest.json"
+    _write_source_manifest(repo, manifest_path)
+    entry = _repo_entry(repo, manifest_path)
+    registry = RepoRegistry(QAConfig())
+
+    class Binding:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls >= 2
+
+        def authenticated_identity_snapshot(self):
+            raise ValueError("verification failed")
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_calls == 1:
+                raise RuntimeError("cleanup interrupted")
+
+    binding = Binding()
+
+    def capture(*_args, _source_owner, **_kwargs):
+        _source_owner(binding)
+        return binding
+
+    monkeypatch.setattr(
+        manifest_source,
+        "capture_repository_source_for_manifest",
+        capture,
+    )
+
+    with pytest.raises(ValueError, match="verification failed"):
+        registry._load_repo_metadata(entry)
+
+    assert set(registry._source_cleanup_owners) == {entry.instance_id}
+    assert binding.close_calls == 1
+
+    registry.close()
+
+    assert binding.close_calls == 2
+    assert registry._source_cleanup_owners == {}
+
+
+def test_registry_reload_closes_the_previous_source_authority(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "runtime.py").write_text("runtime\n", encoding="utf-8")
+    manifest_path = tmp_path / "artifacts" / "repo_manifest.json"
+    _write_source_manifest(repo, manifest_path)
+    entry = _repo_entry(repo, manifest_path)
+    config = QAConfig(data_dir=str(tmp_path / "data"))
+    save_registry(config.registry_path, [entry])
+    registry = RepoRegistry(config)
+
+    registry.load_all()
+    first_reader = registry.get(entry.instance_id).source_reader
+    registry.load_all()
+    second_reader = registry.get(entry.instance_id).source_reader
+
+    assert first_reader is not second_reader
+    with pytest.raises(RuntimeError, match="source binding is"):
+        first_reader.read_prefix("runtime.py", max_bytes=32)
+    assert second_reader.read_prefix("runtime.py", max_bytes=32) == b"runtime\n"
+    registry.close()
+
+
+def test_registry_rejects_duplicate_instance_ids_without_replacing_owner(tmp_path):
+    entries = []
+    for name in ("first", "second"):
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / f"{name}.py").write_text(f"{name}\n", encoding="utf-8")
+        manifest_path = tmp_path / "artifacts" / name / "repo_manifest.json"
+        _write_source_manifest(repo, manifest_path)
+        entries.append(_repo_entry(repo, manifest_path, instance_id="duplicate"))
+    config = QAConfig(data_dir=str(tmp_path / "data"))
+    save_registry(config.registry_path, entries)
+    registry = RepoRegistry(config)
+
+    registry.load_all()
+    bundle = registry.get("duplicate")
+
+    assert bundle.source_reader.file_paths == frozenset({"first.py"})
+    assert len(registry._source_cleanup_owners) == 1
+    registry.close()
+
+
+def test_registry_retains_vector_cleanup_owner_for_retry():
+    class Vector:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_calls == 1:
+                raise RuntimeError("retry cleanup")
+
+    vector = Vector()
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        vector_store=vector,
+    )
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+
+    with pytest.raises(RuntimeError, match="retry cleanup"):
+        registry.close()
+
+    assert registry._bundles == {"repo": bundle}
+    assert bundle.vector_store is vector
+
+    registry.close()
+
+    assert vector.close_calls == 2
+    assert registry._bundles == {}
+
+
+def test_repo_views_reject_documents_outside_authenticated_selection(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "runtime.py").write_text("runtime\n", encoding="utf-8")
+    (repo / "private").mkdir()
+    (repo / "private" / "secret.py").write_text("secret\n", encoding="utf-8")
+    bm25_dir = tmp_path / "bm25"
+    bm25_dir.mkdir()
+    (bm25_dir / "documents.json").write_text(
+        '[{"page_content":"secret","metadata":{"file":"private/secret.py"}}]',
+        encoding="utf-8",
+    )
+    (bm25_dir / "bm25_metadata.json").write_text(
+        '{"max_k":10}',
+        encoding="utf-8",
+    )
+    entry = IndexEntry(
+        index_type="bm25",
+        path=str(bm25_dir),
+        built_at="2026-08-20T00:00:00Z",
+        built_at_epoch=0.0,
+        status="fresh",
+        config={
+            "artifact_file_fingerprints": bm25_artifact_file_fingerprints(bm25_dir)
+        },
+    )
+    instance_id = "owner__repo-1"
+    binding = capture_repository_source(
+        repo,
+        selection=RepositorySourceSelection(("private",)),
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(instance_id=instance_id),
+        manifest=SimpleNamespace(
+            indexes={"bm25": entry},
+            index_is_current=lambda _name: True,
+        ),
+        bm25=None,
+        vector_store=None,
+        source_reader=binding.borrow_reader(),
+    )
+    registry = RepoRegistry(QAConfig())
+    registry._source_bindings[instance_id] = binding
+
+    try:
+        with pytest.raises(ValueError, match="outside the authenticated"):
+            registry._load_repo_views(bundle)
+    finally:
+        binding.close()
+
+    assert bundle.bm25 is None
+
+
+def test_bundle_rejects_graph_paths_outside_authenticated_selection(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "runtime.py").write_text("runtime\n", encoding="utf-8")
+    (repo / "private").mkdir()
+    (repo / "private" / "secret.py").write_text("secret\n", encoding="utf-8")
+    graph_dir = tmp_path / "symbol_graph"
+    graph_dir.mkdir()
+    graph_path = graph_dir / "graph.pkl"
+    graph = CodeGraph()
+    graph._add_vertex(
+        "private/secret.py:secret()",
+        {
+            "type": "function",
+            "file": "private/secret.py",
+            "start_line": 0,
+            "end_line": 0,
+            "unified_name": "private/secret.py:secret()",
+        },
+    )
+    graph.save_graph(graph_path)
+    binding = capture_repository_source(
+        repo,
+        selection=RepositorySourceSelection(("private",)),
+    )
+    bundle = RepoBundle(
+        entry=SimpleNamespace(instance_id="owner__repo-1"),
+        manifest=SimpleNamespace(
+            commit="abc123",
+            source_fingerprint="",
+            indexes={
+                "symbol_graph": SimpleNamespace(
+                    status="fresh",
+                    commit="abc123",
+                    source_fingerprint="",
+                    path=str(graph_dir),
+                    config={
+                        "graph_artifact": {
+                            "relative_path": "graph.pkl",
+                            **regular_file_fingerprint(graph_path),
+                        }
+                    },
+                )
+            },
+        ),
+        source_reader=binding.borrow_reader(),
+    )
+
+    try:
+        assert bundle.code_graph() is None
+    finally:
+        binding.close()
+
+    assert "outside the authenticated" in bundle._code_graph_error
+
+
+def test_manifest_selected_bundle_never_falls_back_to_live_checkout(
+    tmp_path, monkeypatch
+):
+    bundle = RepoBundle(
+        entry=SimpleNamespace(repo_dir=str(tmp_path)),
+        manifest=SimpleNamespace(
+            source_fingerprint="sha256-v2:bound",
+            source_selection=RepositorySourceSelection(),
+            indexes={},
+        ),
+    )
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.read_repository_summary",
+        lambda *_args: pytest.fail("must not read the live checkout"),
+    )
+
+    assert bundle._description() == ""
+    assert bundle.code_graph() is None
+    assert bundle.hierarchical_graph() is None
+
+    registry = RepoRegistry(QAConfig())
+    with pytest.raises(RuntimeError, match="authenticated source reader"):
+        registry._load_repo_views(bundle)
 
 
 def test_bundle_loads_views_without_constructing_agent_runtime():
@@ -177,7 +535,11 @@ def test_repo_views_reject_bm25_that_no_longer_matches_manifest(tmp_path):
             "artifact_file_fingerprints": bm25_artifact_file_fingerprints(bm25_dir)
         },
     )
-    manifest = RepoManifest(indexes={"bm25": entry})
+    manifest = RepoManifest(
+        version="1.1",
+        source_selection=None,
+        indexes={"bm25": entry},
+    )
     documents.write_text(documents.read_text().replace("alpha", "omega"))
     bundle = SimpleNamespace(manifest=manifest, bm25=None, vector_store=None)
     registry = SimpleNamespace(_config=SimpleNamespace(index_types=lambda: ("bm25",)))

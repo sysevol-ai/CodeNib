@@ -26,6 +26,7 @@ pin down:
 from __future__ import annotations
 
 from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
 from typing import List
 
@@ -45,6 +46,27 @@ from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprin
 from codenib.compiler.manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
 from codenib.index.embedding.model_policy import DEFAULT_EMBEDDING_REVISION
 from codenib.native_index_authorization import InvalidNativeIndexAuthorizationError
+from codenib.repository_source_selection import RepositorySourceSelection
+
+_TEST_COMMIT = "c" * 40
+_TEST_SOURCE_FINGERPRINT = "sha256-v2:" + ("d" * 64)
+_TEST_SOURCE_SELECTION = RepositorySourceSelection()
+
+
+def _current_manifest(indexes: dict[str, IndexEntry]) -> RepoManifest:
+    for entry in indexes.values():
+        entry.commit = _TEST_COMMIT
+        entry.source_fingerprint = _TEST_SOURCE_FINGERPRINT
+        entry.source_selection_digest = _TEST_SOURCE_SELECTION.digest
+    return RepoManifest(
+        commit=_TEST_COMMIT,
+        last_indexed_commit=_TEST_COMMIT,
+        source_fingerprint=_TEST_SOURCE_FINGERPRINT,
+        last_indexed_source_fingerprint=_TEST_SOURCE_FINGERPRINT,
+        source_selection=_TEST_SOURCE_SELECTION,
+        last_indexed_source_selection_digest=_TEST_SOURCE_SELECTION.digest,
+        indexes=indexes,
+    )
 
 
 def _make_meta(
@@ -246,11 +268,74 @@ def mocked_build(monkeypatch):
     on the build/load call pattern (e.g. "missing types triggered build,
     already-built types did not").
     """
-    calls = {"compile": [], "loaded": [], "registries": [], "vector_kwargs": []}
+    compiled_authorization = object()
+    calls = {
+        "compile": [],
+        "loaded": [],
+        "registries": [],
+        "vector_kwargs": [],
+        "manifest": None,
+        "compiled_authorization": compiled_authorization,
+    }
+
+    def manifest_for(
+        cache_dir,
+        index_types,
+        source_selection=_TEST_SOURCE_SELECTION,
+    ):
+        indexes = {
+            index_type: IndexEntry(
+                index_type=index_type,
+                path=str(Path(cache_dir) / index_type),
+                built_at="2026-08-11T00:00:00Z",
+                built_at_epoch=0.0,
+                status="fresh",
+            )
+            for index_type in index_types
+        }
+        manifest = _current_manifest(indexes)
+        manifest.source_selection = source_selection
+        manifest.last_indexed_source_selection_digest = source_selection.digest
+        for entry in manifest.indexes.values():
+            entry.source_selection_digest = source_selection.digest
+        return manifest
+
+    def fake_current_manifest(_repo_path, cache_dir, source_selection):
+        compiled = calls["manifest"]
+        if compiled is not None:
+            return compiled
+        manifest_path = Path(cache_dir) / MANIFEST_FILENAME
+        if manifest_path.is_file():
+            manifest = RepoManifest.load(manifest_path)
+            return manifest if manifest.source_selection == source_selection else None
+        existing = {
+            index_type
+            for index_type in ("bm25", "vector", "symbol_graph")
+            if skill_context._looks_built(cache_dir, index_type)
+        }
+        return manifest_for(cache_dir, existing, source_selection) if existing else None
 
     def fake_run_compiler(repo_path, index_types, cache_dir, **kwargs):
         calls["compile"].append(tuple(sorted(index_types)))
         calls["registries"].append(kwargs["builder_registry"])
+        current = fake_current_manifest(
+            repo_path,
+            cache_dir,
+            kwargs["source_selection"],
+        )
+        available = set(current.indexes) if current is not None else set()
+        available.update(index_types)
+        for index_type in index_types:
+            output = Path(cache_dir) / index_type
+            output.mkdir(parents=True, exist_ok=True)
+            marker = "config.json" if index_type == "vector" else "mock-artifact"
+            (output / marker).write_text("{}", encoding="utf-8")
+        calls["manifest"] = manifest_for(
+            cache_dir,
+            available,
+            kwargs["source_selection"],
+        )
+        return calls["manifest"]
 
     def fake_load_bm25(cache_dir):
         calls["loaded"].append("bm25")
@@ -266,9 +351,22 @@ def mocked_build(monkeypatch):
         return object()
 
     monkeypatch.setattr(skill_context, "_run_compiler", fake_run_compiler)
+    monkeypatch.setattr(
+        skill_context,
+        "_current_skill_manifest",
+        fake_current_manifest,
+    )
     monkeypatch.setattr(skill_context, "_load_bm25", fake_load_bm25)
     monkeypatch.setattr(skill_context, "_load_vector", fake_load_vector)
     monkeypatch.setattr(skill_context, "_load_symbol_graph", fake_load_graph)
+    monkeypatch.setattr(
+        "codenib.index.embedding.artifact_integrity.capture_authenticated_vector_view",
+        lambda path: nullcontext(SimpleNamespace(ownership=object(), root=path)),
+    )
+    monkeypatch.setattr(
+        "codenib.native_index_authorization._mint_trusted_local_admin_authorization",
+        lambda *_args, **_kwargs: compiled_authorization,
+    )
     return calls
 
 
@@ -328,6 +426,7 @@ def test_build_injects_native_provider_into_cpp_expand_context(
             "project_root": str(tmp_path),
             "languages": ("cpp",),
             "symbol_graph": contexts["expand"].code_graph,
+            "source_selection": RepositorySourceSelection(),
         }
     ]
 
@@ -459,6 +558,52 @@ def test_missing_index_triggers_build(registry, mocked_build, tmp_path):
     assert mocked_build["loaded"] == ["bm25"]
 
 
+def test_custom_selection_never_reuses_default_manifest_artifact(
+    registry,
+    monkeypatch,
+    tmp_path,
+):
+    cache = tmp_path / "cache"
+    old_path = cache / "old-bm25"
+    old_path.mkdir(parents=True)
+    old_manifest = _current_manifest({"bm25": _fresh_entry("bm25", str(old_path))})
+    cache.mkdir(parents=True, exist_ok=True)
+    old_manifest.save(cache / MANIFEST_FILENAME)
+
+    selection = RepositorySourceSelection(("private",))
+    new_path = cache / "selected-bm25"
+    new_path.mkdir()
+    new_manifest = _current_manifest({"bm25": _fresh_entry("bm25", str(new_path))})
+    new_manifest.source_selection = selection
+    new_manifest.last_indexed_source_selection_digest = selection.digest
+    new_manifest.indexes["bm25"].source_selection_digest = selection.digest
+    compiled = []
+    loaded = []
+
+    def compile_selected(_repo_path, index_types, _cache_dir, **kwargs):
+        compiled.append((tuple(index_types), kwargs["source_selection"]))
+        return new_manifest
+
+    monkeypatch.setattr(skill_context, "_run_compiler", compile_selected)
+    monkeypatch.setattr(
+        skill_context,
+        "_load_bm25",
+        lambda path: loaded.append(path) or object(),
+    )
+
+    contexts = skill_context.build_skill_contexts(
+        repo_path=str(tmp_path),
+        skill_ids=["bm25_search"],
+        cache_dir=str(cache),
+        skill_registry=registry,
+        source_selection=selection,
+    )
+
+    assert contexts["retrieve"].bm25 is not None
+    assert compiled == [(("bm25",), selection)]
+    assert loaded == [str(new_path)]
+
+
 def test_rebuild_forces_full_recompile(registry, mocked_build, tmp_path):
     """Even with all dirs populated, ``rebuild=True`` rebuilds everything."""
     cache = tmp_path / "cache"
@@ -505,8 +650,8 @@ def test_embedding_resource_limits_reach_builder_and_loader(
             "embedding_kwargs": {"max_seq_length": 8192},
             "trust_remote_code": False,
             "default_batch_size": 4,
-            "artifact_metadata": None,
-            "native_index_authorization": None,
+            "artifact_metadata": {},
+            "native_index_authorization": mocked_build["compiled_authorization"],
         }
     ]
 
@@ -535,8 +680,8 @@ def test_bundled_embedding_policy_reaches_builder_and_loader(
             "embedding_kwargs": None,
             "trust_remote_code": True,
             "default_batch_size": None,
-            "artifact_metadata": None,
-            "native_index_authorization": None,
+            "artifact_metadata": {},
+            "native_index_authorization": mocked_build["compiled_authorization"],
         }
     ]
 
@@ -578,7 +723,7 @@ def test_compiler_owned_vector_mints_exact_manifest_contract(
         status="fresh",
         config=contract,
     )
-    manifest = RepoManifest(indexes={"vector": entry})
+    manifest = _current_manifest({"vector": entry})
     ownership = object()
     authorization = object()
     minted = []
@@ -627,8 +772,8 @@ def test_existing_vector_token_uses_current_manifest_contract(
     vector.mkdir(parents=True)
     (vector / "existing").write_text("captured", encoding="utf-8")
     contract = {"embedding_fingerprint": "sha256:expected"}
-    RepoManifest(
-        indexes={
+    _current_manifest(
+        {
             "vector": IndexEntry(
                 index_type="vector",
                 path=str(vector),
@@ -637,7 +782,7 @@ def test_existing_vector_token_uses_current_manifest_contract(
                 status="fresh",
                 config=contract,
             )
-        }
+        },
     ).save(cache / MANIFEST_FILENAME)
     authorization = object()
 
@@ -674,7 +819,7 @@ def test_existing_vector_resolver_receives_exact_current_manifest_entry(
         status="fresh",
         config=contract,
     )
-    RepoManifest(indexes={"vector": expected_entry}).save(cache / MANIFEST_FILENAME)
+    _current_manifest({"vector": expected_entry}).save(cache / MANIFEST_FILENAME)
     authorization = object()
     resolved = []
 
@@ -1037,11 +1182,11 @@ def test_manifest_loads_optional_index_when_fresh(mixed_registry, mocked_build):
     """``mixed_search`` requires ``bm25`` and optionally uses ``symbol_graph``.
     When the manifest has a fresh ``symbol_graph`` entry it is loaded and an
     ``expand`` context is packaged."""
-    manifest = RepoManifest(
-        indexes={
+    manifest = _current_manifest(
+        {
             "bm25": _fresh_entry("bm25", "/idx/bm25"),
             "symbol_graph": _fresh_entry("symbol_graph", "/idx/graph"),
-        }
+        },
     )
     contexts = skill_context.load_contexts_from_manifest(
         manifest,
@@ -1057,10 +1202,10 @@ def test_manifest_skips_optional_index_when_absent(mixed_registry, mocked_build)
     """When the optional ``symbol_graph`` is absent from the manifest it is
     skipped silently (no raise) — only the required ``bm25`` is loaded and no
     ``expand`` context is created."""
-    manifest = RepoManifest(
-        indexes={
+    manifest = _current_manifest(
+        {
             "bm25": _fresh_entry("bm25", "/idx/bm25"),
-        }
+        },
     )
     contexts = skill_context.load_contexts_from_manifest(
         manifest,
@@ -1075,11 +1220,11 @@ def test_manifest_skips_optional_index_when_absent(mixed_registry, mocked_build)
 def test_manifest_optional_vector_without_authority_preserves_bm25_fallback(
     mocked_build,
 ):
-    manifest = RepoManifest(
-        indexes={
+    manifest = _current_manifest(
+        {
             "bm25": _fresh_entry("bm25", "/idx/bm25"),
             "vector": _fresh_entry("vector", "/idx/vector"),
-        }
+        },
     )
 
     contexts = skill_context.load_contexts_from_manifest(
@@ -1115,7 +1260,7 @@ def test_manifest_required_vector_without_authority_fails_before_model_init(
 
     with pytest.raises(ValueError, match="requires external authorization"):
         skill_context.load_contexts_from_manifest(
-            RepoManifest(indexes={"vector": entry}),
+            _current_manifest({"vector": entry}),
             skill_ids=["embedding_search"],
             skill_registry=registry,
         )
@@ -1138,7 +1283,7 @@ def test_manifest_vector_resolver_receives_exact_loaded_entry(
     resolved = []
 
     contexts = skill_context.load_contexts_from_manifest(
-        RepoManifest(indexes={"vector": entry}),
+        _current_manifest({"vector": entry}),
         skill_ids=["embedding_search"],
         skill_registry=registry,
         native_index_authorization_resolver=lambda candidate: (
@@ -1180,10 +1325,10 @@ def test_skill_vector_rejects_invalid_authority_before_model_init(
 def test_manifest_missing_required_index_raises(mixed_registry, mocked_build):
     """A *required* index that the manifest lacks must raise loudly, rather
     than deferring to a "Skill not available" error at tool-call time."""
-    manifest = RepoManifest(
-        indexes={
+    manifest = _current_manifest(
+        {
             "symbol_graph": _fresh_entry("symbol_graph", "/idx/graph"),
-        }
+        },
     )
     with pytest.raises(ValueError, match="bm25"):
         skill_context.load_contexts_from_manifest(
@@ -1206,7 +1351,7 @@ def test_manifest_rejects_bm25_artifact_that_no_longer_matches(
         bm25_dir
     )
     documents.write_text(documents.read_text().replace("alpha", "omega"))
-    manifest = RepoManifest(indexes={"bm25": entry})
+    manifest = _current_manifest({"bm25": entry})
 
     with pytest.raises(ValueError, match="manifest fingerprints"):
         skill_context.load_contexts_from_manifest(
@@ -1237,6 +1382,20 @@ def test_corrupt_optional_graph_degrades_not_crash(
 
     monkeypatch.setattr(skill_context, "_run_compiler", lambda *a, **k: None)
     monkeypatch.setattr(skill_context, "_load_bm25", lambda d: object())
+    manifest = _current_manifest(
+        {
+            "bm25": _fresh_entry("bm25", str(cache / "bm25")),
+            "symbol_graph": _fresh_entry(
+                "symbol_graph",
+                str(cache / "symbol_graph"),
+            ),
+        }
+    )
+    monkeypatch.setattr(
+        skill_context,
+        "_current_skill_manifest",
+        lambda *_args, **_kwargs: manifest,
+    )
 
     def boom(_dir):
         raise ValueError("schema_version mismatch")

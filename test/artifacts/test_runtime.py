@@ -47,12 +47,13 @@ from codenib.artifacts import (
     verify_context_artifact,
 )
 from codenib.cli import run
-from codenib.compiler.index_builders import VectorIndexBuilder
-from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.compiler.index_builders import BM25IndexBuilder, VectorIndexBuilder
+from codenib.compiler.manifest import LEGACY_MANIFEST_VERSION, IndexEntry, RepoManifest
 from codenib.index.embedding.artifact_integrity import vector_config_artifact_record
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.source import read_source_impl
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import (
     RepositoryChangedError,
     capture_repository_source,
@@ -128,6 +129,7 @@ def _bm25_artifact(
         encoding="utf-8",
     )
     source_identity = fingerprint_repository(repo)
+    config = BM25IndexBuilder(languages=["python"], max_k=15).artifact_identity()
     manifest_path = index_root / "repo_manifest.json"
     RepoManifest(
         repo_path=str(repo),
@@ -144,6 +146,8 @@ def _bm25_artifact(
                 built_at="2026-08-04T00:00:00+00:00",
                 built_at_epoch=1.0,
                 status="fresh",
+                config=dict(config),
+                metadata=dict(config),
                 commit=commit,
                 source_fingerprint=source_identity.value,
             )
@@ -294,16 +298,28 @@ def _refresh_inventory_file(artifact: Path, metadata: dict, relative: str) -> No
     record["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _rewrite_artifact_source_fingerprint(artifact: Path, fingerprint: str) -> None:
+def _rewrite_artifact_as_legacy_source_fingerprint(
+    artifact: Path,
+    fingerprint: str,
+) -> None:
     metadata = _metadata(artifact)
     metadata["repository"]["source_fingerprint"] = fingerprint
+    metadata["builder"]["manifest_version"] = LEGACY_MANIFEST_VERSION
     manifest_relative = metadata["manifest"]["path"]
     manifest_path = artifact / manifest_relative
     manifest = RepoManifest.load(manifest_path)
+    manifest.version = LEGACY_MANIFEST_VERSION
     manifest.source_fingerprint = fingerprint
     manifest.last_indexed_source_fingerprint = fingerprint
+    manifest.source_selection = None
+    manifest.last_indexed_source_selection_digest = ""
     for entry in manifest.indexes.values():
         entry.source_fingerprint = fingerprint
+        entry.source_selection_digest = ""
+        for contract in (entry.config, entry.metadata):
+            contract.pop("source_selection_digest", None)
+            if "repository_filter_policy" in contract:
+                contract["repository_filter_policy"] = 3
     manifest.save(manifest_path)
     _refresh_inventory_file(artifact, metadata, manifest_relative)
     _write_metadata(artifact, metadata)
@@ -1042,7 +1058,7 @@ def test_v1_artifact_supports_inert_bm25_query_but_cannot_bind(
 ) -> None:
     repo, artifact, _commit = _bm25_artifact(tmp_path)
     legacy = f"sha256:{'a' * 64}"
-    _rewrite_artifact_source_fingerprint(artifact, legacy)
+    _rewrite_artifact_as_legacy_source_fingerprint(artifact, legacy)
 
     query_binding = query_context_artifact(artifact)
     verified = query_binding.artifact
@@ -1062,6 +1078,123 @@ def test_v1_artifact_supports_inert_bm25_query_but_cannot_bind(
 
     with pytest.raises(ValueError, match="query-only"):
         bind_context_artifact(artifact, repo)
+
+
+@pytest.mark.parametrize("excluded_path", ["sample.py", ".git/config"])
+def test_query_rejects_view_paths_excluded_by_manifest_policy(
+    tmp_path: Path,
+    excluded_path: str,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    metadata = _metadata(artifact)
+    manifest_relative = metadata["manifest"]["path"]
+    manifest_path = artifact / manifest_relative
+    manifest = RepoManifest.load(manifest_path)
+    selection = RepositorySourceSelection(
+        ("sample.py",) if excluded_path == "sample.py" else ()
+    )
+    manifest.source_selection = selection
+    manifest.last_indexed_source_selection_digest = selection.digest
+    for entry in manifest.indexes.values():
+        entry.source_selection_digest = selection.digest
+        for contract in (entry.config, entry.metadata):
+            if "source_selection_digest" in contract:
+                contract["source_selection_digest"] = selection.digest
+    manifest.save(manifest_path)
+    _refresh_inventory_file(artifact, metadata, manifest_relative)
+    _write_metadata(artifact, metadata)
+
+    if excluded_path != "sample.py":
+        documents_path = artifact / "views" / "bm25" / "documents.json"
+        documents = json.loads(documents_path.read_text(encoding="utf-8"))
+        documents[0]["metadata"]["file"] = excluded_path
+        documents_path.write_text(json.dumps(documents), encoding="utf-8")
+        _refresh_inventory_file(
+            artifact,
+            metadata,
+            "views/bm25/documents.json",
+        )
+        _write_metadata(artifact, metadata)
+
+    with pytest.raises(ValueError, match="source paths excluded"):
+        query_context_artifact(artifact)
+
+
+@pytest.mark.parametrize("contract_name", ["config", "metadata"])
+def test_query_rejects_view_source_selection_contract_mismatch(
+    tmp_path: Path,
+    contract_name: str,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    metadata = _metadata(artifact)
+    manifest_relative = metadata["manifest"]["path"]
+    manifest_path = artifact / manifest_relative
+    manifest = RepoManifest.load(manifest_path)
+    contract = getattr(manifest.indexes["bm25"], contract_name)
+    contract["source_selection_digest"] = RepositorySourceSelection(
+        ("generated",)
+    ).digest
+    manifest.save(manifest_path)
+    _refresh_inventory_file(artifact, metadata, manifest_relative)
+    _write_metadata(artifact, metadata)
+
+    with pytest.raises(ValueError, match="source-selection identity"):
+        query_context_artifact(artifact)
+
+
+@pytest.mark.parametrize("contract_name", ["config", "metadata"])
+def test_query_rejects_null_repository_filter_policy(
+    tmp_path: Path,
+    contract_name: str,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    metadata = _metadata(artifact)
+    manifest_relative = metadata["manifest"]["path"]
+    manifest_path = artifact / manifest_relative
+    manifest = RepoManifest.load(manifest_path)
+    getattr(manifest.indexes["bm25"], contract_name)["repository_filter_policy"] = None
+    manifest.save(manifest_path)
+    _refresh_inventory_file(artifact, metadata, manifest_relative)
+    _write_metadata(artifact, metadata)
+
+    with pytest.raises(ValueError, match="repository filter policy"):
+        query_context_artifact(artifact)
+
+
+def test_legacy_query_rejects_default_ignored_view_path(tmp_path: Path) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    _rewrite_artifact_as_legacy_source_fingerprint(
+        artifact,
+        f"sha256:{'a' * 64}",
+    )
+    metadata = _metadata(artifact)
+    documents_relative = "views/bm25/documents.json"
+    documents_path = artifact / documents_relative
+    documents = json.loads(documents_path.read_text(encoding="utf-8"))
+    documents[0]["metadata"]["file"] = ".git/config"
+    documents_path.write_text(json.dumps(documents), encoding="utf-8")
+    _refresh_inventory_file(artifact, metadata, documents_relative)
+    _write_metadata(artifact, metadata)
+
+    with pytest.raises(ValueError, match="source paths excluded"):
+        query_context_artifact(artifact)
+
+
+def test_current_query_requires_every_document_to_declare_source_path(
+    tmp_path: Path,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    metadata = _metadata(artifact)
+    documents_relative = "views/bm25/documents.json"
+    documents_path = artifact / documents_relative
+    documents = json.loads(documents_path.read_text(encoding="utf-8"))
+    documents[0]["metadata"].pop("file")
+    documents_path.write_text(json.dumps(documents), encoding="utf-8")
+    _refresh_inventory_file(artifact, metadata, documents_relative)
+    _write_metadata(artifact, metadata)
+
+    with pytest.raises(ValueError, match="must declare a source file"):
+        query_context_artifact(artifact)
 
 
 def test_verify_rejects_unsafe_bm25_source_contract(tmp_path: Path) -> None:
@@ -2401,7 +2534,10 @@ def test_mcp_server_query_only_v1_artifact_loads_bm25_without_checkout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _repo, artifact, _commit = _bm25_artifact(tmp_path)
-    _rewrite_artifact_source_fingerprint(artifact, f"sha256:{'a' * 64}")
+    _rewrite_artifact_as_legacy_source_fingerprint(
+        artifact,
+        f"sha256:{'a' * 64}",
+    )
 
     with patch.object(server_module.mcp, "run") as run_server:
         server_module.main(
@@ -2449,7 +2585,10 @@ def test_mcp_server_query_only_v1_vector_artifact_never_parses_native_bytes(
     tmp_path: Path,
 ) -> None:
     _repo, artifact, _commit = _vector_artifact(tmp_path)
-    _rewrite_artifact_source_fingerprint(artifact, f"sha256:{'a' * 64}")
+    _rewrite_artifact_as_legacy_source_fingerprint(
+        artifact,
+        f"sha256:{'a' * 64}",
+    )
 
     with (
         patch.object(server_module.mcp, "run") as run_server,

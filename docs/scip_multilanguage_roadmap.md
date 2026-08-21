@@ -34,6 +34,16 @@ through `graph_route="lsp"` for regression checks and for loose-file fallback.
 Scala has no registered LSP graph route today; its active graph support is the
 `scip-java` route only.
 
+The 0.2.2 repository-source authority gate temporarily disables manifest-bound
+query-time reuse of native clangd `.idx` files for C and C++, including the
+default/legacy source policy. Those files commonly live below the
+default-excluded `build/` tree and do not yet carry an authenticated generation
+receipt plus allowed-file proof. C/C++ graph indexing remains available, while
+queries fall back to the verified persisted symbol graph. Re-enabling the
+native route requires exact `.idx` generation ownership, source-selection
+closure, and parity tests; this is an acceleration gate change, not a language
+support removal.
+
 ## Archived Layered Goal
 
 The completed multi-language SCIP cold-start and acceleration program required:

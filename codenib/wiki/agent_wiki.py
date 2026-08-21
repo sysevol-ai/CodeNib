@@ -3198,6 +3198,17 @@ class AgentWiki:
 
     # -- caching -----------------------------------------------------------
 
+    def _source_selection_identity(self) -> str:
+        """Return the persisted source-selection identity, when available."""
+
+        manifest = getattr(self._bundle, "manifest", None)
+        digest = getattr(manifest, "source_selection_digest", None)
+        if isinstance(digest, str) and digest:
+            return digest
+        selection = getattr(manifest, "source_selection", None)
+        digest = getattr(selection, "digest", None)
+        return digest if isinstance(digest, str) else ""
+
     def _key(self, suffix: str) -> str:
         """Return a stable cache identity for equivalent repository views."""
 
@@ -3253,6 +3264,7 @@ class AgentWiki:
             or getattr(manifest, "commit", "")
             or commit
         )
+        source_selection_identity = self._source_selection_identity()
         prompt_version = (
             _OUTLINE_PROMPT_VERSION if suffix == "outline" else _PAGE_PROMPT_VERSION
         )
@@ -3263,9 +3275,10 @@ class AgentWiki:
         # producing model is recorded in the cache entry instead — see
         # ``_write_cache`` — mirroring EdgeLabeler's namespace-only keying.
         raw = (
-            f"stable-v2/{prompt_version}/"
+            f"stable-v3/{prompt_version}/"
             f"{getattr(entry, 'instance_id', 'repo')}@{commit}/"
-            f"{source_identity}/{view_identity}/{suffix}"
+            f"{source_identity}/{source_selection_identity}/"
+            f"{view_identity}/{suffix}"
         )
         return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
@@ -3325,7 +3338,12 @@ class AgentWiki:
 
         if not self._cache_dir:
             return ()
-        keys = (self._key(suffix), self._legacy_key(suffix))
+        keys = [self._key(suffix)]
+        # Pre-selection caches cannot prove which source inventory produced
+        # their prompts. Keep migration only for legacy manifests that have no
+        # persisted selection identity at all.
+        if not self._source_selection_identity():
+            keys.append(self._legacy_key(suffix))
         return tuple(
             os.path.join(self._cache_dir, f"agentwiki_{key}.json")
             for key in dict.fromkeys(keys)
@@ -4602,8 +4620,13 @@ class AgentWiki:
 
         existing = {(item.source, item.target) for item in relations}
         selected: List[RelationItem] = []
-        repo_dir = os.path.realpath(
-            str(getattr(self._bundle.entry, "repo_dir", "") or "")
+        source_reader = getattr(self._bundle, "source_reader", None)
+        repo_dir = (
+            ""
+            if source_reader is not None
+            else os.path.realpath(
+                str(getattr(self._bundle.entry, "repo_dir", "") or "")
+            )
         )
         for item in evidence:
             if item.start_line is None or item.end_line is None:
@@ -4644,6 +4667,9 @@ class AgentWiki:
                 target_file = target["file"]
                 if not target_file:
                     continue
+                target_relative = self._rel(target_file)
+                if not target_relative:
+                    continue
                 if os.path.isabs(target_file) and repo_dir:
                     try:
                         if (
@@ -4669,7 +4695,7 @@ class AgentWiki:
                 score = (
                     self._relation_action_score(target["label"]),
                     int(target["kind"].lower() == "method"),
-                    int(self._rel(target_file) == item.file),
+                    int(target_relative == item.file),
                     public,
                 )
                 candidate = candidates.setdefault(
@@ -4734,6 +4760,7 @@ class AgentWiki:
                 citations,
                 max_nodes=18,
                 repo_dir=getattr(self._bundle.entry, "repo_dir", None),
+                source_reader=getattr(self._bundle, "source_reader", None),
             )
         except Exception as exc:  # noqa: BLE001 - source evidence remains usable
             logger.debug("wiki relationship evidence unavailable: %s", exc)
@@ -5267,6 +5294,13 @@ class AgentWiki:
         alike). The resolved prefix is cached after the first lookup."""
         if not file:
             return file
+        source_reader = getattr(self._bundle, "source_reader", None)
+        if source_reader is not None:
+            # A manifest-bound Wiki must never use ``exists`` as a second,
+            # ambient source authority. The borrowed reader resolves legacy
+            # absolute builder labels against the captured inventory and
+            # returns ``None`` for excluded or unauthenticated paths.
+            return source_reader.captured_relative_path(file)
         p = file.replace("\\", "/")
         root = getattr(self, "_iroot", None)
         if root is not None:

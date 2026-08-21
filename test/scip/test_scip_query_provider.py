@@ -21,12 +21,15 @@ import pytest
 
 from codenib.agent.lsp_provider import LSPProviderNodes, StaticLSPProvider
 from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
+from codenib.compiler.manifest import MANIFEST_VERSION, IndexEntry, RepoManifest
+from codenib.compiler.manifest_source import repository_filter_policy_for_manifest
 from codenib.graph.code_graph import CodeGraph
 from codenib.mcp.tools.lsp import (
     lsp_definition_impl,
     lsp_references_impl,
     lsp_route_impl,
 )
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.scip_interface.query_surface import query_surface_sha256
 from codenib.scip_interface.scip_query import (
     FACT_QUERY_CAPABILITIES,
@@ -154,6 +157,35 @@ def _provider(
         public_fallback_reason=public_fallback_reason,
     )
     return provider, native
+
+
+def test_default_graph_loader_uses_authenticated_artifact_receipt(
+    tmp_path: Path,
+) -> None:
+    graph = _graph(tmp_path)
+    candidate, native = _candidate(graph, tmp_path)
+    graph_path = Path(candidate.receipt["manifest"]["entry_path"]) / "graph.pkl"
+    graph.save_graph(str(graph_path))
+    payload = graph_path.read_bytes()
+    candidate.receipt["graph"].update(
+        {
+            "size_bytes": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+    )
+    provider = SCIPHybridQueryProvider(
+        FactQueryCandidate(
+            index=native,
+            receipt=candidate.receipt,
+            timings={},
+        ),
+        snapshot_observer=lambda _receipt: {"generation": 1},
+    )
+
+    result = provider.definition(file_path="caller.py", line=2, top_k=8)
+
+    assert result
+    assert provider.diagnostics()["state"] == GRAPH_READY
 
 
 def _serialized(value: Any) -> bytes:
@@ -685,12 +717,10 @@ def _observer_receipt(tmp_path: Path) -> tuple[dict[str, Any], Path, Path]:
     graph_root = cache / "symbol_graph"
     graph_root.mkdir(parents=True)
     manifest_path = cache / "repo_manifest.json"
-    manifest_path.write_text("{}\n", encoding="utf-8")
     index_path = graph_root / "index.decoded"
     graph_path = graph_root / "graph.pkl"
     index_path.write_bytes(b"decoded-index")
     graph_path.write_bytes(b"persisted-graph")
-    manifest_fp = regular_file_fingerprint(manifest_path)
     index_fp = regular_file_fingerprint(index_path)
     graph_fp = regular_file_fingerprint(graph_path)
     source, allowed_files = _source_and_allowed_files(
@@ -700,6 +730,32 @@ def _observer_receipt(tmp_path: Path) -> tuple[dict[str, Any], Path, Path]:
         target_dir=None,
     )
     assert source == fingerprint_repository(root, exclude_roots=(cache,))
+    selection = RepositorySourceSelection()
+    entry = IndexEntry(
+        index_type="symbol_graph",
+        path=str(graph_root),
+        built_at="2026-01-01T00:00:00+00:00",
+        built_at_epoch=0.0,
+        status="fresh",
+        commit=commit,
+        source_fingerprint=source.value,
+        source_selection_digest=selection.digest,
+    )
+    embedded_manifest = RepoManifest(
+        repo_path=str(root),
+        commit=commit,
+        last_indexed_commit=commit,
+        source_fingerprint=source.value,
+        last_indexed_source_fingerprint=source.value,
+        source_selection=selection,
+        last_indexed_source_selection_digest=selection.digest,
+        languages=["python"],
+        file_count=source.file_count,
+        indexes={"symbol_graph": entry},
+    )
+    embedded_manifest.save(manifest_path)
+    manifest_fp = regular_file_fingerprint(manifest_path)
+    repository_filter_policy = repository_filter_policy_for_manifest(embedded_manifest)
     query_digest = hashlib.sha256(b"query-surface").hexdigest()
     receipt: dict[str, Any] = {
         "schema_version": 1,
@@ -707,7 +763,7 @@ def _observer_receipt(tmp_path: Path) -> tuple[dict[str, Any], Path, Path]:
         "project_root": str(root),
         "manifest": {
             "path": str(manifest_path),
-            "version": "1.1",
+            "version": MANIFEST_VERSION,
             "size_bytes": manifest_fp["size"],
             "sha256": manifest_fp["sha256"],
             "commit": commit,
@@ -718,9 +774,12 @@ def _observer_receipt(tmp_path: Path) -> tuple[dict[str, Any], Path, Path]:
             "query_surface_sha256": query_digest,
             "source_fingerprint": source.value,
             "file_count": source.file_count,
+            "source_selection": selection.to_dict(),
+            "source_selection_digest": selection.digest,
             "entry_path": str(graph_root),
             "entry_commit": commit,
             "entry_source_fingerprint": source.value,
+            "entry_source_selection_digest": selection.digest,
         },
         "index": {
             "relative_path": "index.decoded",
@@ -741,12 +800,16 @@ def _observer_receipt(tmp_path: Path) -> tuple[dict[str, Any], Path, Path]:
         "source": {
             "fingerprint": source.value,
             "file_count": source.file_count,
-            "repository_filter_policy": 3,
+            "repository_filter_policy": repository_filter_policy,
+            "source_selection": selection.to_dict(),
+            "source_selection_digest": selection.digest,
         },
         "filters": {
             "graph_route": "active",
             "update_mode": "full_rebuild",
-            "repository_filter_policy": 3,
+            "repository_filter_policy": repository_filter_policy,
+            "source_selection": selection.to_dict(),
+            "source_selection_digest": selection.digest,
             "exclude_patterns": [],
             "target_dir": None,
             "allow_partial_languages": False,
@@ -769,7 +832,13 @@ def _observer_receipt(tmp_path: Path) -> tuple[dict[str, Any], Path, Path]:
                 "internal_crates": [],
             },
         },
-        "filter_identity": {"identity": True},
+        "filter_identity": {
+            "identity": True,
+            "repository_filter_policy": repository_filter_policy,
+            "source_selection_digest": selection.digest,
+            "allowed_file_count": len(allowed_files),
+            "allowed_files_sha256": _allowed_files_digest(allowed_files),
+        },
     }
     unsigned = json.dumps(
         receipt,

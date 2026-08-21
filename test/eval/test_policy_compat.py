@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pickle
 import subprocess
@@ -29,8 +30,20 @@ from codenib.eval.benchmarks.policy_compat import (
     write_json_atomic,
 )
 from codenib.graph.code_graph import CodeGraph
+from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 
 COMMIT = "a" * 40
+SOURCE_FINGERPRINT = "sha256-v2:" + ("a" * 64)
+SOURCE_SELECTION_DIGEST = DEFAULT_REPOSITORY_SOURCE_SELECTION.digest
+
+
+def _graph_artifact_receipt(path: Path) -> dict[str, object]:
+    content = path.read_bytes()
+    return {
+        "relative_path": "graph.pkl",
+        "size": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
 
 
 def _case_record(root: Path, *, instance_id: str = "demo__repo-1") -> dict:
@@ -135,6 +148,9 @@ def test_eligibility_checks_checkout_manifest_commit_and_capabilities(
         repo_path=str(repo),
         commit=commit,
         last_indexed_commit=commit,
+        source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_selection_digest=SOURCE_SELECTION_DIGEST,
         indexes={
             "symbol_graph": IndexEntry(
                 index_type="symbol_graph",
@@ -142,7 +158,10 @@ def test_eligibility_checks_checkout_manifest_commit_and_capabilities(
                 built_at="2026-08-02T00:00:00Z",
                 built_at_epoch=0.0,
                 status="fresh",
+                config={"graph_artifact": _graph_artifact_receipt(graph_path)},
                 commit=commit,
+                source_fingerprint=SOURCE_FINGERPRINT,
+                source_selection_digest=SOURCE_SELECTION_DIGEST,
             )
         },
         capabilities={"symbol_navigation": True},
@@ -180,6 +199,10 @@ def test_eligibility_checks_checkout_manifest_commit_and_capabilities(
     stale_graph["schema_version"] = 4
     with graph_path.open("wb") as handle:
         pickle.dump(stale_graph, handle)
+    manifest.indexes["symbol_graph"].config["graph_artifact"] = _graph_artifact_receipt(
+        graph_path
+    )
+    manifest.save(record["manifest_path"])
     stale = inspect_case_eligibility(
         case,
         agent="orcaloca",
@@ -195,6 +218,8 @@ def test_eligibility_checks_checkout_manifest_commit_and_capabilities(
 
     manifest.capabilities.clear()
     manifest.commit = "b" * 40
+    manifest.last_indexed_commit = manifest.commit
+    manifest.indexes["symbol_graph"].commit = manifest.commit
     manifest.save(record["manifest_path"])
     rejected = inspect_case_eligibility(
         case,

@@ -18,11 +18,11 @@ uses BM25 plus static symbol relationships and needs no model or API key.
 Install the exact release with its graph and MCP dependencies from PyPI:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.1"
+python -m pip install "codenib[graph,mcp]==0.2.2"
 codenib --version
 ```
 
-The version command must report `codenib 0.2.1`. Exact version pins keep the
+The version command must report `codenib 0.2.2`. Exact version pins keep the
 environment reproducible.
 
 ## Connect A CodeGraph To Your Agent
@@ -61,6 +61,22 @@ Preview every planned action without a download or write:
 codenib codegraph init /path/to/repository --dry-run
 ```
 
+For generated or vendored trees, pass exact root-relative exclusions. They are
+recorded with the source identity and reused by later runs:
+
+```bash
+codenib codegraph init /path/to/repository --exclude-dir ios/Pods
+```
+
+Repeat the flag to replace the full custom set, or use
+`--clear-exclude-dirs`. CodeNib deliberately does not infer this policy from
+`.gitignore`; see [Select the repository source surface](codegraph.md#select-the-repository-source-surface).
+Each value is an exact repository-relative subtree written with `/`, not a
+glob. A non-empty custom set currently cannot be combined with the `zoekt`
+view or `--preset full`; CodeNib fails closed instead of broadening it. Zoekt
+also refuses a default-policy build when the fixed commit contains a tracked
+path that the authenticated source policy excludes.
+
 Verify the full path, including source freshness and native client
 configuration:
 
@@ -80,7 +96,7 @@ Install the semantic extra when the browser Wiki should use local dense
 retrieval in addition to BM25:
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.1"
+python -m pip install "codenib[semantic]==0.2.2"
 ```
 
 ```bash
@@ -192,6 +208,10 @@ embedding model, and BYO endpoint configurations.
 | `graph` | `codenib[graph]` | BM25 and symbol graph |
 | `full` | `codenib[full]` | BM25, dense vectors, symbol graph, and Zoekt |
 
+Building the Zoekt view and serving it are separate boundaries. In 0.2.2,
+authenticated MCP `search_zoekt` serving requires Linux `/proc`; macOS and
+Windows fail closed instead of handing the process a mutable shard path.
+
 The recommended installation already selects `semantic` through the default
 `auto` preset. Select it explicitly in automation when the artifact contract
 must not depend on the installed environment:
@@ -210,7 +230,7 @@ To keep embeddings out of the local process, use a BYO OpenAI-compatible
 embedding service:
 
 ```bash
-python -m pip install "codenib[semantic-remote]==0.2.1"
+python -m pip install "codenib[semantic-remote]==0.2.2"
 export EMBEDDING_API_KEY=...
 codenib doctor --require semantic \
   --embedding-provider openai \
@@ -280,7 +300,7 @@ clangd, and live LSP providers are language-specific executables, so CodeNib
 plans them from the detected repository rather than installing every language:
 
 ```bash
-python -m pip install "codenib[graph]==0.2.1"
+python -m pip install "codenib[graph]==0.2.2"
 codenib toolchain status /path/to/repository --scope graph
 codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
@@ -327,7 +347,7 @@ Static Wiki pages are the default. To generate conceptual page narratives
 through a LiteLLM-supported provider:
 
 ```bash
-python -m pip install "codenib[agent,semantic]==0.2.1"
+python -m pip install "codenib[agent,semantic]==0.2.2"
 export OPENAI_API_KEY=...
 codenib doctor --require agent \
   --model openai/gpt-4o-mini --api-key-env OPENAI_API_KEY --probe-model
@@ -358,7 +378,7 @@ codenib wiki . --generate --model anthropic/claude-sonnet-4-5
 Vertex AI additionally requires CodeNib's `vertex` extra:
 
 ```bash
-python -m pip install "codenib[agent,semantic,vertex]==0.2.1"
+python -m pip install "codenib[agent,semantic,vertex]==0.2.2"
 gcloud auth application-default login
 codenib wiki . --generate \
   --model vertex_ai/gemini-2.5-flash \
@@ -413,7 +433,7 @@ continues to work.
 ## Serve The Index Over MCP
 
 ```bash
-python -m pip install "codenib[mcp,semantic]==0.2.1"
+python -m pip install "codenib[mcp,semantic]==0.2.2"
 codenib index /path/to/repository
 codenib mcp /path/to/repository
 ```

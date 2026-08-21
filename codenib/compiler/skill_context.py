@@ -54,10 +54,15 @@ from ..index.embedding.model_policy import (
 )
 from ..paths import REPO_INDEX_DIRNAME
 from ..provider_routes import resolve_embedding_artifact_route
+from ..repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    RepositorySourceSelection,
+)
 from .artifact_fingerprints import require_bm25_manifest_artifact
 from .index_builders import IndexBuilderRegistry, register_default_builders
 from .index_compiler import IndexCompiler, IndexCompilerConfig
 from .manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
+from .manifest_source import resolve_compiler_source_selection
 
 if TYPE_CHECKING:
     from ..native_index_authorization import NativeIndexAuthorization
@@ -298,6 +303,45 @@ def _looks_built(cache_dir: str, index_type: str) -> bool:
     return any(p.iterdir())
 
 
+def _current_skill_manifest(
+    repo_path: str,
+    cache_dir: str,
+    source_selection: RepositorySourceSelection,
+) -> RepoManifest | None:
+    """Return a manifest whose checkout and selection are safe to reuse."""
+
+    manifest_path = Path(cache_dir) / MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        manifest = RepoManifest.load(manifest_path)
+        if manifest.source_selection != source_selection:
+            return None
+        from .checkout_identity import validate_checkout_identity
+
+        validate_checkout_identity(
+            Path(repo_path),
+            manifest,
+            artifact_root=Path(cache_dir),
+        )
+    except Exception as exc:  # noqa: BLE001 - an uncertain cache must rebuild
+        logger.warning("Ignoring stale or incompatible cache manifest: %s", exc)
+        return None
+    return manifest
+
+
+def _current_skill_view_path(
+    manifest: RepoManifest | None,
+    index_type: str,
+) -> str | None:
+    if manifest is None or not manifest.index_is_current(index_type):
+        return None
+    entry = manifest.indexes.get(index_type)
+    if entry is None or type(entry.path) is not str or not entry.path:
+        return None
+    return entry.path
+
+
 def _current_cached_vector_entry(
     cache_dir: str,
     vector_path: str,
@@ -409,12 +453,12 @@ def _load_vector(
         raise
 
 
-def _load_symbol_graph(index_path: str):
-    """Load a symbol graph from ``<index_path>/graph.pkl``."""
-    from ..graph.code_graph import CodeGraph
+def _load_symbol_graph(entry: IndexEntry):
+    """Load the exact symbol-graph generation named by ``entry``."""
 
-    graph_path = os.path.join(index_path, "graph.pkl")
-    return CodeGraph.load_graph(graph_path)
+    from .graph_artifact import load_authenticated_graph_artifact
+
+    return load_authenticated_graph_artifact(entry)
 
 
 def _run_compiler(
@@ -424,6 +468,7 @@ def _run_compiler(
     *,
     languages: Sequence[str],
     builder_registry: IndexBuilderRegistry,
+    source_selection: RepositorySourceSelection,
 ) -> RepoManifest | None:
     if not index_types:
         return None
@@ -431,6 +476,7 @@ def _run_compiler(
         cache_dir_name=Path(cache_dir).name,
         index_types=list(index_types),
         languages=list(languages),
+        source_selection=source_selection,
     )
     compiler = IndexCompiler(builder_registry, cfg)
     return compiler.compile_repo(
@@ -460,6 +506,7 @@ def build_skill_contexts(
     embedding_max_seq_length: Optional[int] = None,
     native_index_authorization: NativeIndexAuthorization | None = None,
     native_index_authorization_resolver: NativeIndexAuthorizationResolver | None = None,
+    source_selection: RepositorySourceSelection | None = None,
 ) -> Dict[str, Any]:
     """Build the union of indexes required by *skill_ids* and package them.
 
@@ -507,6 +554,7 @@ def build_skill_contexts(
         os.path.abspath(repo_path), _DEFAULT_CACHE_DIR_NAME
     )
     os.makedirs(cache_dir, exist_ok=True)
+    selected_source = resolve_compiler_source_selection(cache_dir, source_selection)
 
     needed = required_index_types(
         skill_ids, skills_dir=skills_dir, skill_registry=skill_registry
@@ -525,8 +573,21 @@ def build_skill_contexts(
 
     compiled_manifest: RepoManifest | None = None
     compiled_types: Set[str] = set()
+    current_manifest = _current_skill_manifest(
+        repo_path,
+        cache_dir,
+        selected_source,
+    )
     if needed:
-        missing = _missing_index_types(needed, cache_dir, rebuild=rebuild)
+        missing = sorted(
+            needed
+            if rebuild or current_manifest is None
+            else {
+                index_type
+                for index_type in needed
+                if _current_skill_view_path(current_manifest, index_type) is None
+            }
+        )
         # An existing native vector cache is not self-authorizing. Without a
         # caller-issued capability, rebuild it from the repository source so
         # this compiler invocation owns the bytes it will authorize below.
@@ -549,6 +610,7 @@ def build_skill_contexts(
                     trust_remote_code=load_policy.trust_remote_code,
                     embedding_batch_size=embedding_batch_size,
                     embedding_max_seq_length=embedding_max_seq_length,
+                    source_selection=selected_source,
                 )
             logger.info("Building missing indexes %s under %s", missing, cache_dir)
             compiled_manifest = _run_compiler(
@@ -557,14 +619,17 @@ def build_skill_contexts(
                 cache_dir,
                 languages=languages,
                 builder_registry=registry,
+                source_selection=selected_source,
             )
             compiled_types.update(missing)
+
+    active_manifest = compiled_manifest or current_manifest
 
     # Load required types plus any optional type already present on disk
     # (optional types are never built here — used-if-present only).
     loadable: Set[str] = set(needed)
     for t in optional:
-        if _looks_built(cache_dir, t):
+        if _current_skill_view_path(active_manifest, t) is not None:
             if (
                 t == "vector"
                 and native_index_authorization is None
@@ -579,9 +644,14 @@ def build_skill_contexts(
 
     loaded: Dict[str, Any] = {}
     if "bm25" in loadable:
-        loaded["bm25"] = _load_bm25(_index_dir(cache_dir, "bm25"))
+        bm25_path = _current_skill_view_path(active_manifest, "bm25")
+        if bm25_path is None:
+            raise ValueError("required BM25 view is not current for this source")
+        loaded["bm25"] = _load_bm25(bm25_path)
     if "vector" in loadable:
-        vector_path = _index_dir(cache_dir, "vector")
+        vector_path = _current_skill_view_path(active_manifest, "vector")
+        if vector_path is None:
+            raise ValueError("required vector view is not current for this source")
         vector_artifact_metadata: Dict[str, Any] | None = None
         vector_authorization = native_index_authorization
         if "vector" in compiled_types and compiled_manifest is not None:
@@ -617,11 +687,19 @@ def build_skill_contexts(
                             ),
                         )
         elif vector_authorization is not None:
-            cached_entry = _current_cached_vector_entry(cache_dir, vector_path)
+            cached_entry = (
+                active_manifest.indexes.get("vector")
+                if active_manifest is not None
+                else None
+            )
             if cached_entry is not None:
                 vector_artifact_metadata = dict(cached_entry.config)
         elif native_index_authorization_resolver is not None:
-            cached_entry = _current_cached_vector_entry(cache_dir, vector_path)
+            cached_entry = (
+                active_manifest.indexes.get("vector")
+                if active_manifest is not None
+                else None
+            )
             if cached_entry is None:
                 raise ValueError(
                     "cannot resolve native-index authorization without a current "
@@ -653,10 +731,16 @@ def build_skill_contexts(
                 native_index_authorization=vector_authorization,
             )
     if "symbol_graph" in loadable:
+        graph_path = _current_skill_view_path(active_manifest, "symbol_graph")
+        graph_entry = (
+            active_manifest.indexes.get("symbol_graph")
+            if active_manifest is not None
+            else None
+        )
+        if graph_path is None or graph_entry is None:
+            raise ValueError("required symbol graph is not current for this source")
         try:
-            loaded["symbol_graph"] = _load_symbol_graph(
-                _index_dir(cache_dir, "symbol_graph")
-            )
+            loaded["symbol_graph"] = _load_symbol_graph(graph_entry)
         except Exception as exc:  # noqa: BLE001
             # A REQUIRED graph must surface its load error; an OPTIONAL one
             # (``required: false``, e.g. bm25_search's relabel graph) must
@@ -676,6 +760,7 @@ def build_skill_contexts(
             repo_path=repo_path,
             languages=languages,
             symbol_graph=loaded.get("symbol_graph"),
+            source_selection=selected_source,
         )
     return _package_contexts(
         loaded,
@@ -793,9 +878,7 @@ def load_contexts_from_manifest(
             native_index_authorization=vector_authorization,
         )
     if "symbol_graph" in needed:
-        loaded["symbol_graph"] = _load_symbol_graph(
-            manifest.indexes["symbol_graph"].path
-        )
+        loaded["symbol_graph"] = _load_symbol_graph(manifest.indexes["symbol_graph"])
 
     lsp_provider = None
     if SkillType.EXPAND in skill_types or "symbol_graph" in loaded:
@@ -803,6 +886,9 @@ def load_contexts_from_manifest(
             repo_path=manifest.repo_path,
             languages=manifest.languages,
             symbol_graph=loaded.get("symbol_graph"),
+            source_selection=(
+                manifest.source_selection or DEFAULT_REPOSITORY_SOURCE_SELECTION
+            ),
         )
     return _package_contexts(
         loaded,
@@ -814,7 +900,11 @@ def load_contexts_from_manifest(
 
 
 def _select_cpp_lsp_provider(
-    *, repo_path: str, languages: Sequence[str], symbol_graph: Any
+    *,
+    repo_path: str,
+    languages: Sequence[str],
+    symbol_graph: Any,
+    source_selection: RepositorySourceSelection | None,
 ) -> Any:
     """Bind the native provider only for an unambiguous local C/C++ context."""
 
@@ -830,6 +920,7 @@ def _select_cpp_lsp_provider(
         project_root=repo_path,
         languages=languages,
         symbol_graph=symbol_graph,
+        source_selection=source_selection,
     )
     return provider
 

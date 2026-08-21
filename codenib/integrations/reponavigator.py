@@ -231,7 +231,8 @@ class RepoNavigatorRepositoryProvider:
                 or isinstance(context.lsp_provider, StaticLSPProvider)
             )
         ):
-            occurrence_index = _load_manifest_occurrence_index(context)
+            graph = getattr(context, "symbol_graph", None)
+            occurrence_index = getattr(graph, "lsp_occurrence_index", None)
             if occurrence_index is not None:
                 kwargs["occurrence_index"] = occurrence_index
         return cls(context, **kwargs)
@@ -393,29 +394,6 @@ class RepoNavigatorRepositoryProvider:
             end_line=start_line,
         )
         return content, normalized_path
-
-
-def _load_manifest_occurrence_index(context: Any) -> Any | None:
-    entry = getattr(context.manifest, "indexes", {}).get("symbol_graph")
-    if entry is None or not getattr(entry, "path", None):
-        return None
-
-    graph_path = Path(entry.path)
-    index_path = (
-        graph_path / "lsp_index.pkl"
-        if graph_path.is_dir()
-        else graph_path.with_name("lsp_index.pkl")
-    )
-    if not index_path.is_file():
-        return None
-    try:
-        from ..scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
-
-        return SCIPOccurrenceIndex.load(index_path)
-    except Exception as exc:  # noqa: BLE001 - persisted integration boundary
-        raise IntegrationCapabilityError(
-            f"failed to load RepoNavigator definition signal from {index_path}: {exc}"
-        ) from exc
 
 
 def _inspect_definition_signal(provider: Any) -> RepoNavigatorDefinitionSignal:

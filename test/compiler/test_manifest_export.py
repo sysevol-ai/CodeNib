@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+import codenib.artifacts.strict_context as strict_context_module
 import codenib.compiler.manifest_export as manifest_export_module
 from codenib._captured_directory import PublishedWorkspaceReceiptOwner
 from codenib.artifacts import stage_context_artifact_strict
@@ -24,7 +25,11 @@ from codenib.artifacts.portable_views import (
     MAX_PORTABLE_FAISS_INDEX_BYTES,
 )
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
-from codenib.compiler.manifest import RepoManifest
+from codenib.compiler.manifest import (
+    LEGACY_MANIFEST_VERSION,
+    MANIFEST_VERSION,
+    RepoManifest,
+)
 from codenib.compiler.manifest_export import (
     RepoManifestExportReceipt,
     RepoManifestExportResult,
@@ -41,6 +46,7 @@ from codenib.compiler.manifest_storage import (
     plan_repo_manifest_import_bytes,
 )
 from codenib.compiler.retained_snapshot import attest_detached_retained_snapshot
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import capture_repository_source
 from codenib.storage import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
@@ -69,6 +75,7 @@ from .test_manifest_import import (
 )
 
 _REPOSITORY_KEY = "owner/repo"
+_DEFAULT_SOURCE_SELECTION = RepositorySourceSelection()
 
 
 def _exception_notes(error: BaseException) -> tuple[str, ...]:
@@ -268,8 +275,16 @@ def _retained_fixture(
     selected_views: tuple[str, ...] | None = None,
     source_text: str = "VALUE = 1\n",
     ref_name: str = "main",
+    source_selection: RepositorySourceSelection = _DEFAULT_SOURCE_SELECTION,
+    manifest_version: str = MANIFEST_VERSION,
 ) -> Iterator[tuple[_ContextFixture, Any, LocalCAS, SQLiteCatalog]]:
-    fixture = _context_fixture(root / "fixture", views, source_text=source_text)
+    fixture = _context_fixture(
+        root / "fixture",
+        views,
+        source_text=source_text,
+        source_selection=source_selection,
+        manifest_version=manifest_version,
+    )
     plan = fixture.plan(selected_views)
     object_store = LocalCAS(root / "cas")
     catalog = SQLiteCatalog(root / "catalog.sqlite")
@@ -290,7 +305,56 @@ def _retained_fixture(
         fixture.close()
 
 
-def test_real_import_round_trips_ref_and_snapshot_as_canonical_v11_bytes(
+@contextmanager
+def _legacy_retained_fixture(
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[_ContextFixture, Any, LocalCAS, SQLiteCatalog]]:
+    """Synthesize a historical artifact, then use current retained APIs."""
+
+    with monkeypatch.context() as construction:
+        verify_context = strict_context_module.verify_context_artifact_reader
+
+        def verify_legacy_context(*args: Any, **kwargs: Any) -> Any:
+            kwargs["expected_manifest_version"] = LEGACY_MANIFEST_VERSION
+            return verify_context(*args, **kwargs)
+
+        construction.setattr(
+            strict_context_module,
+            "MANIFEST_VERSION",
+            LEGACY_MANIFEST_VERSION,
+        )
+        construction.setattr(
+            strict_context_module,
+            "verify_context_artifact_reader",
+            verify_legacy_context,
+        )
+        fixture = _context_fixture(
+            root / "fixture",
+            ("bm25", "vector"),
+            manifest_version=LEGACY_MANIFEST_VERSION,
+        )
+
+    plan = fixture.plan()
+    object_store = LocalCAS(root / "cas")
+    catalog = SQLiteCatalog(root / "catalog.sqlite")
+    try:
+        imported = import_retained_repo_manifest(
+            plan,
+            artifact_owner=fixture.context_owner,
+            repository_source=fixture.repository_source,
+            repository_key=_REPOSITORY_KEY,
+            catalog=catalog,
+            object_store=object_store,
+            environ={},
+        )
+        yield fixture, imported, object_store, catalog
+    finally:
+        catalog.close()
+        fixture.close()
+
+
+def test_real_import_round_trips_ref_and_snapshot_as_canonical_v12_bytes(
     tmp_path: Path,
 ) -> None:
     with _retained_fixture(tmp_path / "roundtrip") as (
@@ -309,6 +373,16 @@ def test_real_import_round_trips_ref_and_snapshot_as_canonical_v11_bytes(
 
         assert isinstance(ref_export, RepoManifestExportResult)
         assert ref_export.canonical_manifest_bytes == expected
+        expected_manifest = json.loads(expected)
+        assert expected_manifest["version"] == "1.2"
+        expected_selection = RepositorySourceSelection()
+        assert expected_manifest["repo"]["source_selection"] == (
+            expected_selection.to_dict()
+        )
+        assert all(
+            entry["source_selection_digest"] == expected_selection.digest
+            for entry in expected_manifest["indexes"].values()
+        )
         summary = catalog.get_manifest_summary(imported.snapshot_id)
         assert ref_export.receipt.namespace_id == summary["namespace"]["namespace_id"]
         assert ref_export.receipt.repository_id == imported.repository_id
@@ -349,12 +423,52 @@ def test_real_import_round_trips_ref_and_snapshot_as_canonical_v11_bytes(
         )
 
 
+def test_legacy_v11_snapshot_exports_without_migration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Current strict-context publication deliberately creates only current
+    # artifacts. Patch that construction gate solely to synthesize an already
+    # existing historical artifact for the retained compatibility path.
+    with _legacy_retained_fixture(
+        tmp_path / "legacy-roundtrip",
+        monkeypatch,
+    ) as (fixture, imported, object_store, catalog):
+        plan = fixture.plan()
+        original = plan.canonical_manifest_bytes
+        exported = export_retained_repo_manifest_snapshot(
+            imported.repository_id,
+            imported.snapshot_id,
+            catalog=catalog,
+            object_store=object_store,
+        )
+
+        assert exported.canonical_manifest_bytes == original
+        payload = json.loads(exported.canonical_manifest_bytes)
+        assert payload["version"] == LEGACY_MANIFEST_VERSION
+        assert "source_selection" not in payload["repo"]
+        assert all(
+            "source_selection_digest" not in entry
+            for entry in payload["indexes"].values()
+        )
+        projection = catalog.get_manifest_summary(imported.snapshot_id)["views"][
+            REPO_MANIFEST_PROJECTION_VIEW
+        ]
+        projection_payload = json.loads(
+            object_store.read_bytes(projection["object"]["digest"])
+        )
+        assert projection_payload["plan"]["schema"].endswith(".v1")
+        assert "source_selection" not in projection_payload["source"]
+
+
 def test_subset_export_removes_unretained_view_and_keeps_capability_extensions(
     tmp_path: Path,
 ) -> None:
+    source_selection = RepositorySourceSelection(("generated", "vendor/cache"))
     with _retained_fixture(
         tmp_path / "subset",
         selected_views=("bm25",),
+        source_selection=source_selection,
     ) as (_fixture, imported, object_store, catalog):
         exported = export_retained_repo_manifest_snapshot(
             imported.repository_id,
@@ -365,6 +479,14 @@ def test_subset_export_removes_unretained_view_and_keeps_capability_extensions(
 
         manifest = json.loads(exported.canonical_manifest_bytes)
         assert set(manifest["indexes"]) == {"bm25"}
+        assert manifest["repo"]["source_selection"] == source_selection.to_dict()
+        assert manifest["indexes"]["bm25"]["source_selection_digest"] == (
+            source_selection.digest
+        )
+        assert (
+            manifest["indexes"]["bm25"]["config"]["source_selection_digest"]
+            == source_selection.digest
+        )
         assert manifest["capabilities"] == {
             "dense_search": False,
             "future_query": True,
@@ -1283,6 +1405,40 @@ def test_projection_member_object_envelope_conflict_is_rejected(
         ] = "application/json"
 
         with pytest.raises(StorageIntegrityError, match="identity is inconsistent"):
+            manifest_export_module._validate_projection(
+                projection,
+                retained=retained,
+                max_manifest_bytes=manifest_export_module.DEFAULT_MAX_MANIFEST_BYTES,
+                max_bundle_files=manifest_export_module.DEFAULT_MAX_BUNDLE_FILES,
+            )
+
+
+@pytest.mark.parametrize("field", ["source_selection", "source_selection_digest"])
+def test_projection_source_selection_conflict_is_rejected(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    selection = RepositorySourceSelection(("generated",))
+    with _retained_fixture(
+        tmp_path / f"selection-conflict-{field}",
+        views=("bm25",),
+        source_selection=selection,
+    ) as (_fixture, imported, object_store, catalog):
+        summary = catalog.get_manifest_summary(imported.snapshot_id)
+        retained = attest_detached_retained_snapshot(
+            summary,
+            label="test retained snapshot",
+            expected_repository_id=imported.repository_id,
+            expected_snapshot_id=imported.snapshot_id,
+        )
+        projection_record = summary["views"][REPO_MANIFEST_PROJECTION_VIEW]["object"]
+        projection = json.loads(object_store.read_bytes(projection_record["digest"]))
+        replacement = RepositorySourceSelection(("other",))
+        projection["source"][field] = (
+            replacement.to_dict() if field == "source_selection" else replacement.digest
+        )
+
+        with pytest.raises(StorageIntegrityError, match="source selection"):
             manifest_export_module._validate_projection(
                 projection,
                 retained=retained,

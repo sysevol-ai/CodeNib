@@ -4,6 +4,10 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import capture_repository_source
 from codenib.wiki.builder import Symbol
 from codenib.wiki.outline import (
     _apply_outline_summary_rewrites,
@@ -17,7 +21,63 @@ from codenib.wiki.outline import (
     _readme_entry_files,
     _required_top_level_pages,
     _validate_outline,
+    generate_outline,
 )
+
+
+def _source_paths(root):
+    return sorted(
+        path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
+    )
+
+
+def test_outline_prompt_uses_only_authenticated_source_inventory(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "runtime.py").write_text(
+        "def run(): return 'visible'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "secret.txt").write_text(
+        "EXCLUDED_PROMPT_SECRET\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text(
+        "Run src/runtime.py to start the service.\n",
+        encoding="utf-8",
+    )
+    binding = capture_repository_source(
+        tmp_path,
+        selection=RepositorySourceSelection(("private",)),
+    )
+    captured = {}
+
+    class LLM:
+        def complete(self, messages, **_kwargs):
+            captured["prompt"] = messages[0]["content"]
+            raise RuntimeError("stop after prompt capture")
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            language="python",
+            commit_short="abc123",
+        ),
+        manifest=SimpleNamespace(languages=["python"], indexes={}, file_count=2),
+        vector_store=None,
+        bm25=SimpleNamespace(documents=[]),
+        source_reader=binding.borrow_reader(),
+    )
+
+    try:
+        generate_outline(bundle, "fake-model", llm=LLM())
+    finally:
+        binding.close()
+
+    assert "src/runtime.py" in captured["prompt"]
+    assert "private/secret.txt" not in captured["prompt"]
+    assert "EXCLUDED_PROMPT_SECRET" not in captured["prompt"]
 
 
 def test_outline_quality_rejects_marketing_and_document_meta_summaries():
@@ -331,7 +391,7 @@ def test_outline_requires_real_source_anchors(tmp_path):
 
     result = _validate_outline(
         data,
-        str(tmp_path),
+        _source_paths(tmp_path),
         symbols=symbols,
         fallback_files=["codenib/runner.py"],
     )
@@ -381,7 +441,7 @@ def test_non_evaluation_page_drops_supporting_eval_files(tmp_path):
                 }
             ]
         },
-        str(tmp_path),
+        _source_paths(tmp_path),
         symbols=symbols,
         fallback_files=files,
     )
@@ -430,7 +490,7 @@ def test_readme_entry_files_resolve_documented_workflows(tmp_path):
         "The missing path is examples/not_present.py.\n"
     )
 
-    assert _readme_entry_files(str(tmp_path), readme) == files[:2]
+    assert _readme_entry_files(_source_paths(tmp_path), readme) == files[:2]
 
 
 def test_readme_documented_workflow_retains_supporting_source(tmp_path):
@@ -460,7 +520,7 @@ def test_readme_documented_workflow_retains_supporting_source(tmp_path):
                 },
             ]
         },
-        str(tmp_path),
+        _source_paths(tmp_path),
         fallback_files=[file],
         documented_files=[file],
     )
@@ -497,7 +557,7 @@ def test_evaluation_page_retains_explicit_eval_files(tmp_path):
                 }
             ]
         },
-        str(tmp_path),
+        _source_paths(tmp_path),
         symbols=symbols,
         fallback_files=[file],
     )
@@ -545,7 +605,7 @@ def test_overview_prefers_repository_root_readme(tmp_path):
                 }
             ]
         },
-        str(tmp_path),
+        _source_paths(tmp_path),
         symbols=[],
         fallback_files=["src/core.py"],
     )
@@ -571,7 +631,7 @@ def test_first_outline_page_is_canonical_overview(tmp_path):
                 }
             ]
         },
-        str(tmp_path),
+        _source_paths(tmp_path),
         symbols=[],
         fallback_files=["src/cli.py"],
     )
@@ -617,7 +677,7 @@ def test_overview_children_are_promoted_to_top_level(tmp_path):
                 }
             ]
         },
-        str(tmp_path),
+        _source_paths(tmp_path),
         symbols=symbols,
         fallback_files=["src/compiler.py"],
     )
@@ -658,7 +718,7 @@ def test_overview_prioritizes_product_entrypoints_over_backend_details(tmp_path)
                 }
             ]
         },
-        str(tmp_path),
+        _source_paths(tmp_path),
         symbols=[],
         fallback_files=files[1:],
     )
@@ -727,7 +787,7 @@ def test_outline_rejects_generic_concepts_with_unrelated_real_files(tmp_path):
                 },
             ]
         },
-        str(tmp_path),
+        _source_paths(tmp_path),
         symbols=symbols,
         fallback_files=files,
     )

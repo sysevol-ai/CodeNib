@@ -11,7 +11,10 @@ from pathlib import Path
 
 import pytest
 
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import capture_repository_source
 from codenib.web.repository_files import (
+    bound_source_slice,
     git_grep_paths,
     git_tree_paths,
     live_source_slice,
@@ -109,3 +112,32 @@ def test_live_source_slice_rejects_fifo_without_blocking(tmp_path: Path) -> None
 
     assert result is None
     assert time.monotonic() - started < 1
+
+
+def test_bound_source_slice_uses_authenticated_selection(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "runtime.py").write_text(
+        "first\nsecond\nthird\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "excluded").mkdir()
+    (tmp_path / "excluded" / "secret.py").write_text(
+        "SECRET = 'not selected'\n",
+        encoding="utf-8",
+    )
+    binding = capture_repository_source(
+        tmp_path,
+        selection=RepositorySourceSelection(("excluded",)),
+    )
+    try:
+        reader = binding.borrow_reader()
+
+        assert bound_source_slice(reader, "src/runtime.py", 2, 3) == {
+            "file": "src/runtime.py",
+            "start_line": 2,
+            "end_line": 3,
+            "content": "second\nthird\n",
+        }
+        assert bound_source_slice(reader, "excluded/secret.py") is None
+    finally:
+        binding.close()

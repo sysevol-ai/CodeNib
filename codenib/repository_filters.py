@@ -7,10 +7,16 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable, Iterator
 
-REPOSITORY_FILTER_POLICY_VERSION = 3
+from .repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    REPOSITORY_SOURCE_SELECTION_POLICY_VERSION,
+    RepositorySourceSelection,
+)
+
+REPOSITORY_FILTER_POLICY_VERSION = REPOSITORY_SOURCE_SELECTION_POLICY_VERSION
 
 DEFAULT_IGNORED_DIRS = frozenset(
     {
@@ -50,11 +56,31 @@ def default_exclude_patterns() -> list[str]:
     ]
 
 
-def repository_path_is_visible(path: str | Path) -> bool:
+def _validated_selection(
+    selection: RepositorySourceSelection,
+) -> RepositorySourceSelection:
+    if type(selection) is not RepositorySourceSelection:
+        raise TypeError("selection must be a RepositorySourceSelection")
+    return selection
+
+
+def repository_path_is_visible(
+    path: str | Path,
+    *,
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
+) -> bool:
     """Whether a repository-relative path survives the shared directory policy."""
 
-    parts = Path(path).parts
-    return not any(
+    selected = _validated_selection(selection)
+    relative = path.as_posix() if isinstance(path, Path) else path
+    if type(relative) is not str:
+        return False
+    try:
+        allowed = selected.allows(relative)
+    except (TypeError, ValueError):
+        return False
+    parts = PurePosixPath(relative).parts
+    return allowed and not any(
         part in DEFAULT_IGNORED_DIRS or part.startswith(".codenib") for part in parts
     )
 
@@ -67,31 +93,44 @@ def walk_repository_files(
     root: str | Path,
     *,
     exclude_roots: Iterable[str | Path] = (),
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
 ) -> Iterator[Path]:
     """Yield files under *root* after applying the shared directory policy."""
 
+    selected = RepositorySourceSelection(
+        _validated_selection(selection).exclude_subtrees
+    )
     root_path = Path(root).expanduser().resolve()
     excluded = tuple(Path(path).expanduser().resolve() for path in exclude_roots)
     for current_root, dirs, files in os.walk(root_path):
+        current = Path(current_root)
         dirs[:] = sorted(
             directory
             for directory in dirs
-            if directory not in DEFAULT_IGNORED_DIRS
-            and not directory.startswith(".codenib")
-            and not _is_within(Path(current_root) / directory, excluded)
+            if repository_path_is_visible(
+                (current / directory).relative_to(root_path),
+                selection=selected,
+            )
+            and not _is_within(current / directory, excluded)
         )
-        current = Path(current_root)
         for filename in sorted(files):
             path = current / filename
             relative = path.relative_to(root_path)
-            if repository_path_is_visible(relative) and not _is_within(path, excluded):
+            if repository_path_is_visible(
+                relative,
+                selection=selected,
+            ) and not _is_within(path, excluded):
                 yield path
 
 
-def count_repository_files(root: str | Path) -> int:
+def count_repository_files(
+    root: str | Path,
+    *,
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
+) -> int:
     """Count files visible to the default repository traversal policy."""
 
-    return sum(1 for _ in walk_repository_files(root))
+    return sum(1 for _ in walk_repository_files(root, selection=selection))
 
 
 __all__ = [

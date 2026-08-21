@@ -21,7 +21,15 @@ from ..native_index_authorization import (
     require_native_index_authorization,
     require_native_index_authorization_preflight,
 )
-from ..types import NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, ROOT_NODE, is_symbol_node
+from ..repository_filters import repository_path_is_visible
+from ..repository_source_selection import RepositorySourceSelection
+from ..types import (
+    NODE_TYPE_DIRECTORY,
+    NODE_TYPE_FILE,
+    ROOT_NODE,
+    is_symbol_node,
+    node_has_definition,
+)
 
 ARTIFACT_QUALITY_SCHEMA_VERSION = 1
 
@@ -211,6 +219,288 @@ def constrain_graph_to_source_surface(
         "outside_paths_after": list(after_classes["outside"]),
         "invalid_paths_before": list(invalid_paths_before),
         "invalid_paths_after": list(invalid_paths_after),
+    }
+
+
+def _canonical_selected_path(
+    value: object,
+    source_selection: RepositorySourceSelection,
+) -> str | None:
+    """Return one canonical selected repository path, or ``None``.
+
+    Source-selection identities are defined over canonical POSIX paths. The
+    Git-surface normalizer intentionally accepts ``./`` and backslashes for
+    older artifacts, but a newly published selected graph must not retain
+    those aliases because the selection policy cannot authenticate them.
+    """
+
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        normalized = normalize_repository_path(value)
+        if normalized != value or not repository_path_is_visible(
+            normalized,
+            selection=source_selection,
+        ):
+            return None
+    except (TypeError, ValueError):
+        return None
+    return normalized
+
+
+def _selection_path_state(
+    value: object,
+    source_selection: RepositorySourceSelection,
+) -> tuple[str | None, str]:
+    """Classify a repository path as selected, excluded, absent, or invalid."""
+
+    if value is None or value == "":
+        return None, "absent"
+    if not isinstance(value, str):
+        return None, "invalid"
+    try:
+        normalized = normalize_repository_path(value)
+    except ValueError:
+        return None, "invalid"
+    if normalized != value:
+        return normalized, "invalid"
+    try:
+        return normalized, (
+            "selected"
+            if repository_path_is_visible(normalized, selection=source_selection)
+            else "excluded"
+        )
+    except (TypeError, ValueError):
+        return normalized, "invalid"
+
+
+def constrain_graph_to_source_selection(
+    graph: CodeGraph,
+    source_selection: RepositorySourceSelection,
+) -> dict[str, Any]:
+    """Enforce an exact source selection over every repository graph record.
+
+    Backend exclusion patterns are only an optimization. This function is the
+    publication gate: it removes excluded or non-canonical file/symbol nodes,
+    anchored edges, and SCIP/LSP occurrences, prunes directories without a
+    selected represented descendant, and rebuilds all derived graph indexes.
+    External reference-only symbols without a repository path remain valid.
+    """
+
+    if type(source_selection) is not RepositorySourceSelection:
+        raise TypeError("source_selection must be a RepositorySourceSelection")
+    selection = RepositorySourceSelection(source_selection.exclude_subtrees)
+
+    before_nodes = graph.graph.vcount()
+    before_edges = graph.graph.ecount()
+    excluded_before: set[str] = set()
+    invalid_before: set[str] = set()
+    selected_paths: set[str] = set()
+
+    def observe(value: object, owner: str, *, required: bool = False) -> None:
+        path, state = _selection_path_state(value, selection)
+        if state == "selected" and path is not None:
+            selected_paths.add(path)
+        elif state == "excluded" and path is not None:
+            excluded_before.add(path)
+        elif state == "invalid" or (required and state == "absent"):
+            invalid_before.add(f"{owner}={value!r}")
+
+    for vertex in graph.graph.vs:
+        attrs = vertex.attributes()
+        node_type = attrs.get("type")
+        if node_type == NODE_TYPE_DIRECTORY:
+            observe(attrs.get("name"), f"vertex[{vertex.index}].name", required=True)
+        elif node_type == NODE_TYPE_FILE:
+            observe(attrs.get("name"), f"vertex[{vertex.index}].name", required=True)
+        elif node_type != "root" and attrs.get("name") != ROOT_NODE:
+            observe(
+                attrs.get("file"),
+                f"vertex[{vertex.index}].file",
+                required=is_symbol_node(node_type) and node_has_definition(attrs),
+            )
+    for edge in graph.graph.es:
+        observe(edge.attributes().get("anchor_file"), f"edge[{edge.index}].anchor_file")
+    occurrence_index = getattr(graph, "lsp_occurrence_index", None)
+    if occurrence_index is not None:
+        for index, occurrence in enumerate(occurrence_index.occurrences):
+            observe(
+                occurrence.file_path,
+                f"occurrence[{index}].file_path",
+                required=True,
+            )
+
+    def keep_vertex(attrs: Mapping[str, Any]) -> bool:
+        node_type = attrs.get("type")
+        name = attrs.get("name")
+        if node_type == "root" or name == ROOT_NODE:
+            return True
+        if node_type == NODE_TYPE_DIRECTORY:
+            directory = _canonical_selected_path(name, selection)
+            return bool(
+                directory
+                and any(path.startswith(f"{directory}/") for path in selected_paths)
+            )
+        if node_type == NODE_TYPE_FILE:
+            return _canonical_selected_path(name, selection) is not None
+
+        raw_path = attrs.get("file")
+        if raw_path is None or raw_path == "":
+            return not (is_symbol_node(node_type) and node_has_definition(attrs))
+        return _canonical_selected_path(raw_path, selection) is not None
+
+    keep_vertices = [
+        vertex.index for vertex in graph.graph.vs if keep_vertex(vertex.attributes())
+    ]
+    if len(keep_vertices) != before_nodes:
+        graph.graph = graph.graph.subgraph(keep_vertices)
+
+    remove_edges = []
+    for edge in graph.graph.es:
+        raw_anchor = edge.attributes().get("anchor_file")
+        if (
+            raw_anchor is not None
+            and raw_anchor != ""
+            and (_canonical_selected_path(raw_anchor, selection) is None)
+        ):
+            remove_edges.append(edge.index)
+    if remove_edges:
+        graph.graph.delete_edges(remove_edges)
+
+    if occurrence_index is not None:
+        from ..scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
+
+        graph.lsp_occurrence_index = SCIPOccurrenceIndex(
+            (
+                occurrence
+                for occurrence in occurrence_index.occurrences
+                if _canonical_selected_path(occurrence.file_path, selection) is not None
+            ),
+            position_encoding=occurrence_index.position_encoding,
+        )
+
+    surviving_paths: set[str] = set()
+    for vertex in graph.graph.vs:
+        attrs = vertex.attributes()
+        if attrs.get("type") == NODE_TYPE_FILE:
+            value = attrs.get("name")
+        elif attrs.get("type") not in {"root", NODE_TYPE_DIRECTORY}:
+            value = attrs.get("file")
+        else:
+            value = None
+        if (path := _canonical_selected_path(value, selection)) is not None:
+            surviving_paths.add(path)
+    for edge in graph.graph.es:
+        if (
+            path := _canonical_selected_path(
+                edge.attributes().get("anchor_file"), selection
+            )
+        ) is not None:
+            surviving_paths.add(path)
+    final_occurrence_index = getattr(graph, "lsp_occurrence_index", None)
+    if final_occurrence_index is not None:
+        surviving_paths.update(
+            path
+            for occurrence in final_occurrence_index.occurrences
+            if (path := _canonical_selected_path(occurrence.file_path, selection))
+            is not None
+        )
+    keep_after_pruning = [
+        vertex.index
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("type") != NODE_TYPE_DIRECTORY
+        or (
+            (
+                directory := _canonical_selected_path(
+                    vertex.attributes().get("name"), selection
+                )
+            )
+            is not None
+            and any(path.startswith(f"{directory}/") for path in surviving_paths)
+        )
+    ]
+    if len(keep_after_pruning) != graph.graph.vcount():
+        graph.graph = graph.graph.subgraph(keep_after_pruning)
+
+    graph.name_to_vertex = {
+        name: vertex.index
+        for vertex in graph.graph.vs
+        if isinstance((name := vertex.attributes().get("name")), str) and name
+    }
+    graph.symbol_ranges = {
+        name: value
+        for name, value in graph.symbol_ranges.items()
+        if name in graph.name_to_vertex
+    }
+    graph.invalidate_caches()
+    graph.build_range_indexes()
+
+    excluded_after: set[str] = set()
+    invalid_after: set[str] = set()
+
+    def verify(value: object, owner: str, *, required: bool = False) -> None:
+        path, state = _selection_path_state(value, selection)
+        if state == "excluded" and path is not None:
+            excluded_after.add(path)
+        elif state == "invalid" or (required and state == "absent"):
+            invalid_after.add(f"{owner}={value!r}")
+
+    represented_after: set[str] = set()
+    for vertex in graph.graph.vs:
+        attrs = vertex.attributes()
+        node_type = attrs.get("type")
+        if node_type == NODE_TYPE_DIRECTORY:
+            verify(attrs.get("name"), f"vertex[{vertex.index}].name", required=True)
+        elif node_type == NODE_TYPE_FILE:
+            value = attrs.get("name")
+            verify(value, f"vertex[{vertex.index}].name", required=True)
+            if (path := _canonical_selected_path(value, selection)) is not None:
+                represented_after.add(path)
+        elif node_type != "root" and attrs.get("name") != ROOT_NODE:
+            value = attrs.get("file")
+            verify(
+                value,
+                f"vertex[{vertex.index}].file",
+                required=is_symbol_node(node_type) and node_has_definition(attrs),
+            )
+            if (path := _canonical_selected_path(value, selection)) is not None:
+                represented_after.add(path)
+    for edge in graph.graph.es:
+        value = edge.attributes().get("anchor_file")
+        verify(value, f"edge[{edge.index}].anchor_file")
+        if (path := _canonical_selected_path(value, selection)) is not None:
+            represented_after.add(path)
+    final_occurrence_index = getattr(graph, "lsp_occurrence_index", None)
+    if final_occurrence_index is not None:
+        for index, occurrence in enumerate(final_occurrence_index.occurrences):
+            value = occurrence.file_path
+            verify(value, f"occurrence[{index}].file_path", required=True)
+            if (path := _canonical_selected_path(value, selection)) is not None:
+                represented_after.add(path)
+
+    dangling_directories = sorted(
+        name
+        for vertex in graph.graph.vs
+        if vertex.attributes().get("type") == NODE_TYPE_DIRECTORY
+        and isinstance((name := vertex.attributes().get("name")), str)
+        and not any(path.startswith(f"{name}/") for path in represented_after)
+    )
+    if dangling_directories:
+        invalid_after.update(
+            f"directory_without_selected_descendant={path!r}"
+            for path in dangling_directories
+        )
+
+    return {
+        "source_selection_digest": selection.digest,
+        "nodes_before": before_nodes,
+        "nodes_after": graph.graph.vcount(),
+        "edges_before": before_edges,
+        "edges_after": graph.graph.ecount(),
+        "removed_excluded_paths": sorted(excluded_before),
+        "excluded_paths_after": sorted(excluded_after),
+        "invalid_paths_before": sorted(invalid_before),
+        "invalid_paths_after": sorted(invalid_after),
     }
 
 
@@ -585,6 +875,7 @@ __all__ = [
     "ARTIFACT_QUALITY_SCHEMA_VERSION",
     "assess_vector_artifact",
     "constrain_and_assess_graph_artifact",
+    "constrain_graph_to_source_selection",
     "constrain_graph_to_source_surface",
     "graph_file_paths",
     "graph_source_paths",

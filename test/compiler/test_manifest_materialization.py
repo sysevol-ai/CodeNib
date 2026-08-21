@@ -49,6 +49,7 @@ from codenib.compiler.manifest_materialization import (
 from codenib.mcp import server as mcp_server
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.search import search_bm25_impl
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.storage import (
     BlobInfo,
     LocalCAS,
@@ -57,7 +58,7 @@ from codenib.storage import (
     StorageValidationError,
 )
 
-from .test_manifest_export import _retained_fixture
+from .test_manifest_export import _legacy_retained_fixture, _retained_fixture
 from .test_manifest_import import _TestWorkspaceProvider
 
 _Result = TypeVar("_Result")
@@ -804,6 +805,110 @@ def test_materializes_retained_export_as_exact_query_compatible_artifact(
             owner.close()
         assert owner.closed
         assert destination.is_dir()
+
+
+def test_v12_workspace_subject_binds_source_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = RepositorySourceSelection(("generated", "vendor/cache"))
+    with _retained_fixture(
+        tmp_path / "selection-retained",
+        views=("bm25",),
+        source_selection=selection,
+    ) as (_fixture, imported, object_store, catalog):
+        exported = _export_snapshot(imported, object_store, catalog)
+        store = _RetainingReadStore(object_store)
+        provider = _TestWorkspaceProvider()
+        owner = PublishedWorkspaceReceiptOwner()
+        observed: dict[str, object] = {}
+        original = materialization_module._workspace_subject
+
+        def capture_subject(*args: Any, **kwargs: Any) -> str:
+            subject = original(*args, **kwargs)
+            without_selection = original(
+                *args,
+                **{**kwargs, "source_selection": None},
+            )
+            observed["selection"] = kwargs["source_selection"]
+            observed["subject"] = subject
+            observed["legacy_shaped_subject"] = without_selection
+            return subject
+
+        monkeypatch.setattr(
+            materialization_module,
+            "_workspace_subject",
+            capture_subject,
+        )
+        try:
+            materialize_retained_context_artifact(
+                exported,
+                tmp_path / "selection-artifact",
+                object_store=store,
+                workspace_provider=provider,
+                output_receipt_owner=owner,
+            )
+            assert observed["selection"] == selection
+            assert observed["subject"] != observed["legacy_shaped_subject"]
+            assert owner.receipt.plan.subject_digest == observed["subject"]
+        finally:
+            if owner.active:
+                owner.close()
+
+
+def test_materializes_legacy_v11_export_without_migration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _legacy_retained_fixture(
+        tmp_path / "legacy-retained",
+        monkeypatch,
+    ) as (_fixture, imported, object_store, catalog):
+        exported = _export_snapshot(imported, object_store, catalog)
+        store = _RetainingReadStore(object_store)
+        owner = PublishedWorkspaceReceiptOwner()
+        observed: dict[str, object] = {}
+        original = materialization_module._workspace_subject
+
+        def capture_subject(*args: Any, **kwargs: Any) -> str:
+            observed["selection"] = kwargs["source_selection"]
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(
+            materialization_module,
+            "_workspace_subject",
+            capture_subject,
+        )
+        destination = tmp_path / "legacy-artifact"
+        try:
+            result = materialize_retained_context_artifact(
+                exported,
+                destination,
+                object_store=store,
+                workspace_provider=_TestWorkspaceProvider(),
+                output_receipt_owner=owner,
+            )
+
+            assert result.manifest_path.read_bytes() == (
+                exported.canonical_manifest_bytes
+            )
+            manifest = json.loads(result.manifest_path.read_bytes())
+            metadata = json.loads(result.metadata_path.read_bytes())
+            assert manifest["version"] == "1.1"
+            assert "source_selection" not in manifest["repo"]
+            assert metadata["builder"]["manifest_version"] == "1.1"
+            assert observed["selection"] is None
+            verified = verify_context_artifact(
+                destination,
+                expected_repository="owner/repo",
+                expected_commit="a" * 40,
+                expected_manifest_version="1.1",
+            )
+            assert verified.manifest.version == "1.1"
+            assert verified.views == ("bm25", "vector")
+        finally:
+            if owner.active:
+                owner.close()
 
 
 def test_local_provider_materializes_real_retained_snapshot_for_mcp_bm25(

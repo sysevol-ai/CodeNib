@@ -39,12 +39,12 @@ SPDX-License-Identifier: Apache-2.0
     <a href="https://docs.codenib.ai/codegraph/#one-command-setup"><img src="https://img.shields.io/badge/Codex-000?logo=openai&amp;logoColor=fff" alt="Codex supported"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python 3.10+"></a>
-    <img src="https://img.shields.io/badge/Release-0.2.1-2563EB.svg" alt="CodeNib 0.2.1">
+    <img src="https://img.shields.io/badge/Release-0.2.2-2563EB.svg" alt="CodeNib 0.2.2">
   </p>
 </div>
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.1"
+python -m pip install "codenib[graph,mcp]==0.2.2"
 codenib codegraph init /path/to/your/repo
 ```
 
@@ -56,6 +56,11 @@ does not write configuration or indexes into the target repository.
 
 ## News
 
+- **2026-08-20 — CodeNib 0.2.2 repository source authority.** Authenticated
+  indexing now admits absolute symlinks only when they resolve inside the same
+  pinned checkout, and exact root-relative exclusions persist across indexing,
+  CodeGraph, MCP, Wiki, and Web runtimes.
+  [Release notes](https://docs.codenib.ai/releases/0.2.2/)
 - **2026-08-13 — CodeNib 0.2.1 CodeGraph onboarding.** One command prepares a
   repository graph and connects it to Codex and Claude Code, with idempotent
   status, safe uninstall, and installed-wheel MCP graph verification.
@@ -89,23 +94,23 @@ does not write configuration or indexes into the target repository.
 
 | Layer | Responsibility |
 |---|---|
-| Incremental compiler | Chunk source and materialize BM25, dense, graph, and navigation views; reuse or repair supported artifacts and rebuild when an update cannot be admitted |
+| View compiler | Chunk source and materialize BM25, dense, graph, and navigation views; reuse current artifacts and atomically rebuild affected views |
 | View manifest | Record repository identity, source fingerprint, builder profile, capabilities, status, and artifact location independently for each view |
 | Context serving | Execute lexical, semantic, hybrid, reranked, and structural query plans while preserving repository-relative source locations |
 | Agent runtime | Expose capability-aware MCP and LSP-shaped tools, assemble bounded evidence, and return citations that agents and humans can inspect |
 
 ```text
 repository change
-  -> materialize or repair affected views
+  -> reuse current views or rebuild affected views
   -> publish a capability-bearing manifest
   -> plan repository queries
   -> deliver bounded, source-linked context
 ```
 
-On a later commit, CodeNib can reuse unchanged vector content and patch
-supported graph transitions at file or symbol granularity. Unsupported,
-inconsistent, or unverified transitions fall back to a fresh build instead of
-publishing a partially updated view.
+On a later commit, CodeNib reuses views whose source and builder identities are
+still current. A requested view affected by source or policy changes currently
+rebuilds in an isolated generation; file- and symbol-level delta repair remains
+disabled until it can use the same pinned source authority.
 
 ## Quickstart
 
@@ -113,7 +118,7 @@ Requires Python 3.10+ and Git. For an agent-ready CodeGraph with no model or API
 key, install the graph and MCP extras and run one command:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.1"
+python -m pip install "codenib[graph,mcp]==0.2.2"
 codenib codegraph init /path/to/repository
 ```
 
@@ -124,16 +129,42 @@ Run `codenib codegraph status /path/to/repository` to diagnose the complete
 path or `codenib codegraph uninstall /path/to/repository` to remove only the
 managed client registrations. The index remains reusable.
 
+Repositories can persist exact root-relative subtree exclusions when generated
+or vendored content should not be indexed:
+
+```bash
+codenib codegraph init /path/to/repository \
+  --exclude-dir ios/Pods \
+  --exclude-dir generated/api
+```
+
+Paths use repository-relative POSIX spelling (`/`) and name exact subtrees,
+not globs. Repeat `--exclude-dir` to replace the complete custom exclusion set. Later
+`init` and `index` runs reuse that policy from the manifest; use
+`--clear-exclude-dirs` to return to the default source surface. CodeNib does not
+implicitly treat `.gitignore` as an indexing policy, because tracked and local
+ignored source can still be intentional input.
+
+Zoekt supports the default source policy only when its fixed commit tree
+exactly matches the authenticated checkout and contains no tracked path that
+the default policy excludes. It does not currently support a non-empty custom
+exclusion set. A command that explicitly requests the `zoekt` view, including
+`--preset full`, fails closed when either condition is unmet; use the
+CodeGraph, `fast`, or semantic paths instead.
+In 0.2.2 the authenticated MCP `search_zoekt` runtime requires Linux `/proc`
+so the child process can inherit the exact retained shard generation; other
+platforms fail closed instead of reopening a mutable shard path.
+
 For a browser Wiki with hybrid BM25+dense retrieval, install the semantic extra:
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.1"
+python -m pip install "codenib[semantic]==0.2.2"
 codenib wiki /path/to/repository
 ```
 
 Both paths keep reusable state under `~/.codenib/repositories` and leave the
 target checkout unchanged. Set `CODENIB_HOME` to relocate state. The
-[0.2.1 release notes](https://docs.codenib.ai/releases/0.2.1/) record the
+[0.2.2 release notes](https://docs.codenib.ai/releases/0.2.2/) record the
 upgrade boundary and installed-product evidence.
 
 Preview the CodeGraph operations without installing, indexing, or configuring
@@ -148,7 +179,7 @@ only their package-level providers; operating-system and project prerequisites
 remain explicit:
 
 ```bash
-python -m pip install "codenib[graph]==0.2.1"
+python -m pip install "codenib[graph]==0.2.2"
 codenib toolchain install /path/to/repository --scope graph
 codenib doctor /path/to/repository --require graph
 ```
@@ -166,7 +197,7 @@ provider credential; interactive Ask and runtime graph exploration remain on
 the local or MCP serving path.
 
 For a repository-hosted Wiki, CodeNib also ships a reusable GitHub workflow
-that incrementally builds the same manifest, deploys the static site to Pages,
+that builds or reuses the same manifest, deploys the static site to Pages,
 and uploads the matching commit-addressed context artifact. Its default
 `semantic` route builds BM25 and vector views with a cached local Hugging Face
 model and needs no API key. An explicit `fast` route avoids the model download;
@@ -190,7 +221,7 @@ The recommended path configures installed Codex and Claude Code clients through
 their native CLIs:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.1"
+python -m pip install "codenib[graph,mcp]==0.2.2"
 codenib codegraph init /path/to/repository
 ```
 
@@ -220,7 +251,7 @@ capabilities, loaded views, fusion, graph, and reranking trace.
 
 | Surface | Purpose |
 |---|---|
-| Incremental compiler | Build independently managed views, reuse unchanged content, repair supported transitions, and conservatively rebuild outside those boundaries |
+| View compiler | Build independently managed views, reuse current generations, and atomically rebuild changed views under one source identity |
 | Agent context runtime | Plan capability-aware retrieval and navigation, then assemble bounded source-linked evidence |
 | Retrieval | BM25, dense-vector, regex/trigram, Zoekt, fusion, and reranking paths; see the [validated model matrix](https://docs.codenib.ai/rag_ops/#validated-models) |
 | Structural context | SCIP/LSP-backed symbol graphs with source locations and typed edges |
@@ -269,7 +300,7 @@ running the credential- or toolchain-dependent tiers.
 
 ## Status
 
-CodeNib `0.2.1` is a beta release. The CLI and manifest format are usable, but
+CodeNib `0.2.2` is a beta release. The CLI and manifest format are usable, but
 public interfaces may still change before a stable release. Historical
 research artifacts retain their published dataset identifiers; the maintained
 package, import namespace, commands, and repository use `CodeNib`. See

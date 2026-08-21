@@ -24,6 +24,10 @@ from .languages import (
 from .log_utils import get_logger
 from .paths import user_state_dir
 from .repository_filters import DEFAULT_IGNORED_DIRS, repository_path_is_visible
+from .repository_source_selection import (
+    RepositorySourceSelection,
+    repository_relative_source_path,
+)
 from .utils import is_test_file
 
 logger = get_logger(__name__)
@@ -53,6 +57,9 @@ class RepoChunkingConfig:
     # Directory filtering
     ignore_dirs: Set[str] = None
     include_dirs: Set[str] = None  # If specified, only these dirs will be processed
+    source_selection: RepositorySourceSelection = field(
+        default_factory=RepositorySourceSelection
+    )
 
     # File filtering
     ignore_patterns: Set[str] = None
@@ -63,6 +70,14 @@ class RepoChunkingConfig:
 
     def __post_init__(self):
         """Initialize default values."""
+        if type(self.source_selection) is not RepositorySourceSelection:
+            raise TypeError("source_selection must be a RepositorySourceSelection")
+        # Retain a detached snapshot.  RepositorySourceSelection is frozen, but
+        # callers can still bypass dataclass guards with object.__setattr__.
+        self.source_selection = RepositorySourceSelection(
+            self.source_selection.exclude_subtrees
+        )
+
         if not self.languages:
             self.languages = []
 
@@ -259,13 +274,21 @@ class CodeChunker:
         if not repo_path.is_dir():
             raise ValueError(f"Repository path is not a directory: {repo_path}")
 
-        languages = self.repo_config.languages or self._detect_repo_language(repo_path)
+        source_selection = self._source_selection_snapshot()
+        languages = self.repo_config.languages or self._detect_repo_language(
+            repo_path,
+            source_selection=source_selection,
+        )
 
         logger.info(f"Chunking repository: {repo_path}")
         logger.info(f"Target languages: {', '.join(languages)}")
 
         # Discover files
-        files_to_process = self._discover_files(repo_path, languages)
+        files_to_process = self._discover_files(
+            repo_path,
+            languages,
+            source_selection=source_selection,
+        )
         logger.info(f"Found {len(files_to_process)} files to process")
 
         # Process files
@@ -286,6 +309,12 @@ class CodeChunker:
                     ) from e
                 logger.warning(f"Failed to process {file_path}: {e}")
                 continue
+
+        self._require_selected_chunks(
+            all_chunks,
+            source_selection,
+            repository_root=repo_path,
+        )
 
         logger.info(
             f"Successfully processed {processed_count}/{len(files_to_process)} files"
@@ -313,8 +342,16 @@ class CodeChunker:
         if not repo_path.exists():
             raise ValueError(f"Repository path does not exist: {repo_path}")
 
-        languages = self.repo_config.languages or self._detect_repo_language(repo_path)
-        files_to_process = self._discover_files(repo_path, languages)
+        source_selection = self._source_selection_snapshot()
+        languages = self.repo_config.languages or self._detect_repo_language(
+            repo_path,
+            source_selection=source_selection,
+        )
+        files_to_process = self._discover_files(
+            repo_path,
+            languages,
+            source_selection=source_selection,
+        )
 
         stats = {
             "repo_path": str(repo_path),
@@ -378,7 +415,13 @@ class CodeChunker:
             rel_path = Path(file_path).name  # Just show filename for brevity
             logger.info(f"  {rel_path}: {len(file_chunks)} chunks")
 
-    def _discover_files(self, repo_path: Path, languages: List[str]) -> List[tuple]:
+    def _discover_files(
+        self,
+        repo_path: Path,
+        languages: List[str],
+        *,
+        source_selection: Optional[RepositorySourceSelection] = None,
+    ) -> List[tuple]:
         """
         Discover all relevant code files in the repository.
 
@@ -390,6 +433,13 @@ class CodeChunker:
             List of (file_path, language) tuples
         """
         files_to_process = []
+        selected = (
+            self._source_selection_snapshot()
+            if source_selection is None
+            else source_selection
+        )
+        if type(selected) is not RepositorySourceSelection:
+            raise TypeError("source_selection must be a RepositorySourceSelection")
 
         extension_to_language: Dict[str, str] = {}
         for language in languages:
@@ -409,7 +459,10 @@ class CodeChunker:
             dirs[:] = [
                 directory
                 for directory in dirs
-                if repository_path_is_visible(
+                if selected.allows(
+                    (root_path / directory).relative_to(repo_path).as_posix()
+                )
+                and repository_path_is_visible(
                     (root_path / directory).relative_to(repo_path)
                 )
                 and self._should_include_directory(root_path / directory)
@@ -419,9 +472,12 @@ class CodeChunker:
             for file_name in files:
                 file_path = root_path / file_name
 
-                if repository_path_is_visible(
-                    file_path.relative_to(repo_path)
-                ) and self._should_process_file(file_path, extension_to_language):
+                relative_path = file_path.relative_to(repo_path)
+                if (
+                    selected.allows(relative_path.as_posix())
+                    and repository_path_is_visible(relative_path)
+                    and self._should_process_file(file_path, extension_to_language)
+                ):
                     language = extension_to_language[file_path.suffix]
                     files_to_process.append((file_path, language))
 
@@ -549,7 +605,7 @@ class CodeChunker:
 
         # Calculate relative path if repo_path is provided
         if repo_path:
-            relative_path = str(file_path.relative_to(repo_path))
+            relative_path = file_path.relative_to(repo_path).as_posix()
             # Pass relative path to chunker for proper node_id generation
             return chunker.chunk_file(
                 str(file_path),
@@ -630,7 +686,12 @@ class CodeChunker:
 
         return result
 
-    def _detect_repo_language(self, repo_path: Path) -> List[str]:
+    def _detect_repo_language(
+        self,
+        repo_path: Path,
+        *,
+        source_selection: Optional[RepositorySourceSelection] = None,
+    ) -> List[str]:
         """
         Auto-detect the primary programming language(s) in a repository.
 
@@ -640,6 +701,14 @@ class CodeChunker:
         Returns:
             List of detected languages
         """
+        selected = (
+            self._source_selection_snapshot()
+            if source_selection is None
+            else source_selection
+        )
+        if type(selected) is not RepositorySourceSelection:
+            raise TypeError("source_selection must be a RepositorySourceSelection")
+
         language_extensions = {
             language: self._extensions_for_chunker_language(language)
             for language in chunker_languages()
@@ -654,7 +723,10 @@ class CodeChunker:
             dirs[:] = [
                 directory
                 for directory in dirs
-                if repository_path_is_visible(
+                if selected.allows(
+                    (root_path / directory).relative_to(repo_path).as_posix()
+                )
+                and repository_path_is_visible(
                     (root_path / directory).relative_to(repo_path)
                 )
                 and self._should_include_directory(root_path / directory)
@@ -662,8 +734,10 @@ class CodeChunker:
 
             for file in files:
                 file_path = root_path / file
+                relative_path = file_path.relative_to(repo_path)
                 if (
-                    repository_path_is_visible(file_path.relative_to(repo_path))
+                    selected.allows(relative_path.as_posix())
+                    and repository_path_is_visible(relative_path)
                     and file_path.suffix
                 ):
                     extension_counts[file_path.suffix] = (
@@ -682,6 +756,44 @@ class CodeChunker:
         result = list(detected_languages)
         logger.info(f"Detected languages: {result}")
         return result
+
+    def _source_selection_snapshot(self) -> RepositorySourceSelection:
+        """Capture the exact source policy used for one repository operation."""
+
+        selected = self.repo_config.source_selection
+        if type(selected) is not RepositorySourceSelection:
+            raise TypeError("source_selection must be a RepositorySourceSelection")
+        return RepositorySourceSelection(selected.exclude_subtrees)
+
+    @staticmethod
+    def _require_selected_chunks(
+        chunks: List[CodeChunk],
+        source_selection: RepositorySourceSelection,
+        *,
+        repository_root: Path,
+    ) -> None:
+        """Reject any chunk whose lexical repository path escaped selection."""
+
+        if not source_selection.exclude_subtrees:
+            return
+        for chunk in chunks:
+            source_path = getattr(chunk, "file", None)
+            try:
+                relative_path = repository_relative_source_path(
+                    repository_root,
+                    source_path,
+                )
+                allowed = source_selection.allows(relative_path)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "repository chunk has a non-canonical source path: "
+                    f"{source_path!r}"
+                ) from exc
+            if not allowed:
+                raise RuntimeError(
+                    "repository source selection leaked excluded chunk: "
+                    f"{relative_path}"
+                )
 
     def _get_chunk_summary_dict(self, chunks: List[CodeChunk]) -> Dict[str, Any]:
         """Get a dictionary summary of chunks (for JSON serialization)."""

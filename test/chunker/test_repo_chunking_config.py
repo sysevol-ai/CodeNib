@@ -5,11 +5,13 @@
 """Unit tests for repository-level chunking language metadata."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from codenib.code_chunker import CodeChunker, RepoChunkingConfig
 from codenib.languages import extensions_for_language
+from codenib.repository_source_selection import RepositorySourceSelection
 
 
 def test_repo_chunking_config_defaults_come_from_language_registry():
@@ -26,6 +28,18 @@ def test_repo_chunking_config_defaults_come_from_language_registry():
     assert cfg.kotlin_extensions == extensions_for_language("kotlin", "chunker")
     assert cfg.javascript_extensions == extensions_for_language("javascript", "chunker")
     assert cfg.typescript_extensions == extensions_for_language("typescript", "chunker")
+
+
+def test_repo_chunking_config_retains_an_exact_detached_selection_snapshot():
+    selection = RepositorySourceSelection(["src/private"])
+    cfg = RepoChunkingConfig(source_selection=selection)
+
+    object.__setattr__(selection, "exclude_subtrees", ("src/changed",))
+
+    assert cfg.source_selection is not selection
+    assert cfg.source_selection.exclude_subtrees == ("src/private",)
+    with pytest.raises(TypeError, match="RepositorySourceSelection"):
+        RepoChunkingConfig(source_selection=object())
 
 
 def test_repo_discovery_normalizes_language_aliases(tmp_path: Path):
@@ -62,6 +76,88 @@ def test_repo_discovery_respects_custom_extension_overrides(tmp_path: Path):
 
     assert stats["total_files"] == 1
     assert stats["files_by_language"]["python"][0]["path"] == "tool.pyw"
+
+
+def test_repo_discovery_applies_exact_selection_before_file_reads(
+    tmp_path: Path,
+    monkeypatch,
+):
+    paths = (
+        "src/app.py",
+        "src/private/secret.py",
+        "src/private_api/public.py",
+        "other/private/also_public.py",
+    )
+    for relative in paths:
+        source = tmp_path / relative
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("value = 1\n", encoding="utf-8")
+
+    cfg = RepoChunkingConfig(
+        languages=["python"],
+        filter_tests=False,
+        source_selection=RepositorySourceSelection(["src/private"]),
+    )
+    chunker = CodeChunker(language="python", repo_config=cfg)
+    inspected = []
+
+    def inspect_minification(file_path):
+        inspected.append(file_path.relative_to(tmp_path).as_posix())
+        return False
+
+    monkeypatch.setattr(chunker, "_is_minified_file", inspect_minification)
+
+    files = chunker._discover_files(tmp_path, cfg.languages)
+    discovered = [path.relative_to(tmp_path).as_posix() for path, _ in files]
+
+    assert discovered == [
+        "other/private/also_public.py",
+        "src/app.py",
+        "src/private_api/public.py",
+    ]
+    assert inspected == discovered
+
+
+def test_repo_language_detection_ignores_excluded_subtrees(tmp_path: Path):
+    excluded = tmp_path / "generated" / "main.go"
+    excluded.parent.mkdir()
+    excluded.write_text("package main\n", encoding="utf-8")
+    included = tmp_path / "lib" / "app.rb"
+    included.parent.mkdir()
+    included.write_text("class App\nend\n", encoding="utf-8")
+    cfg = RepoChunkingConfig(
+        source_selection=RepositorySourceSelection(["generated"]),
+    )
+    chunker = CodeChunker(language="python", repo_config=cfg)
+
+    assert chunker._detect_repo_language(tmp_path) == ["ruby"]
+
+
+def test_repository_chunking_rejects_an_excluded_chunk_result(
+    tmp_path: Path,
+    monkeypatch,
+):
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    cfg = RepoChunkingConfig(
+        languages=["python"],
+        filter_tests=False,
+        source_selection=RepositorySourceSelection(["src/private"]),
+    )
+    chunker = CodeChunker(language="python", repo_config=cfg)
+    monkeypatch.setattr(
+        chunker,
+        "_discover_files",
+        lambda *_args, **_kwargs: [(source, "python")],
+    )
+    monkeypatch.setattr(
+        chunker,
+        "_chunk_file_with_language",
+        lambda *_args: [SimpleNamespace(file="src/private/secret.py")],
+    )
+
+    with pytest.raises(RuntimeError, match="leaked excluded chunk"):
+        chunker.chunk_repository(str(tmp_path), strict=True)
 
 
 def test_strict_repository_chunking_rejects_partial_results(tmp_path, monkeypatch):

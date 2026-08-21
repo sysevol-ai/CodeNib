@@ -17,12 +17,18 @@ import pytest
 import codenib.compiler as compiler_module
 import codenib.compiler.manifest_storage as manifest_storage_module
 from codenib.compiler.index_builders import BM25IndexBuilder, VectorIndexBuilder
-from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.compiler.manifest import (
+    LEGACY_MANIFEST_VERSION,
+    MANIFEST_VERSION,
+    IndexEntry,
+    RepoManifest,
+)
 from codenib.compiler.manifest_storage import (
     BM25_PROFILE_AXES,
     DEFAULT_MAX_MANIFEST_BYTES,
     REPO_MANIFEST_BM25_GENERATION_CONTRACT,
     REPO_MANIFEST_IMPORT_PLAN_SCHEMA,
+    REPO_MANIFEST_IMPORT_PLAN_SCHEMA_V1,
     REPO_MANIFEST_PROFILE_CONTRACT,
     REPO_MANIFEST_PROFILE_NAME,
     REPO_MANIFEST_VECTOR_GENERATION_CONTRACT,
@@ -39,7 +45,10 @@ from codenib.index.embedding.model_policy import (
     DEFAULT_EMBEDDING_REVISION,
 )
 from codenib.provider_routes import resolve_inference_route
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.storage.models import StorageValidationError, ViewProfile, canonical_json
+
+_DEFAULT_SOURCE_SELECTION = RepositorySourceSelection()
 
 
 def _file_record(seed: str, *, filename: str | None = None) -> dict[str, object]:
@@ -49,11 +58,14 @@ def _file_record(seed: str, *, filename: str | None = None) -> dict[str, object]
     return record
 
 
-def _bm25_config() -> dict[str, object]:
+def _bm25_config(
+    source_selection: RepositorySourceSelection = _DEFAULT_SOURCE_SELECTION,
+) -> dict[str, object]:
     config = BM25IndexBuilder(
         languages=["python", "typescript"],
         max_k=96,
         max_lines_per_chunk=240,
+        source_selection=source_selection,
     ).artifact_identity()
     config["artifact_file_fingerprints"] = {
         "documents.json": _file_record("a"),
@@ -65,13 +77,16 @@ def _bm25_config() -> dict[str, object]:
     return config
 
 
-def _vector_config() -> dict[str, object]:
+def _vector_config(
+    source_selection: RepositorySourceSelection = _DEFAULT_SOURCE_SELECTION,
+) -> dict[str, object]:
     config = VectorIndexBuilder(
         languages=["python", "typescript"],
         embedding_model="test/model",
         embedding_dimension=4,
         build_levels=["l0", "l2"],
         max_lines_per_chunk=240,
+        source_selection=source_selection,
     ).artifact_identity()
     config["persistence_config_fingerprint"] = _file_record(
         "c", filename="config_test__model.json"
@@ -117,6 +132,7 @@ def _entry(
     fingerprint: str,
     commit: str,
     status: str = "fresh",
+    source_selection_digest: str = "",
 ) -> IndexEntry:
     return IndexEntry(
         index_type=view_type,
@@ -128,6 +144,7 @@ def _entry(
         metadata={**copy.deepcopy(config), "build_duration_seconds": 0.25},
         commit=commit,
         source_fingerprint=fingerprint,
+        source_selection_digest=source_selection_digest,
     )
 
 
@@ -136,30 +153,50 @@ def _manifest(
     fingerprint_version: int = 2,
     include_vector: bool = True,
     commit: str = "c" * 40,
+    manifest_version: str = MANIFEST_VERSION,
+    exclude_subtrees: tuple[str, ...] = (),
 ) -> RepoManifest:
     prefix = "sha256-v2:" if fingerprint_version == 2 else "sha256:"
     fingerprint = prefix + "d" * 64
+    selection = (
+        RepositorySourceSelection(exclude_subtrees)
+        if manifest_version == MANIFEST_VERSION
+        else None
+    )
+    selection_digest = "" if selection is None else selection.digest
+    builder_selection = selection or RepositorySourceSelection()
+    bm25_config = _bm25_config(builder_selection)
+    vector_config = _vector_config(builder_selection)
+    if manifest_version == LEGACY_MANIFEST_VERSION:
+        for config in (bm25_config, vector_config):
+            config.pop("source_selection_digest")
+            config["repository_filter_policy"] = 3
     indexes = {
         "bm25": _entry(
             "bm25",
-            _bm25_config(),
+            bm25_config,
             fingerprint=fingerprint,
             commit=commit,
+            source_selection_digest=selection_digest,
         )
     }
     if include_vector:
         indexes["vector"] = _entry(
             "vector",
-            _vector_config(),
+            vector_config,
             fingerprint=fingerprint,
             commit=commit,
+            source_selection_digest=selection_digest,
         )
     return RepoManifest(
+        version=manifest_version,
         repo_path="source",
         commit=commit,
         last_indexed_commit=commit,
         source_fingerprint=fingerprint,
         last_indexed_source_fingerprint=fingerprint,
+        source_selection=selection,
+        last_indexed_source_selection_digest=selection_digest,
         languages=["python", "typescript"],
         file_count=3,
         indexes=indexes,
@@ -183,6 +220,7 @@ def _add_unselected_view(
         fingerprint=manifest.source_fingerprint,
         commit=manifest.commit,
         status=status,
+        source_selection_digest=manifest.source_selection_digest or "",
     )
     manifest.indexes["symbol_graph"] = entry
     return entry
@@ -234,7 +272,7 @@ def test_plan_accepts_current_builder_contracts_and_is_canonical() -> None:
     assert tuple(plan.view_map) == ("bm25", "vector")
     assert plan.view_map["bm25"].profile.config == {
         "contract": REPO_MANIFEST_PROFILE_CONTRACT,
-        "manifest_version": "1.1",
+        "manifest_version": MANIFEST_VERSION,
         "builder_schema": manifest.indexes["bm25"].config["builder_schema"],
         "compatibility": {
             axis: manifest.indexes["bm25"].config[axis]
@@ -262,6 +300,65 @@ def test_plan_accepts_current_builder_contracts_and_is_canonical() -> None:
     assert reparsed.manifest_digest == plan.manifest_digest
     assert reparsed.canonical_bytes == plan.canonical_bytes
     assert reparsed.plan_digest == plan.plan_digest
+
+
+def test_v12_plan_binds_canonical_source_selection_into_every_identity() -> None:
+    manifest = _manifest(exclude_subtrees=("generated", "vendor/cache"))
+    plan = plan_repo_manifest_import(manifest)
+    selection = manifest.source_selection
+
+    assert selection is not None
+    assert plan.schema == REPO_MANIFEST_IMPORT_PLAN_SCHEMA
+    assert plan.source.source_selection == selection
+    assert plan.source.to_dict()["source_selection"] == selection.to_dict()
+    assert plan.source.to_dict()["source_selection_digest"] == selection.digest
+    assert plan.manifest.source_selection == selection
+    assert all(
+        view.profile.config["compatibility"]["source_selection_digest"]
+        == selection.digest
+        for view in plan.views
+    )
+
+    same_bytes_different_policy = _manifest(exclude_subtrees=("other",))
+    other = plan_repo_manifest_import(same_bytes_different_policy)
+    assert other.source.fingerprint == plan.source.fingerprint
+    assert other.source.file_count == plan.source.file_count
+    assert other.source.identity_digest != plan.source.identity_digest
+    assert other.plan_digest != plan.plan_digest
+
+
+def test_v11_plan_round_trips_without_inventing_a_selection_identity() -> None:
+    manifest = _manifest(manifest_version=LEGACY_MANIFEST_VERSION)
+    original = canonical_json(manifest.to_dict()).encode("ascii")
+    plan = plan_repo_manifest_import_bytes(original)
+
+    assert plan.schema == REPO_MANIFEST_IMPORT_PLAN_SCHEMA_V1
+    assert plan.canonical_manifest_bytes == original
+    assert plan.manifest.version == LEGACY_MANIFEST_VERSION
+    assert plan.source.source_selection is None
+    assert "source_selection" not in plan.source.to_dict()
+    assert "source_selection_digest" not in plan.source.to_dict()
+    assert all(
+        view.profile.config["manifest_version"] == LEGACY_MANIFEST_VERSION
+        for view in plan.views
+    )
+    assert "source_selection" not in json.loads(original)["repo"]
+    assert all(
+        "source_selection_digest" not in entry
+        for entry in json.loads(original)["indexes"].values()
+    )
+
+
+def test_manifest_versions_reject_cross_version_selection_fields() -> None:
+    legacy = _manifest(manifest_version=LEGACY_MANIFEST_VERSION).to_dict()
+    legacy["repo"]["source_selection"] = RepositorySourceSelection().to_dict()
+    with pytest.raises(StorageValidationError, match="invalid shape"):
+        plan_repo_manifest_import(legacy)
+
+    current = _manifest().to_dict()
+    current["repo"].pop("source_selection")
+    with pytest.raises(StorageValidationError, match="invalid shape"):
+        plan_repo_manifest_import(current)
 
 
 def test_planner_symbols_are_lazy_compiler_exports() -> None:
@@ -456,8 +553,16 @@ def test_normal_repo_path_and_display_commit_are_not_authority_claim_keys() -> N
 
 
 def test_v1_source_is_diagnostic_and_commit_is_only_display_provenance() -> None:
-    first_manifest = _manifest(fingerprint_version=1, commit="a" * 40)
-    second_manifest = _manifest(fingerprint_version=1, commit="b" * 40)
+    first_manifest = _manifest(
+        fingerprint_version=1,
+        commit="a" * 40,
+        manifest_version=LEGACY_MANIFEST_VERSION,
+    )
+    second_manifest = _manifest(
+        fingerprint_version=1,
+        commit="b" * 40,
+        manifest_version=LEGACY_MANIFEST_VERSION,
+    )
     first = plan_repo_manifest_import(first_manifest)
     second = plan_repo_manifest_import(second_manifest)
 
@@ -837,6 +942,7 @@ def test_selection_is_canonical_and_nonportable_views_are_not_inferred() -> None
         {},
         fingerprint=manifest.source_fingerprint,
         commit=manifest.commit,
+        source_selection_digest=manifest.source_selection_digest or "",
     )
     plan = plan_repo_manifest_import(
         manifest,
@@ -892,7 +998,10 @@ def test_required_view_needs_an_exact_manifest_source_binding(drift: str) -> Non
     else:
         entry.index_type = "vector"
 
-    with pytest.raises(StorageValidationError, match="not current|does not match"):
+    with pytest.raises(
+        StorageValidationError,
+        match="not current|does not match|not canonical",
+    ):
         plan_repo_manifest_import(manifest, views=["bm25"])
 
 
@@ -904,8 +1013,10 @@ def test_strict_json_rejects_ambiguous_or_nonobject_documents(corruption: str) -
     manifest = _manifest(include_vector=False)
     payload = json.dumps(manifest.to_dict())
     if corruption == "duplicate":
+        version_literal = json.dumps(MANIFEST_VERSION)
         payload = payload.replace(
-            '"version": "1.1"', '"version": "1.1", "version": "1.1"'
+            f'"version": {version_literal}',
+            f'"version": {version_literal}, "version": {version_literal}',
         )
     elif corruption == "nan":
         payload = payload.replace(

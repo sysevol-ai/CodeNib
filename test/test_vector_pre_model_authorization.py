@@ -18,6 +18,7 @@ from codenib.native_index_authorization import (
     MissingNativeIndexAuthorizationError,
     _mint_trusted_local_admin_authorization,
 )
+from codenib.repository_source_selection import RepositorySourceSelection
 
 _VECTOR_CONTRACT = {
     "builder_schema": 2,
@@ -27,6 +28,9 @@ _VECTOR_CONTRACT = {
     "dimension": 4,
     "embedding_kwargs": {},
 }
+_SOURCE_COMMIT = "a" * 40
+_SOURCE_FINGERPRINT = "sha256-v2:" + ("b" * 64)
+_SOURCE_SELECTION = RepositorySourceSelection()
 
 
 def _mint_vector_authorization(root: Path, semantic_contract):
@@ -209,9 +213,21 @@ def _server_context(target: Path, authorization):
         built_at_epoch=0.0,
         status="fresh",
         config=dict(_VECTOR_CONTRACT),
+        commit=_SOURCE_COMMIT,
+        source_fingerprint=_SOURCE_FINGERPRINT,
+        source_selection_digest=_SOURCE_SELECTION.digest,
     )
     return ServerContext(
-        manifest=RepoManifest(indexes={"vector": entry}),
+        manifest=RepoManifest(
+            repo_path="/repo",
+            commit=_SOURCE_COMMIT,
+            last_indexed_commit=_SOURCE_COMMIT,
+            source_fingerprint=_SOURCE_FINGERPRINT,
+            last_indexed_source_fingerprint=_SOURCE_FINGERPRINT,
+            source_selection=_SOURCE_SELECTION,
+            last_indexed_source_selection_digest=_SOURCE_SELECTION.digest,
+            indexes={"vector": entry},
+        ),
         _native_index_authorization=authorization,
     )
 

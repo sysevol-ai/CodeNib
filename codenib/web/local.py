@@ -17,10 +17,13 @@ from typing import Any, Mapping
 import yaml
 
 from ..compiler.manifest import RepoManifest
+from ..compiler.manifest_source import (
+    capture_repository_source_for_manifest as capture_repository_source,
+)
+from ..compiler.manifest_source import require_manifest_source_identity
 from ..compiler.snapshot_store import normalize_repo
 from ..llm.options import validate_model_options
 from ..source_fingerprint import (
-    capture_repository_source,
     is_secure_source_fingerprint_v2,
     lexical_repository_path,
 )
@@ -107,14 +110,16 @@ def prepare_local_wiki(
     try:
         source_binding = capture_repository_source(
             repo_path,
+            manifest=manifest,
             exclude_roots=(manifest_path.parent,),
             _source_owner=cleanup_owner.retain,
         )
-        if (
-            source_binding.fingerprint != manifest.source_fingerprint
-            or source_binding.file_count != manifest.file_count
-        ):
-            raise ValueError("repository source content does not match the manifest")
+        require_manifest_source_identity(
+            source_binding.authenticated_identity_snapshot(),
+            manifest,
+            label="local wiki repository",
+            mismatch_message=("repository source content does not match the manifest"),
+        )
     except BaseException as primary:  # noqa: B036 - preserve validation fault
         try:
             cleanup_owner.close()

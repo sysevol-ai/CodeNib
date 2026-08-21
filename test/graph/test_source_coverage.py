@@ -9,6 +9,7 @@ import subprocess
 from codenib.git_snapshot import GitSourceSurface
 from codenib.graph.code_graph import CodeGraph
 from codenib.graph.source_coverage import supplement_graph_source_coverage
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.types import EDGE_TYPE_CONTAIN
 
 
@@ -116,3 +117,37 @@ def test_source_coverage_records_parser_failure_without_aborting(tmp_path, monke
     assert report["unreadable_files"] == ["broken.py"]
     assert report["unreadable_errors"] == {"broken.py": "ValueError: parser failed"}
     assert report["coverage_after"] == 0.0
+
+
+def test_source_coverage_excludes_unselected_subtrees(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test User")
+    (repo / "src").mkdir()
+    (repo / "private").mkdir()
+    (repo / "src" / "kept.py").write_text("def kept(): pass\n", encoding="utf-8")
+    (repo / "private" / "secret.py").write_text(
+        "def secret(): pass\n", encoding="utf-8"
+    )
+    _git(repo, "add", "src/kept.py", "private/secret.py")
+    _git(repo, "commit", "-m", "initial")
+    graph = CodeGraph(str(repo))
+    graph.add_root_node(str(repo))
+
+    selection = RepositorySourceSelection(["private"])
+    report = supplement_graph_source_coverage(
+        graph,
+        repo_root=repo,
+        surface=GitSourceSurface.load(repo),
+        extensions={".py"},
+        represented_paths={"src/kept.py"},
+        source_selection=selection,
+    )
+
+    assert report["source_selection_digest"] == selection.digest
+    assert report["tracked_source_files"] == 1
+    assert report["candidate_files"] == 0
+    assert report["coverage_after"] == 1.0
+    assert "private/secret.py" not in graph.name_to_vertex

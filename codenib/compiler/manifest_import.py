@@ -76,7 +76,6 @@ from ..storage.view_bundle import (
     consume_planned_view_bundle,
     plan_view_bundle_reader,
 )
-from .manifest import MANIFEST_VERSION
 from .manifest_storage import (
     RepoManifestImportPlan,
     SourceIntent,
@@ -365,6 +364,13 @@ def _snapshot_plan(plan: RepoManifestImportPlan) -> RepoManifestImportPlan:
             fingerprint_version=plan.source.fingerprint_version,
             file_count=plan.source.file_count,
             display_commit=plan.source.display_commit,
+            source_selection=(
+                None
+                if plan.source.source_selection is None
+                else type(plan.source.source_selection)(
+                    plan.source.source_selection.exclude_subtrees
+                )
+            ),
         )
         selection = ViewSelection(
             required_views=tuple(plan.selection.required_views),
@@ -563,6 +569,14 @@ def _portable_projection_manifest(
     return manifest
 
 
+def _intent_generation_metadata(intent: ViewImportIntent) -> dict[str, Any]:
+    """Keep retained generation identity bound to the embedded manifest."""
+
+    metadata = _generation_metadata(intent)
+    metadata["manifest_version"] = intent.profile.config["manifest_version"]
+    return metadata
+
+
 def _projection_value(
     plan: RepoManifestImportPlan,
     *,
@@ -571,20 +585,28 @@ def _projection_value(
     source: SourceRevision,
     views: Sequence[_PreparedView],
 ) -> dict[str, Any]:
+    projected_source: dict[str, Any] = {
+        "source_revision_id": source.source_revision_id,
+        "kind": source.source_kind,
+        "source_fingerprint": source.source_fingerprint,
+        "file_count": plan.source.file_count,
+        "display_commit": plan.source.display_commit,
+        "verification_scope": "content-bytes",
+        "source_verified": True,
+        "commit_verified": False,
+        "checkout_state": "not-attested",
+    }
+    if plan.source.source_selection is not None:
+        projected_source.update(
+            {
+                "source_selection": plan.source.source_selection.to_dict(),
+                "source_selection_digest": plan.source.source_selection.digest,
+            }
+        )
     return {
         "schema": REPO_MANIFEST_PROJECTION_SCHEMA,
         "repository_id": repository_id,
-        "source": {
-            "source_revision_id": source.source_revision_id,
-            "kind": source.source_kind,
-            "source_fingerprint": source.source_fingerprint,
-            "file_count": plan.source.file_count,
-            "display_commit": plan.source.display_commit,
-            "verification_scope": "content-bytes",
-            "source_verified": True,
-            "commit_verified": False,
-            "checkout_state": "not-attested",
-        },
+        "source": projected_source,
         "artifact": {
             "workspace_plan_digest": artifact_plan_digest,
             "postflight": "completed-before-catalog",
@@ -717,6 +739,7 @@ def _prepare_import_inside_authority(
         publication,
         expected_repository=repository_key,
         expected_commit=plan.source.display_commit,
+        expected_manifest_version=plan.manifest.version,
         max_files=max_context_files,
         max_bytes=max_context_bytes,
     )
@@ -819,7 +842,7 @@ def _prepare_import_inside_authority(
             intent.profile,
             bundle_object.record,
             schema_version=VIEW_BUNDLE_SCHEMA,
-            metadata=_generation_metadata(intent),
+            metadata=_intent_generation_metadata(intent),
             member_object_digests=member_digests,
         )
         prepared_views.append(
@@ -869,7 +892,7 @@ def _prepare_import_inside_authority(
     )
     projection_metadata = {
         "contract": REPO_MANIFEST_PROJECTION_SCHEMA,
-        "manifest_version": MANIFEST_VERSION,
+        "manifest_version": plan.manifest.version,
         "manifest_digest": plan.manifest_digest,
         "plan_digest": plan.plan_digest,
         "projected_views": [view.intent.view_type for view in prepared_views],
@@ -1422,6 +1445,7 @@ def import_retained_repo_manifest(
     if (
         plan.source.fingerprint != source_snapshot.fingerprint
         or plan.source.file_count != source_snapshot.file_count
+        or plan.source.source_selection != source_snapshot.source_selection
     ):
         raise StorageIntegrityError(
             "manifest import plan differs from the retained repository source"

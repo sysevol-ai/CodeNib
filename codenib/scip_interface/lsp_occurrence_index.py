@@ -12,7 +12,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
+from typing import Any, BinaryIO, Callable, Iterable, Mapping, Optional, Sequence
 
 from .scip_indexer_base import extract_scip_blocks, extract_symbol
 
@@ -135,13 +135,25 @@ class SCIPOccurrenceIndex:
     @classmethod
     def load(cls, path: str | Path) -> SCIPOccurrenceIndex:
         with Path(path).open("rb") as handle:
-            payload = pickle.load(handle)
+            return cls.load_stream(handle, input_label=str(path))
+
+    @classmethod
+    def load_stream(
+        cls,
+        handle: BinaryIO,
+        *,
+        input_label: str = "<authenticated stream>",
+    ) -> SCIPOccurrenceIndex:
+        """Load an occurrence index from a caller-owned binary stream."""
+
+        payload = pickle.load(handle)
         if not isinstance(payload, Mapping):
-            raise ValueError(f"invalid LSP occurrence index at {path}")
+            raise ValueError(f"invalid LSP occurrence index at {input_label}")
         version = payload.get("schema_version")
         if version != LSP_OCCURRENCE_INDEX_SCHEMA_VERSION:
             raise ValueError(
-                f"LSP occurrence index at {path} has schema_version={version!r}, "
+                f"LSP occurrence index at {input_label} "
+                f"has schema_version={version!r}, "
                 f"expected {LSP_OCCURRENCE_INDEX_SCHEMA_VERSION}"
             )
         rows = payload.get("occurrences") or ()

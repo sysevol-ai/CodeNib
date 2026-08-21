@@ -21,7 +21,17 @@ import os
 import re
 from collections import deque
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from ..graph.code_graph import CodeGraph
 from ..graph.hierarchy import (
@@ -32,6 +42,7 @@ from ..graph.hierarchy import (
     hierarchy_from_view_nodes,
 )
 from ..graph.traverse_graph import RepoDependencySearcher
+from ..repository_filters import repository_path_is_visible
 from ..types import NODE_TYPE_FILE
 from ..utils import (
     file_has_generated_marker,
@@ -50,6 +61,7 @@ from .repository_files import (
 )
 
 if TYPE_CHECKING:
+    from ..repository_source_selection import RepositorySourceSelection
     from ..source_fingerprint import RepositorySourceReader
 
 # Node types eligible as a focus / default seed (skip file/dir/import nodes).
@@ -406,6 +418,7 @@ def _default_seed(
     graph: CodeGraph,
     derived: Optional[_DerivedFiles] = None,
     entry_paths: Optional[Sequence[str]] = None,
+    source_allowed: Optional[Callable[[Dict[str, Any]], bool]] = None,
 ) -> Optional[str]:
     """The symbol a reader should land on, best-first.
 
@@ -442,6 +455,8 @@ def _default_seed(
     for vertex in g.vs:
         a = vertex.attributes()
         if not a.get("unified_name") or a.get("type") not in _SYMBOL_TYPES:
+            continue
+        if source_allowed is not None and not source_allowed(a):
             continue
         name = a["name"]
         path = a.get("file") or name
@@ -671,6 +686,9 @@ def build_codemap(
     repo_dir: Optional[str] = None,
     repo_commit: Optional[str] = None,
     hierarchy_graph: Optional[HierarchicalCodeGraph] = None,
+    *,
+    source_reader: Optional[RepositorySourceReader] = None,
+    source_selection: Optional[RepositorySourceSelection] = None,
 ) -> Dict[str, Any]:
     """Return a dependency subgraph + Mermaid rendering around *symbol*.
 
@@ -687,23 +705,78 @@ def build_codemap(
     max_nodes = max(2, min(int(max_nodes), 120))
     note = ""
 
-    derived = _DerivedFiles(repo_dir, repo_commit)
+    def selected_source_path(value: object) -> Optional[str]:
+        if not isinstance(value, str) or not value:
+            return None
+        if source_reader is not None:
+            return source_reader.captured_relative_path(value)
+        if source_selection is None:
+            return value
+        relative = (
+            safe_repo_relative_path(repo_dir, value)
+            if repo_dir
+            else value.replace("\\", "/")
+        )
+        if relative is None or not repository_path_is_visible(
+            relative,
+            selection=source_selection,
+        ):
+            return None
+        return relative
+
+    policy_bound = source_reader is not None or source_selection is not None
+
+    def source_allowed(attrs: Dict[str, Any]) -> bool:
+        value = attrs.get("file")
+        return (
+            not isinstance(value, str)
+            or not value
+            or selected_source_path(value) is not None
+        )
+
+    def selected_edge_metadata(meta: Any) -> Any:
+        if not policy_bound or not isinstance(meta, dict):
+            return meta
+        anchor_file = meta.get("anchor_file")
+        if not anchor_file:
+            return meta
+        relative = selected_source_path(anchor_file)
+        if relative is None:
+            return None
+        selected = dict(meta)
+        selected["anchor_file"] = relative
+        return selected
+
+    derived = _DerivedFiles(
+        repo_dir,
+        repo_commit,
+        source_reader=source_reader,
+    )
     # Resolve a historical tree once for this request. The tiny process cache
     # is only a cross-request optimization and may be evicted by concurrent
     # maps; per-node classification must not depend on it staying hot.
     repo_paths: object = _GIT_PATHS_UNSET
-    if repo_dir and valid_commit(repo_commit):
+    if source_reader is None and repo_dir and valid_commit(repo_commit):
         repo_paths = git_tree_paths(os.path.realpath(repo_dir), str(repo_commit))
     # Entry-point discovery currently reads manifests from a checkout. Historical
     # graph requests must not borrow declarations from a different commit.
     entry_paths = (
-        [] if repo_commit else [entry.path for entry in discover_entry_points(repo_dir)]
+        []
+        if repo_commit or source_reader is not None
+        else [entry.path for entry in discover_entry_points(repo_dir)]
     )
     root = _resolve(graph, symbol) if symbol else None
+    if root is not None and not source_allowed(_attrs(graph, root)):
+        root = None
     if symbol and root is None:
         note = f"Symbol {symbol!r} not found — showing the repo's entry point."
     if root is None:
-        root = _default_seed(graph, derived, entry_paths)
+        root = _default_seed(
+            graph,
+            derived,
+            entry_paths,
+            source_allowed=source_allowed if policy_bound else None,
+        )
     if root is None:
         return {
             "available": False,
@@ -744,9 +817,19 @@ def build_codemap(
         # batch from the first scan only; CodeGraph already makes those anchors
         # distinct at insertion time.
         new_edge_keys: Set[Tuple[str, str]] = set()
+        admitted_neighbors: Set[str] = set()
         for src, tgt, _w, meta in n_edges:
             if src == tgt:
                 continue  # drop self-loops (recursion) — visual noise
+            if policy_bound and (
+                not source_allowed(_attrs(graph, src))
+                or not source_allowed(_attrs(graph, tgt))
+            ):
+                continue
+            meta = selected_edge_metadata(meta)
+            if meta is None:
+                continue
+            admitted_neighbors.update((src, tgt))
             key = (src, tgt)
             if key not in edge_seen:
                 edge_seen.add(key)
@@ -756,6 +839,10 @@ def build_codemap(
                 edge_anchors.add(key, meta)
         for nb in neighbors:
             if nb in seen:
+                continue
+            if policy_bound and (
+                nb not in admitted_neighbors or not source_allowed(_attrs(graph, nb))
+            ):
                 continue
             if len(seen) >= max_nodes:
                 truncated = True
@@ -778,7 +865,11 @@ def build_codemap(
                 "name": name,
                 "label": label,
                 "short": _short(label),
-                "file": a.get("file"),
+                "file": (
+                    selected_source_path(a.get("file"))
+                    if policy_bound
+                    else a.get("file")
+                ),
                 "line": (start + 1) if isinstance(start, int) else None,
                 "end_line": (
                     (a.get("end_line") + 1)
@@ -793,6 +884,7 @@ def build_codemap(
                     repo_dir,
                     repo_commit,
                     repo_paths=repo_paths,
+                    source_reader=source_reader,
                 ),
             }
         )
@@ -935,6 +1027,36 @@ def build_page_subgraph(
     max_nodes = max(2, min(int(max_nodes), 40))
     g = graph.get_graph()
 
+    def selected_source_path(value: object) -> Optional[str]:
+        if not isinstance(value, str) or not value:
+            return None
+        if source_reader is None:
+            return value
+        return source_reader.captured_relative_path(value)
+
+    def source_allowed(name: str) -> bool:
+        if source_reader is None:
+            return True
+        value = _attrs(graph, name).get("file")
+        return (
+            not isinstance(value, str)
+            or not value
+            or selected_source_path(value) is not None
+        )
+
+    def selected_edge_metadata(meta: Any) -> Any:
+        if source_reader is None or not isinstance(meta, dict):
+            return meta
+        anchor_file = meta.get("anchor_file")
+        if not anchor_file:
+            return meta
+        relative = selected_source_path(anchor_file)
+        if relative is None:
+            return None
+        selected = dict(meta)
+        selected["anchor_file"] = relative
+        return selected
+
     # Location + name index for resolving citations precisely (built once).
     by_loc: Dict[Tuple[str, int], str] = {}
     by_file: Dict[str, List[Tuple[int, str]]] = {}
@@ -944,8 +1066,10 @@ def build_page_subgraph(
         s = a.get("start_line")
         if not f or not isinstance(s, int) or not a.get("unified_name"):
             continue
-        normalized_file = f
-        if repo_dir and os.path.isabs(f):
+        normalized_file = selected_source_path(f)
+        if normalized_file is None:
+            continue
+        if source_reader is None and repo_dir and os.path.isabs(f):
             try:
                 relative = os.path.relpath(f, repo_dir)
                 if relative != ".." and not relative.startswith("../"):
@@ -958,8 +1082,14 @@ def build_page_subgraph(
     names: List[str] = []
     chosen: Set[str] = set()
     for cit in citations:
+        if source_reader is not None:
+            citation_file = selected_source_path(cit.get("file"))
+            if citation_file is None:
+                continue
+            cit = dict(cit)
+            cit["file"] = citation_file
         nm = _resolve_citation(graph, cit, by_loc, by_file, repo_dir)
-        if nm and nm not in chosen:
+        if nm and source_allowed(nm) and nm not in chosen:
             chosen.add(nm)
             names.append(nm)
         if len(names) >= max_nodes:
@@ -1008,6 +1138,11 @@ def build_page_subgraph(
         new_anchor_keys: Set[Tuple[str, str]] = set()
         for src, tgt, _w, meta in n_edges:
             if src == tgt:
+                continue
+            if not source_allowed(src) or not source_allowed(tgt):
+                continue
+            meta = selected_edge_metadata(meta)
+            if meta is None:
                 continue
             key = (src, tgt)
             if key not in anchor_edges_seen:
@@ -1083,6 +1218,11 @@ def build_page_subgraph(
         for src, tgt, _w, meta in n_edges:
             if src == tgt or src not in nameset or tgt not in nameset:
                 continue
+            if not source_allowed(src) or not source_allowed(tgt):
+                continue
+            meta = selected_edge_metadata(meta)
+            if meta is None:
+                continue
             key = (src, tgt)
             touches_seed = src in seeds or tgt in seeds
             if not touches_seed:
@@ -1105,7 +1245,9 @@ def build_page_subgraph(
         label = _label(a, name)
         start = a.get("start_line")
         file = a.get("file")
-        if repo_dir and isinstance(file, str) and os.path.isabs(file):
+        if source_reader is not None and isinstance(file, str):
+            file = selected_source_path(file)
+        elif repo_dir and isinstance(file, str) and os.path.isabs(file):
             try:
                 relative = os.path.relpath(file, repo_dir)
                 if relative != ".." and not relative.startswith("../"):

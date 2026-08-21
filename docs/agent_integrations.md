@@ -61,13 +61,13 @@ OrcaLoca native implementations support those languages.
 ### Shared LSP navigation provider
 
 The definition, reference, and route agent skills resolve the same provider
-injected into `ExpandContext`. For a source-verified C/C++-only build, symbol
-definition and reference requests can use the native clangd fact-query postings
-without materializing igraph; position and route requests lazily build and
-reuse the compatible complete graph. Mixed-language contexts select the
-persisted symbol graph; prebuilt contexts without a usable local native
-generation do the same, and portable artifacts always do so. Provider results
-retain backend,
+injected into `ExpandContext`. In 0.2.2 manifest-bound contexts, including
+C/C++-only builds, select the verified persisted symbol graph. Native clangd
+fact-query postings remain an independently benchmarked implementation, but
+their mutable project-local `.idx` generation has no source-selection receipt
+or allowed-file proof yet and is not admitted by the agent runtime. Portable
+artifacts and mixed-language contexts use the same persisted route. Provider
+results retain backend,
 fallback, capability, and snapshot metadata so an agent trace can explain the
 route without changing the public location shape.
 
@@ -243,7 +243,7 @@ reasoning loop while replacing its repository data plane with
 localization baselines:
 
 ```bash
-python -m pip install "codenib[agent,graph]==0.2.1"
+python -m pip install "codenib[agent,graph]==0.2.2"
 codenib toolchain install /path/to/repository --scope graph
 ```
 

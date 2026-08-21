@@ -14,6 +14,10 @@ from ..code_chunking import create_chunker
 from ..git_snapshot import GitSourceSurface, normalize_repository_path
 from ..languages import extension_to_language_map
 from ..repository_filters import repository_path_is_visible
+from ..repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    RepositorySourceSelection,
+)
 from ..types import (
     NODE_TYPE_CLASS,
     NODE_TYPE_FIELD,
@@ -128,6 +132,7 @@ def supplement_graph_source_coverage(
     extensions: Iterable[str],
     represented_paths: Iterable[str],
     exclude_patterns: Sequence[str] = (),
+    source_selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
 ) -> dict[str, Any]:
     """Add syntax definitions for tracked source files absent from *graph*.
 
@@ -137,6 +142,9 @@ def supplement_graph_source_coverage(
     authoritative when available.
     """
 
+    if type(source_selection) is not RepositorySourceSelection:
+        raise TypeError("source_selection must be a RepositorySourceSelection")
+    selection = RepositorySourceSelection(source_selection.exclude_subtrees)
     root = Path(repo_root).expanduser().resolve()
     accepted = frozenset(extensions)
     represented = {normalize_repository_path(path) for path in represented_paths}
@@ -145,6 +153,7 @@ def supplement_graph_source_coverage(
         for path in sorted(surface.tracked_files)
         if Path(path).suffix in accepted
         and repository_path_is_visible(path)
+        and selection.allows(path)
         and not _matches_any(path, exclude_patterns)
     ]
     missing = [path for path in expected_files if path not in represented]
@@ -233,6 +242,7 @@ def supplement_graph_source_coverage(
         "files": supplemented_files,
         "unreadable_files": unreadable_files,
         "unreadable_errors": unreadable_errors,
+        "source_selection_digest": selection.digest,
     }
 
 

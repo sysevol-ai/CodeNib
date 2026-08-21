@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import subprocess
 import sys
@@ -16,12 +17,46 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
-from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.compiler.manifest import LEGACY_MANIFEST_VERSION, IndexEntry, RepoManifest
 from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.mcp.context import RUNTIME_VIEW_NAMES, ServerContext
 from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.provider_routes import resolve_inference_route
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import capture_repository_source, fingerprint_repository
+
+_TEST_COMMIT = "c" * 40
+_TEST_SOURCE_FINGERPRINT = "sha256-v2:" + ("d" * 64)
+_TEST_SOURCE_SELECTION = RepositorySourceSelection()
+
+
+def _bind_fresh_entry(manifest: RepoManifest, entry: IndexEntry) -> IndexEntry:
+    entry.commit = manifest.commit
+    entry.source_fingerprint = manifest.source_fingerprint
+    entry.source_selection_digest = manifest.source_selection_digest or ""
+    return entry
+
+
+def _current_manifest(
+    repo_path: Path,
+    indexes: dict[str, IndexEntry],
+    *,
+    languages: list[str] | None = None,
+) -> RepoManifest:
+    manifest = RepoManifest(
+        repo_path=str(repo_path),
+        commit=_TEST_COMMIT,
+        last_indexed_commit=_TEST_COMMIT,
+        source_fingerprint=_TEST_SOURCE_FINGERPRINT,
+        last_indexed_source_fingerprint=_TEST_SOURCE_FINGERPRINT,
+        source_selection=_TEST_SOURCE_SELECTION,
+        last_indexed_source_selection_digest=_TEST_SOURCE_SELECTION.digest,
+        languages=[] if languages is None else languages,
+        indexes=indexes,
+    )
+    for entry in manifest.indexes.values():
+        _bind_fresh_entry(manifest, entry)
+    return manifest
 
 
 class _PendingSourceOwner:
@@ -61,9 +96,9 @@ def _portable_vector_manifest(tmp_path: Path) -> tuple[RepoManifest, Path]:
         "embedding_kwargs": {},
     }
     return (
-        RepoManifest(
-            repo_path=str(tmp_path),
-            indexes={
+        _current_manifest(
+            tmp_path,
+            {
                 "vector": IndexEntry(
                     index_type="vector",
                     path=str(vector_dir),
@@ -419,9 +454,11 @@ def test_local_bm25_without_source_binding_is_persisted_only(
     )
     legacy = "sha256:" + "a" * 64
     manifest = RepoManifest(
+        version=LEGACY_MANIFEST_VERSION,
         repo_path=str(tmp_path),
         source_fingerprint=legacy,
         last_indexed_source_fingerprint=legacy,
+        source_selection=None,
         indexes={
             "bm25": IndexEntry(
                 index_type="bm25",
@@ -489,11 +526,9 @@ def manifest_dir(tmp_path: Path) -> Path:
         json.dumps({"project_root": str(tmp_path), "max_k": 10, "language": "english"})
     )
 
-    manifest = RepoManifest(
-        repo_path=str(tmp_path),
-        commit="abc123",
-        languages=["python"],
-        indexes={
+    manifest = _current_manifest(
+        tmp_path,
+        {
             "bm25": IndexEntry(
                 index_type="bm25",
                 path=str(bm25_dir),
@@ -502,6 +537,7 @@ def manifest_dir(tmp_path: Path) -> Path:
                 status="fresh",
             ),
         },
+        languages=["python"],
     )
     manifest.derive_capabilities()
     manifest_path = tmp_path / "repo_manifest.json"
@@ -829,9 +865,9 @@ def test_load_with_bm25_only(manifest_dir: Path) -> None:
 
 def test_load_missing_bm25_path(tmp_path: Path) -> None:
     """BM25 load failure is recorded in errors, not raised."""
-    manifest = RepoManifest(
-        repo_path=str(tmp_path),
-        indexes={
+    manifest = _current_manifest(
+        tmp_path,
+        {
             "bm25": IndexEntry(
                 index_type="bm25",
                 path=str(tmp_path / "nonexistent"),
@@ -891,9 +927,9 @@ def test_skip_non_fresh_index(tmp_path: Path) -> None:
 def test_load_vector_accepts_compiler_manifest_identity(tmp_path: Path) -> None:
     vector_dir = tmp_path / "vector"
     vector_dir.mkdir()
-    manifest = RepoManifest(
-        repo_path=str(tmp_path),
-        indexes={
+    manifest = _current_manifest(
+        tmp_path,
+        {
             "vector": IndexEntry(
                 index_type="vector",
                 path=str(vector_dir),
@@ -1083,9 +1119,9 @@ def test_validate_views_probes_vector_without_loading_embedding_model(
 ) -> None:
     vector_dir = tmp_path / "vector"
     vector_dir.mkdir()
-    manifest = RepoManifest(
-        repo_path=str(tmp_path),
-        indexes={
+    manifest = _current_manifest(
+        tmp_path,
+        {
             "vector": IndexEntry(
                 index_type="vector",
                 path=str(vector_dir),
@@ -1149,9 +1185,9 @@ def test_load_vector_rebinds_openai_credential_without_persisting_it(
         "embedding_route": route.public_identity(),
         "embedding_fingerprint": route.compatibility_fingerprint,
     }
-    manifest = RepoManifest(
-        repo_path=str(tmp_path),
-        indexes={
+    manifest = _current_manifest(
+        tmp_path,
+        {
             "vector": IndexEntry(
                 index_type="vector",
                 path=str(vector_dir),
@@ -1213,9 +1249,9 @@ def test_validate_views_does_not_require_remote_embedding_credentials(
         "embedding_route": route.public_identity(),
         "embedding_fingerprint": route.compatibility_fingerprint,
     }
-    manifest = RepoManifest(
-        repo_path=str(tmp_path),
-        indexes={
+    manifest = _current_manifest(
+        tmp_path,
+        {
             "vector": IndexEntry(
                 index_type="vector",
                 path=str(vector_dir),
@@ -1257,9 +1293,9 @@ def test_validate_views_does_not_require_remote_embedding_credentials(
 def test_validate_views_rejects_empty_vector_artifact(tmp_path: Path) -> None:
     vector_dir = tmp_path / "vector"
     vector_dir.mkdir()
-    manifest = RepoManifest(
-        repo_path=str(tmp_path),
-        indexes={
+    manifest = _current_manifest(
+        tmp_path,
+        {
             "vector": IndexEntry(
                 index_type="vector",
                 path=str(vector_dir),
@@ -1315,17 +1351,27 @@ def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
     mock_graph.get_node_content.return_value = "def my_func(): pass"
 
     manifest = RepoManifest.load(manifest_dir / "repo_manifest.json")
-    manifest.indexes["symbol_graph"] = IndexEntry(
-        index_type="symbol_graph",
-        path=str(graph_dir / "graph.pkl"),
-        built_at="2026-01-01T00:00:00",
-        built_at_epoch=0.0,
-        status="fresh",
+    manifest.indexes["symbol_graph"] = _bind_fresh_entry(
+        manifest,
+        IndexEntry(
+            index_type="symbol_graph",
+            path=str(graph_dir),
+            built_at="2026-01-01T00:00:00",
+            built_at_epoch=0.0,
+            status="fresh",
+            config={
+                "graph_artifact": {
+                    "relative_path": "graph.pkl",
+                    "size": 0,
+                    "sha256": "0" * 64,
+                }
+            },
+        ),
     )
     manifest.save(manifest_dir / "repo_manifest.json")
 
     with patch(
-        "codenib.graph.code_graph.CodeGraph.load_graph",
+        "codenib.compiler.graph_artifact.load_authenticated_graph_artifact",
         return_value=mock_graph,
     ):
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
@@ -1341,13 +1387,50 @@ def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
 
 
 def _add_zoekt_entry(manifest_path: Path, shard_dir: Path) -> None:
+    if not any(shard_dir.iterdir()):
+        (shard_dir / "repository_v16.00000.zoekt").write_bytes(b"zoekt-shard")
+    files = [
+        {
+            "path": child.name,
+            "size": child.stat().st_size,
+            "sha256": hashlib.sha256(child.read_bytes()).hexdigest(),
+        }
+        for child in sorted(shard_dir.iterdir(), key=lambda path: path.name.encode())
+    ]
+    canonical = json.dumps(
+        {
+            "schema": "codenib.zoekt-shard-tree.v1",
+            "files": files,
+        },
+        allow_nan=False,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    receipt = {
+        "schema": "codenib.zoekt-shard-tree.v1",
+        "digest": f"sha256:{hashlib.sha256(canonical).hexdigest()}",
+        "file_count": len(files),
+        "total_bytes": sum(file["size"] for file in files),
+        "files": files,
+    }
+    identity = {
+        "builder_schema": 3,
+        "shard_tree_receipt_schema": "codenib.zoekt-shard-tree.v1",
+        "shard_tree_receipt": receipt,
+    }
     manifest = RepoManifest.load(manifest_path)
-    manifest.indexes["zoekt"] = IndexEntry(
-        index_type="zoekt",
-        path=str(shard_dir),
-        built_at="2026-01-01T00:00:00",
-        built_at_epoch=0.0,
-        status="fresh",
+    manifest.indexes["zoekt"] = _bind_fresh_entry(
+        manifest,
+        IndexEntry(
+            index_type="zoekt",
+            path=str(shard_dir),
+            built_at="2026-01-01T00:00:00",
+            built_at_epoch=0.0,
+            status="fresh",
+            config=dict(identity),
+            metadata=dict(identity),
+        ),
     )
     manifest.save(manifest_path)
 
@@ -1364,12 +1447,202 @@ def test_zoekt_started_when_entry_fresh(manifest_dir: Path) -> None:
     with patch(
         "codenib.index.trigram.ZoektSearcher",
         return_value=fake_searcher,
-    ):
+    ) as searcher_class:
         ctx = ServerContext.load(manifest_dir / "repo_manifest.json")
 
     fake_searcher.start.assert_called_once()
     assert ctx.zoekt is fake_searcher
     assert "zoekt" not in ctx.errors
+    private_path = Path(searcher_class.call_args.kwargs["index_dir"])
+    assert private_path != shard_dir
+    assert (private_path / "repository_v16.00000.zoekt").read_bytes() == (
+        b"zoekt-shard"
+    )
+
+    ctx.close()
+
+    fake_searcher.stop.assert_called_once_with()
+    assert not private_path.exists()
+
+
+@pytest.mark.parametrize("mutation", ["mutate", "add", "remove", "symlink"])
+def test_zoekt_receipt_mismatch_fails_before_searcher_construction(
+    manifest_dir: Path,
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    shard = shard_dir / "repository_v16.00000.zoekt"
+    shard.write_bytes(b"receipt-bound-shard")
+    _add_zoekt_entry(manifest_dir / "repo_manifest.json", shard_dir)
+
+    if mutation == "mutate":
+        shard.write_bytes(b"changed-shard")
+    elif mutation == "add":
+        (shard_dir / "unexpected.zoekt").write_bytes(b"unexpected")
+    elif mutation == "remove":
+        shard.unlink()
+    else:
+        target = tmp_path / "outside.zoekt"
+        target.write_bytes(b"receipt-bound-shard")
+        shard.unlink()
+        shard.symlink_to(target)
+
+    with patch("codenib.index.trigram.ZoektSearcher") as searcher_class:
+        ctx = ServerContext.load(
+            manifest_dir / "repo_manifest.json",
+            views={"zoekt"},
+        )
+
+    searcher_class.assert_not_called()
+    assert ctx.zoekt is None
+    assert "zoekt" in ctx.errors
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        pytest.param("builder_schema", 2, id="legacy-builder"),
+        pytest.param("shard_tree_receipt_schema", "legacy", id="legacy-receipt"),
+        pytest.param("shard_tree_receipt", None, id="missing-receipt"),
+    ],
+)
+def test_zoekt_legacy_or_missing_receipt_fails_before_searcher_construction(
+    manifest_dir: Path,
+    field: str,
+    replacement: object,
+) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    manifest_path = manifest_dir / "repo_manifest.json"
+    _add_zoekt_entry(manifest_path, shard_dir)
+    manifest = RepoManifest.load(manifest_path)
+    entry = manifest.indexes["zoekt"]
+    if replacement is None:
+        entry.config.pop(field)
+        entry.metadata.pop(field)
+    else:
+        entry.config[field] = replacement
+        entry.metadata[field] = replacement
+    manifest.save(manifest_path)
+
+    with patch("codenib.index.trigram.ZoektSearcher") as searcher_class:
+        ctx = ServerContext.load(manifest_path, views={"zoekt"})
+
+    searcher_class.assert_not_called()
+    assert ctx.zoekt is None
+    assert "zoekt" in ctx.errors
+
+
+def test_zoekt_rejects_mismatched_manifest_receipt_copies_before_spawn(
+    manifest_dir: Path,
+) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    manifest_path = manifest_dir / "repo_manifest.json"
+    _add_zoekt_entry(manifest_path, shard_dir)
+    manifest = RepoManifest.load(manifest_path)
+    manifest.indexes["zoekt"].metadata["shard_tree_receipt"]["digest"] = "sha256:" + (
+        "0" * 64
+    )
+    manifest.save(manifest_path)
+
+    with patch("codenib.index.trigram.ZoektSearcher") as searcher_class:
+        ctx = ServerContext.load(manifest_path, views={"zoekt"})
+
+    searcher_class.assert_not_called()
+    assert ctx.zoekt is None
+    assert "zoekt" in ctx.errors
+
+
+def test_zoekt_rejects_non_exact_receipt_shape_before_spawn(
+    manifest_dir: Path,
+) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    manifest_path = manifest_dir / "repo_manifest.json"
+    _add_zoekt_entry(manifest_path, shard_dir)
+    manifest = RepoManifest.load(manifest_path)
+    for values in (
+        manifest.indexes["zoekt"].config,
+        manifest.indexes["zoekt"].metadata,
+    ):
+        values["shard_tree_receipt"]["unexpected"] = True
+    manifest.save(manifest_path)
+
+    with patch("codenib.index.trigram.ZoektSearcher") as searcher_class:
+        ctx = ServerContext.load(manifest_path, views={"zoekt"})
+
+    searcher_class.assert_not_called()
+    assert ctx.zoekt is None
+    assert "invalid shape" in ctx.errors["zoekt"]
+
+
+def test_zoekt_uses_private_snapshot_when_published_tree_is_replaced(
+    manifest_dir: Path,
+) -> None:
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    shard = shard_dir / "repository_v16.00000.zoekt"
+    shard.write_bytes(b"receipt-bound-shard")
+    manifest_path = manifest_dir / "repo_manifest.json"
+    _add_zoekt_entry(manifest_path, shard_dir)
+    searcher = MagicMock()
+    searcher.port = 9999
+
+    def replace_published_tree() -> None:
+        shard.rename(shard_dir / "old.zoekt")
+        shard.write_bytes(b"untrusted-replacement")
+
+    searcher.start.side_effect = replace_published_tree
+    with patch(
+        "codenib.index.trigram.ZoektSearcher",
+        return_value=searcher,
+    ) as searcher_class:
+        ctx = ServerContext.load(manifest_path, views={"zoekt"})
+
+    private_path = Path(searcher_class.call_args.kwargs["index_dir"])
+    assert private_path != shard_dir
+    assert (private_path / "repository_v16.00000.zoekt").read_bytes() == (
+        b"receipt-bound-shard"
+    )
+    assert ctx.zoekt is searcher
+
+    ctx.close()
+    assert not private_path.exists()
+
+
+def test_zoekt_snapshot_copy_cancellation_cleans_private_stage(
+    manifest_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.compiler import zoekt_artifact
+
+    shard_dir = manifest_dir / "zoekt"
+    shard_dir.mkdir()
+    manifest_path = manifest_dir / "repo_manifest.json"
+    _add_zoekt_entry(manifest_path, shard_dir)
+    interruption = KeyboardInterrupt("snapshot copy interrupted")
+    private_paths: list[Path] = []
+
+    def interrupt_copy(stage, *args, **kwargs) -> None:
+        private_paths.append(stage.path)
+        raise interruption
+
+    monkeypatch.setattr(
+        zoekt_artifact.OwnedDirectoryStage,
+        "write_file",
+        interrupt_copy,
+    )
+    with patch("codenib.index.trigram.ZoektSearcher") as searcher_class:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            ServerContext.load(manifest_path, views={"zoekt"})
+
+    assert caught.value is interruption
+    searcher_class.assert_not_called()
+    assert private_paths
+    assert all(not path.exists() for path in private_paths)
 
 
 def test_validate_views_stops_zoekt_probe(manifest_dir: Path) -> None:
@@ -1506,12 +1779,13 @@ def test_zoekt_start_cancellation_stops_unpublished_searcher(
     with patch(
         "codenib.index.trigram.ZoektSearcher",
         return_value=searcher,
-    ):
+    ) as searcher_class:
         with pytest.raises(KeyboardInterrupt) as caught:
             ServerContext.load(manifest_dir / "repo_manifest.json", views={"zoekt"})
 
     assert caught.value is interruption
     searcher.stop.assert_called_once_with()
+    assert not Path(searcher_class.call_args.kwargs["index_dir"]).exists()
 
 
 def test_zoekt_cleanup_cancellation_exposes_retryable_context_owner(

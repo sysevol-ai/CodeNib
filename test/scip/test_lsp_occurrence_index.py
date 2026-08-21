@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from io import BytesIO
+
 from codenib.scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
 
 _DECODED = r"""
@@ -116,3 +118,18 @@ def test_occurrence_index_round_trips(tmp_path):
 
     assert loaded.occurrence_at("pkg/reader.go", 3, 6).is_definition
     assert len(loaded.occurrences) == 6
+
+
+def test_occurrence_index_loads_from_caller_owned_stream(tmp_path):
+    path = tmp_path / "lsp_index.pkl"
+    SCIPOccurrenceIndex.from_decoded_text(_DECODED).save(path)
+    stream = BytesIO(path.read_bytes())
+
+    loaded = SCIPOccurrenceIndex.load_stream(
+        stream,
+        input_label="authenticated lsp_index.pkl",
+    )
+
+    assert loaded.occurrence_at("pkg/reader.go", 3, 6).is_definition
+    assert len(loaded.occurrences) == 6
+    assert not stream.closed

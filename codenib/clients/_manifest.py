@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Callable
 
 from codenib.compiler.manifest import MANIFEST_FILENAME, RepoManifest
+from codenib.compiler.manifest_source import fingerprint_repository_for_manifest
 from codenib.paths import legacy_repo_index_dir, repo_index_dir
 from codenib.source_fingerprint import (
-    fingerprint_repository,
     is_secure_source_fingerprint_v2,
     lexical_repository_path,
 )
@@ -67,7 +67,11 @@ def _validate_source_identity(
         )
 
     excluded = (repo_index_dir(repo), legacy_repo_index_dir(repo))
-    observed = fingerprint_repository(repo, exclude_roots=excluded).value
+    observed = fingerprint_repository_for_manifest(
+        repo,
+        manifest,
+        exclude_roots=excluded,
+    ).value
     if observed != manifest.source_fingerprint:
         raise ValueError(
             f"{integration_name} checkout source fingerprint does not match the "

@@ -17,7 +17,38 @@ from codenib.agent.runtime.explorer import (
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.integrations.swe_explore import CodeNibSWEExploreExplorer
 from codenib.mcp.context import ServerContext
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import fingerprint_repository
 from codenib.types import NodeInfo
+
+
+def _manifest_with_current_views(repo, output_root, *views: str) -> RepoManifest:
+    selection = RepositorySourceSelection()
+    source = fingerprint_repository(repo, selection=selection)
+    commit = "integration-fixture"
+    return RepoManifest(
+        repo_path=str(repo),
+        commit=commit,
+        last_indexed_commit=commit,
+        source_fingerprint=source.value,
+        last_indexed_source_fingerprint=source.value,
+        source_selection=selection,
+        last_indexed_source_selection_digest=selection.digest,
+        file_count=source.file_count,
+        indexes={
+            view: IndexEntry(
+                index_type=view,
+                path=str(output_root / view),
+                built_at="2026-08-04T00:00:00Z",
+                built_at_epoch=0.0,
+                status="fresh",
+                commit=commit,
+                source_fingerprint=source.value,
+                source_selection_digest=selection.digest,
+            )
+            for view in views
+        },
+    )
 
 
 def test_explorer_defers_view_loading_until_query_planning(
@@ -147,19 +178,7 @@ def test_auto_mixed_query_loads_and_fuses_sparse_and_dense_views(tmp_path) -> No
     source = repo / "src" / "service.py"
     source.parent.mkdir(parents=True)
     source.write_text("def calculate_tax():\n    return 1\n", encoding="utf-8")
-    manifest = RepoManifest(
-        repo_path=str(repo),
-        indexes={
-            view: IndexEntry(
-                index_type=view,
-                path=str(tmp_path / view),
-                built_at="2026-08-04T00:00:00Z",
-                built_at_epoch=0.0,
-                status="fresh",
-            )
-            for view in ("bm25", "vector")
-        },
-    )
+    manifest = _manifest_with_current_views(repo, tmp_path, "bm25", "vector")
     sparse = SimpleNamespace(
         max_k=100,
         search=lambda **_kwargs: [
@@ -240,19 +259,7 @@ def test_auto_falls_back_to_an_available_view_after_load_failure(tmp_path) -> No
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "service.py").write_text("def price():\n    return 1\n", encoding="utf-8")
-    manifest = RepoManifest(
-        repo_path=str(repo),
-        indexes={
-            view: IndexEntry(
-                index_type=view,
-                path=str(tmp_path / view),
-                built_at="2026-08-04T00:00:00Z",
-                built_at_epoch=0.0,
-                status="fresh",
-            )
-            for view in ("bm25", "vector")
-        },
-    )
+    manifest = _manifest_with_current_views(repo, tmp_path, "bm25", "vector")
     sparse = SimpleNamespace(
         max_k=100,
         search=lambda **_kwargs: [

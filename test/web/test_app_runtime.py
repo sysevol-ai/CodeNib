@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 
 import codenib.web.app as web_app
 import codenib.wiki.media_generation as media_generation
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import capture_repository_source
 from codenib.web.schemas import ChatRequest, ChatResponse
 
 
@@ -59,6 +61,9 @@ def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
         def list_infos(self):
             return []
 
+        def close(self):
+            captured["closed"] = True
+
     monkeypatch.setattr(web_app, "load_config", lambda: config)
     monkeypatch.setattr(web_app, "RepoRegistry", Registry)
     monkeypatch.setattr(web_app, "authorize_local_manifest_vector", resolver)
@@ -80,7 +85,36 @@ def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
         "native_index_authorization_resolver": resolver,
         "allow_missing_native_index_authorization": True,
         "loaded": True,
+        "closed": True,
     }
+
+
+def test_lifespan_closes_registry_when_startup_is_cancelled(monkeypatch):
+    captured = {}
+    config = SimpleNamespace(registry_path="/tmp/qa_registry.json")
+
+    class Registry:
+        def __init__(self, _config, **_kwargs):
+            pass
+
+        def load_all(self):
+            raise asyncio.CancelledError()
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "RepoRegistry", Registry)
+    application = SimpleNamespace(state=SimpleNamespace())
+
+    async def run_lifespan():
+        async with web_app.lifespan(application):
+            raise AssertionError("cancelled startup must not yield")
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(run_lifespan())
+
+    assert captured == {"closed": True}
 
 
 def test_oversized_chat_request_is_rejected_before_runtime_lookup(monkeypatch):
@@ -103,6 +137,7 @@ def test_oversized_chat_request_is_rejected_before_runtime_lookup(monkeypatch):
 def test_chat_maps_citations_off_loop_from_the_served_checkout(monkeypatch):
     calls = []
     runner_result = object()
+    source_reader = object()
 
     class Runner:
         def run(self, query, *, chat_history):
@@ -117,16 +152,17 @@ def test_chat_maps_citations_off_loop_from_the_served_checkout(monkeypatch):
         ),
         runner=Runner(),
         ensure_runtime=lambda: None,
+        source_reader=source_reader,
     )
 
     class Registry:
         def get(self, repo_id):
             return bundle if repo_id == "repo" else None
 
-    def fake_mapping(result, *, repo_path, repo_commit):
+    def fake_mapping(result, *, repo_path, source_reader: object):
         assert result is runner_result
         assert repo_path == "/served/checkout"
-        assert repo_commit == "a" * 40
+        assert source_reader is bundle.source_reader
         return ChatResponse(answer="answer")
 
     async def fake_to_thread(func, *args, **kwargs):
@@ -148,6 +184,44 @@ def test_chat_maps_citations_off_loop_from_the_served_checkout(monkeypatch):
 
     assert response.answer == "answer"
     assert calls == [bundle.ensure_runtime, bundle.runner.run, fake_mapping]
+
+
+def test_chat_fails_closed_without_authenticated_source_reader(monkeypatch):
+    class Runner:
+        def run(self, _query, *, chat_history):
+            assert chat_history == []
+            return object()
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir="/served/checkout"),
+        runner=Runner(),
+        ensure_runtime=lambda: None,
+        source_reader=None,
+    )
+    monkeypatch.setattr(
+        web_app,
+        "_registry",
+        lambda: SimpleNamespace(get=lambda _repo_id: bundle),
+    )
+    monkeypatch.setattr(
+        web_app,
+        "agent_result_to_response",
+        lambda *_args, **_kwargs: pytest.fail(
+            "missing reader must not hydrate citations"
+        ),
+    )
+
+    with pytest.raises(web_app.HTTPException) as error:
+        asyncio.run(
+            web_app.chat(
+                ChatRequest(
+                    repo_id="repo",
+                    messages=[{"role": "user", "content": "Where is runtime?"}],
+                )
+            )
+        )
+
+    assert error.value.status_code == 503
 
 
 def test_wiki_generation_runs_off_event_loop(monkeypatch):
@@ -576,8 +650,12 @@ def test_commit_window_maps_use_only_selected_snapshot_metadata(monkeypatch):
         entry=SimpleNamespace(
             base_commit="1111111111111111", repo_dir="/tmp/repository"
         ),
+        manifest=SimpleNamespace(
+            source_selection=RepositorySourceSelection(("private",))
+        ),
         code_graph=lambda: None,
         hierarchical_graph=no_current_hierarchy,
+        source_reader=object(),
     )
 
     def fake_codemap(*args, **kwargs):
@@ -605,7 +683,47 @@ def test_commit_window_maps_use_only_selected_snapshot_metadata(monkeypatch):
     assert modulemap_result["commit"] == selected
     assert captured["codemap"][1]["repo_commit"] == selected
     assert captured["codemap"][1]["hierarchy_graph"] is None
+    assert captured["codemap"][1]["source_reader"] is None
+    assert captured["codemap"][1]["source_selection"] == RepositorySourceSelection(
+        ("private",)
+    )
     assert captured["modulemap"][1]["repo_commit"] == selected
+    assert captured["modulemap"][1]["source_reader"] is None
+    assert captured["modulemap"][1]["source_selection"] == (
+        RepositorySourceSelection(("private",))
+    )
+
+
+def test_current_codemap_uses_the_authenticated_source_reader(monkeypatch):
+    import codenib.web.codemap as codemap_builder
+
+    graph = object()
+    reader = object()
+    captured = {}
+
+    class Window:
+        available = False
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="abc123", repo_dir="/tmp/repository"),
+        source_reader=reader,
+        code_graph=lambda: graph,
+        hierarchical_graph=lambda: None,
+    )
+
+    def fake_codemap(*args, **kwargs):
+        captured.update(kwargs)
+        return {"available": True, "nodes": [], "edges": []}
+
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(codemap_builder, "build_codemap", fake_codemap)
+
+    result = asyncio.run(web_app.codemap("repo"))
+
+    assert result["commit"] == "abc123"
+    assert captured["source_reader"] is reader
+    assert captured["repo_commit"] is None
 
 
 def test_source_endpoint_reads_the_requested_window_commit(monkeypatch):
@@ -627,7 +745,12 @@ def test_source_endpoint_reads_the_requested_window_commit(monkeypatch):
                 "content": "historical\n",
             }
 
-    bundle = SimpleNamespace(entry=SimpleNamespace(base_commit="1" * 40))
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="1" * 40),
+        manifest=SimpleNamespace(
+            source_selection=RepositorySourceSelection(("private",))
+        ),
+    )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
     monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
     monkeypatch.setattr(
@@ -644,6 +767,39 @@ def test_source_endpoint_reads_the_requested_window_commit(monkeypatch):
 
     assert result["content"] == "historical\n"
     assert calls == [(selected, "src/runtime.py", 4, 8)]
+
+
+def test_source_endpoint_rejects_excluded_historical_source(monkeypatch):
+    selected = "abcdef1234567890"
+
+    class Window:
+        available = True
+
+        def resolve(self, commit):
+            return {"sha": selected} if commit == selected else None
+
+        def source_for(self, *_args):
+            raise AssertionError("excluded historical source must not reach Git")
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="1" * 40),
+        manifest=SimpleNamespace(
+            source_selection=RepositorySourceSelection(("private",))
+        ),
+    )
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+
+    with pytest.raises(web_app.HTTPException) as error:
+        asyncio.run(
+            web_app.source(
+                "repo",
+                "private/secret.py",
+                commit=selected,
+            )
+        )
+
+    assert error.value.status_code == 404
 
 
 def test_edge_label_uses_the_graph_payload_commit(monkeypatch):
@@ -677,6 +833,59 @@ def test_edge_label_uses_the_graph_payload_commit(monkeypatch):
     assert calls == [("repo", selected)]
 
 
+def test_historical_edge_labeler_gates_source_with_manifest_selection(monkeypatch):
+    import codenib.web.edge_label as edge_label_module
+
+    selected = "abcdef1234567890"
+    source_calls = []
+    captured = {}
+
+    class Window:
+        available = True
+
+        def resolve(self, commit):
+            return {"sha": selected} if commit == selected else None
+
+        def source_for(self, commit, file, start, end):
+            source_calls.append((commit, file, start, end))
+            return {"file": file, "content": "historical\n"}
+
+    class Labeler:
+        def __init__(self, *, source_fn, **_kwargs):
+            captured["source_fn"] = source_fn
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            base_commit="1" * 40,
+            instance_id="owner__repo-1",
+        ),
+        manifest=SimpleNamespace(
+            source_selection=RepositorySourceSelection(("private",))
+        ),
+    )
+    config = SimpleNamespace(
+        data_dir="/tmp/data",
+        edge_label_model=None,
+        wiki_generation_model="fake-model",
+        wiki_generation_api_base=None,
+        wiki_generation_api_key=None,
+    )
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "_wiki_llm", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(edge_label_module, "EdgeLabeler", Labeler)
+    monkeypatch.setattr(web_app.app.state, "edge_labelers", {}, raising=False)
+
+    web_app._edge_labeler("repo", selected)
+    source_fn = captured["source_fn"]
+
+    assert source_fn("private/secret.py", 1, 2) is None
+    assert source_calls == []
+    assert source_fn("src/runtime.py", 3, 4)["content"] == "historical\n"
+    assert source_calls == [(selected, "src/runtime.py", 3, 4)]
+
+
 def test_source_endpoint_reads_the_live_checkout_without_building_the_wiki(
     tmp_path, monkeypatch
 ):
@@ -689,6 +898,8 @@ def test_source_endpoint_reads_the_live_checkout_without_building_the_wiki(
     bundle = SimpleNamespace(
         entry=SimpleNamespace(base_commit="1" * 40, repo_dir=str(tmp_path))
     )
+    binding = capture_repository_source(tmp_path)
+    bundle.source_reader = binding.borrow_reader()
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
     monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
     monkeypatch.setattr(
@@ -699,7 +910,10 @@ def test_source_endpoint_reads_the_live_checkout_without_building_the_wiki(
         ),
     )
 
-    result = asyncio.run(web_app.source("repo", "runtime.py", 2, 3))
+    try:
+        result = asyncio.run(web_app.source("repo", "runtime.py", 2, 3))
+    finally:
+        binding.close()
 
     assert result == {
         "file": "runtime.py",
@@ -707,3 +921,27 @@ def test_source_endpoint_reads_the_live_checkout_without_building_the_wiki(
         "end_line": 3,
         "content": "second\nthird\n",
     }
+
+
+def test_source_endpoint_returns_404_for_excluded_current_source(tmp_path, monkeypatch):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "runtime.py").write_text("visible\n")
+    (tmp_path / "excluded").mkdir()
+    (tmp_path / "excluded" / "secret.py").write_text("secret\n")
+    binding = capture_repository_source(
+        tmp_path,
+        selection=RepositorySourceSelection(("excluded",)),
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="1" * 40, repo_dir=str(tmp_path)),
+        source_reader=binding.borrow_reader(),
+    )
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+
+    try:
+        with pytest.raises(web_app.HTTPException) as error:
+            asyncio.run(web_app.source("repo", "excluded/secret.py"))
+    finally:
+        binding.close()
+
+    assert error.value.status_code == 404

@@ -27,6 +27,8 @@ from codenib.index.embedding.artifact_integrity import (
     vector_config_artifact_record,
     vector_level_artifact_records,
 )
+from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION
+from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 from codenib.source_fingerprint import fingerprint_repository
 
 
@@ -167,6 +169,8 @@ def _fixture_vector_manifest(root: Path) -> tuple[Path, Path, Path]:
         "dimension": 4,
         "embedding_kwargs": {},
         "index_metric": "ip",
+        "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
+        "source_selection_digest": DEFAULT_REPOSITORY_SOURCE_SELECTION.digest,
         "persistence_config_fingerprint": vector_config_artifact_record(
             vector,
             "test__model",

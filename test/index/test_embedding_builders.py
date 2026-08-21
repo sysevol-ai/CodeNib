@@ -14,6 +14,7 @@ from codenib.native_index_authorization import (
     InvalidNativeIndexAuthorizationError,
     _mint_trusted_local_admin_authorization,
 )
+from codenib.repository_source_selection import RepositorySourceSelection
 
 
 def _write_fake_vector_store(path, *, model_suffix, levels):
@@ -37,6 +38,16 @@ def _file_snapshot(root: Path) -> dict[str, bytes]:
         for path in root.rglob("*")
         if path.is_file()
     }
+
+
+def _record_fake_documents(store, chunks, level):
+    documents = getattr(store, f"{level}_documents")
+    for chunk in chunks:
+        if isinstance(chunk, dict):
+            source_path = chunk.get("file")
+        else:
+            source_path = getattr(chunk, "file", None)
+        documents.append(SimpleNamespace(metadata={"file": source_path}))
 
 
 def test_cached_builder_closes_store_when_load_fails(monkeypatch, tmp_path):
@@ -93,7 +104,7 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
 
     class FakeChunker:
         def __init__(self, **kwargs):
-            pass
+            captured["repo_config"] = kwargs["repo_config"]
 
         def chunk_repository(self, repo_path, *, strict=False):
             captured["strict_chunking"] = strict
@@ -108,7 +119,9 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
             self.l2_documents = []
 
         def add_code_chunks(self, chunks, level):
-            self.l2_documents.extend(chunks)
+            self.l2_documents.extend(
+                SimpleNamespace(metadata={"file": chunk["file"]}) for chunk in chunks
+            )
 
         def save(self, path):
             _write_fake_vector_store(
@@ -146,6 +159,7 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
     for path in stale_state_files:
         path.write_bytes(b"stale-generation-state")
 
+    selection = RepositorySourceSelection(["src/private"])
     result = builders.build_hierarchical_vector_store(
         repo_path=str(tmp_path),
         index_path=str(tmp_path / "index"),
@@ -158,15 +172,100 @@ def test_hierarchical_builder_reuses_a_supplied_embedding(monkeypatch, tmp_path)
         artifact_metadata={"commit": "a" * 40},
         force_rebuild=True,
         strict_chunking=True,
+        source_selection=selection,
     )
 
     assert captured["embedding"] is embedding
     assert captured["artifact_metadata"] == {"commit": "a" * 40}
     assert captured["strict_chunking"] is True
+    assert captured["repo_config"].source_selection == selection
+    assert captured["repo_config"].source_selection is not selection
     assert result.l2_documents
     assert all(not path.exists() for path in stale_files)
     assert all(not path.exists() for path in stale_state_files)
     assert unrelated.read_bytes() == b"other"
+
+
+def test_hierarchical_builder_rejects_excluded_chunk_results(
+    monkeypatch,
+    tmp_path,
+):
+    class FakeChunker:
+        def __init__(self, **_kwargs):
+            pass
+
+        def chunk_repository(self, repo_path, *, strict=False):
+            assert strict is True
+            assert repo_path == str(tmp_path)
+            return [SimpleNamespace(file="src/private/secret.py")]
+
+    monkeypatch.setattr(builders, "CodeChunker", FakeChunker)
+
+    with pytest.raises(RuntimeError, match="vector l2 chunks leaked excluded"):
+        builders.build_hierarchical_vector_store(
+            repo_path=str(tmp_path),
+            index_path=str(tmp_path / "index"),
+            languages=["python"],
+            build_levels=["l2"],
+            embedding_model="test-model",
+            embedding_provider="huggingface",
+            embedding_dimension=2,
+            force_rebuild=True,
+            strict_chunking=True,
+            source_selection=RepositorySourceSelection(["src/private"]),
+        )
+
+
+def test_hierarchical_builder_rejects_excluded_materialized_documents(
+    monkeypatch,
+    tmp_path,
+):
+    source = tmp_path / "source.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    chunk = SimpleNamespace(
+        file="source.py",
+        _asdict=lambda: {"file": "source.py", "content": "value = 1\n"},
+    )
+
+    class FakeChunker:
+        def __init__(self, **_kwargs):
+            pass
+
+        def chunk_repository(self, repo_path, *, strict=False):
+            assert strict is True
+            assert repo_path == str(tmp_path)
+            return [chunk]
+
+    class FakeStore:
+        def __init__(self, **_kwargs):
+            self.l0_documents = []
+            self.l2_documents = []
+
+        def add_code_chunks(self, _chunks, level):
+            assert level == "l2"
+            self.l2_documents = [
+                SimpleNamespace(metadata={"file": "src/private/secret.py"})
+            ]
+
+        def save(self, _path):
+            raise AssertionError("excluded documents must be rejected before save")
+
+    monkeypatch.setattr(builders, "CodeChunker", FakeChunker)
+    monkeypatch.setattr(builders, "CodeVectorStore", FakeStore)
+
+    with pytest.raises(RuntimeError, match="vector l2 documents leaked excluded"):
+        builders.build_hierarchical_vector_store(
+            repo_path=str(tmp_path),
+            index_path=str(tmp_path / "index"),
+            languages=["python"],
+            build_levels=["l2"],
+            embedding_model="test-model",
+            embedding_provider="huggingface",
+            embedding_dimension=2,
+            force_rebuild=True,
+            strict_chunking=True,
+            source_selection=RepositorySourceSelection(["src/private"]),
+        )
 
 
 def test_cached_index_without_authority_is_rebuilt_from_source(
@@ -205,7 +304,7 @@ def test_cached_index_without_authority_is_rebuilt_from_source(
 
         def add_code_chunks(self, chunks, level):
             assert level == "l2"
-            self.l2_documents.extend(chunks)
+            _record_fake_documents(self, chunks, level)
 
         def save(self, _path):
             calls["save"] += 1
@@ -423,7 +522,7 @@ def test_failed_staged_save_preserves_existing_cache(monkeypatch, tmp_path):
             self.l2_documents = []
 
         def add_code_chunks(self, chunks, level):
-            getattr(self, f"{level}_documents").extend(chunks)
+            _record_fake_documents(self, chunks, level)
 
         def save(self, path):
             _write_fake_vector_store(
@@ -526,7 +625,7 @@ def test_unrequested_symlink_level_rejects_rebuild_without_mutation(
             self.l2_documents = []
 
         def add_code_chunks(self, chunks, level):
-            getattr(self, f"{level}_documents").extend(chunks)
+            _record_fake_documents(self, chunks, level)
 
         def save(self, path):
             _write_fake_vector_store(
@@ -597,7 +696,7 @@ def test_requested_symlink_level_rejects_publish_without_mutation(
             self.l2_documents = []
 
         def add_code_chunks(self, chunks, level):
-            getattr(self, f"{level}_documents").extend(chunks)
+            _record_fake_documents(self, chunks, level)
 
         def save(self, path):
             _write_fake_vector_store(
@@ -660,7 +759,7 @@ def test_interrupted_directory_switch_restores_old_cache(monkeypatch, tmp_path):
             self.l2_documents = []
 
         def add_code_chunks(self, chunks, level):
-            getattr(self, f"{level}_documents").extend(chunks)
+            _record_fake_documents(self, chunks, level)
 
         def save(self, path):
             _write_fake_vector_store(
@@ -750,7 +849,7 @@ def test_private_build_root_replacement_cannot_publish_or_write_outside(
             self.l2_documents = []
 
         def add_code_chunks(self, chunks, level):
-            getattr(self, f"{level}_documents").extend(chunks)
+            _record_fake_documents(self, chunks, level)
 
         def save(self, path):
             anchored_root = Path(path)

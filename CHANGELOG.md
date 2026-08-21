@@ -11,6 +11,43 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-20
+
+### Added
+
+- Persistent, exact repository-relative source exclusions through
+  `--exclude-dir` and `--clear-exclude-dirs`, with one recorded policy reused
+  by CodeGraph, indexing, MCP, Wiki, Web, and public compiler entry points.
+- Manifest 1.2 source-selection identities and builder receipts, while retaining
+  strict read compatibility for manifest 1.1 artifacts.
+- Authenticated optional SCIP occurrence-sidecar receipts bound to the same
+  owned symbol-graph generation as `graph.pkl`.
+
+### Changed
+
+- Authenticated indexing now accepts absolute symbolic links only when their
+  lexical target remains inside the same pinned repository authority. Expo,
+  CocoaPods, and pnpm-style contained link layouts no longer require a broad
+  default-ignore rule.
+- CodeGraph status reports the effective source selection, and Wiki, publish,
+  doctor, and toolchain flows reuse it instead of silently widening the source
+  surface.
+- Manifest-bound C and C++ queries temporarily use the verified persisted
+  symbol graph instead of consuming project-local clangd postings directly.
+
+### Security
+
+- Source paths, graph artifacts, native query routes, and retained manifests
+  are checked against the same authenticated source selection before they can
+  be published or served. Unproven native routes fail closed to the persisted
+  graph.
+- Zoekt builds use a fixed commit-tree contract, private generation
+  publication, and an authenticated shard-tree receipt; custom exclusions are
+  rejected until the backend can prove that narrower surface end to end.
+- Authenticated MCP `search_zoekt` serving uses a retained Linux `/proc`
+  descriptor snapshot. Other platforms fail closed until they have an
+  equivalent immutable runtime handoff.
+
 ## [0.2.1] - 2026-08-14
 
 ### Added
@@ -156,7 +193,8 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Prepared secretless PyPI publishing through a dedicated GitHub Actions OIDC
   workflow.
 
-[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/sysevol-ai/CodeNib/compare/v0.1.0...v0.2.0
 [0.2.0a2]: https://github.com/sysevol-ai/CodeNib/compare/620a82d...78e12ac

@@ -15,6 +15,11 @@ from codenib.compiler.index_builders import BM25IndexBuilder
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.eval.benchmarks import swe_explore_runner
 from codenib.eval.benchmarks.swe_explore import SWE_EXPLORE_METRICS
+from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
+
+COMMIT = "a" * 40
+SOURCE_FINGERPRINT = "sha256-v2:" + ("b" * 64)
+SOURCE_SELECTION_DIGEST = DEFAULT_REPOSITORY_SOURCE_SELECTION.digest
 
 
 def test_runner_reports_failures_separately_from_quality_metrics(
@@ -113,6 +118,11 @@ def test_bm25_profile_validation_rejects_incompatible_artifact(tmp_path) -> None
     profile = BM25IndexBuilder(languages=["python"]).artifact_identity()
     profile["max_k"] = 15
     manifest = RepoManifest(
+        commit=COMMIT,
+        last_indexed_commit=COMMIT,
+        source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_selection_digest=SOURCE_SELECTION_DIGEST,
         indexes={
             "bm25": IndexEntry(
                 index_type="bm25",
@@ -121,8 +131,11 @@ def test_bm25_profile_validation_rejects_incompatible_artifact(tmp_path) -> None
                 built_at_epoch=0.0,
                 status="fresh",
                 config=profile,
+                commit=COMMIT,
+                source_fingerprint=SOURCE_FINGERPRINT,
+                source_selection_digest=SOURCE_SELECTION_DIGEST,
             )
-        }
+        },
     )
     manifest.save(manifest_path)
 
@@ -145,6 +158,11 @@ def test_bm25_profile_validation_records_exact_artifact(tmp_path) -> None:
     artifact_files = bm25_artifact_file_fingerprints(artifact_path)
     profile = BM25IndexBuilder(languages=["python", "go"]).artifact_identity()
     manifest = RepoManifest(
+        commit=COMMIT,
+        last_indexed_commit=COMMIT,
+        source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_selection_digest=SOURCE_SELECTION_DIGEST,
         indexes={
             "bm25": IndexEntry(
                 index_type="bm25",
@@ -156,10 +174,11 @@ def test_bm25_profile_validation_records_exact_artifact(tmp_path) -> None:
                     **profile,
                     "artifact_file_fingerprints": artifact_files,
                 },
-                commit="abc123",
-                source_fingerprint="sha256:source",
+                commit=COMMIT,
+                source_fingerprint=SOURCE_FINGERPRINT,
+                source_selection_digest=SOURCE_SELECTION_DIGEST,
             )
-        }
+        },
     )
     manifest.save(manifest_path)
 
@@ -171,8 +190,8 @@ def test_bm25_profile_validation_records_exact_artifact(tmp_path) -> None:
 
     assert observed == {
         "config": profile,
-        "commit": "abc123",
-        "source_fingerprint": "sha256:source",
+        "commit": COMMIT,
+        "source_fingerprint": SOURCE_FINGERPRINT,
         "artifact_path": str(artifact_path),
         "artifact_file_fingerprints": artifact_files,
     }
@@ -193,7 +212,11 @@ def test_view_profile_validation_records_native_policy_artifacts(tmp_path) -> No
     vector_path.mkdir()
     graph_path.write_bytes(b"graph")
     manifest = RepoManifest(
-        commit="abc123",
+        commit=COMMIT,
+        last_indexed_commit=COMMIT,
+        source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_fingerprint=SOURCE_FINGERPRINT,
+        last_indexed_source_selection_digest=SOURCE_SELECTION_DIGEST,
         indexes={
             "vector": IndexEntry(
                 index_type="vector",
@@ -202,8 +225,9 @@ def test_view_profile_validation_records_native_policy_artifacts(tmp_path) -> No
                 built_at_epoch=0.0,
                 status="fresh",
                 config={"embedding_model": "fixture"},
-                commit="abc123",
-                source_fingerprint="sha256:source",
+                commit=COMMIT,
+                source_fingerprint=SOURCE_FINGERPRINT,
+                source_selection_digest=SOURCE_SELECTION_DIGEST,
             ),
             "symbol_graph": IndexEntry(
                 index_type="symbol_graph",
@@ -212,8 +236,9 @@ def test_view_profile_validation_records_native_policy_artifacts(tmp_path) -> No
                 built_at_epoch=0.0,
                 status="fresh",
                 config={"builder_schema": 3},
-                commit="abc123",
-                source_fingerprint="sha256:source",
+                commit=COMMIT,
+                source_fingerprint=SOURCE_FINGERPRINT,
+                source_selection_digest=SOURCE_SELECTION_DIGEST,
             ),
         },
     )

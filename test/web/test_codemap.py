@@ -8,6 +8,8 @@ import subprocess
 
 import codenib.web.codemap as codemap_module
 from codenib.graph.code_graph import CodeGraph
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import capture_repository_source
 from codenib.web.codemap import (
     EDGE_ANCHOR_SAMPLE,
     _default_seed,
@@ -86,6 +88,51 @@ def test_codemap_bounds_anchor_samples_without_losing_exact_weight():
     assert [anchor["line"] for anchor in edge["anchors"]] == list(range(1, 13))
 
 
+def test_historical_codemap_filters_excluded_nodes_and_edge_anchors():
+    graph = CodeGraph()
+    for name, file_path in (
+        ("src/main.py:main()", "src/main.py"),
+        ("src/helper.py:helper()", "src/helper.py"),
+        ("private/secret.py:secret()", "private/secret.py"),
+    ):
+        graph._add_vertex(
+            name,
+            {
+                "type": "function",
+                "file": file_path,
+                "start_line": 0,
+                "end_line": 1,
+                "unified_name": name,
+            },
+        )
+    graph._add_edge(
+        "src/main.py:main()",
+        "src/helper.py:helper()",
+        "reference",
+        anchor_file="private/call.py",
+        anchor_line=2,
+    )
+    graph._add_edge(
+        "src/main.py:main()",
+        "private/secret.py:secret()",
+        "reference",
+        anchor_file="src/main.py",
+        anchor_line=3,
+    )
+
+    result = build_codemap(
+        graph,
+        symbol="main",
+        direction="callees",
+        depth=1,
+        max_nodes=10,
+        source_selection=RepositorySourceSelection(("private",)),
+    )
+
+    assert [node["file"] for node in result["nodes"]] == ["src/main.py"]
+    assert result["edges"] == []
+
+
 def test_anchor_collector_bounds_high_fanout_working_set():
     collector = _EdgeAnchorCollector()
     key = ("src/main.py:caller()", "src/helper.py:callee()")
@@ -129,6 +176,76 @@ def test_page_subgraph_bounds_repeated_anchor_collection():
     assert edge["weight"] == 100
     assert len(edge["anchors"]) == 12
     assert edge["hidden_anchors"] == 88
+
+
+def test_page_subgraph_filters_unbound_nodes_citations_and_anchors(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text("main\n", encoding="utf-8")
+    (tmp_path / "src" / "helper.py").write_text("helper\n", encoding="utf-8")
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "secret.py").write_text("secret\n", encoding="utf-8")
+    graph = CodeGraph()
+    for name, file_path in (
+        ("src/main.py:main()", "src/main.py"),
+        ("src/helper.py:helper()", "src/helper.py"),
+        ("private/secret.py:secret()", "private/secret.py"),
+    ):
+        graph._add_vertex(
+            name,
+            {
+                "type": "function",
+                "file": file_path,
+                "start_line": 0,
+                "end_line": 0,
+                "unified_name": name,
+            },
+        )
+    graph._add_edge(
+        "src/main.py:main()",
+        "src/helper.py:helper()",
+        "reference",
+        anchor_file="private/secret.py",
+        anchor_line=0,
+    )
+    binding = capture_repository_source(
+        tmp_path,
+        selection=RepositorySourceSelection(("private",)),
+    )
+
+    try:
+        reader = binding.borrow_reader()
+        result = build_page_subgraph(
+            graph,
+            [
+                {"file": "src/main.py", "start_line": 1, "node_name": "main"},
+                {
+                    "file": "src/helper.py",
+                    "start_line": 1,
+                    "node_name": "helper",
+                },
+            ],
+            source_reader=reader,
+        )
+        excluded = build_page_subgraph(
+            graph,
+            [
+                {
+                    "file": "private/secret.py",
+                    "start_line": 1,
+                    "node_name": "secret",
+                }
+            ],
+            source_reader=reader,
+        )
+    finally:
+        binding.close()
+
+    assert {node["file"] for node in result["nodes"]} == {
+        "src/main.py",
+        "src/helper.py",
+    }
+    assert result["edges"] == []
+    assert excluded["available"] is False
 
 
 def test_page_subgraph_explains_missing_or_mismatched_graph_seeds():
@@ -661,6 +778,54 @@ def test_derived_file_scan_reads_the_selected_commit(tmp_path):
     assert _DerivedFiles(str(repo), generated_commit)("generated.py") is True
     assert _DerivedFiles(str(repo), handwritten_commit)("generated.py") is False
     assert _DerivedFiles(str(repo))("generated.py") is False
+
+
+def test_current_codemap_reads_file_metadata_only_through_bound_source(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text("def serve():\n    return 1\n")
+    graph = CodeGraph()
+    graph._add_vertex(
+        "src/runtime.py:serve()",
+        {
+            "type": "function",
+            "file": "src/runtime.py",
+            "start_line": 0,
+            "end_line": 1,
+            "unified_name": "src/runtime.py:serve()",
+        },
+    )
+    binding = capture_repository_source(tmp_path)
+    monkeypatch.setattr(
+        codemap_module,
+        "discover_entry_points",
+        lambda _repo: (_ for _ in ()).throw(
+            AssertionError("bound codemap must not open repository manifests")
+        ),
+    )
+    monkeypatch.setattr(
+        codemap_module,
+        "_live_file_has_generated_marker",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("bound codemap must not stat current source paths")
+        ),
+    )
+
+    try:
+        result = build_codemap(
+            graph,
+            symbol="serve",
+            repo_dir=str(tmp_path),
+            source_reader=binding.borrow_reader(),
+        )
+    finally:
+        binding.close()
+
+    assert result["available"] is True
+    assert result["nodes"][0]["file"] == "src/runtime.py"
+    assert result["nodes"][0]["external"] is False
 
 
 def test_derived_file_scan_reuses_generated_paths_within_request(monkeypatch):

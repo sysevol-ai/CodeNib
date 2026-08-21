@@ -42,6 +42,8 @@ from codenib.artifacts import (
 )
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.artifact_integrity import VECTOR_PERSISTENCE_SCHEMA
+from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION
+from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 from codenib.source_fingerprint import (
     RepositorySourceBinding,
     RepositorySourceIdentitySnapshot,
@@ -50,7 +52,12 @@ from codenib.source_fingerprint import (
 
 _Result = TypeVar("_Result")
 _COMMIT = "a" * 40
+_SOURCE_SELECTION_CONFIG = {
+    "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
+    "source_selection_digest": DEFAULT_REPOSITORY_SOURCE_SELECTION.digest,
+}
 _VECTOR_CONFIG = {
+    **_SOURCE_SELECTION_CONFIG,
     "builder_schema": 2,
     "embedding_model": "test/model",
     "embedding_provider": "huggingface",
@@ -323,7 +330,7 @@ def _entry(
     *,
     source_fingerprint: str,
 ) -> IndexEntry:
-    config = {} if view == "bm25" else dict(_VECTOR_CONFIG)
+    config = dict(_SOURCE_SELECTION_CONFIG) if view == "bm25" else dict(_VECTOR_CONFIG)
     return IndexEntry(
         index_type=view,
         path=f"state/{view}",

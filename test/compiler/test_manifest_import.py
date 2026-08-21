@@ -33,7 +33,12 @@ from codenib._workspace_provider import (
 )
 from codenib.artifacts import stage_context_artifact_strict
 from codenib.compiler.index_builders import BM25IndexBuilder, VectorIndexBuilder
-from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.compiler.manifest import (
+    LEGACY_MANIFEST_VERSION,
+    MANIFEST_VERSION,
+    IndexEntry,
+    RepoManifest,
+)
 from codenib.compiler.manifest_import import (
     DEFAULT_MAX_CONTEXT_BYTES,
     DEFAULT_MAX_CONTEXT_FILES,
@@ -54,8 +59,10 @@ from codenib.compiler.manifest_storage import (
     plan_repo_manifest_import_bytes,
 )
 from codenib.index.embedding.artifact_integrity import VECTOR_PERSISTENCE_SCHEMA
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import (
     RepositorySourceBinding,
+    _capture_repository_source_legacy_manifest_v11,
     capture_repository_source,
 )
 from codenib.storage import (
@@ -79,6 +86,7 @@ from codenib.storage import (
 _Result = TypeVar("_Result")
 _COMMIT = "a" * 40
 _REPOSITORY_KEY = "owner/repo"
+_DEFAULT_SOURCE_SELECTION = RepositorySourceSelection()
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -226,17 +234,31 @@ def _bm25_files(source_text: str) -> dict[str, bytes]:
     }
 
 
-def _vector_identity() -> dict[str, Any]:
-    return VectorIndexBuilder(
+def _vector_identity(
+    source_selection: RepositorySourceSelection = _DEFAULT_SOURCE_SELECTION,
+    *,
+    manifest_version: str = MANIFEST_VERSION,
+) -> dict[str, Any]:
+    identity = VectorIndexBuilder(
         languages=["python"],
         embedding_model="test/model",
         embedding_dimension=4,
         build_levels=["l2"],
         max_lines_per_chunk=300,
+        source_selection=source_selection,
     ).artifact_identity()
+    if manifest_version == LEGACY_MANIFEST_VERSION:
+        identity.pop("source_selection_digest")
+        identity["repository_filter_policy"] = 3
+    return identity
 
 
-def _vector_files(source_text: str) -> dict[str, bytes]:
+def _vector_files(
+    source_text: str,
+    source_selection: RepositorySourceSelection = _DEFAULT_SOURCE_SELECTION,
+    *,
+    manifest_version: str = MANIFEST_VERSION,
+) -> dict[str, bytes]:
     documents_name = "documents_test__model.json"
     index_name = "index_test__model.faiss"
     documents = _json_bytes(
@@ -259,7 +281,10 @@ def _vector_files(source_text: str) -> dict[str, bytes]:
             "l0_documents": 0,
             "l2_documents": 1,
             "persistence_schema": VECTOR_PERSISTENCE_SCHEMA,
-            "artifact": _vector_identity(),
+            "artifact": _vector_identity(
+                source_selection,
+                manifest_version=manifest_version,
+            ),
             "level_artifacts": {
                 "l2": {
                     "documents": _fingerprint(documents_name, documents),
@@ -275,15 +300,29 @@ def _vector_files(source_text: str) -> dict[str, bytes]:
     }
 
 
-def _entry(view: str, *, source_fingerprint: str) -> IndexEntry:
+def _entry(
+    view: str,
+    *,
+    source_fingerprint: str,
+    source_selection_digest: str = "",
+    source_selection: RepositorySourceSelection = _DEFAULT_SOURCE_SELECTION,
+    manifest_version: str = MANIFEST_VERSION,
+) -> IndexEntry:
     if view == "bm25":
         config = BM25IndexBuilder(
             languages=["python"],
             max_k=17,
             max_lines_per_chunk=300,
+            source_selection=source_selection,
         ).artifact_identity()
     else:
-        config = _vector_identity()
+        config = _vector_identity(
+            source_selection,
+            manifest_version=manifest_version,
+        )
+    if manifest_version == LEGACY_MANIFEST_VERSION:
+        config.pop("source_selection_digest", None)
+        config["repository_filter_policy"] = 3
     entry = IndexEntry(
         index_type=view,
         path=f"state/{view}",
@@ -294,6 +333,7 @@ def _entry(view: str, *, source_fingerprint: str) -> IndexEntry:
         metadata={},
         commit=_COMMIT,
         source_fingerprint=source_fingerprint,
+        source_selection_digest=source_selection_digest,
     )
     if view == "vector":
         for field, value in (
@@ -332,11 +372,24 @@ def _context_fixture(
     views: tuple[str, ...],
     *,
     source_text: str = "VALUE = 1\n",
+    source_selection: RepositorySourceSelection = _DEFAULT_SOURCE_SELECTION,
+    manifest_version: str = MANIFEST_VERSION,
 ) -> _ContextFixture:
     repository = root / "repo"
     repository.mkdir(parents=True)
     (repository / "sample.py").write_text(source_text, encoding="utf-8")
-    repository_source = capture_repository_source(repository)
+    repository_source = (
+        _capture_repository_source_legacy_manifest_v11(repository)
+        if manifest_version == LEGACY_MANIFEST_VERSION
+        else capture_repository_source(repository, selection=source_selection)
+    )
+    captured_selection = (
+        repository_source.authenticated_identity_snapshot().source_selection
+    )
+    expected_selection = (
+        None if manifest_version == LEGACY_MANIFEST_VERSION else source_selection
+    )
+    assert captured_selection == expected_selection
     owners: dict[str, PublishedWorkspaceReceiptOwner] = {}
     context_owner = PublishedWorkspaceReceiptOwner()
     try:
@@ -344,21 +397,35 @@ def _context_fixture(
             files = (
                 _bm25_files(source_text)
                 if view == "bm25"
-                else _vector_files(source_text)
+                else _vector_files(
+                    source_text,
+                    source_selection,
+                    manifest_version=manifest_version,
+                )
             )
             owners[view] = _publish_generation(root / "state" / view, files)
         manifest = RepoManifest(
+            version=manifest_version,
             repo_path=str(repository),
             commit=_COMMIT,
             last_indexed_commit=_COMMIT,
             source_fingerprint=repository_source.fingerprint,
             last_indexed_source_fingerprint=repository_source.fingerprint,
+            source_selection=expected_selection,
+            last_indexed_source_selection_digest=(
+                "" if expected_selection is None else expected_selection.digest
+            ),
             languages=["python"],
             file_count=repository_source.file_count,
             indexes={
                 view: _entry(
                     view,
                     source_fingerprint=repository_source.fingerprint,
+                    source_selection_digest=(
+                        "" if expected_selection is None else expected_selection.digest
+                    ),
+                    source_selection=source_selection,
+                    manifest_version=manifest_version,
                 )
                 for view in views
             },
@@ -765,6 +832,48 @@ def test_real_import_publishes_members_projection_subset_and_exact_retry(
         fixture.close()
 
 
+def test_v12_import_binds_nonempty_source_selection_into_projection(
+    tmp_path: Path,
+) -> None:
+    source_selection = RepositorySourceSelection(("generated", "vendor/cache"))
+    fixture = _context_fixture(
+        tmp_path / "fixture-selection",
+        ("bm25",),
+        source_selection=source_selection,
+    )
+    plan = fixture.plan()
+    cas = LocalCAS(tmp_path / "selection-cas")
+    catalog = SQLiteCatalog(tmp_path / "selection-catalog.sqlite")
+    try:
+        imported = import_retained_repo_manifest(
+            plan,
+            artifact_owner=fixture.context_owner,
+            repository_source=fixture.repository_source,
+            repository_key=_REPOSITORY_KEY,
+            catalog=catalog,
+            object_store=cas,
+            environ={},
+        )
+        summary = catalog.get_manifest_summary(imported.snapshot_id)
+        projection = summary["views"][REPO_MANIFEST_PROJECTION_VIEW]
+        payload = json.loads(cas.read_bytes(projection["object"]["digest"]))
+
+        assert plan.source.source_selection == source_selection
+        assert payload["source"]["source_selection"] == source_selection.to_dict()
+        assert payload["source"]["source_selection_digest"] == source_selection.digest
+        assert payload["plan"]["schema"].endswith(".v2")
+        assert (
+            payload["plan"]["source"]["source_selection_digest"]
+            == source_selection.digest
+        )
+        assert payload["manifest"]["repo"]["source_selection"] == (
+            source_selection.to_dict()
+        )
+    finally:
+        catalog.close()
+        fixture.close()
+
+
 def test_postcommit_interruption_converges_on_exact_retry(tmp_path: Path) -> None:
     fixture = _context_fixture(tmp_path / "fixture", ("bm25",))
     plan = fixture.plan()
@@ -908,11 +1017,19 @@ def test_inert_source_mismatch_and_mutated_plan_reject_before_backends(
     other_source = capture_repository_source(other_root)
     try:
         legacy_manifest = json.loads(plan.manifest_json)
+        legacy_manifest["version"] = LEGACY_MANIFEST_VERSION
+        legacy_manifest["repo"].pop("source_selection")
+        legacy_manifest["repo"].pop("last_indexed_source_selection_digest")
         legacy_fingerprint = "sha256:" + "e" * 64
         legacy_manifest["repo"]["source_fingerprint"] = legacy_fingerprint
         legacy_manifest["repo"]["last_indexed_source_fingerprint"] = legacy_fingerprint
         for entry in legacy_manifest["indexes"].values():
             entry["source_fingerprint"] = legacy_fingerprint
+            entry.pop("source_selection_digest")
+            for contract in (entry["config"], entry["metadata"]):
+                contract.pop("source_selection_digest", None)
+                if "repository_filter_policy" in contract:
+                    contract["repository_filter_policy"] = 3
         inert = plan_repo_manifest_import(legacy_manifest, views=["bm25"])
         assert inert.inert is True
         with pytest.raises(StorageValidationError, match="import-inert"):
@@ -938,6 +1055,26 @@ def test_inert_source_mismatch_and_mutated_plan_reject_before_backends(
                 environ={},
             )
         assert backend.calls == []
+
+        expected_selection = plan.source.source_selection
+        assert expected_selection is not None
+        fixture.repository_source._source_selection_identity = RepositorySourceSelection(  # type: ignore[attr-defined]
+            ("different-policy",)
+        )
+        with pytest.raises(StorageIntegrityError, match="retained repository source"):
+            import_retained_repo_manifest(
+                plan,
+                artifact_owner=fixture.context_owner,
+                repository_source=fixture.repository_source,
+                repository_key=_REPOSITORY_KEY,
+                catalog=backend,
+                object_store=backend,
+                environ={},
+            )
+        assert backend.calls == []
+        fixture.repository_source._source_selection_identity = (  # type: ignore[attr-defined]
+            expected_selection
+        )
 
         mutated = replace(plan)
         object.__setattr__(mutated, "manifest_json", mutated.manifest_json + " ")

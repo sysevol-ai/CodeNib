@@ -51,6 +51,31 @@ class _FakeVectorStore:
         return self.nodes[:top_k]
 
 
+def test_rel_uses_bound_source_inventory_without_live_exists(monkeypatch):
+    class Reader:
+        def captured_relative_path(self, path):
+            return "src/app.py" if path.endswith("src/app.py") else None
+
+    def fail_exists(_path):
+        raise AssertionError("bound Wiki must not inspect the live checkout")
+
+    monkeypatch.setattr(os.path, "exists", fail_exists)
+    wiki = AgentWiki(
+        SimpleNamespace(
+            entry=SimpleNamespace(
+                repo="owner/repo",
+                repo_dir="/repo",
+                language="python",
+            ),
+            source_reader=Reader(),
+        ),
+        model="fake-model",
+    )
+
+    assert wiki._rel("/builder/root/src/app.py") == "src/app.py"
+    assert wiki._rel("/builder/root/private/secret.py") is None
+
+
 def test_markdown_cleanup_removes_outer_fence_and_uncited_prose():
     fenced = (
         "```markdown\n"
@@ -6596,6 +6621,39 @@ def test_agent_wiki_cache_key_tracks_view_source_identity(tmp_path):
     view.source_fingerprint = "sha256:second"
 
     assert wiki._key("outline") != before
+
+
+def test_agent_wiki_cache_key_tracks_source_selection_identity(tmp_path):
+    manifest = SimpleNamespace(
+        languages=["python"],
+        indexes={},
+        source_fingerprint="sha256:source",
+        source_selection_digest="sha256:first-selection",
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=manifest,
+    )
+    wiki = AgentWiki(
+        bundle,
+        model="fake-model",
+        cache_dir=str(tmp_path / "wiki-cache"),
+    )
+    before = wiki._key("outline")
+
+    assert len(wiki._cache_candidate_paths("outline")) == 1
+    manifest.source_selection_digest = "sha256:second-selection"
+
+    assert wiki._key("outline") != before
+    assert len(wiki._cache_candidate_paths("outline")) == 1
 
 
 def test_agent_wiki_cache_key_is_stable_across_lazy_client_creation(tmp_path):

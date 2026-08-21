@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Pure retained-import planning for :class:`RepoManifest` v1.1 documents.
+"""Pure retained-import planning for supported :class:`RepoManifest` documents.
 
 This module deliberately stops before filesystem or storage authority begins.
 It parses one manifest with bounded, unambiguous JSON rules and turns it into
@@ -34,11 +34,19 @@ from ..index.embedding.model_policy import (
     resolve_embedding_artifact_load_policy_from_options,
 )
 from ..provider_routes import resolve_embedding_artifact_route
+from ..repository_source_selection import RepositorySourceSelection
 from ..source_fingerprint import source_fingerprint_version
 from ..storage.models import StorageValidationError, ViewProfile, canonical_json
-from .manifest import MANIFEST_VERSION, IndexEntry, RepoManifest
+from .manifest import (
+    LEGACY_MANIFEST_VERSION,
+    MANIFEST_VERSION,
+    SUPPORTED_MANIFEST_VERSIONS,
+    IndexEntry,
+    RepoManifest,
+)
 
-REPO_MANIFEST_IMPORT_PLAN_SCHEMA = "codenib.repo-manifest-import-plan.v1"
+REPO_MANIFEST_IMPORT_PLAN_SCHEMA_V1 = "codenib.repo-manifest-import-plan.v1"
+REPO_MANIFEST_IMPORT_PLAN_SCHEMA = "codenib.repo-manifest-import-plan.v2"
 REPO_MANIFEST_PROFILE_CONTRACT = "codenib.repo-manifest-profile.v1"
 REPO_MANIFEST_PROFILE_NAME = "repo-manifest-explicit"
 REPO_MANIFEST_BM25_GENERATION_CONTRACT = "codenib.repo-manifest-bm25-generation.v1"
@@ -63,6 +71,7 @@ _MAX_CONFIG_BYTES = 16 * 1024 * 1024
 _MAX_DOCUMENTS_BYTES = 256 * 1024 * 1024
 _INT64_MAX = 9_223_372_036_854_775_807
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
+_SOURCE_SELECTION_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z", re.ASCII)
 _DIAGNOSTIC_FIELD_NAMES = frozenset(
     {"error", "errormessage", "stalereason", "traceback", "exception"}
 )
@@ -153,6 +162,7 @@ BM25_PROFILE_AXES = (
     "chunking_failure_policy",
     "include_header_epilogue",
     "repository_filter_policy",
+    "source_selection_digest",
 )
 VECTOR_PROFILE_AXES = (
     "builder_schema",
@@ -170,6 +180,7 @@ VECTOR_PROFILE_AXES = (
     "max_lines_per_chunk",
     "chunking_failure_policy",
     "repository_filter_policy",
+    "source_selection_digest",
 )
 _BM25_OPTIONAL_PROFILE_AXES = ("additional_ignore_dirs",)
 _VECTOR_OPTIONAL_PROFILE_AXES = (
@@ -215,7 +226,7 @@ _NON_PROFILE_METADATA_FIELDS = frozenset({"build_duration_seconds"})
 _TOP_LEVEL_FIELDS = frozenset(
     {"version", "repo", "indexes", "capabilities", "compiled_at", "compiled_at_epoch"}
 )
-_REPO_FIELDS = frozenset(
+_REPO_V11_FIELDS = frozenset(
     {
         "path",
         "commit",
@@ -226,7 +237,13 @@ _REPO_FIELDS = frozenset(
         "file_count",
     }
 )
-_ENTRY_FIELDS = frozenset(
+_REPO_V12_FIELDS = _REPO_V11_FIELDS | frozenset(
+    {
+        "source_selection",
+        "last_indexed_source_selection_digest",
+    }
+)
+_ENTRY_V11_FIELDS = frozenset(
     {
         "index_type",
         "path",
@@ -239,6 +256,7 @@ _ENTRY_FIELDS = frozenset(
         "source_fingerprint",
     }
 )
+_ENTRY_V12_FIELDS = _ENTRY_V11_FIELDS | frozenset({"source_selection_digest"})
 
 
 class _AmbiguousJSONError(ValueError):
@@ -269,6 +287,7 @@ class SourceIntent:
     fingerprint_version: int
     file_count: int
     display_commit: str
+    source_selection: RepositorySourceSelection | None = None
 
     def __post_init__(self) -> None:
         if type(self) is not SourceIntent:
@@ -298,6 +317,21 @@ class SourceIntent:
                 raise StorageValidationError("source intent file count must be exact")
             _nonnegative_int(self.file_count, "source intent file count")
             _bounded_text(self.display_commit, "source intent display commit")
+            if self.source_selection is not None:
+                if type(self.source_selection) is not RepositorySourceSelection:
+                    raise StorageValidationError(
+                        "source intent selection must use the exact selection type"
+                    )
+                # Reconstruct the immutable value so a forged internal index cannot
+                # become part of an authority-bearing plan later.
+                canonical_selection = RepositorySourceSelection(
+                    self.source_selection.exclude_subtrees
+                )
+                if canonical_selection != self.source_selection:
+                    raise StorageValidationError(
+                        "source intent selection is not canonical"
+                    )
+                object.__setattr__(self, "source_selection", canonical_selection)
         except StorageValidationError:
             raise
         except Exception as exc:
@@ -321,19 +355,24 @@ class SourceIntent:
     def identity_digest(self) -> str:
         """Digest only the content-bearing intent, excluding display commit."""
 
-        return _sha256(
-            _canonical_bytes(
+        identity: dict[str, Any] = {
+            "contract": "codenib.repo-manifest-source-intent.v1",
+            "source_fingerprint": self.fingerprint,
+            "fingerprint_version": self.fingerprint_version,
+            "file_count": self.file_count,
+        }
+        if self.source_selection is not None:
+            identity.update(
                 {
-                    "contract": "codenib.repo-manifest-source-intent.v1",
-                    "source_fingerprint": self.fingerprint,
-                    "fingerprint_version": self.fingerprint_version,
-                    "file_count": self.file_count,
+                    "contract": "codenib.repo-manifest-source-intent.v2",
+                    "source_selection": self.source_selection.to_dict(),
+                    "source_selection_digest": self.source_selection.digest,
                 }
             )
-        )
+        return _sha256(_canonical_bytes(identity))
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value: dict[str, Any] = {
             "contract": "codenib.repo-manifest-source-intent.v1",
             "disposition": self.disposition,
             "eligible_for_verification": self.eligible_for_verification,
@@ -343,6 +382,15 @@ class SourceIntent:
             "display_commit": self.display_commit,
             "identity_digest": self.identity_digest,
         }
+        if self.source_selection is not None:
+            value.update(
+                {
+                    "contract": "codenib.repo-manifest-source-intent.v2",
+                    "source_selection": self.source_selection.to_dict(),
+                    "source_selection_digest": self.source_selection.digest,
+                }
+            )
+        return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -461,7 +509,11 @@ class RepoManifestImportPlan:
 
     @property
     def schema(self) -> str:
-        return REPO_MANIFEST_IMPORT_PLAN_SCHEMA
+        return (
+            REPO_MANIFEST_IMPORT_PLAN_SCHEMA_V1
+            if self.source.source_selection is None
+            else REPO_MANIFEST_IMPORT_PLAN_SCHEMA
+        )
 
     @property
     def canonical_manifest_bytes(self) -> bytes:
@@ -475,7 +527,7 @@ class RepoManifestImportPlan:
     def manifest(self) -> RepoManifest:
         value = json.loads(self.manifest_json)
         assert isinstance(value, dict)
-        return _repo_manifest_v11_from_data(value)
+        return _repo_manifest_from_data(value)
 
     @property
     def view_map(self) -> Mapping[str, ViewImportIntent]:
@@ -491,7 +543,7 @@ class RepoManifestImportPlan:
         return {
             "schema": self.schema,
             "manifest": {
-                "version": MANIFEST_VERSION,
+                "version": self.manifest.version,
                 "digest": self.manifest_digest,
                 "byte_size": len(self.canonical_manifest_bytes),
             },
@@ -706,6 +758,7 @@ def _snapshot_json_value(
             )
         state["seen"][identity] = value
         try:
+            version = value.version
             languages = value.languages
             indexes = value.indexes
             capabilities = value.capabilities
@@ -724,19 +777,45 @@ def _snapshot_json_value(
                 raise StorageValidationError(
                     "repository manifest capabilities must be a bounded exact object"
                 )
+            projected_repo: dict[str, Any] = {
+                "path": value.repo_path,
+                "commit": value.commit,
+                "last_indexed_commit": value.last_indexed_commit,
+                "source_fingerprint": value.source_fingerprint,
+                "last_indexed_source_fingerprint": (
+                    value.last_indexed_source_fingerprint
+                ),
+                "languages": languages,
+                "file_count": value.file_count,
+            }
+            if version == MANIFEST_VERSION:
+                source_selection = value.source_selection
+                if type(source_selection) is not RepositorySourceSelection:
+                    raise StorageValidationError(
+                        "manifest v1.2 source selection must use the exact type"
+                    )
+                detached_selection = RepositorySourceSelection(
+                    source_selection.exclude_subtrees
+                )
+                projected_repo.update(
+                    {
+                        "source_selection": detached_selection.to_dict(),
+                        "last_indexed_source_selection_digest": (
+                            value.last_indexed_source_selection_digest
+                        ),
+                    }
+                )
+            elif version == LEGACY_MANIFEST_VERSION:
+                if (
+                    value.source_selection is not None
+                    or value.last_indexed_source_selection_digest
+                ):
+                    raise StorageValidationError(
+                        "manifest v1.1 cannot carry source-selection identity"
+                    )
             projected = {
-                "version": value.version,
-                "repo": {
-                    "path": value.repo_path,
-                    "commit": value.commit,
-                    "last_indexed_commit": value.last_indexed_commit,
-                    "source_fingerprint": value.source_fingerprint,
-                    "last_indexed_source_fingerprint": (
-                        value.last_indexed_source_fingerprint
-                    ),
-                    "languages": languages,
-                    "file_count": value.file_count,
-                },
+                "version": version,
+                "repo": projected_repo,
                 "indexes": indexes,
                 "capabilities": capabilities,
                 "compiled_at": value.compiled_at,
@@ -748,6 +827,7 @@ def _snapshot_json_value(
             raise StorageValidationError(
                 f"{label} is missing or failed to expose manifest fields"
             ) from exc
+        state["manifest_version"] = version
         return _snapshot_json_value(
             projected,
             label=label,
@@ -770,6 +850,7 @@ def _snapshot_json_value(
                 raise StorageValidationError(
                     "repository manifest index config and metadata must be exact objects"
                 )
+            manifest_version = state.get("manifest_version", MANIFEST_VERSION)
             projected = {
                 "index_type": value.index_type,
                 "path": value.path,
@@ -781,6 +862,13 @@ def _snapshot_json_value(
                 "commit": value.commit,
                 "source_fingerprint": value.source_fingerprint,
             }
+            if manifest_version == MANIFEST_VERSION:
+                projected["source_selection_digest"] = value.source_selection_digest
+            elif value.source_selection_digest:
+                raise StorageValidationError(
+                    "manifest v1.1 index entries cannot carry source-selection "
+                    "identity"
+                )
         except StorageValidationError:
             raise
         except Exception as exc:
@@ -1107,14 +1195,16 @@ def _validate_publishable_entry(entry: IndexEntry, *, view_type: str) -> None:
         _assert_no_diagnostic_fields(value, source=source)
 
 
-def _repo_manifest_v11_from_data(data: dict[str, Any]) -> RepoManifest:
-    """Validate and detach one exact RepoManifest v1.1 object."""
+def _repo_manifest_from_data(data: dict[str, Any]) -> RepoManifest:
+    """Validate and detach one exact supported RepoManifest object."""
 
     _validate_json_budget(data, label="repository manifest")
     _require_exact_fields(data, _TOP_LEVEL_FIELDS, label="repository manifest")
-    if data.get("version") != MANIFEST_VERSION:
+    version = data.get("version")
+    if type(version) is not str or version not in SUPPORTED_MANIFEST_VERSIONS:
         raise StorageValidationError(
-            f"repository manifest version must be {MANIFEST_VERSION}"
+            "repository manifest version must be one of "
+            + ", ".join(sorted(SUPPORTED_MANIFEST_VERSIONS))
         )
 
     repo = data.get("repo")
@@ -1128,7 +1218,11 @@ def _repo_manifest_v11_from_data(data: dict[str, Any]) -> RepoManifest:
         raise StorageValidationError(
             "repository manifest capabilities must be an object"
         )
-    _require_exact_fields(repo, _REPO_FIELDS, label="repository manifest repo")
+    repo_fields = _REPO_V12_FIELDS if version == MANIFEST_VERSION else _REPO_V11_FIELDS
+    entry_fields = (
+        _ENTRY_V12_FIELDS if version == MANIFEST_VERSION else _ENTRY_V11_FIELDS
+    )
+    _require_exact_fields(repo, repo_fields, label="repository manifest repo")
     if len(indexes) > _MAX_INDEXES:
         raise StorageValidationError("repository manifest has too many indexes")
     if len(capabilities) > _MAX_CAPABILITIES:
@@ -1179,6 +1273,33 @@ def _repo_manifest_v11_from_data(data: dict[str, Any]) -> RepoManifest:
     file_count = _nonnegative_int(
         repo.get("file_count"), "repository manifest file count"
     )
+    source_selection: RepositorySourceSelection | None = None
+    last_selection_digest = ""
+    if version == MANIFEST_VERSION:
+        try:
+            source_selection = RepositorySourceSelection.from_dict(
+                repo.get("source_selection")
+            )
+        except (TypeError, ValueError) as exc:
+            raise StorageValidationError(
+                "repository manifest source selection is invalid"
+            ) from exc
+        last_selection_digest = _bounded_text(
+            repo.get("last_indexed_source_selection_digest"),
+            "repository manifest last indexed source selection digest",
+        )
+        if last_selection_digest and not _SOURCE_SELECTION_DIGEST_RE.fullmatch(
+            last_selection_digest
+        ):
+            raise StorageValidationError(
+                "repository manifest last indexed source selection digest "
+                "is unsupported"
+            )
+        if bool(last_source) != bool(last_selection_digest):
+            raise StorageValidationError(
+                "repository manifest last indexed source identities must be "
+                "present together"
+            )
 
     entries: dict[str, IndexEntry] = {}
     for name, raw_entry in indexes.items():
@@ -1194,7 +1315,7 @@ def _repo_manifest_v11_from_data(data: dict[str, Any]) -> RepoManifest:
             )
         _require_exact_fields(
             raw_entry,
-            _ENTRY_FIELDS,
+            entry_fields,
             label=f"repository manifest view {view_name!r}",
         )
         config = raw_entry.get("config")
@@ -1228,6 +1349,26 @@ def _repo_manifest_v11_from_data(data: dict[str, Any]) -> RepoManifest:
             raise StorageValidationError(
                 f"repository manifest view {view_name!r} index type does not match"
             )
+        entry_selection_digest = ""
+        if version == MANIFEST_VERSION:
+            entry_selection_digest = _bounded_text(
+                raw_entry.get("source_selection_digest"),
+                f"view {view_name!r} source selection digest",
+            )
+            if entry_selection_digest and not _SOURCE_SELECTION_DIGEST_RE.fullmatch(
+                entry_selection_digest
+            ):
+                raise StorageValidationError(
+                    f"view {view_name!r} source selection digest is unsupported"
+                )
+            if status == "fresh" and (
+                not entry_selection_digest
+                or source_selection is None
+                or entry_selection_digest != source_selection.digest
+            ):
+                raise StorageValidationError(
+                    f"fresh view {view_name!r} source selection does not match"
+                )
         entries[view_name] = IndexEntry(
             index_type=index_type,
             path=_bounded_text(
@@ -1247,6 +1388,7 @@ def _repo_manifest_v11_from_data(data: dict[str, Any]) -> RepoManifest:
             metadata=metadata,
             commit=_bounded_text(raw_entry.get("commit"), f"view {view_name!r} commit"),
             source_fingerprint=entry_source,
+            source_selection_digest=entry_selection_digest,
         )
 
     normalized_capabilities: dict[str, bool] = {}
@@ -1264,12 +1406,14 @@ def _repo_manifest_v11_from_data(data: dict[str, Any]) -> RepoManifest:
         normalized_capabilities[capability] = enabled
 
     manifest = RepoManifest(
-        version=MANIFEST_VERSION,
+        version=version,
         repo_path=repo_path,
         commit=commit,
         last_indexed_commit=last_commit,
         source_fingerprint=source,
         last_indexed_source_fingerprint=last_source,
+        source_selection=source_selection,
+        last_indexed_source_selection_digest=last_selection_digest,
         languages=languages,
         file_count=file_count,
         indexes=entries,
@@ -1351,6 +1495,11 @@ def _entry_is_current(manifest: RepoManifest, view_type: str) -> tuple[bool, str
         entry.source_fingerprint != manifest.source_fingerprint
     ):
         return False, "source_mismatch"
+    if manifest.version == MANIFEST_VERSION and (
+        manifest.source_selection_digest is None
+        or entry.source_selection_digest != manifest.source_selection_digest
+    ):
+        return False, "source_selection_mismatch"
     return True, ""
 
 
@@ -1460,7 +1609,12 @@ def _require_profile_axes(
         )
 
 
-def _profile_config(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
+def _profile_config(
+    entry: IndexEntry,
+    *,
+    view_type: str,
+    manifest_version: str,
+) -> dict[str, Any]:
     config = entry.config
     axes: tuple[str, ...]
     optional_axes: tuple[str, ...]
@@ -1476,6 +1630,8 @@ def _profile_config(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
         non_profile = _VECTOR_NON_PROFILE_CONFIG_FIELDS
     else:  # pragma: no cover - selection excludes unsupported views
         raise _IncompleteProfile(f"unsupported view profile: {view_type}")
+    if manifest_version == LEGACY_MANIFEST_VERSION:
+        axes = tuple(axis for axis in axes if axis != "source_selection_digest")
     _require_profile_axes(config, view_type=view_type, axes=axes)
     _reject_unknown_config_fields(
         config,
@@ -1534,6 +1690,16 @@ def _profile_config(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
         config["repository_filter_policy"],
         f"view {view_type!r} repository_filter_policy",
     )
+    if manifest_version == MANIFEST_VERSION:
+        source_selection_digest = config["source_selection_digest"]
+        if (
+            type(source_selection_digest) is not str
+            or _SOURCE_SELECTION_DIGEST_RE.fullmatch(source_selection_digest) is None
+            or source_selection_digest != entry.source_selection_digest
+        ):
+            raise _IncompleteProfile(
+                f"view {view_type!r} source selection identity is inconsistent"
+            )
     if "additional_ignore_dirs" in config:
         _text_list(
             config["additional_ignore_dirs"],
@@ -1617,7 +1783,7 @@ def _profile_config(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
         compatibility["embedding_load_policy"] = embedding_load_policy
     return {
         "contract": REPO_MANIFEST_PROFILE_CONTRACT,
-        "manifest_version": MANIFEST_VERSION,
+        "manifest_version": manifest_version,
         "builder_schema": config["builder_schema"],
         "compatibility": compatibility,
     }
@@ -1938,10 +2104,18 @@ def _generation_record(entry: IndexEntry, *, view_type: str) -> dict[str, Any]:
 
 
 def _view_import_intent(
-    entry: IndexEntry, *, view_type: str, required: bool
+    entry: IndexEntry,
+    *,
+    view_type: str,
+    required: bool,
+    manifest_version: str,
 ) -> ViewImportIntent:
     _validate_publishable_entry(entry, view_type=view_type)
-    profile_config = _profile_config(entry, view_type=view_type)
+    profile_config = _profile_config(
+        entry,
+        view_type=view_type,
+        manifest_version=manifest_version,
+    )
     try:
         profile = ViewProfile.create(
             view_type,
@@ -1957,7 +2131,9 @@ def _view_import_intent(
     return ViewImportIntent(
         view_type=view_type,
         required=required,
-        manifest_entry_json=canonical_json(entry.to_dict()),
+        manifest_entry_json=canonical_json(
+            entry.to_dict(manifest_version=manifest_version)
+        ),
         profile=profile,
         generation_record_json=canonical_json(generation),
     )
@@ -1985,17 +2161,29 @@ def _canonical_object_json(payload: object, *, label: str) -> dict[str, Any]:
     return value
 
 
-def _intent_entry_from_data(data: dict[str, Any], *, view_type: str) -> IndexEntry:
-    _require_exact_fields(data, _ENTRY_FIELDS, label="view import manifest entry")
+def _intent_entry_from_data(
+    data: dict[str, Any],
+    *,
+    view_type: str,
+    manifest_version: str,
+) -> IndexEntry:
+    expected_fields = (
+        _ENTRY_V12_FIELDS if manifest_version == MANIFEST_VERSION else _ENTRY_V11_FIELDS
+    )
+    _require_exact_fields(
+        data,
+        expected_fields,
+        label="view import manifest entry",
+    )
     if not isinstance(data.get("config"), dict) or not isinstance(
         data.get("metadata"), dict
     ):
         raise StorageValidationError("view import entry metadata must be objects")
     try:
-        entry = IndexEntry.from_dict(data)
+        entry = IndexEntry.from_dict(data, manifest_version=manifest_version)
     except (KeyError, TypeError, ValueError) as exc:
         raise StorageValidationError("view import entry is invalid") from exc
-    if entry.to_dict() != data:
+    if entry.to_dict(manifest_version=manifest_version) != data:
         raise StorageValidationError("view import entry shape is not canonical")
     if entry.index_type != view_type or entry.status != "fresh":
         raise StorageValidationError(
@@ -2056,17 +2244,34 @@ def _validate_view_import_intent(intent: ViewImportIntent) -> None:
         intent.profile.config_json,
         label="view import profile config",
     )
+    profile_config = intent.profile.config
+    manifest_version = profile_config.get("manifest_version")
+    if (
+        type(manifest_version) is not str
+        or manifest_version not in SUPPORTED_MANIFEST_VERSIONS
+    ):
+        raise StorageValidationError(
+            "view import intent profile does not match a supported manifest version"
+        )
 
     entry_data = _canonical_object_json(
         intent.manifest_entry_json,
         label="view import manifest entry",
     )
     _validate_manifest_publication_policy({"entry": entry_data})
-    entry = _intent_entry_from_data(entry_data, view_type=intent.view_type)
+    entry = _intent_entry_from_data(
+        entry_data,
+        view_type=intent.view_type,
+        manifest_version=manifest_version,
+    )
     try:
         expected_profile = ViewProfile.create(
             intent.view_type,
-            _profile_config(entry, view_type=intent.view_type),
+            _profile_config(
+                entry,
+                view_type=intent.view_type,
+                manifest_version=manifest_version,
+            ),
             name=REPO_MANIFEST_PROFILE_NAME,
         )
         _validate_non_profile_config(entry, view_type=intent.view_type)
@@ -2159,9 +2364,18 @@ def _validate_view_selection(selection: ViewSelection) -> None:
         )
 
 
-def _incomplete_view_reason(entry: IndexEntry, *, view_type: str) -> str | None:
+def _incomplete_view_reason(
+    entry: IndexEntry,
+    *,
+    view_type: str,
+    manifest_version: str,
+) -> str | None:
     try:
-        _profile_config(entry, view_type=view_type)
+        _profile_config(
+            entry,
+            view_type=view_type,
+            manifest_version=manifest_version,
+        )
     except _IncompleteProfile:
         return "incomplete_profile"
     try:
@@ -2177,7 +2391,7 @@ def _validate_import_plan(plan: RepoManifestImportPlan) -> None:
         plan.manifest_json,
         label="import plan manifest",
     )
-    manifest = _repo_manifest_v11_from_data(manifest_data)
+    manifest = _repo_manifest_from_data(manifest_data)
     _validate_manifest_publication_policy(manifest_data)
     if not isinstance(plan.source, SourceIntent):
         raise StorageValidationError("import plan source intent is invalid")
@@ -2192,17 +2406,20 @@ def _validate_import_plan(plan: RepoManifestImportPlan) -> None:
         fingerprint_version=fingerprint_version,
         file_count=manifest.file_count,
         display_commit=manifest.commit,
+        source_selection=manifest.source_selection,
     )
     if (
         plan.source.fingerprint,
         plan.source.fingerprint_version,
         plan.source.file_count,
         plan.source.display_commit,
+        plan.source.source_selection,
     ) != (
         expected_source.fingerprint,
         expected_source.fingerprint_version,
         expected_source.file_count,
         expected_source.display_commit,
+        expected_source.source_selection,
     ):
         raise StorageValidationError(
             "import plan source intent does not match its manifest"
@@ -2242,6 +2459,7 @@ def _validate_import_plan(plan: RepoManifestImportPlan) -> None:
         observed_reason = _incomplete_view_reason(
             manifest.indexes[view_type],
             view_type=view_type,
+            manifest_version=manifest.version,
         )
         if observed_reason != reason:
             raise StorageValidationError(
@@ -2258,7 +2476,9 @@ def _validate_import_plan(plan: RepoManifestImportPlan) -> None:
             raise StorageValidationError(
                 "import plan view requirement does not match its selection"
             )
-        expected_entry = canonical_json(manifest.indexes[view.view_type].to_dict())
+        expected_entry = canonical_json(
+            manifest.indexes[view.view_type].to_dict(manifest_version=manifest.version)
+        )
         if view.manifest_entry_json != expected_entry:
             raise StorageValidationError(
                 "import plan view entry does not match its manifest"
@@ -2314,7 +2534,7 @@ def plan_repo_manifest_import(
 
     limit = _manifest_limit(max_manifest_bytes)
     data = _validated_manifest_data(manifest, max_bytes=limit)
-    parsed = _repo_manifest_v11_from_data(data)
+    parsed = _repo_manifest_from_data(data)
     normalized_manifest = parsed.to_dict()
     _validate_manifest_publication_policy(normalized_manifest)
     manifest_json = canonical_json(normalized_manifest)
@@ -2337,6 +2557,7 @@ def plan_repo_manifest_import(
                 parsed.indexes[view_type],
                 view_type=view_type,
                 required=is_required,
+                manifest_version=parsed.version,
             )
         except _IncompleteProfile as exc:
             if is_required:
@@ -2373,6 +2594,7 @@ def plan_repo_manifest_import(
         fingerprint_version=fingerprint_version,
         file_count=parsed.file_count,
         display_commit=parsed.commit,
+        source_selection=parsed.source_selection,
     )
     return RepoManifestImportPlan(
         manifest_json=manifest_json,
@@ -2492,6 +2714,7 @@ __all__ = [
     "PORTABLE_STORAGE_VIEWS",
     "REPO_MANIFEST_BM25_GENERATION_CONTRACT",
     "REPO_MANIFEST_IMPORT_PLAN_SCHEMA",
+    "REPO_MANIFEST_IMPORT_PLAN_SCHEMA_V1",
     "REPO_MANIFEST_PROFILE_CONTRACT",
     "REPO_MANIFEST_PROFILE_NAME",
     "REPO_MANIFEST_VECTOR_GENERATION_CONTRACT",

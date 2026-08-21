@@ -50,13 +50,22 @@ from ._windows_fs_authority import (
 from ._windows_fs_authority import WindowsDirectoryEntry as _WindowsDirectoryEntry
 from ._windows_fs_authority import WindowsHandleMetadata as _WindowsHandleMetadata
 from ._windows_fs_authority import WindowsKernelApi as _WindowsKernelApi
+from ._windows_fs_authority import WindowsReparsePoint as _WindowsReparsePoint
 from ._windows_fs_authority import _WindowsHandleCleanup
 from .repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     repository_path_is_visible,
 )
+from .repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    RepositorySourceSelection,
+)
 
 SOURCE_FINGERPRINT_VERSION = 2
+
+_CURRENT_SOURCE_IDENTITY_POLICY = object()
+_LEGACY_MANIFEST_V11_SOURCE_IDENTITY_POLICY = object()
+_LEGACY_MANIFEST_V11_FILTER_POLICY_VERSION = 3
 
 _SOURCE_FINGERPRINT_V1_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SOURCE_FINGERPRINT_V2_RE = re.compile(r"^sha256-v2:[0-9a-f]{64}$")
@@ -72,6 +81,14 @@ _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 class RepositoryChangedError(RuntimeError):
     """Raised when repository contents change while they are being inspected."""
+
+
+def _snapshot_repository_source_selection(
+    selection: RepositorySourceSelection,
+) -> RepositorySourceSelection:
+    if type(selection) is not RepositorySourceSelection:
+        raise TypeError("selection must be a RepositorySourceSelection")
+    return RepositorySourceSelection(selection.exclude_subtrees)
 
 
 def _remember_interruption(
@@ -305,6 +322,7 @@ class _RepositoryEntry:
     relative: str
     metadata: os.stat_result | _WindowsHandleMetadata
     link_target: str | None = None
+    windows_reparse_point: _WindowsReparsePoint | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,6 +357,7 @@ class _RepositorySourceLinkRecord:
     lexical_identity: tuple[object, ...]
     link_target: str
     target_state: str
+    windows_reparse_point: _WindowsReparsePoint | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,6 +368,7 @@ class RepositorySourceIdentitySnapshot:
     fingerprint: str
     file_count: int
     file_records: tuple[RepositorySourceFileRecord, ...]
+    source_selection: RepositorySourceSelection | None
 
 
 class _HashFanout:
@@ -510,6 +530,50 @@ def _same_source_file_record(
     )
 
 
+def _same_windows_reparse_point(
+    left: _WindowsReparsePoint | None,
+    right: _WindowsReparsePoint | None,
+) -> bool:
+    if left is None or right is None:
+        return left is right
+    return (
+        type(left) is _WindowsReparsePoint
+        and type(right) is _WindowsReparsePoint
+        and type(left.tag) is type(right.tag) is int
+        and left.tag == right.tag
+        and type(left.flags) is type(right.flags) is int
+        and left.flags == right.flags
+        and type(left.substitute_name) is type(right.substitute_name)
+        and left.substitute_name == right.substitute_name
+        and type(left.print_name) is type(right.print_name)
+        and left.print_name == right.print_name
+    )
+
+
+def _same_source_link_record(
+    left: _RepositorySourceLinkRecord,
+    right: _RepositorySourceLinkRecord,
+) -> bool:
+    return (
+        type(left) is _RepositorySourceLinkRecord
+        and type(right) is _RepositorySourceLinkRecord
+        and type(left.path) is type(right.path) is str
+        and left.path == right.path
+        and _same_source_identity_value(
+            left.lexical_identity,
+            right.lexical_identity,
+        )
+        and type(left.link_target) is type(right.link_target) is str
+        and left.link_target == right.link_target
+        and type(left.target_state) is type(right.target_state) is str
+        and left.target_state == right.target_state
+        and _same_windows_reparse_point(
+            left.windows_reparse_point,
+            right.windows_reparse_point,
+        )
+    )
+
+
 def _snapshot_source_file_record(record: object) -> RepositorySourceFileRecord:
     if type(record) is not RepositorySourceFileRecord:
         raise TypeError("repository source records must use the exact record type")
@@ -609,6 +673,7 @@ def _verify_windows_repository_links(
             expected_root_identity=root_identity,
             expected_final_identity=link.lexical_identity,
             expected_final_link_target=link.link_target,
+            expected_final_reparse_point=link.windows_reparse_point,
             api=api,
         ) as source:
             _verify_resolved_repository_link(source, link, records)
@@ -628,9 +693,12 @@ class RepositorySourceBinding:
         "_authenticated_file_records",
         "_authenticated_link_records",
         "_records",
+        "_links",
         "_inventory_digest",
         "_inventory_entries",
         "_excluded",
+        "_selection",
+        "_source_selection_identity",
         "_root_descriptor",
         "_posix_authority",
         "_root_identity",
@@ -655,6 +723,8 @@ class RepositorySourceBinding:
         inventory_digest: str,
         inventory_entries: int,
         excluded: tuple[tuple[str, ...], ...],
+        selection: RepositorySourceSelection,
+        source_selection_identity: RepositorySourceSelection | None,
         root_identity: tuple[object, ...],
         root_descriptor: int = -1,
         posix_authority: object | None = None,
@@ -691,10 +761,40 @@ class RepositorySourceBinding:
                 or type(record.lexical_identity) is not tuple
                 or type(record.link_target) is not str
                 or record.target_state not in {"regular", "directory", "unresolved"}
+                or (
+                    record.windows_reparse_point is not None
+                    and type(record.windows_reparse_point) is not _WindowsReparsePoint
+                )
             ):
                 raise ValueError(
                     "repository source binding contains invalid link records"
                 )
+            reparse = record.windows_reparse_point
+            if reparse is not None and (
+                type(reparse.tag) is not int
+                or type(reparse.flags) is not int
+                or (
+                    reparse.substitute_name is not None
+                    and type(reparse.substitute_name) is not str
+                )
+                or (
+                    reparse.print_name is not None
+                    and type(reparse.print_name) is not str
+                )
+            ):
+                raise ValueError(
+                    "repository source binding contains invalid link records"
+                )
+            authenticated_reparse = (
+                None
+                if reparse is None
+                else _WindowsReparsePoint(
+                    tag=reparse.tag,
+                    substitute_name=reparse.substitute_name,
+                    print_name=reparse.print_name,
+                    flags=reparse.flags,
+                )
+            )
             authenticated_links.append(
                 _RepositorySourceLinkRecord(
                     path=record.path,
@@ -703,15 +803,34 @@ class RepositorySourceBinding:
                     ),  # type: ignore[arg-type]
                     link_target=record.link_target,
                     target_state=record.target_state,
+                    windows_reparse_point=authenticated_reparse,
                 )
             )
         self._authenticated_link_records = tuple(authenticated_links)
         self._records = {record.path: record for record in authenticated_records}
+        self._links = {record.path: record for record in authenticated_links}
         if len(self._records) != len(authenticated_records):
             raise ValueError("repository source binding contains duplicate records")
+        if len(self._links) != len(authenticated_links):
+            raise ValueError(
+                "repository source binding contains duplicate link records"
+            )
         self._inventory_digest = inventory_digest
         self._inventory_entries = inventory_entries
         self._excluded = excluded
+        self._selection = _snapshot_repository_source_selection(selection)
+        self._source_selection_identity = (
+            None
+            if source_selection_identity is None
+            else _snapshot_repository_source_selection(source_selection_identity)
+        )
+        if (
+            self._source_selection_identity is not None
+            and self._source_selection_identity != self._selection
+        ):
+            raise ValueError(
+                "repository source selection identity differs from scan policy"
+            )
         self._root_descriptor = root_descriptor
         self._posix_authority = posix_authority
         self._root_identity = root_identity
@@ -822,6 +941,7 @@ class RepositorySourceBinding:
                 api,
                 authority.handle,
                 excluded=self._excluded,
+                selection=self._selection,
                 collect_entries=False,
             )
             if (
@@ -839,6 +959,7 @@ class RepositorySourceBinding:
         scan = _scan_pinned_repository(
             self._root_descriptor,
             excluded=self._excluded,
+            selection=self._selection,
             collect_entries=False,
         )
         if (
@@ -894,6 +1015,17 @@ class RepositorySourceBinding:
         ):
             raise RepositoryChangedError(
                 "repository source retained records changed after authentication"
+            )
+        if len(self._links) != len(self._authenticated_link_records) or any(
+            (
+                not _same_source_link_record(self._links[expected.path], expected)
+                if expected.path in self._links
+                else True
+            )
+            for expected in self._authenticated_link_records
+        ):
+            raise RepositoryChangedError(
+                "repository source retained link records changed after authentication"
             )
 
     def _verify_retained_link_targets(self) -> None:
@@ -960,6 +1092,13 @@ class RepositorySourceBinding:
                 file_records=tuple(
                     _snapshot_source_file_record(record)
                     for record in self._authenticated_file_records
+                ),
+                source_selection=(
+                    None
+                    if self._source_selection_identity is None
+                    else _snapshot_repository_source_selection(
+                        self._source_selection_identity
+                    )
                 ),
             )
 
@@ -1029,6 +1168,7 @@ class RepositorySourceBinding:
             api = self._windows_api
             if api is None:  # pragma: no cover - constructor invariant
                 raise AssertionError("Windows repository binding has no API")
+            link = self._links.get(relative)
             resolver = _resolved_windows_repository_file_at(
                 self._authenticated_root,
                 self._windows_authority,
@@ -1036,6 +1176,9 @@ class RepositorySourceBinding:
                 expected_root_identity=self._root_identity,
                 expected_final_identity=record.lexical_identity,
                 expected_final_link_target=record.link_target,
+                expected_final_reparse_point=(
+                    None if link is None else link.windows_reparse_point
+                ),
                 api=api,
             )
         else:
@@ -1071,21 +1214,27 @@ class RepositorySourceBinding:
             api = self._windows_api
             if api is None:  # pragma: no cover - constructor invariant
                 raise AssertionError("Windows repository binding has no API")
+            link = self._links.get(relative)
             resolver = _resolved_windows_repository_file_at(
-                self.root,
+                self._authenticated_root,
                 self._windows_authority,
                 relative,
                 expected_root_identity=self._root_identity,
                 expected_final_identity=record.lexical_identity,
+                expected_final_link_target=record.link_target,
+                expected_final_reparse_point=(
+                    None if link is None else link.windows_reparse_point
+                ),
                 api=api,
             )
         else:
             resolver = _resolved_repository_file_at(
-                self.root,
+                self._authenticated_root,
                 self._root_descriptor,
                 relative,
                 expected_root_identity=self._root_identity,  # type: ignore[arg-type]
                 expected_final_identity=record.lexical_identity,  # type: ignore[arg-type]
+                expected_final_link_target=record.link_target,
             )
         authenticated = _AuthenticatedPrefix(max_bytes)
         with resolver as source:
@@ -1114,21 +1263,27 @@ class RepositorySourceBinding:
             api = self._windows_api
             if api is None:  # pragma: no cover - constructor invariant
                 raise AssertionError("Windows repository binding has no API")
+            link = self._links.get(relative)
             resolver = _resolved_windows_repository_file_at(
-                self.root,
+                self._authenticated_root,
                 self._windows_authority,
                 relative,
                 expected_root_identity=self._root_identity,
                 expected_final_identity=record.lexical_identity,
+                expected_final_link_target=record.link_target,
+                expected_final_reparse_point=(
+                    None if link is None else link.windows_reparse_point
+                ),
                 api=api,
             )
         else:
             resolver = _resolved_repository_file_at(
-                self.root,
+                self._authenticated_root,
                 self._root_descriptor,
                 relative,
                 expected_root_identity=self._root_identity,  # type: ignore[arg-type]
                 expected_final_identity=record.lexical_identity,  # type: ignore[arg-type]
+                expected_final_link_target=record.link_target,
             )
         authenticated = _AuthenticatedLineRange(start_line, end_line, max_bytes)
         with resolver as source:
@@ -1510,6 +1665,46 @@ def _update_frame(hasher: object, domain: bytes, payload: bytes) -> None:
     hasher.update(payload)
 
 
+def _new_source_fingerprint_hasher(
+    version: int,
+    selection: RepositorySourceSelection,
+    *,
+    identity_policy: object,
+) -> Any:
+    hasher = hashlib.sha256()
+    if identity_policy is _LEGACY_MANIFEST_V11_SOURCE_IDENTITY_POLICY:
+        if selection != DEFAULT_REPOSITORY_SOURCE_SELECTION:
+            raise ValueError(
+                "legacy manifest v1.1 source identity requires empty selection"
+            )
+        policy_version = _LEGACY_MANIFEST_V11_FILTER_POLICY_VERSION
+        include_selection = False
+    elif identity_policy is _CURRENT_SOURCE_IDENTITY_POLICY:
+        policy_version = REPOSITORY_FILTER_POLICY_VERSION
+        include_selection = True
+    else:  # pragma: no cover - private call invariant
+        raise ValueError("unsupported repository source identity policy")
+    selection_digest = selection.digest.encode("ascii")
+    if version == 1:
+        hasher.update(
+            ("codenib-source-fingerprint:1:" f"{policy_version}\0").encode("ascii")
+        )
+        if include_selection:
+            hasher.update(b"source-selection-digest\0")
+            hasher.update(selection_digest)
+            hasher.update(b"\0")
+        return hasher
+    hasher.update(_V2_MAGIC)
+    _update_frame(
+        hasher,
+        b"filter-policy-version",
+        str(policy_version).encode("ascii"),
+    )
+    if include_selection:
+        _update_frame(hasher, b"source-selection-digest", selection_digest)
+    return hasher
+
+
 def _directory_flags() -> int:
     return (
         os.O_RDONLY
@@ -1606,6 +1801,7 @@ def _update_inventory_record(
     kind: bytes,
     metadata: os.stat_result | _WindowsHandleMetadata,
     link_target: str | None,
+    windows_reparse_point: _WindowsReparsePoint | None = None,
 ) -> None:
     _update_frame(hasher, b"inventory-kind", kind)
     _update_frame(hasher, b"inventory-path", os.fsencode(relative))
@@ -1615,16 +1811,41 @@ def _update_inventory_record(
     _update_frame(hasher, b"inventory-identity", identity)
     if link_target is not None:
         _update_frame(hasher, b"inventory-link-target", os.fsencode(link_target))
+    if windows_reparse_point is not None:
+        _update_frame(
+            hasher,
+            b"inventory-windows-reparse-tag",
+            str(windows_reparse_point.tag).encode("ascii"),
+        )
+        _update_frame(
+            hasher,
+            b"inventory-windows-reparse-flags",
+            str(windows_reparse_point.flags).encode("ascii"),
+        )
+        for domain, value in (
+            (
+                b"inventory-windows-reparse-substitute",
+                windows_reparse_point.substitute_name,
+            ),
+            (
+                b"inventory-windows-reparse-print",
+                windows_reparse_point.print_name,
+            ),
+        ):
+            payload = b"\x00" if value is None else b"\x01" + os.fsencode(value)
+            _update_frame(hasher, domain, payload)
 
 
 def _scan_pinned_repository(
     root_descriptor: int,
     *,
     excluded: tuple[tuple[str, ...], ...],
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
     collect_entries: bool,
 ) -> _RepositoryScan:
     """Enumerate one stable view through an already-open repository root."""
 
+    selected = _snapshot_repository_source_selection(selection)
     inventory = hashlib.sha256()
     entries: list[_RepositoryEntry] = []
     budget = _RepositoryScanBudget()
@@ -1652,7 +1873,7 @@ def _scan_pinned_repository(
                     child_parts = (*parts, child.name)
                     relative = "/".join(child_parts)
                     if _relative_is_excluded(child_parts, excluded) or not (
-                        repository_path_is_visible(relative)
+                        repository_path_is_visible(relative, selection=selected)
                     ):
                         continue
                     # Charge the name before retaining it. A hostile wide
@@ -1792,10 +2013,12 @@ def _scan_pinned_windows_repository(
     root_handle: int,
     *,
     excluded: tuple[tuple[str, ...], ...],
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
     collect_entries: bool,
 ) -> _RepositoryScan:
     """Enumerate through one retained Windows root without following reparses."""
 
+    selected = _snapshot_repository_source_selection(selection)
     inventory = hashlib.sha256()
     entries: list[_RepositoryEntry] = []
     budget = _RepositoryScanBudget()
@@ -1815,7 +2038,7 @@ def _scan_pinned_windows_repository(
             child_parts = (*parts, child.name)
             relative = "/".join(child_parts)
             if _windows_relative_is_excluded(child_parts, excluded) or not (
-                repository_path_is_visible(relative)
+                repository_path_is_visible(relative, selection=selected)
             ):
                 continue
             _reserve_scan_entry(budget, relative)
@@ -1840,18 +2063,25 @@ def _scan_pinned_windows_repository(
                 if metadata.st_dev != before.st_dev:
                     raise ValueError("Windows repository scan crosses a volume")
                 link_target: str | None = None
+                reparse_point: _WindowsReparsePoint | None = None
                 if _windows_entry_is_reparse(child):
                     if metadata.reparse_tag != _WINDOWS_IO_REPARSE_TAG_SYMLINK:
                         raise ValueError(
                             f"Windows repository contains unsupported reparse: {relative}"
                         )
-                    point = api.query_reparse_point(child_handle)
-                    if point.tag != _WINDOWS_IO_REPARSE_TAG_SYMLINK:
+                    reparse_point = api.query_reparse_point(child_handle)
+                    if reparse_point.tag != _WINDOWS_IO_REPARSE_TAG_SYMLINK:
                         raise ValueError(
                             f"Windows repository reparse tag changed: {relative}"
                         )
-                    link_target = _windows_link_target_text(point)
+                    link_target = _windows_link_target_text(reparse_point)
                     _reserve_link_target(budget, link_target)
+                    for value in (
+                        reparse_point.substitute_name,
+                        reparse_point.print_name,
+                    ):
+                        if value is not None and value != link_target:
+                            _reserve_link_target(budget, value)
                     kind = b"link"
                 elif stat.S_ISDIR(metadata.st_mode):
                     kind = b"directory"
@@ -1878,6 +2108,7 @@ def _scan_pinned_windows_repository(
                     kind=kind,
                     metadata=metadata,
                     link_target=link_target,
+                    windows_reparse_point=reparse_point,
                 )
                 if kind == b"directory":
                     directories.append(
@@ -1889,6 +2120,7 @@ def _scan_pinned_windows_repository(
                             relative=relative,
                             metadata=metadata,
                             link_target=link_target,
+                            windows_reparse_point=reparse_point,
                         )
                     )
 
@@ -2430,11 +2662,13 @@ def _fingerprint_windows_repository(
     root: str | Path,
     *,
     exclude_roots: Iterable[str | Path],
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
     version: int,
     api: _WindowsKernelApi | None = None,
     retain_binding: bool = False,
     source_owner: Callable[[object], None] | None = None,
     cleanup_slot: _SourceCleanupSlot | None = None,
+    identity_policy: object = _CURRENT_SOURCE_IDENTITY_POLICY,
 ) -> SourceFingerprint | RepositorySourceBinding:
     """Hash a Windows repository through one retained HANDLE authority."""
 
@@ -2442,21 +2676,13 @@ def _fingerprint_windows_repository(
         cleanup_slot = _SourceCleanupSlot()
         if source_owner is not None:
             source_owner(cleanup_slot)
+    selected_source = _snapshot_repository_source_selection(selection)
     root_path = _lexical_windows_repository_path(root)
-    hasher = hashlib.sha256()
-    if version == 1:
-        hasher.update(
-            (
-                "codenib-source-fingerprint:1:" f"{REPOSITORY_FILTER_POLICY_VERSION}\0"
-            ).encode("ascii")
-        )
-    else:
-        hasher.update(_V2_MAGIC)
-        _update_frame(
-            hasher,
-            b"filter-policy-version",
-            str(REPOSITORY_FILTER_POLICY_VERSION).encode("ascii"),
-        )
+    hasher = _new_source_fingerprint_hasher(
+        version,
+        selected_source,
+        identity_policy=identity_policy,
+    )
     excluded = _excluded_windows_relative_roots(root_path, exclude_roots)
     file_count = 0
     file_records: list[RepositorySourceFileRecord] = []
@@ -2474,6 +2700,7 @@ def _fingerprint_windows_repository(
             selected,
             root_authority.handle,
             excluded=excluded,
+            selection=selected_source,
             collect_entries=True,
         )
         for entry in initial_scan.entries:
@@ -2497,6 +2724,7 @@ def _fingerprint_windows_repository(
                         expected_root_identity=root_identity,
                         expected_final_identity=_windows_version_identity(metadata),
                         expected_final_link_target=raw_target,
+                        expected_final_reparse_point=entry.windows_reparse_point,
                         api=selected,
                     ) as binding:
                         target_state = (
@@ -2510,6 +2738,7 @@ def _fingerprint_windows_repository(
                                 lexical_identity=_windows_version_identity(metadata),
                                 link_target=raw_target,
                                 target_state=target_state,
+                                windows_reparse_point=entry.windows_reparse_point,
                             )
                         )
                         if binding.is_directory:
@@ -2615,6 +2844,7 @@ def _fingerprint_windows_repository(
             selected,
             root_authority.handle,
             excluded=excluded,
+            selection=selected_source,
             collect_entries=False,
         )
         if (
@@ -2687,6 +2917,12 @@ def _fingerprint_windows_repository(
                 inventory_digest=initial_scan.inventory_digest,
                 inventory_entries=initial_scan.inventory_entries,
                 excluded=excluded,
+                selection=selected_source,
+                source_selection_identity=(
+                    selected_source
+                    if identity_policy is _CURRENT_SOURCE_IDENTITY_POLICY
+                    else None
+                ),
                 root_identity=root_identity,
                 windows_api=selected,
                 windows_authority=retained,
@@ -2713,14 +2949,17 @@ def _fingerprint_repository(
     root: str | Path,
     *,
     exclude_roots: Iterable[str | Path],
+    selection: RepositorySourceSelection,
     version: int,
     retain_binding: bool = False,
     source_owner: Callable[[object], None] | None = None,
+    identity_policy: object = _CURRENT_SOURCE_IDENTITY_POLICY,
 ) -> SourceFingerprint | RepositorySourceBinding:
     """Hash visible repository contents with v2 or the diagnostic v1 format."""
 
     if version not in {1, SOURCE_FINGERPRINT_VERSION}:
         raise ValueError(f"unsupported source fingerprint version: {version}")
+    selected_source = _snapshot_repository_source_selection(selection)
     cleanup_slot: _SourceCleanupSlot | None = None
     if retain_binding:
         cleanup_slot = _SourceCleanupSlot()
@@ -2730,9 +2969,11 @@ def _fingerprint_repository(
         return _fingerprint_windows_repository(
             root,
             exclude_roots=exclude_roots,
+            selection=selected_source,
             version=version,
             retain_binding=retain_binding,
             cleanup_slot=cleanup_slot,
+            identity_policy=identity_policy,
         )
 
     # Do not call Path.resolve() here. A reversible root-to-symlink swap during
@@ -2741,20 +2982,11 @@ def _fingerprint_repository(
     # no-follow descriptor throughout the operation.
     root_path = lexical_repository_path(root)
 
-    hasher = hashlib.sha256()
-    if version == 1:
-        hasher.update(
-            (
-                "codenib-source-fingerprint:1:" f"{REPOSITORY_FILTER_POLICY_VERSION}\0"
-            ).encode("ascii")
-        )
-    else:
-        hasher.update(_V2_MAGIC)
-        _update_frame(
-            hasher,
-            b"filter-policy-version",
-            str(REPOSITORY_FILTER_POLICY_VERSION).encode("ascii"),
-        )
+    hasher = _new_source_fingerprint_hasher(
+        version,
+        selected_source,
+        identity_policy=identity_policy,
+    )
     file_count = 0
     file_records: list[RepositorySourceFileRecord] = []
     link_records: list[_RepositorySourceLinkRecord] = []
@@ -2772,6 +3004,7 @@ def _fingerprint_repository(
         initial_scan = _scan_pinned_repository(
             root_descriptor,
             excluded=excluded,
+            selection=selected_source,
             collect_entries=True,
         )
 
@@ -2915,6 +3148,7 @@ def _fingerprint_repository(
         final_scan = _scan_pinned_repository(
             root_descriptor,
             excluded=excluded,
+            selection=selected_source,
             collect_entries=False,
         )
         if (
@@ -2987,6 +3221,12 @@ def _fingerprint_repository(
                 inventory_digest=initial_scan.inventory_digest,
                 inventory_entries=initial_scan.inventory_entries,
                 excluded=excluded,
+                selection=selected_source,
+                source_selection_identity=(
+                    selected_source
+                    if identity_policy is _CURRENT_SOURCE_IDENTITY_POLICY
+                    else None
+                ),
                 root_identity=root_identity,
                 root_descriptor=retained_descriptor,
                 posix_authority=retained_authority,
@@ -3014,12 +3254,14 @@ def fingerprint_repository(
     root: str | Path,
     *,
     exclude_roots: Iterable[str | Path] = (),
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
 ) -> SourceFingerprint:
-    """Hash visible paths and contents with the canonical v2 framing."""
+    """Hash the selected visible paths and contents with canonical v2 framing."""
 
     result = _fingerprint_repository(
         root,
         exclude_roots=exclude_roots,
+        selection=selection,
         version=SOURCE_FINGERPRINT_VERSION,
     )
     if not isinstance(result, SourceFingerprint):  # pragma: no cover - invariant
@@ -3028,10 +3270,59 @@ def fingerprint_repository(
     return result
 
 
+def _fingerprint_repository_legacy_manifest_v11(
+    root: str | Path,
+    *,
+    exclude_roots: Iterable[str | Path] = (),
+) -> SourceFingerprint:
+    """Recompute the exact policy-3 identity persisted by manifest v1.1.
+
+    This compatibility path intentionally has no selection argument: v1.1
+    encoded the default traversal policy without a source-selection frame.
+    Missing persisted selection must not be interpreted as current policy 4's
+    canonical empty selection.
+    """
+
+    result = _fingerprint_repository(
+        root,
+        exclude_roots=exclude_roots,
+        selection=DEFAULT_REPOSITORY_SOURCE_SELECTION,
+        version=SOURCE_FINGERPRINT_VERSION,
+        identity_policy=_LEGACY_MANIFEST_V11_SOURCE_IDENTITY_POLICY,
+    )
+    if not isinstance(result, SourceFingerprint):  # pragma: no cover - invariant
+        result.close()
+        raise AssertionError("legacy fingerprint retained source authority")
+    return result
+
+
+def _capture_repository_source_legacy_manifest_v11(
+    root: str | Path,
+    *,
+    exclude_roots: Iterable[str | Path] = (),
+    _source_owner: Callable[[object], None] | None = None,
+) -> RepositorySourceBinding:
+    """Retain reads for an exact policy-3 manifest-v1.1 source identity."""
+
+    result = _fingerprint_repository(
+        root,
+        exclude_roots=exclude_roots,
+        selection=DEFAULT_REPOSITORY_SOURCE_SELECTION,
+        version=SOURCE_FINGERPRINT_VERSION,
+        retain_binding=True,
+        source_owner=_source_owner,
+        identity_policy=_LEGACY_MANIFEST_V11_SOURCE_IDENTITY_POLICY,
+    )
+    if not isinstance(result, RepositorySourceBinding):  # pragma: no cover
+        raise AssertionError("legacy source capture did not retain read authority")
+    return result
+
+
 def capture_repository_source(
     root: str | Path,
     *,
     exclude_roots: Iterable[str | Path] = (),
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
     _source_owner: Callable[[object], None] | None = None,
 ) -> RepositorySourceBinding:
     """Capture source fingerprint v2 and retain its exact read authority.
@@ -3044,6 +3335,7 @@ def capture_repository_source(
     result = _fingerprint_repository(
         root,
         exclude_roots=exclude_roots,
+        selection=selection,
         version=SOURCE_FINGERPRINT_VERSION,
         retain_binding=True,
         source_owner=_source_owner,
@@ -3057,6 +3349,7 @@ def fingerprint_repository_v1_for_diagnostics(
     root: str | Path,
     *,
     exclude_roots: Iterable[str | Path] = (),
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
 ) -> SourceFingerprint:
     """Reproduce legacy v1 solely for migration diagnostics.
 
@@ -3064,7 +3357,12 @@ def fingerprint_repository_v1_for_diagnostics(
     must never authorize source reads, native indexes, or artifact reuse.
     """
 
-    result = _fingerprint_repository(root, exclude_roots=exclude_roots, version=1)
+    result = _fingerprint_repository(
+        root,
+        exclude_roots=exclude_roots,
+        selection=selection,
+        version=1,
+    )
     if not isinstance(result, SourceFingerprint):  # pragma: no cover - invariant
         result.close()
         raise AssertionError("diagnostic fingerprint retained source authority")
@@ -3075,6 +3373,7 @@ def repository_source_is_dirty(
     root: str | Path,
     *,
     exclude_roots: Iterable[str | Path] = (),
+    selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
 ) -> bool:
     """Return whether Git reports source-visible worktree changes.
 
@@ -3087,6 +3386,7 @@ def repository_source_is_dirty(
     # query and incorrectly authorize an incremental update for another tree.
     root_path = lexical_repository_path(root)
     excluded = tuple(lexical_repository_path(path) for path in exclude_roots)
+    selected = _snapshot_repository_source_selection(selection)
     try:
         result = subprocess.run(
             [
@@ -3127,7 +3427,7 @@ def repository_source_is_dirty(
             absolute = root_path / relative
             if any(absolute == path or path in absolute.parents for path in excluded):
                 continue
-            if repository_path_is_visible(relative):
+            if repository_path_is_visible(relative, selection=selected):
                 return True
     return False
 

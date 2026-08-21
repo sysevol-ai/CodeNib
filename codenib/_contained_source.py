@@ -15,7 +15,7 @@ import sys
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterable, Iterator, Sequence
 
 from ._windows_fs_authority import (
@@ -535,15 +535,16 @@ def _normalize_link_target(
     if os.path.isabs(target):
         if not allow_absolute:
             raise ValueError("source symlink target must be relative")
-        normalized_target = Path(os.path.normpath(target))
-        try:
-            target = normalized_target.relative_to(root).as_posix()
-        except ValueError as exc:
-            raise ValueError("source symlink resolves outside the repository") from exc
+        root_parts = root.parts
+        absolute_parts = Path(target).parts
+        if absolute_parts[: len(root_parts)] != root_parts:
+            raise ValueError("source symlink resolves outside the repository")
+        target_parts = absolute_parts[len(root_parts) :]
         resolved: list[str] = []
     else:
         resolved = list(prefix)
-    for part in target.split("/"):
+        target_parts = target.split("/")
+    for part in target_parts:
         if part in {"", "."}:
             continue
         if part == "..":
@@ -1318,10 +1319,70 @@ def _windows_open_child(
         _raise_with_cleanup(primary, selected_cleanup)
 
 
+def _strip_windows_symlink_namespace(path: str) -> str:
+    """Map supported DOS/UNC namespaces to ordinary absolute syntax."""
+
+    folded = path.casefold()
+    if folded.startswith("\\??\\unc\\"):
+        return "\\\\" + path[8:]
+    if folded.startswith("\\??\\"):
+        candidate = path[4:]
+        if not _windows_is_drive_absolute(candidate):
+            raise ValueError("Windows absolute symlink has an unsupported namespace")
+        return candidate
+    if folded.startswith("\\\\?\\unc\\"):
+        return "\\\\" + path[8:]
+    if folded.startswith("\\\\?\\"):
+        candidate = path[4:]
+        if not _windows_is_drive_absolute(candidate):
+            raise ValueError("Windows absolute symlink has an unsupported namespace")
+        return candidate
+    return path
+
+
+def _windows_is_drive_absolute(path: str) -> bool:
+    return (
+        len(path) >= 3
+        and path[0] in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        and path[1] == ":"
+        and path[2] == "\\"
+    )
+
+
+def _windows_absolute_path_parts(path: str) -> tuple[str, ...]:
+    """Return lexical components for one supported DOS or UNC absolute path."""
+
+    candidate = PureWindowsPath(_strip_windows_symlink_namespace(path))
+    if not candidate.is_absolute():
+        raise ValueError("Windows absolute symlink has a relative target")
+    drive = candidate.drive
+    if drive.startswith("\\\\"):
+        authority = drive[2:].split("\\")
+        if len(authority) != 2 or any(
+            not part or part in {".", "?"} or ":" in part for part in authority
+        ):
+            raise ValueError("Windows absolute symlink has an unsupported namespace")
+    elif not (
+        len(drive) == 2
+        and drive[0] in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        and drive[1] == ":"
+    ):
+        raise ValueError("Windows absolute symlink has an unsupported namespace")
+    for part in candidate.parts[1:]:
+        if part in {"", ".", ".."}:
+            continue
+        if ":" in part:
+            raise ValueError("Windows source symlink contains a stream component")
+        _windows_simple_child_name(part)
+    return candidate.parts
+
+
 def _normalize_windows_link_target(
     root: Path,
     prefix: tuple[str, ...],
     point: _WindowsReparsePoint,
+    *,
+    allow_absolute: bool,
 ) -> tuple[str, ...]:
     """Normalize one Windows SYMLINK payload into pinned-root components."""
 
@@ -1340,7 +1401,23 @@ def _normalize_windows_link_target(
         resolved: list[str] = list(prefix)
         target_parts = target.replace("\\", "/").split("/")
     else:
-        raise ValueError("Windows source symlink target must be relative")
+        if not allow_absolute:
+            raise ValueError("Windows source symlink target must be relative")
+        if "/" in target:
+            raise ValueError("Windows absolute symlink has an unsupported namespace")
+        root_parts = _windows_absolute_path_parts(os.fspath(root))
+        target_parts_absolute = _windows_absolute_path_parts(target)
+        if len(target_parts_absolute) < len(root_parts) or any(
+            observed.casefold() != expected.casefold()
+            for observed, expected in zip(
+                target_parts_absolute,
+                root_parts,
+                strict=False,
+            )
+        ):
+            raise ValueError("Windows source symlink resolves outside the repository")
+        resolved = []
+        target_parts = list(target_parts_absolute[len(root_parts) :])
 
     for part in target_parts:
         if part in {"", "."}:
@@ -1703,8 +1780,10 @@ def _open_windows_resolution_at(
     expected_root_identity: tuple[object, ...],
     expected_final_identity: tuple[object, ...] | None,
     expected_final_link_target: str | None = None,
+    expected_final_reparse_point: _WindowsReparsePoint | None = None,
     allow_stable_unresolved: bool,
     api: _WindowsKernelApi,
+    allow_absolute_symlinks: bool = False,
     owns_root_authority: bool = False,
     cleanup_slot: _SourceCleanupSlot | None = None,
 ) -> _WindowsResolutionBinding:
@@ -1715,6 +1794,23 @@ def _open_windows_resolution_at(
     )
     if cleanup_slot is not None:
         cleanup_slot.own(construction)
+    try:
+        supplied_root = _windows_absolute_path_parts(os.fspath(root))
+        authority_root = _windows_absolute_path_parts(os.fspath(root_authority.path))
+        if len(supplied_root) != len(authority_root) or any(
+            supplied.casefold() != authenticated.casefold()
+            for supplied, authenticated in zip(
+                supplied_root,
+                authority_root,
+                strict=True,
+            )
+        ):
+            raise ValueError(
+                "Windows repository root differs from its retained authority"
+            )
+    except BaseException as primary:  # noqa: B036 - retain owned authority
+        _raise_with_cleanup(primary, cleanup_slot or construction)
+    authenticated_root = root_authority.path
     cleanup = construction.handles
     owned_root = 0
     try:
@@ -1749,7 +1845,7 @@ def _open_windows_resolution_at(
         def common_kwargs() -> dict[str, object]:
             return {
                 "api": api,
-                "root": root,
+                "root": authenticated_root,
                 "root_authority": root_authority,
                 "owns_root_authority": owns_root_authority,
                 "root_handle": owned_root,
@@ -1808,6 +1904,14 @@ def _open_windows_resolution_at(
                     raise ValueError(
                         "Windows source symlink target differs from its initial observation"
                     )
+                if (
+                    is_lexical_final
+                    and expected_final_reparse_point is not None
+                    and point != expected_final_reparse_point
+                ):
+                    raise ValueError(
+                        "Windows source symlink payload differs from its initial observation"
+                    )
             observation = _WindowsPathObservation(
                 parent_handle=current_handle,
                 parent_identity=parent_identity,
@@ -1843,9 +1947,10 @@ def _open_windows_resolution_at(
                     return binding
                 seen_links.add(opened.file_id_128)
                 target_parts = _normalize_windows_link_target(
-                    root,
+                    authenticated_root,
                     resolved_prefix,
                     point,
+                    allow_absolute=allow_absolute_symlinks,
                 )
                 if len(target_parts) + len(pending) > _MAX_COMPONENTS:
                     raise ValueError(
@@ -1931,6 +2036,7 @@ def _resolved_windows_repository_file_at(
     expected_root_identity: tuple[object, ...],
     expected_final_identity: tuple[object, ...],
     expected_final_link_target: str | None = None,
+    expected_final_reparse_point: _WindowsReparsePoint | None = None,
     api: _WindowsKernelApi | None = None,
 ) -> Iterator[_WindowsResolutionBinding]:
     """Resolve one source entry through a caller-owned pinned Windows root."""
@@ -1945,8 +2051,10 @@ def _resolved_windows_repository_file_at(
         expected_root_identity=expected_root_identity,
         expected_final_identity=expected_final_identity,
         expected_final_link_target=expected_final_link_target,
+        expected_final_reparse_point=expected_final_reparse_point,
         allow_stable_unresolved=True,
         api=selected,
+        allow_absolute_symlinks=True,
         cleanup_slot=cleanup_slot,
     )
     try:
@@ -1968,7 +2076,9 @@ def _open_windows_repository_file(
     *,
     expected_final_identity: tuple[object, ...] | None = None,
     expected_final_link_target: str | None = None,
+    expected_final_reparse_point: _WindowsReparsePoint | None = None,
     allow_stable_unresolved: bool = False,
+    allow_absolute_symlinks: bool = False,
 ) -> _WindowsResolutionBinding:
     cleanup_slot = _SourceCleanupSlot()
     api, root_authority, root_identity = _open_windows_pinned_repository_root(
@@ -1982,8 +2092,10 @@ def _open_windows_repository_file(
         expected_root_identity=root_identity,
         expected_final_identity=expected_final_identity,
         expected_final_link_target=expected_final_link_target,
+        expected_final_reparse_point=expected_final_reparse_point,
         allow_stable_unresolved=allow_stable_unresolved,
         api=api,
+        allow_absolute_symlinks=allow_absolute_symlinks,
         owns_root_authority=True,
         cleanup_slot=cleanup_slot,
     )
@@ -2144,6 +2256,7 @@ def resolved_repository_file(
             _relative_parts(relative),
             expected_final_identity=expected_final_identity,
             allow_stable_unresolved=True,
+            allow_absolute_symlinks=True,
         )
         try:
             yield binding
@@ -2199,6 +2312,7 @@ def _resolved_repository_file_at(
         expected_final_identity=expected_final_identity,
         expected_final_link_target=expected_final_link_target,
         allow_stable_unresolved=True,
+        allow_absolute_symlinks=True,
         pinned_root_descriptor=root_descriptor,
         expected_root_identity=expected_root_identity,
         cleanup_slot=cleanup_slot,

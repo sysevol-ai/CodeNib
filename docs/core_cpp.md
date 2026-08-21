@@ -161,12 +161,13 @@ it exactly, covering vertex and edge identity, fields, and insertion order
 rather than only aggregate counts.
 
 `codenib.scip_interface.scip_query.load_fact_query_candidate(...)` is the
-graph-free admission boundary. It requires a current builder-schema-v4,
+graph-free admission boundary. It requires a current builder-schema-v6
+(builder schema v4 is admitted only with a legacy manifest 1.1 profile),
 single-language full rebuild; verifies the manifest, source, decoded artifact,
 persisted graph-writer receipt, query-surface digest, repository filter policy,
 and Rust Cargo identity before and after decode; and returns the index only
 after the native proof succeeds. Receipt capture is enabled only by the
-compiler build that publishes schema-v4 evidence; ordinary graph pipelines do
+compiler build that publishes the matching schema evidence; ordinary graph pipelines do
 not incur the extra scans. Partial, incremental, multi-language,
 source-coverage fallback, symlinked cache artifacts, mutated inputs, or facts
 absent from the bound serial filtered query surface fail closed.
@@ -176,6 +177,12 @@ allowed source anchor. The first admitted languages are Python and Rust; other
 metadata contracts remain future work. The legacy `decode()` graph path
 remains unchanged, and this candidate is not a production MCP route until the
 separate consumer-boundary gate passes exact parity and the required speedup.
+
+Builder schema v6 also records `lsp_occurrence_artifact` on every current
+symbol-graph build: either an exact receipt for `lsp_index.pkl` or `null` when
+that generation has no occurrence sidecar. Runtime graph consumers may load a
+non-null sidecar only through the same authenticated directory generation as
+`graph.pkl`; ambient, unreceipted pickle files are not a runtime input.
 
 ### Lazy SCIP MCP consumer gate
 
@@ -288,23 +295,30 @@ make clangd-fact-query-profile \
 This result measures an already generated `.idx` directory through identical
 definition/reference/route work. It does not claim faster clangd generation.
 
+The promotion above remains an implementation and profiling result. The 0.2.2
+manifest-bound runtime gate supersedes it for production selection: mutable
+project-local `.idx` files are not consumed until they also have an
+authenticated generation receipt and allowed-file proof.
+
 ### MCP and agent runtime selection
 
 `ServerContext` and compiler skill contexts select one runtime-only LSP
-provider. A source-verified local C/C++-only checkout can reuse its existing
-clangd shards through `native-clangd-fact-query-v1`; selection does not generate
-an index. Portable artifacts, mixed-language repositories, unverified
-checkouts, and disabled or unavailable native support use
-`persisted-symbol-graph-v1` with a deterministic fallback reason.
+provider. In 0.2.2 every manifest-bound context uses
+`persisted-symbol-graph-v1` with a deterministic fallback reason, including a
+source-verified local C/C++-only checkout. The runtime does not consume existing
+clangd shards because their generation is outside the authenticated manifest
+source surface. Direct benchmark APIs may still exercise
+`native-clangd-fact-query-v1`; production re-admission requires the receipt and
+allowed-file gate above.
 
-MCP definition, reference, and route tools and all three agent LSP skills use
-the common provider resolver. Definition/reference symbol requests remain on
-the startup postings path; supported exact positions use the lazy native
-occurrence view; supported routes use compact native adjacency. None constructs
-igraph. Position and route fallbacks share one snapshot-compatible complete
-graph. MCP result rows and `get_manifest` runtime metadata identify the
-backend, capabilities, fallback, encoding, and snapshot. The profiling report
-checks raw and MCP parity together with provider routing.
+The direct `native-clangd-fact-query-v1` benchmark provider keeps definition
+and reference symbols on startup postings, exact positions on its lazy native
+occurrence view, and supported routes on compact native adjacency. That
+behavior remains covered by the raw/MCP parity profile, but 0.2.2
+manifest-bound MCP and agent skills do not select it. Their common resolver
+queries the persisted graph and reports that backend, fallback reason,
+capabilities, encoding, and snapshot through result rows and
+`get_manifest.runtime.lsp_provider`.
 
 ### Mixed workload and resource gate
 

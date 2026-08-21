@@ -30,16 +30,16 @@ permissions:
 
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.1
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.2
 ```
 
-The prerelease tag keeps the compiler, frontend, Action, and artifact schema on
+The version tag keeps the compiler, frontend, Action, and artifact schema on
 one reviewed version. Production deployments may replace it with the tag's
 resolved commit SHA. In the repository's **Settings > Pages**, select
 **GitHub Actions** as the source.
 
-The workflow checks out the caller's exact commit, incrementally builds the
-`semantic` preset, exports the Wiki at the Pages-provided mount path, and
+The workflow checks out the caller's exact commit, builds or reuses the
+`semantic` preset views, exports the Wiki at the Pages-provided mount path, and
 deploys it through the `github-pages` environment. It also uploads an artifact
 named from the repository and commit. The workflow caches both repository
 views and the pinned Hugging Face model. The static Wiki serves precomputed
@@ -54,7 +54,7 @@ than natural-language retrieval quality:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.1
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.2
     with:
       preset: fast
 ```
@@ -71,7 +71,7 @@ artifact or Pages workflow:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.1
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.2
     with:
       preset: semantic
       embedding-provider: openai
@@ -141,7 +141,7 @@ The composite Action can be used directly when another static host or artifact
 store owns deployment:
 
 ```yaml
-- uses: sysevol-ai/CodeNib/.github/actions/publish@v0.2.1
+- uses: sysevol-ai/CodeNib/.github/actions/publish@v0.2.2
   id: codenib
   with:
     preset: fast

@@ -96,6 +96,8 @@ def test_codegraph_parser_exposes_init_status_and_uninstall() -> None:
             "codex",
             "--agent",
             "claude",
+            "--exclude-dir",
+            "ios/Pods",
             "--dry-run",
         ]
     )
@@ -106,6 +108,7 @@ def test_codegraph_parser_exposes_init_status_and_uninstall() -> None:
 
     assert init.codegraph_command == "init"
     assert init.agent == ["codex", "claude"]
+    assert init.exclude_dir == ["ios/Pods"]
     assert init.dry_run is True
     assert status.codegraph_command == "status"
     assert status.json is True
@@ -644,12 +647,15 @@ def test_dry_run_reports_project_prerequisites_and_exits_nonzero(
             "codex",
             "--language",
             "go",
+            "--exclude-dir",
+            "generated/api",
             "--dry-run",
         ]
     )
 
     assert cli._run_codegraph_init(args) == 1
     output = capsys.readouterr().out
+    assert "Source selection: replace (generated/api)" in output
     assert "prerequisite: Go project prerequisite go.mod" in output
     assert "Readiness:  blocked" in output
     assert "no tools, indexes, receipts, or clients changed" in output
@@ -863,6 +869,48 @@ def test_human_status_does_not_call_a_graph_only_index_current(
 
 
 @pytest.mark.parametrize(
+    ("manifest_present", "expected"),
+    (
+        (False, "unrecorded (manifest missing)"),
+        (True, "unrecorded legacy policy"),
+    ),
+)
+def test_human_status_distinguishes_missing_and_legacy_source_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    manifest_present: bool,
+    expected: str,
+) -> None:
+    repo = _repository(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "_codegraph_status_report",
+        lambda _repo: {
+            "repository": str(repo),
+            "ready": False,
+            "index": {
+                "ready": False,
+                "detail": "manifest not current",
+                "manifest_present": manifest_present,
+                "source_selection": {
+                    "recorded": False,
+                    "exclude_subtrees": [],
+                    "digest": None,
+                },
+            },
+            "toolchain": {"ready": True, "missing": [], "notes": []},
+            "server_command": {"ready": True, "detail": "ready"},
+            "clients": [],
+        },
+    )
+    args = cli.build_parser().parse_args(["codegraph", "status", str(repo)])
+
+    assert cli._run_codegraph_status(args) == 1
+    assert expected in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
     ("mutation", "expected_detail"),
     [
         ("remove-bm25", "bm25 artifact is missing"),
@@ -938,7 +986,13 @@ def test_index_status_verifies_persisted_artifact_fingerprints(
         lambda *_args, **_kwargs: None,
     )
 
-    assert cli._codegraph_index_report(repo)["ready"] is True
+    current = cli._codegraph_index_report(repo)
+    assert current["ready"] is True
+    assert current["source_selection"] == {
+        "recorded": True,
+        "exclude_subtrees": [],
+        "digest": manifest.source_selection_digest,
+    }
     if mutation == "remove-bm25":
         (bm25 / "documents.json").unlink()
     else:

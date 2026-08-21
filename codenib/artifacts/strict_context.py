@@ -443,6 +443,8 @@ def _validate_manifest_identity(inputs: _FrozenContextInputs) -> RepoManifest:
         raise ValueError("strict context manifest belongs to another source generation")
     if manifest.file_count != source.file_count:
         raise ValueError("strict context manifest file count differs from its source")
+    if manifest.source_selection != source.source_selection:
+        raise ValueError("strict context manifest selection differs from its source")
     if not all(isinstance(language, str) for language in manifest.languages):
         raise ValueError("strict context manifest languages must be text")
     selected = tuple(name for name, _owner in inputs.view_generations)
@@ -585,7 +587,7 @@ def _planned_view(
     records = tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
     if records != tuple(sorted(records, key=lambda item: item.path)):
         raise RuntimeError(f"strict context {view} records are not canonical")
-    entry = manifest.indexes[view].to_dict()
+    entry = manifest.indexes[view].to_dict(manifest_version=manifest.version)
     config = entry.get("config")
     if not isinstance(config, dict):
         raise ValueError(f"strict context {view} config must be an object")

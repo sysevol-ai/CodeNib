@@ -9,9 +9,12 @@ from typing import Any
 
 import pytest
 
+from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
 from codenib.compiler.index_builders import BM25IndexBuilder
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.graph.code_graph import CodeGraph
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import fingerprint_repository
 from codenib.types import (
     EDGE_TYPE_CONTAIN,
     EDGE_TYPE_IMPORT,
@@ -170,13 +173,45 @@ def _build_source_bm25(
     repo_root: Path,
     languages: list[str],
     output_dir: Path,
-) -> None:
+) -> dict[str, Any]:
     """Build the fixture BM25 view through the production chunk contract."""
-    BM25IndexBuilder(languages=languages).build(
-        scope="current_repo",
-        repo_path=str(repo_root),
-        output_dir=str(output_dir),
+    return (
+        BM25IndexBuilder(languages=languages)
+        .build(
+            scope="current_repo",
+            repo_path=str(repo_root),
+            output_dir=str(output_dir),
+        )
+        .metadata
     )
+
+
+def _graph_artifact_receipt(graph_path: Path) -> dict[str, Any]:
+    return {
+        "relative_path": "graph.pkl",
+        **regular_file_fingerprint(graph_path),
+    }
+
+
+def _refresh_manifest_source_closure(
+    manifest: RepoManifest,
+    repo_root: Path,
+) -> None:
+    selection = manifest.source_selection
+    if type(selection) is not RepositorySourceSelection:
+        raise AssertionError("integration manifest requires v1.2 source selection")
+    source = fingerprint_repository(repo_root, selection=selection)
+    manifest.source_fingerprint = source.value
+    manifest.last_indexed_source_fingerprint = source.value
+    manifest.last_indexed_commit = manifest.commit
+    manifest.last_indexed_source_selection_digest = selection.digest
+    manifest.file_count = source.file_count
+    for entry in manifest.indexes.values():
+        if entry.status != "fresh":
+            continue
+        entry.commit = manifest.commit
+        entry.source_fingerprint = source.value
+        entry.source_selection_digest = selection.digest
 
 
 @pytest.fixture()
@@ -191,19 +226,21 @@ def integration_manifest(tmp_path: Path) -> Path:
     graph.save_graph(str(graph_path))
 
     bm25_dir = tmp_path / "bm25"
-    _build_source_bm25(repo_root, ["python"], bm25_dir)
+    bm25_config = _build_source_bm25(repo_root, ["python"], bm25_dir)
 
     manifest = RepoManifest(
         repo_path=str(repo_root),
         commit="integration-fixture",
+        source_selection=RepositorySourceSelection(),
         languages=["python"],
         indexes={
             "symbol_graph": IndexEntry(
                 index_type="symbol_graph",
-                path=str(graph_path),
+                path=str(graph_dir),
                 built_at="2026-07-30T00:00:00Z",
                 built_at_epoch=1_785_369_600.0,
                 status="fresh",
+                config={"graph_artifact": _graph_artifact_receipt(graph_path)},
             ),
             "bm25": IndexEntry(
                 index_type="bm25",
@@ -211,9 +248,12 @@ def integration_manifest(tmp_path: Path) -> Path:
                 built_at="2026-07-30T00:00:00Z",
                 built_at_epoch=1_785_369_600.0,
                 status="fresh",
+                config=dict(bm25_config),
+                metadata=dict(bm25_config),
             ),
         },
     )
+    _refresh_manifest_source_closure(manifest, repo_root)
     manifest.derive_capabilities()
     manifest_path = tmp_path / "repo_manifest.json"
     manifest.save(manifest_path)
@@ -241,7 +281,7 @@ def multilanguage_integration_manifest(integration_manifest: Path) -> Path:
         encoding="utf-8",
     )
 
-    graph_path = Path(manifest.indexes["symbol_graph"].path)
+    graph_path = Path(manifest.indexes["symbol_graph"].path) / "graph.pkl"
     graph = CodeGraph.load_graph(str(graph_path))
     _add_vertex(graph, "service.ts", kind=NODE_TYPE_FILE)
     _add_vertex(graph, "tax.go", kind=NODE_TYPE_FILE)
@@ -289,13 +329,19 @@ def multilanguage_integration_manifest(integration_manifest: Path) -> Path:
     )
     graph.build_range_indexes()
     graph.save_graph(str(graph_path))
+    manifest.indexes["symbol_graph"].config["graph_artifact"] = _graph_artifact_receipt(
+        graph_path
+    )
 
     manifest.languages = ["python", "typescript", "go"]
-    _build_source_bm25(
+    bm25_config = _build_source_bm25(
         repo_root,
         manifest.languages,
         Path(manifest.indexes["bm25"].path),
     )
+    manifest.indexes["bm25"].config = dict(bm25_config)
+    manifest.indexes["bm25"].metadata = dict(bm25_config)
+    _refresh_manifest_source_closure(manifest, repo_root)
     manifest.save(integration_manifest)
     return integration_manifest
 
@@ -328,7 +374,7 @@ def orcaloca_contract_manifest(integration_manifest: Path) -> Path:
         encoding="utf-8",
     )
 
-    graph_path = Path(manifest.indexes["symbol_graph"].path)
+    graph_path = Path(manifest.indexes["symbol_graph"].path) / "graph.pkl"
     graph = CodeGraph.load_graph(str(graph_path))
     _add_vertex(graph, "src/contract.py", kind=NODE_TYPE_FILE)
     _add_vertex(
@@ -400,4 +446,9 @@ def orcaloca_contract_manifest(integration_manifest: Path) -> Path:
     )
     graph.build_range_indexes()
     graph.save_graph(str(graph_path))
+    manifest.indexes["symbol_graph"].config["graph_artifact"] = _graph_artifact_receipt(
+        graph_path
+    )
+    _refresh_manifest_source_closure(manifest, repo_root)
+    manifest.save(integration_manifest)
     return integration_manifest

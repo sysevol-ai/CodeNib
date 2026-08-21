@@ -56,6 +56,7 @@ from ..artifacts.context import (
 )
 from ..artifacts.runtime import verify_context_artifact_reader
 from ..artifacts.security import assert_publishable_tree_reader
+from ..repository_source_selection import RepositorySourceSelection
 from ..source_fingerprint import is_secure_source_fingerprint_v2
 from ..storage.cas import BlobInfo
 from ..storage.models import (
@@ -83,7 +84,7 @@ from ..storage.view_bundle import (
     consume_verified_view_bundle_stream,
     validate_view_bundle_physical_size,
 )
-from .manifest import MANIFEST_FILENAME, MANIFEST_VERSION
+from .manifest import MANIFEST_FILENAME, MANIFEST_VERSION, SUPPORTED_MANIFEST_VERSIONS
 from .manifest_export import (
     RepoManifestExportReceipt,
     RepoManifestExportResult,
@@ -107,7 +108,6 @@ from .manifest_import import (
 from .manifest_storage import (
     DEFAULT_MAX_MANIFEST_BYTES,
     PORTABLE_STORAGE_VIEWS,
-    REPO_MANIFEST_IMPORT_PLAN_SCHEMA,
     RepoManifestImportPlan,
     ViewImportIntent,
     plan_repo_manifest_import_bytes,
@@ -205,6 +205,7 @@ class _RetainedContextPlan:
     workspace: WorkspacePlan
     repository: str
     commit: str
+    manifest_version: str
     source_fingerprint: str
     views: tuple[str, ...]
     view_plans: tuple[_RetainedViewPlan, ...]
@@ -830,6 +831,14 @@ def _retained_generation(
         ) from exc
 
 
+def _intent_generation_metadata(intent: ViewImportIntent) -> dict[str, Any]:
+    """Keep retained generation identity bound to the embedded manifest."""
+
+    metadata = repo_manifest_generation_metadata(intent)
+    metadata["manifest_version"] = intent.profile.config["manifest_version"]
+    return metadata
+
+
 def _authenticate_projection(
     object_store: ReceiptRetainingObjectStore,
     exported: RepoManifestExportResult,
@@ -873,8 +882,17 @@ def _authenticate_projection(
     ):
         raise StorageIntegrityError("repository manifest projection identity conflicts")
 
+    manifest_value = projection["manifest"]
+    if (
+        type(manifest_value) is not dict
+        or type(manifest_value.get("version")) is not str
+        or manifest_value["version"] not in SUPPORTED_MANIFEST_VERSIONS
+    ):
+        raise StorageIntegrityError("projected repository manifest is invalid")
+    embedded_version = manifest_value["version"]
+
     projected_source = projection["source"]
-    if type(projected_source) is not dict or set(projected_source) != {
+    expected_source_fields = {
         "source_revision_id",
         "kind",
         "source_fingerprint",
@@ -884,7 +902,16 @@ def _authenticate_projection(
         "source_verified",
         "commit_verified",
         "checkout_state",
-    }:
+    }
+    if embedded_version == MANIFEST_VERSION:
+        expected_source_fields |= {
+            "source_selection",
+            "source_selection_digest",
+        }
+    if (
+        type(projected_source) is not dict
+        or set(projected_source) != expected_source_fields
+    ):
         raise StorageIntegrityError("projected source shape is invalid")
     source_fingerprint = projected_source["source_fingerprint"]
     if (
@@ -940,9 +967,6 @@ def _authenticate_projection(
     if type(selection["skipped_views"]) is not dict:
         raise StorageIntegrityError("projected skipped views are invalid")
 
-    manifest_value = projection["manifest"]
-    if type(manifest_value) is not dict:
-        raise StorageIntegrityError("projected repository manifest is invalid")
     try:
         projected_manifest = canonical_json(manifest_value).encode("ascii")
     except StorageValidationError as exc:
@@ -966,7 +990,6 @@ def _authenticate_projection(
     if (
         not same_exact_json(projection["plan"], expected_plan)
         or not same_exact_json(selection, plan.selection.to_dict())
-        or plan.schema != REPO_MANIFEST_IMPORT_PLAN_SCHEMA
         or plan.source.fingerprint != source.source_fingerprint
         or plan.source.file_count != projected_source["file_count"]
         or plan.source.display_commit != projected_source["display_commit"]
@@ -974,6 +997,19 @@ def _authenticate_projection(
         or plan.manifest.repo_path != "source"
     ):
         raise StorageIntegrityError("projected import plan identity conflicts")
+    source_selection = plan.source.source_selection
+    if embedded_version == MANIFEST_VERSION:
+        if (
+            source_selection is None
+            or not same_exact_json(
+                projected_source["source_selection"],
+                source_selection.to_dict(),
+            )
+            or projected_source["source_selection_digest"] != source_selection.digest
+        ):
+            raise StorageIntegrityError("projected source selection identity conflicts")
+    elif source_selection is not None:  # pragma: no cover - planner invariant
+        raise StorageIntegrityError("legacy projected source has a selection")
     selected = plan.selection.selected_views
     if (
         selected != receipt.views
@@ -1048,7 +1084,7 @@ def _authenticate_projection(
             media_type=VIEW_BUNDLE_MEDIA_TYPE,
             profile=intent.profile,
             schema_version=VIEW_BUNDLE_SCHEMA,
-            metadata=repo_manifest_generation_metadata(intent),
+            metadata=_intent_generation_metadata(intent),
             member_digests=member_digests,
         )
         generation_value = value["generation"]
@@ -1091,7 +1127,7 @@ def _authenticate_projection(
 
     projection_metadata = {
         "contract": REPO_MANIFEST_PROJECTION_SCHEMA,
-        "manifest_version": MANIFEST_VERSION,
+        "manifest_version": plan.manifest.version,
         "manifest_digest": plan.manifest_digest,
         "plan_digest": plan.plan_digest,
         "projected_views": list(selected),
@@ -1276,6 +1312,7 @@ def _workspace_subject(
     repository: str,
     commit: str,
     source_fingerprint: str,
+    source_selection: RepositorySourceSelection | None,
     view_plans: tuple[_RetainedViewPlan, ...],
     output_records: tuple[TreeFileRecord, ...],
 ) -> str:
@@ -1318,6 +1355,9 @@ def _workspace_subject(
         ],
         "output_records": [_record_payload(record) for record in output_records],
     }
+    if source_selection is not None:
+        identity["source_selection"] = source_selection.to_dict()
+        identity["source_selection_digest"] = source_selection.digest
     try:
         payload = canonical_json(identity).encode("ascii")
     except (RecursionError, TypeError, ValueError) as exc:
@@ -1451,6 +1491,7 @@ def _build_context_plan(
             repository=repository,
             commit=manifest.commit,
             source_fingerprint=manifest.source_fingerprint,
+            source_selection=manifest.source_selection,
             view_plans=frozen_view_plans,
             output_records=output_records,
         ),
@@ -1477,6 +1518,7 @@ def _build_context_plan(
         workspace=workspace,
         repository=repository,
         commit=manifest.commit,
+        manifest_version=manifest.version,
         source_fingerprint=manifest.source_fingerprint,
         views=exported.receipt.views,
         view_plans=frozen_view_plans,
@@ -1526,6 +1568,7 @@ def _validate_candidate(
         candidate,
         expected_repository=planned.repository,
         expected_commit=planned.commit,
+        expected_manifest_version=planned.manifest_version,
         max_files=max_context_files,
         max_bytes=max_context_bytes,
     )

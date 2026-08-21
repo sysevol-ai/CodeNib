@@ -24,7 +24,14 @@ import codenib._contained_source as contained_source_module
 import codenib._windows_fs_authority as windows_fs_module
 import codenib.source_fingerprint as source_fingerprint_module
 from codenib.artifacts.runtime import SourceBindingCleanupOwner
-from codenib.repository_filters import REPOSITORY_FILTER_POLICY_VERSION
+from codenib.repository_filters import (
+    REPOSITORY_FILTER_POLICY_VERSION,
+    walk_repository_files,
+)
+from codenib.repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    RepositorySourceSelection,
+)
 from codenib.source_fingerprint import (
     SOURCE_FINGERPRINT_VERSION,
     RepositoryChangedError,
@@ -728,7 +735,13 @@ def test_fingerprint_final_gate_revalidates_excluded_link_target_state(
     real_scan = source_fingerprint_module._scan_pinned_repository
     changed = False
 
-    def change_before_final_link_check(descriptor, *, excluded, collect_entries):
+    def change_before_final_link_check(
+        descriptor,
+        *,
+        excluded,
+        selection,
+        collect_entries,
+    ):
         nonlocal changed
         if not collect_entries and not changed:
             changed = True
@@ -736,6 +749,7 @@ def test_fingerprint_final_gate_revalidates_excluded_link_target_state(
         return real_scan(
             descriptor,
             excluded=excluded,
+            selection=selection,
             collect_entries=collect_entries,
         )
 
@@ -786,6 +800,29 @@ def test_repository_source_identity_snapshot_is_detached(tmp_path: Path) -> None
 
         assert second.file_records[0].sha256 != "f" * 64
         assert binding.read_bytes("a.py", max_bytes=1024) == b"VALUE = 1\n"
+
+
+def test_repository_source_binding_rejects_retained_link_record_mutation(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "target.py").write_bytes(b"VALUE = 1\n")
+    (repo / "link.py").symlink_to("target.py")
+    binding = capture_repository_source(repo)
+    retained = binding._links["link.py"]
+    binding._links["link.py"] = source_fingerprint_module._RepositorySourceLinkRecord(
+        path=retained.path,
+        lexical_identity=retained.lexical_identity,
+        link_target="other.py",
+        target_state=retained.target_state,
+        windows_reparse_point=retained.windows_reparse_point,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="retained link records"):
+        binding.verify_snapshot()
+    assert not binding.usable
+    binding.close()
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
@@ -1727,6 +1764,9 @@ def _legacy_link_only_digest(path: bytes, target: bytes) -> str:
             "codenib-source-fingerprint:1:" f"{REPOSITORY_FILTER_POLICY_VERSION}\0"
         ).encode("ascii")
     )
+    digest.update(b"source-selection-digest\0")
+    digest.update(DEFAULT_REPOSITORY_SOURCE_SELECTION.digest.encode("ascii"))
+    digest.update(b"\0")
     digest.update(b"L\0" + path + b"\0" + target + b"\0")
     return f"sha256:{digest.hexdigest()}"
 
@@ -2051,6 +2091,256 @@ def test_v2_fingerprint_is_canonical_and_deterministic(tmp_path: Path) -> None:
     assert source_fingerprint_version(first.value) == 2
 
 
+def test_selection_identity_changes_v1_and_v2_without_matching_paths(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "module.py").write_bytes(b"VALUE = 1\n")
+    empty = RepositorySourceSelection()
+    latent = RepositorySourceSelection(("future/generated",))
+
+    empty_v2 = fingerprint_repository(tmp_path, selection=empty)
+    latent_v2 = fingerprint_repository(tmp_path, selection=latent)
+    empty_v1 = fingerprint_repository_v1_for_diagnostics(
+        tmp_path,
+        selection=empty,
+    )
+    latent_v1 = fingerprint_repository_v1_for_diagnostics(
+        tmp_path,
+        selection=latent,
+    )
+
+    assert empty_v2.file_count == latent_v2.file_count == 1
+    assert empty_v1.file_count == latent_v1.file_count == 1
+    assert empty_v2.value != latent_v2.value
+    assert empty_v1.value != latent_v1.value
+
+
+def test_selection_excludes_subtree_before_stat_open_or_content_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    generated = repo / "generated"
+    generated.mkdir(parents=True)
+    (repo / "included.py").write_bytes(b"INCLUDED = 1\n")
+    excluded_file = generated / "excluded.py"
+    excluded_file.write_bytes(b"EXCLUDED = 1\n")
+    selection = RepositorySourceSelection(("generated",))
+    real_stat = source_fingerprint_module.os.stat
+    real_open = source_fingerprint_module.os.open
+    real_resolve = source_fingerprint_module._resolved_repository_file_at
+
+    def reject_excluded_stat(path, *args, **kwargs):
+        if path == "generated" and kwargs.get("dir_fd") is not None:
+            raise AssertionError("excluded subtree was statted")
+        return real_stat(path, *args, **kwargs)
+
+    def reject_excluded_open(path, flags, *args, **kwargs):
+        if path == "generated" and kwargs.get("dir_fd") is not None:
+            raise AssertionError("excluded subtree was opened")
+        return real_open(path, flags, *args, **kwargs)
+
+    @contextmanager
+    def reject_excluded_read(root, descriptor, relative, **kwargs):
+        if relative == "generated" or relative.startswith("generated/"):
+            raise AssertionError("excluded subtree content was read")
+        with real_resolve(root, descriptor, relative, **kwargs) as binding:
+            yield binding
+
+    monkeypatch.setattr(source_fingerprint_module.os, "stat", reject_excluded_stat)
+    monkeypatch.setattr(source_fingerprint_module.os, "open", reject_excluded_open)
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_resolved_repository_file_at",
+        reject_excluded_read,
+    )
+
+    initial = fingerprint_repository(repo, selection=selection)
+    excluded_file.write_bytes(b"EXCLUDED = 2\n")
+    excluded_changed = fingerprint_repository(repo, selection=selection)
+    (repo / "included.py").write_bytes(b"INCLUDED = 2\n")
+    included_changed = fingerprint_repository(repo, selection=selection)
+
+    assert initial.file_count == 1
+    assert excluded_changed == initial
+    assert included_changed.value != initial.value
+
+
+def test_selection_and_internal_exclude_roots_remain_independent(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    generated = repo / "generated"
+    internal = repo / "runtime-artifact"
+    generated.mkdir(parents=True)
+    internal.mkdir()
+    (repo / "included.py").write_bytes(b"INCLUDED = 1\n")
+    generated_file = generated / "excluded.py"
+    generated_file.write_bytes(b"GENERATED = 1\n")
+    internal_file = internal / "state.bin"
+    internal_file.write_bytes(b"STATE = 1\n")
+    selection = RepositorySourceSelection(("generated",))
+
+    initial = fingerprint_repository(
+        repo,
+        exclude_roots=(internal,),
+        selection=selection,
+    )
+    generated_file.write_bytes(b"GENERATED = 2\n")
+    internal_file.write_bytes(b"STATE = 2\n")
+    excluded_changed = fingerprint_repository(
+        repo,
+        exclude_roots=(internal,),
+        selection=selection,
+    )
+    internal_included = fingerprint_repository(repo, selection=selection)
+
+    assert initial == excluded_changed
+    assert initial.file_count == 1
+    assert internal_included.file_count == 2
+    assert internal_included.value != initial.value
+
+
+def test_selection_uses_same_exact_policy_for_initial_and_final_posix_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    generated = repo / "generated"
+    generated.mkdir(parents=True)
+    (repo / "included.py").write_bytes(b"INCLUDED = 1\n")
+    excluded_file = generated / "excluded.py"
+    excluded_file.write_bytes(b"EXCLUDED = 1\n")
+    selection = RepositorySourceSelection(("generated",))
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    observed: list[tuple[RepositorySourceSelection, bool]] = []
+
+    def mutate_after_initial(
+        descriptor,
+        *,
+        excluded,
+        selection,
+        collect_entries,
+    ):
+        scan = real_scan(
+            descriptor,
+            excluded=excluded,
+            selection=selection,
+            collect_entries=collect_entries,
+        )
+        observed.append((selection, collect_entries))
+        if collect_entries:
+            excluded_file.write_bytes(b"EXCLUDED = 2\n")
+        return scan
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        mutate_after_initial,
+    )
+
+    fingerprint = fingerprint_repository(repo, selection=selection)
+
+    assert fingerprint.file_count == 1
+    assert observed == [(selection, True), (selection, False)]
+
+
+def test_selection_walk_and_authenticated_records_have_path_parity(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "generated").mkdir(parents=True)
+    (repo / "generated-extra").mkdir()
+    (repo / "src" / "cache").mkdir(parents=True)
+    (repo / "generated" / "excluded.py").write_bytes(b"EXCLUDED = 1\n")
+    (repo / "generated-extra" / "included.py").write_bytes(b"INCLUDED = 1\n")
+    (repo / "src" / "cache" / "excluded.py").write_bytes(b"EXCLUDED = 2\n")
+    (repo / "src" / "included.py").write_bytes(b"INCLUDED = 2\n")
+    selection = RepositorySourceSelection(("generated", "src/cache"))
+
+    walked = {
+        path.relative_to(repo).as_posix()
+        for path in walk_repository_files(
+            repo,
+            selection=selection,
+        )
+    }
+    with capture_repository_source(repo, selection=selection) as binding:
+        captured = {record.path for record in binding.file_records}
+
+    assert walked == captured == {"generated-extra/included.py", "src/included.py"}
+
+
+def test_retained_binding_detaches_and_reuses_exact_selection(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    generated = repo / "generated"
+    generated.mkdir(parents=True)
+    included = repo / "included.py"
+    included.write_bytes(b"INCLUDED = 1\n")
+    excluded_file = generated / "excluded.py"
+    excluded_file.write_bytes(b"EXCLUDED = 1\n")
+    caller_selection = RepositorySourceSelection(("generated",))
+    binding = capture_repository_source(repo, selection=caller_selection)
+
+    object.__setattr__(caller_selection, "exclude_subtrees", ())
+    first = binding.authenticated_identity_snapshot()
+    assert first.source_selection == RepositorySourceSelection(("generated",))
+    assert first.source_selection is not binding._selection
+    assert first.source_selection is not None
+    object.__setattr__(first.source_selection, "exclude_subtrees", ("forged",))
+    second = binding.authenticated_identity_snapshot()
+    assert second.source_selection == RepositorySourceSelection(("generated",))
+
+    excluded_file.write_bytes(b"EXCLUDED = 2\n")
+    binding.verify_snapshot()
+    assert binding.read_bytes("included.py", max_bytes=64) == b"INCLUDED = 1\n"
+
+    included.write_bytes(b"INCLUDED = changed\n")
+    with pytest.raises(RepositoryChangedError, match="inventory changed"):
+        binding.verify_snapshot()
+    assert not binding.usable
+    binding.close()
+
+
+def test_legacy_manifest_v11_compat_identity_is_exact_and_explicit(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "module.py").write_bytes(b"VALUE = 1\n")
+
+    legacy = source_fingerprint_module._fingerprint_repository_legacy_manifest_v11(
+        tmp_path
+    )
+    current = fingerprint_repository(tmp_path)
+
+    assert legacy.value == (
+        "sha256-v2:8756a1746b8447cee00a0d9e89bcb7c2" "8df91376f2dd3d457b8050be76283d17"
+    )
+    assert legacy.file_count == current.file_count == 1
+    assert legacy.value != current.value
+
+    binding = source_fingerprint_module._capture_repository_source_legacy_manifest_v11(
+        tmp_path
+    )
+    try:
+        snapshot = binding.authenticated_identity_snapshot()
+        assert snapshot.fingerprint == legacy.value
+        assert snapshot.source_selection is None
+        assert binding.read_bytes("module.py", max_bytes=64) == b"VALUE = 1\n"
+    finally:
+        binding.close()
+
+
+def test_fingerprint_rejects_non_selection_policy(tmp_path: Path) -> None:
+    (tmp_path / "module.py").write_bytes(b"VALUE = 1\n")
+
+    with pytest.raises(TypeError, match="RepositorySourceSelection"):
+        fingerprint_repository(tmp_path, selection=None)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="RepositorySourceSelection"):
+        capture_repository_source(tmp_path, selection=None)  # type: ignore[arg-type]
+
+
 def test_windows_fake_regular_tree_matches_posix_v1_and_v2(
     tmp_path: Path,
 ) -> None:
@@ -2083,6 +2373,90 @@ def test_windows_fake_regular_tree_matches_posix_v1_and_v2(
     assert observed_v2 == expected_v2
     assert api.handles == {}
     assert set(api.created_paths) == {"C:\\"}
+
+
+def test_windows_fake_selection_matches_posix_initial_and_final_scans(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generated = tmp_path / "generated"
+    generated.mkdir()
+    generated_extra = tmp_path / "generated-extra"
+    generated_extra.mkdir()
+    (tmp_path / "module.py").write_bytes(b"VALUE = 1\n")
+    (generated / "excluded.py").write_bytes(b"EXCLUDED = 1\n")
+    (generated_extra / "included.py").write_bytes(b"INCLUDED = 1\n")
+    selection = RepositorySourceSelection(("generated",))
+    expected_v1 = fingerprint_repository_v1_for_diagnostics(
+        tmp_path,
+        selection=selection,
+    )
+    expected_v2 = fingerprint_repository(tmp_path, selection=selection)
+
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "module.py", b"VALUE = 1\n")
+    fake_generated = api.add_directory(api.root_id, "generated")
+    api.add_file(fake_generated, "excluded.py", b"EXCLUDED = 1\n")
+    fake_generated_extra = api.add_directory(api.root_id, "generated-extra")
+    api.add_file(fake_generated_extra, "included.py", b"INCLUDED = 1\n")
+
+    def reject_excluded_open(parent_id, name, file_id):
+        if parent_id == api.root_id and name == "generated":
+            raise AssertionError("excluded Windows subtree was opened")
+        return file_id
+
+    api.open_relative_hook = reject_excluded_open
+    real_scan = source_fingerprint_module._scan_pinned_windows_repository
+    observed: list[tuple[RepositorySourceSelection, bool]] = []
+
+    def observe_scan(
+        selected_api,
+        root_handle,
+        *,
+        excluded,
+        selection,
+        collect_entries,
+    ):
+        scan = real_scan(
+            selected_api,
+            root_handle,
+            excluded=excluded,
+            selection=selection,
+            collect_entries=collect_entries,
+        )
+        observed.append((selection, collect_entries))
+        return scan
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_windows_repository",
+        observe_scan,
+    )
+
+    observed_v1 = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        selection=selection,
+        version=1,
+        api=api,
+    )
+    observed_v2 = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        selection=selection,
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+    )
+
+    assert observed_v1 == expected_v1
+    assert observed_v2 == expected_v2
+    assert observed == [
+        (selection, True),
+        (selection, False),
+        (selection, True),
+        (selection, False),
+    ]
+    assert api.handles == {}
 
 
 def test_windows_reparse_parser_is_bounded_and_exact() -> None:
@@ -2156,6 +2530,36 @@ def test_windows_fake_public_contained_read_and_hash_close_authority(
     )
 
     assert digest.hexdigest() == hashlib.sha256(b"VALUE = 1\n").hexdigest()
+    assert api.handles == {}
+
+
+def test_windows_fake_unbound_read_rejects_absolute_symlink(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "target.py", b"VALUE = 1\n")
+    api.add_symlink(
+        api.root_id,
+        "current.py",
+        r"C:\repo\target.py",
+        absolute=True,
+        substitute=r"\??\C:\repo\target.py",
+    )
+    monkeypatch.setattr(contained_source_module.sys, "platform", "win32")
+    monkeypatch.setattr(contained_source_module, "_windows_kernel_api", lambda: api)
+    monkeypatch.setattr(
+        contained_source_module,
+        "_shared_windows_require_source_api",
+        lambda _api: None,
+    )
+
+    with pytest.raises(ValueError, match="target must be relative"):
+        contained_source_module.read_repository_file(
+            r"C:\repo",
+            "current.py",
+            max_bytes=64,
+        )
+
     assert api.handles == {}
 
 
@@ -2240,9 +2644,66 @@ def test_windows_fake_excludes_contained_directory_and_root_links() -> None:
     assert api.handles == {}
 
 
-def test_windows_fake_rejects_absolute_contained_symlink() -> None:
+@pytest.mark.parametrize(
+    ("root", "target", "substitute"),
+    [
+        (r"C:\repo", r"C:\repo\target.py", r"C:\repo\target.py"),
+        (r"C:\repo", r"C:\repo\target.py", r"\??\C:\repo\target.py"),
+        (r"C:\repo", r"C:\repo\target.py", r"\\?\C:\repo\target.py"),
+        (r"C:\repo", r"C:\repo\target.py", r"\??\c:\REPO\target.py"),
+        (r"\\?\C:\repo", r"C:\repo\target.py", r"\??\C:\repo\target.py"),
+        (
+            r"\\server\share\repo",
+            r"\\server\share\repo\target.py",
+            r"\\server\share\repo\target.py",
+        ),
+        (
+            r"\\server\share\repo",
+            r"\\server\share\repo\target.py",
+            r"\??\UNC\server\share\repo\target.py",
+        ),
+        (
+            r"\\server\share\repo",
+            r"\\server\share\repo\target.py",
+            r"\\?\UNC\server\share\repo\target.py",
+        ),
+        (
+            r"\\?\UNC\server\share\repo",
+            r"\\server\share\repo\target.py",
+            r"\??\UNC\server\share\repo\target.py",
+        ),
+    ],
+)
+def test_windows_fake_accepts_absolute_contained_symlink(
+    root: str,
+    target: str,
+    substitute: str,
+) -> None:
     api = _FakeWindowsSourceApi()
     api.add_file(api.root_id, "target.py", b"VALUE = 1\n")
+    api.add_symlink(
+        api.root_id,
+        "current.py",
+        target,
+        absolute=True,
+        substitute=substitute,
+    )
+
+    observed = source_fingerprint_module._fingerprint_windows_repository(
+        root,
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+    )
+
+    assert observed.file_count == 2
+    assert observed.value.startswith("sha256-v2:")
+    assert api.handles == {}
+
+
+def test_windows_fake_absolute_symlink_retained_reads() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "target.py", b"FIRST = 1\r\nSECOND = 2\r\n")
     api.add_symlink(
         api.root_id,
         "current.py",
@@ -2250,15 +2711,27 @@ def test_windows_fake_rejects_absolute_contained_symlink() -> None:
         absolute=True,
         substitute=r"\??\C:\repo\target.py",
     )
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
 
-    with pytest.raises(RepositoryChangedError, match="read consistently"):
-        source_fingerprint_module._fingerprint_windows_repository(
-            r"C:\repo",
-            exclude_roots=(),
-            version=SOURCE_FINGERPRINT_VERSION,
-            api=api,
+    assert binding.read_bytes("current.py", max_bytes=1024).startswith(b"FIRST")
+    assert binding.read_prefix("current.py", max_bytes=5) == b"FIRST"
+    assert (
+        binding.read_line_range(
+            "current.py",
+            start_line=2,
+            end_line=2,
+            max_bytes=1024,
         )
-
+        == b"SECOND = 2\r\n"
+    )
+    binding.close()
     assert api.handles == {}
 
 
@@ -2312,6 +2785,62 @@ def test_windows_fake_binds_initial_symlink_text(
     assert api.handles == {}
 
 
+def test_windows_fake_binds_initial_symlink_substitute_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "first.py", b"SAME\n")
+    api.add_file(api.root_id, "second.py", b"SAME\n")
+    link_id = api.add_symlink(
+        api.root_id,
+        "current.py",
+        r"C:\repo\first.py",
+        absolute=True,
+        substitute=r"\??\C:\repo\first.py",
+    )
+    original = api.nodes[link_id]["reparse"]
+    replacement = windows_fs_module.WindowsReparsePoint(
+        tag=windows_fs_module.IO_REPARSE_TAG_SYMLINK,
+        substitute_name=r"\??\C:\repo\second.py",
+        print_name=r"C:\repo\first.py",
+        flags=0,
+    )
+    real_resolve = source_fingerprint_module._resolved_windows_repository_file_at
+    swapped = False
+
+    @contextmanager
+    def swap_substitute(root, authority, relative, **kwargs):
+        nonlocal swapped
+        if swapped or relative != "current.py":
+            with real_resolve(root, authority, relative, **kwargs) as binding:
+                yield binding
+            return
+        swapped = True
+        api.nodes[link_id]["reparse"] = replacement
+        try:
+            with real_resolve(root, authority, relative, **kwargs) as binding:
+                yield binding
+        finally:
+            api.nodes[link_id]["reparse"] = original
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_resolved_windows_repository_file_at",
+        swap_substitute,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert swapped
+    assert api.handles == {}
+
+
 def test_windows_fake_binding_revalidates_unresolved_excluded_target() -> None:
     api = _FakeWindowsSourceApi()
     hidden = api.add_directory(api.root_id, ".codenib-cache")
@@ -2338,6 +2867,28 @@ def test_windows_fake_binding_revalidates_unresolved_excluded_target() -> None:
     [
         (r"..\outside.py", False, None),
         (r"C:\outside.py", True, r"\??\C:\outside.py"),
+        (r"C:\repo\target.py", True, r"\??\D:\repo\target.py"),
+        (r"C:\repo\target.py", True, r"\??\C:\outside.py"),
+        (r"C:\repo\target.py", True, r"\??\C:\repository\target.py"),
+        (r"C:\repo\target.py", True, r"\??\C:\repo\target.py:stream"),
+        (
+            r"C:\repo\target.py",
+            True,
+            r"\??\C:\repo\hidden:stream\..\target.py",
+        ),
+        (
+            r"C:\repo\target.py",
+            True,
+            r"\??\C:\repo\..\repo\target.py",
+        ),
+        (r"C:\repo\target.py", True, r"\??\\\server\share\repo\target.py"),
+        (r"C:\repo\target.py", True, r"\??\GLOBALROOT\Device\target.py"),
+        (r"C:\repo\target.py", True, r"\\?\GLOBALROOT\Device\target.py"),
+        (r"C:\repo\target.py", True, r"\??\Volume{abc}\repo\target.py"),
+        (r"C:\repo\target.py", True, r"\??\UNCevil\repo\target.py"),
+        (r"C:\repo\target.py", True, r"\??\C:/repo/target.py"),
+        (r"C:\repo\target.py", True, "\\??\\Å:\\repo\\target.py"),
+        (r"C:\repo\target.py", True, r"\\.\C:\repo\target.py"),
     ],
 )
 def test_windows_fake_rejects_outside_symlink_without_handle_leak(
@@ -2357,6 +2908,37 @@ def test_windows_fake_rejects_outside_symlink_without_handle_leak(
     with pytest.raises(RepositoryChangedError, match="read consistently"):
         source_fingerprint_module._fingerprint_windows_repository(
             r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+        )
+
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize(
+    "substitute",
+    [
+        r"\??\UNC\server\share\repository\target.py",
+        r"\??\UNC\server\other\repo\target.py",
+        r"\??\UNC\other\share\repo\target.py",
+    ],
+)
+def test_windows_fake_rejects_absolute_unc_component_collision(
+    substitute: str,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_symlink(
+        api.root_id,
+        "current.py",
+        r"\\server\share\repo\target.py",
+        absolute=True,
+        substitute=substitute,
+    )
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"\\server\share\repo",
             exclude_roots=(),
             version=SOURCE_FINGERPRINT_VERSION,
             api=api,
@@ -3831,26 +4413,151 @@ def test_fingerprint_rejects_file_swap_in_walker_to_open_window(
     assert foreign.read_text(encoding="utf-8") == "VALUE = 'foreign'\n"
 
 
-def test_fingerprint_rejects_absolute_contained_symlink(tmp_path: Path) -> None:
+def test_fingerprint_accepts_absolute_contained_symlink_and_retained_reads(
+    tmp_path: Path,
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     target = repo / "target.py"
-    target.write_text("VALUE = 1\n", encoding="utf-8")
+    target.write_bytes(b"FIRST = 1\nSECOND = 2\n")
     (repo / "link.py").symlink_to(target)
 
+    observed = fingerprint_repository(repo)
+
+    with capture_repository_source(repo) as binding:
+        assert observed.file_count == binding.file_count == 2
+        assert observed.value == binding.fingerprint
+        assert binding.read_bytes("link.py", max_bytes=1024) == target.read_bytes()
+        assert binding.read_prefix("link.py", max_bytes=5) == b"FIRST"
+        assert (
+            binding.read_line_range(
+                "link.py",
+                start_line=2,
+                end_line=2,
+                max_bytes=1024,
+            )
+            == b"SECOND = 2\n"
+        )
+        binding.verify_snapshot()
+
+
+def test_absolute_symlink_retained_reads_use_authenticated_root(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    target = repo / "target.py"
+    target.write_bytes(b"FIRST = 1\nSECOND = 2\n")
+    (repo / "link.py").symlink_to(target)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+
+    with capture_repository_source(repo) as binding:
+        with binding.read_session():
+            public_root = binding.root
+            object.__setattr__(binding, "root", foreign)
+            try:
+                assert binding.read_prefix("link.py", max_bytes=5) == b"FIRST"
+                assert (
+                    binding.read_line_range(
+                        "link.py",
+                        start_line=2,
+                        end_line=2,
+                        max_bytes=1024,
+                    )
+                    == b"SECOND = 2\n"
+                )
+            finally:
+                object.__setattr__(binding, "root", public_root)
+
+
+@pytest.mark.parametrize("operation", ["bytes", "prefix", "line-range"])
+def test_absolute_symlink_retained_reads_reject_retarget(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    first = repo / "first.py"
+    second = repo / "second.py"
+    first.write_bytes(b"SAME\n")
+    second.write_bytes(b"SAME\n")
+    link = repo / "link.py"
+    link.symlink_to(first)
+    binding = capture_repository_source(repo)
+    link.unlink()
+    link.symlink_to(second)
+
     with pytest.raises(RepositoryChangedError):
+        if operation == "bytes":
+            binding.read_bytes("link.py", max_bytes=1024)
+        elif operation == "prefix":
+            binding.read_prefix("link.py", max_bytes=4)
+        else:
+            binding.read_line_range(
+                "link.py",
+                start_line=1,
+                end_line=1,
+                max_bytes=1024,
+            )
+
+    assert not binding.usable
+    binding.close()
+
+
+def test_fingerprint_accepts_mixed_contained_symlink_chain(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    nested = repo / "nested"
+    nested.mkdir(parents=True)
+    (repo / "target.py").write_bytes(b"VALUE = 1\n")
+    (nested / "relative.py").symlink_to("../target.py")
+    (repo / "absolute.py").symlink_to(nested / "relative.py")
+
+    with capture_repository_source(repo) as binding:
+        assert binding.file_count == 3
+        assert binding.read_bytes("absolute.py", max_bytes=1024) == b"VALUE = 1\n"
+
+
+def test_fingerprint_preserves_contained_absolute_broken_link(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    target = repo / "missing.py"
+    (repo / "link.py").symlink_to(target)
+
+    observed = fingerprint_repository(repo)
+    legacy = fingerprint_repository_v1_for_diagnostics(repo)
+
+    assert observed.file_count == legacy.file_count == 1
+    assert legacy.value == _legacy_link_only_digest(
+        b"link.py",
+        os.fsencode(target),
+    )
+
+
+def test_fingerprint_rejects_absolute_target_that_leaves_and_reenters_root(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "target.py").write_bytes(b"VALUE = 1\n")
+    raw_target = repo / ".." / repo.name / "target.py"
+    (repo / "link.py").symlink_to(raw_target)
+
+    with pytest.raises(RepositoryChangedError, match="read consistently"):
         fingerprint_repository(repo)
 
 
+@pytest.mark.parametrize("absolute", [False, True])
 def test_fingerprint_excludes_contained_directory_symlink_in_v1_and_v2(
     tmp_path: Path,
+    absolute: bool,
 ) -> None:
     repo = tmp_path / "repo"
     package = repo / "package"
     package.mkdir(parents=True)
     (package / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
     link = repo / "package-link"
-    link.symlink_to("package", target_is_directory=True)
+    link.symlink_to(package if absolute else "package", target_is_directory=True)
 
     current_with_link = fingerprint_repository(repo)
     legacy_with_link = fingerprint_repository_v1_for_diagnostics(repo)
@@ -3859,6 +4566,24 @@ def test_fingerprint_excludes_contained_directory_symlink_in_v1_and_v2(
     assert fingerprint_repository(repo) == current_with_link
     assert fingerprint_repository_v1_for_diagnostics(repo) == legacy_with_link
     assert current_with_link.file_count == legacy_with_link.file_count == 1
+
+
+def test_fingerprint_accepts_expo_pods_absolute_directory_link(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    dependency = repo / "node_modules" / ".pnpm" / "dependency" / "package"
+    dependency.mkdir(parents=True)
+    (dependency / "index.ts").write_bytes(b"export const value = 1;\n")
+    pod = repo / "ios" / "Pods" / "Dependency"
+    pod.parent.mkdir(parents=True)
+    pod.symlink_to(dependency, target_is_directory=True)
+
+    observed = fingerprint_repository(repo)
+    with capture_repository_source(repo) as binding:
+        binding.verify_snapshot()
+
+    assert observed.file_count == binding.file_count == 0
 
 
 @pytest.mark.parametrize("absolute", [False, True])
@@ -3871,13 +4596,6 @@ def test_fingerprint_excludes_repository_root_directory_symlink_in_v1_and_v2(
     (repo / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
     link = repo / "root-link"
     link.symlink_to(repo if absolute else ".", target_is_directory=True)
-
-    if absolute:
-        with pytest.raises(RepositoryChangedError, match="read consistently"):
-            fingerprint_repository(repo)
-        with pytest.raises(RepositoryChangedError, match="read consistently"):
-            fingerprint_repository_v1_for_diagnostics(repo)
-        return
 
     current_with_link = fingerprint_repository(repo)
     legacy_with_link = fingerprint_repository_v1_for_diagnostics(repo)
@@ -4058,6 +4776,34 @@ def test_dirty_check_ignores_generated_dirs_but_detects_source_changes(tmp_path)
     assert repository_source_is_dirty(tmp_path) is True
 
 
+def test_dirty_check_ignores_changes_in_selected_exclusions(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.name", "Test"],
+        check=True,
+    )
+    generated = tmp_path / "generated" / "output.py"
+    generated.parent.mkdir()
+    generated.write_text("VALUE = 1\n")
+    (tmp_path / "module.py").write_text("VALUE = 1\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-qm", "initial"],
+        check=True,
+    )
+    selection = RepositorySourceSelection(("generated",))
+
+    generated.write_text("VALUE = 2\n")
+    assert repository_source_is_dirty(tmp_path, selection=selection) is False
+
+    (tmp_path / "module.py").write_text("VALUE = 2\n")
+    assert repository_source_is_dirty(tmp_path, selection=selection) is True
+
+
 def test_dirty_check_never_resolves_replaceable_root_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4122,6 +4868,7 @@ def test_windows_real_source_v2_regular_and_contained_symlink_node(
     target.write_bytes(b"VALUE = 1\n")
     try:
         (repo / "relative.py").symlink_to("target.py")
+        (repo / "absolute.py").symlink_to(target)
     except OSError as exc:  # pragma: no cover - Windows policy dependent
         pytest.skip(f"Windows symlink creation is unavailable: {exc}")
 
@@ -4130,7 +4877,7 @@ def test_windows_real_source_v2_regular_and_contained_symlink_node(
     legacy = fingerprint_repository_v1_for_diagnostics(repo)
 
     assert first == second
-    assert first.file_count == legacy.file_count == 2
+    assert first.file_count == legacy.file_count == 3
     assert first.value.startswith("sha256-v2:")
     assert legacy.value.startswith("sha256:")
 

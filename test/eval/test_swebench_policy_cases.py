@@ -25,7 +25,10 @@ from codenib.eval.benchmarks.swebench_policy_cases import (
     load_dataset_records,
     select_balanced_repository_cases,
 )
+from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 from codenib.scip_interface.scip_pb2 import Index as SCIPIndex
+
+SOURCE_SELECTION_DIGEST = DEFAULT_REPOSITORY_SOURCE_SELECTION.digest
 
 
 def test_scip_provenance_records_resolved_tool_and_timeout(monkeypatch) -> None:
@@ -141,7 +144,7 @@ def test_build_policy_manifest_rebuilds_a_current_graph_that_fails_audit(
     artifact_dir = tmp_path / "artifact"
     indexes = artifact_dir / "indexes"
     commit = "a" * 40
-    source_fingerprint = "sha256:fixture"
+    source_fingerprint = "sha256-v2:" + ("c" * 64)
     now = 1.0
     manifest = RepoManifest(
         repo_path=str(checkout),
@@ -149,6 +152,7 @@ def test_build_policy_manifest_rebuilds_a_current_graph_that_fails_audit(
         last_indexed_commit=commit,
         source_fingerprint=source_fingerprint,
         last_indexed_source_fingerprint=source_fingerprint,
+        last_indexed_source_selection_digest=SOURCE_SELECTION_DIGEST,
         languages=["python"],
         file_count=1,
         indexes={
@@ -161,6 +165,7 @@ def test_build_policy_manifest_rebuilds_a_current_graph_that_fails_audit(
                 metadata={"node_count": 1},
                 commit=commit,
                 source_fingerprint=source_fingerprint,
+                source_selection_digest=SOURCE_SELECTION_DIGEST,
             )
             for name in ("bm25", "symbol_graph")
         },

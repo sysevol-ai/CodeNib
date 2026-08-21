@@ -6,18 +6,30 @@ SPDX-License-Identifier: Apache-2.0
 
 # Incremental Graph Patching
 
-Update an existing `CodeGraph` in place when code changes, avoiding a full
-re-index whenever the language backend supports a safe delta. Most languages
-use an LSP server; C/C++ refreshes clangd `.idx` data instead.
+CodeNib contains a low-level, experimental graph patcher for studying safe
+file- and symbol-level updates. Most languages use an LSP server; C/C++ can
+refresh clangd `.idx` data in a direct experimental workflow.
 
-There are two entry points:
+> **0.2.2 production gate:** `IndexCompiler.update_repo()` reuses views whose
+> source and builder identities are still current, but atomically rebuilds
+> requested views affected by a source or policy change. It does not invoke
+> builder delta paths. This remains the recommended repository-maintenance
+> entry point until Git observations and delta inputs share the same pinned
+> source authority.
 
-1. **`IndexCompiler.update_repo()`** (recommended) — the compiler drives the patcher for you, alongside every other index, under admission control. See [Compiler-Driven Updates](#compiler-driven-updates-recommended).
-2. **`LSIndexer.graph_patch()`** — the low-level primitive that patches a single graph directly. The rest of this page documents this layer.
+There are two distinct surfaces:
+
+1. **`IndexCompiler.update_repo()`** (recommended) — reuse current views and
+   rebuild changed requested views under manifest admission control.
+2. **`LSIndexer.graph_patch()` and builder `incremental_update()` methods** —
+   low-level experimental APIs. The rest of this page documents that layer;
+   the production compiler does not currently call it.
 
 ## Compiler-Driven Updates (Recommended)
 
-`IndexCompiler.update_repo()` productionizes graph patching: it advances an existing manifest (written by an initial `compile_repo()` build, see [MCP server](../mcp.md)) to the repo's current `HEAD`, routing each requested index through its builder's `incremental_update()` instead of a full `build()`:
+`IndexCompiler.update_repo()` advances an existing manifest (written by an
+initial `compile_repo()` build, see [MCP server](../mcp.md)) to the repository's
+current authenticated source identity:
 
 ```python
 from codenib.compiler import IndexCompiler
@@ -33,7 +45,7 @@ compiler = IndexCompiler(registry)
 compiler.compile_repo("/path/to/repo")   # initial full build
 
 # ... new commits land ...
-compiler.update_repo("/path/to/repo")    # incremental advance to HEAD
+compiler.update_repo("/path/to/repo")    # reuse current or atomically rebuild
 ```
 
 `update_repo()` compares the manifest's `last_indexed_commit` against `HEAD` and then:
@@ -41,7 +53,9 @@ compiler.update_repo("/path/to/repo")    # incremental advance to HEAD
 - **Nothing to do** — `HEAD` unchanged and every requested index `fresh`: returns the existing manifest untouched.
 - **Retry incomplete builds** — `HEAD` unchanged but some requested index is missing or not `fresh` (a previous run failed partway): re-runs a full `compile_repo()` so the failed indexes are retried instead of staying stale.
 - **Full rebuild fallback** — no manifest, an unreadable manifest, or an empty `last_indexed_commit` (no complete baseline was ever established): falls back to `compile_repo()`.
-- **Incremental advance** — otherwise, each builder's `incremental_update(..., last_commit=<previous>)` runs. Builders without a safely publishable delta path rebuild internally. BM25 and Zoekt rebuild, and the vector builder validates the existing generation and its native-read authority before publishing one complete private-generation rebuild; it does not mutate the live vector tree in place. The symbol-graph builder runs the LSP patcher described below — the result is always correct, only the cost differs.
+- **Changed source or policy** — each affected requested view runs its full
+  builder and publishes one complete generation. BM25, vector, symbol graph,
+  and Zoekt do not mutate the live generation in place.
 
 ### last_indexed_commit Semantics
 
@@ -49,7 +63,11 @@ The manifest claims `HEAD` as `last_indexed_commit` only when **every** requeste
 
 ### Admission Control for the Symbol Graph
 
-An incremental symbol-graph result is only *admitted* when the patched artifact can be taken as equivalent to a fresh rebuild. `SymbolGraphBuilder` delegates that decision to the `UpdateVerifier` contract (`codenib/compiler/verification.py`):
+The following contract applies only when callers invoke the experimental
+`SymbolGraphBuilder.incremental_update()` API directly. An incremental
+symbol-graph result is only *admitted* when the patched artifact can be taken
+as equivalent to a fresh rebuild. `SymbolGraphBuilder` delegates that decision
+to the `UpdateVerifier` contract (`codenib/compiler/verification.py`):
 
 | Verifier | Behavior |
 |----------|----------|
@@ -58,15 +76,20 @@ An incremental symbol-graph result is only *admitted* when the patched artifact 
 
 With the builder's default `require_verification=True`, an unadmitted patch is discarded and the graph is fully rebuilt — so out of the box the symbol-graph path behaves exactly like a full rebuild until a real verifier is configured. To accept unverified patches, construct `SymbolGraphBuilder` with `AlwaysAdmitVerifier()` (or `require_verification=False`) and register it in place of the default. Either way the outcome (`verified`, `verification_checked`, `verification_reason`) is written into the manifest entry's metadata, so admission is auditable on disk. A patch that touches no source files of the configured languages is admitted directly.
 
-Independently of verification, the builder falls back to a full rebuild whenever the incremental path cannot run safely: no previously indexed commit, no existing `graph.pkl`, an unresolvable `HEAD`, uncommitted changes to tracked files, a missing language server, or any patch failure.
+Independently of verification, the builder falls back to a full rebuild
+whenever the incremental path cannot run safely: no previously indexed commit,
+no existing `graph.pkl`, an unresolvable `HEAD`, uncommitted changes to tracked
+files, an occurrence sidecar without a matching delta contract, a missing
+language server, or any patch failure.
 
 For TypeScript and TSX, schema 5 also protects the separate file-to-file import
 layer. Before starting the language server or mutating the graph, the patcher
 compares tree-sitter fingerprints of static imports and source-bearing
 re-exports at the indexed and target commits. A changed statement or anchor,
 an added or deleted file, or a rename requests a full rebuild; a body-only edit
-may remain incremental. The compiler catches that explicit request and
-rebuilds, so an incremental update cannot silently retain stale import edges.
+may remain incremental in the direct experimental API. That API catches an
+explicit rebuild request and falls back to a full generation, so it cannot
+silently retain stale import edges.
 
 ## How It Works
 

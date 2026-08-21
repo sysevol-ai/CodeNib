@@ -30,13 +30,30 @@ frontend can reuse its renderers.
 from __future__ import annotations
 
 from collections import Counter, defaultdict, deque
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from ..graph.code_graph import CodeGraph
+from ..repository_filters import repository_path_is_visible
 from ..types import NODE_TYPE_FILE
 from ..utils import is_test_file
 from .codemap import EDGE_ANCHOR_SAMPLE, _DerivedFiles
 from .entrypoints import discover_entry_points
+from .repository_files import safe_repo_relative_path
+
+if TYPE_CHECKING:
+    from ..repository_source_selection import RepositorySourceSelection
+    from ..source_fingerprint import RepositorySourceReader
 
 # Symbols that can carry a file attribution (excludes file/directory/root nodes).
 _SYMBOL_TYPES = frozenset({"function", "method", "class", "field", "symbol"})
@@ -102,6 +119,7 @@ def _project(
     granularity: str,
     derived: _DerivedFiles,
     include_tests: bool,
+    selected_source_path: Callable[[object], Optional[str]],
 ) -> _Projection:
     """Aggregate symbol references into module-to-module dependencies."""
     projection = _Projection()
@@ -110,16 +128,19 @@ def _project(
     module_of_vertex: Dict[int, str] = {}
     seen_files: Dict[str, Optional[str]] = {}
     for index, file_path, is_symbol in _attributed_vertices(graph):
-        if file_path not in seen_files:
-            if not include_tests and is_test_file(file_path):
-                seen_files[file_path] = None
+        selected_path = selected_source_path(file_path)
+        if selected_path is None:
+            continue
+        if selected_path not in seen_files:
+            if not include_tests and is_test_file(selected_path):
+                seen_files[selected_path] = None
                 projection.skipped_tests += 1
-            elif derived(file_path):
-                seen_files[file_path] = None
+            elif derived(selected_path):
+                seen_files[selected_path] = None
                 projection.skipped_derived += 1
             else:
-                seen_files[file_path] = _module_of(file_path, granularity)
-        module = seen_files[file_path]
+                seen_files[selected_path] = _module_of(selected_path, granularity)
+        module = seen_files[selected_path]
         if module is None:
             continue
         module_of_vertex[index] = module
@@ -137,16 +158,19 @@ def _project(
         if source is None or target is None or source == target:
             continue
         key = (source, target)
+        anchor_file = edge.attributes().get("anchor_file")
+        selected_anchor = selected_source_path(anchor_file) if anchor_file else None
+        if anchor_file and selected_anchor is None:
+            continue
         projection.pairs[key].add(
             (g.vs[edge.source]["name"], g.vs[edge.target]["name"])
         )
         projection.anchor_total[key] += 1
-        anchor_file = edge.attributes().get("anchor_file")
-        if anchor_file and len(projection.anchors[key]) < EDGE_ANCHOR_SAMPLE:
+        if selected_anchor and len(projection.anchors[key]) < EDGE_ANCHOR_SAMPLE:
             anchor_line = edge.attributes().get("anchor_line")
             # anchor_line is 0-based (tree-sitter/LSP); expose 1-based.
             entry = {
-                "file": anchor_file,
+                "file": selected_anchor,
                 "line": (anchor_line + 1) if isinstance(anchor_line, int) else None,
             }
             if entry not in projection.anchors[key]:
@@ -177,16 +201,25 @@ def _attributed_vertices(graph: CodeGraph) -> Iterator[Tuple[int, str, bool]]:
 
 
 def _resolve_granularity(
-    graph: CodeGraph, granularity: str, derived: _DerivedFiles, include_tests: bool
+    graph: CodeGraph,
+    granularity: str,
+    derived: _DerivedFiles,
+    include_tests: bool,
+    selected_source_path: Callable[[object], Optional[str]],
 ) -> str:
     """Resolve ``auto`` by counting the repo's own source files."""
     if granularity in ("file", "directory"):
         return granularity
     files: Set[str] = set()
     for _index, file_path, _is_symbol in _attributed_vertices(graph):
-        if (not include_tests and is_test_file(file_path)) or derived(file_path):
+        selected_path = selected_source_path(file_path)
+        if selected_path is None:
             continue
-        files.add(file_path)
+        if (not include_tests and is_test_file(selected_path)) or derived(
+            selected_path
+        ):
+            continue
+        files.add(selected_path)
         if len(files) > _AUTO_FILE_LIMIT:
             return "directory"
     return "file"
@@ -471,6 +504,9 @@ def build_modulemap(
     repo_dir: Optional[str] = None,
     include_tests: bool = False,
     repo_commit: Optional[str] = None,
+    *,
+    source_reader: Optional[RepositorySourceReader] = None,
+    source_selection: Optional[RepositorySourceSelection] = None,
 ) -> Dict[str, Any]:
     """Return the repo's module dependency graph, projected from symbol references.
 
@@ -488,11 +524,53 @@ def build_modulemap(
     granularity = granularity if granularity in GRANULARITIES else "auto"
     depth = max(1, min(int(depth), 4))
     max_nodes = max(2, min(int(max_nodes), 200))
-    derived = _DerivedFiles(repo_dir, repo_commit)
-    # Historical graphs cannot use manifest data from the current checkout.
-    entries = [] if repo_commit else discover_entry_points(repo_dir)
-    resolved = _resolve_granularity(graph, granularity, derived, include_tests)
-    projection = _project(graph, resolved, derived, include_tests)
+
+    def selected_source_path(value: object) -> Optional[str]:
+        if not isinstance(value, str) or not value:
+            return None
+        if source_reader is not None:
+            return source_reader.captured_relative_path(value)
+        if source_selection is None:
+            return value
+        relative = (
+            safe_repo_relative_path(repo_dir, value)
+            if repo_dir
+            else value.replace("\\", "/")
+        )
+        if relative is None or not repository_path_is_visible(
+            relative,
+            selection=source_selection,
+        ):
+            return None
+        return relative
+
+    derived = _DerivedFiles(
+        repo_dir,
+        repo_commit,
+        source_reader=source_reader,
+    )
+    # Historical graphs cannot use manifest data from the current checkout,
+    # and a bound current view must not rediscover entry points through ambient
+    # filesystem reads outside its authenticated source inventory.
+    entries = (
+        []
+        if repo_commit or source_reader is not None
+        else discover_entry_points(repo_dir)
+    )
+    resolved = _resolve_granularity(
+        graph,
+        granularity,
+        derived,
+        include_tests,
+        selected_source_path,
+    )
+    projection = _project(
+        graph,
+        resolved,
+        derived,
+        include_tests,
+        selected_source_path,
+    )
     candidates = projection.degree()
 
     if not candidates:

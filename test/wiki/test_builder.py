@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.repository_summary import readme_summary
 from codenib.source_fingerprint import capture_repository_source
 from codenib.wiki.builder import (
@@ -106,6 +107,17 @@ def test_readme_summary_prefers_tagline():
     out = readme_summary(md)
     assert "fast, friendly library" in out
     assert "install" not in out.lower()
+
+
+def test_manifest_selected_wiki_requires_authenticated_source_reader(repo_dir):
+    bundle = _make_bundle(repo_dir)
+    bundle.manifest = SimpleNamespace(
+        source_fingerprint="sha256-v2:bound",
+        source_selection=RepositorySourceSelection(),
+    )
+
+    with pytest.raises(RuntimeError, match="authenticated source reader"):
+        WikiBuilder(bundle)
 
 
 def test_readme_summary_skips_labels_and_short_lines():
@@ -261,7 +273,8 @@ def test_bound_source_hydrates_far_offset_symbol_without_prefix_truncation(
     bundle.bm25 = SimpleNamespace(documents=[document])
 
     with capture_repository_source(tmp_path) as binding:
-        builder = WikiBuilder(bundle, source_reader=binding.borrow_reader())
+        bundle.source_reader = binding.borrow_reader()
+        builder = WikiBuilder(bundle)
 
         assert builder._symbols()[0].content == "def target(): return 'far-offset'"
         excerpt = builder.source("pkg/far.py", 17_001, 17_001)

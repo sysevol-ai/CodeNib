@@ -34,6 +34,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from ..log_utils import get_logger
+from ..repository_filters import repository_path_is_visible
+from ..repository_source_selection import RepositorySourceSelection
 from ..wiki import WikiBuilder
 from ..wiki.media_generation import (
     image_generator_from_config,
@@ -45,7 +47,7 @@ from .config import load_config
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
 from .repo_registry import RepoRegistry
-from .repository_files import live_source_slice
+from .repository_files import bound_source_slice
 from .request_limits import RequestBodyLimitMiddleware
 from .schemas import (
     ChatRequest,
@@ -62,6 +64,35 @@ _WIKI_MEDIA_TYPES = {
 }
 
 logger = get_logger(__name__)
+
+
+def _manifest_source_selection(bundle) -> RepositorySourceSelection:
+    """Return the current persisted selection, defaulting legacy manifests."""
+
+    selection = getattr(getattr(bundle, "manifest", None), "source_selection", None)
+    return (
+        selection
+        if type(selection) is RepositorySourceSelection
+        else RepositorySourceSelection()
+    )
+
+
+def _historical_source_slice(
+    bundle,
+    source_fn,
+    commit: str,
+    file: str,
+    start: int | None,
+    end: int | None,
+):
+    """Gate a Git-backed historical read with the active manifest policy."""
+
+    if not repository_path_is_visible(
+        file,
+        selection=_manifest_source_selection(bundle),
+    ):
+        return None
+    return source_fn(commit, file, start, end)
 
 
 def _wiki_llm(config, *, model=None, max_tokens=4096):
@@ -93,10 +124,10 @@ def _wiki_narrator(config):
 async def lifespan(app: FastAPI):
     config = load_config()
     # The production service is the local administrator boundary: it verifies
-    # source fingerprint v2 and the exact captured vector tree through this
-    # injected resolver. RepoRegistry itself remains unable to mint authority.
-    # Sparse mode never invokes the resolver and therefore performs no extra
-    # source capture.
+    # source fingerprint v2 and the exact captured vector tree through the
+    # injected native-index resolver. RepoRegistry separately retains the
+    # manifest-selected repository source authority used by every current-tree
+    # Web and Wiki read.
     registry = RepoRegistry(
         config,
         native_index_authorization_resolver=authorize_local_manifest_vector,
@@ -106,23 +137,26 @@ async def lifespan(app: FastAPI):
         # source-bound capability is present.
         allow_missing_native_index_authorization=True,
     )
-    logger.info("Loading QA repos from %s ...", config.registry_path)
-    registry.load_all()
-    app.state.registry = registry
-    app.state.wiki_builders = {}
-    app.state.edge_labelers = {}
-    app.state.commit_windows = {}
-    # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
-    # to templated text when no model/creds are available.
-    app.state.narrator = _wiki_narrator(config)
-    logger.info(
-        "Wiki narrator: model=%s enabled=%s cache=%s",
-        app.state.narrator.model,
-        app.state.narrator.enabled,
-        app.state.narrator.cache_dir,
-    )
-    logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
-    yield
+    try:
+        logger.info("Loading QA repos from %s ...", config.registry_path)
+        registry.load_all()
+        app.state.registry = registry
+        app.state.wiki_builders = {}
+        app.state.edge_labelers = {}
+        app.state.commit_windows = {}
+        # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
+        # to templated text when no model/creds are available.
+        app.state.narrator = _wiki_narrator(config)
+        logger.info(
+            "Wiki narrator: model=%s enabled=%s cache=%s",
+            app.state.narrator.model,
+            app.state.narrator.enabled,
+            app.state.narrator.cache_dir,
+        )
+        logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
+        yield
+    finally:
+        registry.close()
 
 
 app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
@@ -280,14 +314,24 @@ def _edge_labeler(repo_id: str, commit: str | None = None):
         entry = window.resolve(commit) if window.available else None
         if entry is not None:
             source_commit = str(entry.get("sha") or "")
-            source_fn = partial(window.source_for, source_commit)
+            source_fn = partial(
+                _historical_source_slice,
+                bundle,
+                window.source_for,
+                source_commit,
+            )
         elif commit.strip().lower() not in {
             base_commit.lower(),
             base_commit[:8].lower(),
         }:
             raise ValueError(f"unknown commit for repository: {commit}")
     if source_fn is None:
-        source_fn = partial(live_source_slice, bundle.entry.repo_dir)
+        source_reader = getattr(bundle, "source_reader", None)
+        source_fn = (
+            partial(bound_source_slice, source_reader)
+            if source_reader is not None
+            else lambda *_args, **_kwargs: None
+        )
 
     cache_key = f"{repo_id}@{source_commit}"
     if cache_key not in cache:
@@ -474,6 +518,7 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
         citations,
         repo_dir=bundle.entry.repo_dir,
         hierarchy_graph=hierarchy_graph,
+        source_reader=bundle.source_reader,
     )
 
 
@@ -493,7 +538,13 @@ async def source(
         entry = window.resolve(commit) if window.available else None
         if entry is not None:
             result = await asyncio.to_thread(
-                window.source_for, commit, file, start, end
+                _historical_source_slice,
+                bundle,
+                window.source_for,
+                commit,
+                file,
+                start,
+                end,
             )
         else:
             base = str(bundle.entry.base_commit or "")
@@ -503,13 +554,17 @@ async def source(
                     status_code=404,
                     detail=f"Unknown commit for this repo: {commit!r}",
                 )
-            result = await asyncio.to_thread(
-                live_source_slice, bundle.entry.repo_dir, file, start, end
-            )
+            source_reader = getattr(bundle, "source_reader", None)
+            if source_reader is not None:
+                result = await asyncio.to_thread(
+                    bound_source_slice, source_reader, file, start, end
+                )
     else:
-        result = await asyncio.to_thread(
-            live_source_slice, bundle.entry.repo_dir, file, start, end
-        )
+        source_reader = getattr(bundle, "source_reader", None)
+        if source_reader is not None:
+            result = await asyncio.to_thread(
+                bound_source_slice, source_reader, file, start, end
+            )
     if result is None:
         raise HTTPException(status_code=404, detail=f"File not found: {file!r}")
     return result
@@ -595,6 +650,12 @@ async def codemap(
         repo_dir=bundle.entry.repo_dir,
         repo_commit=selected_commit if loaded_from_window else None,
         hierarchy_graph=hierarchy_graph,
+        source_reader=(
+            None if loaded_from_window else getattr(bundle, "source_reader", None)
+        ),
+        source_selection=(
+            _manifest_source_selection(bundle) if loaded_from_window else None
+        ),
     )
     # Let the client confirm which snapshot it is looking at. ``fell_back``
     # marks the case where a window exists but its snapshot could not be served,
@@ -667,6 +728,12 @@ async def modulemap(
         repo_dir=bundle.entry.repo_dir,
         include_tests=include_tests,
         repo_commit=selected_commit if loaded_from_window else None,
+        source_reader=(
+            None if loaded_from_window else getattr(bundle, "source_reader", None)
+        ),
+        source_selection=(
+            _manifest_source_selection(bundle) if loaded_from_window else None
+        ),
     )
     if isinstance(result, dict):
         result["commit"] = selected_commit
@@ -735,11 +802,17 @@ async def chat(req: ChatRequest) -> ChatResponse:
         logger.error("agent run failed for %r: %s", req.repo_id, exc, exc_info=True)
         raise HTTPException(status_code=500, detail="agent run failed") from exc
 
+    source_reader = getattr(bundle, "source_reader", None)
+    if source_reader is None:
+        raise HTTPException(
+            status_code=503,
+            detail="authenticated repository source is unavailable",
+        )
     return await asyncio.to_thread(
         agent_result_to_response,
         result,
         repo_path=getattr(bundle.entry, "repo_dir", ""),
-        repo_commit=getattr(bundle.entry, "base_commit", ""),
+        source_reader=source_reader,
     )
 
 

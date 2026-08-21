@@ -191,6 +191,12 @@ export CODENIB_NATIVE_FACT_QUERY_INDEX=auto
 export CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX=auto
 ```
 
+The clangd variable remains available to the direct experiment and profiling
+surface. CodeNib 0.2.2 does not admit mutable project-local `.idx` files in a
+manifest-bound MCP or agent runtime; those contexts use the verified persisted
+graph until clangd generations carry an authenticated receipt and allowed-file
+proof.
+
 Run the alternating-arm parity and performance gate with:
 
 ```bash

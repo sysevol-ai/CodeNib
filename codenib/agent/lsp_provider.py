@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
+from ..repository_source_selection import RepositorySourceSelection
 from ..types import QueriedNode
 from .lsp_graph import lsp_definition, lsp_references, lsp_route
 from .route_context import fingerprint_lsp_route_nodes, summarize_lsp_route_nodes
@@ -574,6 +575,7 @@ def select_checkout_lsp_provider(
     project_root: str,
     languages: Iterable[str],
     symbol_graph: Any = None,
+    source_selection: RepositorySourceSelection | None = None,
     allow_native: bool = True,
     native_disabled_reason: str = "native_provider_not_authorized",
 ) -> tuple[Any, dict[str, Any]]:
@@ -597,8 +599,20 @@ def select_checkout_lsp_provider(
     )
     mode = "auto"
     fallback_reason: Optional[str] = None
+    if source_selection is not None and (
+        type(source_selection) is not RepositorySourceSelection
+    ):
+        raise TypeError("source_selection must be a RepositorySourceSelection")
     if not allow_native:
         fallback_reason = native_disabled_reason or "native_provider_not_authorized"
+    elif source_selection is not None:
+        # A RepositorySourceSelection identifies both the built-in source
+        # policy and any custom exclusions.  Native clangd indexes currently
+        # have neither an authenticated generation receipt nor an allowed-file
+        # proof, so even an empty custom list cannot prove that default-hidden
+        # trees such as ``build`` were excluded.  Manifest-bound callers must
+        # use the centrally filtered persisted graph until that proof exists.
+        fallback_reason = "repository_source_policy_requires_persisted_graph"
     elif canonical_languages != {"cpp"} or has_unknown_language:
         fallback_reason = (
             "mixed_language_requires_persisted_graph"

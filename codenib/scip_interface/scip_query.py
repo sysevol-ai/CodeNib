@@ -31,10 +31,26 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 from ..compiler.artifact_fingerprints import regular_file_fingerprint
-from ..compiler.manifest import MANIFEST_VERSION, IndexEntry, RepoManifest
+from ..compiler.manifest import (
+    LEGACY_MANIFEST_VERSION,
+    MANIFEST_VERSION,
+    SUPPORTED_MANIFEST_VERSIONS,
+    IndexEntry,
+    RepoManifest,
+)
+from ..compiler.manifest_source import (
+    fingerprint_repository_for_manifest,
+    repository_filter_policy_for_manifest,
+    repository_source_selection_for_manifest,
+)
 from ..languages import graph_indexer_path, normalize_language
-from ..repository_filters import REPOSITORY_FILTER_POLICY_VERSION, walk_repository_files
-from ..source_fingerprint import SourceFingerprint, fingerprint_repository
+from ..repository_filters import walk_repository_files
+from ..repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
+from ..source_fingerprint import (
+    SourceFingerprint,
+    fingerprint_repository,
+    is_secure_source_fingerprint_v2,
+)
 from .scip_filter import scip_path_is_allowed
 
 FACT_QUERY_ABI_VERSION = 1
@@ -53,7 +69,8 @@ _ACTIVE_SCIP_INDEXERS = {
 FACT_QUERY_RECEIPT_SCHEMA_VERSION = 1
 SCIP_INPUT_RECEIPT_SCHEMA_VERSION = 1
 FACT_QUERY_FILTER_PROOF_SCHEMA_VERSION = 1
-SYMBOL_GRAPH_BUILDER_SCHEMA_VERSION = 4
+LEGACY_SYMBOL_GRAPH_BUILDER_SCHEMA_VERSION = 4
+SYMBOL_GRAPH_BUILDER_SCHEMA_VERSION = 6
 
 _HEX_DIGEST = re.compile(r"[0-9a-f]{64}")
 _SOURCE_FINGERPRINT = re.compile(r"(?:sha256|sha256-v2):[0-9a-f]{64}")
@@ -62,7 +79,7 @@ _INPUT_RECEIPT_KEYS = frozenset({"schema_version", "index", "metadata"})
 _INPUT_INDEX_KEYS = frozenset({"path", "size_bytes", "sha256"})
 _INPUT_METADATA_KEYS = frozenset({"kind", "complete", "inputs", "internal_crates"})
 _INPUT_FILE_KEYS = frozenset({"path", "size_bytes", "sha256"})
-_INDEX_ENTRY_KEYS = frozenset(
+_INDEX_ENTRY_V11_KEYS = frozenset(
     {
         "index_type",
         "path",
@@ -75,6 +92,7 @@ _INDEX_ENTRY_KEYS = frozenset(
         "source_fingerprint",
     }
 )
+_INDEX_ENTRY_V12_KEYS = _INDEX_ENTRY_V11_KEYS | frozenset({"source_selection_digest"})
 _GRAPH_ARTIFACT_KEYS = frozenset({"relative_path", "size", "sha256"})
 _FILTER_PROOF_KEYS = frozenset(
     {
@@ -104,7 +122,7 @@ _NATIVE_PAYLOAD_KEYS = frozenset(
         "input_receipt",
     }
 )
-_SYMBOL_GRAPH_CONFIG_KEYS = frozenset(
+_LEGACY_SYMBOL_GRAPH_CONFIG_KEYS = frozenset(
     {
         "builder_schema",
         "languages",
@@ -128,6 +146,25 @@ _SYMBOL_GRAPH_CONFIG_KEYS = frozenset(
         "partial_index",
         "failed_languages",
         "partial",
+    }
+)
+_SYMBOL_GRAPH_CONFIG_KEYS = _LEGACY_SYMBOL_GRAPH_CONFIG_KEYS | {
+    "allow_project_preparation",
+    "lsp_occurrence_artifact",
+    "source_selection_digest",
+    "source_selection_report",
+}
+_SOURCE_SELECTION_REPORT_KEYS = frozenset(
+    {
+        "source_selection_digest",
+        "nodes_before",
+        "nodes_after",
+        "edges_before",
+        "edges_after",
+        "removed_excluded_path_count",
+        "excluded_path_count_after",
+        "invalid_path_count_before",
+        "invalid_path_count_after",
     }
 )
 
@@ -691,8 +728,12 @@ def _validate_builder_entry(
     language, languages = _manifest_language(manifest, entry, requested_language)
     config = _mapping(entry.config, label="symbol graph config")
     metadata = _mapping(entry.metadata, label="symbol graph metadata")
-    if set(config) != _SYMBOL_GRAPH_CONFIG_KEYS:
-        raise _reject("symbol graph config fields do not match builder schema v4")
+    is_legacy = manifest.version == LEGACY_MANIFEST_VERSION
+    expected_config_keys = (
+        _LEGACY_SYMBOL_GRAPH_CONFIG_KEYS if is_legacy else _SYMBOL_GRAPH_CONFIG_KEYS
+    )
+    if set(config) != expected_config_keys:
+        raise _reject("symbol graph config fields do not match its builder schema")
     if set(metadata) != set(config) | {"build_duration_seconds"}:
         raise _reject(
             "symbol graph config/metadata fields are not an exact build record"
@@ -713,14 +754,18 @@ def _validate_builder_entry(
             raise _reject(f"symbol graph config/metadata disagree for field {key!r}")
 
     required_config = {
-        "builder_schema": SYMBOL_GRAPH_BUILDER_SCHEMA_VERSION,
+        "builder_schema": (
+            LEGACY_SYMBOL_GRAPH_BUILDER_SCHEMA_VERSION
+            if is_legacy
+            else SYMBOL_GRAPH_BUILDER_SCHEMA_VERSION
+        ),
         "languages": languages,
         "graph_route": "active",
         "allow_partial_languages": False,
         "allow_partial_index": False,
         "source_coverage_fallback": False,
         "target_dir": None,
-        "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
+        "repository_filter_policy": repository_filter_policy_for_manifest(manifest),
     }
     for key, expected in required_config.items():
         if (
@@ -729,6 +774,73 @@ def _validate_builder_entry(
             or type(config[key]) is not type(expected)
         ):
             raise _reject(f"symbol graph config {key!r} is not candidate-safe")
+
+    if not is_legacy:
+        if type(config.get("allow_project_preparation")) is not bool:
+            raise _reject(
+                "symbol graph config 'allow_project_preparation' is malformed"
+            )
+        occurrence_artifact = config.get("lsp_occurrence_artifact")
+        if occurrence_artifact is not None:
+            occurrence_record = _mapping(
+                occurrence_artifact,
+                label="symbol graph LSP occurrence artifact",
+            )
+            _require_exact_keys(
+                occurrence_record,
+                _GRAPH_ARTIFACT_KEYS,
+                label="symbol graph LSP occurrence artifact",
+            )
+            relative = _canonical_relative_path(
+                occurrence_record.get("relative_path"),
+                label="symbol graph LSP occurrence artifact relative_path",
+            )
+            if relative != "lsp_index.pkl":
+                raise _reject(
+                    "symbol graph LSP occurrence artifact must be lsp_index.pkl"
+                )
+            _nonnegative_int(
+                occurrence_record.get("size"),
+                label="symbol graph LSP occurrence artifact size",
+            )
+            _sha256(
+                occurrence_record.get("sha256"),
+                label="symbol graph LSP occurrence artifact sha256",
+            )
+        source_selection = repository_source_selection_for_manifest(manifest)
+        if source_selection is None:
+            raise _reject("current symbol graph manifest has no source selection")
+        if config.get("source_selection_digest") != source_selection.digest:
+            raise _reject("symbol graph source-selection identity is inconsistent")
+        selection_report = _mapping(
+            config.get("source_selection_report"),
+            label="symbol graph source-selection report",
+        )
+        if set(selection_report) != _SOURCE_SELECTION_REPORT_KEYS:
+            raise _reject("symbol graph source-selection report fields are malformed")
+        if selection_report.get("source_selection_digest") != source_selection.digest:
+            raise _reject(
+                "symbol graph source-selection report identity is inconsistent"
+            )
+        report_counts = {
+            key: _nonnegative_int(
+                selection_report.get(key),
+                label=f"symbol graph source-selection report {key}",
+            )
+            for key in _SOURCE_SELECTION_REPORT_KEYS
+            if key != "source_selection_digest"
+        }
+        if (
+            report_counts["nodes_after"] != config.get("node_count")
+            or report_counts["edges_after"] != config.get("edge_count")
+            or report_counts["nodes_before"] < report_counts["nodes_after"]
+            or report_counts["edges_before"] < report_counts["edges_after"]
+            or report_counts["excluded_path_count_after"] != 0
+            or report_counts["invalid_path_count_after"] != 0
+        ):
+            raise _reject(
+                "symbol graph manifest source-selection report is inconsistent"
+            )
 
     patterns = config.get("exclude_patterns")
     if type(patterns) is not list or not all(type(item) is str for item in patterns):
@@ -906,11 +1018,26 @@ def _source_and_allowed_files(
     cache_root: Path,
     exclude_patterns: Iterable[str],
     target_dir: str | None,
+    manifest: RepoManifest | None = None,
 ) -> tuple[SourceFingerprint, list[str]]:
-    source = fingerprint_repository(project_root, exclude_roots=(cache_root,))
+    if manifest is None:
+        selection = DEFAULT_REPOSITORY_SOURCE_SELECTION
+        source = fingerprint_repository(project_root, exclude_roots=(cache_root,))
+    else:
+        persisted_selection = repository_source_selection_for_manifest(manifest)
+        selection = persisted_selection or DEFAULT_REPOSITORY_SOURCE_SELECTION
+        source = fingerprint_repository_for_manifest(
+            project_root,
+            manifest,
+            exclude_roots=(cache_root,),
+        )
     allowed: list[str] = []
     seen: set[str] = set()
-    for path in walk_repository_files(project_root, exclude_roots=(cache_root,)):
+    for path in walk_repository_files(
+        project_root,
+        exclude_roots=(cache_root,),
+        selection=selection,
+    ):
         try:
             mode = path.lstat().st_mode
         except OSError as exc:
@@ -943,6 +1070,8 @@ def _validate_filter_proof(
     expected_record_count: int,
     expected_edge_count: int,
     expected_query_surface_sha256: str,
+    repository_filter_policy: int,
+    source_selection_digest: str | None,
 ) -> dict[str, Any]:
     proof = _mapping(value, label="native filter identity proof")
     _require_exact_keys(proof, _FILTER_PROOF_KEYS, label="native filter proof")
@@ -1008,6 +1137,8 @@ def _validate_filter_proof(
     return {
         "schema_version": FACT_QUERY_FILTER_PROOF_SCHEMA_VERSION,
         "identity": True,
+        "repository_filter_policy": repository_filter_policy,
+        "source_selection_digest": source_selection_digest,
         "allowed_files_sha256": expected_digest,
         "query_surface_sha256": proof_query_surface,
         **counts,
@@ -1050,11 +1181,9 @@ def load_fact_query_candidate(
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise _reject("RepoManifest is not readable canonical JSON") from exc
     raw_manifest = _mapping(raw_manifest, label="RepoManifest")
-    if (
-        type(raw_manifest.get("version")) is not str
-        or raw_manifest.get("version") != MANIFEST_VERSION
-    ):
-        raise _reject("RepoManifest must explicitly record version 1.1")
+    raw_version = raw_manifest.get("version")
+    if type(raw_version) is not str or raw_version not in SUPPORTED_MANIFEST_VERSIONS:
+        raise _reject("RepoManifest must explicitly record a supported version")
     raw_repo = _mapping(raw_manifest.get("repo"), label="RepoManifest.repo")
     for required in ("path", "commit", "source_fingerprint", "file_count"):
         if required not in raw_repo:
@@ -1077,7 +1206,13 @@ def load_fact_query_candidate(
         raw_indexes.get("symbol_graph"), label="RepoManifest symbol_graph entry"
     )
     _require_exact_keys(
-        raw_entry, _INDEX_ENTRY_KEYS, label="RepoManifest symbol_graph entry"
+        raw_entry,
+        (
+            _INDEX_ENTRY_V12_KEYS
+            if raw_version == MANIFEST_VERSION
+            else _INDEX_ENTRY_V11_KEYS
+        ),
+        label="RepoManifest symbol_graph entry",
     )
     if raw_entry.get("index_type") != "symbol_graph":
         raise _reject("RepoManifest symbol_graph index_type is malformed")
@@ -1117,14 +1252,14 @@ def load_fact_query_candidate(
         manifest = RepoManifest.from_dict(dict(raw_manifest))
     except (KeyError, TypeError, ValueError) as exc:
         raise _reject("RepoManifest fields are malformed") from exc
-    if manifest.version != MANIFEST_VERSION:
-        raise _reject(
-            f"RepoManifest version must be {MANIFEST_VERSION!r} for FactQueryIndex"
-        )
     if type(manifest.file_count) is not int or manifest.file_count < 0:
         raise _reject("RepoManifest file_count is malformed")
     if type(manifest.source_fingerprint) is not str or not manifest.source_fingerprint:
         raise _reject("RepoManifest source fingerprint is missing")
+    if manifest.version == MANIFEST_VERSION and not is_secure_source_fingerprint_v2(
+        manifest.source_fingerprint
+    ):
+        raise _reject("RepoManifest v1.2 requires source fingerprint v2")
 
     try:
         manifest_root = Path(manifest.repo_path).expanduser().resolve(strict=True)
@@ -1151,6 +1286,17 @@ def load_fact_query_candidate(
         document_count,
         query_surface_digest,
     ) = _validate_builder_entry(manifest, entry, requested_language=language)
+    source_selection = repository_source_selection_for_manifest(manifest)
+    source_selection_payload = (
+        None if source_selection is None else source_selection.to_dict()
+    )
+    source_selection_digest = (
+        None if source_selection is None else source_selection.digest
+    )
+    repository_filter_policy = repository_filter_policy_for_manifest(manifest)
+    entry_source_selection_digest = (
+        None if source_selection is None else entry.source_selection_digest
+    )
     artifact_root = resolved_manifest.parent / "symbol_graph"
     index_path, index_relative, expected_index = _resolve_artifact(
         entry,
@@ -1170,6 +1316,7 @@ def load_fact_query_candidate(
         cache_root=cache_root,
         exclude_patterns=exclude_patterns,
         target_dir=None,
+        manifest=manifest,
     )
     if (
         source_before.value != manifest.source_fingerprint
@@ -1178,8 +1325,10 @@ def load_fact_query_candidate(
         or entry.commit != manifest.commit
     ):
         raise _reject("repository source does not match the symbol graph manifest")
-    source_before_decode = fingerprint_repository(
-        manifest_root, exclude_roots=(cache_root,)
+    source_before_decode = fingerprint_repository_for_manifest(
+        manifest_root,
+        manifest,
+        exclude_roots=(cache_root,),
     )
     if source_before_decode != source_before:
         raise _reject("repository source changed while computing allowed files")
@@ -1221,9 +1370,15 @@ def load_fact_query_candidate(
         expected_record_count=node_count,
         expected_edge_count=edge_count,
         expected_query_surface_sha256=query_surface_digest,
+        repository_filter_policy=repository_filter_policy,
+        source_selection_digest=source_selection_digest,
     )
 
-    source_after = fingerprint_repository(manifest_root, exclude_roots=(cache_root,))
+    source_after = fingerprint_repository_for_manifest(
+        manifest_root,
+        manifest,
+        exclude_roots=(cache_root,),
+    )
     try:
         index_after = regular_file_fingerprint(index_path)
         graph_after = regular_file_fingerprint(graph_path)
@@ -1266,16 +1421,19 @@ def load_fact_query_candidate(
             "size_bytes": manifest_file_fingerprint["size"],
             "sha256": manifest_file_fingerprint["sha256"],
             "commit": manifest.commit,
-            "builder_schema": SYMBOL_GRAPH_BUILDER_SCHEMA_VERSION,
+            "builder_schema": entry.config["builder_schema"],
             "node_count": node_count,
             "edge_count": edge_count,
             "document_count": document_count,
             "query_surface_sha256": query_surface_digest,
             "source_fingerprint": manifest.source_fingerprint,
             "file_count": manifest.file_count,
+            "source_selection": source_selection_payload,
+            "source_selection_digest": source_selection_digest,
             "entry_path": str(index_path.parent),
             "entry_commit": entry.commit,
             "entry_source_fingerprint": entry.source_fingerprint,
+            "entry_source_selection_digest": entry_source_selection_digest,
         },
         "index": {
             "relative_path": index_relative,
@@ -1296,12 +1454,16 @@ def load_fact_query_candidate(
         "source": {
             "fingerprint": source_before.value,
             "file_count": source_before.file_count,
-            "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
+            "repository_filter_policy": repository_filter_policy,
+            "source_selection": source_selection_payload,
+            "source_selection_digest": source_selection_digest,
         },
         "filters": {
             "graph_route": "active",
             "update_mode": "full_rebuild",
-            "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
+            "repository_filter_policy": repository_filter_policy,
+            "source_selection": source_selection_payload,
+            "source_selection_digest": source_selection_digest,
             "exclude_patterns": list(exclude_patterns),
             "target_dir": None,
             "allow_partial_languages": False,
@@ -1388,11 +1550,58 @@ def observe_fact_query_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
     )
     manifest_digest = _sha256(manifest.get("sha256"), label="FactQuery manifest sha256")
     try:
-        observed_manifest = regular_file_fingerprint(manifest_path)
+        manifest_bytes, _manifest_stat_identity = _read_stable_file(
+            manifest_path,
+            label="FactQuery manifest",
+        )
+        observed_manifest = {
+            "size": len(manifest_bytes),
+            "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        }
     except (OSError, ValueError) as exc:
         raise _reject("FactQuery manifest changed after candidate admission") from exc
     if observed_manifest != {"size": manifest_size, "sha256": manifest_digest}:
         raise _reject("FactQuery manifest changed after candidate admission")
+    try:
+        embedded_manifest = RepoManifest.from_dict(
+            json.loads(manifest_bytes.decode("utf-8"))
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _reject("FactQuery embedded RepoManifest is malformed") from exc
+    embedded_selection = repository_source_selection_for_manifest(embedded_manifest)
+    selection_payload = (
+        None if embedded_selection is None else embedded_selection.to_dict()
+    )
+    selection_digest = None if embedded_selection is None else embedded_selection.digest
+    repository_filter_policy = repository_filter_policy_for_manifest(embedded_manifest)
+    embedded_entry = embedded_manifest.indexes.get("symbol_graph")
+    if embedded_entry is None or not embedded_manifest.index_is_current("symbol_graph"):
+        raise _reject("FactQuery embedded symbol graph entry is not current")
+    entry_selection_digest = (
+        None if embedded_selection is None else embedded_entry.source_selection_digest
+    )
+    if (
+        embedded_manifest.version == MANIFEST_VERSION
+        and not is_secure_source_fingerprint_v2(embedded_manifest.source_fingerprint)
+    ):
+        raise _reject("FactQuery embedded RepoManifest requires source fingerprint v2")
+    if (
+        manifest.get("version") != embedded_manifest.version
+        or manifest.get("source_fingerprint") != embedded_manifest.source_fingerprint
+        or manifest.get("file_count") != embedded_manifest.file_count
+        or manifest.get("source_selection") != selection_payload
+        or manifest.get("source_selection_digest") != selection_digest
+        or manifest.get("entry_commit") != embedded_entry.commit
+        or manifest.get("entry_source_fingerprint") != embedded_entry.source_fingerprint
+        or manifest.get("entry_source_selection_digest") != entry_selection_digest
+    ):
+        raise _reject("FactQuery manifest receipt differs from its embedded manifest")
+    try:
+        embedded_root = Path(embedded_manifest.repo_path).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise _reject("FactQuery embedded repository root is unavailable") from exc
+    if embedded_root != project_root:
+        raise _reject("FactQuery embedded repository root differs from its receipt")
 
     commit = manifest.get("commit")
     if type(commit) is not str or (commit and _GIT_COMMIT.fullmatch(commit) is None):
@@ -1400,6 +1609,8 @@ def observe_fact_query_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
     checkout_head = _checkout_head(project_root)
     if checkout_head != commit:
         raise _reject("live repository commit changed after candidate admission")
+    if commit != embedded_manifest.commit:
+        raise _reject("FactQuery manifest commit differs from its embedded manifest")
 
     entry_path_value = manifest.get("entry_path")
     if type(entry_path_value) is not str or not entry_path_value:
@@ -1413,6 +1624,8 @@ def observe_fact_query_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
         raise _reject("FactQuery symbol graph view is unavailable") from exc
     if not entry_path.is_dir() or entry_path != expected_entry_path:
         raise _reject("FactQuery symbol graph view is not canonical")
+    if Path(embedded_entry.path) != entry_path:
+        raise _reject("FactQuery symbol graph path differs from its embedded manifest")
 
     index = _mapping(receipt.get("index"), label="FactQuery decoded index receipt")
     index_relative = _canonical_relative_path(
@@ -1474,15 +1687,30 @@ def observe_fact_query_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
     source_file_count = _nonnegative_int(
         source.get("file_count"), label="FactQuery source file_count"
     )
+    if (
+        source.get("repository_filter_policy") != repository_filter_policy
+        or type(source.get("repository_filter_policy")) is not int
+        or source.get("source_selection") != selection_payload
+        or source.get("source_selection_digest") != selection_digest
+    ):
+        raise _reject("FactQuery source selection receipt is inconsistent")
     filters = _mapping(receipt.get("filters"), label="FactQuery filter receipt")
     patterns = filters.get("exclude_patterns")
     if type(patterns) is not list or not all(type(item) is str for item in patterns):
         raise _reject("FactQuery exclude patterns are malformed")
+    if (
+        filters.get("repository_filter_policy") != repository_filter_policy
+        or type(filters.get("repository_filter_policy")) is not int
+        or filters.get("source_selection") != selection_payload
+        or filters.get("source_selection_digest") != selection_digest
+    ):
+        raise _reject("FactQuery filter selection receipt is inconsistent")
     observed_source, allowed_files = _source_and_allowed_files(
         project_root,
         cache_root=manifest_path.parent,
         exclude_patterns=patterns,
         target_dir=None,
+        manifest=embedded_manifest,
     )
     if (
         observed_source.value != source_fingerprint
@@ -1507,6 +1735,19 @@ def observe_fact_query_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
         raise _reject("FactQuery manifest/source receipt fields disagree")
     if manifest.get("query_surface_sha256") != graph_query_digest:
         raise _reject("FactQuery graph query surface receipt fields disagree")
+    filter_identity = _mapping(
+        receipt.get("filter_identity"),
+        label="FactQuery filter identity receipt",
+    )
+    if (
+        filter_identity.get("identity") is not True
+        or filter_identity.get("repository_filter_policy") != repository_filter_policy
+        or type(filter_identity.get("repository_filter_policy")) is not int
+        or filter_identity.get("source_selection_digest") != selection_digest
+        or filter_identity.get("allowed_file_count") != len(allowed_files)
+        or filter_identity.get("allowed_files_sha256") != allowed_digest
+    ):
+        raise _reject("FactQuery filter identity selection proof is inconsistent")
 
     try:
         final_manifest = regular_file_fingerprint(manifest_path)
@@ -1514,8 +1755,9 @@ def observe_fact_query_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
         final_graph = regular_file_fingerprint(graph_path)
     except (OSError, ValueError) as exc:
         raise _reject("FactQuery inputs changed during snapshot observation") from exc
-    final_source = fingerprint_repository(
+    final_source = fingerprint_repository_for_manifest(
         project_root,
+        embedded_manifest,
         exclude_roots=(manifest_path.parent,),
     )
     final_checkout_head = _checkout_head(project_root)
@@ -1555,6 +1797,9 @@ def observe_fact_query_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
             "file_count": observed_source.file_count,
             "allowed_file_count": len(allowed_files),
             "allowed_files_sha256": allowed_digest,
+            "repository_filter_policy": repository_filter_policy,
+            "source_selection": selection_payload,
+            "source_selection_digest": selection_digest,
         },
         "native_metadata": copy.deepcopy(native_input["metadata"]),
     }

@@ -14,10 +14,10 @@ bounded source reads.
 
 ## One-command setup
 
-Install CodeNib 0.2.1 with the graph runtime and official MCP SDK:
+Install CodeNib 0.2.2 with the graph runtime and official MCP SDK:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.1"
+python -m pip install "codenib[graph,mcp]==0.2.2"
 codenib codegraph init /absolute/path/to/repository
 ```
 
@@ -54,6 +54,55 @@ codenib codegraph init . --agent codex --agent claude --dry-run
 Running the same initialization again reuses a current index and matching
 native registrations. CodeNib refuses to overwrite an unmanaged server with
 the same name or a managed registration whose command has drifted.
+
+## Select the repository source surface
+
+Generated or vendored subtrees can be excluded with a repeatable, exact
+repository-relative path:
+
+```bash
+codenib codegraph init . \
+  --exclude-dir ios/Pods \
+  --exclude-dir generated/api
+```
+
+An explicit set replaces the complete custom exclusion policy. With no flag,
+later `codegraph init` and `index` runs reuse the policy recorded in the
+repository manifest. Clear it explicitly when those trees should become source
+again:
+
+```bash
+codenib codegraph init . --clear-exclude-dirs
+```
+
+Paths use repository-relative POSIX spelling (`/`) on every platform and do
+not accept glob syntax. The match is lexical and component-aware:
+`ios/Pods` excludes that exact
+subtree, not `packages/mobile/ios/Pods` or a directory with a similar prefix.
+CodeNib applies the same selection to language detection, source identity,
+BM25/vector documents, graph/SCIP output, runtime verification, and status.
+Changing it therefore rebuilds affected views instead of relabeling an old
+artifact as current.
+
+CodeNib does not implicitly consume `.gitignore`, `.git/info/exclude`, or a
+global Git excludes file as its source policy. Ignored and untracked local
+source can be meaningful input, while ambient global rules would make one
+manifest mean different things on different machines.
+
+Zoekt requires its fixed commit tree to match the authenticated checkout and
+contain no tracked path rejected by the default repository policy. It cannot
+yet prove a non-empty custom selection end to end. Requests for the `zoekt`
+view, including `--preset full`, therefore fail before producing a new shard
+when either condition is unmet. The default CodeGraph path uses BM25 plus
+`symbol_graph` and remains supported.
+Serving an authenticated Zoekt shard through MCP is Linux-only in 0.2.2 because
+the child process receives a retained `/proc` descriptor path rather than the
+mutable published directory.
+
+Absolute symlinks are accepted only by the authenticated indexing path when
+their target remains inside the same pinned checkout. The target is re-walked
+from that checkout and retains the normal identity and rebind checks; links to
+another directory, device paths, and prefix lookalikes remain rejected.
 
 ## Use it from an agent
 
@@ -101,9 +150,11 @@ the complete path is ready:
 codenib codegraph status /absolute/path/to/repository --json
 ```
 
-After source changes, rerun `init`; compatible views update incrementally.
-Force a clean graph rebuild only when deliberately changing a builder or
-recovering incompatible state:
+After source changes, rerun `init`. Views whose complete identities remain
+current are reused; affected requested views rebuild atomically. File-level
+delta repair is currently disabled until it can use the same pinned source
+authority. Force a clean graph rebuild only when deliberately changing a
+builder or recovering incompatible state:
 
 ```bash
 codenib codegraph init . --rebuild
@@ -162,6 +213,9 @@ provider boundary.
   if a provider or client changes the checkout.
 - **Source identity mismatch:** rerun `codenib codegraph init .` for the current
   checkout rather than serving a stale graph.
+- **Generated subtree should be omitted:** rerun `init` with one or more exact
+  `--exclude-dir PATH` values. The values replace the persisted custom set;
+  inspect them with `codegraph status` before serving the graph.
 - **Configuration differs:** inspect the named server with `codex mcp get` or
   `claude mcp get`. CodeNib will not overwrite or remove drift implicitly.
 

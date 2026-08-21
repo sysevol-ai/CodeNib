@@ -8,6 +8,8 @@ import pytest
 from pydantic import ValidationError
 
 from codenib.agent.agent_types import AgentResult, ToolCallRecord
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import capture_repository_source
 from codenib.types import QueriedNode
 from codenib.web.schemas import (
     ChatRequest,
@@ -290,7 +292,9 @@ def test_citations_fall_back_to_five_retrieval_results():
     ]
 
 
-def test_citations_embed_exact_live_source_and_drop_empty_tabs(tmp_path):
+def test_current_citations_use_authenticated_source_and_drop_empty_tabs(
+    tmp_path, monkeypatch
+):
     source = tmp_path / "src"
     source.mkdir()
     (source / "runtime.py").write_text(
@@ -325,7 +329,27 @@ def test_citations_embed_exact_live_source_and_drop_empty_tabs(tmp_path):
         ],
     )
 
-    response = agent_result_to_response(result, repo_path=str(tmp_path))
+    binding = capture_repository_source(tmp_path)
+    monkeypatch.setattr(
+        "codenib.web.schemas.live_source_slice",
+        lambda *_args, **_kwargs: pytest.fail(
+            "current citations must not read the ambient checkout"
+        ),
+    )
+    monkeypatch.setattr(
+        "codenib.web.schemas.os.path.exists",
+        lambda *_args, **_kwargs: pytest.fail(
+            "current citation paths must use authenticated membership"
+        ),
+    )
+    try:
+        response = agent_result_to_response(
+            result,
+            repo_path=str(tmp_path),
+            source_reader=binding.borrow_reader(),
+        )
+    finally:
+        binding.close()
 
     assert len(response.citations) == 1
     assert response.citations[0].file == "src/runtime.py"
@@ -391,6 +415,83 @@ def test_citations_read_from_the_indexed_commit_instead_of_live_source(
     assert response.citations[0].content == (
         "def indexed_runtime():\n    return 'snapshot'\n"
     )
+
+
+def test_current_citations_reject_paths_outside_authenticated_selection(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "runtime.py").write_text("runtime\n", encoding="utf-8")
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "secret.py").write_text("secret\n", encoding="utf-8")
+    binding = capture_repository_source(
+        tmp_path,
+        selection=RepositorySourceSelection(("private",)),
+    )
+    result = AgentResult(
+        answer="`secret()` is implemented in `private/secret.py`.",
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "repository_search",
+                {},
+                result=[
+                    _node(
+                        "private/secret.py",
+                        0,
+                        0,
+                        "private/secret.py:secret()",
+                    )
+                ],
+            )
+        ],
+    )
+
+    try:
+        response = agent_result_to_response(
+            result,
+            repo_path=str(tmp_path),
+            source_reader=binding.borrow_reader(),
+        )
+    finally:
+        binding.close()
+
+    assert response.citations == []
+
+
+def test_historical_citations_reject_manifest_excluded_paths(monkeypatch):
+    commit = "a" * 40
+    monkeypatch.setattr(
+        "codenib.web.schemas.git_source_slice",
+        lambda *_args, **_kwargs: pytest.fail(
+            "excluded historical citation must not reach Git"
+        ),
+    )
+    result = AgentResult(
+        answer="`secret()` is implemented in `private/secret.py`.",
+        tool_calls=[
+            ToolCallRecord(
+                "1",
+                "repository_search",
+                {},
+                result=[
+                    _node(
+                        "private/secret.py",
+                        1,
+                        2,
+                        "private/secret.py:secret()",
+                    )
+                ],
+            )
+        ],
+    )
+
+    response = agent_result_to_response(
+        result,
+        repo_path="/served/checkout",
+        repo_commit=commit,
+        source_selection=RepositorySourceSelection(("private",)),
+    )
+
+    assert response.citations == []
 
 
 def test_citations_keep_indexed_content_for_non_git_prebuilt_snapshot(tmp_path):

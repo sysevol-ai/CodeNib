@@ -18,11 +18,11 @@ def test_registry_metadata_matches_package_and_uvx_contract() -> None:
 
     version, server = registry.validate_registry_metadata(root)
 
-    assert version == "0.2.1"
+    assert version == "0.2.2"
     assert server["name"] == "ai.codenib/codenib"
     package = server["packages"][0]
     assert package["identifier"] == "codenib"
-    assert package["runtimeArguments"][0]["value"] == ("codenib[graph,mcp]==0.2.1")
+    assert package["runtimeArguments"][0]["value"] == ("codenib[graph,mcp]==0.2.2")
     assert package["packageArguments"][1]["format"] == "filepath"
 
 

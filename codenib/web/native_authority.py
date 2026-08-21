@@ -16,13 +16,16 @@ from ..artifacts.runtime import (
 )
 from ..compiler.cache_lock import COMPILER_CACHE_LOCK_FILENAME, compiler_cache_lock
 from ..compiler.manifest import IndexEntry, RepoManifest
+from ..compiler.manifest_source import (
+    capture_repository_source_for_manifest as capture_repository_source,
+)
+from ..compiler.manifest_source import require_manifest_source_identity
 from ..index.embedding.artifact_integrity import capture_authenticated_vector_view
 from ..native_index_authorization import (
     NativeIndexAuthorization,
     _mint_trusted_local_admin_authorization,
 )
 from ..source_fingerprint import (
-    capture_repository_source,
     is_secure_source_fingerprint_v2,
     lexical_repository_path,
 )
@@ -49,9 +52,13 @@ def _require_same_vector_manifest(
 
     observed_vector = observed.indexes.get("vector")
     if (
-        observed.repo_path != expected.repo_path
+        observed.version != expected.version
+        or observed.repo_path != expected.repo_path
         or observed.commit != expected.commit
         or observed.source_fingerprint != expected.source_fingerprint
+        or observed.source_selection != expected.source_selection
+        or observed.last_indexed_source_selection_digest
+        != expected.last_indexed_source_selection_digest
         or observed.file_count != expected.file_count
         or observed_vector != expected_vector
         or not observed.index_is_current("vector")
@@ -140,16 +147,18 @@ def authorize_local_manifest_vector(
         try:
             source_binding = capture_repository_source(
                 repo_path,
+                manifest=manifest,
                 exclude_roots=_manifest_source_exclusions(repo_path, manifest_path),
                 _source_owner=cleanup_owner.retain,
             )
-            if (
-                source_binding.fingerprint != manifest.source_fingerprint
-                or source_binding.file_count != manifest.file_count
-            ):
-                raise ValueError(
+            require_manifest_source_identity(
+                source_binding.authenticated_identity_snapshot(),
+                manifest,
+                label="native vector repository",
+                mismatch_message=(
                     "repository source content does not match the vector manifest"
-                )
+                ),
+            )
 
             with capture_authenticated_vector_view(vector_entry.path) as vector_view:
                 authorization = _mint_trusted_local_admin_authorization(

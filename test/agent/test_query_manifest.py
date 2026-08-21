@@ -27,6 +27,11 @@ from codenib.agent import CodeNibAgentOptions, query
 from codenib.agent.skills.registry import SkillRegistry
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.llm.litellm_chat import LiteLLMChat
+from codenib.repository_source_selection import RepositorySourceSelection
+
+_SOURCE_COMMIT = "d" * 40
+_SOURCE_FINGERPRINT = "sha256-v2:" + ("e" * 64)
+_SOURCE_SELECTION = RepositorySourceSelection()
 
 
 @pytest.fixture(autouse=True)
@@ -65,10 +70,18 @@ def _fake_manifest(
             built_at="2026-01-01T00:00:00Z",
             built_at_epoch=time.time(),
             status="fresh",
+            commit=_SOURCE_COMMIT,
+            source_fingerprint=_SOURCE_FINGERPRINT,
+            source_selection_digest=_SOURCE_SELECTION.digest,
         )
     manifest = RepoManifest(
         repo_path=repo_path,
-        commit="deadbeef",
+        commit=_SOURCE_COMMIT,
+        last_indexed_commit=_SOURCE_COMMIT,
+        source_fingerprint=_SOURCE_FINGERPRINT,
+        last_indexed_source_fingerprint=_SOURCE_FINGERPRINT,
+        source_selection=_SOURCE_SELECTION,
+        last_indexed_source_selection_digest=_SOURCE_SELECTION.digest,
         languages=["python"],
         file_count=1,
         indexes=indexes,

@@ -30,6 +30,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from ..paths import REPO_INDEX_DIRNAME
+from ..repository_filters import repository_path_is_visible
+from ..repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    RepositorySourceSelection,
+    repository_relative_source_path,
+)
 from ..source_fingerprint import (
     SourceFingerprint,
     fingerprint_repository,
@@ -37,8 +43,8 @@ from ..source_fingerprint import (
 )
 from .cache_lock import compiler_cache_lock
 from .index_builders import IndexBuilderRegistry
-from .manifest import MANIFEST_FILENAME, IndexEntry, RepoManifest
-from .resources import IndexStatus
+from .manifest import MANIFEST_FILENAME, MANIFEST_VERSION, IndexEntry, RepoManifest
+from .resources import IndexState, IndexStatus
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +58,16 @@ class IndexCompilerConfig:
         default_factory=lambda: ["bm25", "vector", "symbol_graph"],
     )
     languages: List[str] = field(default_factory=lambda: ["python"])
+    source_selection: RepositorySourceSelection | None = None
+
+    def __post_init__(self) -> None:
+        if self.source_selection is None:
+            return
+        if type(self.source_selection) is not RepositorySourceSelection:
+            raise TypeError("source_selection must be a RepositorySourceSelection")
+        self.source_selection = RepositorySourceSelection(
+            self.source_selection.exclude_subtrees
+        )
 
 
 @dataclass(slots=True)
@@ -106,11 +122,13 @@ class IndexCompiler:
         cache = self._resolve_cache_dir(repo_path, cache_dir)
         with compiler_cache_lock(cache):
             existing = self._load_existing_manifest(cache)
+            source_selection = self._snapshot_source_selection(existing)
             return self._compile(
                 repo_path,
                 index_types=index_types,
                 cache_dir=cache,
                 existing_manifest=existing,
+                source_selection=source_selection,
                 force_rebuild=True,
             )
 
@@ -163,6 +181,7 @@ class IndexCompiler:
                 index_types=index_types,
                 cache_dir=cache,
                 existing_manifest=None,
+                source_selection=self._snapshot_source_selection(None),
                 force_rebuild=True,
             )
 
@@ -177,12 +196,27 @@ class IndexCompiler:
                 index_types=index_types,
                 cache_dir=cache,
                 existing_manifest=None,
+                source_selection=self._snapshot_source_selection(None),
                 force_rebuild=True,
             )
 
+        source_selection = self._snapshot_source_selection(existing)
+        # The manifest identity excludes the cache tree.  Do not let the
+        # update fast path accept an apparently-current manifest when a
+        # caller placed that cache inside the selected repository surface.
+        # The same guard also runs in ``_compile``; it must precede the
+        # fingerprint/incomplete check here because that check can return the
+        # existing manifest without entering ``_compile`` at all.
+        self._require_cache_outside_source(repo_path, cache, source_selection)
+
         types_to_update = index_types or self._config.index_types
         head_commit = self._get_head_commit(repo_path)
-        source = fingerprint_repository(repo_path, exclude_roots=(cache,))
+        source = fingerprint_repository(
+            repo_path,
+            exclude_roots=(cache,),
+            selection=source_selection,
+        )
+        source_selection_digest = source_selection.digest
         incomplete = [
             idx_type
             for idx_type in types_to_update
@@ -191,6 +225,7 @@ class IndexCompiler:
                 existing.indexes[idx_type],
                 commit=head_commit,
                 source_fingerprint=source.value,
+                source_selection_digest=source_selection_digest,
             )
             or not self._entry_matches_builder(
                 existing.indexes[idx_type],
@@ -219,6 +254,7 @@ class IndexCompiler:
             cache_dir=cache,
             existing_manifest=existing,
             source=source,
+            source_selection=source_selection,
             force_rebuild=False,
         )
 
@@ -248,42 +284,74 @@ class IndexCompiler:
         index_types: Optional[List[str]],
         cache_dir: Optional[str],
         existing_manifest: Optional[RepoManifest],
+        source_selection: RepositorySourceSelection,
         source: Optional[SourceFingerprint] = None,
         force_rebuild: bool,
     ) -> RepoManifest:
         """Build requested views while preserving independent manifest entries."""
         repo_path = os.path.abspath(repo_path)
         cache = cache_dir or os.path.join(repo_path, self._config.cache_dir_name)
+        self._require_cache_outside_source(repo_path, cache, source_selection)
 
         types_to_build = index_types or self._config.index_types
 
         head_commit = self._get_head_commit(repo_path)
-        source = source or fingerprint_repository(repo_path, exclude_roots=(cache,))
+        source = source or fingerprint_repository(
+            repo_path,
+            exclude_roots=(cache,),
+            selection=source_selection,
+        )
+        source_selection_digest = source_selection.digest
         existing = existing_manifest
-        languages = list(self._config.languages)
-        if existing is not None:
-            languages = list(dict.fromkeys([*existing.languages, *languages]))
+        # The caller computes languages from the current selected source
+        # surface. Carrying old values forward would resurrect languages that
+        # disappeared or were explicitly excluded by a new selection policy.
+        languages = list(dict.fromkeys(self._config.languages))
+        carried_indexes = (
+            copy.deepcopy(existing.indexes) if existing is not None else {}
+        )
+        existing_has_current_selection_identity = (
+            existing is not None
+            and existing.version == MANIFEST_VERSION
+            and existing.source_selection is not None
+        )
+        if existing is not None and not existing_has_current_selection_identity:
+            for entry in carried_indexes.values():
+                if entry.status == "fresh":
+                    entry.status = "stale"
+                    entry.metadata["stale_reason"] = (
+                        "manifest source-selection contract requires migration"
+                    )
         manifest = RepoManifest(
             repo_path=repo_path,
             commit=head_commit,
             last_indexed_commit=(
-                existing.last_indexed_commit if existing is not None else head_commit
+                existing.last_indexed_commit
+                if existing_has_current_selection_identity
+                else (head_commit if existing is None else "")
             ),
             source_fingerprint=source.value,
             last_indexed_source_fingerprint=(
                 existing.last_indexed_source_fingerprint
-                if existing is not None
-                else source.value
+                if existing_has_current_selection_identity
+                else (source.value if existing is None else "")
+            ),
+            source_selection=source_selection,
+            last_indexed_source_selection_digest=(
+                existing.last_indexed_source_selection_digest
+                if existing_has_current_selection_identity
+                else (source_selection_digest if existing is None else "")
             ),
             languages=languages,
             file_count=source.file_count,
-            indexes=(copy.deepcopy(existing.indexes) if existing is not None else {}),
+            indexes=carried_indexes,
         )
         for entry in manifest.indexes.values():
             if entry.status == "fresh" and not self._entry_matches_source(
                 entry,
                 commit=head_commit,
                 source_fingerprint=source.value,
+                source_selection_digest=source_selection_digest,
             ):
                 entry.status = "stale"
 
@@ -318,30 +386,18 @@ class IndexCompiler:
                     current_entry,
                     commit=head_commit,
                     source_fingerprint=source.value,
+                    source_selection_digest=source_selection_digest,
                 )
             ):
                 continue
 
-            previous_commit = ""
-            previous_entry_compatible = (
-                previous_entry is not None
-                and previous_entry.status in {"fresh", "stale"}
-                and existing is not None
-                and is_secure_source_fingerprint_v2(existing.source_fingerprint)
-                and is_secure_source_fingerprint_v2(previous_entry.source_fingerprint)
-                and self._entry_matches_builder(previous_entry, builder)
-            )
-            if previous_entry_compatible:
-                previous_commit = previous_entry.commit
-                if not previous_commit and existing is not None:
-                    previous_commit = existing.last_indexed_commit
             # Do not seed an incremental builder from a Git status/HEAD check
             # performed through a separately resolved path.  A repository can
             # be A for both source fingerprints, B (clean) only for that check,
             # and A again before the build.  Until Git observations share the
             # pinned source authority, a full rebuild is the only safe reuse
-            # policy.  ``previous_commit`` is still retained below so a failed
-            # rebuild can preserve the last known generation in the manifest.
+            # policy. A failed rebuild retains the complete previous entry
+            # below so the manifest never publishes mixed provenance.
             incremental_from = None
 
             output_dir = os.path.join(cache, idx_type)
@@ -356,6 +412,13 @@ class IndexCompiler:
                     if incremental_from and previous_entry is not None
                     else None
                 ),
+                source_selection=source_selection,
+                expected_source_commit=head_commit,
+            )
+            result = self._validate_build_selection(
+                result,
+                source_selection=source_selection,
+                expected_source_commit=head_commit,
             )
             if (
                 idx_type == "symbol_graph"
@@ -374,28 +437,36 @@ class IndexCompiler:
                         )
 
             now = datetime.now(timezone.utc)
-            entry = IndexEntry(
-                index_type=idx_type,
-                path=output_dir,
-                built_at=now.isoformat(),
-                built_at_epoch=now.timestamp(),
-                status="fresh" if result.success else "failed",
-                config=result.status.metadata if result.status else {},
-                metadata={
-                    **(result.status.metadata if result.status else {}),
+            if not result.success and previous_entry is not None:
+                # A failed attempt must not invent a half-new generation. Keep
+                # every field that describes the last produced artifact and
+                # overlay only attempt diagnostics/status.
+                entry = copy.deepcopy(previous_entry)
+                entry.status = "failed"
+                entry.built_at = now.isoformat()
+                entry.built_at_epoch = now.timestamp()
+                entry.metadata = {
+                    **copy.deepcopy(previous_entry.metadata),
                     "build_duration_seconds": round(result.duration_seconds, 2),
-                },
-                commit=head_commit if result.success else previous_commit,
-                source_fingerprint=(
-                    source.value
-                    if result.success
-                    else (
-                        previous_entry.source_fingerprint
-                        if previous_entry is not None
-                        else ""
-                    )
-                ),
-            )
+                }
+            else:
+                entry = IndexEntry(
+                    index_type=idx_type,
+                    path=output_dir,
+                    built_at=now.isoformat(),
+                    built_at_epoch=now.timestamp(),
+                    status="fresh" if result.success else "failed",
+                    config=result.status.metadata if result.status else {},
+                    metadata={
+                        **(result.status.metadata if result.status else {}),
+                        "build_duration_seconds": round(result.duration_seconds, 2),
+                    },
+                    commit=head_commit if result.success else "",
+                    source_fingerprint=source.value if result.success else "",
+                    source_selection_digest=(
+                        source_selection_digest if result.success else ""
+                    ),
+                )
             if not result.success and result.error:
                 entry.metadata["error"] = result.error
 
@@ -404,7 +475,11 @@ class IndexCompiler:
                 requested_succeeded = False
 
         final_head_commit = self._get_head_commit(repo_path)
-        final_source = fingerprint_repository(repo_path, exclude_roots=(cache,))
+        final_source = fingerprint_repository(
+            repo_path,
+            exclude_roots=(cache,),
+            selection=source_selection,
+        )
         source_changed_during_build = (
             final_head_commit != head_commit or final_source.value != source.value
         )
@@ -426,18 +501,29 @@ class IndexCompiler:
                 entry,
                 commit=head_commit,
                 source_fingerprint=source.value,
+                source_selection_digest=source_selection_digest,
             )
             for entry in manifest.indexes.values()
         )
         if requested_succeeded and all_views_at_head:
             manifest.last_indexed_commit = head_commit
             manifest.last_indexed_source_fingerprint = source.value
+            manifest.last_indexed_source_selection_digest = source_selection_digest
         else:
             manifest.last_indexed_commit = (
-                existing.last_indexed_commit if existing is not None else ""
+                existing.last_indexed_commit
+                if existing_has_current_selection_identity
+                else ""
             )
             manifest.last_indexed_source_fingerprint = (
-                existing.last_indexed_source_fingerprint if existing is not None else ""
+                existing.last_indexed_source_fingerprint
+                if existing_has_current_selection_identity
+                else ""
+            )
+            manifest.last_indexed_source_selection_digest = (
+                existing.last_indexed_source_selection_digest
+                if existing_has_current_selection_identity
+                else ""
             )
             logger.warning(
                 "Not all indexes reached source %s; "
@@ -455,6 +541,26 @@ class IndexCompiler:
         logger.info("Manifest written to %s", manifest_path)
 
         return manifest
+
+    @staticmethod
+    def _require_cache_outside_source(
+        repo_path: str,
+        cache: str,
+        source_selection: RepositorySourceSelection,
+    ) -> None:
+        """Reject a cache that builders would treat as selected source."""
+
+        if os.path.normcase(cache) == os.path.normcase(repo_path):
+            raise ValueError("index cache directory cannot be the repository root")
+        try:
+            relative = repository_relative_source_path(repo_path, cache)
+        except ValueError:
+            return
+        if repository_path_is_visible(relative, selection=source_selection):
+            raise ValueError(
+                "an in-repository index cache must be excluded by the effective "
+                "repository source selection"
+            )
 
     @staticmethod
     def _entry_matches_builder(entry: IndexEntry, builder: Any) -> bool:
@@ -476,17 +582,54 @@ class IndexCompiler:
         *,
         commit: str,
         source_fingerprint: str,
+        source_selection_digest: str,
     ) -> bool:
         """Whether an entry was built from the exact current repository source."""
 
         if entry.status != "fresh":
             return False
-        if commit and entry.commit != commit:
+        if entry.commit != commit:
             return False
         return (
             is_secure_source_fingerprint_v2(source_fingerprint)
             and entry.source_fingerprint == source_fingerprint
+            and entry.source_selection_digest == source_selection_digest
         )
+
+    @staticmethod
+    def _validate_build_selection(
+        result: BuildResult,
+        *,
+        source_selection: RepositorySourceSelection,
+        expected_source_commit: str,
+    ) -> BuildResult:
+        """Require positive evidence for the complete repository source policy."""
+
+        if not result.success or result.status is None:
+            return result
+        reported = result.status.metadata.get("source_selection_digest")
+        expected = source_selection.digest
+        if reported != expected:
+            return BuildResult(
+                index_type=result.index_type,
+                success=False,
+                error=(
+                    "builder did not confirm the configured repository "
+                    "source-selection identity"
+                ),
+                duration_seconds=result.duration_seconds,
+            )
+        if (
+            result.index_type == "zoekt"
+            and result.status.metadata.get("source_commit") != expected_source_commit
+        ):
+            return BuildResult(
+                index_type=result.index_type,
+                success=False,
+                error=("Zoekt builder did not confirm the compiler source commit"),
+                duration_seconds=result.duration_seconds,
+            )
+        return result
 
     @staticmethod
     def _build_one(
@@ -497,6 +640,8 @@ class IndexCompiler:
         *,
         last_commit: Optional[str] = None,
         previous_artifact_config: Optional[Dict[str, Any]] = None,
+        source_selection: RepositorySourceSelection,
+        expected_source_commit: str,
     ) -> BuildResult:
         """Build a single index, catching errors.
 
@@ -511,7 +656,10 @@ class IndexCompiler:
                     "repo_path": repo_path,
                     "output_dir": output_dir,
                     "last_commit": last_commit,
+                    "source_selection": source_selection,
                 }
+                if index_type == "zoekt":
+                    update_kwargs["source_commit"] = expected_source_commit
                 if previous_artifact_config is not None:
                     update_kwargs["previous_artifact_config"] = previous_artifact_config
                 status = builder.incremental_update(
@@ -519,11 +667,26 @@ class IndexCompiler:
                     **update_kwargs,
                 )
             else:
-                status = builder.build(
-                    scope="current_repo",
-                    repo_path=repo_path,
-                    output_dir=output_dir,
-                )
+                build_kwargs: Dict[str, Any] = {
+                    "repo_path": repo_path,
+                    "output_dir": output_dir,
+                    "source_selection": source_selection,
+                }
+                if index_type == "zoekt":
+                    build_kwargs["source_commit"] = expected_source_commit
+                status = builder.build(scope="current_repo", **build_kwargs)
+            if not isinstance(status, IndexStatus) or type(status.metadata) is not dict:
+                raise TypeError("index builder must return an IndexStatus")
+            if status.index_type != index_type:
+                raise ValueError("index builder returned the wrong index type")
+            if status.state is not IndexState.FRESH:
+                raise ValueError("index builder did not return a fresh index")
+            if status.scope != "current_repo":
+                raise ValueError("index builder returned the wrong repository scope")
+            if type(status.path) is not str or os.path.abspath(
+                os.path.expanduser(status.path)
+            ) != os.path.abspath(os.path.expanduser(output_dir)):
+                raise ValueError("index builder returned the wrong output path")
             elapsed = time.monotonic() - start
             return BuildResult(
                 index_type=index_type,
@@ -540,6 +703,24 @@ class IndexCompiler:
                 error=str(e),
                 duration_seconds=elapsed,
             )
+
+    def _snapshot_source_selection(
+        self,
+        existing_manifest: RepoManifest | None,
+    ) -> RepositorySourceSelection:
+        selection = self._config.source_selection
+        if selection is None:
+            if (
+                existing_manifest is not None
+                and type(existing_manifest.source_selection)
+                is RepositorySourceSelection
+            ):
+                selection = existing_manifest.source_selection
+            else:
+                selection = DEFAULT_REPOSITORY_SOURCE_SELECTION
+        if type(selection) is not RepositorySourceSelection:
+            raise TypeError("source_selection must be a RepositorySourceSelection")
+        return RepositorySourceSelection(selection.exclude_subtrees)
 
     @staticmethod
     def _get_head_commit(repo_path: str) -> str:

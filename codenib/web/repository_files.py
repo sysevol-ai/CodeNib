@@ -10,9 +10,12 @@ import os
 import re
 import subprocess
 from functools import lru_cache
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from .._contained_source import read_repository_file
+
+if TYPE_CHECKING:
+    from ..source_fingerprint import RepositorySourceReader
 
 _COMMIT_RE = re.compile(r"[0-9a-fA-F]{7,64}\Z")
 _MAX_SOURCE_BYTES = 8 * 1024 * 1024
@@ -199,13 +202,49 @@ def _source_slice(
     end: Optional[int],
 ) -> dict:
     all_lines = content.decode("utf-8", errors="replace").splitlines(keepends=True)
-    first = max(1, int(start)) if start is not None else 1
-    if end is None:
-        requested_last = first + _DEFAULT_SOURCE_LINES - 1
-    else:
-        requested_last = max(first, int(end))
-    last = min(requested_last, first + _MAX_SOURCE_LINES - 1)
+    first, last = _source_line_bounds(start, end)
     chunk = all_lines[first - 1 : last]
+    return {
+        "file": relative,
+        "start_line": first,
+        "end_line": first + len(chunk) - 1,
+        "content": "".join(chunk),
+    }
+
+
+def _source_line_bounds(
+    start: Optional[int],
+    end: Optional[int],
+) -> tuple[int, int]:
+    first = max(1, int(start)) if start is not None else 1
+    requested_last = (
+        first + _DEFAULT_SOURCE_LINES - 1 if end is None else max(first, int(end))
+    )
+    return first, min(requested_last, first + _MAX_SOURCE_LINES - 1)
+
+
+def bound_source_slice(
+    source_reader: "RepositorySourceReader",
+    file_path: str,
+    start: Optional[int] = None,
+    end: Optional[int] = None,
+) -> Optional[dict]:
+    """Read one current source slice through a borrowed authenticated reader."""
+
+    relative = source_reader.captured_relative_path(file_path)
+    if relative is None:
+        return None
+    first, last = _source_line_bounds(start, end)
+    try:
+        content = source_reader.read_line_range(
+            relative,
+            start_line=first,
+            end_line=last,
+            max_bytes=_MAX_SOURCE_BYTES,
+        )
+    except ValueError:
+        return None
+    chunk = content.decode("utf-8", errors="replace").splitlines(keepends=True)
     return {
         "file": relative,
         "start_line": first,

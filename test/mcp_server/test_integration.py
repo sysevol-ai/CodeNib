@@ -19,11 +19,14 @@ from pathlib import Path
 
 import pytest
 
+from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
+from codenib.compiler.index_builders import BM25IndexBuilder
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.graph.code_graph import CodeGraph
-from codenib.index.sparse_idx import BM25CodeIndexer
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.search import search_bm25_impl, search_regex_impl
+from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import fingerprint_repository
 
 # Synthetic repo: three small Python files with predictable symbols so that
 # both keyword (BM25) and regex search have something to match.
@@ -97,17 +100,33 @@ def manifest_path(tmp_path: Path) -> Path:
     graph_pkl = graph_dir / "graph.pkl"
     graph.save_graph(str(graph_pkl))
 
-    # Build and persist the BM25 index from the same graph
+    selection = RepositorySourceSelection()
+
+    # Build and persist the BM25 index through its current compiler contract.
     bm25_dir = tmp_path / "bm25"
-    bm25_dir.mkdir()
-    indexer = BM25CodeIndexer()
-    indexer.build_index_from_graph(graph)
-    indexer.save_index(str(bm25_dir))
+    bm25_status = BM25IndexBuilder(
+        languages=["python"],
+        source_selection=selection,
+    ).build(
+        scope="current_repo",
+        repo_path=str(repo_dir),
+        output_dir=str(bm25_dir),
+        source_selection=selection,
+    )
+    source = fingerprint_repository(repo_dir, selection=selection)
+    commit = "integration-test"
+    selection_digest = selection.digest
 
     manifest = RepoManifest(
         repo_path=str(repo_dir),
-        commit="integration-test",
+        commit=commit,
+        last_indexed_commit=commit,
+        source_fingerprint=source.value,
+        last_indexed_source_fingerprint=source.value,
+        source_selection=selection,
+        last_indexed_source_selection_digest=selection_digest,
         languages=["python"],
+        file_count=source.file_count,
         indexes={
             "bm25": IndexEntry(
                 index_type="bm25",
@@ -115,13 +134,27 @@ def manifest_path(tmp_path: Path) -> Path:
                 built_at="2026-01-01T00:00:00",
                 built_at_epoch=1735689600.0,
                 status="fresh",
+                config=dict(bm25_status.metadata),
+                metadata=dict(bm25_status.metadata),
+                commit=commit,
+                source_fingerprint=source.value,
+                source_selection_digest=selection_digest,
             ),
             "symbol_graph": IndexEntry(
                 index_type="symbol_graph",
-                path=str(graph_pkl),
+                path=str(graph_dir),
                 built_at="2026-01-01T00:00:00",
                 built_at_epoch=1735689600.0,
                 status="fresh",
+                config={
+                    "graph_artifact": {
+                        "relative_path": "graph.pkl",
+                        **regular_file_fingerprint(graph_pkl),
+                    }
+                },
+                commit=commit,
+                source_fingerprint=source.value,
+                source_selection_digest=selection_digest,
             ),
         },
     )

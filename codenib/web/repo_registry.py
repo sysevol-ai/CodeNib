@@ -25,6 +25,7 @@ from ..compiler.manifest import IndexEntry, RepoManifest
 from ..index.embedding._lifecycle import close_vector_after_failure
 from ..log_utils import get_logger
 from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_route
+from ..repository_source_selection import RepositorySourceSelection
 from ..repository_summary import read_bound_repository_summary, read_repository_summary
 from ..source_fingerprint import is_secure_source_fingerprint_v2
 from .config import QAConfig, RepoEntry, load_registry
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
     from ..index.sparse_idx.bm25_index import BM25CodeIndexer
     from ..llm.litellm_chat import LiteLLMChat
     from ..native_index_authorization import NativeIndexAuthorization
-    from ..source_fingerprint import RepositorySourceReader
+    from ..source_fingerprint import RepositorySourceBinding, RepositorySourceReader
 
 logger = get_logger(__name__)
 
@@ -103,6 +104,46 @@ def _ask_llm_type():
     from ..llm.litellm_chat import LiteLLMChat
 
     return LiteLLMChat
+
+
+def _manifest_requires_authenticated_source(manifest: Any) -> bool:
+    """Whether a persisted current-era manifest forbids live-source fallback."""
+
+    return type(
+        getattr(manifest, "source_selection", None)
+    ) is RepositorySourceSelection and bool(getattr(manifest, "source_fingerprint", ""))
+
+
+def _require_authenticated_source_paths(
+    paths: Any,
+    source_reader: "RepositorySourceReader",
+    *,
+    subject: str,
+) -> None:
+    """Reject persisted view paths absent from the authenticated source set."""
+
+    for path in paths:
+        if (
+            not isinstance(path, str)
+            or source_reader.captured_relative_path(path) is None
+        ):
+            raise ValueError(
+                f"{subject} contains a source path outside the authenticated "
+                f"repository: {path!r}"
+            )
+
+
+def _require_authenticated_documents(
+    documents: Any,
+    source_reader: "RepositorySourceReader",
+    *,
+    subject: str,
+) -> None:
+    paths = []
+    for document in documents or ():
+        metadata = getattr(document, "metadata", None)
+        paths.append(metadata.get("file") if isinstance(metadata, dict) else None)
+    _require_authenticated_source_paths(paths, source_reader, subject=subject)
 
 
 @dataclass
@@ -320,6 +361,13 @@ class RepoBundle:
 
     def code_graph(self) -> Optional[CodeGraph]:
         """Lazily load + cache the repo's symbol graph (None if unavailable)."""
+        if self.source_reader is None and _manifest_requires_authenticated_source(
+            self.manifest
+        ):
+            self._code_graph_error = (
+                "manifest-selected repository has no authenticated source reader"
+            )
+            return None
         if getattr(self, "_code_graph_loaded", False):
             return self._code_graph
         self._code_graph_loaded = True
@@ -328,10 +376,23 @@ class RepoBundle:
         path = self._graph_path()
         if path is None:
             return None
+        graph_entry = self.manifest.indexes.get("symbol_graph")
+        if graph_entry is None or not self._view_is_current(graph_entry):
+            self._code_graph_error = (
+                "symbol graph has no current manifest-bound artifact entry"
+            )
+            return None
         try:
-            from ..graph.code_graph import CodeGraph
+            from ..compiler.artifact_quality import graph_source_paths
+            from ..compiler.graph_artifact import load_authenticated_graph_artifact
 
-            self._code_graph = CodeGraph.load_graph(path)
+            self._code_graph = load_authenticated_graph_artifact(graph_entry)
+            if self.source_reader is not None:
+                _require_authenticated_source_paths(
+                    graph_source_paths(self._code_graph),
+                    self.source_reader,
+                    subject="symbol graph",
+                )
             logger.info(
                 "codemap: loaded symbol graph for %r (%s)", self.entry.instance_id, path
             )
@@ -394,6 +455,10 @@ class RepoBundle:
 
     def hierarchical_graph(self):
         """Lazily build + cache the repo-level compound graph for CodeGraph UI."""
+        if self.source_reader is None and _manifest_requires_authenticated_source(
+            self.manifest
+        ):
+            return None
         if getattr(self, "_hierarchical_graph_loaded", False):
             return self._hierarchical_graph
         self._hierarchical_graph_loaded = True
@@ -452,11 +517,12 @@ class RepoBundle:
         cached = getattr(self, "_description_cache", None)
         if cached is not None:
             return cached
-        desc = (
-            read_bound_repository_summary(self.source_reader)
-            if self.source_reader is not None
-            else read_repository_summary(self.entry.repo_dir)
-        )
+        if self.source_reader is not None:
+            desc = read_bound_repository_summary(self.source_reader)
+        elif _manifest_requires_authenticated_source(self.manifest):
+            desc = ""
+        else:
+            desc = read_repository_summary(self.entry.repo_dir)
         self._description_cache = desc
         return desc
 
@@ -496,6 +562,8 @@ class RepoRegistry:
             allow_missing_native_index_authorization
         )
         self._bundles: Dict[str, RepoBundle] = {}
+        self._source_bindings: Dict[str, "RepositorySourceBinding"] = {}
+        self._source_cleanup_owners: Dict[str, Any] = {}
         # One embedding model per model name, shared across repos: the GPU model
         # is loaded once instead of once per CodeVectorStore (one per repo).
         self._embeddings: Dict[Tuple[str, str, int, Optional[str], str], object] = {}
@@ -503,6 +571,8 @@ class RepoRegistry:
 
     def load_all(self) -> None:
         """Load every dataset repo in the registry whose manifest exists."""
+        if self._bundles or self._source_cleanup_owners:
+            self.close()
         entries = load_registry(self._config.registry_path)
         if not entries:
             logger.warning(
@@ -510,31 +580,141 @@ class RepoRegistry:
                 self._config.registry_path,
             )
             return
-        for entry in entries:
-            if not os.path.exists(entry.manifest_path):
-                logger.warning(
-                    "Skipping %r: manifest not found at %s",
-                    entry.instance_id,
-                    entry.manifest_path,
-                )
-                continue
+        try:
+            for entry in entries:
+                if not os.path.exists(entry.manifest_path):
+                    logger.warning(
+                        "Skipping %r: manifest not found at %s",
+                        entry.instance_id,
+                        entry.manifest_path,
+                    )
+                    continue
+                try:
+                    self._bundles[entry.instance_id] = self._load_repo_metadata(entry)
+                    logger.info("Registered %r (%s)", entry.instance_id, entry.repo)
+                except Exception as exc:  # noqa: BLE001 - keep other repos alive
+                    logger.error(
+                        "Failed to load %r: %s",
+                        entry.instance_id,
+                        exc,
+                        exc_info=True,
+                    )
+        except BaseException as primary:  # noqa: B036 - cancellation cleanup
             try:
-                self._bundles[entry.instance_id] = self._load_repo_metadata(entry)
-                logger.info("Registered %r (%s)", entry.instance_id, entry.repo)
-            except Exception as exc:  # noqa: BLE001 - keep other repos alive
-                logger.error(
-                    "Failed to load %r: %s", entry.instance_id, exc, exc_info=True
-                )
+                self.close()
+            except BaseException as cleanup_failure:  # noqa: B036
+                raise primary from cleanup_failure
+            raise
 
     def _load_repo_metadata(self, entry: RepoEntry) -> RepoBundle:
-        manifest = RepoManifest.load(entry.manifest_path)
-        return RepoBundle(
-            entry=entry,
-            manifest=manifest,
-            chat_available=find_spec("litellm") is not None,
-            view_loader=self._load_repo_views,
-            runtime_loader=self._load_repo_runtime,
+        from ..artifacts.runtime import (
+            SourceBindingCleanupOwner,
+            _raise_source_cleanup_failure,
+            _source_cleanup_owner_is_pending,
         )
+        from ..compiler.manifest_source import (
+            capture_repository_source_for_manifest,
+            require_manifest_source_identity,
+        )
+
+        instance_id = entry.instance_id
+        if not isinstance(instance_id, str) or not instance_id:
+            raise ValueError("repository instance_id must be non-empty text")
+        if (
+            instance_id in self._source_bindings
+            or instance_id in self._source_cleanup_owners
+        ):
+            raise ValueError(f"duplicate repository instance_id: {instance_id!r}")
+
+        manifest = RepoManifest.load(entry.manifest_path)
+        cleanup_owner = SourceBindingCleanupOwner()
+        try:
+            source_binding = capture_repository_source_for_manifest(
+                entry.repo_dir,
+                manifest,
+                exclude_roots=(os.path.dirname(entry.manifest_path),),
+                _source_owner=cleanup_owner.retain,
+            )
+            require_manifest_source_identity(
+                source_binding.authenticated_identity_snapshot(),
+                manifest,
+                label="Web repository",
+                mismatch_message=(
+                    "repository source content does not match the manifest"
+                ),
+            )
+            bundle = RepoBundle(
+                entry=entry,
+                manifest=manifest,
+                chat_available=find_spec("litellm") is not None,
+                view_loader=self._load_repo_views,
+                runtime_loader=self._load_repo_runtime,
+                source_reader=source_binding.borrow_reader(),
+            )
+            self._source_bindings[instance_id] = source_binding
+            self._source_cleanup_owners[instance_id] = cleanup_owner
+        except BaseException as primary:  # noqa: B036 - preserve + clean owner
+            self._source_bindings.pop(instance_id, None)
+            self._source_cleanup_owners.pop(instance_id, None)
+            cleanup_failure: BaseException | None = None
+            try:
+                cleanup_owner.close()
+            except BaseException as exc:  # noqa: B036 - shared cleanup priority
+                cleanup_failure = exc
+            pending_owner = (
+                cleanup_owner
+                if _source_cleanup_owner_is_pending(cleanup_owner)
+                else None
+            )
+            if pending_owner is not None:
+                # ``load_all`` intentionally degrades ordinary per-repository
+                # failures. Retain cleanup ownership on the registry before it
+                # catches this error so a failed close is still retryable.
+                self._source_cleanup_owners[instance_id] = pending_owner
+            if cleanup_failure is not None or pending_owner is not None:
+                _raise_source_cleanup_failure(
+                    primary,
+                    cleanup_failure,
+                    pending_owner,
+                )
+            raise
+
+        return bundle
+
+    def close(self) -> None:
+        """Release retrieval views, then every retained repository authority."""
+
+        first_failure: BaseException | None = None
+        pending_vector_cleanup = False
+        for bundle in tuple(self._bundles.values()):
+            vector_store = bundle.vector_store
+            bundle.bm25 = None
+            bundle.runner = None
+            bundle.source_reader = None
+            if vector_store is not None:
+                try:
+                    vector_store.close()
+                except BaseException as exc:  # noqa: B036 - finish all cleanup
+                    pending_vector_cleanup = True
+                    if first_failure is None:
+                        first_failure = exc
+                else:
+                    bundle.vector_store = None
+
+        for instance_id, owner in tuple(self._source_cleanup_owners.items()):
+            try:
+                owner.close()
+            except BaseException as exc:  # noqa: B036 - finish all cleanup
+                if first_failure is None:
+                    first_failure = exc
+            if getattr(owner, "closed", False):
+                self._source_cleanup_owners.pop(instance_id, None)
+                self._source_bindings.pop(instance_id, None)
+
+        if not self._source_cleanup_owners and not pending_vector_cleanup:
+            self._bundles.clear()
+        if first_failure is not None:
+            raise first_failure
 
     def _load_vector_store(
         self,
@@ -675,6 +855,15 @@ class RepoRegistry:
         from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 
         manifest = bundle.manifest
+        source_reader = getattr(bundle, "source_reader", None)
+        if source_reader is None and _manifest_requires_authenticated_source(manifest):
+            raise RuntimeError(
+                "manifest-selected repository has no authenticated source reader"
+            )
+        entry = getattr(bundle, "entry", None)
+        source_binding = getattr(self, "_source_bindings", {}).get(
+            getattr(entry, "instance_id", "")
+        )
 
         bm25_index: Optional["BM25CodeIndexer"] = None
         vector_store: Optional["CodeVectorStore"] = None
@@ -696,6 +885,17 @@ class RepoRegistry:
             require_bm25_manifest_artifact(bm25_entry)
             bm25_index = BM25CodeIndexer()
             bm25_index.load_index(bm25_entry.path)
+            if source_reader is not None:
+                _require_authenticated_documents(
+                    bm25_index.documents,
+                    source_reader,
+                    subject="BM25 view",
+                )
+                if source_binding is None:
+                    raise RuntimeError(
+                        "authenticated Web repository has no retained source binding"
+                    )
+                bm25_index.bind_repository_source(source_binding)
 
         vec_entry = manifest.indexes.get("vector")
         if "vector" in index_types:
@@ -747,6 +947,18 @@ class RepoRegistry:
                     vec_entry,
                     native_index_authorization=authorization,
                 )
+
+        if source_reader is not None and vector_store is not None:
+            try:
+                for level in ("l0", "l2"):
+                    _require_authenticated_documents(
+                        getattr(vector_store, f"{level}_documents", ()) or (),
+                        source_reader,
+                        subject=f"vector {level} view",
+                    )
+            except BaseException as primary:  # noqa: B036 - close rejected view
+                close_vector_after_failure(vector_store, primary)
+                raise
 
         bundle.vector_store = vector_store
         bundle.bm25 = bm25_index

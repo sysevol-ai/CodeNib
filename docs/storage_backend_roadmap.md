@@ -231,10 +231,26 @@ opens, and gives FAISS a callback over the already authenticated index
 descriptor rather than reopening an attacker-replaceable path.  The M1 JSON
 format has a fixed 16 MiB configuration limit and 256 MiB documents-file limit;
 larger repositories require a future streaming or sharded format rather than a
-manifest-controlled memory override.  Repository-relative source aliases may
-use bounded relative symlinks only when resolution remains inside the pinned
-checkout; absolute, outside, looping, raced, and reparse-point paths fail
-closed in staging, binding, BM25 reads, and MCP reads.  The shared credential
+manifest-controlled memory override.  Authenticated repository snapshots may
+use bounded relative symlinks or absolute symlinks whose raw target has the
+pinned lexical checkout root as a complete path-component prefix.  Absolute
+targets are rebased and walked again from the retained root descriptor or
+HANDLE; Windows containment uses the reparse substitute name and retains the
+full reparse payload for later verification.  Unauthenticated path-only reads
+and portable staging remain relative-only.  Outside, root-escaping, looping,
+raced, and unsupported reparse-point paths continue to fail closed, and the
+Docker source fingerprint helper applies the same host-root-to-workspace
+mapping.  Repository manifest v1.2 additionally persists one canonical
+`repository-source-selection.v1` value and digest across the repository,
+last-indexed generation, and every view entry. Exact root-relative subtree
+exclusions are part of source fingerprint v2 framing, so policy changes cannot
+reuse or relabel a view built for another source surface. Compiler builders,
+retained import/export/materialization plans, live source bindings, and
+portable runtimes all verify the same selection identity; v1.1 remains readable
+only through its exact policy-3/no-selection compatibility path and migrates on
+the next successful compilation. Graph and Zoekt artifacts require
+authenticated content receipts before deserialization or process startup.
+The shared credential
 classifier lives outside both artifacts and storage so the artifact layer does
 not depend on the catalog implementation.  These gates close the current
 portable context publication surface, and the injectable retained materializer
@@ -404,7 +420,8 @@ retention callback, receipts remain point-in-time checks rather than lifetime
 pins.
 
 A pure retained-manifest planning layer now closes the data-only side of that
-boundary for current portable `RepoManifest` v1.1 projections. It accepts only
+boundary for current portable `RepoManifest` v1.2 projections while preserving
+strict compatibility with retained v1.1 projections. It accepts only
 bounded, unambiguous, BOM-free UTF-8 JSON; rejects unknown shape, non-finite or
 over-complex values, credential data, diagnostic data, and forged storage or
 filesystem authority claims; and selects only current BM25/vector entries whose
@@ -419,12 +436,12 @@ and Git commit text remains display provenance rather than source authority.
 Planning performs no source or artifact reads, native parsing, CAS/catalog
 operation, receipt minting, or ref publication. Execution is a separate
 authority-bearing API, so inspecting or serializing a plan cannot publish it.
-The retained exporter described below now supplies equivalent canonical v1.1
-bytes, and the injectable retained materializer closes their filesystem
-publication boundary. The explicit local CLI bridge uses the concrete local
-provider only for an operator-selected retained ref or snapshot. Default
-compiler/import/runtime wiring remains outstanding, so M1 remains in progress.
-Profile adapters and fenced publication remain M2 work;
+The retained exporter described below now supplies equivalent canonical bytes
+for both supported manifest versions, and the injectable retained materializer
+closes their filesystem publication boundary. The explicit local CLI bridge
+uses the concrete local provider only for an operator-selected retained ref or
+snapshot. Default compiler/import/runtime wiring remains outstanding, so M1
+remains in progress. Profile adapters and fenced publication remain M2 work;
 production retention and garbage collection remain M5 work.
 
 The retained-import foundation now also exposes schema-v4 compound-generation
@@ -529,11 +546,13 @@ are checked source-free while native vector indexes remain inert. Unselected
 entries are omitted from the emitted manifest, unknown capability extensions
 are preserved, and the built-in sparse/dense/hybrid/symbol capabilities are
 recomputed from the retained selection. A final receipt sweep precedes return
-of canonical `RepoManifest` v1.1 bytes and a point-in-time observation receipt
-that carries the attested namespace ID, canonical repository key, and derived
-repository ID. It is neither a GC pin nor a materialization/native-load
-authority; filesystem output and runtime activation remain separate authority
-boundaries rather than implicit powers of the export receipt.
+of canonical current `RepoManifest` v1.2 bytes (or exact v1.1 compatibility
+bytes when exporting a retained legacy projection) and a point-in-time
+observation receipt that carries the attested namespace ID, canonical repository
+key, and derived repository ID. It is neither a GC pin nor a
+materialization/native-load authority; filesystem output and runtime activation
+remain separate authority boundaries rather than implicit powers of the export
+receipt.
 
 The first retained context materializer now turns that data-only export into
 one exact, query-compatible filesystem generation without treating the export
@@ -697,6 +716,10 @@ Foundation now available:
   identity, profile identity, and position encoding.
 - Compatibility adapters project the existing Python `CodeGraph` and SCIP
   occurrence index without changing the persisted graph schema or C++ decoder.
+- Symbol-graph builder schema v6 binds the optional persisted SCIP occurrence
+  index with an exact `lsp_occurrence_artifact` receipt. Graph consumers copy
+  and authenticate that sidecar from the same owned generation as `graph.pkl`
+  before deserializing it; an unreceipted ambient sidecar is never discovered.
 - Ordered resolver passes resolve only unique monikers and require framework or
   heuristic edges to retain provenance, confidence, and the synthesizing
   resolver name.

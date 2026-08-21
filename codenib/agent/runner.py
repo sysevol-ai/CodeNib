@@ -38,6 +38,7 @@ from ..llm.litellm_chat import LiteLLMChat, RetryConfig
 from ..llm.usage import UsageTracker
 from ..log_utils import get_logger
 from ..paths import repo_index_dir
+from ..repository_source_selection import RepositorySourceSelection
 from ..source_fingerprint import is_secure_source_fingerprint_v2
 from .agent_types import AgentResult, ToolCallRecord
 from .boundary import from_agent_repr_arg, is_line_bearing, to_agent_repr
@@ -2119,6 +2120,7 @@ def compile_repo(
     cache_dir: Optional[str] = None,
     embedding_model: str = DEFAULT_EMBEDDING_MODEL,
     embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION,
+    source_selection: RepositorySourceSelection | None = None,
 ) -> "RepoManifest":
     """Compile indexes for *repo_path* ahead of time and return the manifest.
 
@@ -2150,9 +2152,11 @@ def compile_repo(
         register_default_builders,
     )
     from ..compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+    from ..compiler.manifest_source import resolve_compiler_source_selection
 
     if cache_dir is None:
         cache_dir = str(repo_index_dir(repo_path))
+    selected = resolve_compiler_source_selection(cache_dir, source_selection)
 
     builder_registry = IndexBuilderRegistry()
     register_default_builders(
@@ -2160,12 +2164,14 @@ def compile_repo(
         languages=list(languages),
         embedding_model=embedding_model,
         embedding_dimension=embedding_dimension,
+        source_selection=selected,
     )
 
     cfg = IndexCompilerConfig(
         cache_dir_name=Path(cache_dir).name,
         index_types=list(index_types),
         languages=list(languages),
+        source_selection=selected,
     )
     compiler = IndexCompiler(builder_registry, cfg)
     return compiler.compile_repo(

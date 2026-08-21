@@ -30,7 +30,11 @@ from .provider_routes import (
     resolve_embedding_artifact_route,
     resolve_inference_route,
 )
-from .repository_filters import DEFAULT_IGNORED_DIRS
+from .repository_filters import walk_repository_files
+from .repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    RepositorySourceSelection,
+)
 from .web.ports import argparse_tcp_port, validate_local_wiki_ports
 
 _PRESET_VIEWS = {
@@ -64,6 +68,15 @@ class _ResolvedModelBackend:
     api_base: str | None
     api_key: str | None = field(default=None, repr=False)
     auth_source: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedRepositorySourceSelection:
+    """One canonical source-selection decision for a CLI transaction."""
+
+    selection: RepositorySourceSelection
+    action: str
+    manifest_present: bool
 
 
 def _optional_int(value: object, *, source: str) -> int | None:
@@ -252,6 +265,7 @@ def _detect_languages_for_surface(
     repo_path: str | os.PathLike[str],
     *,
     surface: str,
+    source_selection: RepositorySourceSelection = (DEFAULT_REPOSITORY_SOURCE_SELECTION),
 ) -> list[str]:
     """Detect registered source languages for one capability surface."""
     from .languages import extension_to_language_map
@@ -261,17 +275,10 @@ def _detect_languages_for_surface(
     extension_map = extension_to_language_map(surface)
     counts: Counter[str] = Counter()
 
-    for _current_root, dirs, files in os.walk(root):
-        dirs[:] = sorted(
-            directory
-            for directory in dirs
-            if directory not in DEFAULT_IGNORED_DIRS
-            and not directory.startswith(".codenib")
-        )
-        for filename in files:
-            language = extension_map.get(Path(filename).suffix.lower())
-            if language:
-                counts[language] += 1
+    for path in walk_repository_files(root, selection=source_selection):
+        language = extension_map.get(path.suffix.lower())
+        if language:
+            counts[language] += 1
 
     return [
         language
@@ -282,10 +289,18 @@ def _detect_languages_for_surface(
     ]
 
 
-def detect_languages(repo_path: str | os.PathLike[str]) -> list[str]:
+def detect_languages(
+    repo_path: str | os.PathLike[str],
+    *,
+    source_selection: RepositorySourceSelection = (DEFAULT_REPOSITORY_SOURCE_SELECTION),
+) -> list[str]:
     """Detect chunkable source languages, ordered by source-file count."""
 
-    return _detect_languages_for_surface(repo_path, surface="chunker")
+    return _detect_languages_for_surface(
+        repo_path,
+        surface="chunker",
+        source_selection=source_selection,
+    )
 
 
 def normalize_languages(values: Iterable[str]) -> list[str]:
@@ -361,11 +376,85 @@ def _is_regular_file_nofollow(path: Path) -> bool:
     return stat.S_ISREG(metadata.st_mode)
 
 
-def _selected_languages(repo_path: Path, explicit: Iterable[str]) -> list[str]:
+def _resolve_repository_source_selection(
+    repo_path: Path,
+    args: argparse.Namespace,
+) -> _ResolvedRepositorySourceSelection:
+    """Resolve one explicit or persisted exact-subtree selection.
+
+    An explicit CLI policy replaces the complete custom exclusion set.  With
+    no policy flags, a current manifest is the sole persisted authority.  A
+    legacy v1.1 manifest deliberately migrates to the current empty v4 policy
+    instead of pretending that its policy-3 identity was already equivalent.
+    """
+
+    from .compiler.manifest import MANIFEST_FILENAME, RepoManifest
+    from .paths import repo_index_dir
+
+    exclude_dirs = getattr(args, "exclude_dir", None)
+    clear = bool(getattr(args, "clear_exclude_dirs", False))
+    if exclude_dirs is not None and clear:
+        raise CLIError("--exclude-dir and --clear-exclude-dirs are mutually exclusive")
+    if clear:
+        return _ResolvedRepositorySourceSelection(
+            selection=RepositorySourceSelection(),
+            action="clear",
+            manifest_present=False,
+        )
+    if exclude_dirs is not None:
+        try:
+            selection = RepositorySourceSelection(exclude_dirs)
+        except (TypeError, ValueError) as exc:
+            raise CLIError(f"invalid --exclude-dir: {exc}") from exc
+        return _ResolvedRepositorySourceSelection(
+            selection=selection,
+            action="replace",
+            manifest_present=False,
+        )
+
+    manifest_path = repo_index_dir(repo_path) / MANIFEST_FILENAME
+    if not _is_regular_file_nofollow(manifest_path):
+        return _ResolvedRepositorySourceSelection(
+            selection=RepositorySourceSelection(),
+            action="default",
+            manifest_present=False,
+        )
+    try:
+        manifest = RepoManifest.load(manifest_path)
+    except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        raise CLIError(
+            "the existing manifest source selection cannot be read; pass "
+            "--exclude-dir to replace it or --clear-exclude-dirs to clear it"
+        ) from exc
+    if manifest.source_selection is None:
+        return _ResolvedRepositorySourceSelection(
+            selection=RepositorySourceSelection(),
+            action="migrate",
+            manifest_present=True,
+        )
+    return _ResolvedRepositorySourceSelection(
+        selection=RepositorySourceSelection(
+            manifest.source_selection.exclude_subtrees,
+        ),
+        action="reuse",
+        manifest_present=True,
+    )
+
+
+def _source_selection_display(selection: RepositorySourceSelection) -> str:
+    return ", ".join(selection.exclude_subtrees) or "none"
+
+
+def _selected_languages(
+    repo_path: Path,
+    explicit: Iterable[str],
+    *,
+    source_selection: RepositorySourceSelection = (DEFAULT_REPOSITORY_SOURCE_SELECTION),
+) -> list[str]:
     languages = normalize_languages(explicit)
     if languages:
         return languages
-    languages = detect_languages(repo_path)
+    languages = detect_languages(repo_path, source_selection=source_selection)
     if not languages:
         raise CLIError(
             "no supported source language was detected; pass --language explicitly"
@@ -376,6 +465,8 @@ def _selected_languages(repo_path: Path, explicit: Iterable[str]) -> list[str]:
 def _selected_codegraph_languages(
     repo_path: Path,
     explicit: Iterable[str],
+    *,
+    source_selection: RepositorySourceSelection = (DEFAULT_REPOSITORY_SOURCE_SELECTION),
 ) -> list[str]:
     """Select only languages with a registered symbol-graph backend."""
 
@@ -394,7 +485,11 @@ def _selected_codegraph_languages(
 
     languages = [
         language
-        for language in _detect_languages_for_surface(repo_path, surface="graph")
+        for language in _detect_languages_for_surface(
+            repo_path,
+            surface="graph",
+            source_selection=source_selection,
+        )
         if graph_indexer_path(language) is not None
     ]
     if not languages:
@@ -448,6 +543,7 @@ def index_repository(
     *,
     languages: Sequence[str],
     views: Sequence[str],
+    source_selection: RepositorySourceSelection = (DEFAULT_REPOSITORY_SOURCE_SELECTION),
     rebuild: bool = False,
     embedding_provider: str = "huggingface",
     embedding_model: str | None = None,
@@ -485,12 +581,14 @@ def index_repository(
         embedding_credential_env=embedding_credential_env,
         allow_partial_graph_languages=allow_partial_graph_languages,
         allow_graph_project_preparation=allow_graph_project_preparation,
+        source_selection=source_selection,
     )
     compiler = IndexCompiler(
         registry,
         IndexCompilerConfig(
             index_types=list(views),
             languages=list(languages),
+            source_selection=source_selection,
         ),
     )
     cache_dir = repo_index_dir(repo_path)
@@ -519,6 +617,9 @@ def _print_index_summary(manifest, views: Sequence[str]) -> None:
     manifest_path = repo_index_dir(manifest.repo_path) / MANIFEST_FILENAME
     print(f"Repository: {manifest.repo_path}")
     print(f"Languages:  {', '.join(manifest.languages)}")
+    source_selection = getattr(manifest, "source_selection", None)
+    if source_selection is not None:
+        print("Excluded:   " + _source_selection_display(source_selection))
     print(f"Manifest:   {manifest_path}")
     print("Views:")
     for view in views:
@@ -546,7 +647,12 @@ def _run_index(
     selected_views: Sequence[str] | None = None,
 ) -> int:
     repo_path = resolve_repo_path(args.repo)
-    languages = _selected_languages(repo_path, args.language)
+    resolved_selection = _resolve_repository_source_selection(repo_path, args)
+    languages = _selected_languages(
+        repo_path,
+        args.language,
+        source_selection=resolved_selection.selection,
+    )
     views = (
         list(selected_views)
         if selected_views is not None
@@ -565,6 +671,7 @@ def _run_index(
     index_kwargs = {
         "languages": languages,
         "views": views,
+        "source_selection": resolved_selection.selection,
         "rebuild": args.rebuild,
     }
     if embedding_route is not None:
@@ -676,12 +783,16 @@ def _publication_environment(credential_env: str | None = None) -> dict[str, str
     return environment
 
 
-def _require_clean_artifact_checkout(repo_path: Path) -> None:
+def _require_clean_artifact_checkout(
+    repo_path: Path,
+    *,
+    source_selection: RepositorySourceSelection = (DEFAULT_REPOSITORY_SOURCE_SELECTION),
+) -> None:
     """Require portable artifacts to describe the checked-out Git commit."""
 
     from .source_fingerprint import repository_source_is_dirty
 
-    if repository_source_is_dirty(repo_path):
+    if repository_source_is_dirty(repo_path, selection=source_selection):
         raise CLIError(
             "portable context artifacts require a clean Git checkout at HEAD. "
             "Commit or stash source-visible changes, or use `codenib wiki` or "
@@ -753,12 +864,18 @@ def _validate_publish_outputs(
 
 def _run_artifact_pack(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
-    _require_clean_artifact_checkout(repo_path)
+    _artifact_checkout_commit(repo_path, None)
     manifest_path = resolve_manifest_path(str(repo_path))
     from .artifacts import stage_context_artifact
     from .compiler.manifest import RepoManifest
 
     manifest = RepoManifest.load(manifest_path)
+    _require_clean_artifact_checkout(
+        repo_path,
+        source_selection=(
+            manifest.source_selection or DEFAULT_REPOSITORY_SOURCE_SELECTION
+        ),
+    )
     output_dir = (
         Path(os.path.abspath(os.fspath(Path(args.output).expanduser())))
         if args.output
@@ -795,7 +912,8 @@ def _artifact_checkout_commit(repo_path: Path, explicit: str | None) -> str:
     commit = (explicit or checkout_commit(repo_path) or "").strip().lower()
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise CLIError(
-            "artifact operations require a Git checkout with a full resolved HEAD"
+            "artifact operations require a clean Git checkout with a full "
+            "resolved HEAD"
         )
     return commit
 
@@ -2430,7 +2548,11 @@ def _run_publish(args: argparse.Namespace) -> int:
         site_output=site_output,
         context_output=context_output,
     )
-    _require_clean_artifact_checkout(repo_path)
+    resolved_selection = _resolve_repository_source_selection(repo_path, args)
+    _require_clean_artifact_checkout(
+        repo_path,
+        source_selection=resolved_selection.selection,
+    )
 
     selected_views = _selected_views_for_args(args)
     unsupported = sorted(set(selected_views) - {"bm25", "vector"})
@@ -2631,7 +2753,17 @@ def _run_wiki(args: argparse.Namespace) -> int:
         raise CLIError(str(exc)) from exc
 
     repo_path = resolve_repo_path(args.repo)
-    languages = _selected_languages(repo_path, args.language)
+    resolved_selection = _resolve_repository_source_selection(repo_path, args)
+    if args.no_index and resolved_selection.action in {"replace", "clear"}:
+        raise CLIError(
+            "--exclude-dir and --clear-exclude-dirs require indexing; "
+            "remove --no-index"
+        )
+    languages = _selected_languages(
+        repo_path,
+        args.language,
+        source_selection=resolved_selection.selection,
+    )
     if args.no_index and args.preset == "auto" and not _split_values(args.view):
         views = list(_PRESET_VIEWS["fast"])
         print("Auto preset: reuse manifest capabilities")
@@ -2677,6 +2809,7 @@ def _run_wiki(args: argparse.Namespace) -> int:
         index_kwargs = {
             "languages": languages,
             "views": views,
+            "source_selection": resolved_selection.selection,
             "rebuild": args.rebuild,
         }
         if build_embedding_route is not None:
@@ -3235,7 +3368,12 @@ def _run_doctor(args: argparse.Namespace) -> int:
         from .graph.setup import diagnose_graph_setup
 
         repo_path = resolve_repo_path(args.repo)
-        languages = _selected_languages(repo_path, args.language)
+        resolved_selection = _resolve_repository_source_selection(repo_path, args)
+        languages = _selected_languages(
+            repo_path,
+            args.language,
+            source_selection=resolved_selection.selection,
+        )
         graph_report = diagnose_graph_setup(repo_path, languages)
     if args.probe_model:
         rows["agent"].extend(_probe_doctor_model(args))
@@ -3289,7 +3427,12 @@ def _toolchain_plan_for_args(args: argparse.Namespace):
     from .toolchains import plan_repository_toolchain
 
     repo_path = resolve_repo_path(args.repo)
-    languages = _selected_languages(repo_path, args.language)
+    resolved_selection = _resolve_repository_source_selection(repo_path, args)
+    languages = _selected_languages(
+        repo_path,
+        args.language,
+        source_selection=resolved_selection.selection,
+    )
     return plan_repository_toolchain(
         repo_path,
         languages,
@@ -3405,11 +3548,19 @@ def _codegraph_languages_for_init(
     repo_path: Path,
     args: argparse.Namespace,
     receipt,
+    *,
+    source_selection: RepositorySourceSelection = (DEFAULT_REPOSITORY_SOURCE_SELECTION),
 ) -> tuple[str, ...]:
     del receipt
     # An omitted --language always means auto-detect the current checkout. This
     # keeps repeated onboarding in sync when a repository adds another language.
-    return tuple(_selected_codegraph_languages(repo_path, args.language))
+    return tuple(
+        _selected_codegraph_languages(
+            repo_path,
+            args.language,
+            source_selection=source_selection,
+        )
+    )
 
 
 def _codegraph_preflight_clients(
@@ -3511,6 +3662,7 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
     from .toolchains import install_requirements
 
     repo_path = resolve_repo_path(args.repo)
+    resolved_selection = _resolve_repository_source_selection(repo_path, args)
     server, receipt = _codegraph_spec_for_args(repo_path, args)
     try:
         server_inspection = inspect_server_command(server, repo_path)
@@ -3521,7 +3673,12 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
             "CodeGraph MCP command is not this CodeNib runtime: "
             + server_inspection.detail
         )
-    languages = _codegraph_languages_for_init(repo_path, args, receipt)
+    languages = _codegraph_languages_for_init(
+        repo_path,
+        args,
+        receipt,
+        source_selection=resolved_selection.selection,
+    )
     clients = _codegraph_clients_for_init(args)
     observed = _codegraph_preflight_clients(
         repo_path,
@@ -3548,6 +3705,11 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
             raise CLIError(str(exc)) from exc
         print(f"Repository: {repo_path}")
         print(f"Languages:  {', '.join(languages)}")
+        print(
+            "Source selection: "
+            f"{resolved_selection.action} "
+            f"({_source_selection_display(resolved_selection.selection)})"
+        )
         print("Planned CodeGraph actions:")
         for command in commands:
             print(f"  toolchain: {shlex.join(command)}")
@@ -3605,6 +3767,7 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
             repo_path,
             languages=languages,
             views=("bm25", "symbol_graph"),
+            source_selection=resolved_selection.selection,
             rebuild=args.rebuild,
             allow_graph_project_preparation=False,
             allow_partial_graph_languages=False,
@@ -3663,6 +3826,7 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
     print("\nCodeGraph is ready for coding agents.")
     print(f"MCP server: {server.name}")
     print(f"Clients:    {', '.join(clients)}")
+    print("Excluded:   " + _source_selection_display(resolved_selection.selection))
     print(f"Status:     codenib codegraph status {shlex.quote(str(repo_path))}")
     print(
         "Try asking your agent to use explore_context before editing and "
@@ -3683,6 +3847,8 @@ def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
     manifest_path = repo_index_dir(repo_path) / MANIFEST_FILENAME
     report: dict[str, object] = {
         "manifest": str(manifest_path),
+        "manifest_present": False,
+        "manifest_version": None,
         "bm25": False,
         "bm25_manifest_current": False,
         "bm25_artifact_matches": False,
@@ -3691,12 +3857,25 @@ def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
         "symbol_graph_artifact_matches": False,
         "symbol_graph_complete": False,
         "source_matches": False,
+        "source_selection": {
+            "recorded": False,
+            "exclude_subtrees": [],
+            "digest": None,
+        },
         "languages": [],
         "detail": "manifest not found",
     }
     try:
         manifest = RepoManifest.load(manifest_path)
+        report["manifest_present"] = True
+        report["manifest_version"] = manifest.version
         report["languages"] = list(manifest.languages)
+        if manifest.source_selection is not None:
+            report["source_selection"] = {
+                "recorded": True,
+                "exclude_subtrees": list(manifest.source_selection.exclude_subtrees),
+                "digest": manifest.source_selection_digest,
+            }
         bm25_entry = manifest.indexes.get("bm25")
         graph_entry = manifest.indexes.get("symbol_graph")
         report["bm25_manifest_current"] = manifest.index_is_current("bm25")
@@ -3750,6 +3929,11 @@ def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
         )
         report["source_matches"] = True
         blockers: list[str] = []
+        if manifest.source_selection is None:
+            blockers.append(
+                "manifest has no repository source-selection contract; "
+                "run codegraph init to migrate it"
+            )
         if not report["bm25_manifest_current"]:
             blockers.append("bm25 manifest entry is missing, failed, or stale")
         elif not report["bm25_artifact_matches"]:
@@ -3768,7 +3952,10 @@ def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         report["detail"] = " ".join(str(exc).split())[:400]
     report["ready"] = bool(
-        report["bm25"] and report["symbol_graph_complete"] and report["source_matches"]
+        report["bm25"]
+        and report["symbol_graph_complete"]
+        and report["source_matches"]
+        and report["source_selection"]["recorded"]
     )
     return report
 
@@ -3916,6 +4103,18 @@ def _run_codegraph_status(args: argparse.Namespace) -> int:
             else str(index["detail"])
         )
     )
+    source_selection = index.get(
+        "source_selection",
+        {"recorded": False, "exclude_subtrees": [], "digest": None},
+    )
+    if source_selection["recorded"]:
+        print(
+            "Excluded:   " + (", ".join(source_selection["exclude_subtrees"]) or "none")
+        )
+    elif index.get("manifest_present"):
+        print("Excluded:   unrecorded legacy policy")
+    else:
+        print("Excluded:   unrecorded (manifest missing)")
     toolchain = report["toolchain"]
     toolchain_detail = "ready"
     if not toolchain["ready"]:
@@ -4053,6 +4252,25 @@ def _add_embedding_route_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_source_selection_arguments(parser: argparse.ArgumentParser) -> None:
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--exclude-dir",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help=(
+            "replace persisted custom exclusions with this exact "
+            "repository-relative subtree; repeat for multiple paths"
+        ),
+    )
+    selection.add_argument(
+        "--clear-exclude-dirs",
+        action="store_true",
+        help="clear persisted custom subtree exclusions",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codenib",
@@ -4088,8 +4306,9 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument(
         "--rebuild",
         action="store_true",
-        help="rebuild instead of incrementally updating an existing manifest",
+        help="force a clean rebuild even when an existing view is current",
     )
+    _add_source_selection_arguments(index_parser)
     _add_embedding_route_arguments(index_parser)
     index_parser.set_defaults(handler=_run_index)
 
@@ -4102,7 +4321,12 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_parser.add_argument("--preset", choices=_PRESET_CHOICES, default="auto")
     wiki_parser.add_argument("--language", action="append", default=[])
     wiki_parser.add_argument("--view", action="append", default=[])
-    wiki_parser.add_argument("--rebuild", action="store_true")
+    wiki_parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="force a clean rebuild even when an existing view is current",
+    )
+    _add_source_selection_arguments(wiki_parser)
     _add_embedding_route_arguments(wiki_parser)
     wiki_parser.add_argument(
         "--no-index",
@@ -4404,7 +4628,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     publish_parser.add_argument("--language", action="append", default=[])
     publish_parser.add_argument("--view", action="append", default=[])
-    publish_parser.add_argument("--rebuild", action="store_true")
+    publish_parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="force a clean rebuild even when an existing view is current",
+    )
+    _add_source_selection_arguments(publish_parser)
     _add_embedding_route_arguments(publish_parser)
     publish_parser.add_argument("--site-output")
     publish_parser.add_argument("--context-output")
@@ -4502,8 +4731,9 @@ def build_parser() -> argparse.ArgumentParser:
     codegraph_init_parser.add_argument(
         "--rebuild",
         action="store_true",
-        help="rebuild graph views instead of incrementally updating them",
+        help="force a clean rebuild of the graph views",
     )
+    _add_source_selection_arguments(codegraph_init_parser)
     codegraph_init_parser.add_argument(
         "--dry-run",
         action="store_true",
