@@ -1286,20 +1286,27 @@ def test_artifact_materialize_resource_store_interruption_closes_authorities(
         if instruction.opname == "STORE_ATTR" and instruction.argval == "_resource"
     }
     assert len(store_indexes) == 1
-    injection_offsets = {instructions[index + 1].offset for index in store_indexes}
+    store_index = next(iter(store_indexes))
+    # A line event at the next source line is the portable trace boundary after
+    # STORE_ATTR and before acquire() returns.  Some supported CPython builds do
+    # not emit the optional per-opcode trace events.
+    post_store_line = next(
+        instruction.starts_line
+        for instruction in instructions[store_index + 1 :]
+        if instruction.starts_line is not None
+    )
     injected = False
     previous_trace = sys.gettrace()
 
     def trace(frame, event: str, _arg: object):
         nonlocal injected
         if event == "call" and frame.f_code is acquire.__code__:
-            frame.f_trace_opcodes = True
             return trace
         if (
             not injected
-            and event == "opcode"
+            and event == "line"
             and frame.f_code is acquire.__code__
-            and frame.f_lasti in injection_offsets
+            and frame.f_lineno == post_store_line
             and frame.f_locals["self"]._resource is store
         ):
             injected = True
