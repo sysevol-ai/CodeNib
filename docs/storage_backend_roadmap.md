@@ -503,35 +503,76 @@ advancing the ref again. This is the direct M1 bootstrap path, not the M2 fenced
 job-success transaction. Default compiler/import/runtime wiring remains the M1
 gap; production retention and garbage collection remain M5 work.
 
-The first BM25-only compiler-cache ingress now connects current
-`IndexCompiler` output to this executor without treating mutable cache paths as
-retained authority. `recapture_bm25_view_strict` converts the ordinary fixed
-two-file BM25 tree into a missing-only strict workspace generation. The
-`import_compiler_cache_bm25` coordinator takes the existing-only cooperative
-cache lease; validates the retained source-fingerprint-v2 identity, exact
-manifest data, full lowercase 40-character Git commit, current BM25 metadata,
-and both file fingerprints; and completes the canonical portable BM25-only
-manifest and retained import plan before the first workspace mutation. While
-the lock is held, it publishes separate immutable BM25 and whole-context
-evidence generations and repeats the source, manifest, byte, and receipt
-checks. It releases the cache lock before any retained CAS or catalog data
-operation, so only the authenticated context receipt crosses the mutable-cache
-boundary.
+The explicit compiler-cache ingress now connects a selected current BM25,
+vector, or combined BM25/vector `IndexCompiler` view set to this executor
+without treating mutable cache paths as retained authority. The compatibility
+`import_compiler_cache_bm25` wrapper remains, while `import_compiler_cache`
+takes the exact canonical view set and one existing-only cooperative cache
+lease. It validates the retained source-fingerprint-v2 identity, exact manifest
+data, full lowercase 40-character Git commit, and each selected current view.
+Before the first workspace mutation, it completes every raw-view recapture
+plan, the canonical selected-view portable manifest, and the retained import
+plan. While the same lease is held, it publishes one immutable evidence
+generation per selected view, then plans and publishes one whole-context
+generation. All selected generations therefore enter one context and one
+atomic snapshot/ref publication. The coordinator repeats the source, manifest,
+byte, and receipt checks, then releases the cache lease before any retained CAS
+or catalog data operation, so only the authenticated context receipt crosses
+the mutable-cache boundary.
+
+Strict vector ingress requires current raw builder schema 8. Its root commit
+binds each FAISS file to a canonical ordered `documents_*.json` array and the
+`codenib.vector-documents-array-index.v1` row-mapping contract: JSON array
+position is the corresponding FAISS row. Level counts, configuration, and
+content fingerprints must agree before publication. The trusted producer also
+reopens every generated FAISS file before publishing the compiler-cache
+generation and verifies its dimension, row count, metric, index type, training
+state, and canonical row IDs; exact root, level, and document semantics are
+checked in the same authenticated generation sandwich. Raw schema-7 compiler
+caches must be rebuilt; they cannot be recaptured by guessing a row mapping or
+loading their pickle state. This producer gate does not revoke compatibility
+for already-retained portable vector schema 7, which remains readable beside
+schema 8. Portable recapture, retained import, export, and materialization keep
+FAISS bytes inert; native parsing still requires the separate process-local
+authorization described above. Schema-8 source paths are canonical
+repository-relative POSIX paths backed by regular lexical files; contained and
+external symlink aliases both fail closed so document paths, node identities,
+and retained source records cannot silently name different files.
+
+This cache lease and the resulting hashes prove a bounded, self-consistent
+capture, not signed producer provenance. The source and cache namespaces must
+be private, trusted, and quiescent except for CodeNib processes honoring the
+same lease. An actor able to replace both a cache view and its manifest can
+mint matching hashes; strict recapture does not turn that namespace into an
+adversarial sandbox. In particular, inert treatment prevents import-time
+native parsing but does not assert that arbitrary FAISS bytes came from a
+trusted producer.
 
 `codenib artifact import-cache` exposes that coordinator as an explicit local
 bootstrap. It requires an existing initialized SQLite catalog, a fully
 preprovisioned strict `LocalCAS`, an existing private Linux workspace root with
-exact mode `0700`, and a real producer cache with its existing lock. Each call
-chooses fresh missing-only BM25 and context destinations and never recursively
-removes a published directory after a later failure. A changed import
-atomically advances the selected ref and prints an immutable-snapshot
-`artifact materialize` handoff without reserving the suggested output. An
-exact retry uses fresh destinations but the original expected ref generation
-and idempotently returns the already-published snapshot without another ref
-advance. This advances BM25 ingress only. M1 remains in progress: default
-compiler/runtime routing and non-BM25 cache ingress remain. Generic builder
-profiles and fenced job publication remain M2 work, runtime hot switching
-remains M3 work, and evidence retention and reclamation remain M5 work.
+exact mode `0700`, and a real producer cache with its existing lock. With no
+`--view`, it preserves the BM25-only default; repeated or comma-separated
+`--view bm25` and `--view vector` options select either or both current views.
+Each call chooses a fresh missing-only destination for every selected view plus
+one context destination and never recursively removes a published directory
+after a later failure. A changed import atomically advances the selected ref
+and prints an immutable-snapshot `artifact materialize` handoff without
+reserving the suggested output. An exact retry uses fresh destinations but the
+original expected ref generation and idempotently returns the already-published
+snapshot without another ref advance.
+
+This command is an offline bootstrap, not a request-path or worker-path
+primitive. Exact ownership capture, semantic validation, workspace replay,
+bundle/CAS ingestion, and receipt revalidation deliberately make multiple
+bounded passes over large payloads; a selected FAISS file may therefore be
+read more than once. Representative end-to-end corpus, payload-size, and
+storage-media benchmarks are required before this path is enabled by default,
+used as a latency-sensitive service ingress, or has any validation pass
+removed. M1 remains in progress because default compiler/runtime routing is
+still absent. Graph and Zoekt cache ingress, generic builder profiles, and
+fenced job publication remain M2 or later work, runtime hot switching remains
+M3 work, and evidence retention and reclamation remain M5 work.
 
 The first read-only retained `RepoManifest` exporter now closes the data-only
 round trip without introducing path authority. It accepts the additive
@@ -608,10 +649,10 @@ rather than deleting it.
 
 This command does not initialize or populate the control plane, import a legacy
 cache, build views, advance refs, or make retained storage the default. It is
-the retained-read bridge only. Default compiler/runtime routing and non-BM25
-cache ingress remain outstanding M1 work, and strict BM25 replacement still
-lacks the `provider-bound-exact` production provider; fenced job publication
-remains M2 work.
+the retained-read bridge only. Default compiler/runtime routing remains
+outstanding M1 work; graph and Zoekt cache ingress and fenced job publication
+remain M2 or later work. Strict BM25 replacement also still lacks the
+`provider-bound-exact` production provider.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable

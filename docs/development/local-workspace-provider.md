@@ -17,32 +17,40 @@ missing destination and transfers the generation to a caller-owned
 
 The provider is not part of CodeNib's default compiler, import, or runtime
 path. Two explicit operator bridges use it: `codenib artifact import-cache`
-recaptures one current compiler-cache BM25 view into retained storage, and
-`codenib artifact materialize` publishes a retained catalog ref or immutable
-snapshot to a missing portable-artifact directory. The strict BM25 replacement
-path still requires the unsupported `provider-bound-exact` destination mode.
+recaptures an explicitly selected current compiler-cache BM25/vector view set
+into retained storage, and `codenib artifact materialize` publishes a retained
+catalog ref or immutable snapshot to a missing portable-artifact directory.
+The strict BM25 replacement path still requires the unsupported
+`provider-bound-exact` destination mode.
 
-## Import a compiler BM25 cache
+## Import compiler query views
 
-`codenib artifact import-cache` imports one exact current BM25 view from an
-existing `IndexCompiler` cache as a ready retained snapshot. This is a
-BM25-only bootstrap: it does not change the default `codenib index` route,
-import vector or graph views, run an M2 fenced job, or hot-switch a runtime.
+`codenib artifact import-cache` imports an exact current BM25 view, vector view,
+or both from an existing `IndexCompiler` cache as one ready retained snapshot.
+Omitting `--view` preserves the BM25-only default. Repeat `--view`, or pass a
+comma-separated value such as `--view bm25,vector`, to select views explicitly;
+the CLI canonicalizes the result to BM25 then vector. This remains an offline
+bootstrap: it does not change the default `codenib index` route, import graph or
+Zoekt views, run an M2 fenced job, or hot-switch a runtime.
 
 Prepare these authorities before running it:
 
 - The positional repository must be the source used to build the cache. The
   retained source-fingerprint-v2 identity must match the manifest, whose commit
-  must be a full lowercase 40-character Git SHA. The manifest must contain one
-  exact current BM25 entry and exact fingerprints for
-  `bm25/documents.json` and `bm25/bm25_metadata.json`.
+  must be a full lowercase 40-character Git SHA. The manifest must contain an
+  exact current entry for every selected view. BM25 must have exact
+  fingerprints for `bm25/documents.json` and `bm25/bm25_metadata.json`.
+  Vector ingress requires raw builder schema 8 and the exact schema-8
+  persistence inventory described below. Schema-8 vector documents name
+  regular lexical repository-relative POSIX files; source symlink aliases are
+  rejected instead of being rewritten to a different path identity.
 - `--cache-dir` must be an existing cache produced by the current compiler. It
-  must already contain `repo_manifest.json`, the fixed BM25 tree, and the
-  single-link regular `.index-compiler.lock`. Run or update the cache with the
-  current `IndexCompiler`; do not add a lock file by hand. Import opens the
-  lease existing-only and never creates the cache or lock. The importer owns
-  that lease, so a library caller must not wrap it in another lock for the same
-  cache; same-thread re-entry fails fast. The lock serializes cooperating
+  must already contain `repo_manifest.json`, every selected fixed view tree,
+  and the single-link regular `.index-compiler.lock`. Run or update the cache
+  with the current `IndexCompiler`; do not add a lock file by hand. Import opens
+  the lease existing-only and never creates the cache or lock. The importer
+  owns that lease, so a library caller must not wrap it in another lock for the
+  same cache; same-thread re-entry fails fast. The lock serializes cooperating
   CodeNib compiler and importer processes in a private cache namespace. It is
   not a sandbox against an actor actively replacing cache paths while the lock
   is held.
@@ -67,21 +75,70 @@ codenib artifact import-cache /srv/src/repository \
   --expected-generation 0
 ```
 
-Under the cooperative cache lease, the command authenticates the source,
-manifest, and ordinary BM25 files; completes the canonical BM25-only portable
-manifest and import plan; and publishes fresh missing-only BM25 and context
-generations. It then revalidates those exact bytes and releases the lease
-before retained CAS ingestion or catalog/ref publication begins.
+That command imports only BM25. To import one combined view set into the same
+snapshot, add the explicit selection:
 
-Every invocation allocates random
-`.codenib-cache-import-<nonce>-bm25` and
-`.codenib-cache-import-<nonce>-context` directories below the workspace root.
+```bash
+codenib artifact import-cache /srv/src/repository \
+  --cache-dir /var/lib/codenib/compiler-cache/repository \
+  --view bm25,vector \
+  --catalog /var/lib/codenib/catalog.sqlite3 \
+  --cas-root /var/lib/codenib/cas \
+  --workspace-root /var/lib/codenib/workspaces \
+  --repository owner/repository \
+  --ref main \
+  --expected-generation 0
+```
+
+Under the cooperative cache lease, the command authenticates the source,
+manifest, and every selected raw view. Before the first workspace mutation it
+completes all selected recapture plans, the canonical selected-view portable
+manifest, and the retained import plan. Under that same existing-only lease it
+publishes a fresh missing-only generation for each selected view, then plans
+and publishes one context containing exactly those views. It revalidates the
+source, manifest, and published bytes before releasing the lease; retained CAS
+ingestion and the single atomic snapshot/ref publication happen only afterward.
+
+Current vector producers use builder schema 8. Each non-empty level stores a
+canonical ordered `documents_*.json` array beside its FAISS index, and the root
+config commits both files plus
+`row_mapping = "codenib.vector-documents-array-index.v1"`. Array position is
+the FAISS row. Before publishing a current compiler-cache generation, the
+trusted producer reopens each generated FAISS file and verifies its dimension,
+row count, metric, index type, training state, and canonical row IDs together
+with the exact root, level, and document contract. The later recapture can then
+validate document counts, configuration, and content fingerprints without
+deserializing legacy pickle or parsing FAISS. A raw schema-7 compiler cache must
+be rebuilt before import; already-retained portable schema-7 vector generations
+remain readable for compatibility. FAISS also remains inert during import,
+export, and materialization. Loading it for a native query is a separate,
+explicitly authorized local operation.
+
+The lease and content receipts establish self-consistency, not signed
+provenance. Use a cache namespace private to one trusted OS account and keep
+the source/cache namespace quiescent except for CodeNib processes honoring the
+same lock. An actor that can replace both raw view bytes and the manifest can
+compute matching hashes; neither the cooperative lock nor schema 8 claims to
+sandbox that actor or attest who produced the FAISS bytes.
+
+Every invocation allocates a random
+`.codenib-cache-import-<nonce>-<view>` directory for each selected view and one
+`.codenib-cache-import-<nonce>-context` directory below the workspace root.
 They remain immutable generation evidence after their receipt owners close,
 including when a later stage fails; the command warns instead of deleting
 them. Their future ownership-aware reclamation belongs to M5. On success, the
-CLI prints the snapshot, ref generation, both evidence paths, and a copyable
-`codenib artifact materialize --snapshot ...` command. Its suggested
-`.codenib-cache-import-<nonce>-materialized` output is not created or reserved.
+CLI prints the selected view set, snapshot, ref generation, every evidence
+path, and a copyable `codenib artifact materialize --snapshot ...` command. Its
+suggested `.codenib-cache-import-<nonce>-materialized` output is not created or
+reserved.
+
+Strict ownership capture, semantic validation, workspace replay, bundle/CAS
+ingestion, and receipt revalidation make multiple bounded reads of selected
+payloads. Large FAISS indexes can therefore be read more than once. Treat this
+as an offline maintenance operation and measure representative repositories,
+payload sizes, and storage media before scheduling it at scale. Default or
+latency-sensitive service use requires an end-to-end benchmark gate; do not
+remove an authentication pass merely to improve an unmeasured result.
 
 Use the current ref generation for a changed cache. If a call might have
 committed before its result was observed, retry the exact same source, cache,
@@ -155,10 +212,12 @@ warns that the output now exists, do not assume that the path is disposable or
 retry over it; verify the retained artifact before reuse or reclaim it through
 an ownership-aware workflow.
 
-This retained-read bridge and the BM25 ingress above do not complete the
-hybrid-storage M1 milestone. Default compiler/runtime routing and non-BM25
-cache ingress are still missing, as is a production provider for the strict
-BM25 replacement producer's `provider-bound-exact` destination contract.
+This retained-read bridge and the explicit BM25/vector ingress above do not
+complete the hybrid-storage M1 milestone. Default compiler/runtime routing is
+still missing, as is a production provider for the strict BM25 replacement
+producer's `provider-bound-exact` destination contract. Graph and Zoekt ingress
+remain M2 or later work; fenced jobs and runtime hot switching remain separate
+milestones.
 
 ## Lifecycle
 
