@@ -47,6 +47,7 @@ from codenib.clients.guardian import (
 )
 from codenib.clients.guardian.aggregation import (
     _materialize_task_evidence,
+    _merge_memory,
     _merge_specification_records,
     adjudicate_records,
 )
@@ -2691,3 +2692,82 @@ def test_task_context_auto_ids_separate_distinct_sources() -> None:
     )
 
     assert verbatim.context_id != derived.context_id
+
+
+def _supported_record(
+    specification_id: str, statement: str, evidence_id: str, round_number: int = 1
+) -> SpecificationRecord:
+    return SpecificationRecord(
+        specification_id=specification_id,
+        statement=statement,
+        condition="when state is copied",
+        scope=("contract.py",),
+        supporting_evidence=(evidence_id,),
+        counterevidence=(),
+        provenance=(),
+        status=SpecificationStatus.SUPPORTED,
+        status_reason="direct normative task evidence",
+        created_round=round_number,
+        updated_round=round_number,
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "_merge_memory materializes task evidence from the incoming round only, "
+        "so it overwrites the stored evidence supports and _drop_unlinked_"
+        "references then strips carried-over specifications. See aggregation.py."
+    ),
+)
+def test_carried_over_specification_survives_a_round_that_omits_it(
+    tmp_path: Path,
+) -> None:
+    """A later round must not retract a specification merely by not restating it.
+
+    The aggregation prompt requires provenance for every *candidate* it emits; it
+    never requires re-emitting specifications already held in memory.
+    """
+
+    request = _request(tmp_path)
+    task_context = next(
+        item
+        for item in request.task_context
+        if item.source is TaskContextSource.USER_INSTRUCTION
+    )
+    first_round = _supported_record(
+        "LS-001", "Copied state preserves its configured mode.", task_context.context_id
+    )
+    memory = SpecificationMemory(
+        specifications=(first_round,),
+        evidence=(
+            Evidence(
+                evidence_id=task_context.context_id,
+                path=task_context.context_id,
+                line_start=1,
+                line_end=1,
+                description="Verbatim requirement supplied to the coding system.",
+                source_type=EvidenceSourceType.TASK,
+                authority=EvidenceAuthority.NORMATIVE,
+                quote=task_context.content,
+                supports=("LS-001",),
+                acquired_by="controller",
+                fresh=True,
+            ),
+        ),
+        observed_snapshots=(request.base_commit,),
+    )
+    second_round = _supported_record(
+        "LS-002",
+        "Copied state preserves its configured retry budget.",
+        task_context.context_id,
+        round_number=2,
+    )
+
+    merged = _merge_memory(
+        request, memory, (second_round,), (), snapshot=request.candidate_commit
+    )
+
+    by_id = {item.specification_id: item for item in merged.specifications}
+    assert by_id["LS-001"].status is SpecificationStatus.SUPPORTED
+    assert by_id["LS-002"].status is SpecificationStatus.SUPPORTED
