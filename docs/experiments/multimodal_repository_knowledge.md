@@ -107,6 +107,39 @@ media changed   -> rerun VLM/extractor for that artifact
 media removed   -> drop stale visual facts and bindings
 ```
 
+### MMWiki-style evaluation
+
+`codenib.wiki.media_eval` defines a small evaluation protocol for the first
+benchmark seed. It does not try to replace SWE-bench Multimodal or MM-IssueLoc.
+Instead, it measures whether repository visuals can be compiled into persistent
+wiki knowledge:
+
+- visual entity extraction precision / recall / F1;
+- visual-code grounding path hit@k;
+- visual-code grounding symbol hit@k.
+
+Gold instances use this shape:
+
+```json
+{
+  "instances": [
+    {
+      "artifact_path": "docs/architecture.svg",
+      "gold_entities": [
+        {"name": "IndexCompiler", "type": "component"}
+      ],
+      "gold_bindings": [
+        {
+          "entity_name": "IndexCompiler",
+          "source_path": "codenib/compiler/index_compiler.py",
+          "symbol": "IndexCompiler"
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Why evidence stays server-side
 
 Media generation may use bounded source snippets inside provider prompts. Those

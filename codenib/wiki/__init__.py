@@ -13,6 +13,11 @@ to a real symbol span pulled from the indexes (no fabricated lines).
 from .builder import WikiBuilder
 from .media_artifacts import discover_media_manifest
 from .media_evidence import build_media_evidence_pack
+from .media_eval import (
+    evaluate_mmwiki_predictions,
+    evaluate_visual_code_grounding,
+    evaluate_visual_fact_extraction,
+)
 from .media_facts import build_visual_facts_manifest, deterministic_visual_facts
 from .media_grounding import (
     VisualGroundingScorer,
@@ -47,6 +52,9 @@ __all__ = [
     "diff_media_manifests",
     "discover_media_manifest",
     "discover_source_symbol_candidates",
+    "evaluate_mmwiki_predictions",
+    "evaluate_visual_code_grounding",
+    "evaluate_visual_fact_extraction",
     "find_visual_code_links",
     "get_visual_evidence",
     "ground_visual_facts_to_sources",
