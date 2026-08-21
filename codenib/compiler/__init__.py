@@ -29,6 +29,9 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     from codenib.compiler.cache_import import (
         CompilerCacheBm25RecaptureResult,
         CompilerCacheImportResult,
+        CompilerCacheMultiViewImportResult,
+        CompilerCacheViewRecaptureResult,
+        import_compiler_cache,
         import_compiler_cache_bm25,
     )
     from codenib.compiler.index_builders import IndexBuilderRegistry
@@ -80,6 +83,18 @@ _EXPORTS = {
     "CompilerCacheImportResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheImportResult",
+    ),
+    "CompilerCacheMultiViewImportResult": (
+        "codenib.compiler.cache_import",
+        "CompilerCacheMultiViewImportResult",
+    ),
+    "CompilerCacheViewRecaptureResult": (
+        "codenib.compiler.cache_import",
+        "CompilerCacheViewRecaptureResult",
+    ),
+    "import_compiler_cache": (
+        "codenib.compiler.cache_import",
+        "import_compiler_cache",
     ),
     "import_compiler_cache_bm25": (
         "codenib.compiler.cache_import",
@@ -186,6 +201,9 @@ __all__ = [
     # Index compilation
     "CompilerCacheBm25RecaptureResult",
     "CompilerCacheImportResult",
+    "CompilerCacheMultiViewImportResult",
+    "CompilerCacheViewRecaptureResult",
+    "import_compiler_cache",
     "import_compiler_cache_bm25",
     "IndexCompiler",
     "IndexCompilerConfig",

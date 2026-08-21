@@ -1871,6 +1871,22 @@ def _compiler_cache_import_selection(
     return selected_ref, generation
 
 
+_COMPILER_CACHE_IMPORT_VIEWS = ("bm25", "vector")
+
+
+def _compiler_cache_import_views(explicit: Iterable[str]) -> tuple[str, ...]:
+    """Normalize an explicit cache-ingress view set into canonical order."""
+
+    requested = _split_values(explicit)
+    if not requested:
+        return ("bm25",)
+    unknown = sorted(set(requested) - set(_COMPILER_CACHE_IMPORT_VIEWS))
+    if unknown:
+        raise CLIError(f"unsupported compiler cache view: {', '.join(unknown)}")
+    selected = set(requested)
+    return tuple(view for view in _COMPILER_CACHE_IMPORT_VIEWS if view in selected)
+
+
 def _new_compiler_cache_import_nonce() -> str:
     import secrets
 
@@ -1887,12 +1903,20 @@ class _CompilerCacheImportPaths:
     catalog_path: Path
     cas_root: Path
     workspace_root: Path
-    bm25_destination: Path
+    view_destinations: tuple[tuple[str, Path], ...]
     context_destination: Path
     suggested_materialization: Path
 
+    @property
+    def destination_map(self) -> dict[str, Path]:
+        return dict(self.view_destinations)
 
-def _compiler_cache_import_paths(args: argparse.Namespace) -> _CompilerCacheImportPaths:
+
+def _compiler_cache_import_paths(
+    args: argparse.Namespace,
+    *,
+    views: tuple[str, ...] = ("bm25",),
+) -> _CompilerCacheImportPaths:
     """Freeze all user paths and allocate missing-only generation names."""
 
     repo_path = resolve_repo_path(args.repo)
@@ -1918,13 +1942,16 @@ def _compiler_cache_import_paths(args: argparse.Namespace) -> _CompilerCacheImpo
 
     nonce = _new_compiler_cache_import_nonce()
     prefix = f".codenib-cache-import-{nonce}"
+    view_destinations = tuple(
+        (view, workspace_root / f"{prefix}-{view}") for view in views
+    )
     return _CompilerCacheImportPaths(
         repo_path=repo_path,
         cache_dir=cache_dir,
         catalog_path=catalog_path,
         cas_root=cas_root,
         workspace_root=workspace_root,
-        bm25_destination=workspace_root / f"{prefix}-bm25",
+        view_destinations=view_destinations,
         context_destination=workspace_root / f"{prefix}-context",
         suggested_materialization=workspace_root / f"{prefix}-materialized",
     )
@@ -1958,7 +1985,7 @@ def _require_compiler_cache_import_topology(
         ]
     ] = []
     for destination in (
-        paths.bm25_destination,
+        *(destination for _view, destination in paths.view_destinations),
         paths.context_destination,
         paths.suggested_materialization,
     ):
@@ -2312,7 +2339,7 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
     from .artifacts.runtime import SourceBindingCleanupOwner
     from .compiler.cache_import import (
         compiler_cache_source_selection,
-        import_compiler_cache_bm25,
+        import_compiler_cache,
     )
     from .source_fingerprint import capture_repository_source
     from .storage import LocalCAS, SQLiteCatalog
@@ -2325,7 +2352,9 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
         ref_name=args.ref,
         expected_generation=args.expected_generation,
     )
-    paths = _compiler_cache_import_paths(args)
+    views = _compiler_cache_import_views(args.view)
+    paths = _compiler_cache_import_paths(args, views=views)
+    view_destinations = paths.destination_map
     try:
         provider = LocalWorkspaceProvider(paths.workspace_root)
         provider.require_support()
@@ -2342,7 +2371,7 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
             (
                 paths.cache_dir,
                 topology.cache_dir,
-                paths.bm25_destination,
+                *view_destinations.values(),
                 paths.context_destination,
                 paths.suggested_materialization,
             )
@@ -2356,7 +2385,7 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
                 topology.catalog_path,
                 topology.cas_root,
                 paths.workspace_root,
-                paths.bm25_destination,
+                *view_destinations.values(),
                 paths.context_destination,
                 paths.suggested_materialization,
             )
@@ -2365,11 +2394,25 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
     summary: tuple[str, str, int] | None = None
     try:
         source_selection = compiler_cache_source_selection(topology.cache_dir)
-        bm25_owner = _new_retained_output_receipt_owner()
+        view_owners = {view: _new_retained_output_receipt_owner() for view in views}
         context_owner = _new_retained_output_receipt_owner()
         source_owner = SourceBindingCleanupOwner()
         object_store_owner = _RetainedMaterializationResourceOwner()
         catalog_owner = _RetainedMaterializationResourceOwner()
+        view_cleanup_actions = tuple(
+            _OrderedAction(
+                label=(
+                    "cache import "
+                    + ("BM25" if view == "bm25" else view.title())
+                    + " receipt cleanup also failed"
+                ),
+                action=owner.close,
+                complete=lambda owner=owner: owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=owner,
+            )
+            for view, owner in reversed(tuple(view_owners.items()))
+        )
         cleanup_actions = (
             _OrderedAction(
                 label="cache import SQLite catalog cleanup also failed",
@@ -2392,13 +2435,7 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
                 retry_incomplete="cancellation",
                 incomplete_owner=context_owner,
             ),
-            _OrderedAction(
-                label="cache import BM25 receipt cleanup also failed",
-                action=bm25_owner.close,
-                complete=lambda: bm25_owner.closed,
-                retry_incomplete="cancellation",
-                incomplete_owner=bm25_owner,
-            ),
+            *view_cleanup_actions,
             _OrderedAction(
                 label="cache import repository source cleanup also failed",
                 action=source_owner.close,
@@ -2432,12 +2469,13 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
                 topology.catalog_path,
                 topology.catalog_identity,
             )
-            result = import_compiler_cache_bm25(
+            result = import_compiler_cache(
                 topology.cache_dir,
+                views=views,
                 repository_source=repository_source,
-                bm25_output_owner=bm25_owner,
+                view_output_owners=view_owners,
                 context_output_owner=context_owner,
-                bm25_destination=paths.bm25_destination,
+                view_destinations=view_destinations,
                 context_destination=paths.context_destination,
                 workspace_provider=provider,
                 repository_key=repository,
@@ -2462,7 +2500,10 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
         print(f"Snapshot:           {snapshot_id}")
         print(f"Ref:                {published_ref}")
         print(f"Generation:         {generation}")
-        print(f"BM25 generation:    {paths.bm25_destination}")
+        print(f"Views:              {','.join(views)}")
+        for view, destination in view_destinations.items():
+            display = "BM25" if view == "bm25" else view.title()
+            print(f"{display + ' generation:':<20}{destination}")
         print(f"Context generation: {paths.context_destination}")
         print(
             "Suggested output:   " f"{paths.suggested_materialization} (not reserved)"
@@ -2494,7 +2535,13 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
         return 0
     except BaseException as primary_error:  # noqa: B036 - preserve cancellation
         for destination, label in (
-            (paths.bm25_destination, "BM25 generation"),
+            *(
+                (
+                    destination,
+                    ("BM25" if view == "bm25" else view.title()) + " generation",
+                )
+                for view, destination in view_destinations.items()
+            ),
             (paths.context_destination, "context generation"),
         ):
             try:
@@ -4433,7 +4480,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     artifact_import_cache_parser = artifact_subparsers.add_parser(
         "import-cache",
-        help="import an existing compiler BM25 cache into retained storage",
+        help="import existing compiler query views into retained storage",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     artifact_import_cache_parser.add_argument(
@@ -4443,7 +4490,16 @@ def build_parser() -> argparse.ArgumentParser:
     artifact_import_cache_parser.add_argument(
         "--cache-dir",
         required=True,
-        help="existing compiler cache containing repo_manifest.json and BM25",
+        help="existing compiler cache containing repo_manifest.json and selected views",
+    )
+    artifact_import_cache_parser.add_argument(
+        "--view",
+        action="append",
+        default=[],
+        help=(
+            "current cache view to import (bm25 or vector); repeat or use a "
+            "comma-separated list; defaults to bm25"
+        ),
     )
     artifact_import_cache_parser.add_argument(
         "--catalog",

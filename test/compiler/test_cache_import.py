@@ -36,16 +36,25 @@ from codenib.artifacts import query_context_artifact
 from codenib.compiler.cache_import import (
     CompilerCacheBm25RecaptureResult,
     CompilerCacheImportResult,
+    CompilerCacheMultiViewImportResult,
+    CompilerCacheViewRecaptureResult,
     compiler_cache_source_selection,
+    import_compiler_cache,
     import_compiler_cache_bm25,
 )
-from codenib.compiler.index_builders import BM25IndexBuilder, IndexBuilderRegistry
+from codenib.compiler.index_builders import (
+    BM25IndexBuilder,
+    IndexBuilderRegistry,
+    VectorIndexBuilder,
+)
 from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.compiler.manifest_import import RepoManifestImportResult
 from codenib.compiler.manifest_materialization import (
     materialize_retained_repo_manifest_ref,
 )
+from codenib.compiler.retained_manifest_contract import REPO_MANIFEST_PROJECTION_VIEW
+from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import (
@@ -64,6 +73,22 @@ from codenib.storage import (
 _Result = TypeVar("_Result")
 _COMMIT = "a" * 40
 _REPOSITORY_KEY = "owner/repo"
+
+
+class _DeterministicEmbedding:
+    """Small local embedding used to produce real schema-8 vector bytes."""
+
+    def __init__(self, dimension: int) -> None:
+        self.dimension = dimension
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [
+            [float((index + offset) % 7 + 1) for offset in range(self.dimension)]
+            for index, _text in enumerate(texts)
+        ]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed_documents([text])[0]
 
 
 class _BackendTripwire:
@@ -223,6 +248,7 @@ class _LockAwareCAS(LocalCAS):
 class _LockAwareCatalog(SQLiteCatalog):
     def __init__(self, path: Path, state: dict[str, object]) -> None:
         self._test_state = state
+        self.publications: list[dict[str, object]] = []
         super().__init__(path)
 
     def retained_import_contract(self) -> str:
@@ -232,23 +258,62 @@ class _LockAwareCatalog(SQLiteCatalog):
         )
         return super().retained_import_contract()
 
-    def create_namespace(self, name: str) -> str:
+    def _record_data(self, name: str) -> None:
         assert self._test_state["phase"] == "released"
         self._test_state["events"].append(  # type: ignore[union-attr]
-            ("catalog.create_namespace", self._test_state["phase"])
+            (f"catalog.data.{name}", self._test_state["phase"])
         )
-        return super().create_namespace(name)
+
+    def create_namespace(self, *args, **kwargs):
+        self._record_data("create_namespace")
+        return super().create_namespace(*args, **kwargs)
+
+    def create_repository(self, *args, **kwargs):
+        self._record_data("create_repository")
+        return super().create_repository(*args, **kwargs)
+
+    def create_source_revision(self, *args, **kwargs):
+        self._record_data("create_source_revision")
+        return super().create_source_revision(*args, **kwargs)
+
+    def create_view_profile(self, *args, **kwargs):
+        self._record_data("create_view_profile")
+        return super().create_view_profile(*args, **kwargs)
+
+    def register_object(self, *args, **kwargs):
+        self._record_data("register_object")
+        return super().register_object(*args, **kwargs)
+
+    def stage_view_generation(self, *args, **kwargs):
+        self._record_data("stage_view_generation")
+        return super().stage_view_generation(*args, **kwargs)
+
+    def publish_snapshot(self, *args, **kwargs):
+        self._record_data("publish_snapshot")
+        publication = super().publish_snapshot(*args, **kwargs)
+        self.publications.append(copy.deepcopy(publication))
+        return publication
+
+    def resolve_ref(self, *args, **kwargs):
+        self._record_data("resolve_ref")
+        return super().resolve_ref(*args, **kwargs)
+
+    def get_manifest_summary(self, *args, **kwargs):
+        self._record_data("get_manifest_summary")
+        return super().get_manifest_summary(*args, **kwargs)
 
 
 class _PostCommitInterruptCatalog(SQLiteCatalog):
     def __init__(self, path: Path) -> None:
         self._interrupt_after_first_publish = True
+        self.interrupted_publication: dict[str, object] | None = None
         super().__init__(path)
 
     def publish_snapshot(self, *args, **kwargs):
         publication = super().publish_snapshot(*args, **kwargs)
         if self._interrupt_after_first_publish:
             self._interrupt_after_first_publish = False
+            self.interrupted_publication = copy.deepcopy(publication)
             raise RuntimeError("postcommit interruption")
         return publication
 
@@ -437,13 +502,63 @@ def _call(
     return import_compiler_cache_bm25(fixture.cache, **arguments)  # type: ignore[arg-type]
 
 
+def _call_generic(
+    fixture: _CacheFixture,
+    *,
+    catalog: object | None = None,
+    object_store: object | None = None,
+    **overrides,
+) -> CompilerCacheMultiViewImportResult:
+    if catalog is None:
+        catalog = _BackendTripwire()
+    if object_store is None:
+        object_store = catalog
+    arguments = {
+        "views": ("bm25",),
+        "repository_source": fixture.source,
+        "view_output_owners": {"bm25": fixture.bm25_owner},
+        "context_output_owner": fixture.context_owner,
+        "view_destinations": {"bm25": fixture.bm25_destination},
+        "context_destination": fixture.context_destination,
+        "workspace_provider": fixture.provider,
+        "repository_key": _REPOSITORY_KEY,
+        "catalog": catalog,
+        "object_store": object_store,
+        "environ": {},
+    }
+    arguments.update(overrides)
+    return import_compiler_cache(fixture.cache, **arguments)  # type: ignore[arg-type]
+
+
 def test_compiler_cache_import_is_a_lazy_public_export() -> None:
     assert compiler_module.CompilerCacheImportResult is CompilerCacheImportResult
+    assert (
+        compiler_module.CompilerCacheMultiViewImportResult
+        is CompilerCacheMultiViewImportResult
+    )
+    assert (
+        compiler_module.CompilerCacheViewRecaptureResult
+        is CompilerCacheViewRecaptureResult
+    )
     assert (
         compiler_module.CompilerCacheBm25RecaptureResult
         is CompilerCacheBm25RecaptureResult
     )
+    assert compiler_module.import_compiler_cache is import_compiler_cache
     assert compiler_module.import_compiler_cache_bm25 is import_compiler_cache_bm25
+    assert list(inspect.signature(import_compiler_cache).parameters)[:11] == [
+        "cache_dir",
+        "views",
+        "repository_source",
+        "view_output_owners",
+        "context_output_owner",
+        "view_destinations",
+        "context_destination",
+        "workspace_provider",
+        "repository_key",
+        "catalog",
+        "object_store",
+    ]
     assert list(inspect.signature(import_compiler_cache_bm25).parameters)[:10] == [
         "cache_dir",
         "repository_source",
@@ -458,11 +573,10 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
     ]
 
 
-def test_compiler_cache_source_selection_reads_exact_persisted_policy(
-    tmp_path: Path,
-) -> None:
-    fixture = _cache_fixture(tmp_path)
-    selection = RepositorySourceSelection(("generated",))
+def _persist_fixture_source_selection(
+    fixture: _CacheFixture,
+    selection: RepositorySourceSelection,
+):
     identity = fingerprint_repository(
         fixture.repository,
         exclude_roots=(fixture.cache,),
@@ -478,12 +592,238 @@ def test_compiler_cache_source_selection_reads_exact_persisted_policy(
     entry = manifest.indexes["bm25"]
     entry.source_selection_digest = selection.digest
     entry.source_fingerprint = identity.value
+    entry.config["source_selection_digest"] = selection.digest
+    entry.metadata["source_selection_digest"] = selection.digest
     manifest.save(manifest_path)
+    manifest_path.chmod(0o600)
+    return identity
+
+
+def test_compiler_cache_source_selection_reads_exact_persisted_policy(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    selection = RepositorySourceSelection(("generated",))
+    _persist_fixture_source_selection(fixture, selection)
 
     observed = compiler_cache_source_selection(fixture.cache)
 
     assert observed == selection
     assert observed is not selection
+
+
+def test_nondefault_source_selection_survives_portable_multiview_planning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    selection = RepositorySourceSelection(("generated",))
+    persisted_identity = _persist_fixture_source_selection(fixture, selection)
+    fixture.source.close()
+    fixture.source = capture_repository_source(
+        fixture.repository,
+        exclude_roots=(fixture.cache,),
+        selection=selection,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "import_retained_repo_manifest",
+        lambda *args, **kwargs: _fake_import_result(),
+    )
+
+    try:
+        result = _call_generic(fixture)
+
+        assert fixture.source.fingerprint == persisted_identity.value
+        assert result.import_plan.manifest.source_selection == selection
+        assert result.import_plan.source.source_selection == selection
+        entry = result.import_plan.manifest.indexes["bm25"]
+        assert entry.source_selection_digest == selection.digest
+        assert entry.config["source_selection_digest"] == selection.digest
+        assert (
+            RepoManifest.load(result.context_artifact.manifest_path).source_selection
+            == selection
+        )
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    ("mismatch", "error_type", "message"),
+    [
+        ("binding", StorageIntegrityError, "source selection differs"),
+        ("config", ValueError, "no exact current bm25"),
+    ],
+)
+def test_source_selection_mismatch_fails_before_workspace_or_storage_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch: str,
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    selection = RepositorySourceSelection(("generated",))
+    if mismatch == "binding":
+        # Exercise the independent identity axis after the byte fingerprint was
+        # captured; the coordinator must not authorize a selection mismatch
+        # merely because the retained bytes still match the manifest.
+        fixture.source._source_selection_identity = selection  # type: ignore[attr-defined]
+    else:
+        manifest_path = fixture.cache / "repo_manifest.json"
+        manifest = RepoManifest.load(manifest_path)
+        manifest.indexes["bm25"].config["source_selection_digest"] = selection.digest
+        manifest.save(manifest_path)
+        manifest_path.chmod(0o600)
+
+    backend = _BackendTripwire()
+    planned = False
+
+    def unexpected_plan(*args, **kwargs):
+        nonlocal planned
+        planned = True
+        raise AssertionError("cache view planning must not run")
+
+    monkeypatch.setattr(cache_import_module, "_plan_cache_view", unexpected_plan)
+    monkeypatch.setattr(
+        cache_import_module,
+        "import_retained_repo_manifest",
+        lambda *args, **kwargs: pytest.fail("storage import must not run"),
+    )
+    try:
+        with pytest.raises(error_type, match=message):
+            _call_generic(fixture, catalog=backend, object_store=backend)
+        assert not planned
+        assert backend.calls == ["contract"]
+        assert fixture.provider.support_count == 1
+        assert fixture.provider.run_count == 0
+        assert fixture.bm25_owner.state == "empty"
+        assert fixture.context_owner.state == "empty"
+    finally:
+        fixture.close()
+
+
+def test_generic_bm25_import_returns_ordered_detached_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    monkeypatch.setattr(
+        cache_import_module,
+        "import_retained_repo_manifest",
+        lambda *args, **kwargs: _fake_import_result(),
+    )
+    try:
+        result = _call_generic(fixture)
+
+        assert type(result) is CompilerCacheMultiViewImportResult
+        assert result.views == ("bm25",)
+        assert tuple(result.recapture_map) == ("bm25",)
+        recapture = result.recaptures[0]
+        assert type(recapture) is CompilerCacheViewRecaptureResult
+        assert recapture.view_type == "bm25"
+        assert recapture.source_view == fixture.cache / "bm25"
+        assert recapture.output_view == fixture.bm25_destination
+        assert recapture.output_file_fingerprints == {
+            record.path: {"size": record.size, "sha256": record.sha256}
+            for record in recapture.output_records
+        }
+        assert result.context_artifact.manifest_path.read_bytes() == (
+            result.canonical_manifest_bytes
+        )
+        assert result.import_plan.selection.selected_views == ("bm25",)
+        assert result.import_result == _fake_import_result()
+    finally:
+        fixture.close()
+
+
+def test_generic_import_rejects_nonexact_or_misaligned_view_mappings(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    backend = _BackendTripwire()
+
+    class DictSubclass(dict):
+        pass
+
+    extra_owner = PublishedWorkspaceReceiptOwner()
+    cases = (
+        (
+            {"views": ["bm25"]},
+            (TypeError, "exact tuple"),
+        ),
+        (
+            {"views": ("vector", "bm25")},
+            (ValueError, "canonical portable subset"),
+        ),
+        (
+            {"view_output_owners": DictSubclass({"bm25": fixture.bm25_owner})},
+            (TypeError, "exact dict"),
+        ),
+        (
+            {
+                "view_destinations": {
+                    "bm25": fixture.bm25_destination,
+                    "vector": fixture.workspace / "vector",
+                }
+            },
+            (ValueError, "exact selected keys and order"),
+        ),
+        (
+            {
+                "views": ("bm25", "vector"),
+                "view_output_owners": {
+                    "vector": extra_owner,
+                    "bm25": fixture.bm25_owner,
+                },
+                "view_destinations": {
+                    "bm25": fixture.bm25_destination,
+                    "vector": fixture.workspace / "vector",
+                },
+            },
+            (ValueError, "exact selected keys and order"),
+        ),
+        (
+            {
+                "views": ("bm25", "vector"),
+                "view_output_owners": {
+                    "bm25": fixture.bm25_owner,
+                    "vector": fixture.bm25_owner,
+                },
+                "view_destinations": {
+                    "bm25": fixture.bm25_destination,
+                    "vector": fixture.workspace / "vector",
+                },
+            },
+            (ValueError, "distinct receipt owners"),
+        ),
+        (
+            {"view_output_owners": {"bm25": fixture.context_owner}},
+            (ValueError, "distinct receipt owners"),
+        ),
+        (
+            {"view_destinations": {"bm25": str(fixture.bm25_destination)}},
+            (TypeError, "exact paths"),
+        ),
+    )
+    try:
+        for overrides, (error_type, message) in cases:
+            with pytest.raises(error_type, match=message):
+                _call_generic(
+                    fixture,
+                    catalog=backend,
+                    object_store=backend,
+                    **overrides,
+                )
+        assert backend.calls == []
+        assert fixture.provider.support_count == 0
+        assert fixture.provider.run_count == 0
+        assert fixture.bm25_owner.state == "empty"
+        assert fixture.context_owner.state == "empty"
+        assert extra_owner.state == "empty"
+    finally:
+        extra_owner.close()
+        fixture.close()
 
 
 def test_import_recaptures_inside_cache_lock_and_imports_after_release(
@@ -512,10 +852,25 @@ def test_import_recaptures_inside_cache_lock_and_imports_after_release(
         return real_plan(*args, **kwargs)
 
     real_publish = cache_import_module._publish_recaptured_bm25_view
+    real_context_plan = cache_import_module.plan_context_artifact_strict
+    real_context_publish = cache_import_module.publish_planned_context_artifact_strict
+    context_planned = {"value": False}
 
     def tracked_publish(*args, **kwargs):
         assert planned_before_publish["value"]
         return real_publish(*args, **kwargs)
+
+    def tracked_context_plan(*args, **kwargs):
+        assert lock_state["held"]
+        assert fixture.bm25_owner.active
+        assert fixture.context_owner.state == "empty"
+        context_planned["value"] = True
+        return real_context_plan(*args, **kwargs)
+
+    def tracked_context_publish(*args, **kwargs):
+        assert lock_state["held"]
+        assert context_planned["value"]
+        return real_context_publish(*args, **kwargs)
 
     def imported(plan, **kwargs):
         assert not lock_state["held"]
@@ -534,6 +889,16 @@ def test_import_recaptures_inside_cache_lock_and_imports_after_release(
         cache_import_module,
         "_publish_recaptured_bm25_view",
         tracked_publish,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "plan_context_artifact_strict",
+        tracked_context_plan,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "publish_planned_context_artifact_strict",
+        tracked_context_publish,
     )
     monkeypatch.setattr(
         cache_import_module,
@@ -883,9 +1248,18 @@ def test_postcommit_interruption_retries_as_exact_unchanged_import(
             fixture.context_owner = PublishedWorkspaceReceiptOwner()
             retry = _call(fixture, catalog=catalog, object_store=cas)
 
+            assert catalog.interrupted_publication is not None
+            assert catalog.interrupted_publication["changed"] is True
             assert retry.import_result.generation == 1
             assert retry.import_result.changed is False
-            assert retry.import_result.snapshot_id
+            assert (
+                retry.import_result.snapshot_id
+                == catalog.interrupted_publication["snapshot_id"]
+            )
+            assert (
+                retry.import_result.generation
+                == catalog.interrupted_publication["generation"]
+            )
             assert fixture.provider.support_count == 6
             assert fixture.provider.run_count == 4
             assert first_bm25_owner.active
@@ -908,6 +1282,112 @@ def _git_commit(repository: Path, message: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+@dataclass(frozen=True)
+class _MultiViewCompilerFixture:
+    repository: Path
+    source_file: Path
+    cache: Path
+    compiler: IndexCompiler
+    commit: str
+
+
+def _multiview_compiler_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    marker: str,
+) -> _MultiViewCompilerFixture:
+    repository = tmp_path / "repository"
+    repository.mkdir(mode=0o700)
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.email", "test@example.test"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.name", "CodeNib Test"],
+        check=True,
+    )
+    source_file = repository / "sample.py"
+    source_file.write_text(
+        f"MULTIVIEW_CACHE_MARKER = {marker!r}\n",
+        encoding="utf-8",
+    )
+    commit = _git_commit(repository, f"multiview-{marker.lower()}")
+
+    vector_builder = VectorIndexBuilder(
+        languages=["python"],
+        embedding_model="test/model",
+        embedding_dimension=4,
+        build_levels=["l2"],
+    )
+
+    def build_vector(**kwargs):
+        assert kwargs["artifact_metadata"]["builder_schema"] == 8
+        assert kwargs["_atomic_publish"] is False
+        store = CodeVectorStore(
+            embedding_model=kwargs["embedding_model"],
+            embedding_provider=kwargs["embedding_provider"],
+            dimension=kwargs["embedding_dimension"],
+            index_metric=kwargs["index_metric"],
+            store_path=kwargs["index_path"],
+            embedding=_DeterministicEmbedding(kwargs["embedding_dimension"]),
+            artifact_metadata=kwargs["artifact_metadata"],
+            **kwargs["embedding_kwargs"],
+        )
+        store.add_code_chunks(
+            [
+                {
+                    "content": source_file.read_text(encoding="utf-8"),
+                    "chunk_type": "file",
+                    "name": "sample",
+                    "file": "sample.py",
+                    "start_line": 0,
+                    "end_line": 0,
+                    "node_id": "sample.py",
+                }
+            ],
+            level="l2",
+        )
+        store.save(kwargs["index_path"])
+        return store
+
+    monkeypatch.setattr(
+        "codenib.index.embedding.builders.build_hierarchical_vector_store",
+        build_vector,
+    )
+    registry = IndexBuilderRegistry()
+    registry.register(
+        "bm25",
+        BM25IndexBuilder(languages=["python"], max_k=17),
+    )
+    registry.register("vector", vector_builder)
+    compiler = IndexCompiler(
+        registry,
+        IndexCompilerConfig(
+            index_types=["bm25", "vector"],
+            languages=["python"],
+        ),
+    )
+    cache = repository / ".codenib_cache"
+    manifest = compiler.compile_repo(
+        str(repository),
+        index_types=["bm25", "vector"],
+        cache_dir=str(cache),
+    )
+    assert manifest.commit == commit
+    assert manifest.indexes["vector"].config["builder_schema"] == 8
+    assert (cache / "vector/l2/documents_test__model.json").is_file()
+    assert not (cache / "vector/l2/documents_test__model.pkl").exists()
+    return _MultiViewCompilerFixture(
+        repository=repository,
+        source_file=source_file,
+        cache=cache,
+        compiler=compiler,
+        commit=commit,
+    )
 
 
 def test_real_compiler_cache_import_retry_update_and_latest_query(
@@ -1029,7 +1509,7 @@ def test_real_compiler_cache_import_retry_update_and_latest_query(
             assert all(
                 phase == "released"
                 for event, phase in state["events"]  # type: ignore[union-attr]
-                if event in {"cas.put_chunks", "catalog.create_namespace"}
+                if event.startswith(("cas.", "catalog.data."))
             )
 
             retry = import_generation(
@@ -1118,6 +1598,540 @@ def test_real_compiler_cache_import_retry_update_and_latest_query(
         source_a.close()
 
 
+def test_real_multiview_compiler_cache_imports_one_context_and_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compiled = _multiview_compiler_fixture(
+        tmp_path,
+        monkeypatch,
+        marker="GENERATION_A_ONLY",
+    )
+    repository = compiled.repository
+    source_file = compiled.source_file
+    cache = compiled.cache
+    compiler = compiled.compiler
+    commit_a = compiled.commit
+    source_a = capture_repository_source(repository, exclude_roots=(cache,))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    provider = _TestWorkspaceProvider()
+    retained_owners: list[PublishedWorkspaceReceiptOwner] = []
+    materialized_owner = PublishedWorkspaceReceiptOwner()
+    source_b: RepositorySourceBinding | None = None
+    state: dict[str, object] = {"phase": "before", "events": []}
+    real_lock = cache_import_module.compiler_cache_lock
+
+    @contextmanager
+    def tracked_lock(cache_path: Path, *, create: bool = True):
+        assert create is False
+        with real_lock(cache_path, create=create):
+            state["phase"] = "locked"
+            state["events"].append(  # type: ignore[union-attr]
+                ("cache.lock.acquired", state["phase"])
+            )
+            try:
+                yield
+            finally:
+                state["phase"] = "released"
+                state["events"].append(  # type: ignore[union-attr]
+                    ("cache.lock.released", state["phase"])
+                )
+
+    monkeypatch.setattr(cache_import_module, "compiler_cache_lock", tracked_lock)
+    events: list[str] = []
+    real_plan_view = cache_import_module._plan_cache_view
+    real_import_plan = cache_import_module.plan_repo_manifest_import_bytes
+    real_publish_view = cache_import_module._publish_cache_view
+    real_context_plan = cache_import_module.plan_context_artifact_strict
+    real_context_publish = cache_import_module.publish_planned_context_artifact_strict
+
+    def tracked_plan_view(view, *args, **kwargs):
+        events.append(f"plan:{view}")
+        return real_plan_view(view, *args, **kwargs)
+
+    def tracked_import_plan(*args, **kwargs):
+        events.append("plan:retained")
+        return real_import_plan(*args, **kwargs)
+
+    def tracked_publish_view(view, *args, **kwargs):
+        expected = ["plan:bm25", "plan:vector", "plan:retained"]
+        if view == "vector":
+            expected.append("publish:bm25")
+        assert events == expected
+        events.append(f"publish:{view}")
+        return real_publish_view(view, *args, **kwargs)
+
+    def tracked_context_plan(*args, **kwargs):
+        assert events == [
+            "plan:bm25",
+            "plan:vector",
+            "plan:retained",
+            "publish:bm25",
+            "publish:vector",
+        ]
+        events.append("plan:context")
+        return real_context_plan(*args, **kwargs)
+
+    def tracked_context_publish(*args, **kwargs):
+        assert events[-1] == "plan:context"
+        events.append("publish:context")
+        return real_context_publish(*args, **kwargs)
+
+    monkeypatch.setattr(cache_import_module, "_plan_cache_view", tracked_plan_view)
+    monkeypatch.setattr(
+        cache_import_module,
+        "plan_repo_manifest_import_bytes",
+        tracked_import_plan,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "_publish_cache_view",
+        tracked_publish_view,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "plan_context_artifact_strict",
+        tracked_context_plan,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "publish_planned_context_artifact_strict",
+        tracked_context_publish,
+    )
+
+    expected_events = [
+        "plan:bm25",
+        "plan:vector",
+        "plan:retained",
+        "publish:bm25",
+        "publish:vector",
+        "plan:context",
+        "publish:context",
+    ]
+
+    def import_generation(
+        name: str,
+        source: RepositorySourceBinding,
+        *,
+        expected_generation: int,
+        catalog: SQLiteCatalog,
+        cas: LocalCAS,
+    ) -> CompilerCacheMultiViewImportResult:
+        view_owners = {
+            "bm25": PublishedWorkspaceReceiptOwner(),
+            "vector": PublishedWorkspaceReceiptOwner(),
+        }
+        context_owner = PublishedWorkspaceReceiptOwner()
+        retained_owners.extend((*view_owners.values(), context_owner))
+        events.clear()
+        result = import_compiler_cache(
+            cache,
+            views=("bm25", "vector"),
+            repository_source=source,
+            view_output_owners=view_owners,
+            context_output_owner=context_owner,
+            view_destinations={
+                "bm25": workspace / f"{name}-bm25",
+                "vector": workspace / f"{name}-vector",
+            },
+            context_destination=workspace / f"{name}-context",
+            workspace_provider=provider,
+            repository_key=_REPOSITORY_KEY,
+            catalog=catalog,
+            object_store=cas,
+            expected_generation=expected_generation,
+            environ={},
+        )
+        assert events == expected_events
+        return result
+
+    binding = None
+    context: ServerContext | None = None
+    try:
+        with (
+            _LockAwareCAS(tmp_path / "cas", state) as cas,
+            _LockAwareCatalog(tmp_path / "catalog.sqlite", state) as catalog,
+        ):
+            first = import_generation(
+                "a-first",
+                source_a,
+                expected_generation=0,
+                catalog=catalog,
+                cas=cas,
+            )
+            assert first.views == ("bm25", "vector")
+            assert tuple(first.recapture_map) == ("bm25", "vector")
+            assert first.import_plan.selection.selected_views == (
+                "bm25",
+                "vector",
+            )
+            assert first.context_artifact.views == ("bm25", "vector")
+            assert first.import_result.views == ("bm25", "vector")
+            assert first.import_result.generation == 1
+            assert first.import_result.changed is True
+            assert tuple(
+                view for view, _generation in first.import_result.view_generation_items
+            ) == ("bm25", REPO_MANIFEST_PROJECTION_VIEW, "vector")
+            assert provider.support_count == 4
+            assert provider.run_count == 3
+            first_view_generations = {
+                view: generation
+                for view, generation in first.import_result.view_generation_items
+                if view in first.views
+            }
+
+            retry = import_generation(
+                "a-retry",
+                source_a,
+                expected_generation=0,
+                catalog=catalog,
+                cas=cas,
+            )
+            assert retry.import_plan.plan_digest == first.import_plan.plan_digest
+            assert retry.import_result.snapshot_id == first.import_result.snapshot_id
+            assert retry.import_result.generation == 1
+            assert retry.import_result.changed is False
+            assert {
+                view: generation
+                for view, generation in retry.import_result.view_generation_items
+                if view in retry.views
+            } == first_view_generations
+
+            source_a.close()
+            source_file.write_text(
+                'MULTIVIEW_CACHE_MARKER = "GENERATION_B_ONLY"\n',
+                encoding="utf-8",
+            )
+            commit_b = _git_commit(repository, "multiview-generation-b")
+            manifest_b = compiler.update_repo(
+                str(repository),
+                index_types=["bm25", "vector"],
+                cache_dir=str(cache),
+            )
+            assert commit_b != commit_a
+            assert manifest_b.commit == commit_b
+            assert manifest_b.indexes["vector"].config["builder_schema"] == 8
+            source_b = capture_repository_source(
+                repository,
+                exclude_roots=(cache,),
+            )
+
+            updated = import_generation(
+                "b-updated",
+                source_b,
+                expected_generation=1,
+                catalog=catalog,
+                cas=cas,
+            )
+            assert updated.import_result.generation == 2
+            assert updated.import_result.changed is True
+            assert updated.import_result.snapshot_id != first.import_result.snapshot_id
+            updated_view_generations = {
+                view: generation
+                for view, generation in updated.import_result.view_generation_items
+                if view in updated.views
+            }
+            assert tuple(updated_view_generations) == ("bm25", "vector")
+            assert all(
+                updated_view_generations[view] != first_view_generations[view]
+                for view in ("bm25", "vector")
+            )
+            assert [
+                (publication["generation"], publication["changed"])
+                for publication in catalog.publications
+            ] == [(1, True), (1, False), (2, True)]
+            assert provider.support_count == 12
+            assert provider.run_count == 9
+            lock_events = [
+                event
+                for event, _phase in state["events"]  # type: ignore[union-attr]
+                if event.startswith("cache.lock.")
+            ]
+            assert (
+                lock_events
+                == [
+                    "cache.lock.acquired",
+                    "cache.lock.released",
+                ]
+                * 3
+            )
+            assert all(
+                phase == "released"
+                for event, phase in state["events"]  # type: ignore[union-attr]
+                if event.startswith(("cas.", "catalog.data."))
+            )
+
+            materialized = materialize_retained_repo_manifest_ref(
+                _REPOSITORY_KEY,
+                workspace / "latest-materialized",
+                catalog=catalog,
+                object_store=cas,
+                workspace_provider=provider,
+                output_receipt_owner=materialized_owner,
+                expected_generation=2,
+                environ={},
+            )
+            assert materialized.export_receipt.ref_generation == 2
+            assert materialized.artifact.commit == commit_b
+            assert materialized.artifact.views == ("bm25", "vector")
+            binding = query_context_artifact(
+                materialized.artifact.output_dir,
+                expected_repository=_REPOSITORY_KEY,
+                expected_commit=commit_b,
+            )
+            assert tuple(sorted(binding.manifest.indexes)) == ("bm25", "vector")
+            context = ServerContext.load(
+                binding.manifest,
+                views=("bm25",),
+                artifact_binding=binding,
+            )
+            assert context.errors == {}
+            assert context.bm25 is not None
+            assert any(
+                "generation b only" in document.page_content
+                for document in context.bm25.documents
+            )
+            assert all(
+                "generation a only" not in document.page_content
+                for document in context.bm25.documents
+            )
+            assert context.bm25.search("GENERATION_B_ONLY", top_k=5)
+    finally:
+        if context is not None:
+            context.close()
+        if binding is not None:
+            binding.close()
+        materialized_owner.close()
+        for owner in reversed(retained_owners):
+            owner.close()
+        if source_b is not None:
+            source_b.close()
+        source_a.close()
+
+
+def test_real_vector_only_cache_import_materializes_exact_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compiled = _multiview_compiler_fixture(
+        tmp_path,
+        monkeypatch,
+        marker="VECTOR_ONLY",
+    )
+    source = capture_repository_source(
+        compiled.repository,
+        exclude_roots=(compiled.cache,),
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    provider = _TestWorkspaceProvider()
+    vector_owner = PublishedWorkspaceReceiptOwner()
+    context_owner = PublishedWorkspaceReceiptOwner()
+    materialized_owner = PublishedWorkspaceReceiptOwner()
+    binding = None
+    vector_destination = workspace / "vector-only-vector"
+    context_destination = workspace / "vector-only-context"
+    materialized_destination = workspace / "vector-only-materialized"
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            result = import_compiler_cache(
+                compiled.cache,
+                views=("vector",),
+                repository_source=source,
+                view_output_owners={"vector": vector_owner},
+                context_output_owner=context_owner,
+                view_destinations={"vector": vector_destination},
+                context_destination=context_destination,
+                workspace_provider=provider,
+                repository_key=_REPOSITORY_KEY,
+                catalog=catalog,
+                object_store=cas,
+                expected_generation=0,
+                environ={},
+            )
+
+            assert result.views == ("vector",)
+            assert tuple(result.recapture_map) == ("vector",)
+            assert tuple(result.import_plan.manifest.indexes) == ("vector",)
+            assert result.import_plan.manifest.capabilities == {
+                "sparse_search": False,
+                "dense_search": True,
+                "hybrid_search": False,
+                "symbol_navigation": False,
+            }
+            assert result.context_artifact.views == ("vector",)
+            assert result.context_artifact.output_dir == context_destination
+            assert result.import_result.views == ("vector",)
+            assert result.import_result.generation == 1
+            assert result.import_result.changed is True
+            assert tuple(
+                view for view, _generation in result.import_result.view_generation_items
+            ) == (REPO_MANIFEST_PROJECTION_VIEW, "vector")
+            resolved = catalog.resolve_ref(result.import_result.repository_id)
+            assert resolved["ref_name"] == "main"
+            assert resolved["snapshot_id"] == result.import_result.snapshot_id
+            assert resolved["generation"] == 1
+            assert vector_destination.is_dir()
+            assert context_destination.is_dir()
+            assert not (workspace / "vector-only-bm25").exists()
+
+            materialized = materialize_retained_repo_manifest_ref(
+                _REPOSITORY_KEY,
+                materialized_destination,
+                catalog=catalog,
+                object_store=cas,
+                workspace_provider=provider,
+                output_receipt_owner=materialized_owner,
+                expected_generation=1,
+                environ={},
+            )
+            assert materialized.export_receipt.snapshot_id == (
+                result.import_result.snapshot_id
+            )
+            assert materialized.artifact.views == ("vector",)
+            assert (materialized_destination / "views/vector").is_dir()
+            assert not (materialized_destination / "views/bm25").exists()
+            binding = query_context_artifact(
+                materialized_destination,
+                expected_repository=_REPOSITORY_KEY,
+                expected_commit=compiled.commit,
+            )
+            assert tuple(binding.manifest.indexes) == ("vector",)
+            assert binding.manifest.capabilities == {
+                "sparse_search": False,
+                "dense_search": True,
+                "hybrid_search": False,
+                "symbol_navigation": False,
+            }
+            assert provider.run_count == 3
+    finally:
+        if binding is not None:
+            binding.close()
+        materialized_owner.close()
+        context_owner.close()
+        vector_owner.close()
+        source.close()
+
+
+def test_multiview_postcommit_interruption_retries_with_fresh_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compiled = _multiview_compiler_fixture(
+        tmp_path,
+        monkeypatch,
+        marker="POSTCOMMIT",
+    )
+    source = capture_repository_source(
+        compiled.repository,
+        exclude_roots=(compiled.cache,),
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    provider = _TestWorkspaceProvider()
+    first_owners = {
+        "bm25": PublishedWorkspaceReceiptOwner(),
+        "vector": PublishedWorkspaceReceiptOwner(),
+    }
+    first_context_owner = PublishedWorkspaceReceiptOwner()
+    retry_owners = {
+        "bm25": PublishedWorkspaceReceiptOwner(),
+        "vector": PublishedWorkspaceReceiptOwner(),
+    }
+    retry_context_owner = PublishedWorkspaceReceiptOwner()
+    first_destinations = {
+        "bm25": workspace / "first-bm25",
+        "vector": workspace / "first-vector",
+    }
+    first_context_destination = workspace / "first-context"
+    retry_destinations = {
+        "bm25": workspace / "retry-bm25",
+        "vector": workspace / "retry-vector",
+    }
+    retry_context_destination = workspace / "retry-context"
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            _PostCommitInterruptCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            with pytest.raises(RuntimeError, match="postcommit interruption"):
+                import_compiler_cache(
+                    compiled.cache,
+                    views=("bm25", "vector"),
+                    repository_source=source,
+                    view_output_owners=first_owners,
+                    context_output_owner=first_context_owner,
+                    view_destinations=first_destinations,
+                    context_destination=first_context_destination,
+                    workspace_provider=provider,
+                    repository_key=_REPOSITORY_KEY,
+                    catalog=catalog,
+                    object_store=cas,
+                    expected_generation=0,
+                    environ={},
+                )
+
+            assert all(path.is_dir() for path in first_destinations.values())
+            assert first_context_destination.is_dir()
+            assert all(owner.active for owner in first_owners.values())
+            assert first_context_owner.active
+            assert all(not path.exists() for path in retry_destinations.values())
+            assert not retry_context_destination.exists()
+
+            retry = import_compiler_cache(
+                compiled.cache,
+                views=("bm25", "vector"),
+                repository_source=source,
+                view_output_owners=retry_owners,
+                context_output_owner=retry_context_owner,
+                view_destinations=retry_destinations,
+                context_destination=retry_context_destination,
+                workspace_provider=provider,
+                repository_key=_REPOSITORY_KEY,
+                catalog=catalog,
+                object_store=cas,
+                expected_generation=0,
+                environ={},
+            )
+
+            assert catalog.interrupted_publication is not None
+            assert catalog.interrupted_publication["changed"] is True
+            assert retry.import_result.generation == 1
+            assert retry.import_result.changed is False
+            assert (
+                retry.import_result.snapshot_id
+                == catalog.interrupted_publication["snapshot_id"]
+            )
+            assert (
+                retry.import_result.generation
+                == catalog.interrupted_publication["generation"]
+            )
+            assert retry.import_result.views == ("bm25", "vector")
+            assert tuple(
+                view for view, _generation in retry.import_result.view_generation_items
+            ) == ("bm25", REPO_MANIFEST_PROJECTION_VIEW, "vector")
+            assert all(path.is_dir() for path in retry_destinations.values())
+            assert retry_context_destination.is_dir()
+            assert all(owner.active for owner in retry_owners.values())
+            assert retry_context_owner.active
+            assert all(owner.active for owner in first_owners.values())
+            assert first_context_owner.active
+            assert provider.support_count == 8
+            assert provider.run_count == 6
+    finally:
+        retry_context_owner.close()
+        for owner in reversed(tuple(retry_owners.values())):
+            owner.close()
+        first_context_owner.close()
+        for owner in reversed(tuple(first_owners.values())):
+            owner.close()
+        source.close()
+
+
 def test_real_cli_import_cache_materialize_snapshot_and_query(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1132,40 +2146,14 @@ def test_real_cli_import_cache_materialize_snapshot_and_query(
     except UnsupportedWorkspaceCreation as error:
         pytest.skip(f"native local workspace provider is unavailable: {error}")
 
-    repository = tmp_path / "repository"
-    repository.mkdir(mode=0o700)
-    subprocess.run(["git", "init", "-q", str(repository)], check=True)
-    subprocess.run(
-        ["git", "-C", str(repository), "config", "user.email", "test@example.test"],
-        check=True,
+    compiled = _multiview_compiler_fixture(
+        tmp_path,
+        monkeypatch,
+        marker="PRODUCTION_SHAPED_CACHE_IMPORT",
     )
-    subprocess.run(
-        ["git", "-C", str(repository), "config", "user.name", "CodeNib Test"],
-        check=True,
-    )
-    source_file = repository / "sample.py"
-    source_file.write_text(
-        'CLI_E2E_MARKER = "PRODUCTION_SHAPED_CACHE_IMPORT"\n',
-        encoding="utf-8",
-    )
-    commit = _git_commit(repository, "cli-cache-import")
-
-    registry = IndexBuilderRegistry()
-    registry.register(
-        "bm25",
-        BM25IndexBuilder(languages=["python"], max_k=17),
-    )
-    compiler = IndexCompiler(
-        registry,
-        IndexCompilerConfig(index_types=["bm25"], languages=["python"]),
-    )
-    cache = repository / ".codenib_cache"
-    manifest = compiler.compile_repo(
-        str(repository),
-        index_types=["bm25"],
-        cache_dir=str(cache),
-    )
-    assert manifest.commit == commit
+    repository = compiled.repository
+    cache = compiled.cache
+    commit = compiled.commit
 
     catalog_path = tmp_path / "catalog.sqlite"
     with SQLiteCatalog(catalog_path):
@@ -1192,6 +2180,8 @@ def test_real_cli_import_cache_materialize_snapshot_and_query(
             os.fspath(workspace),
             "--repository",
             _REPOSITORY_KEY,
+            "--view",
+            "vector,bm25",
         ]
     )
     assert import_args.handler is cli_module._run_artifact_import_cache
@@ -1205,13 +2195,18 @@ def test_real_cli_import_cache_materialize_snapshot_and_query(
     )
     assert snapshot_id
     assert "Generation:         1" in import_output
+    assert "Views:              bm25,vector" in import_output
 
     prefix = f".codenib-cache-import-{nonce}"
     bm25_generation = workspace / f"{prefix}-bm25"
+    vector_generation = workspace / f"{prefix}-vector"
     context_generation = workspace / f"{prefix}-context"
     suggested_output = workspace / f"{prefix}-materialized"
     materialized_output = workspace / "materialized"
     assert bm25_generation.is_dir()
+    assert vector_generation.is_dir()
+    assert (vector_generation / "l2/documents_test__model.json").is_file()
+    assert not (vector_generation / "l2/documents_test__model.pkl").exists()
     assert context_generation.is_dir()
     assert not suggested_output.exists()
     assert not materialized_output.exists()
@@ -1239,8 +2234,12 @@ def test_real_cli_import_cache_materialize_snapshot_and_query(
 
     materialize_output = capsys.readouterr().out
     assert f"Snapshot:         {snapshot_id}" in materialize_output
+    assert "Views:            bm25, vector" in materialize_output
     assert materialized_output.is_dir()
+    assert (materialized_output / "views/bm25").is_dir()
+    assert (materialized_output / "views/vector").is_dir()
     assert bm25_generation.is_dir()
+    assert vector_generation.is_dir()
     assert context_generation.is_dir()
 
     binding = query_context_artifact(
@@ -1250,6 +2249,7 @@ def test_real_cli_import_cache_materialize_snapshot_and_query(
     )
     context: ServerContext | None = None
     try:
+        assert tuple(sorted(binding.manifest.indexes)) == ("bm25", "vector")
         context = ServerContext.load(
             binding.manifest,
             views=("bm25",),

@@ -305,6 +305,8 @@ def test_artifact_import_cache_parser_exposes_existing_storage_inputs() -> None:
             "release",
             "--expected-generation",
             "0",
+            "--view",
+            "vector,bm25",
         ]
     )
     defaults = cli.build_parser().parse_args(base)
@@ -316,9 +318,15 @@ def test_artifact_import_cache_parser_exposes_existing_storage_inputs() -> None:
     assert args.namespace == "production"
     assert args.ref == "release"
     assert args.expected_generation == 0
+    assert args.view == ["vector,bm25"]
     assert defaults.namespace == "default"
     assert defaults.ref == "main"
     assert defaults.expected_generation == 0
+    assert defaults.view == []
+    assert cli._compiler_cache_import_views(defaults.view) == ("bm25",)
+    assert cli._compiler_cache_import_views(args.view) == ("bm25", "vector")
+    with pytest.raises(cli.CLIError, match="unsupported compiler cache view"):
+        cli._compiler_cache_import_views(["graph"])
     assert cli._compiler_cache_import_selection(
         ref_name=None,
         expected_generation=None,
@@ -362,7 +370,7 @@ def test_artifact_import_cache_freezes_missing_disjoint_topology(
     assert topology.cache_dir == cache.resolve(strict=True)
     assert topology.catalog_path == catalog.resolve(strict=True)
     assert topology.cas_root == cas_root.resolve(strict=True)
-    assert paths.bm25_destination == workspace_root / f"{prefix}-bm25"
+    assert paths.view_destinations == (("bm25", workspace_root / f"{prefix}-bm25"),)
     assert paths.context_destination == workspace_root / f"{prefix}-context"
     assert paths.suggested_materialization == (
         workspace_root / f"{prefix}-materialized"
@@ -442,6 +450,7 @@ def _cache_import_cli_test_args(tmp_path: Path) -> SimpleNamespace:
         namespace="default",
         ref="main",
         expected_generation=0,
+        view=[],
     )
 
 
@@ -521,6 +530,7 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     args = _cache_import_cli_test_args(tmp_path)
+    args.view = ["vector,bm25"]
     nonce = "b" * 32
     monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: nonce)
     workspace_root = Path(args.workspace_root)
@@ -528,6 +538,7 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
     catalog_path = Path(args.catalog)
     cas_root = Path(args.cas_root)
     bm25_destination = workspace_root / f".codenib-cache-import-{nonce}-bm25"
+    vector_destination = workspace_root / f".codenib-cache-import-{nonce}-vector"
     context_destination = workspace_root / f".codenib-cache-import-{nonce}-context"
     suggested = workspace_root / f".codenib-cache-import-{nonce}-materialized"
     events: list[str] = []
@@ -553,11 +564,12 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
             self.closed = True
 
     bm25_owner = Closeable("bm25")
+    vector_owner = Closeable("vector")
     context_owner = Closeable("context")
     source = Closeable("source")
     store = Closeable("cas")
     catalog = Closeable("catalog")
-    receipt_owners = iter((bm25_owner, context_owner))
+    receipt_owners = iter((bm25_owner, vector_owner, context_owner))
     catalog_identity = cli._retained_catalog_file_identity(catalog_path)
 
     def capture(
@@ -591,6 +603,7 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
         events.append("bridge")
         bridge_calls.append((cache_dir, kwargs))
         bm25_destination.mkdir()
+        vector_destination.mkdir()
         context_destination.mkdir()
         return SimpleNamespace(
             import_result=SimpleNamespace(
@@ -611,7 +624,7 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
     monkeypatch.setattr(storage_module, "SQLiteCatalog", open_catalog)
     monkeypatch.setattr(
         cache_import_module,
-        "import_compiler_cache_bm25",
+        "import_compiler_cache",
         import_cache,
     )
     monkeypatch.setattr(
@@ -623,6 +636,7 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
 
     def print_after_cleanup(*values: object, **kwargs: object) -> None:
         assert bm25_owner.closed
+        assert vector_owner.closed
         assert context_owner.closed
         assert source.closed
         assert store.closed
@@ -636,17 +650,30 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
     assert capture_calls == [
         (
             Path(args.repo),
-            (cache, bm25_destination, context_destination, suggested),
+            (
+                cache,
+                bm25_destination,
+                vector_destination,
+                context_destination,
+                suggested,
+            ),
             source_selection,
         )
     ]
     assert len(bridge_calls) == 1
     passed_cache, passed = bridge_calls[0]
     assert passed_cache == cache.resolve(strict=True)
+    assert passed["views"] == ("bm25", "vector")
     assert passed["repository_source"] is source
-    assert passed["bm25_output_owner"] is bm25_owner
+    assert passed["view_output_owners"] == {
+        "bm25": bm25_owner,
+        "vector": vector_owner,
+    }
     assert passed["context_output_owner"] is context_owner
-    assert passed["bm25_destination"] == bm25_destination
+    assert passed["view_destinations"] == {
+        "bm25": bm25_destination,
+        "vector": vector_destination,
+    }
     assert passed["context_destination"] == context_destination
     assert passed["repository_key"] == "owner/repo"
     assert passed["namespace_name"] == "default"
@@ -654,26 +681,31 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
     assert passed["expected_generation"] == 0
     forbidden = passed["forbidden_paths"]
     assert bm25_destination in forbidden
+    assert vector_destination in forbidden
     assert context_destination in forbidden
     assert events.index("provider-support") < events.index("capture")
     assert events.index("capture") < events.index("cas-open")
     assert events.index("cas-open") < events.index("catalog-open")
     assert events.index("catalog-open") < events.index("bridge")
-    assert events[-5:] == [
+    assert events[-6:] == [
         "catalog-close",
         "cas-close",
         "context-close",
+        "vector-close",
         "bm25-close",
         "source-close",
     ]
     assert bm25_destination.is_dir()
+    assert vector_destination.is_dir()
     assert context_destination.is_dir()
     assert not suggested.exists()
     output = capsys.readouterr().out
     assert "Snapshot:           snapshot-id" in output
     assert "Ref:                main" in output
     assert "Generation:         1" in output
+    assert "Views:              bm25,vector" in output
     assert f"BM25 generation:    {bm25_destination}" in output
+    assert f"Vector generation:  {vector_destination}" in output
     assert f"Context generation: {context_destination}" in output
     assert f"Suggested output:   {suggested} (not reserved)" in output
     assert "codenib artifact materialize" in output
@@ -686,10 +718,12 @@ def test_artifact_import_cache_failure_preserves_primary_and_published_outputs(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     args = _cache_import_cli_test_args(tmp_path)
+    args.view = ["bm25,vector"]
     nonce = "c" * 32
     monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: nonce)
     workspace_root = Path(args.workspace_root)
     bm25_destination = workspace_root / f".codenib-cache-import-{nonce}-bm25"
+    vector_destination = workspace_root / f".codenib-cache-import-{nonce}-vector"
     context_destination = workspace_root / f".codenib-cache-import-{nonce}-context"
     primary = KeyboardInterrupt("import interrupted after publication")
 
@@ -713,11 +747,12 @@ def test_artifact_import_cache_failure_preserves_primary_and_published_outputs(
             self.closed = True
 
     bm25_owner = RetryableCloseable()
+    vector_owner = RetryableCloseable()
     context_owner = RetryableCloseable()
     source = RetryableCloseable()
     store = RetryableCloseable()
     catalog = RetryableCloseable()
-    receipt_owners = iter((bm25_owner, context_owner))
+    receipt_owners = iter((bm25_owner, vector_owner, context_owner))
 
     def capture(
         *_args: object,
@@ -729,6 +764,7 @@ def test_artifact_import_cache_failure_preserves_primary_and_published_outputs(
 
     def fail_after_publication(*_args: object, **_kwargs: object) -> None:
         bm25_destination.mkdir()
+        vector_destination.mkdir()
         context_destination.mkdir()
         raise primary
 
@@ -747,7 +783,7 @@ def test_artifact_import_cache_failure_preserves_primary_and_published_outputs(
     )
     monkeypatch.setattr(
         cache_import_module,
-        "import_compiler_cache_bm25",
+        "import_compiler_cache",
         fail_after_publication,
     )
     monkeypatch.setattr(
@@ -761,11 +797,13 @@ def test_artifact_import_cache_failure_preserves_primary_and_published_outputs(
 
     assert raised.value is primary
     assert not bm25_owner.closed
+    assert not vector_owner.closed
     assert not context_owner.closed
     assert not source.closed
     assert not store.closed
     assert not catalog.closed
     assert bm25_owner.close_calls == 1
+    assert vector_owner.close_calls == 1
     assert context_owner.close_calls == 1
     assert source.close_calls == 1
     assert store.close_calls == 1
@@ -775,22 +813,33 @@ def test_artifact_import_cache_failure_preserves_primary_and_published_outputs(
     assert any("local CAS cleanup" in note for note in notes)
     assert any("context receipt cleanup" in note for note in notes)
     assert any("BM25 receipt cleanup" in note for note in notes)
+    assert any("Vector receipt cleanup" in note for note in notes)
     assert any("repository source cleanup" in note for note in notes)
     assert bm25_destination.is_dir()
+    assert vector_destination.is_dir()
     assert context_destination.is_dir()
     warnings = capsys.readouterr().err
     assert "cache import BM25 generation now exists" in warnings
+    assert "cache import Vector generation now exists" in warnings
     assert "cache import context generation now exists" in warnings
 
     retained = primary.publication_cleanup_owners  # type: ignore[attr-defined]
     assert type(retained) is tuple
-    assert len(retained) == 5
-    for resource in (bm25_owner, context_owner, source, store, catalog):
+    assert len(retained) == 6
+    for resource in (
+        bm25_owner,
+        vector_owner,
+        context_owner,
+        source,
+        store,
+        catalog,
+    ):
         resource.allow_close = True
     for cleanup_owner in retained:
         cleanup_owner.close()
         assert cleanup_owner.closed
     assert bm25_owner.closed
+    assert vector_owner.closed
     assert context_owner.closed
     assert source.closed
     assert store.closed
