@@ -10,7 +10,10 @@ import pytest
 
 import codenib.compiler.graph_artifact as graph_artifact_module
 from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
-from codenib.compiler.graph_artifact import load_authenticated_graph_artifact
+from codenib.compiler.graph_artifact import (
+    authenticated_graph_artifact_matches,
+    load_authenticated_graph_artifact,
+)
 from codenib.compiler.manifest import IndexEntry
 from codenib.graph.code_graph import CodeGraph
 from codenib.scip_interface.lsp_occurrence_index import (
@@ -62,6 +65,22 @@ def test_load_authenticated_graph_artifact_uses_receipted_generation(tmp_path):
     loaded = load_authenticated_graph_artifact(_entry(root, graph_path))
 
     assert "src/current.py" in loaded.graph.vs["name"]
+
+
+def test_load_authenticated_graph_artifact_accepts_legacy_direct_graph_path(
+    tmp_path,
+):
+    root = tmp_path / "symbol_graph"
+    root.mkdir()
+    graph_path = root / "graph.pkl"
+    _write_graph(graph_path, file_path="src/legacy.py")
+    entry = _entry(root, graph_path)
+    entry.path = str(graph_path)
+
+    loaded = load_authenticated_graph_artifact(entry)
+
+    assert "src/legacy.py" in loaded.graph.vs["name"]
+    assert authenticated_graph_artifact_matches(entry) is True
 
 
 def test_load_authenticated_graph_artifact_attaches_receipted_occurrence_index(
@@ -149,6 +168,7 @@ def test_load_authenticated_graph_artifact_rejects_occurrence_receipt_mismatch(
         pytest.raises(ValueError, match="LSP occurrence artifact.*manifest receipt"),
     ):
         load_authenticated_graph_artifact(entry)
+    assert authenticated_graph_artifact_matches(entry) is False
 
 
 def test_load_authenticated_graph_artifact_rejects_occurrence_generation_swap(

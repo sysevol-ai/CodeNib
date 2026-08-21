@@ -14,6 +14,8 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Dict, Mapping, Sequence, Tuple
 
+from ..repository_source_selection import RepositorySourceSelection
+
 _IMAGE_DIGEST_RE = re.compile(r"@sha256:[0-9a-f]{64}$")
 _IMAGE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/:@-]*$")
 _PLATFORM_RE = re.compile(r"^[a-z0-9]+/[a-z0-9_]+(?:/[a-z0-9_]+)?$")
@@ -175,10 +177,20 @@ class SandboxSpec:
     source_revision: str | None = None
     task_id: str | None = None
     policy: SandboxPolicy = field(default_factory=SandboxPolicy)
+    source_selection: RepositorySourceSelection = field(
+        default_factory=RepositorySourceSelection
+    )
 
     def __post_init__(self) -> None:
         source_dir = Path(self.source_dir).expanduser()
         object.__setattr__(self, "source_dir", source_dir)
+        if type(self.source_selection) is not RepositorySourceSelection:
+            raise TypeError("source_selection must be a RepositorySourceSelection")
+        object.__setattr__(
+            self,
+            "source_selection",
+            RepositorySourceSelection(self.source_selection.exclude_subtrees),
+        )
         if not self.image or not _IMAGE_REF_RE.fullmatch(self.image):
             raise ValueError("image must be a non-empty Docker image reference")
         if not self.policy.allow_unpinned_image and not _IMAGE_DIGEST_RE.search(

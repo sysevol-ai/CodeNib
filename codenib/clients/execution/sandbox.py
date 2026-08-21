@@ -11,6 +11,10 @@ import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Mapping
 
+from ...repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    RepositorySourceSelection,
+)
 from ...sandbox import ExecRequest, SandboxPolicy, SandboxProvider, SandboxSpec
 from ...sandbox.protocol import SandboxError
 from .process import ProcessLaunchError, ProcessRequest, ProcessResult
@@ -62,6 +66,9 @@ class SandboxProcessRunner:
         staged_files: Mapping[str | PurePosixPath, bytes] | None = None,
         environment: Mapping[str, str] | None = None,
         task_id_prefix: str = "guardian",
+        source_selection: RepositorySourceSelection = (
+            DEFAULT_REPOSITORY_SOURCE_SELECTION
+        ),
     ) -> None:
         self._provider = provider
         self._image = image
@@ -73,6 +80,11 @@ class SandboxProcessRunner:
         }
         self._environment = dict(environment or {})
         self._task_id_prefix = task_id_prefix
+        if type(source_selection) is not RepositorySourceSelection:
+            raise TypeError("source_selection must be a RepositorySourceSelection")
+        self._source_selection = RepositorySourceSelection(
+            source_selection.exclude_subtrees
+        )
 
     @staticmethod
     def _container_argv(request: ProcessRequest) -> tuple[str, ...]:
@@ -90,6 +102,7 @@ class SandboxProcessRunner:
             platform=self._platform,
             task_id=f"{self._task_id_prefix}-{revision[:12]}",
             policy=self._policy,
+            source_selection=self._source_selection,
         )
 
         def execute() -> ProcessResult:

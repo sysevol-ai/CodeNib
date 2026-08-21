@@ -44,6 +44,10 @@ from ..artifacts.strict_context import (
     _portable_capabilities,
     stage_context_artifact_strict,
 )
+from ..repository_source_selection import (
+    DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    RepositorySourceSelection,
+)
 from ..source_fingerprint import (
     RepositorySourceBinding,
     RepositorySourceIdentitySnapshot,
@@ -445,6 +449,32 @@ def _parse_exact_manifest(payload: bytes, *, max_manifest_bytes: int) -> RepoMan
     if exact != data:
         raise ValueError("compiler cache repository manifest is not exact v1.1 data")
     return manifest
+
+
+def compiler_cache_source_selection(
+    cache_dir: str | Path,
+    *,
+    max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
+) -> RepositorySourceSelection:
+    """Return the exact source selection recorded by one compiler cache.
+
+    The CLI needs this identity axis before it captures the retained repository
+    source.  The import coordinator authenticates the same manifest again under
+    its longer-lived cache lock, so a manifest replacement between these two
+    reads can only make the later import fail closed.
+    """
+
+    cache = lexical_directory_path(Path(cache_dir))
+    bounded_limit = _manifest_limit(max_manifest_bytes)
+    with compiler_cache_lock(cache, create=False):
+        manifest = _parse_exact_manifest(
+            _read_manifest(cache, max_manifest_bytes=bounded_limit),
+            max_manifest_bytes=bounded_limit,
+        )
+    selection = manifest.source_selection
+    if selection is None:
+        return DEFAULT_REPOSITORY_SOURCE_SELECTION
+    return RepositorySourceSelection(selection.exclude_subtrees)
 
 
 def _require_manifest_source(

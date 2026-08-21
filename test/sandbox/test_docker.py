@@ -654,6 +654,38 @@ def test_revision_snapshot_archives_git_objects_not_worktree(monkeypatch, tmp_pa
     session.close()
 
 
+def test_revision_snapshot_fingerprints_the_requested_source_selection(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(
+        "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY
+    )
+    source, revision = _git_repo(tmp_path)
+    selection = RepositorySourceSelection(("generated",))
+    spec = SandboxSpec(
+        source_dir=source,
+        source_revision=revision,
+        image=IMAGE,
+        platform="linux/amd64",
+        source_selection=selection,
+    )
+    cli = RecordingCLI()
+
+    session = _provider(tmp_path, cli).create(spec)
+
+    fingerprint_call = next(
+        _docker_subcommand(argv)
+        for argv, _kwargs in cli.calls
+        if "codenib-source-fingerprint" in " ".join(argv)
+    )
+    assert fingerprint_call[-2:] == [
+        selection.canonical_json(),
+        selection.digest,
+    ]
+    session.close()
+
+
 def test_revision_snapshot_rejects_submodules(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "codenib.sandbox.docker.shutil.which", lambda _: TEST_DOCKER_BINARY

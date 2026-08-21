@@ -532,7 +532,8 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
     suggested = workspace_root / f".codenib-cache-import-{nonce}-materialized"
     events: list[str] = []
     bridge_calls: list[tuple[Path, dict[str, object]]] = []
-    capture_calls: list[tuple[Path, tuple[Path, ...]]] = []
+    source_selection = RepositorySourceSelection(("generated",))
+    capture_calls: list[tuple[Path, tuple[Path, ...], RepositorySourceSelection]] = []
 
     class Provider:
         def __init__(self, root: Path) -> None:
@@ -563,10 +564,11 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
         root: Path,
         *,
         exclude_roots: tuple[Path, ...],
+        selection: RepositorySourceSelection,
         _source_owner,
     ) -> Closeable:
         events.append("capture")
-        capture_calls.append((root, exclude_roots))
+        capture_calls.append((root, exclude_roots, selection))
         _source_owner(source)
         return source
 
@@ -612,6 +614,11 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
         "import_compiler_cache_bm25",
         import_cache,
     )
+    monkeypatch.setattr(
+        cache_import_module,
+        "compiler_cache_source_selection",
+        lambda _cache: source_selection,
+    )
     real_print = print
 
     def print_after_cleanup(*values: object, **kwargs: object) -> None:
@@ -630,6 +637,7 @@ def test_artifact_import_cache_uses_frozen_authorities_and_closes_before_output(
         (
             Path(args.repo),
             (cache, bm25_destination, context_destination, suggested),
+            source_selection,
         )
     ]
     assert len(bridge_calls) == 1
@@ -741,6 +749,11 @@ def test_artifact_import_cache_failure_preserves_primary_and_published_outputs(
         cache_import_module,
         "import_compiler_cache_bm25",
         fail_after_publication,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "compiler_cache_source_selection",
+        lambda _cache: RepositorySourceSelection(),
     )
 
     with pytest.raises(KeyboardInterrupt) as raised:

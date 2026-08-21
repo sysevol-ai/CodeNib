@@ -36,6 +36,7 @@ from codenib.artifacts import query_context_artifact
 from codenib.compiler.cache_import import (
     CompilerCacheBm25RecaptureResult,
     CompilerCacheImportResult,
+    compiler_cache_source_selection,
     import_compiler_cache_bm25,
 )
 from codenib.compiler.index_builders import BM25IndexBuilder, IndexBuilderRegistry
@@ -46,9 +47,11 @@ from codenib.compiler.manifest_materialization import (
     materialize_retained_repo_manifest_ref,
 )
 from codenib.mcp.context import ServerContext
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import (
     RepositorySourceBinding,
     capture_repository_source,
+    fingerprint_repository,
 )
 from codenib.storage import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
@@ -453,6 +456,34 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         "catalog",
         "object_store",
     ]
+
+
+def test_compiler_cache_source_selection_reads_exact_persisted_policy(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    selection = RepositorySourceSelection(("generated",))
+    identity = fingerprint_repository(
+        fixture.repository,
+        exclude_roots=(fixture.cache,),
+        selection=selection,
+    )
+    manifest_path = fixture.cache / "repo_manifest.json"
+    manifest = RepoManifest.load(manifest_path)
+    manifest.source_selection = selection
+    manifest.last_indexed_source_selection_digest = selection.digest
+    manifest.source_fingerprint = identity.value
+    manifest.last_indexed_source_fingerprint = identity.value
+    manifest.file_count = identity.file_count
+    entry = manifest.indexes["bm25"]
+    entry.source_selection_digest = selection.digest
+    entry.source_fingerprint = identity.value
+    manifest.save(manifest_path)
+
+    observed = compiler_cache_source_selection(fixture.cache)
+
+    assert observed == selection
+    assert observed is not selection
 
 
 def test_import_recaptures_inside_cache_lock_and_imports_after_release(

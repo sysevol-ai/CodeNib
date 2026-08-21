@@ -2310,7 +2310,10 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
         _run_context_with_cleanup_actions,
     )
     from .artifacts.runtime import SourceBindingCleanupOwner
-    from .compiler.cache_import import import_compiler_cache_bm25
+    from .compiler.cache_import import (
+        compiler_cache_source_selection,
+        import_compiler_cache_bm25,
+    )
     from .source_fingerprint import capture_repository_source
     from .storage import LocalCAS, SQLiteCatalog
 
@@ -2361,6 +2364,7 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
     )
     summary: tuple[str, str, int] | None = None
     try:
+        source_selection = compiler_cache_source_selection(topology.cache_dir)
         bm25_owner = _new_retained_output_receipt_owner()
         context_owner = _new_retained_output_receipt_owner()
         source_owner = SourceBindingCleanupOwner()
@@ -2407,6 +2411,7 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
             repository_source = capture_repository_source(
                 paths.repo_path,
                 exclude_roots=source_exclusions,
+                selection=source_selection,
                 _source_owner=source_owner.retain,
             )
             object_store = object_store_owner.acquire(
@@ -3836,11 +3841,9 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
 
 
 def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
-    from .compiler.artifact_fingerprints import (
-        bm25_artifact_files_match,
-        regular_file_fingerprint,
-    )
+    from .compiler.artifact_fingerprints import bm25_artifact_files_match
     from .compiler.checkout_identity import validate_checkout_identity
+    from .compiler.graph_artifact import authenticated_graph_artifact_matches
     from .compiler.manifest import MANIFEST_FILENAME, RepoManifest
     from .paths import repo_index_dir
 
@@ -3890,25 +3893,9 @@ def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
                 ),
             )
         if report["symbol_graph_manifest_current"] and graph_entry is not None:
-            expected_graph = graph_entry.config.get("graph_artifact")
-            if (
-                type(expected_graph) is dict
-                and set(expected_graph) == {"relative_path", "size", "sha256"}
-                and expected_graph.get("relative_path") == "graph.pkl"
-                and type(expected_graph.get("size")) is int
-                and expected_graph["size"] >= 0
-                and type(expected_graph.get("sha256")) is str
-            ):
-                try:
-                    observed_graph = regular_file_fingerprint(
-                        Path(graph_entry.path) / "graph.pkl"
-                    )
-                except (OSError, ValueError):
-                    observed_graph = None
-                report["symbol_graph_artifact_matches"] = observed_graph == {
-                    "size": expected_graph["size"],
-                    "sha256": expected_graph["sha256"],
-                }
+            report[
+                "symbol_graph_artifact_matches"
+            ] = authenticated_graph_artifact_matches(graph_entry)
         report["bm25"] = bool(
             report["bm25_manifest_current"] and report["bm25_artifact_matches"]
         )

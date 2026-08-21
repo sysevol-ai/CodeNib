@@ -915,6 +915,7 @@ def test_human_status_distinguishes_missing_and_legacy_source_policy(
     [
         ("remove-bm25", "bm25 artifact is missing"),
         ("corrupt-graph", "symbol_graph artifact is missing"),
+        ("corrupt-occurrence", "symbol_graph artifact is missing"),
     ],
 )
 def test_index_status_verifies_persisted_artifact_fingerprints(
@@ -941,6 +942,7 @@ def test_index_status_verifies_persisted_artifact_fingerprints(
     (bm25 / "documents.json").write_text("[]\n", encoding="utf-8")
     (bm25 / "bm25_metadata.json").write_text("{}\n", encoding="utf-8")
     (graph / "graph.pkl").write_bytes(b"graph-generation-one")
+    (graph / "lsp_index.pkl").write_bytes(b"occurrence-generation-one")
     fingerprint = "sha256-v2:" + "b" * 64
     manifest = RepoManifest(
         repo_path=str(repo),
@@ -974,6 +976,10 @@ def test_index_status_verifies_persisted_artifact_fingerprints(
                         "relative_path": "graph.pkl",
                         **regular_file_fingerprint(graph / "graph.pkl"),
                     },
+                    "lsp_occurrence_artifact": {
+                        "relative_path": "lsp_index.pkl",
+                        **regular_file_fingerprint(graph / "lsp_index.pkl"),
+                    },
                 },
                 source_fingerprint=fingerprint,
             ),
@@ -995,8 +1001,10 @@ def test_index_status_verifies_persisted_artifact_fingerprints(
     }
     if mutation == "remove-bm25":
         (bm25 / "documents.json").unlink()
-    else:
+    elif mutation == "corrupt-graph":
         (graph / "graph.pkl").write_bytes(b"graph-generation-two")
+    else:
+        (graph / "lsp_index.pkl").write_bytes(b"occurrence-generation-two")
 
     report = cli._codegraph_index_report(repo)
     assert report["ready"] is False

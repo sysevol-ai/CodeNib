@@ -34,7 +34,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Collection, Dict, Mapping, Sequence, TypedDict
 
 from ..repository_filters import DEFAULT_IGNORED_DIRS, REPOSITORY_FILTER_POLICY_VERSION
-from ..repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 from ..source_fingerprint import SOURCE_FINGERPRINT_VERSION
 from .protocol import (
     SandboxClosedError,
@@ -1135,8 +1134,8 @@ class DockerSandboxProvider:
                 str(SOURCE_FINGERPRINT_VERSION),
                 str(REPOSITORY_FILTER_POLICY_VERSION),
                 os.path.abspath(os.path.expanduser(os.fspath(spec.source_dir))),
-                DEFAULT_REPOSITORY_SOURCE_SELECTION.canonical_json(),
-                DEFAULT_REPOSITORY_SOURCE_SELECTION.digest,
+                spec.source_selection.canonical_json(),
+                spec.source_selection.digest,
             ]
         )
         completed = self._run_control_container(name, args)

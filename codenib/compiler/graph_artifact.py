@@ -56,6 +56,18 @@ def _entry_lsp_occurrence_receipt(entry: Any) -> dict[str, Any] | None:
     return receipt
 
 
+def _entry_graph_root(entry: Any) -> Path:
+    root_value = getattr(entry, "path", None)
+    if type(root_value) is not str or not root_value:
+        raise ValueError("symbol graph manifest entry has no artifact directory")
+    declared = Path(root_value)
+    if declared.name == _GRAPH_FILENAME:
+        return declared.parent
+    if declared.suffix == ".pkl":
+        raise ValueError("symbol graph manifest entry names an unsupported pickle")
+    return declared
+
+
 def _graph_receipt(receipt: Mapping[str, Any]) -> tuple[int, str]:
     if type(receipt) is not dict or set(receipt) != _GRAPH_RECEIPT_KEYS:
         raise ValueError("symbol graph artifact has no exact graph receipt")
@@ -238,17 +250,56 @@ def load_authenticated_graph_generation(
 def load_authenticated_graph_artifact(entry: Any) -> CodeGraph:
     """Load exactly the graph generation named by one manifest entry."""
 
-    root_value = getattr(entry, "path", None)
-    if type(root_value) is not str or not root_value:
-        raise ValueError("symbol graph manifest entry has no artifact directory")
     return load_authenticated_graph_generation(
-        root_value,
+        _entry_graph_root(entry),
         _entry_graph_receipt(entry),
         lsp_occurrence_receipt=_entry_lsp_occurrence_receipt(entry),
     )
 
 
+def authenticated_graph_artifact_matches(entry: Any) -> bool:
+    """Return whether every receipted file still matches one graph generation."""
+
+    try:
+        root = _entry_graph_root(entry)
+        graph_size, graph_digest = _graph_receipt(_entry_graph_receipt(entry))
+        occurrence_receipt = _entry_lsp_occurrence_receipt(entry)
+        expected_occurrence = (
+            None
+            if occurrence_receipt is None
+            else _lsp_occurrence_receipt(occurrence_receipt)
+        )
+        ownership = capture_directory_ownership(
+            root,
+            required_root_file=_GRAPH_FILENAME,
+        )
+        records = {
+            record.path: record
+            for record in directory_ownership_file_records(ownership)
+        }
+        _require_receipted_record(
+            records,
+            _GRAPH_FILENAME,
+            expected_size=graph_size,
+            expected_digest=graph_digest,
+            label="symbol graph artifact",
+        )
+        if expected_occurrence is not None:
+            occurrence_size, occurrence_digest = expected_occurrence
+            _require_receipted_record(
+                records,
+                _LSP_OCCURRENCE_FILENAME,
+                expected_size=occurrence_size,
+                expected_digest=occurrence_digest,
+                label="LSP occurrence artifact",
+            )
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    return True
+
+
 __all__ = [
+    "authenticated_graph_artifact_matches",
     "load_authenticated_graph_artifact",
     "load_authenticated_graph_generation",
 ]

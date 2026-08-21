@@ -32,6 +32,7 @@ from codenib.clients.execution import (
     RunStatus,
     SandboxProcessRunner,
 )
+from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.sandbox import (
     ExecResult,
     NetworkMode,
@@ -407,6 +408,7 @@ def test_sandbox_process_runner_copies_source_and_rewrites_workspace(
         ("git", "commit", "--quiet", "-m", "source"), cwd=tmp_path, check=True
     )
     provider = FakeSandboxProvider()
+    source_selection = RepositorySourceSelection(("generated",))
     runner = SandboxProcessRunner(
         provider=provider,
         image="guardian:test",
@@ -417,6 +419,7 @@ def test_sandbox_process_runner_copies_source_and_rewrites_workspace(
             allow_unpinned_image=True,
         ),
         staged_files={".guardian-runtime/auth.json": b"secret"},
+        source_selection=source_selection,
     )
     request = ProcessRequest(
         argv=("codex", "exec", "--cd", str(tmp_path), "-"),
@@ -431,6 +434,7 @@ def test_sandbox_process_runner_copies_source_and_rewrites_workspace(
     assert result.stdout == "sandbox output"
     assert result.duration_seconds == 1.25
     assert provider.specs[0].source_dir == tmp_path.resolve()
+    assert provider.specs[0].source_selection == source_selection
     session = provider.sessions[0]
     assert session.closed
     assert session.writes == [
