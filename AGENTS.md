@@ -82,6 +82,10 @@ clang-format for C/C++.
   `fix`, `docs`, `refactor`, `perf`, `test`, `chore`, or `ci`.
 - Keep commit subjects imperative and at most 72 characters. Use the body for
   why the change was made and how it was verified.
+- When passing multiline commit, squash-merge, PR, or review bodies through a
+  CLI, supply real newline bytes rather than literal `\n` escapes. After a
+  squash or rebase merge, inspect the resulting commit message before treating
+  reconciliation as complete.
 - PR bodies must follow `.github/PULL_REQUEST_TEMPLATE.md` with the existing
   headings in order: `Summary`, `Changes`, `Type of Change`, `Testing`,
   `Checklist`.
