@@ -813,6 +813,17 @@ class PublicationDirectoryReader:
             return self._expected_ownership.file_records
         return self.capture_ownership().file_records
 
+    def _require_expected_ownership_token(self) -> _TreeOwnership:
+        """Return only framework-installed callback ownership, never recapturing."""
+
+        self._require_active()
+        if self._expected_ownership is None:
+            self._mark_authentication_failed()
+            raise RuntimeError(
+                "publication callback has no framework expected ownership"
+            )
+        return self._expected_ownership
+
     def authenticated_snapshot(
         self,
         relative: str | PurePosixPath,

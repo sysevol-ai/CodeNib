@@ -2741,6 +2741,40 @@ def test_content_bound_portable_reader_has_stable_public_signature() -> None:
     ]
 
 
+def test_private_framework_sandwich_rejects_reader_without_expected_ownership(
+    tmp_path: Path,
+) -> None:
+    repo, _source = _repository(tmp_path)
+
+    def forbidden_capture(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("framework-sandwiched validation recaptured an unbound reader")
+
+    reader = PublicationDirectoryReader(
+        Path("/__unbound_portable_reader__"),
+        (1,),
+        forbidden_capture,  # type: ignore[arg-type]
+        lambda *_args, **_kwargs: pytest.fail(
+            "unbound framework reader opened a file"
+        ),  # type: ignore[arg-type]
+        None,
+    )
+    try:
+        with capture_repository_source(repo) as repository_source:
+            repository_identity = repository_source.authenticated_identity_snapshot()
+            with pytest.raises(RuntimeError, match="no framework expected ownership"):
+                portable_views_module._validate_content_bound_portable_query_view_reader_with_identity(
+                    reader,
+                    repository_source=repository_source,
+                    repository_identity=repository_identity,
+                    view_type="bm25",
+                    view_config={},
+                    environ={},
+                    _framework_sandwiched=True,
+                )
+    finally:
+        reader._deactivate()
+
+
 def test_content_bound_reader_uses_one_detached_source_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2912,6 +2946,58 @@ def test_content_bound_portable_reader_validates_vector_without_native_load(
             view_type="vector",
             view_config=view_config,
         )
+
+
+@pytest.mark.parametrize("persisted_schema", [7, 6, None])
+def test_content_bound_vector_binds_retained_v7_label_without_native_load(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    persisted_schema: int | None,
+) -> None:
+    repo, vector, view_config = _production_vector_view(tmp_path)
+    config_path = vector / f"config_{_MODEL_SUFFIX}.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["artifact"]["builder_schema"] = 7
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    view_config["builder_schema"] = 7
+    _refresh_view_fingerprint(vector, view_config)
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=view_config,
+    )
+    view_config.update(adjustments)
+    if persisted_schema != 7:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        if persisted_schema is None:
+            config["artifact"].pop("builder_schema")
+        else:
+            config["artifact"]["builder_schema"] = persisted_schema
+        config_path.write_bytes(_canonical_json_bytes(config))
+        _refresh_view_fingerprint(vector, view_config)
+
+    def forbidden_native(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("retained schema label validation invoked native parsing")
+
+    monkeypatch.setattr(portable_views_module, "_faiss_contract", forbidden_native)
+    monkeypatch.setattr(portable_views_module.compat_pickle, "load", forbidden_native)
+    with capture_repository_source(repo) as repository_source:
+        if persisted_schema == 7:
+            _validate_content_bound_view(
+                vector,
+                repository_source=repository_source,
+                view_type="vector",
+                view_config=view_config,
+            )
+        else:
+            with pytest.raises(ValueError, match="builder schema does not match"):
+                _validate_content_bound_view(
+                    vector,
+                    repository_source=repository_source,
+                    view_type="vector",
+                    view_config=view_config,
+                )
 
 
 def test_content_bound_vector_does_not_probe_model_or_source_paths(

@@ -46,6 +46,7 @@ from .strict_context import (
     publish_planned_context_artifact_strict,
     stage_context_artifact_strict,
 )
+from .strict_vector import PlannedVectorView, recapture_vector_view_strict
 
 __all__ = [
     "CONTEXT_ARTIFACT_MANIFEST",
@@ -59,6 +60,7 @@ __all__ = [
     "PlannedBm25View",
     "PlannedContextArtifact",
     "PlannedContextView",
+    "PlannedVectorView",
     "SourceTrust",
     "VerifiedContextArtifact",
     "bind_context_artifact",
@@ -72,6 +74,7 @@ __all__ = [
     "publish_planned_context_artifact_strict",
     "query_context_artifact",
     "recapture_bm25_view_strict",
+    "recapture_vector_view_strict",
     "validate_portable_query_view",
     "resolve_github_context_artifact",
     "render_artifact_mcp_config",

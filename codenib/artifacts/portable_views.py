@@ -41,6 +41,7 @@ from .._contained_source import validate_repository_file
 from .._secret_fields import assert_no_secret_fields
 from ..index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
+    VECTOR_ROW_MAPPING_CONTRACT,
     VECTOR_VIEW_UPDATE_MARKER,
 )
 from ..index.embedding.model_policy import (
@@ -763,16 +764,29 @@ class _PublicationViewReader:
     def __init__(
         self,
         publication: PublicationDirectoryReader,
-        ownership: object,
+        ownership: object | None,
     ) -> None:
         # Synthetic only: callers use it for relative path arithmetic, never as
         # a filesystem authority.
         self.root = Path("/__codenib_publication_view__")
-        self.ownership = ownership
         self._publication = publication
-        records = tuple(
-            directory_ownership_file_records(ownership)  # type: ignore[arg-type]
-        )
+        if ownership is None:
+            # Private framework-sandwiched validators reuse the exact token
+            # already installed in the callback reader. Fail closed rather
+            # than letting fallback accessors recapture an unsandwiched tree.
+            expected = publication._require_expected_ownership_token()
+            records = tuple(directory_ownership_file_records(expected))
+            inventory = tuple(directory_ownership_inventory(expected))
+            self.ownership = self
+        else:
+            records = tuple(
+                directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+            )
+            inventory = tuple(
+                directory_ownership_inventory(ownership)  # type: ignore[arg-type]
+            )
+            self.ownership = ownership
+        self._inventory = inventory
         self._records = {record.path: record for record in records}
         if len(self._records) != len(records):
             raise RuntimeError("publication view repeats a file record")
@@ -806,6 +820,12 @@ class _PublicationViewReader:
             raise ValueError(
                 f"publication view has no initial file record: {relative}"
             ) from exc
+
+    def file_records(self) -> tuple[TreeFileRecord, ...]:
+        return tuple(sorted(self._records.values(), key=lambda record: record.path))
+
+    def inventory(self) -> tuple[tuple[str, str], ...]:
+        return self._inventory
 
     @contextmanager
     def open_file(
@@ -883,15 +903,28 @@ class _PublicationViewReader:
     ) -> None:
         # ``keep_descriptor`` is deliberately ignored. Content-bound portable
         # validation never grants native parsing authority.
-        del keep_descriptor
+        # The complete publication was already hashed into ``ownership``.
+        # Config and document consumers subsequently reopen and compare their
+        # exact records; inert FAISS bytes are intentionally never reopened by
+        # this validator.  ``verify_root`` performs the full post-validation
+        # capture that closes the race window for every record-only binding.
+        del cache_bytes, keep_descriptor
         relative = self.require_fingerprint(path, expected)
-        limit = self.record(relative).size if max_bytes is None else max_bytes
-        del cache_bytes
-        with self.open_file(relative, max_bytes=limit) as source:
-            for _chunk in source.iter_bytes(chunk_size=_JSON_READ_CHUNK_BYTES):
-                pass
+        if max_bytes is not None:
+            if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
+                raise TypeError("portable publication stream limit must be an integer")
+            if max_bytes < 0:
+                raise ValueError("portable publication stream limit cannot be negative")
+            if self.record(relative).size > max_bytes:
+                raise ValueError(
+                    f"portable view file exceeds its {max_bytes}-byte limit: {relative}"
+                )
 
     def verify_root(self) -> None:
+        if self.ownership is self:
+            raise RuntimeError(
+                "framework-sandwiched publication validation owns no final capture"
+            )
         if self._publication.capture_ownership() != self.ownership:
             raise RuntimeError("publication view changed during validation")
 
@@ -905,6 +938,18 @@ class _PublicationViewReader:
 
 
 _ViewReader = _OwnedViewReader | _PublicationViewReader
+
+
+def _view_inventory(ownership: object) -> tuple[tuple[str, str], ...]:
+    if isinstance(ownership, _PublicationViewReader):
+        return ownership.inventory()
+    return tuple(directory_ownership_inventory(ownership))  # type: ignore[arg-type]
+
+
+def _view_file_records(ownership: object) -> tuple[TreeFileRecord, ...]:
+    if isinstance(ownership, _PublicationViewReader):
+        return ownership.file_records()
+    return tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -1291,7 +1336,7 @@ def _normalize_pickle_documents(
 def _owned_inventory_paths(root: Path, ownership: object, *, kind: str) -> set[Path]:
     return {
         root.joinpath(*PurePosixPath(relative).parts)
-        for relative, observed_kind in directory_ownership_inventory(ownership)
+        for relative, observed_kind in _view_inventory(ownership)
         if observed_kind == kind
     }
 
@@ -1310,11 +1355,7 @@ def _authenticate_initial_file(
 
     relative = path.relative_to(root).as_posix()
     record = next(
-        (
-            item
-            for item in directory_ownership_file_records(ownership)
-            if item.path == relative
-        ),
+        (item for item in _view_file_records(ownership) if item.path == relative),
         None,
     )
     if record is None:
@@ -1766,6 +1807,34 @@ def _validate_vector_semantics(
             raise ValueError(
                 "portable vector persistence options do not match its view route"
             )
+
+    persisted_builder_schema = (
+        persisted_identity.get("builder_schema")
+        if isinstance(persisted_identity, Mapping)
+        else None
+    )
+    retained_schema_selected = (
+        type(builder_schema) is int and builder_schema >= 7
+    ) or (type(persisted_builder_schema) is int and persisted_builder_schema >= 7)
+    if retained_schema_selected and not (
+        type(builder_schema) is int
+        and type(persisted_builder_schema) is int
+        and persisted_builder_schema == builder_schema
+    ):
+        raise ValueError(
+            "portable vector persistence builder schema does not match its "
+            "view config"
+        )
+    schema_8_selected = type(builder_schema) is int and builder_schema == 8
+    if schema_8_selected:
+        if config.get("row_mapping") != VECTOR_ROW_MAPPING_CONTRACT:
+            raise ValueError(
+                "schema-8 portable vector persistence has an invalid row mapping"
+            )
+    elif config.get("row_mapping") is not None:
+        raise ValueError(
+            "legacy portable vector persistence has an unsupported row mapping"
+        )
 
     if route.dimension is None:
         raise ValueError("portable vector route is missing its embedding dimension")
@@ -2303,7 +2372,7 @@ def _assert_exact_view_tree(
         if parent != PurePosixPath(".")
     }
     observed_files: set[PurePosixPath] = set()
-    for raw_relative, kind in directory_ownership_inventory(ownership):
+    for raw_relative, kind in _view_inventory(ownership):
         relative = PurePosixPath(raw_relative)
         if kind == "directory":
             if relative not in allowed_directories:
@@ -3094,6 +3163,7 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
     view_config: Mapping[str, Any] | None = None,
     forbidden_paths: Iterable[Path] = (),
     environ: Mapping[str, str] | None = None,
+    _framework_sandwiched: bool = False,
 ) -> None:
     """Validate one portable view through retained view and source authorities.
 
@@ -3134,8 +3204,14 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
     if len(authenticated_source_files) != len(repository_records):
         raise RuntimeError("authenticated repository source repeats a file record")
 
-    initial_tree = publication.capture_ownership()
-    reader = _PublicationViewReader(publication, initial_tree)
+    if not isinstance(_framework_sandwiched, bool):
+        raise TypeError("portable framework sandwich selector must be a boolean")
+    if _framework_sandwiched:
+        reader = _PublicationViewReader(publication, None)
+        initial_tree: object = reader
+    else:
+        initial_tree = publication.capture_ownership()
+        reader = _PublicationViewReader(publication, initial_tree)
 
     def validate_semantics() -> None:
         with repository_source.read_session():
@@ -3169,18 +3245,23 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
                     authenticated_source_files=authenticated_source_files,
                 )
 
-    _run_callback_with_post_validations(
-        validate_semantics,
+    final_checks = [
         (
+            "portable view reader cleanup also failed",
+            reader.close,
+        )
+    ]
+    if not _framework_sandwiched:
+        final_checks.insert(
+            0,
             (
                 "portable view final ownership validation also failed",
                 reader.verify_root,
             ),
-            (
-                "portable view reader cleanup also failed",
-                reader.close,
-            ),
-        ),
+        )
+    _run_callback_with_post_validations(
+        validate_semantics,
+        tuple(final_checks),
     )
 
 
