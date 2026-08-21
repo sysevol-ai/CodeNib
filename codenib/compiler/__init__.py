@@ -26,6 +26,11 @@ from typing import TYPE_CHECKING, Any
 from .._lazy import exported_dir, load_export
 
 if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
+    from codenib.compiler.cache_import import (
+        CompilerCacheBm25RecaptureResult,
+        CompilerCacheImportResult,
+        import_compiler_cache_bm25,
+    )
     from codenib.compiler.index_builders import IndexBuilderRegistry
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from codenib.compiler.manifest import ManifestIndexStateStore, RepoManifest
@@ -68,6 +73,18 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     )
 
 _EXPORTS = {
+    "CompilerCacheBm25RecaptureResult": (
+        "codenib.compiler.cache_import",
+        "CompilerCacheBm25RecaptureResult",
+    ),
+    "CompilerCacheImportResult": (
+        "codenib.compiler.cache_import",
+        "CompilerCacheImportResult",
+    ),
+    "import_compiler_cache_bm25": (
+        "codenib.compiler.cache_import",
+        "import_compiler_cache_bm25",
+    ),
     "IndexCompiler": ("codenib.compiler.index_compiler", "IndexCompiler"),
     "IndexCompilerConfig": (
         "codenib.compiler.index_compiler",
@@ -167,6 +184,9 @@ _EXPORTS = {
 
 __all__ = [
     # Index compilation
+    "CompilerCacheBm25RecaptureResult",
+    "CompilerCacheImportResult",
+    "import_compiler_cache_bm25",
     "IndexCompiler",
     "IndexCompilerConfig",
     "IndexBuilderRegistry",
