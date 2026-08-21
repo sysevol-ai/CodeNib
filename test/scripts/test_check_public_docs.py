@@ -32,6 +32,7 @@ def test_mkdocs_navigation_tabs_contract():
     titles = [item if isinstance(item, str) else next(iter(item)) for item in nav]
     assert titles == [
         "Home",
+        "News",
         "Blog",
         "Get Started",
         "Guides",
@@ -45,6 +46,7 @@ def test_mkdocs_navigation_tabs_contract():
         for item in nav
         if isinstance(item, dict)
     }
+    assert sections["News"] == "news.md"
     assert sections["Blog"][0] == "blog/index.md"
     assert sections["Get Started"][0] == "get-started/index.md"
     assert sections["Guides"][0] == "guides/index.md"
