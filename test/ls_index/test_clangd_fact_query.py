@@ -1469,7 +1469,7 @@ def test_real_mcp_boundary_keeps_supported_native_queries_graph_free(
     assert decoder._graph_materialized is False
 
 
-def test_server_context_selects_native_and_portable_graph_fallback(
+def test_server_context_uses_persisted_graph_for_manifest_source_policy(
     clangd_fixture, monkeypatch
 ) -> None:
     root, idx_directory = clangd_fixture
@@ -1480,16 +1480,18 @@ def test_server_context_selects_native_and_portable_graph_fallback(
         symbol_graph=graph,
     )
 
-    native = context.configure_lsp_provider(allow_native=True)
+    manifest_bound = context.configure_lsp_provider(allow_native=True)
 
-    assert native["backend"] == "native-clangd-fact-query-v1"
-    assert native["index_snapshot"].startswith("clangd_fact_query:sha256:")
-    assert native["capabilities"] == {
+    assert manifest_bound["backend"] == "persisted-symbol-graph-v1"
+    assert manifest_bound["fallback_reason"] == (
+        "repository_source_policy_requires_persisted_graph"
+    )
+    assert manifest_bound["capabilities"] == {
         "definition": True,
         "references": True,
         "route": True,
     }
-    assert context.lsp_provider.decoder._graph_materialized is False
+    assert context.lsp_provider.graph is graph
 
     portable = context.configure_lsp_provider(
         allow_native=False,
