@@ -78,6 +78,10 @@ a queryable view. It exposes three functions that future MCP tools can wrap:
 - `get_visual_evidence`
 - `find_visual_code_links`
 
+`codenib.wiki.media_tools.MultimodalKnowledgeToolRouter` exposes the same
+surface as an MCP-compatible tool router with stable tool schemas and bounded
+input validation. This keeps the query surface testable before wiring it into a
+server-specific MCP registration path.
 ## Why evidence stays server-side
 
 Media generation may use bounded source snippets inside provider prompts. Those

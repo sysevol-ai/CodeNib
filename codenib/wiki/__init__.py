@@ -26,9 +26,12 @@ from .media_knowledge import (
     search_visual_context,
 )
 from .media_pipeline import build_multimodal_repository_knowledge
+from .media_tools import MULTIMODAL_TOOL_SCHEMAS, MultimodalKnowledgeToolRouter
 from .media_vlm import OpenAICompatibleVisualFactExtractor
 
 __all__ = [
+    "MULTIMODAL_TOOL_SCHEMAS",
+    "MultimodalKnowledgeToolRouter",
     "WikiBuilder",
     "OpenAICompatibleVisualFactExtractor",
     "VisualGroundingScorer",
