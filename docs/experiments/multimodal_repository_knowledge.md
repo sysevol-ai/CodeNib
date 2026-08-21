@@ -110,6 +110,15 @@ print(view["entry_count"])
 This creates a deterministic local view. A VLM extractor can be added later by
 passing a custom extractor into `build_visual_facts_manifest()`.
 
+For callers that want the full deterministic pipeline in one step:
+
+```python
+from codenib.wiki import build_multimodal_repository_knowledge
+
+bundle = build_multimodal_repository_knowledge(repo)
+view = bundle["knowledge_view"]
+```
+
 ```python
 from codenib.wiki import OpenAICompatibleVisualFactExtractor
 

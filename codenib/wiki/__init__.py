@@ -25,6 +25,7 @@ from .media_knowledge import (
     get_visual_evidence,
     search_visual_context,
 )
+from .media_pipeline import build_multimodal_repository_knowledge
 from .media_vlm import OpenAICompatibleVisualFactExtractor
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "VisualGroundingScorer",
     "build_media_evidence_pack",
     "build_multimodal_knowledge_view",
+    "build_multimodal_repository_knowledge",
     "build_visual_facts_manifest",
     "deterministic_visual_facts",
     "discover_media_manifest",
