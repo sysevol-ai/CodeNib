@@ -2811,7 +2811,11 @@ def test_carried_specification_is_not_rebound_to_changed_task_text(
         request,
         task_context=(
             TaskContext(
-                content="Every copied state must preserve its retry budget.",
+                content=(
+                    f"The old requirement was: {task_context.content}\n"
+                    "That requirement is withdrawn; copied state must only preserve "
+                    "its retry budget."
+                ),
                 source=TaskContextSource.USER_INSTRUCTION,
                 fidelity=ContextFidelity.VERBATIM,
                 context_id=task_context.context_id,
@@ -2835,3 +2839,44 @@ def test_carried_specification_is_not_rebound_to_changed_task_text(
     )
 
     assert merged.specifications[0].status is SpecificationStatus.REJECTED
+
+
+def test_carried_specification_recovers_when_task_text_is_restored(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    task_context = next(
+        item
+        for item in request.task_context
+        if item.source is TaskContextSource.USER_INSTRUCTION
+    )
+    record = _supported_record(
+        "LS-001", "Copied state preserves its configured mode.", task_context.context_id
+    )
+    stale_evidence = Evidence(
+        evidence_id=task_context.context_id,
+        path=task_context.context_id,
+        line_start=1,
+        line_end=1,
+        description="Verbatim requirement supplied to the coding system.",
+        source_type=EvidenceSourceType.TASK,
+        authority=EvidenceAuthority.NORMATIVE,
+        quote=task_context.content,
+        supports=(record.specification_id,),
+        acquired_by="controller",
+        fresh=False,
+    )
+
+    revalidated, errors = revalidate_memory_evidence(request, (stale_evidence,))
+    assert errors == ()
+    assert revalidated[0].fresh
+
+    merged = _merge_memory(
+        request,
+        SpecificationMemory(specifications=(record,), evidence=revalidated),
+        (),
+        (),
+        snapshot=request.candidate_commit,
+    )
+
+    assert merged.specifications[0].status is SpecificationStatus.SUPPORTED

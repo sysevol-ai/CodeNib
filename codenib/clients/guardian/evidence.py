@@ -218,6 +218,7 @@ def _validate_non_file(
                     path=path,
                     quote=quote,
                     authority=EvidenceAuthority.DERIVED,
+                    fresh=True,
                 ),
                 "",
             )
@@ -225,14 +226,20 @@ def _validate_non_file(
         # when an explorer supplied a paraphrase instead of an exact substring. Cite
         # the complete source so the aggregator can test entailment against the task,
         # rather than accidentally granting authority to the paraphrase itself.
-        if evidence.acquired_by == "controller" and quote is None:
-            return None, "controller task evidence no longer matches the task message"
+        if evidence.acquired_by == "controller":
+            if evidence.quote != context.content:
+                return (
+                    None,
+                    "controller task evidence no longer matches the task message",
+                )
+            quote = context.content
         return (
             replace(
                 evidence,
                 path=path,
                 quote=quote or context.content,
                 authority=EvidenceAuthority.NORMATIVE,
+                fresh=True,
             ),
             "",
         )
@@ -241,14 +248,14 @@ def _validate_non_file(
             return None, "candidate-patch evidence must retain an exact quote"
         if evidence.quote not in request.change_patch:
             return None, "quoted content does not occur in the candidate patch"
-        return replace(evidence, authority=EvidenceAuthority.DERIVED), ""
+        return replace(evidence, authority=EvidenceAuthority.DERIVED, fresh=True), ""
     if evidence.source_type is EvidenceSourceType.RUNTIME_PROBE:
         if not evidence.command or (not evidence.output and evidence.exit_code is None):
             return (
                 None,
                 "runtime evidence must retain a command and an output or exit code",
             )
-        return replace(evidence, authority=EvidenceAuthority.BEHAVIORAL), ""
+        return replace(evidence, authority=EvidenceAuthority.BEHAVIORAL, fresh=True), ""
     return None, "unsupported evidence locator"
 
 
