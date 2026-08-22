@@ -97,6 +97,201 @@ def test_index_parser_accepts_exact_source_exclusions() -> None:
     assert args.clear_exclude_dirs is False
 
 
+def test_index_parser_exposes_retained_publication_as_an_explicit_group() -> None:
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "index",
+            "/src/repo",
+            "--preset",
+            "fast",
+            "--publish-retained",
+            "--catalog",
+            "/state/catalog.sqlite3",
+            "--cas-root",
+            "/state/cas",
+            "--workspace-root",
+            "/state/workspaces",
+            "--repository",
+            "owner/repo",
+            "--namespace",
+            "production",
+            "--ref",
+            "release",
+            "--expected-generation",
+            "7",
+        ]
+    )
+    defaults = parser.parse_args(["index", "/src/repo", "--preset", "fast"])
+
+    assert args.publish_retained is True
+    assert args.catalog == "/state/catalog.sqlite3"
+    assert args.cas_root == "/state/cas"
+    assert args.workspace_root == "/state/workspaces"
+    assert args.repository == "owner/repo"
+    assert args.namespace == "production"
+    assert args.ref == "release"
+    assert args.expected_generation == 7
+    assert defaults.publish_retained is False
+    assert defaults.catalog is None
+    assert defaults.cas_root is None
+    assert defaults.workspace_root is None
+    assert defaults.repository is None
+    assert defaults.namespace is None
+    assert defaults.ref is None
+    assert defaults.expected_generation is None
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["index", ".", "--catalog", "/state/catalog.sqlite3"],
+        ["index", ".", "--publish-retained", "--catalog", "/state/catalog.sqlite3"],
+    ],
+)
+def test_index_retained_arguments_are_all_or_none_before_repository_work(
+    argv: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = cli.build_parser().parse_args(argv)
+    monkeypatch.setattr(
+        cli,
+        "resolve_repo_path",
+        lambda _value: pytest.fail("retained option validation must run first"),
+    )
+
+    with pytest.raises(cli.CLIError, match="--publish-retained"):
+        cli._run_index(args)
+
+
+def test_publish_repository_identity_does_not_enable_retained_index(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib import artifacts as artifacts_module
+    from codenib.compiler import manifest as manifest_module
+    from codenib.web import static_export as static_export_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    args = cli.build_parser().parse_args(
+        [
+            "publish",
+            str(repo),
+            "--preset",
+            "fast",
+            "--repository",
+            "owner/repo",
+        ]
+    )
+    selection = RepositorySourceSelection()
+    manifest = SimpleNamespace(
+        repo_path=str(repo),
+        languages=["python"],
+        source_selection=selection,
+        indexes={"bm25": SimpleNamespace(status="fresh", metadata={})},
+        commit="a" * 40,
+    )
+    indexed: list[dict[str, object]] = []
+
+    monkeypatch.setattr(cli, "resolve_repo_path", lambda _value: repo)
+    monkeypatch.setattr(
+        cli, "_validate_publish_outputs", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        cli,
+        "_resolve_repository_source_selection",
+        lambda *_args, **_kwargs: SimpleNamespace(selection=selection),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_require_clean_artifact_checkout",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(cli, "_selected_views_for_args", lambda _args: ["bm25"])
+    monkeypatch.setattr(
+        cli, "_selected_languages", lambda *_args, **_kwargs: ["python"]
+    )
+    monkeypatch.setattr(cli, "_check_view_dependencies", lambda *_args, **_kwargs: None)
+
+    def index_repository(_repo: Path, **kwargs: object):
+        indexed.append(kwargs)
+        return manifest, []
+
+    monkeypatch.setattr(cli, "index_repository", index_repository)
+    monkeypatch.setattr(
+        cli,
+        "resolve_manifest_path",
+        lambda _value: tmp_path / "repo_manifest.json",
+    )
+
+    class FakeRepoManifest:
+        @staticmethod
+        def load(_path: Path) -> object:
+            return manifest
+
+    monkeypatch.setattr(manifest_module, "RepoManifest", FakeRepoManifest)
+    monkeypatch.setattr(
+        static_export_module,
+        "export_static_wiki",
+        lambda *_args, **_kwargs: SimpleNamespace(output_dir=tmp_path / "wiki"),
+    )
+    monkeypatch.setattr(
+        artifacts_module,
+        "stage_context_artifact",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            output_dir=tmp_path / "context",
+            repository="owner/repo",
+            commit=manifest.commit,
+            views=("bm25",),
+        ),
+    )
+    monkeypatch.setattr(cli, "_publication_environment", lambda *_args: {})
+
+    assert args.handler is cli._run_publish
+    assert args.handler(args) == 0
+    assert len(indexed) == 1
+    assert indexed[0]["views"] == ["bm25"]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--rebuild"],
+        ["--view", "symbol_graph"],
+        ["--view", "zoekt"],
+    ],
+)
+def test_index_retained_rejects_unsupported_build_modes_before_repository_work(
+    extra: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "index",
+            ".",
+            "--publish-retained",
+            "--catalog",
+            "/state/catalog.sqlite3",
+            "--cas-root",
+            "/state/cas",
+            "--workspace-root",
+            "/state/workspaces",
+            "--repository",
+            "owner/repo",
+            *extra,
+        ]
+    )
+    monkeypatch.setattr(
+        cli,
+        "resolve_repo_path",
+        lambda _value: pytest.fail("unsupported retained mode must fail first"),
+    )
+
+    with pytest.raises(cli.CLIError, match="not supported|supports only"):
+        cli._run_index(args)
+
+
 def test_source_selection_flags_are_mutually_exclusive() -> None:
     with pytest.raises(SystemExit) as exc_info:
         cli.build_parser().parse_args(
@@ -452,6 +647,320 @@ def _cache_import_cli_test_args(tmp_path: Path) -> SimpleNamespace:
         expected_generation=0,
         view=[],
     )
+
+
+def _retained_index_cli_test_args(tmp_path: Path) -> SimpleNamespace:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "sample.py").write_text("VALUE = 1\n")
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir(mode=0o700)
+    return SimpleNamespace(
+        repo=str(repo),
+        preset="fast",
+        language=[],
+        view=[],
+        rebuild=False,
+        exclude_dir=None,
+        clear_exclude_dirs=False,
+        publish_retained=True,
+        catalog=str(catalog),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        repository="owner/repo",
+        namespace=None,
+        ref=None,
+        expected_generation=None,
+    )
+
+
+def test_index_retained_uses_one_core_route_and_ordered_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from codenib.paths import repo_index_dir
+
+    args = _retained_index_cli_test_args(tmp_path)
+    repo = Path(args.repo)
+    catalog_path = Path(args.catalog).resolve(strict=True)
+    cas_root = Path(args.cas_root).resolve(strict=True)
+    workspace_root = Path(args.workspace_root).resolve(strict=True)
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+    canonical_cache = Path(os.path.abspath(os.fspath(repo_index_dir(repo))))
+    canonical_cache.parent.mkdir(parents=True)
+    nonce = "1" * 32
+    monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: nonce)
+    bm25_destination = workspace_root / f".codenib-cache-import-{nonce}-bm25"
+    vector_destination = workspace_root / f".codenib-cache-import-{nonce}-vector"
+    context_destination = workspace_root / f".codenib-cache-import-{nonce}-context"
+    suggested = workspace_root / f".codenib-cache-import-{nonce}-materialized"
+    events: list[str] = []
+    topology_modes: list[bool] = []
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+            events.append("provider")
+
+        def require_support(self) -> None:
+            events.append("provider-support")
+
+    class Closeable:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.closed = False
+
+        def close(self) -> None:
+            events.append(f"{self.label}-close")
+            self.closed = True
+
+    bm25_owner = Closeable("bm25")
+    vector_owner = Closeable("vector")
+    context_owner = Closeable("context")
+    source = Closeable("source")
+    store = Closeable("cas")
+    catalog = Closeable("catalog")
+    receipt_owners = iter((bm25_owner, vector_owner, context_owner))
+    catalog_identity = cli._retained_catalog_file_identity(catalog_path)
+    storage_topology = cli._CompilerRetainedStorageTopology(
+        repo_path=repo.resolve(strict=True),
+        repository_identity=cli._retained_real_directory_identity(
+            repo.resolve(strict=True),
+            label="repository",
+        ),
+        planned_cache_path=canonical_cache,
+        cache_parent_path=canonical_cache.parent,
+        cache_parent_identity=cli._retained_real_directory_identity(
+            canonical_cache.parent,
+            label="cache parent",
+        ),
+        catalog_path=catalog_path,
+        catalog_identity=catalog_identity,
+        cas_root=cas_root,
+        cas_identity=(1, 20),
+        workspace_root=workspace_root,
+        workspace_identity=(1, 30),
+    )
+    cache_topology = cli._CompilerCacheImportTopology(
+        cache_dir=canonical_cache,
+        cache_identity=(1, 10),
+        catalog_path=catalog_path,
+        catalog_identity=catalog_identity,
+        cas_root=cas_root,
+        cas_identity=(1, 20),
+        workspace_root=workspace_root,
+        workspace_identity=(1, 30),
+    )
+
+    def capture(
+        root: Path,
+        *,
+        exclude_roots: tuple[Path, ...],
+        selection: RepositorySourceSelection,
+        _source_owner,
+    ) -> Closeable:
+        events.append("capture")
+        assert root == repo
+        assert canonical_cache in exclude_roots
+        assert selection == RepositorySourceSelection()
+        _source_owner(source)
+        return source
+
+    def prepare(root: Path, **kwargs: object) -> tuple[object, Path]:
+        events.append("prepare")
+        assert root == repo
+        assert kwargs["views"] == ["bm25", "vector"]
+        return object(), canonical_cache
+
+    def observe_topology(
+        _paths: object,
+        *,
+        allow_published_outputs: bool = False,
+    ) -> object:
+        topology_modes.append(allow_published_outputs)
+        return cache_topology
+
+    def compile_and_import(
+        _compiler: object,
+        root: Path,
+        *,
+        cache_dir: Path,
+        cache_topology_guard: object,
+        **kwargs: object,
+    ) -> SimpleNamespace:
+        events.append("core")
+        assert root == repo
+        assert cache_dir == canonical_cache
+        assert kwargs["views"] == ("bm25", "vector")
+        assert kwargs["repository_source"] is source
+        assert kwargs["view_output_owners"] == {
+            "bm25": bm25_owner,
+            "vector": vector_owner,
+        }
+        assert kwargs["context_output_owner"] is context_owner
+        assert kwargs["repository_key"] == "owner/repo"
+        assert kwargs["namespace_name"] == "default"
+        assert kwargs["ref_name"] == "main"
+        assert kwargs["expected_generation"] == 0
+        canonical_cache.mkdir()
+        cache_topology_guard.capture(canonical_cache)
+        cache_topology_guard.verify(canonical_cache)
+        bm25_destination.mkdir()
+        vector_destination.mkdir()
+        context_destination.mkdir()
+        cache_topology_guard.verify(canonical_cache)
+        entry = SimpleNamespace(status="fresh", metadata={})
+        return SimpleNamespace(
+            manifest=SimpleNamespace(
+                repo_path=str(repo),
+                languages=["python"],
+                source_selection=RepositorySourceSelection(),
+                indexes={"bm25": entry, "vector": entry},
+            ),
+            retained_import=SimpleNamespace(
+                import_result=SimpleNamespace(
+                    snapshot_id="snapshot-id",
+                    ref_name="main",
+                    generation=1,
+                )
+            ),
+        )
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_require_compiler_retained_storage_topology",
+        lambda _paths: storage_topology,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_require_compiler_cache_import_topology",
+        observe_topology,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_new_retained_output_receipt_owner",
+        lambda: next(receipt_owners),
+    )
+    monkeypatch.setattr(source_fingerprint_module, "capture_repository_source", capture)
+    monkeypatch.setattr(cli, "_prepare_index_compiler", prepare)
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: events.append("cas-open") or store,
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: events.append("catalog-open") or catalog,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "compile_and_import_repo",
+        compile_and_import,
+    )
+
+    result = cli._run_index_retained(
+        args,
+        repo_path=repo,
+        selection=cli._RetainedIndexSelection("owner/repo", "default", "main", 0),
+        compiler_kwargs={
+            "languages": ["python"],
+            "views": ["bm25", "vector"],
+            "source_selection": RepositorySourceSelection(),
+        },
+    )
+
+    assert result == 0
+    assert topology_modes == [False, False, True]
+    assert events.index("cas-open") < events.index("catalog-open")
+    assert events.index("catalog-open") < events.index("capture")
+    assert events.index("capture") < events.index("prepare") < events.index("core")
+    assert events[-6:] == [
+        "catalog-close",
+        "cas-close",
+        "context-close",
+        "vector-close",
+        "bm25-close",
+        "source-close",
+    ]
+    assert not suggested.exists()
+    output = capsys.readouterr().out
+    assert "Retained Snapshot:   snapshot-id" in output
+    assert "Retained Ref:        main" in output
+    assert "Retained Generation: 1" in output
+    assert "Retained Views:      bm25,vector" in output
+    assert f"BM25 evidence:       {bm25_destination}" in output
+    assert f"Vector evidence:     {vector_destination}" in output
+    assert f"Context evidence:    {context_destination}" in output
+    assert "Materialize snapshot: codenib artifact materialize" in output
+    assert "--snapshot snapshot-id" in output
+
+
+def test_index_retained_rejects_missing_cache_parent_symlink_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.paths import repo_index_dir
+
+    args = _retained_index_cli_test_args(tmp_path)
+    repo = Path(args.repo)
+    cas_root = Path(args.cas_root)
+    aliased_home = tmp_path / "aliased-state"
+    aliased_home.symlink_to(cas_root, target_is_directory=True)
+    monkeypatch.setenv("CODENIB_HOME", str(aliased_home))
+    canonical_cache = Path(os.path.abspath(os.fspath(repo_index_dir(repo))))
+    assert not canonical_cache.exists()
+    before = tuple(cas_root.iterdir())
+    monkeypatch.setattr(cli, "_new_compiler_cache_import_nonce", lambda: "2" * 32)
+    monkeypatch.setattr(
+        cli,
+        "_prepare_index_compiler",
+        lambda *_args, **_kwargs: pytest.fail("compiler must not be prepared"),
+    )
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "capture_repository_source",
+        lambda *_args, **_kwargs: pytest.fail("source must not be captured"),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: pytest.fail("CAS must not be opened"),
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: pytest.fail("catalog must not be opened"),
+    )
+
+    with pytest.raises(
+        cli.CLIError,
+        match="cache path must contain only existing real directories",
+    ):
+        cli._run_index_retained(
+            args,
+            repo_path=repo,
+            selection=cli._RetainedIndexSelection(
+                "owner/repo",
+                "default",
+                "main",
+                0,
+            ),
+            compiler_kwargs={
+                "languages": ["python"],
+                "views": ["bm25"],
+                "source_selection": RepositorySourceSelection(),
+            },
+        )
+
+    assert tuple(cas_root.iterdir()) == before
+    assert not canonical_cache.exists()
 
 
 def test_artifact_import_cache_retains_failed_topology_cleanup_for_retry(
