@@ -15,13 +15,73 @@ strict workspace contract. It publishes one fully validated directory into a
 missing destination and transfers the generation to a caller-owned
 `PublishedWorkspaceReceiptOwner`.
 
-The provider is not part of CodeNib's default compiler, import, or runtime
-path. Two explicit operator bridges use it: `codenib artifact import-cache`
-recaptures an explicitly selected current compiler-cache BM25/vector view set
-into retained storage, and `codenib artifact materialize` publishes a retained
-catalog ref or immutable snapshot to a missing portable-artifact directory.
-The strict BM25 replacement path still requires the unsupported
-`provider-bound-exact` destination mode.
+The provider is not enabled by CodeNib's default compiler or runtime path.
+Three explicit routes use it: `codenib index --publish-retained` builds and
+publishes current BM25/vector views in one compiler-cache lease,
+`codenib artifact import-cache` recaptures an already existing selected cache,
+and `codenib artifact materialize` publishes a retained catalog ref or
+immutable snapshot to a missing portable-artifact directory. The strict BM25
+replacement path still requires the unsupported `provider-bound-exact`
+destination mode.
+
+## Publish a normal index build
+
+Use `--publish-retained` on the normal `codenib index` command to build or
+update BM25, vector, or both and publish the exact compiler result as one ready
+snapshot. This is the first production compiler-to-retained route; without the
+flag, `codenib index` keeps its existing local-cache behavior and output.
+
+The route requires the same existing initialized SQLite catalog, fully
+preprovisioned strict `LocalCAS`, and private owner-only Linux workspace root
+described below. It never provisions those authorities. It uses CodeNib's
+canonical per-repository compiler cache; a first invocation may create that
+cache, but the cache's nearest existing real ancestor and physical storage
+topology are checked before creation. Inside the single compiler lease, the
+route freezes the newly created cache identity before the build, verifies it
+before publication and again after recapture, and rejects a changed or aliased
+cache instead of importing a different generation.
+
+All retained options are opt-in as one group. `--rebuild` is intentionally
+incompatible because a post-commit retry must reuse the current compiler
+generation rather than force new bytes. Selected views must be exactly BM25,
+vector, or BM25 plus vector; graph and Zoekt publication remain later
+milestones. For a first BM25-only publication:
+
+```bash
+codenib index /srv/src/repository \
+  --preset fast \
+  --publish-retained \
+  --catalog /var/lib/codenib/catalog.sqlite3 \
+  --cas-root /var/lib/codenib/cas \
+  --workspace-root /var/lib/codenib/workspaces \
+  --repository owner/repository \
+  --ref main \
+  --expected-generation 0
+```
+
+Use `--preset semantic` or `--view bm25,vector` with a configured embedding
+route for the combined portable view set. The command captures the retained
+source before compilation, then performs update-or-create, exact serialized
+manifest binding, all selected view plans and publications, and one context
+publication under the same cache lease. The retained importer performs no CAS
+or catalog data-plane operation until that lease is released; support,
+existing-storage open, and static contract probes may run earlier. A failed or
+stale selected view stops before retained publication.
+
+Each invocation uses fresh missing-only evidence destinations. Published
+evidence is warned about rather than deleted if a later step fails. On success,
+the normal index summary is followed by the snapshot, ref generation, evidence
+paths, and an immutable-snapshot `artifact materialize` command. If a result
+might have committed before it was observed, retry without `--rebuild`, with
+the original `--expected-generation`; unchanged source and compiler
+configuration resolve to the same snapshot with `changed=False` rather than
+advancing the ref again.
+
+This remains explicit offline dual-write. Keep the source/cache and storage
+namespaces trusted and quiescent, and apply the payload-size and storage-media
+benchmark gate described below before enabling it by default or treating it as
+a latency-sensitive worker path. Catalog-selected MCP cold start is still a
+separate M1 route; runtime hot switching remains M3.
 
 ## Import compiler query views
 
@@ -30,8 +90,9 @@ or both from an existing `IndexCompiler` cache as one ready retained snapshot.
 Omitting `--view` preserves the BM25-only default. Repeat `--view`, or pass a
 comma-separated value such as `--view bm25,vector`, to select views explicitly;
 the CLI canonicalizes the result to BM25 then vector. This remains an offline
-bootstrap: it does not change the default `codenib index` route, import graph or
-Zoekt views, run an M2 fenced job, or hot-switch a runtime.
+bootstrap for an already existing cache: it does not enable retained
+publication for an `index` invocation that lacks `--publish-retained`, import
+graph or Zoekt views, run an M2 fenced job, or hot-switch a runtime.
 
 Prepare these authorities before running it:
 
@@ -213,10 +274,11 @@ retry over it; verify the retained artifact before reuse or reclaim it through
 an ownership-aware workflow.
 
 This retained-read bridge and the explicit BM25/vector ingress above do not
-complete the hybrid-storage M1 milestone. Default compiler/runtime routing is
-still missing, as is a production provider for the strict BM25 replacement
-producer's `provider-bound-exact` destination contract. Graph and Zoekt ingress
-remain M2 or later work; fenced jobs and runtime hot switching remain separate
+complete the hybrid-storage M1 milestone. Catalog-selected cold-start runtime
+and benchmark-backed promotion of the opt-in compiler route are still missing,
+as is a production provider for the strict BM25 replacement producer's
+`provider-bound-exact` destination contract. Graph and Zoekt ingress remain M2
+or later work; fenced jobs and runtime hot switching remain separate
 milestones.
 
 ## Lifecycle

@@ -562,14 +562,33 @@ reserving the suggested output. An exact retry uses fresh destinations but the
 original expected ref generation and idempotently returns the already-published
 snapshot without another ref advance.
 
-This command is an offline bootstrap, not a request-path or worker-path
-primitive. Exact ownership capture, semantic validation, workspace replay,
-bundle/CAS ingestion, and receipt revalidation deliberately make multiple
-bounded passes over large payloads; a selected FAISS file may therefore be
-read more than once. Representative end-to-end corpus, payload-size, and
-storage-media benchmarks are required before this path is enabled by default,
-used as a latency-sensitive service ingress, or has any validation pass
-removed. M1 remains in progress because default compiler/runtime routing is
+The same coordinator now has a normal compiler composition boundary.
+`compile_and_import_repo` performs update-or-create and immutable recapture in
+one compiler-cache lease, binds the exact serialized manifest to the returned
+compiler result, and releases the lease before the retained importer invokes
+CAS/catalog data-plane methods. Support, existing-storage open, and static
+contract probes may run before the lease.
+The existing `codenib index` command exposes it only when
+`--publish-retained` is present with an existing catalog, preprovisioned strict
+CAS, private `0700` workspace root, canonical repository key, and optimistic
+ref generation. A first build may create the canonical compiler cache. Before
+that creation, the CLI authenticates its nearest existing real ancestor and
+denies physical storage aliases; inside the sole semantic lease it freezes the
+created cache identity, repeats the storage-topology gate before publication,
+and verifies it again after recapture. `--rebuild` is incompatible with this
+route so an at-least-once retry can reuse the same compiler generation and
+resolve to the same snapshot rather than manufacture new bytes. Default index
+behavior remains unchanged when the flag is absent.
+
+Both compiler-cache ingress routes are offline publication paths, not
+request-path or worker-path primitives. Exact ownership capture, semantic
+validation, workspace replay, bundle/CAS ingestion, and receipt revalidation
+deliberately make multiple bounded passes over large payloads; a selected FAISS
+file may therefore be read more than once. Representative end-to-end corpus,
+payload-size, and storage-media benchmarks are required before either path is
+enabled by default, used as a latency-sensitive service ingress, or has any
+validation pass removed. M1 remains in progress because catalog-selected
+cold-start runtime routing and benchmark-backed default compiler promotion are
 still absent. Graph and Zoekt cache ingress, generic builder profiles, and
 fenced job publication remain M2 or later work, runtime hot switching remains
 M3 work, and evidence retention and reclamation remain M5 work.
@@ -649,9 +668,10 @@ rather than deleting it.
 
 This command does not initialize or populate the control plane, import a legacy
 cache, build views, advance refs, or make retained storage the default. It is
-the retained-read bridge only. Default compiler/runtime routing remains
-outstanding M1 work; graph and Zoekt cache ingress and fenced job publication
-remain M2 or later work. Strict BM25 replacement also still lacks the
+the retained-read bridge only. Catalog-selected cold-start runtime and
+benchmark-backed promotion of the explicit compiler route remain outstanding
+M1 work; graph and Zoekt cache ingress and fenced job publication remain M2 or
+later work. Strict BM25 replacement also still lacks the
 `provider-bound-exact` production provider.
 
 Schema v2 now adds
@@ -661,9 +681,9 @@ per-ref leases.  Catalog reads revalidate the normalized view rows against the
 canonical request; the M2 publication transaction must repeat that gate before
 associating outputs.  An explicit acquire may atomically retire an expired
 holder while taking over its slot; this slice adds no background reaper and is
-not wired to the compiler or Web workers. Default compiler/import/runtime
-wiring remains the outstanding M1 deliverable; fenced job publication remains
-M2 work.
+not wired to the compiler or Web workers. Catalog-selected cold-start runtime
+and benchmark-backed default compiler promotion remain outstanding M1
+deliverables; fenced job publication remains M2 work.
 
 The shared compiler-cache lock is a cooperative serialization boundary for
 compiler and importer processes using a cache namespace private to one OS
