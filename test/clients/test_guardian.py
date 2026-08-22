@@ -2632,7 +2632,9 @@ def test_solver_context_ids_are_stable_across_review_cycles(tmp_path: Path) -> N
         tmp_path, seed.workspace, seed.base_commit, seed.candidate_commit, 2
     )
 
-    assert _solver_context(first).context_id == _solver_context(second).context_id
+    first_id = _solver_context(first).context_id
+    assert first_id == _solver_context(second).context_id
+    assert len(first_id.removeprefix("CTX-solver-")) == 64
 
 
 def test_remembered_solver_evidence_stays_fresh_in_a_later_cycle(
@@ -2670,7 +2672,9 @@ def test_task_context_auto_ids_are_stable_for_equivalent_items() -> None:
             fidelity=ContextFidelity.VERBATIM,
         )
 
-    assert build().context_id == build().context_id
+    first_id = build().context_id
+    assert first_id == build().context_id
+    assert len(first_id.removeprefix("CTX-")) == 64
 
 
 def test_task_context_auto_ids_separate_distinct_sources() -> None:

@@ -33,7 +33,7 @@ def _task_context_id(
 
     material = "\0".join((content.strip(), source.value, fidelity.value))
     digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
-    return f"CTX-{digest[:12]}"
+    return f"CTX-{digest}"
 
 
 def _solver_context_id(content: str) -> str:
@@ -45,7 +45,7 @@ def _solver_context_id(content: str) -> str:
     """
 
     digest = hashlib.sha256(content.strip().encode("utf-8")).hexdigest()
-    return f"CTX-solver-{digest[:8]}"
+    return f"CTX-solver-{digest}"
 
 
 class TaskContextSource(str, Enum):
