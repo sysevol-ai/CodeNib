@@ -30,7 +30,10 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         CompilerCacheBm25RecaptureResult,
         CompilerCacheImportResult,
         CompilerCacheMultiViewImportResult,
+        CompilerCacheTopologyGuard,
         CompilerCacheViewRecaptureResult,
+        CompilerRetainedPublicationResult,
+        compile_and_import_repo,
         import_compiler_cache,
         import_compiler_cache_bm25,
     )
@@ -88,9 +91,21 @@ _EXPORTS = {
         "codenib.compiler.cache_import",
         "CompilerCacheMultiViewImportResult",
     ),
+    "CompilerCacheTopologyGuard": (
+        "codenib.compiler.cache_import",
+        "CompilerCacheTopologyGuard",
+    ),
     "CompilerCacheViewRecaptureResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheViewRecaptureResult",
+    ),
+    "CompilerRetainedPublicationResult": (
+        "codenib.compiler.cache_import",
+        "CompilerRetainedPublicationResult",
+    ),
+    "compile_and_import_repo": (
+        "codenib.compiler.cache_import",
+        "compile_and_import_repo",
     ),
     "import_compiler_cache": (
         "codenib.compiler.cache_import",
@@ -202,7 +217,10 @@ __all__ = [
     "CompilerCacheBm25RecaptureResult",
     "CompilerCacheImportResult",
     "CompilerCacheMultiViewImportResult",
+    "CompilerCacheTopologyGuard",
     "CompilerCacheViewRecaptureResult",
+    "CompilerRetainedPublicationResult",
+    "compile_and_import_repo",
     "import_compiler_cache",
     "import_compiler_cache_bm25",
     "IndexCompiler",

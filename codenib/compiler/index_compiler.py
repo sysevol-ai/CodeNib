@@ -169,7 +169,12 @@ class IndexCompiler:
         index_types: Optional[List[str]],
         cache: str,
     ) -> RepoManifest:
-        """Update a repository while holding its cache-level compiler lock."""
+        """Update or create a repository while the caller holds its cache lock.
+
+        This method deliberately does not acquire another lease.  It is the
+        composition boundary used by retained publication so compilation and
+        immutable recapture share one cache generation.
+        """
         manifest_path = os.path.join(cache, MANIFEST_FILENAME)
 
         if not os.path.isfile(manifest_path):
