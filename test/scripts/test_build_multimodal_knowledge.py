@@ -55,6 +55,8 @@ def test_build_multimodal_knowledge_script_writes_bundle(tmp_path):
     bundle = json.loads(output.read_text(encoding="utf-8"))
     assert counts["media_artifacts"] == 1
     assert counts["knowledge_entries"] == 1
+    assert bundle["schema"] == "codenib.multimodal-knowledge-bundle.v1"
+    assert len(bundle["bundle_sha256"]) == 64
     assert bundle["media_manifest"]["commit"] == "abc123"
     assert bundle["knowledge_view"]["entry_count"] == 1
 

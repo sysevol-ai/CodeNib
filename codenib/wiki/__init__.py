@@ -36,6 +36,14 @@ from .media_knowledge import (
     search_visual_context,
 )
 from .media_pipeline import build_multimodal_repository_knowledge
+from .media_storage import (
+    MULTIMODAL_KNOWLEDGE_BUNDLE_SCHEMA,
+    MULTIMODAL_KNOWLEDGE_BUNDLE_VERSION,
+    build_multimodal_knowledge_bundle,
+    load_multimodal_knowledge_bundle,
+    save_multimodal_knowledge_bundle,
+    validate_multimodal_knowledge_bundle,
+)
 from .media_tools import MultimodalKnowledgeToolRouter, multimodal_tool_schemas
 from .media_vlm import (
     OpenAICompatibleVisualFactExtractor,
@@ -43,12 +51,15 @@ from .media_vlm import (
 )
 
 __all__ = [
+    "MULTIMODAL_KNOWLEDGE_BUNDLE_SCHEMA",
+    "MULTIMODAL_KNOWLEDGE_BUNDLE_VERSION",
     "MultimodalKnowledgeToolRouter",
     "WikiBuilder",
     "OpenAICompatibleVisualFactExtractor",
     "VisualGroundingScorer",
     "build_media_evidence_pack",
     "build_multimodal_knowledge_view",
+    "build_multimodal_knowledge_bundle",
     "build_multimodal_repository_knowledge",
     "build_visual_facts_manifest",
     "deterministic_visual_facts",
@@ -64,6 +75,9 @@ __all__ = [
     "merge_incremental_visual_facts",
     "multimodal_tool_schemas",
     "plan_incremental_visual_fact_update",
+    "load_multimodal_knowledge_bundle",
+    "save_multimodal_knowledge_bundle",
     "search_visual_context",
+    "validate_multimodal_knowledge_bundle",
     "visual_fact_extractor_from_config",
 ]

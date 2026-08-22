@@ -77,6 +77,9 @@ def test_build_multimodal_repository_knowledge_wraps_pipeline(tmp_path):
 
     bundle = build_multimodal_repository_knowledge(tmp_path, commit="abc123")
 
+    assert bundle["schema"] == "codenib.multimodal-knowledge-bundle.v1"
+    assert bundle["schema_version"] == 1
+    assert len(bundle["bundle_sha256"]) == 64
     assert bundle["media_manifest"]["artifact_count"] == 1
     assert bundle["visual_facts_manifest"]["fact_count"] == 1
     assert bundle["source_candidate_count"] >= 1

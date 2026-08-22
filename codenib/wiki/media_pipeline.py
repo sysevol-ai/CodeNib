@@ -21,6 +21,7 @@ from .media_grounding import (
     ground_visual_facts_to_sources,
 )
 from .media_knowledge import build_multimodal_knowledge_view
+from .media_storage import build_multimodal_knowledge_bundle
 
 
 def build_multimodal_repository_knowledge(
@@ -65,13 +66,13 @@ def build_multimodal_repository_knowledge(
         visual_facts_manifest,
         grounding_manifest,
     )
-    return {
-        "media_manifest": media_manifest,
-        "visual_facts_manifest": visual_facts_manifest,
-        "source_candidate_count": len(source_candidates),
-        "grounding_manifest": grounding_manifest,
-        "knowledge_view": knowledge_view,
-    }
+    return build_multimodal_knowledge_bundle(
+        media_manifest=media_manifest,
+        visual_facts_manifest=visual_facts_manifest,
+        source_candidate_count=len(source_candidates),
+        grounding_manifest=grounding_manifest,
+        knowledge_view=knowledge_view,
+    )
 
 
 def _repository_root(repo_path: str | Path) -> Path:
