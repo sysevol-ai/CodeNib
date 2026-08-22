@@ -2721,7 +2721,20 @@ def test_carried_over_specification_survives_a_round_that_omits_it(
     never requires re-emitting specifications already held in memory.
     """
 
-    request = _request(tmp_path)
+    request = replace(
+        _request(tmp_path),
+        task_context=(
+            TaskContext(
+                content=(
+                    "Every copied state must preserve its configured mode and "
+                    "retry budget."
+                ),
+                source=TaskContextSource.USER_INSTRUCTION,
+                fidelity=ContextFidelity.VERBATIM,
+                context_id="CTX-task",
+            ),
+        ),
+    )
     task_context = next(
         item
         for item in request.task_context
