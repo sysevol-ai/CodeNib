@@ -57,6 +57,31 @@ bounded local artifact as a data URL, asks for JSON-only structured visual
 facts, and normalizes the response into the same `VisualFactPack` schema. This
 keeps the multimodal knowledge pipeline independent of a specific model family.
 
+The extractor is disabled by default. It can be configured through `QAConfig`
+or environment variables:
+
+```yaml
+wiki_visual_facts_enabled: true
+wiki_visual_facts_model: qwen-vl
+wiki_visual_facts_api_base: http://localhost:8000/v1
+wiki_visual_facts_options:
+  provider: qwen
+  timeout: 120
+```
+
+Equivalent environment variables:
+
+```text
+CODENIB_WIKI_VISUAL_FACTS_ENABLED=true
+CODENIB_WIKI_VISUAL_FACTS_MODEL=qwen-vl
+CODENIB_WIKI_VISUAL_FACTS_API_BASE=http://localhost:8000/v1
+CODENIB_WIKI_VISUAL_FACTS_API_KEY=...
+CODENIB_WIKI_VISUAL_FACTS_OPTIONS='{"provider":"qwen","timeout":120}'
+```
+
+Offline and CI runs keep using deterministic local extraction unless the VLM is
+explicitly enabled and both model and endpoint are provided.
+
 ### VisualGroundingManifest
 
 `codenib.wiki.media_grounding` grounds extracted visual entities to repository
@@ -82,6 +107,26 @@ a queryable view. It exposes three functions that future MCP tools can wrap:
 surface as an MCP-compatible tool router with stable tool schemas and bounded
 input validation. This keeps the query surface testable before wiring it into a
 server-specific MCP registration path.
+
+### Multimodal knowledge bundle
+
+`codenib.wiki.media_storage` wraps the pipeline output as a versioned bundle:
+
+```text
+schema: codenib.multimodal-knowledge-bundle.v1
+schema_version: 1
+media_manifest
+visual_facts_manifest
+grounding_manifest
+knowledge_view
+component_sha256
+bundle_sha256
+```
+
+The storage helper writes bundle JSON atomically and validates loaded bundles,
+including schema version, required object fields, byte limits, and bundle hash.
+This gives downstream consumers a stable artifact boundary instead of an ad hoc
+script JSON dump.
 
 ### Incremental updates
 
@@ -191,6 +236,17 @@ The same deterministic bundle can be written from the command line:
 python scripts/build_multimodal_knowledge.py /path/to/repository \
   --output /tmp/multimodal-knowledge.json \
   --exclude-root /path/to/repository/generated
+```
+
+To use an OpenAI-compatible VLM for visual fact extraction:
+
+```text
+export CODENIB_WIKI_VISUAL_FACTS_API_KEY=...
+python scripts/build_multimodal_knowledge.py /path/to/repository \
+  --output /tmp/multimodal-knowledge.json \
+  --visual-facts-model qwen-vl \
+  --visual-facts-api-base http://localhost:8000/v1 \
+  --visual-facts-provider qwen
 ```
 
 ```python
