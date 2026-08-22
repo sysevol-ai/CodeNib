@@ -27,6 +27,7 @@ from urllib.parse import urlsplit
 _GENERATABLE_IMAGE_KINDS = frozenset({"diagram", "image", "storyboard"})
 _MAX_MEDIA_SLOTS = 12
 _MAX_PROMPT_BYTES = 32 * 1024
+_MAX_EVIDENCE_PACK_BYTES = 24 * 1024
 _MAX_IMAGE_RESPONSE_BYTES = 32 * 1024 * 1024
 _MAX_IMAGE_BYTES = 16 * 1024 * 1024
 _MAX_MANIFEST_BYTES = 256 * 1024
@@ -42,9 +43,10 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f"LPT{index}" for index in range(1, 10)}
 )
 _ASSET_LOCKS_GUARD = threading.Lock()
-_ASSET_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
-    weakref.WeakValueDictionary()
-)
+_ASSET_LOCKS: weakref.WeakValueDictionary[
+    str, threading.Lock
+] = weakref.WeakValueDictionary()
+MediaEvidenceBuilder = Callable[[Mapping[str, Any]], Mapping[str, Any] | None]
 
 
 @dataclass(frozen=True)
@@ -125,6 +127,8 @@ class OpenAICompatibleImageGenerator:
             raise ValueError("output_dir is required for image generation")
 
         prompt = _generation_prompt(slot)
+        public_prompt = _generation_prompt(slot, include_evidence_pack=False)
+        prompt_sha256 = _sha256_text(prompt)
         render_sha256 = _slot_render_sha256(slot)
         filename = f"{_safe_filename(slot_id)}.png"
         with _asset_lock(output_dir, filename):
@@ -135,7 +139,7 @@ class OpenAICompatibleImageGenerator:
                     "slot_id": slot_id,
                     "model": self.model,
                     "provider": self.provider,
-                    "prompt_sha256": _sha256_text(prompt),
+                    "prompt_sha256": prompt_sha256,
                     "render_sha256": render_sha256,
                     "size": self.size,
                 },
@@ -184,15 +188,15 @@ class OpenAICompatibleImageGenerator:
                 mime_type=mime_type,
                 model=self.model,
                 provider=self.provider,
-                prompt=prompt,
+                prompt=public_prompt,
                 source_citations=citations,
-                metadata={"size": self.size},
+                metadata=_asset_metadata(slot, size=self.size),
             ).to_dict()
             _write_asset_manifest(
                 output_dir,
                 filename,
                 asset,
-                prompt_sha256=_sha256_text(prompt),
+                prompt_sha256=prompt_sha256,
                 render_sha256=render_sha256,
                 content_sha256=content_sha256,
             )
@@ -249,6 +253,8 @@ class DeterministicSvgMediaGenerator:
             raise ValueError("output_dir is required for local SVG generation")
 
         prompt = _generation_prompt(slot)
+        public_prompt = _generation_prompt(slot, include_evidence_pack=False)
+        prompt_sha256 = _sha256_text(prompt)
         render_sha256 = _slot_render_sha256(slot)
         filename = f"{_safe_filename(slot_id)}.svg"
         with _asset_lock(output_dir, filename):
@@ -259,7 +265,7 @@ class DeterministicSvgMediaGenerator:
                     "slot_id": slot_id,
                     "model": self.model,
                     "provider": self.provider,
-                    "prompt_sha256": _sha256_text(prompt),
+                    "prompt_sha256": prompt_sha256,
                     "render_sha256": render_sha256,
                 },
             )
@@ -281,15 +287,15 @@ class DeterministicSvgMediaGenerator:
                 mime_type="image/svg+xml",
                 model=self.model,
                 provider=self.provider,
-                prompt=prompt,
+                prompt=public_prompt,
                 source_citations=citations,
-                metadata={"deterministic": True},
+                metadata=_asset_metadata(slot, deterministic=True),
             ).to_dict()
             _write_asset_manifest(
                 output_dir,
                 filename,
                 asset,
-                prompt_sha256=_sha256_text(prompt),
+                prompt_sha256=prompt_sha256,
                 render_sha256=render_sha256,
                 content_sha256=hashlib.sha256(svg).hexdigest(),
             )
@@ -302,6 +308,7 @@ def materialize_media_slots(
     generator: Any,
     output_dir: str | Path,
     asset_base_path: str = "assets/wiki-media",
+    evidence_builder: MediaEvidenceBuilder | None = None,
 ) -> dict[str, Any]:
     """Generate assets for supported slots and attach them to a page payload."""
 
@@ -322,8 +329,13 @@ def materialize_media_slots(
         if "asset" not in updated:
             kind = str(updated.get("kind") or "")
             if kind in _GENERATABLE_IMAGE_KINDS:
+                generation_slot = updated
+                if evidence_builder is not None and "evidence_pack" not in updated:
+                    evidence_pack = evidence_builder(updated)
+                    if evidence_pack:
+                        generation_slot = {**updated, "evidence_pack": evidence_pack}
                 updated["asset"] = generator.generate(
-                    updated,
+                    generation_slot,
                     output_dir=output_dir,
                     asset_base_path=asset_base_path,
                 )
@@ -362,7 +374,9 @@ def read_generated_media_asset(output_dir: str | Path, filename: str) -> bytes |
     return _read_regular_bytes(Path(output_dir) / filename, max_bytes=_MAX_IMAGE_BYTES)
 
 
-def _generation_prompt(slot: Mapping[str, Any]) -> str:
+def _generation_prompt(
+    slot: Mapping[str, Any], *, include_evidence_pack: bool = True
+) -> str:
     parts = [str(slot.get("prompt") or "").strip()]
     purpose = str(slot.get("purpose") or "").strip()
     if purpose:
@@ -370,10 +384,42 @@ def _generation_prompt(slot: Mapping[str, Any]) -> str:
     citations = _source_citations(slot)
     if citations:
         parts.append("Source citations: " + ", ".join(citations))
+    if include_evidence_pack:
+        evidence_pack = _evidence_pack_prompt(slot.get("evidence_pack"))
+        if evidence_pack:
+            parts.append(evidence_pack)
     prompt = "\n\n".join(part for part in parts if part)
     if len(prompt.encode("utf-8")) > _MAX_PROMPT_BYTES:
         raise ValueError("wiki media prompt exceeds the byte limit")
     return prompt
+
+
+def _evidence_pack_prompt(value: Any) -> str:
+    if not isinstance(value, Mapping):
+        return ""
+    evidence = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    if len(evidence.encode("utf-8")) > _MAX_EVIDENCE_PACK_BYTES:
+        raise ValueError("wiki media evidence pack exceeds the byte limit")
+    return "Source-grounded media evidence pack:\n" + evidence
+
+
+def _asset_metadata(slot: Mapping[str, Any], **values: Any) -> dict[str, Any]:
+    metadata = dict(values)
+    if isinstance(slot.get("evidence_pack"), Mapping):
+        metadata["evidence_pack_sha256"] = _sha256_text(
+            json.dumps(
+                slot["evidence_pack"],
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    return metadata
 
 
 def _source_citations(slot: Mapping[str, Any]) -> tuple[str, ...]:

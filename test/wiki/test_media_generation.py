@@ -14,6 +14,7 @@ import time
 import pytest
 
 import codenib.wiki.media_generation as media_generation
+from codenib.wiki.media_evidence import build_media_evidence_pack
 from codenib.wiki.media_generation import (
     DeterministicSvgMediaGenerator,
     OpenAICompatibleImageGenerator,
@@ -111,6 +112,66 @@ def test_materialize_media_slots_skips_unsupported_video_slots(tmp_path):
     assert "asset" not in materialized["media_slots"][1]
 
 
+def test_materialize_media_slots_uses_server_side_evidence_without_exposing_it(
+    tmp_path,
+):
+    requests = []
+    png = base64.b64encode(_PNG).decode("ascii")
+
+    def fake_urlopen(request, timeout):
+        requests.append(request)
+        return _Response({"data": [{"b64_json": png}]})
+
+    generator = OpenAICompatibleImageGenerator(
+        model="openai/gpt-image-1",
+        api_base="https://api.example/v1",
+        urlopen=fake_urlopen,
+    )
+    page = {
+        "id": "overview",
+        "title": "Overview",
+        "content": "This page explains wiki media generation.",
+        "media_slots": [
+            {
+                "id": "overview-image",
+                "kind": "image",
+                "prompt": "Draw a grounded concept.",
+                "source_citations": ["src/app.py"],
+            }
+        ],
+    }
+
+    def evidence_builder(slot):
+        return build_media_evidence_pack(
+            slot,
+            page_id=page["id"],
+            page_title=page["title"],
+            page_markdown=page["content"],
+            citations=[
+                {
+                    "file": "src/app.py",
+                    "symbol": "build_page",
+                    "snippet": "secret server-side source snippet",
+                }
+            ],
+            relations=[{"from": "build_page", "to": "render_media", "kind": "calls"}],
+        )
+
+    materialized = materialize_media_slots(
+        page,
+        generator=generator,
+        output_dir=tmp_path,
+        evidence_builder=evidence_builder,
+    )
+
+    body = json.loads(requests[0].data.decode("utf-8"))
+    assert "secret server-side source snippet" in body["prompt"]
+    slot = materialized["media_slots"][0]
+    assert "evidence_pack" not in slot
+    assert "secret server-side source snippet" not in json.dumps(slot)
+    assert "evidence_pack_sha256" in slot["asset"]["metadata"]
+
+
 def test_deterministic_svg_generator_writes_visible_asset(tmp_path):
     generator = DeterministicSvgMediaGenerator()
 
@@ -179,6 +240,46 @@ def test_media_generation_reuses_cached_asset(tmp_path):
 
     assert first == second
     assert len(calls) == 2
+
+
+def test_asset_prompt_redacts_evidence_pack_contents(tmp_path):
+    generator = DeterministicSvgMediaGenerator()
+    slot = {
+        "id": "overview-image",
+        "kind": "image",
+        "prompt": "Draw it.",
+        "source_citations": ["src/app.py"],
+        "evidence_pack": {
+            "slot_id": "overview-image",
+            "sources": [
+                {"file": "src/app.py", "snippet": "private code snippet"},
+            ],
+        },
+    }
+
+    asset = generator.generate(slot, output_dir=tmp_path)
+
+    assert "private code snippet" not in asset["prompt"]
+    assert asset["metadata"]["evidence_pack_sha256"]
+
+
+def test_generation_prompt_rejects_oversized_evidence_pack(tmp_path):
+    generator = DeterministicSvgMediaGenerator()
+    oversized = {
+        "slot_id": "overview-image",
+        "sources": [{"file": "src/app.py", "snippet": "x" * (25 * 1024)}],
+    }
+
+    with pytest.raises(ValueError, match="evidence pack exceeds"):
+        generator.generate(
+            {
+                "id": "overview-image",
+                "kind": "image",
+                "prompt": "Draw it.",
+                "evidence_pack": oversized,
+            },
+            output_dir=tmp_path,
+        )
 
 
 def test_hosted_image_url_is_validated_and_cached(tmp_path):
