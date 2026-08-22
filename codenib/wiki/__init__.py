@@ -37,7 +37,10 @@ from .media_knowledge import (
 )
 from .media_pipeline import build_multimodal_repository_knowledge
 from .media_tools import MultimodalKnowledgeToolRouter, multimodal_tool_schemas
-from .media_vlm import OpenAICompatibleVisualFactExtractor
+from .media_vlm import (
+    OpenAICompatibleVisualFactExtractor,
+    visual_fact_extractor_from_config,
+)
 
 __all__ = [
     "MultimodalKnowledgeToolRouter",
@@ -62,4 +65,5 @@ __all__ = [
     "multimodal_tool_schemas",
     "plan_incremental_visual_fact_update",
     "search_visual_context",
+    "visual_fact_extractor_from_config",
 ]

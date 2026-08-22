@@ -149,6 +149,27 @@ class OpenAICompatibleVisualFactExtractor:
         return data
 
 
+def visual_fact_extractor_from_config(
+    config: Any,
+) -> OpenAICompatibleVisualFactExtractor | None:
+    """Build a visual-fact extractor from ``QAConfig``-shaped settings."""
+
+    if not bool(getattr(config, "wiki_visual_fact_extraction_enabled", False)):
+        return None
+    model = str(getattr(config, "wiki_visual_facts_model", None) or "").strip()
+    api_base = str(getattr(config, "wiki_visual_facts_api_base", None) or "").strip()
+    options = dict(getattr(config, "wiki_visual_facts_options", {}) or {})
+    timeout = options.get("timeout", 120.0)
+    provider = str(options.get("provider") or "openai-compatible")
+    return OpenAICompatibleVisualFactExtractor(
+        model=model,
+        api_base=api_base,
+        api_key=getattr(config, "wiki_visual_facts_api_key", None),
+        timeout=timeout,
+        provider=provider,
+    )
+
+
 def _response_content_json(response: Mapping[str, Any]) -> dict[str, Any]:
     choices = response.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -274,4 +295,4 @@ def _chat_completions_endpoint(api_base: str) -> str:
     return parsed._replace(path=path, fragment="").geturl()
 
 
-__all__ = ["OpenAICompatibleVisualFactExtractor"]
+__all__ = ["OpenAICompatibleVisualFactExtractor", "visual_fact_extractor_from_config"]

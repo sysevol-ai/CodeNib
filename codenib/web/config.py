@@ -147,6 +147,15 @@ class QAConfig:
     wiki_media_api_base: Optional[str] = None
     wiki_media_api_key: Optional[str] = field(default=None, repr=False)
     wiki_media_options: Dict[str, Any] = field(default_factory=dict)
+    # Optional OpenAI-compatible VLM endpoint for extracting structured visual
+    # facts from repository-owned images/diagrams before grounding them to code.
+    # Disabled by default so local/offline builds keep using deterministic
+    # metadata extraction.
+    wiki_visual_facts_enabled: bool = False
+    wiki_visual_facts_model: Optional[str] = None
+    wiki_visual_facts_api_base: Optional[str] = None
+    wiki_visual_facts_api_key: Optional[str] = field(default=None, repr=False)
+    wiki_visual_facts_options: Dict[str, Any] = field(default_factory=dict)
     # Optional OpenAI-compatible endpoint for the Ask agent. Provider-native
     # models (for example Vertex or Anthropic) normally leave these unset.
     model_api_base: Optional[str] = None
@@ -224,6 +233,10 @@ class QAConfig:
             self.wiki_media_options,
             source="wiki_media_options",
         )
+        self.wiki_visual_facts_options = validate_model_options(
+            self.wiki_visual_facts_options,
+            source="wiki_visual_facts_options",
+        )
 
     def index_types(self) -> List[str]:
         return ["bm25", "vector"] if self.mode == "hybrid" else ["bm25"]
@@ -297,6 +310,16 @@ class QAConfig:
             return True
         return bool(self.wiki_media_model and self.wiki_media_api_base)
 
+    @property
+    def wiki_visual_fact_extraction_enabled(self) -> bool:
+        """Whether repository media should be sent to a configured VLM."""
+
+        return bool(
+            self.wiki_visual_facts_enabled
+            and self.wiki_visual_facts_model
+            and self.wiki_visual_facts_api_base
+        )
+
 
 def load_config(path: Optional[str] = None) -> QAConfig:
     """Load a layered demo config from YAML, then apply env overrides."""
@@ -315,6 +338,19 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         wiki_media_options=validate_model_options(
             data.get("wiki_media_options"),
             source="wiki_media_options",
+        ),
+        wiki_visual_facts_enabled=bool(
+            data.get(
+                "wiki_visual_facts_enabled",
+                defaults.wiki_visual_facts_enabled,
+            )
+        ),
+        wiki_visual_facts_model=data.get("wiki_visual_facts_model"),
+        wiki_visual_facts_api_base=data.get("wiki_visual_facts_api_base"),
+        wiki_visual_facts_api_key=data.get("wiki_visual_facts_api_key"),
+        wiki_visual_facts_options=validate_model_options(
+            data.get("wiki_visual_facts_options"),
+            source="wiki_visual_facts_options",
         ),
         model_api_base=data.get("model_api_base"),
         model_api_key=data.get("model_api_key"),
@@ -374,6 +410,18 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         cfg.wiki_media_api_base = os.environ["CODENIB_WIKI_MEDIA_API_BASE"]
     if os.environ.get("CODENIB_WIKI_MEDIA_API_KEY"):
         cfg.wiki_media_api_key = os.environ["CODENIB_WIKI_MEDIA_API_KEY"]
+    if os.environ.get("CODENIB_WIKI_VISUAL_FACTS_ENABLED") is not None:
+        cfg.wiki_visual_facts_enabled = os.environ[
+            "CODENIB_WIKI_VISUAL_FACTS_ENABLED"
+        ].strip().lower() in ("1", "true", "yes", "on")
+    if os.environ.get("CODENIB_WIKI_VISUAL_FACTS_MODEL"):
+        cfg.wiki_visual_facts_model = os.environ["CODENIB_WIKI_VISUAL_FACTS_MODEL"]
+    if os.environ.get("CODENIB_WIKI_VISUAL_FACTS_API_BASE"):
+        cfg.wiki_visual_facts_api_base = os.environ[
+            "CODENIB_WIKI_VISUAL_FACTS_API_BASE"
+        ]
+    if os.environ.get("CODENIB_WIKI_VISUAL_FACTS_API_KEY"):
+        cfg.wiki_visual_facts_api_key = os.environ["CODENIB_WIKI_VISUAL_FACTS_API_KEY"]
     if os.environ.get("CODENIB_DEMO_API_BASE"):
         cfg.model_api_base = os.environ["CODENIB_DEMO_API_BASE"]
     if os.environ.get("CODENIB_DEMO_API_KEY"):
@@ -400,6 +448,14 @@ def load_config(path: Optional[str] = None) -> QAConfig:
             parse_model_options_json(
                 os.environ["CODENIB_WIKI_MEDIA_OPTIONS"],
                 source="CODENIB_WIKI_MEDIA_OPTIONS",
+            ),
+        )
+    if os.environ.get("CODENIB_WIKI_VISUAL_FACTS_OPTIONS"):
+        cfg.wiki_visual_facts_options = merge_model_options(
+            cfg.wiki_visual_facts_options,
+            parse_model_options_json(
+                os.environ["CODENIB_WIKI_VISUAL_FACTS_OPTIONS"],
+                source="CODENIB_WIKI_VISUAL_FACTS_OPTIONS",
             ),
         )
     if os.environ.get("CODENIB_DEMO_DATA_DIR"):

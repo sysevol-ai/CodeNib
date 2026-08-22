@@ -6,12 +6,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
 import codenib.wiki.media_vlm as media_vlm
 from codenib.wiki.media_facts import build_visual_facts_manifest
-from codenib.wiki.media_vlm import OpenAICompatibleVisualFactExtractor
+from codenib.wiki.media_vlm import (
+    OpenAICompatibleVisualFactExtractor,
+    visual_fact_extractor_from_config,
+)
 
 
 class _Response:
@@ -262,3 +266,30 @@ def test_visual_fact_extractor_rejects_non_json_content():
 
     with pytest.raises(json.JSONDecodeError):
         extractor.extract(_artifact())
+
+
+def test_visual_fact_extractor_from_config_returns_none_when_disabled():
+    config = SimpleNamespace(wiki_visual_fact_extraction_enabled=False)
+
+    assert visual_fact_extractor_from_config(config) is None
+
+
+def test_visual_fact_extractor_from_config_builds_provider():
+    config = SimpleNamespace(
+        wiki_visual_fact_extraction_enabled=True,
+        wiki_visual_facts_model="qwen-vl",
+        wiki_visual_facts_api_base="https://vlm.example/v1",
+        wiki_visual_facts_api_key="secret",
+        wiki_visual_facts_options={
+            "provider": "qwen",
+            "timeout": 9,
+        },
+    )
+
+    extractor = visual_fact_extractor_from_config(config)
+
+    assert isinstance(extractor, OpenAICompatibleVisualFactExtractor)
+    assert extractor.model == "qwen-vl"
+    assert extractor.endpoint == "https://vlm.example/v1/chat/completions"
+    assert extractor.provider == "qwen"
+    assert extractor.timeout == 9

@@ -28,12 +28,14 @@ def test_wiki_media_config_enables_local_renderer_without_endpoint(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "config.yaml"
-    config_path.write_text("""
+    config_path.write_text(
+        """
 wiki_media_model: local/svg
 wiki_media_options:
   provider: local
   width: 1024
-""".lstrip())
+""".lstrip()
+    )
 
     config = load_config(str(config_path))
 
@@ -47,11 +49,13 @@ def test_wiki_media_environment_overrides_file_config(
     monkeypatch,
 ) -> None:
     config_path = tmp_path / "config.yaml"
-    config_path.write_text("""
+    config_path.write_text(
+        """
 wiki_media_model: local/svg
 wiki_media_options:
   provider: local
-""".lstrip())
+""".lstrip()
+    )
     monkeypatch.setenv("CODENIB_WIKI_MEDIA_MODEL", "openai/image-1")
     monkeypatch.setenv("CODENIB_WIKI_MEDIA_API_BASE", "https://images.example/v1")
     monkeypatch.setenv("CODENIB_WIKI_MEDIA_API_KEY", "secret")
@@ -69,6 +73,50 @@ wiki_media_options:
     assert config.wiki_media_options == {
         "provider": "openai",
         "timeout": 30,
+    }
+
+
+def test_wiki_visual_facts_config_is_disabled_by_default(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("wiki_agent: false\n")
+
+    config = load_config(str(config_path))
+
+    assert config.wiki_visual_fact_extraction_enabled is False
+    assert config.wiki_visual_facts_options == {}
+
+
+def test_wiki_visual_facts_environment_overrides_file_config(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+wiki_visual_facts_enabled: false
+wiki_visual_facts_model: file-model
+wiki_visual_facts_options:
+  provider: file-provider
+""".lstrip()
+    )
+    monkeypatch.setenv("CODENIB_WIKI_VISUAL_FACTS_ENABLED", "true")
+    monkeypatch.setenv("CODENIB_WIKI_VISUAL_FACTS_MODEL", "qwen-vl")
+    monkeypatch.setenv("CODENIB_WIKI_VISUAL_FACTS_API_BASE", "https://vlm.example/v1")
+    monkeypatch.setenv("CODENIB_WIKI_VISUAL_FACTS_API_KEY", "secret")
+    monkeypatch.setenv(
+        "CODENIB_WIKI_VISUAL_FACTS_OPTIONS",
+        '{"provider":"local-vlm","timeout":45}',
+    )
+
+    config = load_config(str(config_path))
+
+    assert config.wiki_visual_fact_extraction_enabled is True
+    assert config.wiki_visual_facts_model == "qwen-vl"
+    assert config.wiki_visual_facts_api_base == "https://vlm.example/v1"
+    assert config.wiki_visual_facts_api_key == "secret"
+    assert config.wiki_visual_facts_options == {
+        "provider": "local-vlm",
+        "timeout": 45,
     }
 
 
