@@ -285,10 +285,10 @@ def _merge_memory(
     for candidate in candidates:
         for item in candidate.supporting_evidence + candidate.counterevidence:
             evidence_by_id[item.evidence_id] = replace(item, snapshot=snapshot)
-    records, task_evidence = _materialize_task_evidence(request, records)
+    combined = _merge_specification_records(memory.specifications, records)
+    combined, task_evidence = _materialize_task_evidence(request, combined)
     for item in task_evidence:
         evidence_by_id[item.evidence_id] = replace(item, snapshot=snapshot)
-    combined = _merge_specification_records(memory.specifications, records)
     evidence_by_id = _link_official_specifications(evidence_by_id, combined)
     combined = _drop_unlinked_references(combined, evidence_by_id)
     combined = adjudicate_records(combined, tuple(evidence_by_id.values()))

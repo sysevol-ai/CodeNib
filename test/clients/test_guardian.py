@@ -2712,14 +2712,6 @@ def _supported_record(
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "_merge_memory materializes task evidence from the incoming round only, "
-        "so it overwrites the stored evidence supports and _drop_unlinked_"
-        "references then strips carried-over specifications. See aggregation.py."
-    ),
-)
 def test_carried_over_specification_survives_a_round_that_omits_it(
     tmp_path: Path,
 ) -> None:
@@ -2771,3 +2763,7 @@ def test_carried_over_specification_survives_a_round_that_omits_it(
     by_id = {item.specification_id: item for item in merged.specifications}
     assert by_id["LS-001"].status is SpecificationStatus.SUPPORTED
     assert by_id["LS-002"].status is SpecificationStatus.SUPPORTED
+    task_evidence = next(
+        item for item in merged.evidence if item.evidence_id == task_context.context_id
+    )
+    assert task_evidence.supports == ("LS-001", "LS-002")
