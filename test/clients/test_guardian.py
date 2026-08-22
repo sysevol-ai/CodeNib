@@ -2780,3 +2780,58 @@ def test_carried_over_specification_survives_a_round_that_omits_it(
         item for item in merged.evidence if item.evidence_id == task_context.context_id
     )
     assert task_evidence.supports == ("LS-001", "LS-002")
+
+
+def test_carried_specification_is_not_rebound_to_changed_task_text(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    task_context = next(
+        item
+        for item in request.task_context
+        if item.source is TaskContextSource.USER_INSTRUCTION
+    )
+    record = _supported_record(
+        "LS-001", "Copied state preserves its configured mode.", task_context.context_id
+    )
+    evidence = Evidence(
+        evidence_id=task_context.context_id,
+        path=task_context.context_id,
+        line_start=1,
+        line_end=1,
+        description="Verbatim requirement supplied to the coding system.",
+        source_type=EvidenceSourceType.TASK,
+        authority=EvidenceAuthority.NORMATIVE,
+        quote=task_context.content,
+        supports=(record.specification_id,),
+        acquired_by="controller",
+        fresh=True,
+    )
+    changed_request = replace(
+        request,
+        task_context=(
+            TaskContext(
+                content="Every copied state must preserve its retry budget.",
+                source=TaskContextSource.USER_INSTRUCTION,
+                fidelity=ContextFidelity.VERBATIM,
+                context_id=task_context.context_id,
+            ),
+        ),
+        context=(),
+        artifact_dir=tmp_path / "changed-task-artifacts",
+    )
+
+    revalidated, errors = revalidate_memory_evidence(changed_request, (evidence,))
+    assert errors
+    assert "no longer matches the task message" in errors[0]
+    assert not revalidated[0].fresh
+
+    merged = _merge_memory(
+        changed_request,
+        SpecificationMemory(specifications=(record,), evidence=revalidated),
+        (),
+        (),
+        snapshot=changed_request.candidate_commit,
+    )
+
+    assert merged.specifications[0].status is SpecificationStatus.REJECTED

@@ -285,9 +285,27 @@ def _merge_memory(
     for candidate in candidates:
         for item in candidate.supporting_evidence + candidate.counterevidence:
             evidence_by_id[item.evidence_id] = replace(item, snapshot=snapshot)
+    records, task_evidence = _materialize_task_evidence(request, records)
     combined = _merge_specification_records(memory.specifications, records)
-    combined, task_evidence = _materialize_task_evidence(request, combined)
+    specification_ids = {item.specification_id for item in combined}
     for item in task_evidence:
+        previous = evidence_by_id.get(item.evidence_id)
+        if (
+            previous is not None
+            and previous.fresh
+            and previous.source_type is item.source_type
+            and previous.authority is item.authority
+            and previous.quote == item.quote
+        ):
+            carried = tuple(
+                specification_id
+                for specification_id in previous.supports
+                if specification_id in specification_ids
+            )
+            item = replace(
+                item,
+                supports=tuple(dict.fromkeys((*carried, *item.supports))),
+            )
         evidence_by_id[item.evidence_id] = replace(item, snapshot=snapshot)
     evidence_by_id = _link_official_specifications(evidence_by_id, combined)
     combined = _drop_unlinked_references(combined, evidence_by_id)

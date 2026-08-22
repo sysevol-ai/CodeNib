@@ -225,6 +225,8 @@ def _validate_non_file(
         # when an explorer supplied a paraphrase instead of an exact substring. Cite
         # the complete source so the aggregator can test entailment against the task,
         # rather than accidentally granting authority to the paraphrase itself.
+        if evidence.acquired_by == "controller" and quote is None:
+            return None, "controller task evidence no longer matches the task message"
         return (
             replace(
                 evidence,
