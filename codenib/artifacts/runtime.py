@@ -12,6 +12,7 @@ import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterator, Mapping, NoReturn
 
@@ -25,6 +26,7 @@ from .._atomic_directory import (
     reopen_authenticated_directory,
 )
 from .._bounded_json import iter_bounded_json_array
+from .._captured_directory import PublishedWorkspaceReceipt
 from .._contained_source import _attach_source_cleanup_owner
 from ..compiler.checkout_identity import checkout_commit
 from ..compiler.manifest import (
@@ -36,7 +38,9 @@ from ..compiler.manifest import (
 from ..compiler.manifest_source import (
     capture_repository_source_for_manifest as capture_repository_source,
 )
-from ..compiler.manifest_source import require_manifest_source_identity
+from ..compiler.manifest_source import (
+    require_manifest_source_identity,
+)
 from ..compiler.snapshot_store import normalize_repo
 from ..repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
@@ -217,6 +221,11 @@ class ContextArtifactBinding:
     repo_path: Path | None
     manifest: RepoManifest
     checkout_commit_observed: str | None = None
+    _requires_authenticated_reader: bool = dataclass_field(
+        default=False,
+        repr=False,
+        compare=False,
+    )
     _source_binding: RepositorySourceBinding | None = dataclass_field(
         default=None,
         repr=False,
@@ -1291,12 +1300,77 @@ def query_context_artifact(
     )
 
 
+def query_context_artifact_reader(
+    receipt: PublishedWorkspaceReceipt,
+    publication: PublicationDirectoryReader,
+    *,
+    expected_root: str | Path,
+    expected_ownership: object,
+    expected_repository: str | None = None,
+    expected_commit: str | None = None,
+) -> ContextArtifactBinding:
+    """Create a query binding inside one exact workspace-receipt callback."""
+
+    if type(receipt) is not PublishedWorkspaceReceipt:
+        raise TypeError("context artifact receipt has an invalid type")
+    if type(publication) is not PublicationDirectoryReader:
+        raise TypeError("context artifact publication reader has an invalid type")
+
+    real_root = lexical_directory_path(Path(expected_root))
+    if receipt.path != real_root:
+        raise RuntimeError(
+            "context artifact receipt path differs from its expected root"
+        )
+    if receipt.ownership != expected_ownership:
+        raise RuntimeError("context artifact receipt ownership changed")
+    if publication._require_expected_ownership_token() != expected_ownership:
+        raise RuntimeError("context artifact publication ownership changed")
+
+    artifact = verify_context_artifact_reader(
+        publication,
+        expected_repository=expected_repository,
+        expected_commit=expected_commit,
+        expected_manifest_version=None,
+    )
+    if artifact.ownership != expected_ownership:
+        raise RuntimeError("context artifact verified ownership changed")
+
+    try:
+        metadata_relative = artifact.metadata_path.relative_to(artifact.root)
+        manifest_relative = artifact.manifest_path.relative_to(artifact.root)
+    except ValueError as exc:
+        raise RuntimeError(
+            "context artifact verification paths are not contained"
+        ) from exc
+    if (metadata_relative, manifest_relative) != (
+        Path(CONTEXT_ARTIFACT_MANIFEST),
+        Path(MANIFEST_FILENAME),
+    ):
+        raise RuntimeError("context artifact verification paths are not canonical")
+
+    relocated = replace(
+        artifact,
+        root=real_root,
+        metadata_path=real_root / metadata_relative,
+        manifest_path=real_root / manifest_relative,
+    )
+    return ContextArtifactBinding(
+        artifact=relocated,
+        repo_path=None,
+        manifest=relocated.manifest,
+        checkout_commit_observed=None,
+        _requires_authenticated_reader=True,
+        _source_binding=None,
+    )
+
+
 __all__ = [
     "ContextArtifactBinding",
     "SourceBindingCleanupOwner",
     "VerifiedContextArtifact",
     "bind_context_artifact",
     "query_context_artifact",
+    "query_context_artifact_reader",
     "verify_context_artifact",
     "verify_context_artifact_reader",
 ]

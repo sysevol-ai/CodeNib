@@ -17,7 +17,7 @@ import json
 import logging
 import math
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import RLock
@@ -401,8 +401,10 @@ class ServerContext:
         views: Iterable[str] | None = None,
         artifact: Mapping[str, Any] | None = None,
         artifact_binding: ContextArtifactBinding | None = None,
+        artifact_reader: PublicationDirectoryReader | None = None,
         native_index_authorization: NativeIndexAuthorization | None = None,
         source_binding: RepositorySourceBinding | None = None,
+        _context_owner: Callable[[ServerContext], None] | None = None,
     ) -> ServerContext:
         """Load a manifest and the selected runtime views.
 
@@ -413,6 +415,17 @@ class ServerContext:
         """
         ctx: ServerContext | None = None
         try:
+            if (
+                artifact_reader is not None
+                and type(artifact_reader) is not PublicationDirectoryReader
+            ):
+                raise TypeError(
+                    "authenticated artifact reader must use the exact reader type"
+                )
+            if artifact_reader is not None and artifact_binding is None:
+                raise ValueError(
+                    "an authenticated artifact reader requires its verified binding"
+                )
             selected = _resolve_views(views)
             artifact_origin = artifact is not None or artifact_binding is not None
             if artifact_origin and native_index_authorization is not None:
@@ -450,6 +463,14 @@ class ServerContext:
                 _artifact_binding=artifact_binding,
                 _source_binding=None,
             )
+            if _context_owner is not None:
+                if not callable(_context_owner):
+                    raise TypeError("context owner must be callable")
+                # Publish the context in a stable caller-owned slot before it
+                # acquires any runtime resource.  A cancellation after a view
+                # loader returns can then be reconciled by that owner instead
+                # of dropping an unreturned live context.
+                _context_owner(ctx)
             if artifact_binding is not None:
                 artifact_binding.install_source_binding(
                     ctx._install_repository_source,
@@ -492,7 +513,10 @@ class ServerContext:
                 else "source binding has not been verified"
             )
 
-            ctx.load_views(selected)
+            if artifact_reader is None:
+                ctx.load_views(selected)
+            else:
+                ctx.load_views(selected, artifact_reader=artifact_reader)
             ctx.configure_lsp_provider(
                 allow_native=False,
                 native_disabled_reason=(
@@ -579,6 +603,7 @@ class ServerContext:
         views: Iterable[str],
         *,
         native_index_authorization: NativeIndexAuthorization | None = None,
+        artifact_reader: PublicationDirectoryReader | None = None,
     ) -> Dict[str, str]:
         """Load additional manifest views without disturbing loaded resources.
 
@@ -590,6 +615,17 @@ class ServerContext:
 
         selected = _resolve_views(views)
         with self._view_lock:
+            if (
+                artifact_reader is not None
+                and type(artifact_reader) is not PublicationDirectoryReader
+            ):
+                raise TypeError(
+                    "authenticated artifact reader must use the exact reader type"
+                )
+            if artifact_reader is not None and self._artifact_binding is None:
+                raise ValueError(
+                    "an authenticated artifact reader requires its verified binding"
+                )
             artifact_origin = (
                 self.artifact is not None or self._artifact_binding is not None
             )
@@ -612,7 +648,10 @@ class ServerContext:
             for view, loader_name in _VIEW_LOADERS:
                 if view not in selected or getattr(self, view, None) is not None:
                     continue
-                getattr(self, loader_name)()
+                if view == "bm25" and artifact_reader is not None:
+                    self._load_bm25(artifact_reader=artifact_reader)
+                else:
+                    getattr(self, loader_name)()
                 if getattr(self, view, None) is not None:
                     self.errors.pop(view, None)
             if "symbol_graph" in selected:
@@ -837,7 +876,11 @@ class ServerContext:
             self.errors["symbol_graph"] = str(exc)
             logger.warning("Failed to load symbol_graph: %s", exc)
 
-    def _load_bm25(self) -> None:
+    def _load_bm25(
+        self,
+        *,
+        artifact_reader: PublicationDirectoryReader | None = None,
+    ) -> None:
         entry = self.manifest.indexes.get("bm25")
         if not entry or not self.manifest.index_is_current("bm25"):
             return
@@ -878,11 +921,25 @@ class ServerContext:
                             source_mode=SOURCE_MODE_PERSISTED_ONLY,
                         )
 
-                reopen_authenticated_directory(
-                    artifact.root,
-                    artifact.ownership,  # type: ignore[arg-type]
-                    load_portable_bm25,
-                )
+                if artifact_reader is not None:
+                    observed = artifact_reader._require_expected_ownership_token()
+                    if observed != artifact.ownership:
+                        raise ValueError(
+                            "authenticated artifact reader ownership does not match "
+                            "its verified binding"
+                        )
+                    load_portable_bm25(artifact_reader)
+                elif self._artifact_binding._requires_authenticated_reader:
+                    raise ValueError(
+                        "reader-bound portable BM25 loading requires a fresh "
+                        "authenticated publication reader"
+                    )
+                else:
+                    reopen_authenticated_directory(
+                        artifact.root,
+                        artifact.ownership,  # type: ignore[arg-type]
+                        load_portable_bm25,
+                    )
             if self._source_binding is not None:
                 indexer.bind_repository_source(self._source_binding)
             else:

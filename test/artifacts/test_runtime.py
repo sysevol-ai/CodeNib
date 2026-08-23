@@ -33,14 +33,17 @@ import codenib.index.sparse_idx.bm25_index as bm25_module
 import codenib.mcp.server as server_module
 from codenib._atomic_directory import (
     PublicationDirectoryReader,
+    capture_directory_ownership,
     reopen_authenticated_directory,
 )
+from codenib._captured_directory import PublishedWorkspaceReceipt
 from codenib.artifacts import (
     CONTEXT_ARTIFACT_MANIFEST,
     bind_context_artifact,
     extract_context_artifact_archive,
     fetch_github_context_artifact,
     query_context_artifact,
+    query_context_artifact_reader,
     render_artifact_mcp_config,
     resolve_github_context_artifact,
     stage_context_artifact,
@@ -289,6 +292,16 @@ def _write_metadata(artifact: Path, metadata: dict) -> None:
         json.dumps(metadata, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _receipt_stub(
+    path: Path,
+    ownership: object,
+) -> PublishedWorkspaceReceipt:
+    receipt = object.__new__(PublishedWorkspaceReceipt)
+    receipt.path = path
+    receipt.ownership = ownership
+    return receipt
 
 
 def _refresh_inventory_file(artifact: Path, metadata: dict, relative: str) -> None:
@@ -1078,6 +1091,112 @@ def test_v1_artifact_supports_inert_bm25_query_but_cannot_bind(
 
     with pytest.raises(ValueError, match="query-only"):
         bind_context_artifact(artifact, repo)
+
+
+def test_query_context_artifact_reader_relocates_without_reopening(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, artifact, commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+    ordinary = query_context_artifact(artifact, expected_commit=commit)
+
+    def consume(publication: PublicationDirectoryReader):
+        def reject_reopen(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("reader-bound query reopened its artifact path")
+
+        monkeypatch.setattr(
+            runtime_module,
+            "reopen_authenticated_directory",
+            reject_reopen,
+        )
+        return query_context_artifact_reader(
+            receipt,
+            publication,
+            expected_root=artifact,
+            expected_ownership=ownership,
+            expected_repository="example/project",
+            expected_commit=commit,
+        )
+
+    binding = reopen_authenticated_directory(artifact, ownership, consume)
+
+    assert ordinary._requires_authenticated_reader is False
+    assert binding._requires_authenticated_reader is True
+    assert binding.repo_path is None
+    assert binding.source_binding is None
+    assert binding.artifact.root == artifact
+    assert binding.artifact.metadata_path == artifact / CONTEXT_ARTIFACT_MANIFEST
+    assert binding.artifact.manifest_path == artifact / "repo_manifest.json"
+    assert binding.manifest is binding.artifact.manifest
+
+
+def test_query_context_artifact_reader_rejects_receipt_binding_mismatches(
+    tmp_path: Path,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    foreign = tmp_path / "foreign-artifact"
+    shutil.copytree(artifact, foreign)
+    foreign_ownership = capture_directory_ownership(foreign)
+
+    def consume(publication: PublicationDirectoryReader) -> None:
+        receipt = _receipt_stub(artifact, ownership)
+        with pytest.raises(RuntimeError, match="receipt path"):
+            query_context_artifact_reader(
+                receipt,
+                publication,
+                expected_root=foreign,
+                expected_ownership=ownership,
+            )
+        with pytest.raises(RuntimeError, match="receipt ownership"):
+            query_context_artifact_reader(
+                receipt,
+                publication,
+                expected_root=artifact,
+                expected_ownership=foreign_ownership,
+            )
+        foreign_receipt = _receipt_stub(artifact, foreign_ownership)
+        with pytest.raises(RuntimeError, match="publication ownership"):
+            query_context_artifact_reader(
+                foreign_receipt,
+                publication,
+                expected_root=artifact,
+                expected_ownership=foreign_ownership,
+            )
+        with pytest.raises(TypeError, match="receipt.*invalid type"):
+            query_context_artifact_reader(
+                SimpleNamespace(path=artifact, ownership=ownership),  # type: ignore[arg-type]
+                publication,
+                expected_root=artifact,
+                expected_ownership=ownership,
+            )
+
+    reopen_authenticated_directory(artifact, ownership, consume)
+
+
+def test_query_context_artifact_reader_rejects_tampered_payload(
+    tmp_path: Path,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    (artifact / "views" / "bm25" / "documents.json").write_text(
+        "[]\n",
+        encoding="utf-8",
+    )
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+
+    def consume(publication: PublicationDirectoryReader) -> None:
+        with pytest.raises(ValueError, match="digest mismatch"):
+            query_context_artifact_reader(
+                receipt,
+                publication,
+                expected_root=artifact,
+                expected_ownership=ownership,
+            )
+
+    reopen_authenticated_directory(artifact, ownership, consume)
 
 
 @pytest.mark.parametrize("excluded_path", ["sample.py", ".git/config"])

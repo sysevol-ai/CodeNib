@@ -30,6 +30,7 @@ from .runtime import (
     VerifiedContextArtifact,
     bind_context_artifact,
     query_context_artifact,
+    query_context_artifact_reader,
     verify_context_artifact,
 )
 from .strict_bm25 import (
@@ -73,6 +74,7 @@ __all__ = [
     "publish_planned_bm25_view_strict",
     "publish_planned_context_artifact_strict",
     "query_context_artifact",
+    "query_context_artifact_reader",
     "recapture_bm25_view_strict",
     "recapture_vector_view_strict",
     "validate_portable_query_view",

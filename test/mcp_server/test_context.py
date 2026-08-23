@@ -30,6 +30,25 @@ _TEST_SOURCE_FINGERPRINT = "sha256-v2:" + ("d" * 64)
 _TEST_SOURCE_SELECTION = RepositorySourceSelection()
 
 
+def test_server_context_rejects_forged_authenticated_readers() -> None:
+    manifest = RepoManifest(repo_path="/repo")
+    forged_reader = object()
+
+    with pytest.raises(TypeError, match="exact reader type"):
+        ServerContext.load(
+            manifest,
+            views=[],
+            artifact_reader=forged_reader,  # type: ignore[arg-type]
+        )
+
+    context = ServerContext(manifest=manifest)
+    with pytest.raises(TypeError, match="exact reader type"):
+        context.load_views(
+            [],
+            artifact_reader=forged_reader,  # type: ignore[arg-type]
+        )
+
+
 def _bind_fresh_entry(manifest: RepoManifest, entry: IndexEntry) -> IndexEntry:
     entry.commit = manifest.commit
     entry.source_fingerprint = manifest.source_fingerprint
