@@ -3865,6 +3865,7 @@ def test_mcp_parser_limits_tool_surface_and_defaults_to_full() -> None:
     parser = cli.build_parser()
 
     assert parser.parse_args(["mcp"]).tool_surface == "full"
+    assert parser.parse_args(["mcp"]).path is None
     assert parser.parse_args(["mcp", "--tool-surface", "explore"]).tool_surface == (
         "explore"
     )
@@ -3872,6 +3873,120 @@ def test_mcp_parser_limits_tool_surface_and_defaults_to_full() -> None:
         parser.parse_args(["mcp", "--tool-surface", "hidden"])
 
     assert exc_info.value.code == 2
+
+
+def _retained_mcp_argv(tmp_path: Path) -> list[str]:
+    return [
+        "mcp",
+        "--catalog",
+        str(tmp_path / "catalog.sqlite3"),
+        "--cas-root",
+        str(tmp_path / "cas"),
+        "--workspace-root",
+        str(tmp_path / "workspaces"),
+        "--output",
+        str(tmp_path / "workspaces" / "runtime"),
+        "--repository",
+        "owner/repo",
+    ]
+
+
+def test_mcp_retained_parser_exposes_ref_and_snapshot_selection(
+    tmp_path: Path,
+) -> None:
+    parser = cli.build_parser()
+    ref = parser.parse_args(
+        [
+            *_retained_mcp_argv(tmp_path),
+            "--ref",
+            "release",
+            "--expected-generation",
+            "7",
+        ]
+    )
+    snapshot = parser.parse_args(
+        [*_retained_mcp_argv(tmp_path), "--snapshot", "snap_123"]
+    )
+
+    assert ref.path is None
+    assert ref.ref == "release"
+    assert ref.snapshot is None
+    assert ref.expected_generation == 7
+    assert snapshot.ref is None
+    assert snapshot.snapshot == "snap_123"
+    assert snapshot.expected_generation is None
+
+    with pytest.raises(SystemExit) as both:
+        parser.parse_args(
+            [*_retained_mcp_argv(tmp_path), "--ref", "main", "--snapshot", "snap"]
+        )
+    assert both.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    (
+        (("--catalog", "catalog.sqlite3"), "retained MCP storage requires"),
+        (("--repository", "owner/repo"), "require --artifact"),
+        (
+            ("--runtime-probe", "--catalog", "catalog.sqlite3"),
+            "--runtime-probe cannot be combined",
+        ),
+    ),
+)
+def test_mcp_context_modes_fail_before_dependency_probe(
+    arguments: tuple[str, ...],
+    message: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_require_modules",
+        lambda *_args, **_kwargs: pytest.fail("dependency probe must not run"),
+    )
+
+    assert cli.run(["mcp", *arguments]) == 2
+    assert message in capsys.readouterr().err
+
+
+def test_mcp_retained_rejects_mixed_context_and_snapshot_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_require_modules",
+        lambda *_args, **_kwargs: pytest.fail("dependency probe must not run"),
+    )
+    complete = _retained_mcp_argv(tmp_path)
+
+    assert cli.run(["mcp", ".", *complete[1:]]) == 2
+    assert "cannot be combined with a manifest" in capsys.readouterr().err
+    assert cli.run([*complete, "--snapshot", "snap", "--expected-generation", "2"]) == 2
+    assert "requires retained ref selection" in capsys.readouterr().err
+
+
+def test_mcp_retained_dispatches_only_after_dependency_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(
+        cli,
+        "_require_modules",
+        lambda modules, **_kwargs: calls.append(tuple(modules)),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_run_mcp_retained",
+        lambda args: calls.append(args) or 0,
+    )
+    args = cli.build_parser().parse_args(_retained_mcp_argv(tmp_path))
+
+    assert cli._run_mcp(args) == 0
+    assert calls == [("mcp",), args]
 
 
 def test_mcp_runtime_probe_checks_the_complete_codegraph_runtime(

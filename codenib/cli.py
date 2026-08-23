@@ -815,8 +815,74 @@ def _run_index(
     return 0
 
 
-def _run_mcp(args: argparse.Namespace) -> int:
+def _mcp_context_mode(args: argparse.Namespace) -> str:
+    """Select one MCP startup mode before module or filesystem access."""
+
     runtime_probe = bool(getattr(args, "runtime_probe", False))
+    explicit_path = getattr(args, "path", None) is not None
+    artifact = getattr(args, "artifact", None)
+    repo = getattr(args, "repo", None)
+    repository = getattr(args, "repository", None)
+    retained_values = {
+        "--catalog": getattr(args, "catalog", None),
+        "--cas-root": getattr(args, "cas_root", None),
+        "--workspace-root": getattr(args, "workspace_root", None),
+        "--output": getattr(args, "output", None),
+        "--namespace": getattr(args, "namespace", None),
+        "--ref": getattr(args, "ref", None),
+        "--snapshot": getattr(args, "snapshot", None),
+        "--expected-generation": getattr(args, "expected_generation", None),
+    }
+    retained_requested = any(value is not None for value in retained_values.values())
+    any_context = (
+        explicit_path
+        or artifact is not None
+        or repo is not None
+        or repository is not None
+        or retained_requested
+    )
+    if runtime_probe:
+        if any_context:
+            raise CLIError("--runtime-probe cannot be combined with MCP context input")
+        return "probe"
+    if retained_requested:
+        if (
+            retained_values["--snapshot"] is not None
+            and retained_values["--expected-generation"] is not None
+        ):
+            raise CLIError("--expected-generation requires retained ref selection")
+        if explicit_path or artifact is not None or repo is not None:
+            raise CLIError(
+                "retained MCP storage cannot be combined with a manifest, "
+                "--artifact, or --repo"
+            )
+        missing = [
+            option
+            for option in (
+                "--catalog",
+                "--cas-root",
+                "--workspace-root",
+                "--output",
+            )
+            if retained_values[option] is None
+        ]
+        if repository is None:
+            missing.append("--repository")
+        if missing:
+            raise CLIError("retained MCP storage requires " + ", ".join(missing))
+        return "retained"
+    if artifact is not None:
+        if explicit_path:
+            raise CLIError("choose either a manifest or --artifact, not both")
+        return "artifact"
+    if repo is not None or repository is not None:
+        raise CLIError("--repo and --repository require --artifact")
+    return "manifest"
+
+
+def _run_mcp(args: argparse.Namespace) -> int:
+    mode = _mcp_context_mode(args)
+    runtime_probe = mode == "probe"
     if runtime_probe:
         _require_modules(
             ("mcp", "igraph", "google.protobuf"),
@@ -831,7 +897,9 @@ def _run_mcp(args: argparse.Namespace) -> int:
         print("codenib codegraph mcp runtime ready")
         return 0
 
-    if args.artifact:
+    if mode == "retained":
+        return _run_mcp_retained(args)
+    if mode == "artifact":
         command = [
             "--artifact",
             str(Path(os.path.abspath(os.fspath(Path(args.artifact).expanduser())))),
@@ -850,7 +918,7 @@ def _run_mcp(args: argparse.Namespace) -> int:
             command.extend(("--repository", args.repository))
         mcp_main(command)
     else:
-        manifest_path = resolve_manifest_path(args.path)
+        manifest_path = resolve_manifest_path(args.path or ".")
         mcp_main(
             [
                 str(manifest_path),
@@ -861,6 +929,160 @@ def _run_mcp(args: argparse.Namespace) -> int:
             ]
         )
     return 0
+
+
+def _run_mcp_retained(args: argparse.Namespace) -> int:
+    """Cold-start MCP from one retained ref or immutable snapshot."""
+
+    from . import LocalWorkspaceProvider
+    from ._atomic_directory import (
+        _annotate_secondary_error,
+        _OrderedAction,
+        _run_context_with_cleanup_actions,
+    )
+    from .mcp.retained_context import (
+        RetainedServerContextOwner,
+        load_retained_server_context_ref,
+        load_retained_server_context_snapshot,
+    )
+    from .mcp.server import serve_retained_context
+    from .storage import LocalCAS, SQLiteCatalog
+
+    repository, namespace = _retained_materialization_identity(
+        args.repository,
+        args.namespace or "default",
+    )
+    ref_name, snapshot_id, expected_generation = _retained_materialization_selector(
+        ref_name=args.ref,
+        snapshot_id=args.snapshot,
+        expected_generation=args.expected_generation,
+    )
+    catalog_path, cas_root, workspace_root, output = _retained_materialization_paths(
+        args
+    )
+    runtime_owner = RetainedServerContextOwner()
+    topology_owner = _RetainedMaterializationResourceOwner()
+    object_store_owner = _RetainedMaterializationResourceOwner()
+    catalog_owner = _RetainedMaterializationResourceOwner()
+    runtime_cleanup = (
+        _OrderedAction(
+            label="retained MCP runtime cleanup also failed",
+            action=runtime_owner.close,
+            complete=lambda: runtime_owner.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=runtime_owner,
+        ),
+    )
+    storage_cleanup = (
+        _OrderedAction(
+            label="retained SQLite catalog cleanup also failed",
+            action=catalog_owner.close,
+            complete=lambda: catalog_owner.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=catalog_owner,
+        ),
+        _OrderedAction(
+            label="retained local CAS cleanup also failed",
+            action=object_store_owner.close,
+            complete=lambda: object_store_owner.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=object_store_owner,
+        ),
+        _OrderedAction(
+            label="retained path authority cleanup also failed",
+            action=topology_owner.close,
+            complete=lambda: topology_owner.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=topology_owner,
+        ),
+    )
+    try:
+        with _run_context_with_cleanup_actions(runtime_cleanup):
+            with _run_context_with_cleanup_actions(storage_cleanup):
+                base_provider = LocalWorkspaceProvider(workspace_root)
+                base_provider.require_support()
+                topology = topology_owner.acquire(
+                    lambda: _require_retained_materialization_topology(
+                        catalog_path,
+                        cas_root,
+                        workspace_root,
+                        output,
+                    )
+                )
+                provider = _RetainedTopologyWorkspaceProvider(
+                    base_provider,
+                    topology,
+                )
+                topology.verify()
+                object_store = object_store_owner.acquire(
+                    lambda: LocalCAS(
+                        topology.cas_root,
+                        require_preprovisioned=True,
+                    )
+                )
+                _require_retained_catalog_binding(
+                    topology.catalog_path,
+                    topology.catalog_identity,
+                )
+                catalog = catalog_owner.acquire(
+                    lambda: SQLiteCatalog(
+                        topology.catalog_path,
+                        create=False,
+                        expected_file_identity=topology.catalog_identity,
+                    )
+                )
+                _require_retained_catalog_binding(
+                    topology.catalog_path,
+                    topology.catalog_identity,
+                )
+                if snapshot_id is None:
+                    load_retained_server_context_ref(
+                        repository,
+                        output,
+                        namespace_name=namespace,
+                        ref_name=ref_name or "main",
+                        expected_generation=expected_generation,
+                        catalog=catalog,
+                        object_store=object_store,
+                        workspace_provider=provider,
+                        runtime_owner=runtime_owner,
+                    )
+                else:
+                    load_retained_server_context_snapshot(
+                        repository,
+                        snapshot_id,
+                        output,
+                        namespace_name=namespace,
+                        catalog=catalog,
+                        object_store=object_store,
+                        workspace_provider=provider,
+                        runtime_owner=runtime_owner,
+                    )
+            serve_retained_context(
+                runtime_owner,
+                log_level=args.log_level,
+                tool_surface=args.tool_surface,
+            )
+        return 0
+    except BaseException as primary_error:  # noqa: B036 - preserve cancellation
+        try:
+            _warn_possible_retained_publication(output)
+        except BaseException as warning_error:  # noqa: B036 - diagnostic only
+            _annotate_secondary_error(
+                primary_error,
+                "retained MCP publication warning also failed",
+                warning_error,
+            )
+        if isinstance(primary_error, CLIError):
+            raise
+        if isinstance(
+            primary_error,
+            (OSError, RuntimeError, ValueError, sqlite3.Error),
+        ):
+            wrapped = CLIError(str(primary_error))
+            _inherit_publication_cleanup_owners(wrapped, primary_error)
+            raise wrapped from primary_error
+        raise
 
 
 def _run_export(args: argparse.Namespace) -> int:
@@ -5423,7 +5645,7 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_parser.add_argument(
         "path",
         nargs="?",
-        default=".",
+        default=None,
         help="repository directory or repo_manifest.json",
     )
     mcp_parser.add_argument(
@@ -5436,7 +5658,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mcp_parser.add_argument(
         "--repository",
-        help="expected owner/repository identity for --artifact",
+        help=(
+            "expected owner/repository identity for --artifact, or the required "
+            "catalog repository key for retained startup"
+        ),
+    )
+    mcp_parser.add_argument(
+        "--catalog",
+        help="existing initialized SQLite catalog for retained startup",
+    )
+    mcp_parser.add_argument(
+        "--cas-root",
+        help="existing fully preprovisioned local CAS root",
+    )
+    mcp_parser.add_argument(
+        "--workspace-root",
+        help="existing private owner-only LocalWorkspaceProvider root",
+    )
+    mcp_parser.add_argument(
+        "--output",
+        help="missing retained materialization directory below the workspace root",
+    )
+    mcp_parser.add_argument(
+        "--namespace",
+        help="logical retained catalog namespace; defaults to default",
+    )
+    retained_mcp_selector = mcp_parser.add_mutually_exclusive_group()
+    retained_mcp_selector.add_argument(
+        "--ref",
+        help="retained repository ref to resolve once; defaults to main",
+    )
+    retained_mcp_selector.add_argument(
+        "--snapshot",
+        help="immutable retained snapshot ID to load instead of a ref",
+    )
+    mcp_parser.add_argument(
+        "--expected-generation",
+        type=_argparse_positive_int,
+        help="required current generation for retained ref resolution",
     )
     mcp_parser.add_argument(
         "--log-level",
