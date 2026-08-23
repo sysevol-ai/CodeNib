@@ -255,8 +255,9 @@ classifier lives outside both artifacts and storage so the artifact layer does
 not depend on the catalog implementation.  These gates close the current
 portable context publication surface, and the injectable retained materializer
 described below now closes the retained filesystem boundary. The explicit local
-CLI bridge described below can invoke it, but default compiler/import/runtime
-wiring and a future streaming payload revision remain.
+CLI bridges described below can invoke it for publication and cold start, but
+benchmark-backed default compiler/runtime promotion and a future streaming
+payload revision remain.
 
 Local filesystem publication now has an explicit strict-authority gate. Regular
 files are written through caller-owned staged descriptors, installed with
@@ -288,9 +289,9 @@ publish permit. The caller-owned receipt slot is the publication-authority
 linearization point: unreceipted same-process failures quarantine the exact
 candidate, while a fork child authenticates and closes only its inherited
 descriptor pairs. The provider is an authority boundary for trusted callbacks,
-not an in-process Python sandbox. The explicit retained-artifact CLI constructs
-it for one operator-requested publication; no compiler, import, or runtime
-route constructs it by default yet.
+not an in-process Python sandbox. The explicit retained workflows construct it
+for operator-requested publication and cold start; no compiler or runtime route
+constructs it by default yet.
 
 Callback-scoped directory results are likewise provisional until ordered
 reader-validity, exact-ownership, child-namespace, and parent-authority
@@ -376,10 +377,11 @@ materialization APIs are now available as injectable library producers. The
 Linux local provider deliberately accepts only missing destinations, so
 whole-context retained materialization can use it explicitly, while strict BM25
 replacement requests `provider-bound-exact` and still lacks a concrete
-production provider. The explicit retained-artifact CLI can now construct the
-whole-context producer for one existing catalog selection, but no default
-compiler/import/runtime route constructs these producers. M1 remains in
-progress and the M2 BM25 profile adapter is still outstanding.
+production provider. The explicit retained workflows can now construct the
+whole-context producer for one existing catalog selection, publish normal
+compiler output, and load one selected generation at MCP cold start, but no
+default compiler/runtime route constructs them. M1 remains in progress and the
+M2 BM25 profile adapter is still outstanding.
 
 Strict whole-context publication can now aggregate already-normalized BM25 and
 vector generations retained by active workspace receipt owners. The plan binds
@@ -440,9 +442,11 @@ The retained exporter described below now supplies equivalent canonical bytes
 for both supported manifest versions, and the injectable retained materializer
 closes their filesystem publication boundary. The explicit local CLI bridge
 uses the concrete local provider only for an operator-selected retained ref or
-snapshot. Default compiler/import/runtime wiring remains outstanding, so M1
-remains in progress. Profile adapters and fenced publication remain M2 work;
-production retention and garbage collection remain M5 work.
+snapshot. Explicit compiler publication and cold-start runtime routing now use
+the same boundary, while benchmark-backed default compiler/runtime promotion
+remains outstanding, so M1 remains in progress. Profile adapters and fenced
+publication remain M2 work; production retention and garbage collection remain
+M5 work.
 
 The retained-import foundation now also exposes schema-v4 compound-generation
 identity as one backend-neutral model rule, including the canonical member
@@ -588,10 +592,11 @@ file may therefore be read more than once. Representative end-to-end corpus,
 payload-size, and storage-media benchmarks are required before either path is
 enabled by default, used as a latency-sensitive service ingress, or has any
 validation pass removed. M1 remains in progress because catalog-selected
-cold-start runtime routing and benchmark-backed default compiler promotion are
-still absent. Graph and Zoekt cache ingress, generic builder profiles, and
-fenced job publication remain M2 or later work, runtime hot switching remains
-M3 work, and evidence retention and reclamation remain M5 work.
+cold-start runtime routing is supplied only by the explicit route below and
+benchmark-backed default compiler promotion is still absent. Graph and Zoekt
+cache ingress, generic builder profiles, and fenced job publication remain M2
+or later work, runtime hot switching remains M3 work, and evidence retention
+and reclamation remain M5 work.
 
 The first read-only retained `RepoManifest` exporter now closes the data-only
 round trip without introducing path authority. It accepts the additive
@@ -666,13 +671,37 @@ handoff starts a separate query-only process with `codenib mcp --artifact
 therefore leave a valid missing-only output; the CLI warns when the path exists
 rather than deleting it.
 
-This command does not initialize or populate the control plane, import a legacy
-cache, build views, advance refs, or make retained storage the default. It is
-the retained-read bridge only. Catalog-selected cold-start runtime and
-benchmark-backed promotion of the explicit compiler route remain outstanding
-M1 work; graph and Zoekt cache ingress and fenced job publication remain M2 or
-later work. Strict BM25 replacement also still lacks the
-`provider-bound-exact` production provider.
+The first catalog-selected cold-start route is now exposed by `codenib mcp`
+with the same explicit catalog, preprovisioned CAS, private workspace,
+repository, ref-or-snapshot, and missing-output inputs. It resolves one ref
+exactly once (or selects one immutable snapshot), materializes the portable
+generation, and creates the query binding through the publication receipt's
+synchronous authenticated reader rather than reopening an unbound path. The
+complete `ServerContext` is installed in a caller-precreated, PID-bound,
+one-shot runtime owner while that reader is active. Catalog, CAS, and retained
+path authorities close before stdio serving begins; the workspace receipt stays
+active for the entire `mcp.run` lifetime. Shutdown first detaches the global
+context, then closes the runtime context and only then releases the receipt.
+Receipt closure does not delete the materialized output.
+
+This startup is query-only and source-disabled. A selected BM25 view loads from
+persisted canonical documents; a selected portable vector remains FAISS-parser
+inert and reports its existing authorization error, so the current cold-start
+route requires BM25 and does not advertise a vector-only runtime. It never
+mints native vector authorization from cache-ingress hashes. The selected
+receipt fixes one local generation but is not a catalog snapshot lease or CAS
+GC pin. The route does not poll or re-resolve a ref, replace a live context,
+hold storage connections while serving, provision storage, delete output, or
+add request-level pins. Those replacement and in-flight lifetime contracts
+remain M3 work, while durable retention and reclamation remain M5 work.
+
+The standalone materialization command and retained MCP cold start do not
+initialize or populate the control plane, import a legacy cache, build views,
+advance refs, or make retained storage the default. Benchmark-backed promotion
+of the explicit compiler and runtime routes remains outstanding M1 work; graph
+and Zoekt cache ingress and fenced job publication remain M2 or later work.
+Strict BM25 replacement also still lacks the `provider-bound-exact` production
+provider.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable
@@ -682,8 +711,9 @@ canonical request; the M2 publication transaction must repeat that gate before
 associating outputs.  An explicit acquire may atomically retire an expired
 holder while taking over its slot; this slice adds no background reaper and is
 not wired to the compiler or Web workers. Catalog-selected cold-start runtime
-and benchmark-backed default compiler promotion remain outstanding M1
-deliverables; fenced job publication remains M2 work.
+is now available only through the explicit local route above, while
+benchmark-backed default compiler/runtime promotion remains an outstanding M1
+deliverable; fenced job publication remains M2 work.
 
 The shared compiler-cache lock is a cooperative serialization boundary for
 compiler and importer processes using a cache namespace private to one OS

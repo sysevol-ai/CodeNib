@@ -15,14 +15,15 @@ strict workspace contract. It publishes one fully validated directory into a
 missing destination and transfers the generation to a caller-owned
 `PublishedWorkspaceReceiptOwner`.
 
-The provider is not enabled by CodeNib's default compiler or runtime path.
-Three explicit routes use it: `codenib index --publish-retained` builds and
-publishes current BM25/vector views in one compiler-cache lease,
-`codenib artifact import-cache` recaptures an already existing selected cache,
-and `codenib artifact materialize` publishes a retained catalog ref or
-immutable snapshot to a missing portable-artifact directory. The strict BM25
-replacement path still requires the unsupported `provider-bound-exact`
-destination mode.
+The provider is not enabled by CodeNib's default compiler or runtime path. Four
+explicit routes use it: `codenib index --publish-retained` builds and publishes
+current BM25/vector views in one compiler-cache lease, `codenib artifact
+import-cache` recaptures an already existing selected cache, `codenib artifact
+materialize` publishes a retained catalog ref or immutable snapshot to a
+missing portable-artifact directory, and retained `codenib mcp` cold-start
+materializes and holds one such generation for a single stdio server lifetime.
+The strict BM25 replacement path still requires the unsupported
+`provider-bound-exact` destination mode.
 
 ## Publish a normal index build
 
@@ -80,8 +81,8 @@ advancing the ref again.
 This remains explicit offline dual-write. Keep the source/cache and storage
 namespaces trusted and quiescent, and apply the payload-size and storage-media
 benchmark gate described below before enabling it by default or treating it as
-a latency-sensitive worker path. Catalog-selected MCP cold start is still a
-separate M1 route; runtime hot switching remains M3.
+a latency-sensitive worker path. Catalog-selected MCP cold start is available
+only through the explicit route below; runtime hot switching remains M3.
 
 ## Import compiler query views
 
@@ -273,13 +274,57 @@ warns that the output now exists, do not assume that the path is disposable or
 retry over it; verify the retained artifact before reuse or reclaim it through
 an ownership-aware workflow.
 
-This retained-read bridge and the explicit BM25/vector ingress above do not
-complete the hybrid-storage M1 milestone. Catalog-selected cold-start runtime
-and benchmark-backed promotion of the opt-in compiler route are still missing,
-as is a production provider for the strict BM25 replacement producer's
-`provider-bound-exact` destination contract. Graph and Zoekt ingress remain M2
-or later work; fenced jobs and runtime hot switching remain separate
-milestones.
+## Serve a retained snapshot directly
+
+The retained `codenib mcp` mode combines selection, materialization, and one
+query-server lifetime without serializing a receipt or reopening the artifact
+as an unrelated path capability. It accepts the same prepared authorities as
+`artifact materialize`, plus an explicit missing output:
+
+```bash
+codenib mcp \
+  --catalog /var/lib/codenib/catalog.sqlite3 \
+  --cas-root /var/lib/codenib/cas \
+  --workspace-root /var/lib/codenib/workspaces \
+  --repository owner/repository \
+  --ref main \
+  --expected-generation 7 \
+  --output /var/lib/codenib/workspaces/repository-mcp-v1
+```
+
+Omit `--ref` to resolve `main` once at startup, or use `--snapshot
+<snapshot-id>`. `--expected-generation` is ref-only. These storage arguments
+form one all-or-none mode and cannot be combined with a positional manifest,
+`--artifact`, or `--repo`. The catalog must already be initialized, the strict
+CAS preprovisioned, the workspace private and exact `0700`, and the output
+missing under that workspace; this command does not provision or replace any
+of them.
+
+During startup CodeNib materializes the selected immutable generation, builds
+the query binding through the active publication receipt's authenticated
+reader, and loads the complete `ServerContext` before the reader callback ends.
+It then closes SQLite, CAS, and path-topology authorities before starting MCP
+stdio. The caller-owned workspace receipt remains active until `mcp.run`
+returns or fails. Shutdown first removes the module-global context, then closes
+the runtime context, and only after that releases the receipt. The materialized
+output persists after normal shutdown and after receipt cleanup; a failure
+after publication warns about the existing path rather than deleting it.
+
+This is a source-disabled, query-only cold start. It currently requires a BM25
+view, which loads from canonical persisted documents. A selected portable
+vector remains native-parser inert and reports its authorization error; the
+route never treats cache hashes as permission to parse FAISS, and vector-only
+snapshots are rejected for this runtime. The ref is not polled or re-resolved,
+the receipt is not a catalog/CAS GC pin, and no live context replacement occurs.
+Those in-flight request pins and atomic swaps remain M3 work; durable evidence
+retention and reclamation remain M5 work.
+
+These retained-read routes and the explicit BM25/vector ingress above do not
+complete the hybrid-storage M1 milestone. Benchmark-backed promotion of the
+opt-in compiler and runtime routes is still missing, as is a production
+provider for the strict BM25 replacement producer's `provider-bound-exact`
+destination contract. Graph and Zoekt ingress remain M2 or later work; fenced
+jobs and runtime hot switching remain separate milestones.
 
 ## Lifecycle
 
