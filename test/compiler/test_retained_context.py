@@ -10,8 +10,6 @@ import signal
 import threading
 from dataclasses import replace
 from pathlib import Path
-from test.compiler.test_manifest_export import _retained_fixture
-from test.compiler.test_manifest_import import _TestWorkspaceProvider
 from unittest.mock import patch
 
 import pytest
@@ -27,6 +25,9 @@ from codenib.mcp.retained_context import (
 )
 from codenib.storage import PublishConflict
 from codenib.storage.models import NamespaceIdentity, RepositoryIdentity
+
+from .test_manifest_export import _retained_fixture
+from .test_manifest_import import _TestWorkspaceProvider
 
 
 def test_loads_retained_ref_with_bm25_inside_exact_reader(
