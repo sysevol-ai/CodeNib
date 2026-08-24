@@ -32,9 +32,44 @@ incumbent, and candidate descriptors throughout; every descriptor borrowed by
 trusted internal code remains owner-owned and must never be closed by the
 borrower.
 
-This primitive does not change `LocalWorkspaceProvider`: the provider remains
-missing-only. The strict request seam now represents a missing destination only
-as `destination_binding=None`; an existing destination requires an immutable
+The Python authority now exposes the fail-closed half needed to use that
+primitive, but this does not change `LocalWorkspaceProvider`: the provider
+remains missing-only. Exact replacement has three explicit authority phases:
+
+1. `bind_replacement_source(...)` synchronously consumes an active source
+   receipt while a separately supplied protocol-v5 owner already holds the
+   captured destination under its native lease. It requires the exact private
+   destination-binding object from that receipt, matches both the retained
+   parent descriptor and a complete incumbent descriptor scan, revalidates the
+   native binding after the scan, then privately claims and binds the one-shot
+   replacement permit. No permit, receipt token, or detached replayable
+   replacement authorization is returned.
+2. `provision_bound_replacement(...)` is the only provisioning entry after
+   that handoff. It calls native provisioning itself and adopts the candidate
+   from the same native owner, frozen hidden slot, and exact workspace plan.
+   Provider code cannot mutate the handed-off owner between provision and
+   adoption.
+3. After write and seal, `publish_replacement_into(...)` uses a dedicated
+   `RENAME_EXCHANGE` path. Candidate and incumbent bytes are read through
+   separate retained descriptors. It never enters the generic
+   isolate-and-rename helper and never performs a generic post-exchange parent
+   sync; the native exchange and receipt settlement own durability ordering.
+
+The caller-owned receipt slot remains the linearization point. Before its store,
+failure reconciliation invokes native abort, which authenticates and reverses
+an exchanged mapping before releasing the lease. After its store, active or
+cleanup-retain reconciliation idempotently commits the same native receipt
+token. A successful commit switches the live Python authority to candidate-only
+descriptor-backed verification of the live destination and parent binding; it
+no longer depends on the displaced incumbent, so a later live-name rebind makes
+receipt reads fail closed without preventing terminal owner close. The
+displaced incumbent is returned as a
+`DirectoryOrphan` whose locator deliberately names the ordinary
+`linux-renameat2` reopening backend, not the transaction-only native backend.
+Its reclamation remains a later cooperative-GC concern.
+
+The strict request seam represents a missing destination only as
+`destination_binding=None`; an existing destination requires an immutable
 `PublishedWorkspaceDestinationBinding` projected by an active
 `PublishedWorkspaceReceiptOwner`. That binding freezes the lexical destination,
 the receipt's parent identity, and its full `_TreeOwnership`. Request
@@ -46,9 +81,12 @@ so a string or raw ownership token cannot select replacement. Strict BM25 now
 derives this binding from `source_generation` and cross-checks the borrowed
 receipt. The standard shared and provider-specific support probes still run
 first; `LocalWorkspaceProvider` then rejects every non-`None` binding before
-provisioning or namespace mutation. Provider integration is a separate Gate C
-change, so Gate C and M1 remain open even though the protocol-v5 primitive and
-request-authentication seam are available.
+provisioning or namespace mutation. Gate C must still add a private, one-shot
+provider/session provenance path carrying the active source receipt owner
+separately from the frozen request binding, select the three-phase authority
+flow, and settle the old receipt/orphan handoff. Automatic orphan GC, a crash
+journal, and protection from hostile same-UID mutation are not part of this
+seam. Gate C and M1 therefore remain open.
 
 ## Publish a normal index build
 
@@ -744,5 +782,5 @@ descriptors remain owned by the aggregate and are valid only for its lifetime;
 borrowers must never close them. The primitive remains an authority boundary
 for trusted internal code, not a Python sandbox or full `_TreeOwnership`.
 `LocalWorkspaceProvider` does not yet integrate it, continues to reject
-the non-`None` binding whose derived expectation is `provider-bound-exact`, and
-therefore does not close Gate C or M1.
+the non-`None` binding whose derived expectation is `provider-bound-exact`.
+Gate C and M1 remain open.

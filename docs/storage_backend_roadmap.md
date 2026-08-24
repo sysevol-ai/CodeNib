@@ -289,8 +289,8 @@ permit. The caller-owned receipt slot is the publication-authority
 linearization point: unreceipted same-process failures quarantine the exact
 candidate, while a fork child authenticates and closes only its inherited
 descriptor pairs. The v3-compatible capture state authenticates the private
-root and exact destination name/device/inode binding without mutation. Protocol
-v4 added a distinct one-shot replacement permit and one aggregate for that
+root and exact destination name/device/inode binding without mutation. Protocol v4
+added a distinct one-shot replacement permit and one aggregate for that
 incumbent plus a hidden, same-parent candidate. Protocol v5 retains that atomic
 exchange history and inserts a required parent lease before candidate mutation.
 Its success states are `destination-captured` -> `destination-leased` ->
@@ -353,6 +353,32 @@ returns but Python return is interrupted, the owner remains
 second flock. A fork child cannot mutate, reverse, commit, or unlock the
 parent's lease; it only authenticates and closes its own inherited descriptor
 pairs.
+
+The protocol-v5 Python publication seam is now implemented without changing
+the native ABI. `OwnedWorkspaceAuthority.bind_replacement_source(...)` consumes
+an active source receipt and requires its exact private destination-binding
+object while the supplied native owner is already `destination-leased`. It
+borrows and retains the parent and incumbent descriptors before provisioning,
+matches the parent identity and complete incumbent ownership against that same
+active generation, repeats native binding and descriptor checks after the tree
+scan, and privately binds the one-shot replacement permit. No detached permit
+or replayable replacement token leaves the authority. The subsequent
+`provision_bound_replacement(...)` call alone provisions and adopts the
+candidate from that same owner, hidden slot, and frozen plan.
+
+Sealed replacements publish only through
+`publish_replacement_into(...)`, whose dedicated dual-root implementation uses
+separate candidate and incumbent descriptor readers and the permit-bound
+`RENAME_EXCHANGE`. The generic isolate/rename helper explicitly rejects the
+native replacement authority, and no generic parent sync runs after exchange.
+The receipt-owner slot store is the Python linearization point: native abort
+authenticates and reverses before the store, while active or cleanup-retain
+reconciliation idempotently commits after it. After native
+`replacement-receipted`, the live authority verifies only the candidate
+descriptor and destination binding; terminal close does not depend on that
+live-name check. The displaced incumbent receipt uses a normal
+`linux-renameat2` orphan locator so it can reopen after the transaction-only
+native aggregate closes.
 
 The receipted aggregate seals its path-based live-name verifier and new parent
 borrows, while earlier borrowed descriptors remain owner-owned until close.
@@ -459,10 +485,13 @@ materialization APIs are now available as injectable library producers. The
 Linux local provider deliberately accepts only missing destinations, so
 whole-context retained materialization can use it explicitly, while strict BM25
 replacement now sends the active source generation's exact destination binding
-and still lacks a concrete production provider. Protocol v4 now supplies the
-lower-level exact exchange primitive, but `LocalWorkspaceProvider` rejects the
-non-`None` binding before mutation and does not select that primitive. Provider
-integration remains separate Gate C work. The
+and still lacks a concrete production provider. Protocol v5 and the
+three-phase Python dual-root seam now supply the lower-level exact exchange and
+receipt settlement, but `LocalWorkspaceProvider` rejects the non-`None`
+binding before mutation and does not select that seam. Gate C must carry the
+active source receipt owner through a private one-shot provider/session
+provenance gate, separately from the frozen request binding, and settle the old
+receipt/orphan handoff. The
 explicit retained workflows can now construct the whole-context producer for one
 existing catalog selection, publish normal compiler output, and load one
 selected generation at MCP cold start, but no default compiler/runtime route
@@ -815,10 +844,13 @@ advance refs, or make retained storage the default. Benchmark-backed promotion
 of the explicit compiler and runtime routes remains outstanding M1 work; graph
 and Zoekt cache ingress and fenced job publication remain M2 or later work.
 Strict BM25 replacement also still lacks the `provider-bound-exact` production
-provider. Protocol v4 implements the primitive-only exact exchange, but
-`LocalWorkspaceProvider` continues to reject the receipt-derived binding. The
-strict producer is now wired to the authenticated request seam, but no provider
-selects the new operation. Provider integration remains separate.
+provider. Protocol v5 and the dual-root publication authority implement exact
+preprovision binding, same-owner candidate adoption, exchange, receipt
+settlement, and displaced-incumbent handoff, but `LocalWorkspaceProvider`
+continues to reject the receipt-derived binding. The strict producer is wired
+to the authenticated request seam, but no provider supplies the separately
+active source-owner provenance needed to select the new operation. Provider
+integration remains separate.
 
 #### Retained storage promotion protocol
 
@@ -835,7 +867,7 @@ that collecting a fast result cannot silently approve a production route:
 | B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
 | B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | B2 source-bound | Promote a specifically scoped source-bound BM25 retained cold start. | Pending A2 source-bound BM25 runtime; it cannot satisfy the full manifest-compatibility gate. |
-| C | Supply the `provider-bound-exact` strict BM25 native provider. | Protocol v4 introduced the Linux-only, same-parent `RENAME_EXCHANGE` primitive; protocol v5 moves a parent-wide cross-process flock before candidate mutation and retains receipt settlement and bounded same-process rollback. The request-authentication half is implemented: strict BM25 sends a private-construction binding projected by its active source receipt owner, and generic adoption verifies its lexical destination, parent identity, and full tree ownership. `LocalWorkspaceProvider` still rejects every exact binding and does not select the primitive, so Gate C remains pending and required before M1 closes. |
+| C | Supply the `provider-bound-exact` strict BM25 native provider. | Protocol v5 provides the leased Linux-only `RENAME_EXCHANGE` primitive, and the Python authority now implements active-receipt preprovision binding, same-owner/slot/plan candidate adoption, separate dual-root validation, receipt-slot settlement, candidate-only postreceipt authority, and a reopenable displaced-incumbent orphan. The request still carries only its immutable destination binding: no provider/session path supplies the separately active source receipt owner required by `bind_replacement_source(...)`. `LocalWorkspaceProvider` therefore continues to reject every exact binding and cannot select this seam. Gate C remains pending and required before M1 closes; automatic GC, a crash journal, and hostile same-UID defense are outside this gate. |
 
 The A1 harness fixes the BM25 `fast` compiler/runtime comparison rather than
 accepting arbitrary route substitutions. For compiler cold start, arm A runs
