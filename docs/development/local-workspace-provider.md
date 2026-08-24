@@ -12,7 +12,8 @@ SPDX-License-Identifier: Apache-2.0
 
 `LocalWorkspaceProvider` is CodeNib's production Linux implementation of the
 strict workspace contract. It publishes one fully validated directory into a
-missing destination and transfers the generation to a caller-owned
+missing destination or replaces the exact generation named by an active
+receipt, then transfers the new generation to a caller-owned
 `PublishedWorkspaceReceiptOwner`.
 
 The provider is not enabled by CodeNib's default compiler or runtime path. Four
@@ -32,9 +33,9 @@ incumbent, and candidate descriptors throughout; every descriptor borrowed by
 trusted internal code remains owner-owned and must never be closed by the
 borrower.
 
-The Python authority now exposes the fail-closed half needed to use that
-primitive, but this does not change `LocalWorkspaceProvider`: the provider
-remains missing-only. Exact replacement has three explicit authority phases:
+The Python authority and `LocalWorkspaceProvider` now select that primitive for
+receipt-bound exact requests. Exact replacement has three explicit authority
+phases:
 
 1. `bind_replacement_source(...)` synchronously consumes an active source
    receipt while a separately supplied protocol-v5 owner already holds the
@@ -54,6 +55,18 @@ remains missing-only. Exact replacement has three explicit authority phases:
    separate retained descriptors. It never enters the generic
    isolate-and-rename helper and never performs a generic post-exchange parent
    sync; the native exchange and receipt settlement own durability ordering.
+
+In exact mode, `provision_timeout_ns` supplies three independent absolute
+deadline budgets. The provider mints one before destination capture and lease,
+a fresh one after the complete active-source scan and handoff immediately
+before candidate provisioning, and the operation mints a third immediately
+before the pre-exchange candidate/incumbent scans and staged validation. A valid
+long source scan or user build therefore cannot inherit an already expired
+provision or publication deadline. Those pre-exchange checks consume the third
+budget, and native exchange observes expiry before mutating the namespace. The
+post-exchange published validator and receipt/abort settlement retain their
+normal reconciliation guarantees but are not governed by that absolute
+deadline.
 
 The caller-owned receipt slot remains the linearization point. Before its store,
 failure reconciliation invokes native abort, which authenticates and reverses
@@ -79,14 +92,18 @@ the callback session compares the complete adopted binding with the request.
 The `destination_expectation` label remains only a derived diagnostic property,
 so a string or raw ownership token cannot select replacement. Strict BM25 now
 derives this binding from `source_generation` and cross-checks the borrowed
-receipt. The standard shared and provider-specific support probes still run
-first; `LocalWorkspaceProvider` then rejects every non-`None` binding before
-provisioning or namespace mutation. Gate C must still add a private, one-shot
-provider/session provenance path carrying the active source receipt owner
-separately from the frozen request binding, select the three-phase authority
-flow, and settle the old receipt/orphan handoff. Automatic orphan GC, a crash
-journal, and protection from hostile same-UID mutation are not part of this
-seam. Gate C and M1 therefore remain open.
+receipt. It passes that still-active owner separately from the request. A
+private PID-bound, one-shot replacement-source gate proves exact binding and
+operation identity, synchronously invokes `bind_replacement_source(...)`, and
+spends its one-shot bind authority before candidate provisioning. The provider
+receives the gate, never the source owner or a replayable capability. An exact
+callback cannot enter unless that same gate bound the same adopted workspace;
+the full callback lifetime is revoked before the provider call escapes.
+`LocalWorkspaceProvider` then provisions only through the handed-off workspace
+and the session publishes only through `publish_replacement_into(...)`. This
+completes Gate C. Automatic orphan GC, a crash journal, protection from hostile
+same-UID mutation, default route promotion, and the remaining M1 evidence gates
+are outside this seam.
 
 ## Publish a normal index build
 
@@ -409,11 +426,9 @@ required before either policy track can advance.
 
 These retained-read routes and the explicit BM25/vector ingress above do not
 complete the hybrid-storage M1 milestone. Benchmark-backed promotion of the
-opt-in compiler and runtime routes is still missing, as is a production
-provider for the strict BM25 replacement producer's `provider-bound-exact`
-destination contract. Protocol v4 supplies the lower-level exact exchange
-primitive, but no production provider selects it and the local provider still
-rejects replacement requests. Graph and Zoekt ingress remain M2 or later work;
+opt-in compiler and runtime routes is still missing. The production
+`provider-bound-exact` strict BM25 seam is now complete, but it does not select
+or promote a default route. Graph and Zoekt ingress remain M2 or later work;
 fenced jobs and runtime hot switching remain separate milestones.
 
 ## Measure the retained storage gate
@@ -554,13 +569,12 @@ path remains blocked on equal public behavior, artifact provenance, native
 capability policy, and required view coverage. A future source-bound BM25
 default requires its own A2 decision and does not satisfy that full
 compatibility gate. The independent gate C
-`provider-bound-exact` native provider is still required before M1 closes.
-Protocol v4 supplies a primitive-only exact exchange; it does not wire that
-primitive into `LocalWorkspaceProvider`. The strict BM25 route now carries its
-receipt-derived destination binding to the provider boundary, but the local
-provider still rejects that binding and cannot execute the exchange. This
-harness does not add M2 generic generation publication or fenced jobs, M3 hot
-switching or request pins, or M5 retention and garbage collection.
+`provider-bound-exact` native provider is now complete, independently of this
+measurement protocol. The strict BM25 route carries both its receipt-derived
+immutable binding and the separately active source owner to the one-shot Local
+provider seam. This harness does not promote that producer or add M2 generic
+generation publication or fenced jobs, M3 hot switching or request pins, or M5
+retention and garbage collection.
 
 ## Lifecycle
 
@@ -606,8 +620,9 @@ native handles. Closing the receipt owner does not delete the published output.
 The provider deliberately has a narrow first release:
 
 - Linux only, with `cp310-abi3-manylinux_2_28` wheels for x86-64 and AArch64.
-- Missing destinations only; it never replaces an existing file, directory, or
-  symlink.
+- Missing destinations, or one exact existing directory generation bound by
+  the separately active source receipt. It never replaces an unbound existing
+  file, directory, or symlink.
 - One absolute authority root owned by the current effective UID, with exact
   mode `0700`. The root must be a private, quiescent namespace rather than a
   directory another same-UID process actively mutates.
@@ -781,6 +796,7 @@ All borrowed incumbent, candidate-root, parent, and planned-directory
 descriptors remain owned by the aggregate and are valid only for its lifetime;
 borrowers must never close them. The primitive remains an authority boundary
 for trusted internal code, not a Python sandbox or full `_TreeOwnership`.
-`LocalWorkspaceProvider` does not yet integrate it, continues to reject
-the non-`None` binding whose derived expectation is `provider-bound-exact`.
-Gate C and M1 remain open.
+`LocalWorkspaceProvider` now integrates it for the non-`None` binding whose
+derived expectation is `provider-bound-exact`, using the separately active
+source owner only through the private one-shot gate. Gate C is complete; M1
+remains open on canonical A2 evidence and configured-default decisions.

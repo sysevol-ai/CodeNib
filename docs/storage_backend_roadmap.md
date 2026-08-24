@@ -280,8 +280,9 @@ return the authenticated file record, and staged and published validators run
 inside the same atomic publication boundary. The caller-owned receipt keeps its
 authenticated reader pinned through synchronous consumption. The contract
 remains provider-neutral, and a concrete `LocalWorkspaceProvider` now supplies
-it on Linux for missing destinations below one private, quiescent root owned by
-the current effective UID with exact mode `0700`. Native workspace-owner
+it on Linux for missing or active-receipt-bound exact destinations below one
+private, quiescent root owned by the current effective UID with exact mode
+`0700`. Native workspace-owner
 protocol v5 preserves the v2 publication contract: it pins the namespace and
 owns every file descriptor, acquires and writes files without exposing raw file
 descriptors to Python, and gates the only forward rename with a one-shot publish
@@ -481,22 +482,29 @@ It then replays and validates the same bytes through that contract before and
 after replacement without consulting mutable public source projections. Its
 `PlannedBm25View` is a short-lived in-process replay subject, not a catalog
 profile or durable job payload. Strict whole-context and retained
-materialization APIs are now available as injectable library producers. The
-Linux local provider deliberately accepts only missing destinations, so
-whole-context retained materialization can use it explicitly, while strict BM25
-replacement now sends the active source generation's exact destination binding
-and still lacks a concrete production provider. Protocol v5 and the
-three-phase Python dual-root seam now supply the lower-level exact exchange and
-receipt settlement, but `LocalWorkspaceProvider` rejects the non-`None`
-binding before mutation and does not select that seam. Gate C must carry the
-active source receipt owner through a private one-shot provider/session
-provenance gate, separately from the frozen request binding, and settle the old
-receipt/orphan handoff. The
-explicit retained workflows can now construct the whole-context producer for one
-existing catalog selection, publish normal compiler output, and load one
-selected generation at MCP cold start, but no default compiler/runtime route
-constructs them. M1 remains in progress and the M2 BM25 profile adapter is still
-outstanding.
+materialization APIs are now available as injectable library producers.
+`LocalWorkspaceProvider` preserves the missing-destination flow and now also
+selects the protocol-v5 replacement seam for strict BM25. The immutable request
+still contains only its receipt-derived destination binding. The top-level
+operation receives the separately active exact source owner and creates a
+private PID-bound, callback-scoped one-shot gate. That gate is tied by object
+identity to the request binding and operation, consumes the active source into
+`bind_replacement_source(...)`, and returns no owner or replayable capability.
+The exact callback cannot enter unless the same gate bound the same workspace;
+the Local provider then provisions only through the handed-off authority and
+the session publishes only through `publish_replacement_into(...)`. Gate C is
+complete. Exact mode treats `provision_timeout_ns` as three fresh budgets: one
+for capture and lease, one minted after source binding for provisioning, and
+one minted after the user build for the pre-exchange publication transaction.
+Candidate and incumbent scans, staged validation, and the binding rechecks
+consume the last absolute deadline; if they overrun it, native exchange observes
+expiry before namespace mutation. Published validation and post-exchange
+settlement retain their reconciliation contracts but are not controlled by
+that deadline. The explicit retained workflows can now construct the
+whole-context producer for one existing catalog selection, publish normal
+compiler output, and load one selected generation at MCP cold start, but no
+default compiler/runtime route constructs them. M1 remains in progress and the
+M2 BM25 profile adapter is still outstanding.
 
 Strict whole-context publication can now aggregate already-normalized BM25 and
 vector generations retained by active workspace receipt owners. The plan binds
@@ -843,14 +851,14 @@ initialize or populate the control plane, import a legacy cache, build views,
 advance refs, or make retained storage the default. Benchmark-backed promotion
 of the explicit compiler and runtime routes remains outstanding M1 work; graph
 and Zoekt cache ingress and fenced job publication remain M2 or later work.
-Strict BM25 replacement also still lacks the `provider-bound-exact` production
-provider. Protocol v5 and the dual-root publication authority implement exact
-preprovision binding, same-owner candidate adoption, exchange, receipt
-settlement, and displaced-incumbent handoff, but `LocalWorkspaceProvider`
-continues to reject the receipt-derived binding. The strict producer is wired
-to the authenticated request seam, but no provider supplies the separately
-active source-owner provenance needed to select the new operation. Provider
-integration remains separate.
+Strict BM25 replacement now has its `provider-bound-exact` production provider.
+The strict producer passes its separately active source owner outside the
+immutable request; a private one-shot gate binds it to the same request,
+destination-binding object, operation, native owner, and workspace before Local
+candidate mutation. Local then selects the protocol-v5 dual-root provision and
+publication seam. This completes Gate C without changing any compiler/runtime
+default, automatic orphan reclamation, crash recovery, or the remaining M1
+evidence requirements.
 
 #### Retained storage promotion protocol
 
@@ -867,7 +875,7 @@ that collecting a fast result cannot silently approve a production route:
 | B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
 | B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | B2 source-bound | Promote a specifically scoped source-bound BM25 retained cold start. | Pending A2 source-bound BM25 runtime; it cannot satisfy the full manifest-compatibility gate. |
-| C | Supply the `provider-bound-exact` strict BM25 native provider. | Protocol v5 provides the leased Linux-only `RENAME_EXCHANGE` primitive, and the Python authority now implements active-receipt preprovision binding, same-owner/slot/plan candidate adoption, separate dual-root validation, receipt-slot settlement, candidate-only postreceipt authority, and a reopenable displaced-incumbent orphan. The request still carries only its immutable destination binding: no provider/session path supplies the separately active source receipt owner required by `bind_replacement_source(...)`. `LocalWorkspaceProvider` therefore continues to reject every exact binding and cannot select this seam. Gate C remains pending and required before M1 closes; automatic GC, a crash journal, and hostile same-UID defense are outside this gate. |
+| C | Supply the `provider-bound-exact` strict BM25 native provider. | Complete. The request still carries only its immutable receipt-derived binding. `run_strict_workspace(...)` accepts the separately active exact source owner and gives Local only a PID-bound, callback-scoped one-shot gate tied by object identity to that request, binding, operation, native owner, and workspace. Local captures and leases before the gate synchronously binds the source, provisions only through the handed-off workspace, and publishes only through the protocol-v5 dual-root seam. The displaced incumbent remains a reopenable `linux-renameat2` orphan. Automatic GC, a crash journal, hostile same-UID defense, and default-route promotion remain outside Gate C. |
 
 The A1 harness fixes the BM25 `fast` compiler/runtime comparison rather than
 accepting arbitrary route substitutions. For compiler cold start, arm A runs
