@@ -703,6 +703,72 @@ and Zoekt cache ingress and fenced job publication remain M2 or later work.
 Strict BM25 replacement also still lacks the `provider-bound-exact` production
 provider.
 
+#### Retained storage promotion protocol
+
+M1 promotion is split into evidence, policy, and configured-default changes so
+that collecting a fast result cannot silently approve a production route:
+
+| Gate | Required result | Current status |
+| --- | --- | --- |
+| A1 | Run the fixed, report-only retained storage harness. | Implemented; it cannot promote a route. |
+| A2 | Record canonical receipts for the approved subject/media matrix and ratify a numeric policy from measured results. | Pending real measurements. |
+| B1 | Promote BM25 compiler publication to a configured default. | Pending A2. |
+| B2 | Promote BM25 retained cold start to a configured default. | Pending A2. |
+| C | Supply the `provider-bound-exact` strict BM25 native provider. | Independent work, but required before M1 closes. |
+
+The A1 harness fixes the BM25 `fast` compiler/runtime comparison rather than
+accepting arbitrary route substitutions. For compiler cold start, arm A runs
+`codenib index --preset fast` from an empty cache and arm B runs the same build
+with retained publication; storage provisioning is outside the measured route.
+For compiler current-cache behavior, both arms start from equivalent verified
+current caches: A measures the ordinary update and B measures the retained
+exact retry with its original expected ref generation, which must not advance
+the ref again. For runtime cold start, A loads the legacy manifest MCP context
+and B resolves one catalog ref and loads the retained MCP context through the
+real parser and command handler. The harness replaces only `mcp.run` with a
+ready callback that executes the same fixed BM25 queries, and semantic parity
+is required before performance data are usable.
+
+Every paired round alternates AB/BA order. For each arm, the controller starts
+a short-lived outer sample worker. Every arm receives a fresh `CODENIB_HOME`
+and compiler cache below the selected media root; candidate arms additionally
+provision a fresh catalog, CAS, workspace, and output, while legacy arms never
+touch those retained authorities. The worker then launches a fresh inner route
+process. The canonical matrix fixes one small, medium, and large subject plus
+at least two media classes, with four warmups followed by 20 measured rounds.
+Each route receipt records
+`route_wall_seconds`, `process_wall_seconds`, `cpu_seconds`, `peak_rss_bytes`,
+`io_read_bytes`, `io_write_bytes`, `payload_bytes`, and `payload_files`.
+Peak RSS uses Linux `VmHWM`, I/O uses `/proc/self/io`, and aggregates use the
+median for p50 and nearest-rank p95.
+
+The cold labels deliberately describe CodeNib state, not the operating-system
+page cache: compiler cold starts from an empty compiler cache, while runtime
+cold starts a fresh process with no loaded context. The harness does not flush
+or control filesystem page-cache state. AB/BA ordering balances that nuisance,
+and the report records it as `uncontrolled`; A2 must assess its receipts with
+that limitation intact.
+
+Runtime parity covers the complete public BM25 result, including optional
+source content, ordering, scores, and locations. The legacy manifest route is
+source-verified while the retained artifact route is intentionally
+source-disabled. A payload difference caused by that authority distinction is
+a real negative A1 receipt, not metadata to discard; it must be resolved or
+explicitly ratified before runtime promotion can proceed.
+
+A1 intentionally has no approved numeric thresholds or threshold override.
+Its policy is unratified and every report sets `promotion_eligible=false`, even
+when parity holds and all measurements complete. Only A2 measurements over the
+fixed approved subject/media matrix may establish canonical receipts and
+ratify numeric thresholds. B1 and B2 require that ratified policy; neither is
+approved by landing the harness. This leaves M1 in progress.
+
+These gates do not move the existing milestone boundaries. Generic generation
+publication and fenced jobs remain M2, live bundle replacement and in-flight
+request pins remain M3, and evidence retention and reclamation remain M5. Gate
+C may proceed in parallel, but the report-only harness neither implements nor
+waives it.
+
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced

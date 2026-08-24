@@ -326,6 +326,99 @@ provider for the strict BM25 replacement producer's `provider-bound-exact`
 destination contract. Graph and Zoekt ingress remain M2 or later work; fenced
 jobs and runtime hot switching remain separate milestones.
 
+## Measure the retained storage gate
+
+`make retained-storage-gate` runs the manual A1 comparison harness. A1 is
+report-only: it checks a fixed BM25 `--preset fast` protocol and records
+measurements, but it has no ratified numeric thresholds. Every A1 report has an
+unratified policy and `promotion_eligible=false`, including a complete report
+whose parity checks succeed.
+
+Pass detached repository roots and roots on the storage media being measured.
+Both variables are whitespace-separated `ID=PATH` values, and subject IDs must
+be present in the selected manifest. Because Make uses whitespace to split the
+values, these paths must not contain whitespace. The checked-in manifest fixes
+HTTPie, CodeNib, and Django revisions as its small, medium, and large subjects;
+their three root mappings must match exactly. A canonical run also requires at
+least two approved media classes. For example:
+
+```bash
+make retained-storage-gate \
+  RETAINED_STORAGE_GATE_SUBJECT_ROOTS="httpie=/srv/bench/httpie codenib=/srv/bench/codenib django-5.2.5=/srv/bench/django" \
+  RETAINED_STORAGE_GATE_MEDIA_ROOTS="nvme=/mnt/nvme/codenib-gate sata=/mnt/sata/codenib-gate" \
+  RETAINED_STORAGE_GATE_OUTPUT=/var/lib/codenib/results/retained-gate.json
+```
+
+The canonical protocol also requires the default 20 measured rounds and four
+warmup rounds. Reducing the media matrix or counts produces only a noncanonical
+A1 report and cannot produce A2 evidence.
+
+The target builds the current native core, runs the harness tests, then invokes
+`scripts/profiling/profile_retained_storage_gate.py`. The report parent must
+already be a real, non-aliased directory; the target never creates an arbitrary
+override path before the controller validates it. Its variables map to the
+controller CLI as follows:
+
+| Make variable | Controller argument | Default |
+| --- | --- | --- |
+| `RETAINED_STORAGE_GATE_SUBJECT_ROOTS` | repeated `--subject-root ID=PATH` | required |
+| `RETAINED_STORAGE_GATE_MEDIA_ROOTS` | repeated `--media-root ID=PATH` | required |
+| `RETAINED_STORAGE_GATE_SUBJECT_MANIFEST` | `--subject-manifest PATH` | `scripts/profiling/retained_storage_subjects.json` |
+| `RETAINED_STORAGE_GATE_OUTPUT` | `--output PATH` | `/tmp/codenib-retained-storage-gate.json` |
+| `RETAINED_STORAGE_GATE_ITERATIONS` | `--iterations` | `20` |
+| `RETAINED_STORAGE_GATE_WARMUPS` | `--warmups` | `4` |
+| `RETAINED_STORAGE_GATE_TIMEOUT` | `--worker-timeout-seconds` | `1800` |
+| `RETAINED_STORAGE_GATE_EXTRA_ARGS` | additional controller arguments | empty |
+
+The hidden `--worker` mode is an internal fresh-process protocol; do not invoke
+it directly. For each arm, the controller starts a short-lived outer sample
+worker. Every arm gets a fresh `CODENIB_HOME` and compiler cache below the
+selected media root. Candidate arms additionally provision a fresh catalog,
+CAS, workspace, and output there; legacy arms do not touch those retained
+authorities. The worker then launches a fresh inner route process. Those
+locations are therefore not controller flags, and provisioning is excluded
+from the timed inner route.
+
+The harness compares three pairs and alternates AB/BA order for every pair:
+
+- Compiler cold: A runs ordinary `codenib index --preset fast` from an empty
+  cache; B runs the same command with retained publication.
+- Compiler current: both arms receive equivalent verified current caches. A
+  measures an ordinary update; B performs the retained exact retry with the
+  original expected ref generation and verifies that the ref does not advance.
+- Runtime cold: A loads the legacy manifest MCP context; B resolves one catalog
+  ref and loads the retained MCP context. Both use the real parser and command
+  handler. Only `mcp.run` is replaced by a ready callback that executes the
+  same fixed BM25 queries.
+
+Here, compiler cold means an empty CodeNib compiler cache, and runtime cold
+means a fresh process and unloaded context. The harness does not flush or
+control the operating-system filesystem page cache. AB/BA ordering balances
+that nuisance across arms, and each report records the page-cache policy as
+`uncontrolled`; A2 must interpret the measurements on that basis.
+
+Compiler and runtime BM25 results must retain semantic parity. Each route
+receipt records `route_wall_seconds`, `process_wall_seconds`, `cpu_seconds`,
+`peak_rss_bytes`, `io_read_bytes`, `io_write_bytes`, `payload_bytes`, and
+`payload_files`. Peak RSS comes from Linux `VmHWM`; I/O bytes come from
+`/proc/self/io`. The report summarizes measured samples with median p50 and
+nearest-rank p95.
+
+Runtime parity hashes the complete public BM25 result, including optional
+source `content`, ordering, scores, and locations. The legacy route retains an
+authenticated source binding, while the retained artifact route is deliberately
+source-disabled. If that difference changes the public payload, A1 emits a
+negative parity receipt; it must not erase the field or normalize the mismatch
+to make the gate pass.
+
+Do not infer promotion thresholds from one A1 run. A2 must execute the approved
+fixed subject/media matrix, retain its canonical receipts, and ratify the
+numeric policy before B1 can promote BM25 compiler publication or B2 can
+promote retained BM25 cold start to configured defaults. The independent gate
+C `provider-bound-exact` native provider is still required before M1 closes.
+This harness does not add M2 generic generation publication or fenced jobs, M3
+hot switching or request pins, or M5 retention and garbage collection.
+
 ## Lifecycle
 
 Create one private authority root and one empty receipt owner before calling a
