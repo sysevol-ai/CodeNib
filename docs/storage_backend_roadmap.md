@@ -282,16 +282,26 @@ authenticated reader pinned through synchronous consumption. The contract
 remains provider-neutral, and a concrete `LocalWorkspaceProvider` now supplies
 it on Linux for missing destinations below one private, quiescent root owned by
 the current effective UID with exact mode `0700`. Native workspace-owner
-protocol v2 pins the namespace
-and owns every file descriptor, acquires and writes files without exposing raw
-file descriptors to Python, and gates the only forward rename with a one-shot
-publish permit. The caller-owned receipt slot is the publication-authority
+protocol v3 preserves the v2 publication contract: it pins the namespace and
+owns every file descriptor, acquires and writes files without exposing raw file
+descriptors to Python, and gates the only forward rename with a one-shot publish
+permit. The caller-owned receipt slot is the publication-authority
 linearization point: unreceipted same-process failures quarantine the exact
 candidate, while a fork child authenticates and closes only its inherited
-descriptor pairs. The provider is an authority boundary for trusted callbacks,
-not an in-process Python sandbox. The explicit retained workflows construct it
-for operator-requested publication and cold start; no compiler or runtime route
-constructs it by default yet.
+descriptor pairs. V3 also adds a non-mutating capture-only mode for an existing
+destination. It enters the distinct `destination-captured` state, authenticates
+the private root and exact destination name/device/inode binding, and permits
+only verification, an owner-owned borrowed destination descriptor, and owner
+close or abort. Legacy destination-parent, staged-workspace-root, and
+planned-directory borrows reject this state, so capture creates no accidental
+parent or staged-workspace-root capability. The borrowed descriptor is valid
+only for the owner lifetime and callers must not close it. The native primitive
+performs no namespace mutation and cannot publish, exchange, or replace the
+directory. Trusted internal code could still use the descriptor with `*at`
+syscalls, so capture is not full `_TreeOwnership`. The provider remains an
+authority boundary for trusted callbacks, not an in-process Python sandbox.
+The explicit retained workflows construct it for operator-requested publication
+and cold start; no compiler or runtime route constructs it by default yet.
 
 Callback-scoped directory results are likewise provisional until ordered
 reader-validity, exact-ownership, child-namespace, and parent-authority
@@ -377,11 +387,15 @@ materialization APIs are now available as injectable library producers. The
 Linux local provider deliberately accepts only missing destinations, so
 whole-context retained materialization can use it explicitly, while strict BM25
 replacement requests `provider-bound-exact` and still lacks a concrete
-production provider. The explicit retained workflows can now construct the
-whole-context producer for one existing catalog selection, publish normal
-compiler output, and load one selected generation at MCP cold start, but no
-default compiler/runtime route constructs them. M1 remains in progress and the
-M2 BM25 profile adapter is still outstanding.
+production provider. Protocol v3 now supplies its capture-only,
+root-authority-preparation half, but `LocalWorkspaceProvider` still rejects the
+request and no exchange/replacement operation exists. That mutation boundary
+must be protocol v4 or a separately advertised capability. The explicit
+retained workflows can now construct the whole-context producer for one
+existing catalog selection, publish normal compiler output, and load one
+selected generation at MCP cold start, but no default compiler/runtime route
+constructs them. M1 remains in progress and the M2 BM25 profile adapter is still
+outstanding.
 
 Strict whole-context publication can now aggregate already-normalized BM25 and
 vector generations retained by active workspace receipt owners. The plan binds
@@ -729,7 +743,10 @@ advance refs, or make retained storage the default. Benchmark-backed promotion
 of the explicit compiler and runtime routes remains outstanding M1 work; graph
 and Zoekt cache ingress and fenced job publication remain M2 or later work.
 Strict BM25 replacement also still lacks the `provider-bound-exact` production
-provider.
+provider. Protocol-v3 destination capture is non-mutating preparation only;
+`LocalWorkspaceProvider` continues to reject that expectation, and atomic
+exchange/replacement remains a protocol-v4 or separately advertised
+capability.
 
 #### Retained storage promotion protocol
 
@@ -746,7 +763,7 @@ that collecting a fast result cannot silently approve a production route:
 | B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
 | B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | B2 source-bound | Promote a specifically scoped source-bound BM25 retained cold start. | Pending A2 source-bound BM25 runtime; it cannot satisfy the full manifest-compatibility gate. |
-| C | Supply the `provider-bound-exact` strict BM25 native provider. | Independent work, but required before M1 closes. |
+| C | Supply the `provider-bound-exact` strict BM25 native provider. | Capture-only protocol-v3 root authority is implemented as non-mutating preparation, but `LocalWorkspaceProvider` still rejects this expectation. Exchange/replacement requires protocol v4 or a separately advertised capability, so Gate C remains pending and required before M1 closes. |
 
 The A1 harness fixes the BM25 `fast` compiler/runtime comparison rather than
 accepting arbitrary route substitutions. For compiler cold start, arm A runs
