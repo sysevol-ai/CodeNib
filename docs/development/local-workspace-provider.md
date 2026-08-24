@@ -319,6 +319,17 @@ the receipt is not a catalog/CAS GC pin, and no live context replacement occurs.
 Those in-flight request pins and atomic swaps remain M3 work; durable evidence
 retention and reclamation remain M5 work.
 
+The library also provides a preparatory source-bound seam for future manifest
+compatibility. `bind_context_artifact_reader` captures a source-fingerprint-v2
+checkout inside the active publication-reader callback, and the retained
+ref/snapshot loaders accept an optional `repo_path`. Their one-shot owner keeps
+the captured source reachable through cancellation, closes context, source,
+then publication receipt in the parent, and revokes source before receipt in a
+forked child without acquiring the copied context lock. This does not change
+the command above: retained `codenib mcp` still cannot be combined with
+`--repo`. A later slice must add the source/storage topology gate, CLI wiring,
+and compatibility E2E before the manifest runtime track can advance.
+
 These retained-read routes and the explicit BM25/vector ingress above do not
 complete the hybrid-storage M1 milestone. Benchmark-backed promotion of the
 opt-in compiler and runtime routes is still missing, as is a production
@@ -438,10 +449,10 @@ Do not infer promotion thresholds from one A1 run. A2 must execute the approved
 fixed subject/media matrix and retain its canonical receipts. The compiler and
 query-only runtime tracks may ratify their own numeric policies independently;
 B1 requires the former and query-only B2 requires the latter. Replacing the
-ordinary source-bound manifest MCP path remains blocked until a source-capable
-retained route preserves the same public behavior and authority. The
-independent gate C `provider-bound-exact` native provider is still required
-before M1 closes.
+ordinary source-bound manifest MCP path remains blocked until the reader-native
+source seam is exposed through a topology-safe production route and preserves
+the same public behavior and authority. The independent gate C
+`provider-bound-exact` native provider is still required before M1 closes.
 This harness does not add M2 generic generation publication or fenced jobs, M3
 hot switching or request pins, or M5 retention and garbage collection.
 

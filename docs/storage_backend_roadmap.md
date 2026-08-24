@@ -695,6 +695,19 @@ hold storage connections while serving, provision storage, delete output, or
 add request-level pins. Those replacement and in-flight lifetime contracts
 remain M3 work, while durable retention and reclamation remain M5 work.
 
+A preparatory library seam can now bind an exact checkout without reopening the
+materialized artifact path. `bind_context_artifact_reader` captures and verifies
+source fingerprint v2 while the publication receipt's authenticated reader is
+active, and the retained ref/snapshot loaders accept an optional `repo_path`
+for callers that already own the surrounding topology. The one-shot runtime
+owner retains source authority across cancellation, closes context, source, and
+receipt in that order in the parent, and revokes source before receipt in a
+forked child without taking an inherited context lock. Portable vector payloads
+remain native-parser inert. This is not yet exposed by `codenib mcp`: the CLI
+still rejects retained storage combined with `--repo`, and the production
+source-versus-storage topology gate and route-level compatibility evidence are
+still missing. The explicit command above therefore remains source-disabled.
+
 The standalone materialization command and retained MCP cold start do not
 initialize or populate the control plane, import a legacy cache, build views,
 advance refs, or make retained storage the default. Benchmark-backed promotion
@@ -713,7 +726,7 @@ that collecting a fast result cannot silently approve a production route:
 | A1 | Run the fixed, report-only retained storage harness and preserve each route's complete public and authority parity. | Implemented as a four-cell v2 evidence protocol; it cannot promote a route. |
 | A2 compiler | Record canonical compiler receipts for the approved subject/media matrix and ratify numeric compiler policy from measured results. | Pending real measurements. |
 | A2 query-only runtime | Record canonical direct-artifact versus retained receipts and ratify numeric query-only runtime policy. | Pending real measurements. |
-| A2 manifest compatibility | Preserve ordinary manifest MCP public behavior and authority when selecting retained storage. | Blocked: retained startup is source-disabled. |
+| A2 manifest compatibility | Preserve ordinary manifest MCP public behavior and authority when selecting retained storage. | Reader-native source binding is implemented at the library boundary; explicit CLI topology, end-to-end routing, and compatibility evidence remain pending. |
 | B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
 | B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | C | Supply the `provider-bound-exact` strict BM25 native provider. | Independent work, but required before M1 closes. |
@@ -786,9 +799,10 @@ when a track passes and all measurements complete. Only A2 measurements over
 the fixed approved subject/media matrix may establish canonical receipts and
 ratify numeric thresholds. B1 requires the compiler track; query-only B2
 requires the query-only runtime track. Replacing ordinary source-bound manifest
-MCP remains blocked until a source-capable retained route preserves its public
-and authority behavior. None of these promotions is approved by landing the
-harness. This leaves M1 in progress.
+MCP remains blocked until the reader-native source seam is exposed through a
+topology-safe production route and preserves the same public and authority
+behavior in compatibility evidence. None of these promotions is approved by
+landing either the seam or the harness. This leaves M1 in progress.
 
 These gates do not move the existing milestone boundaries. Generic generation
 publication and fenced jobs remain M2, live bundle replacement and in-flight
