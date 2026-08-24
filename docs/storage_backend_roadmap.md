@@ -434,10 +434,18 @@ later quiescent reclamation instead of recursively deleting an online path.
 This is still a local compatibility publication path, not a catalog receipt.
 `StrictWorkspaceProvider` builds on the foundation with a callback-scoped
 contract for a trusted provider to supply a pre-opened
-`OwnedWorkspaceAuthority`, exact workspace plan, destination expectation, and
-retained publication receipt owner. Session writes, validation, publication,
-and revocation share one cancellation-safe gate so a provider callback cannot
-publish after it escapes. The gate records the exact callback result or
+`OwnedWorkspaceAuthority`, exact workspace plan, receipt-derived destination
+binding (or `None` for a missing destination), and retained publication receipt
+owner. `PublishedWorkspaceDestinationBinding` is private-construction and
+immutable: an active receipt owner projects the lexical destination, parent
+identity, and full `_TreeOwnership` as one unit. Request construction rejects a
+different path or any non-exact binding type; generic adoption authenticates
+the bound parent and complete live destination tree; and the callback session
+requires full binding equality. The categorical destination expectation is now
+derived only, so neither a string nor a raw ownership token can authorize
+replacement. Session writes, validation, publication, and revocation share one
+cancellation-safe gate so a provider callback cannot publish after it escapes.
+The gate records the exact callback result or
 `BaseException`; a provider cannot substitute its return value or swallow a
 callback failure. The strict BM25 producer now captures one detached,
 authenticated repository identity, plans canonical document and metadata bytes
@@ -450,10 +458,11 @@ profile or durable job payload. Strict whole-context and retained
 materialization APIs are now available as injectable library producers. The
 Linux local provider deliberately accepts only missing destinations, so
 whole-context retained materialization can use it explicitly, while strict BM25
-replacement requests `provider-bound-exact` and still lacks a concrete
-production provider. Protocol v4 now supplies the lower-level exact exchange
-primitive, but `LocalWorkspaceProvider` still rejects the request and does not
-select that primitive. Provider integration remains separate Gate C work. The
+replacement now sends the active source generation's exact destination binding
+and still lacks a concrete production provider. Protocol v4 now supplies the
+lower-level exact exchange primitive, but `LocalWorkspaceProvider` rejects the
+non-`None` binding before mutation and does not select that primitive. Provider
+integration remains separate Gate C work. The
 explicit retained workflows can now construct the whole-context producer for one
 existing catalog selection, publish normal compiler output, and load one
 selected generation at MCP cold start, but no default compiler/runtime route
@@ -807,8 +816,9 @@ of the explicit compiler and runtime routes remains outstanding M1 work; graph
 and Zoekt cache ingress and fenced job publication remain M2 or later work.
 Strict BM25 replacement also still lacks the `provider-bound-exact` production
 provider. Protocol v4 implements the primitive-only exact exchange, but
-`LocalWorkspaceProvider` continues to reject that expectation and no strict
-producer is wired to the new operation. Provider integration remains separate.
+`LocalWorkspaceProvider` continues to reject the receipt-derived binding. The
+strict producer is now wired to the authenticated request seam, but no provider
+selects the new operation. Provider integration remains separate.
 
 #### Retained storage promotion protocol
 
@@ -825,7 +835,7 @@ that collecting a fast result cannot silently approve a production route:
 | B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
 | B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | B2 source-bound | Promote a specifically scoped source-bound BM25 retained cold start. | Pending A2 source-bound BM25 runtime; it cannot satisfy the full manifest-compatibility gate. |
-| C | Supply the `provider-bound-exact` strict BM25 native provider. | Protocol v4 introduced the Linux-only, same-parent `RENAME_EXCHANGE` primitive; protocol v5 moves a parent-wide cross-process flock before candidate mutation and retains receipt settlement and bounded same-process rollback. `LocalWorkspaceProvider` still rejects this expectation and no strict producer selects the primitive. Gate C remains pending and required before M1 closes. |
+| C | Supply the `provider-bound-exact` strict BM25 native provider. | Protocol v4 introduced the Linux-only, same-parent `RENAME_EXCHANGE` primitive; protocol v5 moves a parent-wide cross-process flock before candidate mutation and retains receipt settlement and bounded same-process rollback. The request-authentication half is implemented: strict BM25 sends a private-construction binding projected by its active source receipt owner, and generic adoption verifies its lexical destination, parent identity, and full tree ownership. `LocalWorkspaceProvider` still rejects every exact binding and does not select the primitive, so Gate C remains pending and required before M1 closes. |
 
 The A1 harness fixes the BM25 `fast` compiler/runtime comparison rather than
 accepting arbitrary route substitutions. For compiler cold start, arm A runs

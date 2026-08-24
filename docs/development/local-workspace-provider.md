@@ -33,10 +33,22 @@ trusted internal code remains owner-owned and must never be closed by the
 borrower.
 
 This primitive does not change `LocalWorkspaceProvider`: the provider remains
-missing-only and still rejects the strict BM25 producer's
-`provider-bound-exact` destination mode. Provider integration is a separate
-Gate C change, so Gate C and M1 remain open even though the protocol-v5
-primitive is available.
+missing-only. The strict request seam now represents a missing destination only
+as `destination_binding=None`; an existing destination requires an immutable
+`PublishedWorkspaceDestinationBinding` projected by an active
+`PublishedWorkspaceReceiptOwner`. That binding freezes the lexical destination,
+the receipt's parent identity, and its full `_TreeOwnership`. Request
+construction requires the binding path to equal the normalized destination,
+generic authority adoption verifies the same parent and complete live tree, and
+the callback session compares the complete adopted binding with the request.
+The `destination_expectation` label remains only a derived diagnostic property,
+so a string or raw ownership token cannot select replacement. Strict BM25 now
+derives this binding from `source_generation` and cross-checks the borrowed
+receipt. The standard shared and provider-specific support probes still run
+first; `LocalWorkspaceProvider` then rejects every non-`None` binding before
+provisioning or namespace mutation. Provider integration is a separate Gate C
+change, so Gate C and M1 remain open even though the protocol-v5 primitive and
+request-authentication seam are available.
 
 ## Publish a normal index build
 
@@ -506,10 +518,11 @@ default requires its own A2 decision and does not satisfy that full
 compatibility gate. The independent gate C
 `provider-bound-exact` native provider is still required before M1 closes.
 Protocol v4 supplies a primitive-only exact exchange; it does not wire that
-primitive into `LocalWorkspaceProvider` or authorize the strict BM25 route to
-use it. This harness does not add M2 generic generation publication or fenced
-jobs, M3 hot switching or request pins, or M5 retention and garbage
-collection.
+primitive into `LocalWorkspaceProvider`. The strict BM25 route now carries its
+receipt-derived destination binding to the provider boundary, but the local
+provider still rejects that binding and cannot execute the exchange. This
+harness does not add M2 generic generation publication or fenced jobs, M3 hot
+switching or request pins, or M5 retention and garbage collection.
 
 ## Lifecycle
 
@@ -731,4 +744,5 @@ descriptors remain owned by the aggregate and are valid only for its lifetime;
 borrowers must never close them. The primitive remains an authority boundary
 for trusted internal code, not a Python sandbox or full `_TreeOwnership`.
 `LocalWorkspaceProvider` does not yet integrate it, continues to reject
-`provider-bound-exact`, and therefore does not close Gate C or M1.
+the non-`None` binding whose derived expectation is `provider-bound-exact`, and
+therefore does not close Gate C or M1.
