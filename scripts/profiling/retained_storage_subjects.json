@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "benchmark": "retained_storage_explicit_route_gate_v1",
+  "policy": {
+    "status": "unratified",
+    "canonical_iterations": 20,
+    "canonical_warmups": 4,
+    "min_payload_classes": [
+      "small",
+      "medium",
+      "large"
+    ],
+    "min_media_classes": 2
+  },
+  "cells": [
+    "compiler-cold",
+    "compiler-current",
+    "runtime-cold"
+  ],
+  "view_sets": [
+    {
+      "id": "bm25-fast",
+      "views": [
+        "bm25"
+      ],
+      "index_args": [
+        "--preset",
+        "fast"
+      ]
+    }
+  ],
+  "subjects": [
+    {
+      "id": "httpie",
+      "repository": "https://github.com/httpie/cli.git",
+      "revision": "2105caa49bae87c5809c274e407619a0de2639d1",
+      "tree": "5be8d10a92efc928460e86f1ce6dcabbea1a728a",
+      "payload_class": "small",
+      "languages": [
+        "python"
+      ],
+      "repository_key": "benchmark/httpie",
+      "source_selection": {
+        "schema": "codenib.repository-source-selection.v1",
+        "repository_filter_policy": 4,
+        "exclude_subtrees": []
+      },
+      "queries": [
+        {
+          "text": "HTTPie",
+          "top_k": 10,
+          "filter_test": false
+        },
+        {
+          "text": "request headers",
+          "top_k": 10,
+          "filter_test": false
+        },
+        {
+          "text": "download",
+          "top_k": 10,
+          "filter_test": false
+        }
+      ]
+    },
+    {
+      "id": "codenib",
+      "repository": "https://github.com/sysevol-ai/CodeNib.git",
+      "revision": "a33bb13118e3a04f8d3d76eabcfb2602f785477a",
+      "tree": "a7e31cae206e4c6ff6c00210f8c4c31dc1c83b84",
+      "payload_class": "medium",
+      "languages": [
+        "python"
+      ],
+      "repository_key": "benchmark/codenib",
+      "source_selection": {
+        "schema": "codenib.repository-source-selection.v1",
+        "repository_filter_policy": 4,
+        "exclude_subtrees": []
+      },
+      "queries": [
+        {
+          "text": "CodeChunk",
+          "top_k": 10,
+          "filter_test": false
+        },
+        {
+          "text": "BM25IndexBuilder",
+          "top_k": 10,
+          "filter_test": false
+        },
+        {
+          "text": "RepoManifest",
+          "top_k": 10,
+          "filter_test": false
+        }
+      ]
+    },
+    {
+      "id": "django-5.2.5",
+      "repository": "https://github.com/django/django.git",
+      "revision": "a3b1107a4955bdd994908efb4c6e1d03c281e69f",
+      "tree": "0d45857fbbe288b56ddd4d8e124a1657421f9c48",
+      "payload_class": "large",
+      "languages": [
+        "python"
+      ],
+      "repository_key": "benchmark/django",
+      "source_selection": {
+        "schema": "codenib.repository-source-selection.v1",
+        "repository_filter_policy": 4,
+        "exclude_subtrees": []
+      },
+      "queries": [
+        {
+          "text": "QuerySet",
+          "top_k": 10,
+          "filter_test": false
+        },
+        {
+          "text": "Model",
+          "top_k": 10,
+          "filter_test": false
+        },
+        {
+          "text": "urlpatterns",
+          "top_k": 10,
+          "filter_test": false
+        }
+      ]
+    }
+  ]
+}
