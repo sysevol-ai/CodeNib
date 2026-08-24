@@ -4,11 +4,13 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from codenib.wiki.media_tools import (
-    MULTIMODAL_TOOL_SCHEMAS,
     MultimodalKnowledgeToolRouter,
+    multimodal_tool_schemas,
 )
 
 
@@ -47,13 +49,34 @@ def _view():
 
 
 def test_multimodal_tool_schemas_are_exposed():
-    names = {schema["name"] for schema in MULTIMODAL_TOOL_SCHEMAS}
+    schemas = multimodal_tool_schemas()
+    names = {schema["name"] for schema in schemas}
 
     assert names == {
         "search_visual_context",
         "get_visual_evidence",
         "find_visual_code_links",
     }
+    search = next(
+        schema for schema in schemas if schema["name"] == "search_visual_context"
+    )
+    query = search["input_schema"]["properties"]["query"]
+    assert query["minLength"] == 1
+    assert query["maxLength"] == 4096
+    assert "pattern" in query
+
+    evidence = next(
+        schema for schema in schemas if schema["name"] == "get_visual_evidence"
+    )
+    artifact_path = evidence["input_schema"]["properties"]["artifact_path"]
+    assert artifact_path["minLength"] == 1
+    assert "repository-relative" in artifact_path["description"]
+
+    assert re.search(query["pattern"], "IndexCompiler")
+    assert not re.search(query["pattern"], "   ")
+    assert re.search(artifact_path["pattern"], "docs/architecture.svg")
+    for invalid in ("", "   ", "/tmp/x", "../x", "docs//x", "docs/x/"):
+        assert not re.search(artifact_path["pattern"], invalid)
 
 
 def test_tool_schema_copies_do_not_mutate_the_public_contract():
@@ -63,10 +86,8 @@ def test_tool_schema_copies_do_not_mutate_the_public_contract():
     assert isinstance(schemas, list)
     schemas[0]["input_schema"]["properties"]["query"]["type"] = "integer"
 
-    assert (
-        MULTIMODAL_TOOL_SCHEMAS[0]["input_schema"]["properties"]["query"]["type"]
-        == "string"
-    )
+    fresh = multimodal_tool_schemas()
+    assert fresh[0]["input_schema"]["properties"]["query"]["type"] == "string"
 
 
 def test_tool_router_searches_visual_context():

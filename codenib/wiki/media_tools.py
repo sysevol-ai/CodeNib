@@ -20,15 +20,30 @@ from .media_knowledge import (
 _MAX_QUERY_BYTES = 4096
 _MAX_PATH_BYTES = 4096
 _MAX_LIMIT = 20
+_NONEMPTY_TEXT_PATTERN = r"^(?=.*\S)[^\u0000-\u001F\u007F]*$"
+_OPTIONAL_TEXT_PATTERN = r"^[^\u0000-\u001F\u007F]*$"
+_RELATIVE_PATH_PATTERN = (
+    r"^(?=.*\S)(?!/)(?!.*//)(?!.*(?:^|/)\.\.?(?:/|$))(?!.*\/$)"
+    r"[^\\\u0000-\u001F\u007F]+$"
+)
 
-MULTIMODAL_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
+_MULTIMODAL_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
     {
         "name": "search_visual_context",
         "description": "Search repository visual artifacts, facts, and source bindings.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string"},
+                "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": _MAX_QUERY_BYTES,
+                    "pattern": _NONEMPTY_TEXT_PATTERN,
+                    "description": (
+                        "Nonempty query without control characters; the UTF-8 "
+                        f"payload is limited to {_MAX_QUERY_BYTES} bytes."
+                    ),
+                },
                 "limit": {"type": "integer", "minimum": 1, "maximum": _MAX_LIMIT},
             },
             "required": ["query"],
@@ -40,7 +55,18 @@ MULTIMODAL_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
         "description": "Return one visual evidence entry by repository-relative artifact path.",
         "input_schema": {
             "type": "object",
-            "properties": {"artifact_path": {"type": "string"}},
+            "properties": {
+                "artifact_path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": _MAX_PATH_BYTES,
+                    "pattern": _RELATIVE_PATH_PATTERN,
+                    "description": (
+                        "Canonical repository-relative POSIX path without control "
+                        f"characters; limited to {_MAX_PATH_BYTES} UTF-8 bytes."
+                    ),
+                }
+            },
             "required": ["artifact_path"],
             "additionalProperties": False,
         },
@@ -51,8 +77,25 @@ MULTIMODAL_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
         "input_schema": {
             "type": "object",
             "properties": {
-                "source_path": {"type": "string"},
-                "symbol": {"type": "string"},
+                "source_path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": _MAX_PATH_BYTES,
+                    "pattern": _RELATIVE_PATH_PATTERN,
+                    "description": (
+                        "Canonical repository-relative POSIX path without control "
+                        f"characters; limited to {_MAX_PATH_BYTES} UTF-8 bytes."
+                    ),
+                },
+                "symbol": {
+                    "type": "string",
+                    "maxLength": _MAX_PATH_BYTES,
+                    "pattern": _OPTIONAL_TEXT_PATTERN,
+                    "description": (
+                        "Optional symbol without control characters; limited to "
+                        f"{_MAX_PATH_BYTES} UTF-8 bytes."
+                    ),
+                },
                 "limit": {"type": "integer", "minimum": 1, "maximum": _MAX_LIMIT},
             },
             "required": ["source_path"],
@@ -62,6 +105,12 @@ MULTIMODAL_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
 )
 
 
+def multimodal_tool_schemas() -> list[dict[str, Any]]:
+    """Return independent mutable copies of the stable tool schemas."""
+
+    return list(copy.deepcopy(_MULTIMODAL_TOOL_SCHEMAS))
+
+
 @dataclass(frozen=True)
 class MultimodalKnowledgeToolRouter:
     """Small tool router that mirrors the future MCP surface."""
@@ -69,7 +118,7 @@ class MultimodalKnowledgeToolRouter:
     view: Mapping[str, Any]
 
     def tool_schemas(self) -> list[dict[str, Any]]:
-        return list(copy.deepcopy(MULTIMODAL_TOOL_SCHEMAS))
+        return multimodal_tool_schemas()
 
     def call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         if type(name) is not str:
@@ -169,4 +218,4 @@ def _limit(value: Any) -> int:
     return value
 
 
-__all__ = ["MULTIMODAL_TOOL_SCHEMAS", "MultimodalKnowledgeToolRouter"]
+__all__ = ["MultimodalKnowledgeToolRouter", "multimodal_tool_schemas"]

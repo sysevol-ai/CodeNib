@@ -26,11 +26,10 @@ from .media_knowledge import (
     search_visual_context,
 )
 from .media_pipeline import build_multimodal_repository_knowledge
-from .media_tools import MULTIMODAL_TOOL_SCHEMAS, MultimodalKnowledgeToolRouter
+from .media_tools import MultimodalKnowledgeToolRouter, multimodal_tool_schemas
 from .media_vlm import OpenAICompatibleVisualFactExtractor
 
 __all__ = [
-    "MULTIMODAL_TOOL_SCHEMAS",
     "MultimodalKnowledgeToolRouter",
     "WikiBuilder",
     "OpenAICompatibleVisualFactExtractor",
@@ -45,5 +44,6 @@ __all__ = [
     "find_visual_code_links",
     "get_visual_evidence",
     "ground_visual_facts_to_sources",
+    "multimodal_tool_schemas",
     "search_visual_context",
 ]
