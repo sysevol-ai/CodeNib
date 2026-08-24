@@ -119,6 +119,10 @@ def _provision_replacement(
 ) -> tuple[object, WorkspacePlan, object, int]:
     selected_plan = _file_plan() if plan is None else plan
     owner = _capture_existing_destination(root, destination)
+    workspace_owner.acquire_owner_replacement_lease(
+        owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
     incumbent_descriptor = workspace_owner.borrow_owner_destination_descriptor(owner)
     replacement_permit = workspace_owner.claim_owner_replacement_permit(owner)
     workspace_owner.provision_owner_replacement(
@@ -207,6 +211,7 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
             #include <stdlib.h>
             #include <string.h>
             #include <sys/file.h>
+            #include <sys/stat.h>
             #include <sys/syscall.h>
             #include <unistd.h>
 
@@ -217,10 +222,13 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
             typedef long (*syscall_function)(long, ...);
             typedef int (*fsync_function)(int);
             typedef int (*flock_function)(int, int);
+            typedef int (*fcntl_function)(int, int, ...);
 
             static syscall_function real_syscall;
             static fsync_function real_fsync;
             static flock_function real_flock;
+            static fcntl_function real_fcntl;
+            static fcntl_function real_fcntl64;
             static int exchange_calls;
             static int exchange_live;
             static int fsync_failed;
@@ -229,6 +237,12 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
             static int post_exchange_fsyncs;
             static int lock_rebind_injected;
             static int lock_delay_injected;
+            static int exclusive_lock_calls;
+            static int lease_unlocked;
+            static int close_kcmp_failed;
+            static int close_fcntl_failed;
+            static int replacement_mkdir_calls;
+            static int settlement_slot_stat_failures;
 
             static const char *fault_mode(void) {
               const char *mode = getenv("CODENIB_EXCHANGE_FAULT");
@@ -244,6 +258,12 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
               }
               if (real_flock == NULL) {
                 real_flock = (flock_function)dlsym(RTLD_NEXT, "flock");
+              }
+              if (real_fcntl == NULL) {
+                real_fcntl = (fcntl_function)dlsym(RTLD_NEXT, "fcntl");
+              }
+              if (real_fcntl64 == NULL) {
+                real_fcntl64 = (fcntl_function)dlsym(RTLD_NEXT, "fcntl64");
               }
             }
 
@@ -279,18 +299,30 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
               fourth = va_arg(arguments, long);
               if (number == SYS_newfstatat) {
                 va_end(arguments);
-                if (strcmp(mode, "provision-identity-fail") == 0 &&
-                    second != 0 &&
+                if (second != 0 &&
                     strcmp((const char *)second, ".replacement") == 0 &&
-                    ++slot_stats == 2) {
-                  errno = EIO;
-                  return -1;
+                    (strcmp(mode, "provision-identity-fail") == 0 ||
+                     strcmp(mode, "mkdir-fail-stat-ambiguous") == 0)) {
+                  ++slot_stats;
+                  if (slot_stats == 2) {
+                    if (strcmp(mode, "mkdir-fail-stat-ambiguous") == 0) {
+                      ++settlement_slot_stat_failures;
+                    }
+                    errno = EIO;
+                    return -1;
+                  }
                 }
                 return real_syscall(number, first, second, third, fourth);
               }
               fifth = va_arg(arguments, long);
               if (number == SYS_kcmp) {
                 va_end(arguments);
+                if (lease_unlocked && !close_kcmp_failed &&
+                    strcmp(mode, "close-auth-error-once") == 0) {
+                  close_kcmp_failed = 1;
+                  errno = EPERM;
+                  return -1;
+                }
                 return real_syscall(number, first, second, third, fourth, fifth);
               }
               if (number == SYS_renameat2) {
@@ -364,12 +396,49 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
               return real_fsync(descriptor);
             }
 
+            int mkdirat(int descriptor, const char *path, mode_t mode) {
+              int result;
+              const char *fault;
+
+              resolve_symbols();
+              if (real_syscall == NULL) {
+                errno = ENOSYS;
+                return -1;
+              }
+              fault = fault_mode();
+              if (path != NULL && strcmp(path, ".replacement") == 0 &&
+                  (strcmp(fault, "mkdir-fail-before-create") == 0 ||
+                   strcmp(fault, "mkdir-fail-stat-ambiguous") == 0 ||
+                   strcmp(fault, "mkdir-error-after-create") == 0)) {
+                ++replacement_mkdir_calls;
+                if (strcmp(fault, "mkdir-error-after-create") != 0) {
+                  errno = EIO;
+                  return -1;
+                }
+                result = (int)real_syscall(SYS_mkdirat, descriptor, path, mode);
+                if (result == 0) {
+                  errno = EIO;
+                  return -1;
+                }
+                return result;
+              }
+              return (int)real_syscall(SYS_mkdirat, descriptor, path, mode);
+            }
+
             int flock(int descriptor, int operation) {
               int result;
               resolve_symbols();
               if (real_flock == NULL) {
                 errno = ENOSYS;
                 return -1;
+              }
+              if (operation == (LOCK_EX | LOCK_NB)) {
+                ++exclusive_lock_calls;
+                if (exclusive_lock_calls > 1 &&
+                    strcmp(fault_mode(), "second-lock-fail") == 0) {
+                  errno = EBUSY;
+                  return -1;
+                }
               }
               if (!unlock_failed && exchange_live && operation == LOCK_UN &&
                   strcmp(fault_mode(), "unlock-fail-once") == 0) {
@@ -378,13 +447,19 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
                 return -1;
               }
               if (!unlock_failed && operation == LOCK_UN &&
-                  strcmp(fault_mode(),
-                         "deadline-after-lock-unlock-fail") == 0) {
+                  (strcmp(fault_mode(),
+                          "deadline-after-lock-unlock-fail") == 0 ||
+                   strcmp(fault_mode(),
+                          "destination-rebind-after-lock-unlock-fail") == 0)) {
                 unlock_failed = 1;
                 errno = EIO;
                 return -1;
               }
               result = real_flock(descriptor, operation);
+              if (result == 0 && operation == LOCK_UN &&
+                  strcmp(fault_mode(), "close-auth-error-once") == 0) {
+                lease_unlocked = 1;
+              }
               if (result == 0 && !lock_delay_injected &&
                   operation == (LOCK_EX | LOCK_NB) &&
                   strcmp(fault_mode(),
@@ -394,8 +469,10 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
               }
               if (result == 0 && !lock_rebind_injected &&
                   operation == (LOCK_EX | LOCK_NB) &&
-                  strcmp(fault_mode(), "slot-rebind-after-lock") == 0) {
-                if (real_syscall(SYS_renameat2, descriptor, ".replacement",
+                  (strcmp(fault_mode(), "destination-rebind-after-lock") == 0 ||
+                   strcmp(fault_mode(),
+                          "destination-rebind-after-lock-unlock-fail") == 0)) {
+                if (real_syscall(SYS_renameat2, descriptor, "published",
                                  descriptor, ".foreign", RENAME_EXCHANGE) != 0) {
                   int exchange_error = errno;
                   real_flock(descriptor, LOCK_UN);
@@ -405,6 +482,74 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
                 lock_rebind_injected = 1;
               }
               return result;
+            }
+
+            int fcntl(int descriptor, int command, ...) {
+              va_list arguments;
+              int integer_argument;
+              void *pointer_argument;
+
+              resolve_symbols();
+              if (real_fcntl == NULL) {
+                errno = ENOSYS;
+                return -1;
+              }
+              if (command == F_GETFL && lease_unlocked && close_kcmp_failed &&
+                  !close_fcntl_failed &&
+                  strcmp(fault_mode(), "close-auth-error-once") == 0) {
+                close_fcntl_failed = 1;
+                errno = EIO;
+                return -1;
+              }
+              if (command == F_GETFD || command == F_GETFL ||
+                  command == F_GETOWN || command == F_GETSIG) {
+                return real_fcntl(descriptor, command);
+              }
+              va_start(arguments, command);
+              if (command == F_DUPFD || command == F_DUPFD_CLOEXEC ||
+                  command == F_SETFD || command == F_SETFL ||
+                  command == F_SETOWN || command == F_SETSIG) {
+                integer_argument = va_arg(arguments, int);
+                va_end(arguments);
+                return real_fcntl(descriptor, command, integer_argument);
+              }
+              pointer_argument = va_arg(arguments, void *);
+              va_end(arguments);
+              return real_fcntl(descriptor, command, pointer_argument);
+            }
+
+            int fcntl64(int descriptor, int command, ...) {
+              va_list arguments;
+              int integer_argument;
+              void *pointer_argument;
+
+              resolve_symbols();
+              if (real_fcntl64 == NULL) {
+                errno = ENOSYS;
+                return -1;
+              }
+              if (command == F_GETFL && lease_unlocked && close_kcmp_failed &&
+                  !close_fcntl_failed &&
+                  strcmp(fault_mode(), "close-auth-error-once") == 0) {
+                close_fcntl_failed = 1;
+                errno = EIO;
+                return -1;
+              }
+              if (command == F_GETFD || command == F_GETFL ||
+                  command == F_GETOWN || command == F_GETSIG) {
+                return real_fcntl64(descriptor, command);
+              }
+              va_start(arguments, command);
+              if (command == F_DUPFD || command == F_DUPFD_CLOEXEC ||
+                  command == F_SETFD || command == F_SETFL ||
+                  command == F_SETOWN || command == F_SETSIG) {
+                integer_argument = va_arg(arguments, int);
+                va_end(arguments);
+                return real_fcntl64(descriptor, command, integer_argument);
+              }
+              pointer_argument = va_arg(arguments, void *);
+              va_end(arguments);
+              return real_fcntl64(descriptor, command, pointer_argument);
             }
 
             int codenib_exchange_fault_exchange_calls(void) {
@@ -433,6 +578,26 @@ def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
 
             int codenib_exchange_fault_lock_delay_injected(void) {
               return lock_delay_injected;
+            }
+
+            int codenib_exchange_fault_exclusive_lock_calls(void) {
+              return exclusive_lock_calls;
+            }
+
+            int codenib_exchange_fault_close_kcmp_failed(void) {
+              return close_kcmp_failed;
+            }
+
+            int codenib_exchange_fault_close_fcntl_failed(void) {
+              return close_fcntl_failed;
+            }
+
+            int codenib_exchange_fault_replacement_mkdir_calls(void) {
+              return replacement_mkdir_calls;
+            }
+
+            int codenib_exchange_fault_settlement_slot_stat_failures(void) {
+              return settlement_slot_stat_failures;
             }
             """
         ),
@@ -553,7 +718,7 @@ def test_workspace_owner_facade_rejects_symbol_complete_protocol_v2() -> None:
     )
 
 
-def test_workspace_owner_facade_rejects_symbol_complete_protocol_v3() -> None:
+def test_workspace_owner_facade_rejects_symbol_complete_protocol_v4() -> None:
     required_symbols = (
         "require_support",
         "create_owner_exact",
@@ -563,6 +728,7 @@ def test_workspace_owner_facade_rejects_symbol_complete_protocol_v3() -> None:
         "close_owner_exact",
         "provision_owner_exact",
         "capture_owner_destination_exact",
+        "acquire_owner_replacement_lease_exact",
         "provision_owner_replacement_exact",
         "verify_owner_authority_exact",
         "verify_owner_adoption_binding_exact",
@@ -593,7 +759,7 @@ def test_workspace_owner_facade_rejects_symbol_complete_protocol_v3() -> None:
         import types
 
         implementation = types.ModuleType("codenib._workspace_owner_impl")
-        implementation.workspace_owner_protocol_version = 3
+        implementation.workspace_owner_protocol_version = 4
         for name in {required_symbols!r}:
             setattr(implementation, name, lambda *args, **kwargs: None)
         sys.modules[implementation.__name__] = implementation
@@ -606,7 +772,7 @@ def test_workspace_owner_facade_rejects_symbol_complete_protocol_v3() -> None:
         except RuntimeError as error:
             assert "workspace-owner extension" in str(error)
         else:
-            raise AssertionError("protocol-v3 implementation was accepted")
+            raise AssertionError("protocol-v4 implementation was accepted")
         """
     )
     repository_root = Path(__file__).resolve().parents[1]
@@ -625,7 +791,7 @@ def test_workspace_owner_facade_rejects_symbol_complete_protocol_v3() -> None:
     )
 
 
-def test_workspace_owner_facade_rejects_each_incomplete_protocol_v4_abi() -> None:
+def test_workspace_owner_facade_rejects_each_incomplete_protocol_v5_abi() -> None:
     required_symbols = (
         "require_support",
         "create_owner_exact",
@@ -635,6 +801,7 @@ def test_workspace_owner_facade_rejects_each_incomplete_protocol_v4_abi() -> Non
         "close_owner_exact",
         "provision_owner_exact",
         "capture_owner_destination_exact",
+        "acquire_owner_replacement_lease_exact",
         "provision_owner_replacement_exact",
         "verify_owner_authority_exact",
         "verify_owner_adoption_binding_exact",
@@ -674,7 +841,7 @@ def test_workspace_owner_facade_rejects_each_incomplete_protocol_v4_abi() -> Non
         )
         for missing in required:
             implementation = types.ModuleType("codenib._workspace_owner_impl")
-            implementation.workspace_owner_protocol_version = 4
+            implementation.workspace_owner_protocol_version = 5
             for name in required:
                 if name != missing:
                     setattr(implementation, name, lambda *args, **kwargs: None)
@@ -693,7 +860,7 @@ def test_workspace_owner_facade_rejects_each_incomplete_protocol_v4_abi() -> Non
             except RuntimeError as error:
                 assert "workspace-owner extension" in str(error)
             else:
-                raise AssertionError(f"incomplete protocol-v4 ABI accepted: {{missing}}")
+                raise AssertionError(f"incomplete protocol-v5 ABI accepted: {{missing}}")
         """
     )
     repository_root = Path(__file__).resolve().parents[1]
@@ -994,6 +1161,99 @@ def test_native_low_available_fd_failure_is_cleanup_atomic(tmp_path: Path) -> No
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="requires Linux")
+def test_native_capture_budgets_hidden_replacement_lease_pair(tmp_path: Path) -> None:
+    probe_owner = _require_native_owner()
+    workspace_owner.close_owner_exact(probe_owner)
+    root = tmp_path / "capture-low-fd"
+    (root / "published").mkdir(parents=True)
+    root.chmod(0o700)
+    script = textwrap.dedent(
+        """
+        import errno
+        import gc
+        import os
+        import resource
+        import sys
+        import time
+        from pathlib import Path
+
+        import codenib._workspace_owner as workspace_owner
+
+        root_path = Path(sys.argv[1])
+        root = os.fsencode(root_path)
+        owner = workspace_owner.create_owner()
+        _soft_limit, hard_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        selected_limit = (
+            256 if hard_limit == resource.RLIM_INFINITY else min(hard_limit, 256)
+        )
+        absolute_records = len(root_path.parts)
+        owner_pairs_without_hidden_lease = absolute_records + 1 + 1
+        prior_required = owner_pairs_without_hidden_lease * 2 + 2 + 64
+        if selected_limit <= prior_required + 1:
+            raise SystemExit(77)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (selected_limit, hard_limit))
+        pressure = []
+        try:
+            while True:
+                pressure.append(
+                    os.open("/dev/null", os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
+                )
+        except OSError as error:
+            assert error.errno == errno.EMFILE
+        for descriptor in pressure[-(prior_required + 1) :]:
+            os.close(descriptor)
+        del pressure[-(prior_required + 1) :]
+
+        try:
+            workspace_owner.capture_owner_destination(
+                owner,
+                root,
+                b"published",
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except OSError as error:
+            assert error.errno == errno.EMFILE
+        else:
+            raise AssertionError("capture omitted the hidden lease-pair budget")
+
+        assert workspace_owner.owner_state(owner) == "empty"
+        workspace_owner.abort_owner(owner)
+        assert workspace_owner.owner_closed(owner)
+        del owner
+        gc.collect()
+        retained_targets = []
+        for name in os.listdir("/proc/self/fd"):
+            try:
+                target = os.readlink(f"/proc/self/fd/{name}")
+            except OSError:
+                continue
+            if os.fspath(root_path) in target:
+                retained_targets.append(target)
+        assert retained_targets == []
+        assert (root_path / "published").is_dir()
+        for descriptor in pressure:
+            os.close(descriptor)
+        """
+    )
+    repository_root = Path(__file__).resolve().parents[1]
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(repository_root), environment.get("PYTHONPATH", ""))
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script, os.fspath(root)],
+        cwd=repository_root,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode == 77:
+        pytest.skip("RLIMIT_NOFILE is too low for the capture lease-pair probe")
+    assert completed.returncode == 0, completed.stderr
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="requires Linux")
 def test_native_replacement_additional_fd_budget_fails_before_mkdir(
     tmp_path: Path,
 ) -> None:
@@ -1019,6 +1279,10 @@ def test_native_replacement_additional_fd_budget_fails_before_mkdir(
             owner,
             root,
             b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
             time.monotonic_ns() + 10_000_000_000,
         )
         permit = workspace_owner.claim_owner_replacement_permit(owner)
@@ -1054,7 +1318,7 @@ def test_native_replacement_additional_fd_budget_fails_before_mkdir(
             assert error.errno == errno.EMFILE
         else:
             raise AssertionError("replacement descriptor preflight succeeded")
-        assert workspace_owner.owner_state(owner) == "destination-captured"
+        assert workspace_owner.owner_state(owner) == "destination-leased"
         assert not os.path.exists(os.path.join(os.fsdecode(root), ".replacement"))
 
         workspace_owner.abort_owner(owner)
@@ -1749,6 +2013,7 @@ def test_native_owner_captures_existing_destination_without_mutation(
     (destination / "payload.txt").write_bytes(b"retained")
     before = _tree_fingerprint(root)
     expected = destination.stat()
+    expected_parent = destination.parent.stat()
 
     owner = _capture_existing_destination(root, b"nested/published")
 
@@ -1757,6 +2022,14 @@ def test_native_owner_captures_existing_destination_without_mutation(
     assert workspace_owner.require_exact_owner(owner) is owner
     assert workspace_owner.verify_owner_authority(owner) is None
     assert workspace_owner.verify_owner_destination_binding(owner) is None
+    parent_descriptor = workspace_owner.borrow_owner_parent_descriptor(owner)
+    assert workspace_owner.borrow_owner_parent_descriptor(owner) == parent_descriptor
+    observed_parent = os.fstat(parent_descriptor)
+    assert (observed_parent.st_dev, observed_parent.st_ino) == (
+        expected_parent.st_dev,
+        expected_parent.st_ino,
+    )
+    assert fcntl.fcntl(parent_descriptor, fcntl.F_GETFD) & fcntl.FD_CLOEXEC
     descriptor = workspace_owner.borrow_owner_destination_descriptor(owner)
     assert workspace_owner.borrow_owner_destination_descriptor(owner) == descriptor
     observed = os.fstat(descriptor)
@@ -1834,9 +2107,859 @@ def test_native_destination_capture_symbols_require_the_exact_owner_type(
             time.monotonic_ns() + 10_000_000_000,
         )
     with pytest.raises(TypeError, match="invalid native type"):
+        workspace_owner.acquire_owner_replacement_lease(
+            candidate,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+    with pytest.raises(TypeError, match="invalid native type"):
         workspace_owner.verify_owner_destination_binding(candidate)
     with pytest.raises(TypeError, match="invalid native type"):
         workspace_owner.borrow_owner_destination_descriptor(candidate)
+
+
+def test_native_replacement_lease_requires_exact_deadline_and_captured_state(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    (root / "published").mkdir(parents=True)
+    root.chmod(0o700)
+    owner = _capture_existing_destination(root, b"published")
+
+    with pytest.raises(RuntimeError, match="not claimable"):
+        workspace_owner.claim_owner_replacement_permit(owner)
+    with pytest.raises(RuntimeError, match="not replacement-ready"):
+        workspace_owner.provision_owner_replacement(
+            owner,
+            b".replacement",
+            b"0" * 64,
+            0o700,
+            (),
+            time.monotonic_ns() + 10_000_000_000,
+        )
+    for deadline, error_type in (
+        (True, TypeError),
+        (1.0, TypeError),
+        (0, ValueError),
+        (-1, ValueError),
+        (time.monotonic_ns() - 1, TimeoutError),
+    ):
+        with pytest.raises(error_type):
+            workspace_owner.acquire_owner_replacement_lease(
+                owner,
+                deadline,  # type: ignore[arg-type]
+            )
+        assert workspace_owner.owner_state(owner) == "destination-captured"
+        assert not (root / ".replacement").exists()
+
+    workspace_owner.acquire_owner_replacement_lease(
+        owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    assert workspace_owner.owner_state(owner) == "destination-leased"
+    assert workspace_owner.verify_owner_destination_binding(owner) is None
+    assert (
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        is None
+    )
+    permit = workspace_owner.claim_owner_replacement_permit(owner)
+    with pytest.raises(RuntimeError, match="not replacement-lease-ready"):
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+    del permit
+    workspace_owner.abort_owner(owner)
+    assert workspace_owner.owner_closed(owner)
+
+
+def test_native_replacement_lease_return_interruption_retains_settlement(
+    tmp_path: Path,
+) -> None:
+    library = _compile_exchange_fault_shim(tmp_path)
+    root = tmp_path / "authority"
+    script = textwrap.dedent(
+        """
+        import ctypes
+        import errno
+        import fcntl
+        import os
+        import sys
+        import time
+        from pathlib import Path
+
+        import codenib._workspace_owner as workspace_owner
+
+        root = Path(sys.argv[1])
+        faults = ctypes.CDLL(sys.argv[2])
+        faults.codenib_exchange_fault_exclusive_lock_calls.restype = ctypes.c_int
+
+        def assert_parent_lease_held():
+            child = os.fork()
+            if child == 0:
+                os.environ.pop("CODENIB_EXCHANGE_FAULT", None)
+                descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError as error:
+                    os.close(descriptor)
+                    os._exit(
+                        0 if error.errno in (errno.EAGAIN, errno.EWOULDBLOCK) else 2
+                    )
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+                os.close(descriptor)
+                os._exit(3)
+            waited, status = os.waitpid(child, 0)
+            assert waited == child
+            assert os.waitstatus_to_exitcode(status) == 0
+
+        destination = root / "published"
+        destination.mkdir(parents=True)
+        root.chmod(0o700)
+        owner = workspace_owner.create_owner()
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        interruption = KeyboardInterrupt("after native replacement lease")
+
+        def interrupt_after_lease(result, label):
+            assert result is None
+            assert label == "replacement-lease"
+            assert workspace_owner.owner_state(owner) == "destination-leased"
+            raise interruption
+
+        original = workspace_owner._require_none_result
+        workspace_owner._require_none_result = interrupt_after_lease
+        try:
+            try:
+                workspace_owner.acquire_owner_replacement_lease(
+                    owner,
+                    time.monotonic_ns() + 10_000_000_000,
+                )
+            except KeyboardInterrupt as error:
+                assert error is interruption
+            else:
+                raise AssertionError("replacement lease interruption was hidden")
+        finally:
+            workspace_owner._require_none_result = original
+
+        assert workspace_owner.owner_state(owner) == "destination-leased"
+        assert faults.codenib_exchange_fault_exclusive_lock_calls() == 1
+        assert_parent_lease_held()
+
+        assert workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        ) is None
+        assert faults.codenib_exchange_fault_exclusive_lock_calls() == 1
+
+        try:
+            workspace_owner.acquire_owner_replacement_lease(
+                owner,
+                time.monotonic_ns() - 1,
+            )
+        except TimeoutError:
+            pass
+        else:
+            raise AssertionError("expired replacement lease retry succeeded")
+        assert workspace_owner.owner_state(owner) == "destination-leased"
+        assert faults.codenib_exchange_fault_exclusive_lock_calls() == 1
+        assert_parent_lease_held()
+
+        moved = root / ".stale"
+        destination.rename(moved)
+        try:
+            workspace_owner.acquire_owner_replacement_lease(
+                owner,
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("stale replacement lease retry succeeded")
+        assert workspace_owner.owner_state(owner) == "destination-leased"
+        assert faults.codenib_exchange_fault_exclusive_lock_calls() == 1
+        assert_parent_lease_held()
+        assert not (root / ".replacement").exists()
+
+        moved.rename(destination)
+        workspace_owner.abort_owner(owner)
+        assert workspace_owner.owner_closed(owner)
+        os.environ.pop("CODENIB_EXCHANGE_FAULT", None)
+        independent_parent = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        fcntl.flock(independent_parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(independent_parent, fcntl.LOCK_UN)
+        os.close(independent_parent)
+        """
+    )
+    _run_exchange_fault_script(root, library, "second-lock-fail", script)
+
+
+def test_native_replacement_lease_contention_is_clean_before_candidate_mutation(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    (root / "first").mkdir(parents=True)
+    (root / "second").mkdir()
+    root.chmod(0o700)
+    first_owner = _capture_existing_destination(root, b"first")
+    second_owner = _capture_existing_destination(root, b"second")
+
+    workspace_owner.acquire_owner_replacement_lease(
+        first_owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    with pytest.raises(BlockingIOError):
+        workspace_owner.acquire_owner_replacement_lease(
+            second_owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+
+    assert workspace_owner.owner_state(first_owner) == "destination-leased"
+    assert workspace_owner.owner_state(second_owner) == "destination-captured"
+    assert not (root / ".first-replacement").exists()
+    assert not (root / ".second-replacement").exists()
+    workspace_owner.abort_owner(second_owner)
+    workspace_owner.abort_owner(first_owner)
+    assert workspace_owner.owner_closed(first_owner)
+    assert workspace_owner.owner_closed(second_owner)
+
+
+def test_native_borrowed_parent_unlock_cannot_release_replacement_lease(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    (root / "published").mkdir(parents=True)
+    root.chmod(0o700)
+    gc.collect()
+    baseline_fd_count = len(os.listdir("/proc/self/fd"))
+    owner = _capture_existing_destination(root, b"published")
+    borrowed_parent = workspace_owner.borrow_owner_parent_descriptor(owner)
+    workspace_owner.acquire_owner_replacement_lease(
+        owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    contender = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+
+    fcntl.flock(borrowed_parent, fcntl.LOCK_UN)
+    assert workspace_owner.owner_state(owner) == "destination-leased"
+    assert workspace_owner.verify_owner_destination_binding(owner) is None
+    with pytest.raises(BlockingIOError):
+        fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    workspace_owner.abort_owner(owner)
+    assert workspace_owner.owner_closed(owner)
+    assert len(os.listdir("/proc/self/fd")) == baseline_fd_count + 1
+    fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fcntl.flock(contender, fcntl.LOCK_UN)
+    os.close(contender)
+    del owner
+    gc.collect()
+    assert len(os.listdir("/proc/self/fd")) == baseline_fd_count
+
+
+def test_native_replacement_lease_rejects_reused_borrowed_parent_before_flock(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    (root / "published").mkdir(parents=True)
+    root.chmod(0o700)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    owner = _capture_existing_destination(root, b"published")
+    borrowed_parent = workspace_owner.borrow_owner_parent_descriptor(owner)
+    os.close(borrowed_parent)
+    foreign_source = os.open(
+        foreign,
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0),
+    )
+    if foreign_source != borrowed_parent:
+        os.dup2(foreign_source, borrowed_parent, inheritable=False)
+        os.close(foreign_source)
+    fcntl.flock(borrowed_parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    independent_foreign = os.open(foreign, os.O_RDONLY | os.O_DIRECTORY)
+    independent_parent = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with pytest.raises(RuntimeError, match="not replacement-lease-ready"):
+            workspace_owner.acquire_owner_replacement_lease(
+                owner,
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        assert workspace_owner.owner_state(owner) == "destination-captured"
+        assert not (root / ".replacement").exists()
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(
+                independent_foreign,
+                fcntl.LOCK_EX | fcntl.LOCK_NB,
+            )
+        fcntl.flock(independent_parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(independent_parent, fcntl.LOCK_UN)
+
+        with pytest.raises(OSError):
+            workspace_owner.abort_owner(owner)
+        assert workspace_owner.owner_closed(owner)
+        os.fstat(borrowed_parent)
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(
+                independent_foreign,
+                fcntl.LOCK_EX | fcntl.LOCK_NB,
+            )
+    finally:
+        fcntl.flock(borrowed_parent, fcntl.LOCK_UN)
+        os.close(borrowed_parent)
+        os.close(independent_foreign)
+        os.close(independent_parent)
+
+
+@pytest.mark.parametrize("descriptor_kind", ("parent", "destination"))
+def test_native_replacement_lease_rejects_reused_borrowed_fd_before_flock(
+    tmp_path: Path,
+    descriptor_kind: str,
+) -> None:
+    library = _compile_exchange_fault_shim(tmp_path)
+    root = tmp_path / "authority"
+    script = textwrap.dedent(
+        f"""
+        import ctypes
+        import os
+        import sys
+        import time
+        from pathlib import Path
+
+        import codenib._workspace_owner as workspace_owner
+
+        root = Path(sys.argv[1])
+        faults = ctypes.CDLL(sys.argv[2])
+        faults.codenib_exchange_fault_exclusive_lock_calls.restype = ctypes.c_int
+        destination = root / "published"
+        destination.mkdir(parents=True)
+        root.chmod(0o700)
+        descriptor_kind = {descriptor_kind!r}
+        foreign = root.parent / ("foreign-" + descriptor_kind)
+        foreign.mkdir()
+
+        owner = workspace_owner.create_owner()
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        borrower = (
+            workspace_owner.borrow_owner_parent_descriptor
+            if descriptor_kind == "parent"
+            else workspace_owner.borrow_owner_destination_descriptor
+        )
+        borrowed = borrower(owner)
+        os.close(borrowed)
+        foreign_source = os.open(
+            foreign,
+            os.O_RDONLY
+            | os.O_DIRECTORY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+        )
+        if foreign_source != borrowed:
+            os.dup2(foreign_source, borrowed, inheritable=False)
+            os.close(foreign_source)
+
+        try:
+            workspace_owner.acquire_owner_replacement_lease(
+                owner,
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except RuntimeError as error:
+            assert "not replacement-lease-ready" in str(error)
+        else:
+            raise AssertionError("reused captured descriptor was accepted")
+        assert faults.codenib_exchange_fault_exclusive_lock_calls() == 0
+        assert workspace_owner.owner_state(owner) == "destination-captured"
+        assert not (root / ".replacement").exists()
+
+        try:
+            workspace_owner.abort_owner(owner)
+        except OSError:
+            pass
+        else:
+            raise AssertionError("reused captured descriptor cleanup was accepted")
+        assert workspace_owner.owner_closed(owner)
+        assert faults.codenib_exchange_fault_exclusive_lock_calls() == 0
+        assert os.fstat(borrowed).st_ino == foreign.stat().st_ino
+        os.close(borrowed)
+        """
+    )
+    _run_exchange_fault_script(root, library, "second-lock-fail", script)
+
+
+def test_native_no_candidate_settlement_is_retryable_after_close_auth_failure(
+    tmp_path: Path,
+) -> None:
+    library = _compile_exchange_fault_shim(tmp_path)
+    root = tmp_path / "authority"
+    script = textwrap.dedent(
+        """
+        import ctypes
+        import errno
+        import fcntl
+        import os
+        import sys
+        import time
+        from pathlib import Path
+
+        import codenib._workspace_owner as workspace_owner
+
+        root = Path(sys.argv[1])
+        faults = ctypes.CDLL(sys.argv[2])
+        faults.codenib_exchange_fault_close_kcmp_failed.restype = ctypes.c_int
+        faults.codenib_exchange_fault_close_fcntl_failed.restype = ctypes.c_int
+
+        destination = root / "published"
+        destination.mkdir(parents=True)
+        root.chmod(0o700)
+        foreign = root.parent / "foreign-lock"
+        foreign.mkdir()
+        foreign_holder = os.open(foreign, os.O_RDONLY | os.O_DIRECTORY)
+        foreign_contender = os.open(foreign, os.O_RDONLY | os.O_DIRECTORY)
+        fcntl.flock(foreign_holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        owner = workspace_owner.create_owner()
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        permit = workspace_owner.claim_owner_replacement_permit(owner)
+        try:
+            workspace_owner.provision_owner_replacement(
+                owner,
+                b"not-hidden",
+                b"0" * 64,
+                0o700,
+                (),
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid replacement slot was accepted")
+        assert workspace_owner.owner_state(owner) == "destination-leased"
+        assert not (root / ".replacement").exists()
+
+        borrowed_parent = workspace_owner.borrow_owner_parent_descriptor(owner)
+        assert os.fstat(borrowed_parent).st_ino == root.stat().st_ino
+        independent_parent = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            workspace_owner.abort_owner(owner)
+        except OSError as error:
+            assert error.errno == errno.EIO
+        else:
+            raise AssertionError("one-shot close authentication error was hidden")
+        assert faults.codenib_exchange_fault_close_kcmp_failed() == 1
+        assert faults.codenib_exchange_fault_close_fcntl_failed() == 1
+        assert workspace_owner.owner_state(owner) == "destination-captured"
+        assert not workspace_owner.owner_closed(owner)
+        assert not (root / ".replacement").exists()
+        os.fstat(borrowed_parent)
+
+        fcntl.flock(independent_parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(independent_parent, fcntl.LOCK_UN)
+        try:
+            fcntl.flock(foreign_contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            pass
+        else:
+            raise AssertionError("unrelated foreign lock was released")
+
+        workspace_owner.close_owner_exact(owner)
+        assert workspace_owner.owner_closed(owner)
+        try:
+            workspace_owner.exchange_owner_replacement(
+                permit,
+                b".replacement",
+                b"published",
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except RuntimeError as error:
+            assert "unavailable" in str(error)
+        else:
+            raise AssertionError("stale replacement permit remained usable")
+
+        os.close(independent_parent)
+        fcntl.flock(foreign_holder, fcntl.LOCK_UN)
+        os.close(foreign_contender)
+        os.close(foreign_holder)
+        retained_targets = []
+        for name in os.listdir("/proc/self/fd"):
+            try:
+                target = os.readlink(f"/proc/self/fd/{name}")
+            except OSError:
+                continue
+            if os.fspath(root) in target:
+                retained_targets.append(target)
+        assert retained_targets == []
+        """
+    )
+    _run_exchange_fault_script(root, library, "close-auth-error-once", script)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="requires Linux")
+def test_native_failed_replacement_mkdir_settles_without_lock_or_fd_leak(
+    tmp_path: Path,
+) -> None:
+    library = _compile_exchange_fault_shim(tmp_path)
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "incumbent.txt").write_bytes(b"incumbent")
+    script = textwrap.dedent(
+        """
+        import ctypes
+        import errno
+        import fcntl
+        import gc
+        import os
+        import sys
+        import time
+        from pathlib import Path
+
+        import codenib._workspace_owner as workspace_owner
+
+        root = Path(sys.argv[1])
+        faults = ctypes.CDLL(sys.argv[2])
+        counter = faults.codenib_exchange_fault_replacement_mkdir_calls
+        counter.restype = ctypes.c_int
+        gc.collect()
+        baseline_fd_count = len(os.listdir("/proc/self/fd"))
+
+        for iteration in range(6):
+            owner = workspace_owner.create_owner()
+            workspace_owner.capture_owner_destination(
+                owner,
+                os.fsencode(root),
+                b"published",
+                time.monotonic_ns() + 10_000_000_000,
+            )
+            workspace_owner.acquire_owner_replacement_lease(
+                owner,
+                time.monotonic_ns() + 10_000_000_000,
+            )
+            permit = workspace_owner.claim_owner_replacement_permit(owner)
+            try:
+                workspace_owner.provision_owner_replacement(
+                    owner,
+                    b".replacement",
+                    b"0" * 64,
+                    0o700,
+                    (),
+                    time.monotonic_ns() + 10_000_000_000,
+                )
+            except OSError as error:
+                assert error.errno == errno.EIO
+            else:
+                raise AssertionError("pre-creation mkdir failure was hidden")
+
+            assert workspace_owner.owner_state(owner) == "replacement-provisioning"
+            assert not (root / ".replacement").exists()
+            contender = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                pass
+            else:
+                raise AssertionError("failed provision released its lease early")
+
+            if iteration % 2 == 0:
+                workspace_owner.abort_owner(owner)
+                assert workspace_owner.owner_closed(owner)
+                try:
+                    workspace_owner.exchange_owner_replacement(
+                        permit,
+                        b".replacement",
+                        b"published",
+                        time.monotonic_ns() + 10_000_000_000,
+                    )
+                except RuntimeError as error:
+                    assert "unavailable" in str(error)
+                else:
+                    raise AssertionError("settled replacement permit stayed active")
+                del permit
+                del owner
+                gc.collect()
+            else:
+                sentinel = KeyboardInterrupt(f"sentinel-{iteration}")
+                try:
+                    raise sentinel
+                except BaseException:  # noqa: B036 - preserve active exception
+                    del permit
+                    del owner
+                    gc.collect()
+                    assert sys.exc_info()[1] is sentinel
+
+            assert len(os.listdir("/proc/self/fd")) == baseline_fd_count + 1
+            fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(contender, fcntl.LOCK_UN)
+            os.close(contender)
+            assert len(os.listdir("/proc/self/fd")) == baseline_fd_count
+            assert not (root / ".replacement").exists()
+
+        assert counter() == 6
+        retained_targets = []
+        for name in os.listdir("/proc/self/fd"):
+            try:
+                target = os.readlink(f"/proc/self/fd/{name}")
+            except OSError:
+                continue
+            if os.fspath(root) in target:
+                retained_targets.append(target)
+        assert retained_targets == []
+        assert (root / "published" / "incumbent.txt").read_bytes() == b"incumbent"
+        """
+    )
+    _run_exchange_fault_script(root, library, "mkdir-fail-before-create", script)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="requires Linux")
+def test_native_apparent_replacement_mkdir_keeps_recovery_lease_and_config(
+    tmp_path: Path,
+) -> None:
+    library = _compile_exchange_fault_shim(tmp_path)
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "incumbent.txt").write_bytes(b"incumbent")
+    script = textwrap.dedent(
+        """
+        import ctypes
+        import errno
+        import fcntl
+        import gc
+        import os
+        import sys
+        import time
+        from pathlib import Path
+
+        import codenib._workspace_owner as workspace_owner
+
+        root = Path(sys.argv[1])
+        faults = ctypes.CDLL(sys.argv[2])
+        counter = faults.codenib_exchange_fault_replacement_mkdir_calls
+        counter.restype = ctypes.c_int
+        gc.collect()
+        baseline_fd_count = len(os.listdir("/proc/self/fd"))
+        owner = workspace_owner.create_owner()
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        permit = workspace_owner.claim_owner_replacement_permit(owner)
+        try:
+            workspace_owner.provision_owner_replacement(
+                owner,
+                b".replacement",
+                b"0" * 64,
+                0o700,
+                (),
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except OSError as error:
+            assert error.errno == errno.EIO
+        else:
+            raise AssertionError("post-create mkdir error was hidden")
+
+        slot = root / ".replacement"
+        assert counter() == 1
+        assert slot.is_dir()
+        assert workspace_owner.owner_state(owner) == "replacement-provisioning"
+        contender = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            workspace_owner.abort_owner(owner)
+        except OSError as error:
+            assert error.errno == errno.ESTALE
+        else:
+            raise AssertionError("ambiguous created slot was settled")
+        assert workspace_owner.owner_state(owner) == (
+            "replacement-recovery-required"
+        )
+        assert not workspace_owner.owner_closed(owner)
+        assert slot.is_dir()
+        try:
+            fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            pass
+        else:
+            raise AssertionError("ambiguous slot released the recovery lease")
+        try:
+            workspace_owner.exchange_owner_replacement(
+                permit,
+                b".replacement",
+                b"published",
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except RuntimeError as error:
+            assert "not exchange-ready" in str(error)
+        else:
+            raise AssertionError("ambiguous replacement became exchange-ready")
+
+        slot.rmdir()
+        workspace_owner.abort_owner(owner)
+        assert workspace_owner.owner_closed(owner)
+        assert len(os.listdir("/proc/self/fd")) == baseline_fd_count + 1
+        fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(contender, fcntl.LOCK_UN)
+        os.close(contender)
+        try:
+            workspace_owner.exchange_owner_replacement(
+                permit,
+                b".replacement",
+                b"published",
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except RuntimeError as error:
+            assert "unavailable" in str(error)
+        else:
+            raise AssertionError("recovered replacement permit stayed active")
+        del permit
+        del owner
+        gc.collect()
+        assert len(os.listdir("/proc/self/fd")) == baseline_fd_count
+        assert not slot.exists()
+        assert (root / "published" / "incumbent.txt").read_bytes() == b"incumbent"
+        """
+    )
+    _run_exchange_fault_script(root, library, "mkdir-error-after-create", script)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="requires Linux")
+def test_native_replacement_slot_stat_ambiguity_retains_recovery_lease(
+    tmp_path: Path,
+) -> None:
+    library = _compile_exchange_fault_shim(tmp_path)
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "incumbent.txt").write_bytes(b"incumbent")
+    script = textwrap.dedent(
+        """
+        import ctypes
+        import errno
+        import fcntl
+        import gc
+        import os
+        import sys
+        import time
+        from pathlib import Path
+
+        import codenib._workspace_owner as workspace_owner
+
+        root = Path(sys.argv[1])
+        faults = ctypes.CDLL(sys.argv[2])
+        mkdir_calls = faults.codenib_exchange_fault_replacement_mkdir_calls
+        mkdir_calls.restype = ctypes.c_int
+        slot_stats = faults.codenib_exchange_fault_slot_stats
+        slot_stats.restype = ctypes.c_int
+        stat_failures = faults.codenib_exchange_fault_settlement_slot_stat_failures
+        stat_failures.restype = ctypes.c_int
+        gc.collect()
+        baseline_fd_count = len(os.listdir("/proc/self/fd"))
+        owner = workspace_owner.create_owner()
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        permit = workspace_owner.claim_owner_replacement_permit(owner)
+        try:
+            workspace_owner.provision_owner_replacement(
+                owner,
+                b".replacement",
+                b"0" * 64,
+                0o700,
+                (),
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except OSError as error:
+            assert error.errno == errno.EIO
+        else:
+            raise AssertionError("pre-creation mkdir failure was hidden")
+
+        assert mkdir_calls() == 1
+        assert slot_stats() == 1
+        assert not (root / ".replacement").exists()
+        contender = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            workspace_owner.abort_owner(owner)
+        except OSError as error:
+            assert error.errno == errno.ESTALE
+        else:
+            raise AssertionError("ambiguous slot stat was treated as ENOENT")
+        assert slot_stats() == 2
+        assert stat_failures() == 1
+        assert workspace_owner.owner_state(owner) == (
+            "replacement-recovery-required"
+        )
+        assert not workspace_owner.owner_closed(owner)
+        try:
+            fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            pass
+        else:
+            raise AssertionError("ambiguous slot stat released the recovery lease")
+
+        workspace_owner.abort_owner(owner)
+        assert workspace_owner.owner_closed(owner)
+        assert slot_stats() >= 4
+        assert stat_failures() == 1
+        assert len(os.listdir("/proc/self/fd")) == baseline_fd_count + 1
+        fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(contender, fcntl.LOCK_UN)
+        os.close(contender)
+        try:
+            workspace_owner.exchange_owner_replacement(
+                permit,
+                b".replacement",
+                b"published",
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except RuntimeError as error:
+            assert "unavailable" in str(error)
+        else:
+            raise AssertionError("settled replacement permit stayed active")
+        del permit
+        del owner
+        gc.collect()
+        assert len(os.listdir("/proc/self/fd")) == baseline_fd_count
+        assert not (root / ".replacement").exists()
+        assert (root / "published" / "incumbent.txt").read_bytes() == b"incumbent"
+        """
+    )
+    _run_exchange_fault_script(root, library, "mkdir-fail-stat-ambiguous", script)
 
 
 def test_native_captured_destination_rejects_every_legacy_owner_operation(
@@ -1874,7 +2997,6 @@ def test_native_captured_destination_rejects_every_legacy_owner_operation(
             b".stage",
             b"0" * 64,
         ),
-        lambda: workspace_owner.borrow_owner_parent_descriptor(owner),
         lambda: workspace_owner.borrow_owner_root_descriptor(owner),
         lambda: workspace_owner.borrow_owner_directory_descriptor(owner, b"views"),
         lambda: workspace_owner.begin_owner_file(owner, b"", b"new", 0o600),
@@ -2394,6 +3516,7 @@ def test_native_owner_atomically_exchanges_exact_replacement_and_commits_receipt
     _adopt_and_fill_replacement(root, owner, plan)
     assert workspace_owner.owner_state(owner) == "replacement-adopted"
     assert workspace_owner.verify_owner_replacement_binding(owner) is None
+    assert workspace_owner.borrow_owner_parent_descriptor(owner) == parent_descriptor
 
     receipt_token = workspace_owner.exchange_owner_replacement(
         permit,
@@ -2404,6 +3527,8 @@ def test_native_owner_atomically_exchanges_exact_replacement_and_commits_receipt
 
     assert workspace_owner.owner_state(owner) == ("replacement-exchanged-unreceipted")
     assert workspace_owner.verify_owner_replacement_binding(owner) is None
+    with pytest.raises(RuntimeError, match="unavailable"):
+        workspace_owner.borrow_owner_parent_descriptor(owner)
     assert (destination / "views/bm25/documents.json").read_bytes() == b"replacement"
     assert (root / ".replacement" / "incumbent.txt").read_bytes() == b"incumbent"
     assert (
@@ -2434,6 +3559,10 @@ def test_native_owner_atomically_exchanges_exact_replacement_and_commits_receipt
         workspace_owner.commit_owner_receipt(receipt_token)
         workspace_owner.commit_owner_receipt(receipt_token)
         assert workspace_owner.owner_state(owner) == "replacement-receipted"
+        with pytest.raises(RuntimeError, match="binding changed"):
+            workspace_owner.verify_owner_replacement_binding(owner)
+        with pytest.raises(RuntimeError, match="unavailable"):
+            workspace_owner.borrow_owner_parent_descriptor(owner)
         fcntl.flock(independent_parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(independent_parent, fcntl.LOCK_UN)
     finally:
@@ -2597,6 +3726,10 @@ def test_native_replacement_requires_exact_bounded_arguments(tmp_path: Path) -> 
         error_type,
     ) in invalid_arguments:
         owner = _capture_existing_destination(root, b"published")
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
         replacement_permit = workspace_owner.claim_owner_replacement_permit(owner)
         with pytest.raises(error_type):
             workspace_owner.provision_owner_replacement(
@@ -2607,7 +3740,7 @@ def test_native_replacement_requires_exact_bounded_arguments(tmp_path: Path) -> 
                 directories,  # type: ignore[arg-type]
                 provision_deadline,
             )
-        assert workspace_owner.owner_state(owner) == "destination-captured"
+        assert workspace_owner.owner_state(owner) == "destination-leased"
         assert not (root / ".replacement").exists()
         del replacement_permit
         workspace_owner.abort_owner(owner)
@@ -2684,11 +3817,19 @@ def test_native_replacement_permit_drop_and_cross_owner_use_fail_closed(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "authority"
-    (root / "first").mkdir(parents=True)
-    (root / "second").mkdir()
+    (root / "first-parent" / "first").mkdir(parents=True)
+    (root / "second-parent" / "second").mkdir(parents=True)
     root.chmod(0o700)
-    first_owner = _capture_existing_destination(root, b"first")
-    second_owner = _capture_existing_destination(root, b"second")
+    first_owner = _capture_existing_destination(root, b"first-parent/first")
+    second_owner = _capture_existing_destination(root, b"second-parent/second")
+    workspace_owner.acquire_owner_replacement_lease(
+        first_owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    workspace_owner.acquire_owner_replacement_lease(
+        second_owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
     first_permit = workspace_owner.claim_owner_replacement_permit(first_owner)
     second_permit = workspace_owner.claim_owner_replacement_permit(second_owner)
     workspace_owner.provision_owner_replacement(
@@ -2701,7 +3842,7 @@ def test_native_replacement_permit_drop_and_cross_owner_use_fail_closed(
     )
     workspace_owner.verify_owner_adoption_binding(
         second_owner,
-        os.fsencode(root / "second"),
+        os.fsencode(root / "second-parent" / "second"),
         b".second-replacement",
         b"0" * 64,
     )
@@ -2728,8 +3869,8 @@ def test_native_replacement_permit_drop_and_cross_owner_use_fail_closed(
             (),
             time.monotonic_ns() + 10_000_000_000,
         )
-    assert workspace_owner.owner_state(first_owner) == "destination-captured"
-    assert not (root / ".replacement").exists()
+    assert workspace_owner.owner_state(first_owner) == "destination-leased"
+    assert not (root / "first-parent" / ".replacement").exists()
     workspace_owner.abort_owner(first_owner)
     workspace_owner.abort_owner(second_owner)
     del second_permit
@@ -2867,6 +4008,8 @@ def test_native_preexchange_settlement_retains_lease_until_rebind_is_restored(
     with pytest.raises(OSError):
         workspace_owner.abort_owner(owner)
     assert workspace_owner.owner_state(owner) == "replacement-recovery-required"
+    with pytest.raises(RuntimeError, match="unavailable"):
+        workspace_owner.borrow_owner_parent_descriptor(owner)
     with pytest.raises(OSError):
         workspace_owner.close_owner_exact(owner)
 
@@ -2989,15 +4132,24 @@ def test_native_parent_commit_lease_serializes_cooperative_sibling_replacements(
     root.chmod(0o700)
     (first_destination / "old.txt").write_bytes(b"first")
     (second_destination / "old.txt").write_bytes(b"second")
-    first_owner, first_plan, first_permit, _ = _provision_replacement(
-        root,
-        destination=b"first",
-        slot=b".first-replacement",
+    first_owner = _capture_existing_destination(root, b"first")
+    second_owner = _capture_existing_destination(root, b"second")
+    workspace_owner.acquire_owner_replacement_lease(
+        first_owner,
+        time.monotonic_ns() + 10_000_000_000,
     )
-    second_owner, second_plan, second_permit, _ = _provision_replacement(
-        root,
-        destination=b"second",
-        slot=b".second-replacement",
+    first_plan = _file_plan()
+    first_permit = workspace_owner.claim_owner_replacement_permit(first_owner)
+    workspace_owner.provision_owner_replacement(
+        first_owner,
+        b".first-replacement",
+        first_plan.digest.encode("ascii"),
+        first_plan.root_mode,
+        tuple(
+            (os.fsencode(item.path.as_posix()), item.mode)
+            for item in first_plan.directories
+        ),
+        time.monotonic_ns() + 10_000_000_000,
     )
     _adopt_and_fill_replacement(
         root,
@@ -3007,34 +4159,29 @@ def test_native_parent_commit_lease_serializes_cooperative_sibling_replacements(
         slot=b".first-replacement",
         payload=b"first-new",
     )
-    _adopt_and_fill_replacement(
-        root,
-        second_owner,
-        second_plan,
-        destination=b"second",
-        slot=b".second-replacement",
-        payload=b"second-new",
-    )
+
+    with pytest.raises(BlockingIOError):
+        workspace_owner.acquire_owner_replacement_lease(
+            second_owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+    assert workspace_owner.owner_state(second_owner) == "destination-captured"
+    assert not (root / ".second-replacement").exists()
+
     first_token = workspace_owner.exchange_owner_replacement(
         first_permit,
         b".first-replacement",
         b"first",
         time.monotonic_ns() + 10_000_000_000,
     )
-
-    with pytest.raises(BlockingIOError):
-        workspace_owner.exchange_owner_replacement(
-            second_permit,
-            b".second-replacement",
-            b"second",
-            time.monotonic_ns() + 10_000_000_000,
-        )
-    assert workspace_owner.owner_state(second_owner) == "replacement-adopted"
-    with pytest.raises(BlockingIOError):
-        workspace_owner.abort_owner(second_owner)
-
     workspace_owner.commit_owner_receipt(first_token)
     workspace_owner.close_owner_exact(first_owner)
+
+    workspace_owner.acquire_owner_replacement_lease(
+        second_owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    assert workspace_owner.owner_state(second_owner) == "destination-leased"
     workspace_owner.abort_owner(second_owner)
     assert workspace_owner.owner_closed(second_owner)
     assert (first_destination / "views/bm25/documents.json").read_bytes() == (
@@ -3076,40 +4223,21 @@ def test_native_preexchange_contention_dealloc_closes_only_the_losing_owner(
     gc.collect()
     baseline_fd_count = len(os.listdir("/proc/self/fd"))
 
-    second_owner, second_plan, second_permit, _ = _provision_replacement(
-        root,
-        destination=b"second",
-        slot=b".second-replacement",
-    )
-    _adopt_and_fill_replacement(
-        root,
-        second_owner,
-        second_plan,
-        destination=b"second",
-        slot=b".second-replacement",
-        payload=b"second-new",
-    )
+    second_owner = _capture_existing_destination(root, b"second")
     before_cleanup = _tree_fingerprint(root)
     with pytest.raises(BlockingIOError):
-        workspace_owner.exchange_owner_replacement(
-            second_permit,
-            b".second-replacement",
-            b"second",
+        workspace_owner.acquire_owner_replacement_lease(
+            second_owner,
             time.monotonic_ns() + 10_000_000_000,
         )
-    with pytest.raises(BlockingIOError):
-        workspace_owner.abort_owner(second_owner)
-    with pytest.raises(BlockingIOError):
-        workspace_owner.close_owner_exact(second_owner)
     assert not workspace_owner.owner_closed(second_owner)
-    assert workspace_owner.owner_state(second_owner) == "replacement-adopted"
+    assert workspace_owner.owner_state(second_owner) == "destination-captured"
     assert _tree_fingerprint(root) == before_cleanup
 
     sentinel = KeyboardInterrupt("sentinel")
     try:
         raise sentinel
     except BaseException:  # noqa: B036 - assert dealloc preserves the exception
-        del second_permit
         del second_owner
         gc.collect()
         assert sys.exc_info()[1] is sentinel
@@ -3136,13 +4264,24 @@ def test_native_overlapping_same_destination_capture_fails_closed_after_commit(
     destination.mkdir(parents=True)
     root.chmod(0o700)
     (destination / "incumbent.txt").write_bytes(b"incumbent")
-    first_owner, first_plan, first_permit, _ = _provision_replacement(
-        root,
-        slot=b".first-replacement",
+    first_owner = _capture_existing_destination(root, b"published")
+    second_owner = _capture_existing_destination(root, b"published")
+    workspace_owner.acquire_owner_replacement_lease(
+        first_owner,
+        time.monotonic_ns() + 10_000_000_000,
     )
-    second_owner, second_plan, second_permit, _ = _provision_replacement(
-        root,
-        slot=b".second-replacement",
+    first_plan = _file_plan()
+    first_permit = workspace_owner.claim_owner_replacement_permit(first_owner)
+    workspace_owner.provision_owner_replacement(
+        first_owner,
+        b".first-replacement",
+        first_plan.digest.encode("ascii"),
+        first_plan.root_mode,
+        tuple(
+            (os.fsencode(item.path.as_posix()), item.mode)
+            for item in first_plan.directories
+        ),
+        time.monotonic_ns() + 10_000_000_000,
     )
     _adopt_and_fill_replacement(
         root,
@@ -3150,13 +4289,6 @@ def test_native_overlapping_same_destination_capture_fails_closed_after_commit(
         first_plan,
         slot=b".first-replacement",
         payload=b"first-candidate",
-    )
-    _adopt_and_fill_replacement(
-        root,
-        second_owner,
-        second_plan,
-        slot=b".second-replacement",
-        payload=b"second-candidate",
     )
     first_token = workspace_owner.exchange_owner_replacement(
         first_permit,
@@ -3166,38 +4298,187 @@ def test_native_overlapping_same_destination_capture_fails_closed_after_commit(
     )
     workspace_owner.commit_owner_receipt(first_token)
 
-    with pytest.raises(RuntimeError, match="not exchange-ready"):
-        workspace_owner.exchange_owner_replacement(
-            second_permit,
-            b".second-replacement",
-            b"published",
+    with pytest.raises(RuntimeError, match="changed before replacement lease"):
+        workspace_owner.acquire_owner_replacement_lease(
+            second_owner,
             time.monotonic_ns() + 10_000_000_000,
         )
-    assert workspace_owner.owner_state(second_owner) == "replacement-adopted"
-    with pytest.raises(OSError):
-        workspace_owner.abort_owner(second_owner)
-    assert workspace_owner.owner_state(second_owner) == (
-        "replacement-recovery-required"
-    )
+    assert workspace_owner.owner_state(second_owner) == "destination-captured"
+    assert not (root / ".second-replacement").exists()
     assert (destination / "views/bm25/documents.json").read_bytes() == (
         b"first-candidate"
     )
-    assert (
-        root / ".second-replacement" / "views/bm25/documents.json"
-    ).read_bytes() == b"second-candidate"
     independent_parent = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        with pytest.raises(BlockingIOError):
-            fcntl.flock(independent_parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(independent_parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(independent_parent, fcntl.LOCK_UN)
     finally:
         os.close(independent_parent)
 
-    temporary = root / ".restore-first-candidate"
-    destination.rename(temporary)
-    (root / ".first-replacement").rename(destination)
-    temporary.rename(root / ".first-replacement")
     workspace_owner.abort_owner(second_owner)
     workspace_owner.close_owner_exact(first_owner)
+
+
+def test_native_overlapping_capture_can_lease_after_prior_owner_aborts_exchange(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "incumbent.txt").write_bytes(b"incumbent")
+    first_owner = _capture_existing_destination(root, b"published")
+    second_owner = _capture_existing_destination(root, b"published")
+    workspace_owner.acquire_owner_replacement_lease(
+        first_owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    first_plan = _file_plan()
+    first_permit = workspace_owner.claim_owner_replacement_permit(first_owner)
+    workspace_owner.provision_owner_replacement(
+        first_owner,
+        b".first-replacement",
+        first_plan.digest.encode("ascii"),
+        first_plan.root_mode,
+        tuple(
+            (os.fsencode(item.path.as_posix()), item.mode)
+            for item in first_plan.directories
+        ),
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    _adopt_and_fill_replacement(
+        root,
+        first_owner,
+        first_plan,
+        slot=b".first-replacement",
+        payload=b"candidate",
+    )
+    workspace_owner.exchange_owner_replacement(
+        first_permit,
+        b".first-replacement",
+        b"published",
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    workspace_owner.abort_owner(first_owner)
+
+    assert workspace_owner.owner_closed(first_owner)
+    assert (destination / "incumbent.txt").read_bytes() == b"incumbent"
+    assert workspace_owner.owner_state(second_owner) == "destination-captured"
+    assert not (root / ".second-replacement").exists()
+    workspace_owner.acquire_owner_replacement_lease(
+        second_owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    assert workspace_owner.owner_state(second_owner) == "destination-leased"
+    assert workspace_owner.verify_owner_destination_binding(second_owner) is None
+    assert not (root / ".second-replacement").exists()
+    workspace_owner.abort_owner(second_owner)
+    assert workspace_owner.owner_closed(second_owner)
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires fork")
+def test_native_cross_process_stale_capture_releases_lease_without_candidate(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "incumbent.txt").write_bytes(b"incumbent")
+    ready_read, ready_write = os.pipe()
+    proceed_read, proceed_write = os.pipe()
+    report_read, report_write = os.pipe()
+    child_pid = os.fork()
+    if child_pid == 0:
+        os.close(ready_read)
+        os.close(proceed_write)
+        os.close(report_read)
+        try:
+            owner = _capture_existing_destination(root, b"published")
+            os.write(ready_write, b"ready")
+            os.close(ready_write)
+            assert os.read(proceed_read, 1) == b"x"
+            os.close(proceed_read)
+            try:
+                workspace_owner.acquire_owner_replacement_lease(
+                    owner,
+                    time.monotonic_ns() + 10_000_000_000,
+                )
+            except RuntimeError as error:
+                assert "changed before replacement lease" in str(error)
+            else:
+                raise AssertionError("stale captured destination was leased")
+            assert workspace_owner.owner_state(owner) == "destination-captured"
+            assert not (root / ".second-replacement").exists()
+            independent_parent = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                fcntl.flock(
+                    independent_parent,
+                    fcntl.LOCK_EX | fcntl.LOCK_NB,
+                )
+                fcntl.flock(independent_parent, fcntl.LOCK_UN)
+            finally:
+                os.close(independent_parent)
+            workspace_owner.abort_owner(owner)
+            assert workspace_owner.owner_closed(owner)
+            report = b"ok"
+        except BaseException as error:  # noqa: B036 - report child failure
+            report = repr(error).encode("utf-8")
+        os.write(report_write, report)
+        os.close(report_write)
+        os._exit(0)
+
+    os.close(ready_write)
+    os.close(proceed_read)
+    os.close(report_write)
+    assert os.read(ready_read, 5) == b"ready"
+    os.close(ready_read)
+    first_owner = _capture_existing_destination(root, b"published")
+    workspace_owner.acquire_owner_replacement_lease(
+        first_owner,
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    first_plan = _file_plan()
+    first_permit = workspace_owner.claim_owner_replacement_permit(first_owner)
+    workspace_owner.provision_owner_replacement(
+        first_owner,
+        b".first-replacement",
+        first_plan.digest.encode("ascii"),
+        first_plan.root_mode,
+        tuple(
+            (os.fsencode(item.path.as_posix()), item.mode)
+            for item in first_plan.directories
+        ),
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    _adopt_and_fill_replacement(
+        root,
+        first_owner,
+        first_plan,
+        slot=b".first-replacement",
+        payload=b"first-candidate",
+    )
+    first_token = workspace_owner.exchange_owner_replacement(
+        first_permit,
+        b".first-replacement",
+        b"published",
+        time.monotonic_ns() + 10_000_000_000,
+    )
+    workspace_owner.commit_owner_receipt(first_token)
+    workspace_owner.close_owner_exact(first_owner)
+    os.write(proceed_write, b"x")
+    os.close(proceed_write)
+
+    report = os.read(report_read, 4096)
+    os.close(report_read)
+    waited_pid, status = os.waitpid(child_pid, 0)
+    assert waited_pid == child_pid
+    assert os.waitstatus_to_exitcode(status) == 0
+    assert report == b"ok"
+    assert (destination / "views/bm25/documents.json").read_bytes() == (
+        b"first-candidate"
+    )
+    assert not (root / ".second-replacement").exists()
 
 
 def test_native_replacement_fd_reuse_and_dealloc_preserve_primary_baseexception(
@@ -3227,6 +4508,10 @@ def test_native_replacement_fd_reuse_and_dealloc_preserve_primary_baseexception(
             time.monotonic_ns() + 10_000_000_000,
         )
         workspace_owner.borrow_owner_destination_descriptor(owner)
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
         permit = workspace_owner.claim_owner_replacement_permit(owner)
         workspace_owner.provision_owner_replacement(
             owner,
@@ -3337,6 +4622,20 @@ def test_native_replacement_permit_cannot_cross_a_pid_boundary(
     child_pid = os.fork()
     if child_pid == 0:
         os.close(read_descriptor)
+        try:
+            workspace_owner.acquire_owner_replacement_lease(
+                owner,
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except RuntimeError as error:
+            if "PID boundary" not in str(error):
+                os.write(write_descriptor, repr(error).encode())
+                os.close(write_descriptor)
+                os._exit(0)
+        else:
+            os.write(write_descriptor, b"cross-PID replacement lease succeeded")
+            os.close(write_descriptor)
+            os._exit(0)
         try:
             workspace_owner.exchange_owner_replacement(
                 permit,
@@ -3449,6 +4748,138 @@ def test_native_replacement_child_closes_fds_without_unlocking_or_mutating(
     "fault_mode",
     (
         "deadline-after-lock-unlock-fail",
+        "destination-rebind-after-lock",
+        "destination-rebind-after-lock-unlock-fail",
+    ),
+)
+def test_native_replacement_lease_faults_are_settled_exactly(
+    tmp_path: Path,
+    fault_mode: str,
+) -> None:
+    library = _compile_exchange_fault_shim(tmp_path)
+    root = tmp_path / "authority"
+    script = textwrap.dedent(
+        """
+        import ctypes
+        import fcntl
+        import os
+        import sys
+        import time
+        from pathlib import Path
+
+        import codenib._workspace_owner as workspace_owner
+
+        root = Path(sys.argv[1])
+        faults = ctypes.CDLL(sys.argv[2])
+        mode = os.environ["CODENIB_EXCHANGE_FAULT"]
+        for counter_name in (
+            "codenib_exchange_fault_exchange_calls",
+            "codenib_exchange_fault_unlock_failed",
+            "codenib_exchange_fault_lock_rebind_injected",
+            "codenib_exchange_fault_lock_delay_injected",
+        ):
+            getattr(faults, counter_name).restype = ctypes.c_int
+
+        def counter(name):
+            return getattr(faults, name)()
+
+        def parent_lease_is_held():
+            descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    return True
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+                return False
+            finally:
+                os.close(descriptor)
+
+        destination = root / "published"
+        destination.mkdir(parents=True)
+        root.chmod(0o700)
+        (destination / "incumbent.txt").write_bytes(b"incumbent")
+        if mode in (
+            "destination-rebind-after-lock",
+            "destination-rebind-after-lock-unlock-fail",
+        ):
+            foreign = root / ".foreign"
+            foreign.mkdir()
+            (foreign / "foreign.txt").write_bytes(b"foreign")
+        owner = workspace_owner.create_owner()
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        deadline = (
+            time.monotonic_ns() + 20_000_000
+            if mode == "deadline-after-lock-unlock-fail"
+            else time.monotonic_ns() + 10_000_000_000
+        )
+
+        if mode == "deadline-after-lock-unlock-fail":
+            try:
+                workspace_owner.acquire_owner_replacement_lease(owner, deadline)
+            except TimeoutError:
+                pass
+            else:
+                raise AssertionError("post-lock lease deadline expiry was hidden")
+            assert counter("codenib_exchange_fault_lock_delay_injected") == 1
+            assert counter("codenib_exchange_fault_unlock_failed") == 1
+            assert workspace_owner.owner_state(owner) == (
+                "replacement-recovery-required"
+            )
+            assert parent_lease_is_held()
+            assert not (root / ".replacement").exists()
+            workspace_owner.abort_owner(owner)
+        else:
+            try:
+                workspace_owner.acquire_owner_replacement_lease(owner, deadline)
+            except RuntimeError as error:
+                assert "changed before replacement lease" in str(error)
+            else:
+                raise AssertionError("under-lease destination rebind was accepted")
+            assert counter("codenib_exchange_fault_lock_rebind_injected") == 1
+            assert not (root / ".replacement").exists()
+            if mode == "destination-rebind-after-lock-unlock-fail":
+                assert counter("codenib_exchange_fault_unlock_failed") == 1
+                assert workspace_owner.owner_state(owner) == (
+                    "replacement-recovery-required"
+                )
+                assert parent_lease_is_held()
+                workspace_owner.abort_owner(owner)
+                assert not parent_lease_is_held()
+                assert (destination / "foreign.txt").read_bytes() == b"foreign"
+                assert (root / ".foreign" / "incumbent.txt").read_bytes() == (
+                    b"incumbent"
+                )
+            else:
+                assert workspace_owner.owner_state(owner) == "destination-captured"
+                assert not parent_lease_is_held()
+                retained_foreign = root / ".retained-foreign"
+                (root / "published").rename(retained_foreign)
+                (root / ".foreign").rename(root / "published")
+                retained_foreign.rename(root / ".foreign")
+                workspace_owner.abort_owner(owner)
+                assert (root / ".foreign" / "foreign.txt").read_bytes() == (
+                    b"foreign"
+                )
+
+        assert counter("codenib_exchange_fault_exchange_calls") == 0
+        assert workspace_owner.owner_closed(owner)
+        if mode != "destination-rebind-after-lock-unlock-fail":
+            assert (destination / "incumbent.txt").read_bytes() == b"incumbent"
+        """
+    )
+    _run_exchange_fault_script(root, library, fault_mode, script)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="requires Linux")
+@pytest.mark.parametrize(
+    "fault_mode",
+    (
         "success-without-swap",
         "error-after-swap",
         "forward-fsync-once",
@@ -3456,7 +4887,7 @@ def test_native_replacement_child_closes_fds_without_unlocking_or_mutating(
         "reverse-error-once",
         "reverse-fsync-once",
         "reverse-success-without-restore",
-        "slot-rebind-after-lock",
+        "second-lock-fail",
         "unlock-fail-once",
     ),
 )
@@ -3488,6 +4919,7 @@ def test_native_exchange_faults_are_classified_and_settled_exactly(
             "codenib_exchange_fault_post_exchange_fsyncs",
             "codenib_exchange_fault_lock_rebind_injected",
             "codenib_exchange_fault_lock_delay_injected",
+            "codenib_exchange_fault_exclusive_lock_calls",
         ):
             getattr(faults, counter_name).restype = ctypes.c_int
 
@@ -3518,6 +4950,10 @@ def test_native_exchange_faults_are_classified_and_settled_exactly(
             b"published",
             time.monotonic_ns() + 10_000_000_000,
         )
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
         permit = workspace_owner.claim_owner_replacement_permit(owner)
         workspace_owner.provision_owner_replacement(
             owner,
@@ -3540,33 +4976,9 @@ def test_native_exchange_faults_are_classified_and_settled_exactly(
         workspace_owner.write_owner_file(owner, b"candidate")
         workspace_owner.finish_owner_file(owner, 0o600)
         workspace_owner.seal_owner_directories(owner)
-        if mode == "slot-rebind-after-lock":
-            foreign = root / ".foreign"
-            foreign.mkdir()
-            (foreign / "foreign.txt").write_bytes(b"foreign")
-        if mode == "deadline-after-lock-unlock-fail":
-            deadline = time.monotonic_ns() + 20_000_000
-        else:
-            deadline = time.monotonic_ns() + 10_000_000_000
+        deadline = time.monotonic_ns() + 10_000_000_000
 
-        if mode == "deadline-after-lock-unlock-fail":
-            try:
-                workspace_owner.exchange_owner_replacement(
-                    permit, b".replacement", b"published", deadline
-                )
-            except TimeoutError:
-                pass
-            else:
-                raise AssertionError("post-lock deadline expiry was hidden")
-            assert counter("codenib_exchange_fault_lock_delay_injected") == 1
-            assert counter("codenib_exchange_fault_unlock_failed") == 1
-            assert counter("codenib_exchange_fault_exchange_calls") == 0
-            assert workspace_owner.owner_state(owner) == (
-                "replacement-recovery-required"
-            )
-            assert parent_lease_is_held()
-            workspace_owner.abort_owner(owner)
-        elif mode == "success-without-swap":
+        if mode == "success-without-swap":
             try:
                 workspace_owner.exchange_owner_replacement(
                     permit, b".replacement", b"published", deadline
@@ -3578,7 +4990,7 @@ def test_native_exchange_faults_are_classified_and_settled_exactly(
             assert counter("codenib_exchange_fault_exchange_calls") == 1
             assert counter("codenib_exchange_fault_post_exchange_fsyncs") >= 1
             assert workspace_owner.owner_state(owner) == "replacement-adopted"
-            assert not parent_lease_is_held()
+            assert parent_lease_is_held()
             workspace_owner.abort_owner(owner)
         elif mode == "error-after-swap":
             token = workspace_owner.exchange_owner_replacement(
@@ -3682,27 +5094,13 @@ def test_native_exchange_faults_are_classified_and_settled_exactly(
                 counter("codenib_exchange_fault_post_exchange_fsyncs")
                 > syncs_before_retry
             )
-        elif mode == "slot-rebind-after-lock":
-            try:
-                workspace_owner.exchange_owner_replacement(
-                    permit, b".replacement", b"published", deadline
-                )
-            except RuntimeError as error:
-                assert "binding changed under" in str(error)
-            else:
-                raise AssertionError("under-lease slot rebind was accepted")
-            assert counter("codenib_exchange_fault_lock_rebind_injected") == 1
-            assert counter("codenib_exchange_fault_exchange_calls") == 0
-            assert workspace_owner.owner_state(owner) == (
-                "replacement-recovery-required"
+        elif mode == "second-lock-fail":
+            token = workspace_owner.exchange_owner_replacement(
+                permit, b".replacement", b"published", deadline
             )
-            assert parent_lease_is_held()
-            retained_foreign = root / ".retained-foreign"
-            (root / ".replacement").rename(retained_foreign)
-            (root / ".foreign").rename(root / ".replacement")
-            retained_foreign.rename(root / ".foreign")
-            workspace_owner.abort_owner(owner)
-            assert (root / ".foreign" / "foreign.txt").read_bytes() == b"foreign"
+            assert counter("codenib_exchange_fault_exclusive_lock_calls") == 1
+            workspace_owner.commit_owner_receipt(token)
+            workspace_owner.close_owner_exact(owner)
         elif mode == "unlock-fail-once":
             token = workspace_owner.exchange_owner_replacement(
                 permit, b".replacement", b"published", deadline
@@ -3734,7 +5132,7 @@ def test_native_exchange_faults_are_classified_and_settled_exactly(
             raise AssertionError(f"unexpected fault mode: {mode}")
 
         assert workspace_owner.owner_closed(owner)
-        if mode in ("error-after-swap", "unlock-fail-once"):
+        if mode in ("error-after-swap", "second-lock-fail", "unlock-fail-once"):
             assert not (destination / "incumbent.txt").exists()
             assert (
                 destination / "views/bm25/documents.json"
@@ -3781,6 +5179,10 @@ def test_native_unsupported_exchange_preserves_error_during_last_owner_dealloc(
             owner,
             os.fsencode(root),
             b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
             time.monotonic_ns() + 10_000_000_000,
         )
         permit = workspace_owner.claim_owner_replacement_permit(owner)
@@ -3857,6 +5259,10 @@ def test_native_partial_replacement_identity_failure_never_adopts_rebound_slot(
             owner,
             os.fsencode(root),
             b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
             time.monotonic_ns() + 10_000_000_000,
         )
         permit = workspace_owner.claim_owner_replacement_permit(owner)

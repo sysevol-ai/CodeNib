@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-_EXPECTED_WORKSPACE_OWNER_PROTOCOL_VERSION = 4
+_EXPECTED_WORKSPACE_OWNER_PROTOCOL_VERSION = 5
 _IMPORT_ERROR: BaseException | None = None
 
 try:
@@ -44,6 +44,9 @@ _close_owner_exact = _implementation_attribute("close_owner_exact")
 _provision_owner_exact = _implementation_attribute("provision_owner_exact")
 _capture_owner_destination_exact = _implementation_attribute(
     "capture_owner_destination_exact"
+)
+_acquire_owner_replacement_lease_exact = _implementation_attribute(
+    "acquire_owner_replacement_lease_exact"
 )
 _provision_owner_replacement_exact = _implementation_attribute(
     "provision_owner_replacement_exact"
@@ -107,6 +110,7 @@ _workspace_owner_protocol_available = (
             _close_owner_exact,
             _provision_owner_exact,
             _capture_owner_destination_exact,
+            _acquire_owner_replacement_lease_exact,
             _provision_owner_replacement_exact,
             _verify_owner_authority_exact,
             _verify_owner_adoption_binding_exact,
@@ -143,6 +147,7 @@ if not _workspace_owner_protocol_available:
     _close_owner_exact = None
     _provision_owner_exact = None
     _capture_owner_destination_exact = None
+    _acquire_owner_replacement_lease_exact = None
     _provision_owner_replacement_exact = None
     _verify_owner_authority_exact = None
     _verify_owner_adoption_binding_exact = None
@@ -323,6 +328,17 @@ def capture_owner_destination(
             deadline_ns,
         ),
         "destination-capture",
+    )
+
+
+def acquire_owner_replacement_lease(owner: object, deadline_ns: int) -> None:
+    """Lease the captured parent and revalidate its destination under lock."""
+
+    _require_protocol()
+    assert _acquire_owner_replacement_lease_exact is not None
+    _require_none_result(
+        _acquire_owner_replacement_lease_exact(owner, deadline_ns),
+        "replacement-lease",
     )
 
 
@@ -564,6 +580,7 @@ def owner_closed(owner: object) -> bool:
 
 
 __all__ = [
+    "acquire_owner_replacement_lease",
     "abort_owner",
     "abort_owner_file",
     "begin_owner_file",
