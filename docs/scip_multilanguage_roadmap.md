@@ -595,6 +595,9 @@ containment `ref=8 cand=8 missing=0 extra=0`, and references `ref=1 cand=0`.
 - [x] Keep a manifest-driven large-repository profiling harness for active
   SCIP languages whose C++ acceleration status is still serial-only or needs
   revalidation.
+- [x] Gate the maintained C++ parity tier behind a clean hosted
+  `vendored-core-build` that rejects system igraph headers and pkg-config
+  metadata before building `codenib_core` from the FetchContent dependency.
 - [x] Retire the [#558](https://github.com/sysevol-ai/CodeNib/issues/558)
   native Python chunk-span POC after exact parity passed but the 20%
   end-to-end promotion gate failed; retain its measurements here rather than
@@ -628,6 +631,14 @@ end-to-end Kotlin cold-start graph time, so Kotlin does not cross the 20% C++
 acceleration gate yet. Kotlin, PHP, and Scala should get C++ acceleration only
 after larger real-repo profiles show local decode/build is a material
 bottleneck.
+
+Native core build-integrity status: trusted full CI now runs the hosted
+`vendored-core-build` before `scip-core`. The job removes the system c-igraph
+development package, rejects both flat and installed-layout system igraph
+headers or pkg-config metadata, and cold-builds `codenib_core` against the
+FetchContent source and build include trees. This protects the maintained C++
+parity gate from host packages masking the vendored header contract; it does
+not promote a new accelerated language route.
 
 C/C++ clangd artifact status: the provider-level LSP acceleration benchmark now
 requires an index-quality report before latency measurement. The shared gate

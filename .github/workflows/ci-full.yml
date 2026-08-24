@@ -154,6 +154,79 @@ jobs:
           echo "run-slow=$RUN_SLOW ($REASON)"
 
   # =============================================================
+  # Hosted vendored-core proof — clean build without system igraph headers
+  # =============================================================
+  vendored-core-build:
+    needs: preflight
+    if: needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-serial == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install vendored-core build deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get remove -y libigraph-dev
+          sudo apt-get install -y --no-install-recommends \
+            bison \
+            build-essential \
+            cmake \
+            flex \
+            libre2-dev \
+            pkg-config \
+            zlib1g-dev
+
+      - name: Verify vendored-only igraph preconditions
+        run: |
+          set -euo pipefail
+          if test -e /usr/include/igraph.h || \
+             test -e /usr/local/include/igraph.h || \
+             test -e /usr/include/igraph/igraph.h || \
+             test -e /usr/local/include/igraph/igraph.h || \
+             pkg-config --exists igraph; then
+            echo "::error::hosted proof requires no system igraph development files"
+            exit 1
+          fi
+          if printf '#include <igraph/igraph.h>\n' | \
+               c++ -E -x c++ - >/dev/null 2>&1; then
+            echo "::error::compiler unexpectedly resolved the installed igraph header layout"
+            exit 1
+          fi
+          if printf '#include <igraph.h>\n' | \
+               c++ -E -x c++ - >/dev/null 2>&1; then
+            echo "::error::compiler unexpectedly resolved a flat system igraph header"
+            exit 1
+          fi
+          if grep -R -n -F \
+               --include='*.cpp' \
+               --include='*.h' \
+               '#include <igraph/igraph.h>' core; then
+            echo "::error::core sources must not use the installed igraph header layout"
+            exit 1
+          fi
+          grep -Fqx '#include <igraph.h>' core/code_graph.h
+
+      - name: Build vendored core from a cold tree
+        run: |
+          set -euo pipefail
+          test ! -e build/vendored-core
+          cmake -S core -B build/vendored-core \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCODENIB_BUILD_PYBIND=OFF
+          cmake --build build/vendored-core \
+            --target codenib_core \
+            --parallel 2
+          test -f build/vendored-core/_deps/igraph-build/src/libigraph.a
+          test -f build/vendored-core/libcodenib_core.a
+          grep -F '_deps/igraph-src/include' \
+            build/vendored-core/compile_commands.json
+          grep -F '_deps/igraph-build/include' \
+            build/vendored-core/compile_commands.json
+
+  # =============================================================
   # Job 1 — Unit tests  (pure logic, mocks only, ~1 min)
   # =============================================================
   unit:
@@ -357,7 +430,7 @@ jobs:
   # $CODENIB_SCIP_CACHE with graph_ref.pkl per language.)
   # =============================================================
   scip-core:
-    needs: [preflight, integration-serial]
+    needs: [preflight, integration-serial, vendored-core-build]
     if: needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-serial == 'true'
     runs-on: self-hosted
     timeout-minutes: 30
@@ -517,8 +590,8 @@ jobs:
   # Job 4 — Slow tests  (LLM API, GPU embeddings, ~15 min)
   # =============================================================
   slow:
-    needs: [preflight, unit, integration, integration-serial, scip-core, graph-consumer]
-    if: always() && needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-slow == 'true' && needs.unit.result == 'success' && needs.integration.result == 'success' && (needs.integration-serial.result == 'success' || needs.integration-serial.result == 'skipped') && (needs.scip-core.result == 'success' || needs.scip-core.result == 'skipped') && (needs.graph-consumer.result == 'success' || needs.graph-consumer.result == 'skipped')
+    needs: [preflight, unit, integration, integration-serial, vendored-core-build, scip-core, graph-consumer]
+    if: always() && needs.preflight.outputs.should-run == 'true' && needs.preflight.outputs.run-slow == 'true' && needs.unit.result == 'success' && needs.integration.result == 'success' && (needs.integration-serial.result == 'success' || needs.integration-serial.result == 'skipped') && (needs.vendored-core-build.result == 'success' || needs.vendored-core-build.result == 'skipped') && (needs.scip-core.result == 'success' || needs.scip-core.result == 'skipped') && (needs.graph-consumer.result == 'success' || needs.graph-consumer.result == 'skipped')
     runs-on: self-hosted
     timeout-minutes: 60
     env:

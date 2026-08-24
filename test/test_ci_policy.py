@@ -272,7 +272,18 @@ def test_trusted_full_ci_is_separate_from_pull_request_ci() -> None:
     assert "pull_request" not in _workflow_triggers(full_ci)
     assert set(pull_request_ci["jobs"]) == {"unit"}
     assert pull_request_ci["jobs"]["unit"]["runs-on"] == "ubuntu-latest"
-    assert full_ci["jobs"]["preflight"]["runs-on"] == "ubuntu-latest"
+    assert set(full_ci["jobs"]) == {
+        "preflight",
+        "vendored-core-build",
+        "unit",
+        "integration",
+        "integration-serial",
+        "scip-core",
+        "graph-consumer",
+        "slow",
+    }
+    for name in ("preflight", "vendored-core-build"):
+        assert full_ci["jobs"][name]["runs-on"] == "ubuntu-latest"
     for name in (
         "unit",
         "integration",
@@ -314,6 +325,80 @@ def test_native_core_uses_vendored_igraph_header_contract() -> None:
     assert "libigraph-dev" not in core_packages
 
 
+def test_full_ci_cleanly_builds_vendored_core_without_system_igraph() -> None:
+    workflow = _workflow(".github/workflows/ci-full.yml")
+    job = workflow["jobs"]["vendored-core-build"]
+    dependency_step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Install vendored-core build deps"
+    )
+    precondition_step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Verify vendored-only igraph preconditions"
+    )
+    build_step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Build vendored core from a cold tree"
+    )
+    dependency_run = str(dependency_step["run"])
+    precondition_run = str(precondition_step["run"])
+    build_run = str(build_step["run"])
+    step_names = [step.get("name") for step in job["steps"]]
+
+    assert job["needs"] == "preflight"
+    assert "needs.preflight.outputs.run-serial == 'true'" in job["if"]
+    assert job["runs-on"] == "ubuntu-latest"
+    assert step_names.index("Verify vendored-only igraph preconditions") < (
+        step_names.index("Build vendored core from a cold tree")
+    )
+    assert all(
+        "actions/cache" not in str(step.get("uses", "")) for step in job["steps"]
+    )
+    assert "libre2-dev" in dependency_run
+    assert "zlib1g-dev" in dependency_run
+    assert "sudo apt-get remove -y libigraph-dev" in dependency_run
+    assert dependency_run.count("libigraph-dev") == 1
+    assert "/usr/include/igraph.h" in precondition_run
+    assert "/usr/local/include/igraph.h" in precondition_run
+    assert "/usr/include/igraph/igraph.h" in precondition_run
+    assert "/usr/local/include/igraph/igraph.h" in precondition_run
+    assert "pkg-config --exists igraph" in precondition_run
+    assert "printf '#include <igraph/igraph.h>\\n'" in precondition_run
+    assert "printf '#include <igraph.h>\\n'" in precondition_run
+    assert precondition_run.count("c++ -E -x c++ -") == 2
+    assert "#include <igraph/igraph.h>" in precondition_run
+    assert "#include <igraph.h>" in precondition_run
+    assert "test ! -e build/vendored-core" in build_run
+    assert "-DCODENIB_BUILD_PYBIND=OFF" in build_run
+    assert "--target codenib_core" in build_run
+    assert "_deps/igraph-build/src/libigraph.a" in build_run
+    assert "build/vendored-core/libcodenib_core.a" in build_run
+    assert "_deps/igraph-src/include" in build_run
+    assert "_deps/igraph-build/include" in build_run
+    assert "vendored-core-build" in workflow["jobs"]["scip-core"]["needs"]
+    assert "vendored-core-build" in workflow["jobs"]["slow"]["needs"]
+    assert "needs.vendored-core-build.result" in workflow["jobs"]["slow"]["if"]
+    assert workflow["jobs"]["graph-consumer"]["needs"] == [
+        "preflight",
+        "integration-serial",
+        "scip-core",
+    ]
+
+    roadmap = (ROOT / "docs/scip_multilanguage_roadmap.md").read_text(encoding="utf-8")
+    assert "`vendored-core-build`" in roadmap
+    assert re.search(
+        r"system igraph\s+headers or pkg-config metadata",
+        roadmap,
+    )
+    assert re.search(
+        r"does\s+not promote a new accelerated language route",
+        roadmap,
+    )
+
+
 def test_full_ci_enforces_the_maintained_native_core_gate() -> None:
     workflow = _workflow(".github/workflows/ci-full.yml")
     steps = workflow["jobs"]["scip-core"]["steps"]
@@ -330,6 +415,7 @@ def test_full_ci_enforces_the_maintained_native_core_gate() -> None:
 
     assert "pkg-config --exists zlib" in dependency_run
     assert "zlib1g-dev" in dependency_run
+    assert "libigraph-dev" not in dependency_run
     core_packages = next(
         line
         for line in makefile.splitlines()

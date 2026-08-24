@@ -87,15 +87,15 @@ integration, slow, or serial graph jobs for prose-only edits.
 ## Jobs
 
 Pull requests run one hosted `unit` job from `ci.yml`. The trusted
-`ci-full.yml` workflow has **7 jobs** wired into a dependency chain rooted at a
-hosted `preflight` decision job; its six test jobs use the persistent
-self-hosted runner for toolchain and graph-cache reuse. Documentation,
-labeling, packaging, release, and publication workflows use ephemeral
-GitHub-hosted runners.
+`ci-full.yml` workflow has **8 jobs** wired into a dependency chain rooted at a
+hosted `preflight` decision job. A second hosted job performs a clean vendored
+C++ core build, while the other six test jobs use the persistent self-hosted
+runner for toolchain and graph-cache reuse. Documentation, labeling, packaging,
+release, and publication workflows use ephemeral GitHub-hosted runners.
 
-```
-preflight ─ unit ─ integration ─ integration-serial ─┬─ scip-core ──────┐
-                                                     └─ graph-consumer ─┴─ slow
+```text
+preflight ┬─ vendored-core-build ─────────────────────┐
+          └─ unit ─ integration ─ integration-serial ─┴─ scip-core ─ graph-consumer ─ slow
 ```
 
 `slow` lists the **entire chain** in `needs` and runs last; its `if` tolerates
@@ -104,12 +104,13 @@ preflight ─ unit ─ integration ─ integration-serial ─┬─ scip-core �
 | Job | `needs` | Runner | Marker / command | Timeout |
 |-----|---------|--------|------------------|---------|
 | **preflight** | — | ubuntu-latest | Decision job; no tests | — |
+| **vendored-core-build** | `preflight` | ubuntu-latest | Cold CMake build of `codenib_core` without system igraph headers | 20 min |
 | **unit** | `preflight` | self-hosted | `not slow and not integration and not integration_serial and not integration_serial_consumer` | 20 min |
 | **integration** | `preflight`, `unit` | self-hosted | `integration and not slow` | 30 min |
 | **integration-serial** | `preflight`, `integration` | self-hosted | `integration_serial` | 45 min |
-| **scip-core** | `preflight`, `integration-serial` | self-hosted | `make core-test` (C++ executables plus SCIP/Fact/clangd parity) | 30 min |
-| **graph-consumer** | `preflight`, `integration-serial` | self-hosted | `integration_serial_consumer` | 15 min |
-| **slow** | `preflight`, `unit`, `integration`, `integration-serial`, `scip-core`, `graph-consumer` | self-hosted | `slow` | 60 min |
+| **scip-core** | `preflight`, `integration-serial`, `vendored-core-build` | self-hosted | `make core-test` (C++ executables plus SCIP/Fact/clangd parity) | 30 min |
+| **graph-consumer** | `preflight`, `integration-serial`, `scip-core` | self-hosted | `integration_serial_consumer` | 15 min |
+| **slow** | all preceding jobs | self-hosted | `slow` | 60 min |
 
 ### preflight — the decision job
 
@@ -119,8 +120,9 @@ other job gates on:
 - **`should-run`** — `true` unless the run was explicitly skipped (see
   [Skip mechanisms](#skip-mechanisms)). Every test job is guarded by
   `if: needs.preflight.outputs.should-run == 'true'`.
-- **`run-serial`** — whether the heavy serial chain
-  (`integration-serial` → `scip-core` / `graph-consumer`) should run.
+- **`run-serial`** — whether the hosted `vendored-core-build` proof and the
+  self-hosted serial chain (`integration-serial` → `scip-core` →
+  `graph-consumer`) should run.
 - **`run-slow`** — whether the opt-in `slow` tier should run (see
   [Skip mechanisms](#skip-mechanisms)).
 
@@ -180,11 +182,26 @@ still run for a release-only version change.
 
 Changes outside this list — agent, runtime, model, retrieval, eval — use the
 faster unit + integration tier on the post-merge push. When `run-serial` stays
-`false`, the serial chain (`integration-serial`, `scip-core`, `graph-consumer`)
-is skipped while `unit` and `integration` still run. Maintainers can run the
-entire chain before merge locally or through a reviewed manual dispatch; the
-checked-in PR workflow does not route pull-request code to the persistent
-runner.
+`false`, the serial gates (`vendored-core-build`, `integration-serial`,
+`scip-core`, `graph-consumer`) are skipped while `unit` and `integration` still
+run. Maintainers can run the entire chain before merge locally or through a
+reviewed manual dispatch; the checked-in PR workflow does not route
+pull-request code to the persistent runner.
+
+### vendored-core-build
+
+This hosted job proves that the native core builds against the c-igraph target
+exported by `FetchContent`, without an installed system igraph development
+package masking header-layout mistakes. It starts from an uncached checkout,
+installs only the non-igraph compiler dependencies, rejects both
+`<igraph/igraph.h>` in the core sources and system igraph headers or pkg-config
+metadata, and confirms with compiler probes that neither the installed-layout
+`<igraph/igraph.h>` nor the flat `<igraph.h>` header resolves before CMake
+configures the vendored dependency. It then configures with
+`CODENIB_BUILD_PYBIND=OFF`, builds the `codenib_core` target, and verifies that
+the vendored c-igraph archive, CodeNib archive, and vendored source/build include
+paths are all present. The job is gated by `run-serial`, so core and CI changes,
+scheduled runs, and manual full runs exercise it; light runs skip it.
 
 ### unit
 
@@ -294,12 +311,12 @@ pytest -m "integration_serial_consumer" -v --tb=short
 
 LLM API calls, HuggingFace downloads, and GPU embeddings. Runs
 **last**: its `needs` lists the entire chain (`preflight`, `unit`,
-`integration`, `integration-serial`, `scip-core`, `graph-consumer`) under an
-`if: always() && ...` guard that requires `unit` and `integration` to have
-**succeeded** and each serial-chain job to be **success or skipped**. A light
-run (serial chain gated off) can therefore still reach `slow`, but any
-serial-chain failure blocks it. The job itself only runs when `preflight` set
-`run-slow=true` (see [Skip mechanisms](#skip-mechanisms)). This tier is
+`integration`, `integration-serial`, `vendored-core-build`, `scip-core`,
+`graph-consumer`) under an `if: always() && ...` guard that requires `unit` and
+`integration` to have **succeeded** and each serial-chain job to be **success or
+skipped**. A light run (serial chain gated off) can therefore still reach
+`slow`, but any serial-chain failure blocks it. The job itself only runs when
+`preflight` sets `run-slow=true` (see [Skip mechanisms](#skip-mechanisms)). This tier is
 intentionally not xdist-parallelized because embedding model loads can exhaust
 shared GPU memory when started by multiple workers. Sets up GCP credentials and
 `VERTEXAI_PROJECT`, selects `VERTEXAI_LOCATION` from the repository variable
@@ -384,9 +401,9 @@ fires, or the serial chain is gated off) and **explicit** (`should-run=false`).
   *every* changed file matches one of: `**.md`, `docs/**`, `LICENSE`,
   `.gitignore`.
 - **Serial-chain path gating** — on a default-branch push, the serial chain
-  (`integration-serial`, `scip-core`, `graph-consumer`) is skipped unless the
-  change touches the serial-chain path allowlist. Scheduled runs and
-  `workflow_dispatch` with `test_tier=full` always run it. See
+  (`vendored-core-build`, `integration-serial`, `scip-core`, `graph-consumer`)
+  is skipped unless the change touches the serial-chain path allowlist.
+  Scheduled runs and `workflow_dispatch` with `test_tier=full` always run it. See
   [preflight](#preflight-the-decision-job).
 - **Slow tier gating** — `slow` is skipped on default-branch pushes. It runs
   for scheduled full CI or `workflow_dispatch` with `test_tier=full`.
