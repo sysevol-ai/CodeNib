@@ -29,6 +29,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional commit identity to record in the media manifest",
     )
     parser.add_argument(
+        "--exclude-root",
+        action="append",
+        default=[],
+        help="Path to exclude from repository discovery; may be repeated",
+    )
+    parser.add_argument(
         "--max-artifacts",
         type=int,
         default=4096,
@@ -48,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     bundle = build_multimodal_repository_knowledge(
         args.repo,
         commit=args.commit,
+        exclude_roots=tuple(args.exclude_root),
         max_artifacts=args.max_artifacts,
         max_source_candidates=args.max_source_candidates,
     )

@@ -26,6 +26,9 @@ def test_build_multimodal_knowledge_script_writes_bundle(tmp_path):
         "class WikiService: pass",
         encoding="utf-8",
     )
+    generated = repo / "generated"
+    generated.mkdir()
+    (generated / "ignored.png").write_bytes(b"png")
     output = tmp_path / "bundle.json"
 
     completed = subprocess.run(
@@ -37,6 +40,8 @@ def test_build_multimodal_knowledge_script_writes_bundle(tmp_path):
             str(output),
             "--commit",
             "abc123",
+            "--exclude-root",
+            str(generated),
         ],
         check=True,
         stdout=subprocess.PIPE,

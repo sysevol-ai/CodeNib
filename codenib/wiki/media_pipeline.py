@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable
 
 from ..repository_source_selection import (
     DEFAULT_REPOSITORY_SOURCE_SELECTION,
@@ -16,6 +16,7 @@ from ..repository_source_selection import (
 from .media_artifacts import discover_media_manifest
 from .media_facts import VisualFactExtractor, build_visual_facts_manifest
 from .media_grounding import (
+    VisualGroundingScorer,
     discover_source_symbol_candidates,
     ground_visual_facts_to_sources,
 )
@@ -26,18 +27,20 @@ def build_multimodal_repository_knowledge(
     repo_path: str | Path,
     *,
     commit: str | None = None,
-    exclude_roots: tuple[str | Path, ...] = (),
+    exclude_roots: Iterable[str | Path] = (),
     selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
     extractor: VisualFactExtractor | None = None,
+    scorer: VisualGroundingScorer | None = None,
     max_artifacts: int = 4096,
     max_source_candidates: int = 8192,
 ) -> dict[str, Any]:
     """Build the deterministic multimodal repository knowledge bundle."""
 
+    excluded = tuple(exclude_roots)
     media_manifest = discover_media_manifest(
         repo_path,
         commit=commit,
-        exclude_roots=exclude_roots,
+        exclude_roots=excluded,
         selection=selection,
         max_artifacts=max_artifacts,
     )
@@ -47,13 +50,14 @@ def build_multimodal_repository_knowledge(
     visual_facts_manifest = build_visual_facts_manifest(media_manifest, **facts_kwargs)
     source_candidates = discover_source_symbol_candidates(
         repo_path,
-        exclude_roots=exclude_roots,
+        exclude_roots=excluded,
         selection=selection,
         max_candidates=max_source_candidates,
     )
     grounding_manifest = ground_visual_facts_to_sources(
         visual_facts_manifest,
         source_candidates,
+        scorer=scorer,
     )
     knowledge_view = build_multimodal_knowledge_view(
         media_manifest,

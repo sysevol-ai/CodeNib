@@ -123,7 +123,8 @@ The same deterministic bundle can be written from the command line:
 
 ```text
 python scripts/build_multimodal_knowledge.py /path/to/repository \
-  --output /tmp/multimodal-knowledge.json
+  --output /tmp/multimodal-knowledge.json \
+  --exclude-root /path/to/repository/generated
 ```
 
 ```python

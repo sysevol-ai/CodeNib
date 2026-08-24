@@ -79,3 +79,61 @@ def test_build_multimodal_repository_knowledge_wraps_pipeline(tmp_path):
     assert bundle["visual_facts_manifest"]["fact_count"] == 1
     assert bundle["source_candidate_count"] >= 1
     assert bundle["knowledge_view"]["entry_count"] == 1
+
+
+def test_pipeline_forwards_custom_grounding_scorer(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "docs" / "diagram.svg").write_text(
+        "<svg>DiagramBox</svg>",
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text(
+        "![DiagramBox](docs/diagram.svg)",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "wiki.py").write_text(
+        "class WikiService: pass",
+        encoding="utf-8",
+    )
+
+    def scorer(entity, candidate):
+        if entity["name"] == "DiagramBox" and candidate["symbol"] == "WikiService":
+            return {"score": 0.91, "evidence": "pipeline scorer"}
+        return None
+
+    bundle = build_multimodal_repository_knowledge(tmp_path, scorer=scorer)
+
+    assert any(
+        binding["symbol"] == "WikiService"
+        and binding["score"] == 0.91
+        and binding["evidence"] == "pipeline scorer"
+        for binding in bundle["grounding_manifest"]["bindings"]
+    )
+
+
+def test_pipeline_materializes_exclude_roots_for_each_stage(tmp_path):
+    (tmp_path / "docs").mkdir()
+    excluded = tmp_path / "generated"
+    excluded.mkdir()
+    (tmp_path / "docs" / "diagram.svg").write_text(
+        "<svg>HiddenService</svg>",
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text(
+        "![HiddenService](docs/diagram.svg)",
+        encoding="utf-8",
+    )
+    (excluded / "ignored.png").write_bytes(b"png")
+    (excluded / "hidden.py").write_text(
+        "class HiddenService: pass",
+        encoding="utf-8",
+    )
+
+    bundle = build_multimodal_repository_knowledge(
+        tmp_path,
+        exclude_roots=(path for path in [excluded]),
+    )
+
+    assert bundle["media_manifest"]["artifact_count"] == 1
+    assert bundle["grounding_manifest"]["binding_count"] == 0
