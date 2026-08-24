@@ -339,9 +339,10 @@ authority through the retained ref/snapshot loader. Their one-shot owner keeps
 the captured source reachable through cancellation, closes context, source,
 then publication receipt in the parent, and revokes source before receipt in a
 forked child without acquiring the copied context lock. The explicit CLI route
-and compatibility E2E establish this lifecycle, but a separate benchmark
-protocol update and canonical source-bound receipts are still required before
-the manifest runtime track can advance.
+and compatibility E2E establish this lifecycle. The v3 report-only protocol
+now measures its narrow BM25/content-authority and full-runtime projections
+separately, but canonical source-bound receipts and ratified budgets are still
+required before either policy track can advance.
 
 These retained-read routes and the explicit BM25/vector ingress above do not
 complete the hybrid-storage M1 milestone. Benchmark-backed promotion of the
@@ -404,7 +405,7 @@ authorities. The worker then launches a fresh inner route process. Those
 locations are therefore not controller flags, and provisioning is excluded
 from the timed inner route.
 
-The v2 harness compares four pairs and alternates AB/BA order for every pair:
+The v3 harness compares five pairs and alternates AB/BA order for every pair:
 
 - Compiler cold: A runs ordinary `codenib index --preset fast` from an empty
   cache; B runs the same command with retained publication.
@@ -420,12 +421,19 @@ The v2 harness compares four pairs and alternates AB/BA order for every pair:
   stopwatch, A runs `codenib mcp --artifact` without `--repo`, while B resolves
   and materializes the retained ref. Both are source-disabled and use the real
   parser and command handler.
+- Runtime cold source-bound: A starts the ordinary manifest MCP route and B
+  resolves and materializes the retained ref with the same explicit `--repo`
+  checkout. Both have content-byte source authority. The report judges their
+  BM25/content-authority projection separately from full runtime compatibility.
 
 Only `mcp.run` is replaced by a ready callback that executes the same fixed
-BM25 queries. With three subjects, two media classes, four cells, two arms,
-four warmups, and 20 measured rounds, a canonical v2 run contains 1,152 fresh
-inner route processes. The query-only pair adds 288 samples, or 33.3 percent,
-to the original three-cell protocol.
+BM25 queries, captures public `get_manifest`, and attempts one fixed public
+`read_source` probe. Source-bound arms must return the authenticated window;
+query-only arms must return the exact source-unavailable response. Those probes
+and normal context cleanup are inside the runtime stopwatch. With three
+subjects, two media classes, five cells, two arms, four warmups, and 20 measured
+rounds, a canonical v3 run contains 1,440 fresh inner route processes. The
+source-bound pair adds 288 samples, or 25 percent, over v2.
 
 Here, compiler cold means an empty CodeNib compiler cache, and runtime cold
 means a fresh process and unloaded context. The harness does not flush or
@@ -440,31 +448,47 @@ receipt records `route_wall_seconds`, `process_wall_seconds`, `cpu_seconds`,
 `/proc/self/io`. The report summarizes measured samples with median p50 and
 nearest-rank p95.
 
-Runtime parity hashes the complete public BM25 result, including optional
-source `content`, ordering, scores, and locations, and binds the observed source
-authority contract. The manifest compatibility cell therefore stays red even
-if a particular query omits content: its legacy arm has authenticated live
-source while retained startup is source-disabled. The query-only cell requires
-both arms to remain source-disabled and to produce identical complete payloads.
-A1 never erases `content`, narrows the projection, or encodes a particular
-digest as an expected failure.
+The normalized BM25 plan digest is explicitly artifact evidence, not a public
+manifest-equivalence claim. Runtime receipts hash the complete ordered public
+BM25 results, including optional source `content`, scores, and locations. Both
+query-only arms must reject `read_source`. Both source-bound arms execute the
+same source window: its file/range/content projection feeds the narrow
+content-authority comparison, while its complete public response, including
+repository provenance, remains in the full-runtime comparison. Public manifest
+state, artifact origin, loaded views/errors, LSP policy, native authorization,
+and commit-attestation state remain explicit full-runtime evidence. The
+controller first validates the exact public response, then masks only
+authenticated per-sample paths and finite build timestamps before hashing; it
+does not remove artifact or runtime fields. A1 never erases `content`, hides
+provenance, or encodes a particular digest as an expected failure.
 
-Reports aggregate compiler, query-only runtime, and manifest runtime
-compatibility as independent tracks. A parity-red compatibility sentinel still
-allows a complete, reviewable report with `failure=null`; worker, schema,
-source, isolation, cleanup, safety, or postflight faults instead make the
-measurement fail. All tracks remain report-only and promotion-ineligible.
-The controller exits zero for a complete report even when top-level `passed`
-is false; a nonzero exit means the measurement itself failed, not merely that
-a compatibility track remained red.
+Reports aggregate compiler, query-only runtime, the original source-disabled
+sentinel, source-bound BM25/content-authority, and source-bound full-runtime
+compatibility as independent projection-aware tracks. Each projection reports
+within-arm stability and pair equality, so two stable but different arms stay
+red. Both compatibility tracks also keep `scope_complete=false`; even future
+pair equality cannot authorize ordinary-manifest replacement without broader
+view and tool coverage. A parity-red compatibility sentinel still allows a
+complete, reviewable report with `failure=null`; worker, schema, source,
+isolation, cleanup, safety, or postflight faults instead make the measurement
+fail. All tracks remain report-only and promotion-ineligible.
+The controller exits zero after successfully writing a complete report, even
+when top-level `passed` is false. It exits one after successfully writing a
+failed measurement report. Exit two is reserved for hidden-worker failures and
+command/report-output failures that cannot be represented by a successfully
+written report. Red parity or incomplete compatibility scope alone therefore
+remains exit zero.
 
 Do not infer promotion thresholds from one A1 run. A2 must execute the approved
-fixed subject/media matrix and retain its canonical receipts. The compiler and
-query-only runtime tracks may ratify their own numeric policies independently;
-B1 requires the former and query-only B2 requires the latter. Replacing the
-ordinary source-bound manifest MCP path remains blocked until the reader-native
-source seam is exposed through a topology-safe production route and preserves
-the same public behavior and authority. The independent gate C
+fixed subject/media matrix and retain its canonical receipts. The compiler,
+query-only runtime, and narrowly scoped source-bound BM25 tracks may ratify
+their own numeric policies independently; B1 requires the first and query-only
+B2 requires the second. The reader-native source seam and topology-safe
+explicit route now exist, but replacing the ordinary source-bound manifest MCP
+path remains blocked on equal public behavior, artifact provenance, native
+capability policy, and required view coverage. A future source-bound BM25
+default requires its own A2 decision and does not satisfy that full
+compatibility gate. The independent gate C
 `provider-bound-exact` native provider is still required before M1 closes.
 This harness does not add M2 generic generation publication or fenced jobs, M3
 hot switching or request pins, or M5 retention and garbage collection.
