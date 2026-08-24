@@ -332,15 +332,16 @@ jobs and runtime hot switching remain separate milestones.
 report-only: it checks a fixed BM25 `--preset fast` protocol and records
 measurements, but it has no ratified numeric thresholds. Every A1 report has an
 unratified policy and `promotion_eligible=false`, including a complete report
-whose parity checks succeed.
+with one or more green tracks. A complete report means the measurement and its
+safety gates finished; it does not mean every compatibility track passed.
 
 Pass detached repository roots and roots on the storage media being measured.
 Both variables are whitespace-separated `ID=PATH` values, and subject IDs must
 be present in the selected manifest. Because Make uses whitespace to split the
 values, these paths must not contain whitespace. The checked-in manifest fixes
 HTTPie, CodeNib, and Django revisions as its small, medium, and large subjects;
-their three root mappings must match exactly. A canonical run also requires at
-least two approved media classes. For example:
+their three root mappings must match exactly. A canonical run also requires
+exactly two approved, physically distinct media classes. For example:
 
 ```bash
 make retained-storage-gate \
@@ -379,17 +380,28 @@ authorities. The worker then launches a fresh inner route process. Those
 locations are therefore not controller flags, and provisioning is excluded
 from the timed inner route.
 
-The harness compares three pairs and alternates AB/BA order for every pair:
+The v2 harness compares four pairs and alternates AB/BA order for every pair:
 
 - Compiler cold: A runs ordinary `codenib index --preset fast` from an empty
   cache; B runs the same command with retained publication.
 - Compiler current: both arms receive equivalent verified current caches. A
   measures an ordinary update; B performs the retained exact retry with the
   original expected ref generation and verifies that the ref does not advance.
-- Runtime cold: A loads the legacy manifest MCP context; B resolves one catalog
-  ref and loads the retained MCP context. Both use the real parser and command
-  handler. Only `mcp.run` is replaced by a ready callback that executes the
-  same fixed BM25 queries.
+- Runtime cold compatibility: A loads the ordinary source-bound manifest MCP
+  context; B resolves one catalog ref and loads the source-disabled retained
+  context. This sentinel measures the existing behavior gap instead of hiding
+  it.
+- Runtime cold query-only: outside the stopwatch, A packs the current BM25 view
+  as a portable context artifact and B prepares retained storage. Inside the
+  stopwatch, A runs `codenib mcp --artifact` without `--repo`, while B resolves
+  and materializes the retained ref. Both are source-disabled and use the real
+  parser and command handler.
+
+Only `mcp.run` is replaced by a ready callback that executes the same fixed
+BM25 queries. With three subjects, two media classes, four cells, two arms,
+four warmups, and 20 measured rounds, a canonical v2 run contains 1,152 fresh
+inner route processes. The query-only pair adds 288 samples, or 33.3 percent,
+to the original three-cell protocol.
 
 Here, compiler cold means an empty CodeNib compiler cache, and runtime cold
 means a fresh process and unloaded context. The harness does not flush or
@@ -405,17 +417,31 @@ receipt records `route_wall_seconds`, `process_wall_seconds`, `cpu_seconds`,
 nearest-rank p95.
 
 Runtime parity hashes the complete public BM25 result, including optional
-source `content`, ordering, scores, and locations. The legacy route retains an
-authenticated source binding, while the retained artifact route is deliberately
-source-disabled. If that difference changes the public payload, A1 emits a
-negative parity receipt; it must not erase the field or normalize the mismatch
-to make the gate pass.
+source `content`, ordering, scores, and locations, and binds the observed source
+authority contract. The manifest compatibility cell therefore stays red even
+if a particular query omits content: its legacy arm has authenticated live
+source while retained startup is source-disabled. The query-only cell requires
+both arms to remain source-disabled and to produce identical complete payloads.
+A1 never erases `content`, narrows the projection, or encodes a particular
+digest as an expected failure.
+
+Reports aggregate compiler, query-only runtime, and manifest runtime
+compatibility as independent tracks. A parity-red compatibility sentinel still
+allows a complete, reviewable report with `failure=null`; worker, schema,
+source, isolation, cleanup, safety, or postflight faults instead make the
+measurement fail. All tracks remain report-only and promotion-ineligible.
+The controller exits zero for a complete report even when top-level `passed`
+is false; a nonzero exit means the measurement itself failed, not merely that
+a compatibility track remained red.
 
 Do not infer promotion thresholds from one A1 run. A2 must execute the approved
-fixed subject/media matrix, retain its canonical receipts, and ratify the
-numeric policy before B1 can promote BM25 compiler publication or B2 can
-promote retained BM25 cold start to configured defaults. The independent gate
-C `provider-bound-exact` native provider is still required before M1 closes.
+fixed subject/media matrix and retain its canonical receipts. The compiler and
+query-only runtime tracks may ratify their own numeric policies independently;
+B1 requires the former and query-only B2 requires the latter. Replacing the
+ordinary source-bound manifest MCP path remains blocked until a source-capable
+retained route preserves the same public behavior and authority. The
+independent gate C `provider-bound-exact` native provider is still required
+before M1 closes.
 This harness does not add M2 generic generation publication or fenced jobs, M3
 hot switching or request pins, or M5 retention and garbage collection.
 

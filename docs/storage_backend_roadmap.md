@@ -710,10 +710,12 @@ that collecting a fast result cannot silently approve a production route:
 
 | Gate | Required result | Current status |
 | --- | --- | --- |
-| A1 | Run the fixed, report-only retained storage harness. | Implemented; it cannot promote a route. |
-| A2 | Record canonical receipts for the approved subject/media matrix and ratify a numeric policy from measured results. | Pending real measurements. |
-| B1 | Promote BM25 compiler publication to a configured default. | Pending A2. |
-| B2 | Promote BM25 retained cold start to a configured default. | Pending A2. |
+| A1 | Run the fixed, report-only retained storage harness and preserve each route's complete public and authority parity. | Implemented as a four-cell v2 evidence protocol; it cannot promote a route. |
+| A2 compiler | Record canonical compiler receipts for the approved subject/media matrix and ratify numeric compiler policy from measured results. | Pending real measurements. |
+| A2 query-only runtime | Record canonical direct-artifact versus retained receipts and ratify numeric query-only runtime policy. | Pending real measurements. |
+| A2 manifest compatibility | Preserve ordinary manifest MCP public behavior and authority when selecting retained storage. | Blocked: retained startup is source-disabled. |
+| B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
+| B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | C | Supply the `provider-bound-exact` strict BM25 native provider. | Independent work, but required before M1 closes. |
 
 The A1 harness fixes the BM25 `fast` compiler/runtime comparison rather than
@@ -723,11 +725,15 @@ with retained publication; storage provisioning is outside the measured route.
 For compiler current-cache behavior, both arms start from equivalent verified
 current caches: A measures the ordinary update and B measures the retained
 exact retry with its original expected ref generation, which must not advance
-the ref again. For runtime cold start, A loads the legacy manifest MCP context
-and B resolves one catalog ref and loads the retained MCP context through the
-real parser and command handler. The harness replaces only `mcp.run` with a
-ready callback that executes the same fixed BM25 queries, and semantic parity
-is required before performance data are usable.
+the ref again. Runtime cold start deliberately has two cells. The
+manifest-compatibility cell keeps arm A on the ordinary source-bound manifest
+MCP context and arm B on the source-disabled retained context. It is an honest
+compatibility sentinel, not a performance waiver. The query-only cell prepares
+a direct portable context artifact outside the stopwatch, then compares its
+source-disabled MCP startup with the same retained ref resolution and
+materialization. Both cells use the real parser and command handler. The
+harness replaces only `mcp.run` with a ready callback that executes the same
+fixed BM25 queries.
 
 Every paired round alternates AB/BA order. For each arm, the controller starts
 a short-lived outer sample worker. Every arm receives a fresh `CODENIB_HOME`
@@ -735,7 +741,11 @@ and compiler cache below the selected media root; candidate arms additionally
 provision a fresh catalog, CAS, workspace, and output, while legacy arms never
 touch those retained authorities. The worker then launches a fresh inner route
 process. The canonical matrix fixes one small, medium, and large subject plus
-at least two media classes, with four warmups followed by 20 measured rounds.
+exactly two approved, physically distinct media classes, with four warmups
+followed by 20 measured rounds.
+Four cells, two arms, three subjects, and two media classes therefore require
+1,152 fresh inner route processes; the query-only runtime cell adds 288
+samples, or 33.3 percent, over the original three-cell protocol.
 Each route receipt records
 `route_wall_seconds`, `process_wall_seconds`, `cpu_seconds`, `peak_rss_bytes`,
 `io_read_bytes`, `io_write_bytes`, `payload_bytes`, and `payload_files`.
@@ -750,18 +760,35 @@ and the report records it as `uncontrolled`; A2 must assess its receipts with
 that limitation intact.
 
 Runtime parity covers the complete public BM25 result, including optional
-source content, ordering, scores, and locations. The legacy manifest route is
-source-verified while the retained artifact route is intentionally
-source-disabled. A payload difference caused by that authority distinction is
-a real negative A1 receipt, not metadata to discard; it must be resolved or
-explicitly ratified before runtime promotion can proceed.
+source content, ordering, scores, and locations. It also includes the source
+authority contract, so the manifest-compatibility cell remains blocked even
+when a particular query happens not to return content. Its source-verified
+legacy arm and source-disabled retained arm are not interchangeable. The
+query-only cell instead requires both direct-artifact and retained arms to stay
+source-disabled and to return identical full payloads. The harness never drops
+`content`, narrows the projection, or hard-codes an expected mismatch.
+
+The v2 report aggregates three independent tracks: compiler, query-only
+runtime, and manifest runtime compatibility. Completing all samples safely
+produces a complete report even when a parity track is red; operational,
+schema, isolation, cleanup, source, or postflight failures still fail the
+measurement. A complete report is not a passing compatibility decision and
+never authorizes promotion. This separation lets A2 compiler and A2
+query-only runtime use their own canonical green receipts without laundering
+the blocked manifest-replacement track.
+The controller therefore exits zero when the report status is `complete`, even
+if top-level `passed` is false, and exits nonzero only when the measurement
+status is `failed`.
 
 A1 intentionally has no approved numeric thresholds or threshold override.
 Its policy is unratified and every report sets `promotion_eligible=false`, even
-when parity holds and all measurements complete. Only A2 measurements over the
-fixed approved subject/media matrix may establish canonical receipts and
-ratify numeric thresholds. B1 and B2 require that ratified policy; neither is
-approved by landing the harness. This leaves M1 in progress.
+when a track passes and all measurements complete. Only A2 measurements over
+the fixed approved subject/media matrix may establish canonical receipts and
+ratify numeric thresholds. B1 requires the compiler track; query-only B2
+requires the query-only runtime track. Replacing ordinary source-bound manifest
+MCP remains blocked until a source-capable retained route preserves its public
+and authority behavior. None of these promotions is approved by landing the
+harness. This leaves M1 in progress.
 
 These gates do not move the existing milestone boundaries. Generic generation
 publication and fenced jobs remain M2, live bundle replacement and in-flight
