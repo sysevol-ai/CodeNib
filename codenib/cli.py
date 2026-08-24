@@ -851,10 +851,9 @@ def _mcp_context_mode(args: argparse.Namespace) -> str:
             and retained_values["--expected-generation"] is not None
         ):
             raise CLIError("--expected-generation requires retained ref selection")
-        if explicit_path or artifact is not None or repo is not None:
+        if explicit_path or artifact is not None:
             raise CLIError(
-                "retained MCP storage cannot be combined with a manifest, "
-                "--artifact, or --repo"
+                "retained MCP storage cannot be combined with a manifest or --artifact"
             )
         missing = [
             option
@@ -875,7 +874,9 @@ def _mcp_context_mode(args: argparse.Namespace) -> str:
         if explicit_path:
             raise CLIError("choose either a manifest or --artifact, not both")
         return "artifact"
-    if repo is not None or repository is not None:
+    if repo is not None:
+        raise CLIError("--repo requires --artifact or retained MCP storage")
+    if repository is not None:
         raise CLIError("--repo and --repository require --artifact")
     return "manifest"
 
@@ -940,12 +941,14 @@ def _run_mcp_retained(args: argparse.Namespace) -> int:
         _OrderedAction,
         _run_context_with_cleanup_actions,
     )
+    from .artifacts.runtime import SourceBindingCleanupOwner
     from .mcp.retained_context import (
         RetainedServerContextOwner,
         load_retained_server_context_ref,
         load_retained_server_context_snapshot,
     )
     from .mcp.server import serve_retained_context
+    from .source_fingerprint import pin_repository_source_root
     from .storage import LocalCAS, SQLiteCatalog
 
     repository, namespace = _retained_materialization_identity(
@@ -957,13 +960,16 @@ def _run_mcp_retained(args: argparse.Namespace) -> int:
         snapshot_id=args.snapshot,
         expected_generation=args.expected_generation,
     )
+    repo_path = _retained_mcp_repository_path(getattr(args, "repo", None))
     catalog_path, cas_root, workspace_root, output = _retained_materialization_paths(
-        args
+        args,
+        repo_path=repo_path,
     )
     runtime_owner = RetainedServerContextOwner()
     topology_owner = _RetainedMaterializationResourceOwner()
     object_store_owner = _RetainedMaterializationResourceOwner()
     catalog_owner = _RetainedMaterializationResourceOwner()
+    repository_authority_owner = SourceBindingCleanupOwner()
     runtime_cleanup = (
         _OrderedAction(
             label="retained MCP runtime cleanup also failed",
@@ -995,10 +1001,25 @@ def _run_mcp_retained(args: argparse.Namespace) -> int:
             retry_incomplete="cancellation",
             incomplete_owner=topology_owner,
         ),
+        _OrderedAction(
+            label="retained repository authority cleanup also failed",
+            action=repository_authority_owner.close,
+            complete=lambda: repository_authority_owner.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=repository_authority_owner,
+        ),
     )
     try:
         with _run_context_with_cleanup_actions(runtime_cleanup):
             with _run_context_with_cleanup_actions(storage_cleanup):
+                repository_authority = (
+                    None
+                    if repo_path is None
+                    else pin_repository_source_root(
+                        repo_path,
+                        _source_owner=repository_authority_owner.retain,
+                    )
+                )
                 base_provider = LocalWorkspaceProvider(workspace_root)
                 base_provider.require_support()
                 topology = topology_owner.acquire(
@@ -1007,6 +1028,8 @@ def _run_mcp_retained(args: argparse.Namespace) -> int:
                         cas_root,
                         workspace_root,
                         output,
+                        repo_path=repo_path,
+                        repository_authority=repository_authority,
                     )
                 )
                 provider = _RetainedTopologyWorkspaceProvider(
@@ -1035,6 +1058,7 @@ def _run_mcp_retained(args: argparse.Namespace) -> int:
                     topology.catalog_path,
                     topology.catalog_identity,
                 )
+                topology.verify()
                 if snapshot_id is None:
                     load_retained_server_context_ref(
                         repository,
@@ -1046,6 +1070,8 @@ def _run_mcp_retained(args: argparse.Namespace) -> int:
                         object_store=object_store,
                         workspace_provider=provider,
                         runtime_owner=runtime_owner,
+                        repo_path=topology.repo_path,
+                        expected_root_authority=topology.repository_authority,
                     )
                 else:
                     load_retained_server_context_snapshot(
@@ -1057,7 +1083,10 @@ def _run_mcp_retained(args: argparse.Namespace) -> int:
                         object_store=object_store,
                         workspace_provider=provider,
                         runtime_owner=runtime_owner,
+                        repo_path=topology.repo_path,
+                        expected_root_authority=topology.repository_authority,
                     )
+                topology.verify_bindings()
             serve_retained_context(
                 runtime_owner,
                 log_level=args.log_level,
@@ -1444,7 +1473,33 @@ def _lexical_cli_path(value: object, *, label: str) -> Path:
         raise CLIError(f"{label} path is invalid") from exc
 
 
-def _retained_materialization_paths(args: argparse.Namespace) -> tuple[Path, ...]:
+def _retained_mcp_repository_path(value: object) -> Path | None:
+    """Freeze one explicit retained source checkout before provider work."""
+
+    if value is None:
+        return None
+    path = _lexical_cli_path(value, label="repository source")
+    try:
+        metadata = path.lstat()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(
+            "repository source must resolve to one existing real directory"
+        ) from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or not metadata.st_dev
+        or not metadata.st_ino
+    ):
+        raise CLIError("repository source must resolve to one existing real directory")
+    return path
+
+
+def _retained_materialization_paths(
+    args: argparse.Namespace,
+    *,
+    repo_path: Path | None = None,
+) -> tuple[Path, ...]:
     """Freeze lexical paths without touching the destination namespace."""
 
     catalog_path = _lexical_cli_path(args.catalog, label="catalog")
@@ -1457,11 +1512,20 @@ def _retained_materialization_paths(args: argparse.Namespace) -> tuple[Path, ...
         raise CLIError("output must be below the workspace root") from exc
     if not output_relative.parts:
         raise CLIError("output must be a child of the workspace root")
-    for first, first_label, second, second_label in (
+    comparisons = (
         (catalog_path, "catalog", cas_root, "CAS root"),
         (catalog_path, "catalog", workspace_root, "workspace root"),
         (cas_root, "CAS root", workspace_root, "workspace root"),
-    ):
+    )
+    if repo_path is not None:
+        comparisons = (
+            *comparisons,
+            (repo_path, "repository source", catalog_path, "catalog"),
+            (repo_path, "repository source", cas_root, "CAS root"),
+            (repo_path, "repository source", output, "output"),
+            (repo_path, "repository source", workspace_root, "workspace root"),
+        )
+    for first, first_label, second, second_label in comparisons:
         if _paths_overlap(first, second):
             raise CLIError(f"{first_label} must not overlap the {second_label}")
     return catalog_path, cas_root, workspace_root, output
@@ -1750,6 +1814,87 @@ def _require_retained_mount_topology(
         raise CLIError("retained roots must not traverse a same-device mount alias")
 
 
+def _require_retained_repository_topology(
+    repo_path: Path,
+    catalog_path: Path,
+    cas_root: Path,
+    workspace_root: Path,
+    output: Path,
+) -> None:
+    """Deny lexical aliases, inode aliases, and mapped physical source aliases."""
+
+    for storage, storage_label in (
+        (catalog_path, "catalog"),
+        (cas_root, "CAS root"),
+        (output, "output"),
+        (workspace_root, "workspace root"),
+    ):
+        if _paths_overlap(repo_path, storage):
+            raise CLIError(
+                f"repository source must not physically overlap the {storage_label}"
+            )
+
+    repository_ancestry = _retained_directory_ancestry(
+        repo_path,
+        label="repository source",
+    )
+    for storage_ancestry, storage_label in (
+        (
+            _retained_directory_ancestry(
+                catalog_path.parent,
+                label="catalog parent",
+            ),
+            "catalog",
+        ),
+        (
+            _retained_directory_ancestry(cas_root, label="CAS root"),
+            "CAS root",
+        ),
+        (
+            _retained_directory_ancestry(
+                output.parent,
+                label="output parent",
+            ),
+            "output",
+        ),
+        (
+            _retained_directory_ancestry(
+                workspace_root,
+                label="workspace root",
+            ),
+            "workspace root",
+        ),
+    ):
+        _require_distinct_directory_ancestry(
+            repository_ancestry,
+            "repository source",
+            storage_ancestry,
+            storage_label,
+        )
+
+    mappings = _retained_linux_mount_mappings()
+    repository_physical = _retained_linux_physical_path(repo_path, mappings)
+    for storage, storage_label in (
+        (catalog_path, "catalog"),
+        (cas_root, "CAS root"),
+        (output, "output"),
+        (workspace_root, "workspace root"),
+    ):
+        storage_physical = _retained_linux_physical_path(storage, mappings)
+        if (
+            repository_physical is not None
+            and storage_physical is not None
+            and _retained_physical_paths_overlap(
+                repository_physical,
+                storage_physical,
+            )
+        ):
+            raise CLIError(
+                "repository source must not traverse a physical "
+                f"{storage_label} alias"
+            )
+
+
 @dataclass(slots=True)
 class _RetainedMaterializationTopology:
     catalog_path: Path
@@ -1760,6 +1905,12 @@ class _RetainedMaterializationTopology:
     cas_binding: _RetainedDirectoryBinding
     workspace_binding: _RetainedDirectoryBinding
     output_parent_binding: _RetainedDirectoryBinding
+    repo_path: Path | None = None
+    repository_identity: tuple[object, ...] | None = None
+    repository_authority: object | None = field(
+        default=None,
+        repr=False,
+    )
     _closed: bool = field(default=False, init=False, repr=False)
 
     @property
@@ -1801,6 +1952,63 @@ class _RetainedMaterializationTopology:
             self.workspace_binding,
             self.output_parent_binding,
         )
+        repository_values = (
+            self.repo_path,
+            self.repository_identity,
+            self.repository_authority,
+        )
+        if all(value is None for value in repository_values):
+            return
+        if any(value is None for value in repository_values):
+            raise CLIError("retained repository source topology is incomplete")
+        repo_path = self.repo_path
+        repository_identity = self.repository_identity
+        repository_authority = self.repository_authority
+        if (
+            repo_path is None
+            or repository_identity is None
+            or repository_authority is None
+        ):  # pragma: no cover - guarded above for type narrowing
+            raise CLIError("retained repository source topology is incomplete")
+        try:
+            repository_authority.verify()  # type: ignore[attr-defined]
+            observed_repository_path = repository_authority.root  # type: ignore[attr-defined]
+            observed_repository_identity = (  # type: ignore[attr-defined]
+                repository_authority.root_identity
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise CLIError("repository source authority changed") from exc
+        if observed_repository_path != repo_path:
+            raise CLIError("repository source authority path changed")
+        if observed_repository_identity != repository_identity:
+            raise CLIError("repository source authority identity changed")
+        for storage_identity, storage_label in (
+            (cas_identity, "CAS root"),
+            (workspace_identity, "workspace root"),
+            (output_parent_identity, "output parent"),
+        ):
+            if observed_repository_identity == tuple(storage_identity[:2]):
+                raise CLIError(
+                    f"repository source physically aliases the {storage_label}"
+                )
+        _require_retained_repository_topology(
+            repo_path,
+            self.catalog_path,
+            self.cas_root,
+            self.workspace_root,
+            self.output,
+        )
+        try:
+            repository_authority.verify()  # type: ignore[attr-defined]
+            if (  # type: ignore[attr-defined]
+                repository_authority.root != repo_path
+                or repository_authority.root_identity != repository_identity
+            ):
+                raise CLIError("repository source authority changed")
+        except CLIError:
+            raise
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise CLIError("repository source authority changed") from exc
 
     def verify(self) -> None:
         self.verify_bindings()
@@ -1969,6 +2177,9 @@ def _require_retained_materialization_topology(
     cas_root: Path,
     workspace_root: Path,
     output: Path,
+    *,
+    repo_path: Path | None = None,
+    repository_authority: object | None = None,
 ) -> _RetainedMaterializationTopology:
     """Open and retain physical authorities for every mutable storage root."""
 
@@ -1978,6 +2189,15 @@ def _require_retained_materialization_topology(
         _open_publication_authority,
         _PublicationAuthorityOwner,
     )
+    from .source_fingerprint import RepositorySourceRootAuthority
+
+    if (repo_path is None) != (repository_authority is None):
+        raise CLIError("retained repository source topology is incomplete")
+    if (
+        repository_authority is not None
+        and type(repository_authority) is not RepositorySourceRootAuthority
+    ):
+        raise CLIError("retained repository source authority has an invalid type")
 
     try:
         output.lstat()
@@ -2044,6 +2264,17 @@ def _require_retained_materialization_topology(
         raise CLIError("output must remain below the physical workspace root") from exc
     if not resolved_output_relative.parts:
         raise CLIError("output must be a child of the physical workspace root")
+    repository_identity: tuple[object, ...] | None = None
+    if repository_authority is not None:
+        try:
+            repository_authority.verify()
+            pinned_repo = repository_authority.root
+            repository_identity = repository_authority.root_identity
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise CLIError("repository source authority changed") from exc
+        if pinned_repo != repo_path:
+            raise CLIError("repository source authority differs from its path")
+        repo_path = pinned_repo
     for first, first_label, second, second_label in (
         (resolved_catalog, "catalog", resolved_cas, "CAS root"),
         (resolved_catalog, "catalog", resolved_workspace, "workspace root"),
@@ -2054,6 +2285,14 @@ def _require_retained_materialization_topology(
             raise CLIError(
                 f"{first_label} must not physically overlap the {second_label}"
             )
+    if repo_path is not None:
+        _require_retained_repository_topology(
+            repo_path,
+            resolved_catalog,
+            resolved_cas,
+            resolved_workspace,
+            resolved_output,
+        )
 
     owners = tuple(_PublicationAuthorityOwner() for _index in range(3))
 
@@ -2096,6 +2335,9 @@ def _require_retained_materialization_topology(
             cas_binding=cas_binding,
             workspace_binding=workspace_binding,
             output_parent_binding=output_parent_binding,
+            repo_path=repo_path,
+            repository_identity=repository_identity,
+            repository_authority=repository_authority,
         )
         topology.verify()
         return topology
@@ -5654,7 +5896,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mcp_parser.add_argument(
         "--repo",
-        help="optional exact checkout bound to --artifact",
+        help="optional exact checkout bound to --artifact or retained startup",
     )
     mcp_parser.add_argument(
         "--repository",

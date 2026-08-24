@@ -3879,8 +3879,12 @@ def test_mcp_parser_limits_tool_surface_and_defaults_to_full() -> None:
     assert exc_info.value.code == 2
 
 
-def _retained_mcp_argv(tmp_path: Path) -> list[str]:
-    return [
+def _retained_mcp_argv(
+    tmp_path: Path,
+    *,
+    repo: Path | None = None,
+) -> list[str]:
+    arguments = [
         "mcp",
         "--catalog",
         str(tmp_path / "catalog.sqlite3"),
@@ -3893,6 +3897,9 @@ def _retained_mcp_argv(tmp_path: Path) -> list[str]:
         "--repository",
         "owner/repo",
     ]
+    if repo is not None:
+        arguments.extend(("--repo", str(repo)))
+    return arguments
 
 
 def test_mcp_retained_parser_exposes_ref_and_snapshot_selection(
@@ -3927,6 +3934,42 @@ def test_mcp_retained_parser_exposes_ref_and_snapshot_selection(
     assert both.value.code == 2
 
 
+def test_mcp_retained_mode_accepts_only_an_explicit_source_checkout(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    parser = cli.build_parser()
+    retained = parser.parse_args(_retained_mcp_argv(tmp_path, repo=repo))
+    artifact = parser.parse_args(
+        ["mcp", "--artifact", "/tmp/context", "--repo", str(repo)]
+    )
+
+    assert cli._mcp_context_mode(retained) == "retained"
+    assert retained.repo == str(repo)
+    assert cli._mcp_context_mode(artifact) == "artifact"
+
+    for context_input in ((".",), ("--artifact", "/tmp/context")):
+        mixed = parser.parse_args(
+            [*_retained_mcp_argv(tmp_path, repo=repo), *context_input]
+        )
+        with pytest.raises(cli.CLIError, match="manifest|--artifact"):
+            cli._mcp_context_mode(mixed)
+
+
+def test_mcp_repo_without_artifact_or_retained_selection_is_rejected() -> None:
+    args = cli.build_parser().parse_args(["mcp", "--repo", "/src/repo"])
+
+    with pytest.raises(cli.CLIError, match="requires --artifact or retained MCP"):
+        cli._mcp_context_mode(args)
+
+
+def test_mcp_repo_cannot_bind_a_positional_manifest() -> None:
+    args = cli.build_parser().parse_args(["mcp", ".", "--repo", "/src/repo"])
+
+    with pytest.raises(cli.CLIError, match="requires --artifact or retained MCP"):
+        cli._mcp_context_mode(args)
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     (
@@ -3934,6 +3977,10 @@ def test_mcp_retained_parser_exposes_ref_and_snapshot_selection(
         (("--repository", "owner/repo"), "require --artifact"),
         (
             ("--runtime-probe", "--catalog", "catalog.sqlite3"),
+            "--runtime-probe cannot be combined",
+        ),
+        (
+            ("--runtime-probe", "--repo", "/src/repo"),
             "--runtime-probe cannot be combined",
         ),
     ),
@@ -3972,6 +4019,24 @@ def test_mcp_retained_rejects_mixed_context_and_snapshot_generation(
     assert "requires retained ref selection" in capsys.readouterr().err
 
 
+def test_mcp_retained_source_still_requires_a_repository_key_before_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_require_modules",
+        lambda *_args, **_kwargs: pytest.fail("dependency probe must not run"),
+    )
+    arguments = _retained_mcp_argv(tmp_path, repo=tmp_path / "repo")
+    repository_option = arguments.index("--repository")
+    del arguments[repository_option : repository_option + 2]
+
+    assert cli.run(arguments) == 2
+    assert "--repository" in capsys.readouterr().err
+
+
 def test_mcp_retained_dispatches_only_after_dependency_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3991,6 +4056,792 @@ def test_mcp_retained_dispatches_only_after_dependency_probe(
 
     assert cli._run_mcp(args) == 0
     assert calls == [("mcp",), args]
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    (
+        ("empty", "repository source path is required"),
+        ("nul", "repository source path is invalid"),
+        ("missing", "repository source must resolve to one existing real directory"),
+        ("file", "repository source must resolve to one existing real directory"),
+        ("symlink", "repository source must resolve to one existing real directory"),
+    ),
+)
+def test_mcp_retained_rejects_invalid_source_before_any_mutation(
+    tmp_path: Path,
+    case: str,
+    message: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.mcp.retained_context as retained_context_module
+
+    target = tmp_path / "repository"
+    target.mkdir()
+    if case == "empty":
+        value = ""
+    elif case == "nul":
+        value = "bad\x00repository"
+    elif case == "missing":
+        value = str(tmp_path / "missing")
+    elif case == "file":
+        source_file = tmp_path / "source.py"
+        source_file.touch()
+        value = str(source_file)
+    else:
+        source_link = tmp_path / "repository-link"
+        source_link.symlink_to(target, target_is_directory=True)
+        value = str(source_link)
+
+    args = cli.build_parser().parse_args(
+        [*_retained_mcp_argv(tmp_path), "--repo", value]
+    )
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("invalid source preflight must precede retained mutation")
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", unexpected)
+    monkeypatch.setattr(
+        cli,
+        "_require_retained_materialization_topology",
+        unexpected,
+    )
+    monkeypatch.setattr(storage_module, "LocalCAS", unexpected)
+    monkeypatch.setattr(storage_module, "SQLiteCatalog", unexpected)
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_ref",
+        unexpected,
+    )
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_snapshot",
+        unexpected,
+    )
+
+    with pytest.raises(cli.CLIError, match=message):
+        cli._run_mcp_retained(args)
+
+
+def _retained_source_topology_paths(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, Path, Path]:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    catalog_parent = tmp_path / "catalog-state"
+    catalog_parent.mkdir()
+    catalog = catalog_parent / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    output = workspace_root / "runtime"
+    return repository, catalog, cas_root, workspace_root, output
+
+
+@pytest.mark.parametrize(
+    "protected",
+    ("catalog", "CAS root", "workspace root", "output"),
+)
+def test_mcp_retained_rejects_lexical_source_storage_aliases(
+    tmp_path: Path,
+    protected: str,
+) -> None:
+    repository, catalog, cas_root, workspace_root, output = (
+        _retained_source_topology_paths(tmp_path)
+    )
+    repository.rmdir()
+    repository = {
+        "catalog": catalog.parent,
+        "CAS root": cas_root,
+        "workspace root": workspace_root / "source",
+        "output": output,
+    }[protected]
+    args = SimpleNamespace(
+        catalog=str(catalog),
+        cas_root=str(cas_root),
+        workspace_root=str(workspace_root),
+        output=str(output),
+    )
+
+    with pytest.raises(
+        cli.CLIError,
+        match=rf"repository source must not overlap the {protected}",
+    ):
+        cli._retained_materialization_paths(args, repo_path=repository)
+
+
+def test_mcp_retained_rejects_lexical_source_alias_before_pin_or_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.mcp.retained_context as retained_context_module
+
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    args = cli.build_parser().parse_args(_retained_mcp_argv(tmp_path, repo=cas_root))
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("lexical source alias must fail before authority or provider work")
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "pin_repository_source_root",
+        unexpected,
+    )
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", unexpected)
+    monkeypatch.setattr(
+        cli,
+        "_require_retained_materialization_topology",
+        unexpected,
+    )
+    monkeypatch.setattr(storage_module, "LocalCAS", unexpected)
+    monkeypatch.setattr(storage_module, "SQLiteCatalog", unexpected)
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_ref",
+        unexpected,
+    )
+
+    with pytest.raises(
+        cli.CLIError,
+        match="repository source must not overlap the CAS root",
+    ):
+        cli._run_mcp_retained(args)
+
+
+@pytest.mark.parametrize(
+    "protected",
+    ("catalog", "CAS root", "workspace root", "output"),
+)
+def test_mcp_retained_rejects_resolved_source_storage_aliases(
+    tmp_path: Path,
+    protected: str,
+) -> None:
+    repository, catalog, cas_root, workspace_root, output = (
+        _retained_source_topology_paths(tmp_path)
+    )
+    if protected == "catalog":
+        catalog.unlink()
+        physical_catalog = repository / "catalog.sqlite3"
+        physical_catalog.touch()
+        catalog.symlink_to(physical_catalog)
+    elif protected == "CAS root":
+        cas_root.rmdir()
+        cas_root.symlink_to(repository, target_is_directory=True)
+    else:
+        physical_workspace = tmp_path / "physical-workspace"
+        physical_workspace.mkdir()
+        workspace_root.rmdir()
+        workspace_root.symlink_to(physical_workspace, target_is_directory=True)
+        if protected == "workspace root":
+            repository.rmdir()
+            repository = physical_workspace / "source"
+            repository.mkdir()
+        else:
+            repository.rmdir()
+            repository = physical_workspace
+
+    with pytest.raises(
+        cli.CLIError,
+        match=rf"repository source must not physically overlap the {protected}",
+    ):
+        with source_fingerprint_module.pin_repository_source_root(
+            repository
+        ) as repository_authority:
+            cli._require_retained_materialization_topology(
+                catalog,
+                cas_root,
+                workspace_root,
+                output,
+                repo_path=repository,
+                repository_authority=repository_authority,
+            )
+
+
+@pytest.mark.parametrize(
+    ("protected", "ancestry_label"),
+    (
+        ("catalog", "catalog parent"),
+        ("CAS root", "CAS root"),
+        ("workspace root", "workspace root"),
+        ("output", "output parent"),
+    ),
+)
+def test_mcp_retained_rejects_directory_identity_source_aliases(
+    tmp_path: Path,
+    protected: str,
+    ancestry_label: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, catalog, cas_root, workspace_root, output = (
+        _retained_source_topology_paths(tmp_path)
+    )
+    real_ancestry = cli._retained_directory_ancestry
+    repository_ancestry = real_ancestry(
+        repository,
+        label="repository source",
+    )
+    repository_identity = repository_ancestry[0][1]
+
+    def aliased_ancestry(
+        path: Path,
+        *,
+        label: str,
+    ) -> tuple[tuple[Path, tuple[int, int]], ...]:
+        observed = list(real_ancestry(path, label=label))
+        if label == ancestry_label:
+            observed[0] = (observed[0][0], repository_identity)
+        return tuple(observed)
+
+    monkeypatch.setattr(cli, "_retained_directory_ancestry", aliased_ancestry)
+
+    with pytest.raises(
+        cli.CLIError,
+        match=rf"repository source must not physically alias the {protected}",
+    ):
+        cli._require_retained_repository_topology(
+            repository,
+            catalog,
+            cas_root,
+            workspace_root,
+            output,
+        )
+
+
+@pytest.mark.parametrize(
+    "protected",
+    ("catalog", "CAS root", "workspace root", "output"),
+)
+def test_mcp_retained_rejects_linux_mapped_source_bind_aliases(
+    tmp_path: Path,
+    protected: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, catalog, cas_root, workspace_root, output = (
+        _retained_source_topology_paths(tmp_path)
+    )
+    protected_paths = {
+        "catalog": catalog,
+        "CAS root": cas_root,
+        "workspace root": workspace_root,
+        "output": output,
+    }
+    mappings = [
+        cli._RetainedLinuxMountMapping(
+            mount_id=1,
+            device="0:1",
+            root=PurePosixPath("/host"),
+            mount_point=Path("/"),
+        ),
+        cli._RetainedLinuxMountMapping(
+            mount_id=2,
+            device="8:1",
+            root=PurePosixPath("/shared/source"),
+            mount_point=repository,
+        ),
+    ]
+    for index, (label, path) in enumerate(protected_paths.items(), start=3):
+        is_alias = label == protected
+        mappings.append(
+            cli._RetainedLinuxMountMapping(
+                mount_id=index,
+                device="8:1" if is_alias else f"9:{index}",
+                root=(
+                    PurePosixPath("/shared/source")
+                    if is_alias
+                    else PurePosixPath(f"/protected/{index}")
+                ),
+                mount_point=path,
+            )
+        )
+    monkeypatch.setattr(
+        cli,
+        "_retained_linux_mount_mappings",
+        lambda: tuple(mappings),
+    )
+
+    with pytest.raises(
+        cli.CLIError,
+        match=rf"repository source must not traverse a physical {protected} alias",
+    ):
+        cli._require_retained_repository_topology(
+            repository,
+            catalog,
+            cas_root,
+            workspace_root,
+            output,
+        )
+
+
+@pytest.mark.parametrize(
+    ("selector", "loader_name"),
+    (
+        (("--ref", "release", "--expected-generation", "4"), "ref"),
+        (("--snapshot", "snapshot-4"), "snapshot"),
+    ),
+)
+@pytest.mark.parametrize("source_bound", (False, True))
+def test_mcp_retained_passes_only_the_topology_frozen_source_to_loaders(
+    tmp_path: Path,
+    selector: tuple[str, ...],
+    loader_name: str,
+    source_bound: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.mcp.retained_context as retained_context_module
+    import codenib.mcp.server as server_module
+
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    output = workspace_root / "runtime"
+    arguments = [
+        "mcp",
+        "--catalog",
+        str(catalog_path),
+        "--cas-root",
+        str(cas_root),
+        "--workspace-root",
+        str(workspace_root),
+        "--output",
+        str(output),
+        "--repository",
+        "owner/repo",
+        *selector,
+    ]
+    if source_bound:
+        arguments.extend(("--repo", str(repository / ".")))
+    args = cli.build_parser().parse_args(arguments)
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            pass
+
+    class Resource:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    object_store = Resource("CAS")
+    catalog = Resource("catalog")
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+    authority_roots: list[Path | None] = []
+
+    def record_loader(
+        name: str,
+        values: tuple[object, ...],
+        kwargs: dict[str, object],
+    ) -> None:
+        expected = kwargs["expected_root_authority"]
+        if source_bound:
+            assert expected is not None
+            assert not expected.closed  # type: ignore[attr-defined]
+            authority_roots.append(expected.root)  # type: ignore[attr-defined]
+        else:
+            assert expected is None
+            authority_roots.append(None)
+        calls.append((name, values, kwargs))
+
+    def ref_loader(*values: object, **kwargs: object) -> None:
+        record_loader("ref", values, kwargs)
+
+    def snapshot_loader(*values: object, **kwargs: object) -> None:
+        record_loader("snapshot", values, kwargs)
+
+    served: list[object] = []
+
+    def serve(owner: object, **kwargs: object) -> None:
+        assert object_store.closed
+        assert catalog.closed
+        assert kwargs == {"log_level": "INFO", "tool_surface": "full"}
+        served.append(owner)
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        storage_module, "LocalCAS", lambda *_args, **_kwargs: object_store
+    )
+    monkeypatch.setattr(
+        storage_module, "SQLiteCatalog", lambda *_args, **_kwargs: catalog
+    )
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_ref",
+        ref_loader,
+    )
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_snapshot",
+        snapshot_loader,
+    )
+    monkeypatch.setattr(server_module, "serve_retained_context", serve)
+
+    assert cli._run_mcp_retained(args) == 0
+
+    assert len(calls) == 1
+    selected, positional, kwargs = calls[0]
+    assert selected == loader_name
+    common_keys = {
+        "namespace_name",
+        "catalog",
+        "object_store",
+        "workspace_provider",
+        "runtime_owner",
+        "repo_path",
+        "expected_root_authority",
+    }
+    if loader_name == "ref":
+        assert positional == ("owner/repo", output)
+        assert set(kwargs) == common_keys | {"ref_name", "expected_generation"}
+        assert kwargs["ref_name"] == "release"
+        assert kwargs["expected_generation"] == 4
+    else:
+        assert positional == ("owner/repo", "snapshot-4", output)
+        assert set(kwargs) == common_keys
+    expected_repo = (
+        Path(os.path.abspath(os.fspath(repository))) if source_bound else None
+    )
+    assert kwargs["repo_path"] == expected_repo
+    provider = kwargs["workspace_provider"]
+    assert type(provider) is cli._RetainedTopologyWorkspaceProvider
+    expected_authority = provider.topology.repository_authority
+    assert kwargs["expected_root_authority"] is expected_authority
+    if source_bound:
+        assert expected_authority is not None
+        assert expected_authority.closed
+    else:
+        assert expected_authority is None
+    assert authority_roots == [expected_repo]
+    assert kwargs["namespace_name"] == "default"
+    assert kwargs["catalog"] is catalog
+    assert kwargs["object_store"] is object_store
+    assert provider.topology.repo_path == expected_repo
+    assert provider.topology.closed
+    assert kwargs["runtime_owner"] is served[0]
+    assert object_store.closed
+    assert catalog.closed
+
+
+@pytest.mark.parametrize("replacement", ("root", "ancestor"))
+def test_mcp_retained_rejects_identical_source_replacement_before_capture(
+    tmp_path: Path,
+    replacement: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.mcp.retained_context as retained_context_module
+    import codenib.mcp.server as server_module
+
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+
+    if replacement == "root":
+        repository = tmp_path / "repository"
+        repository.mkdir()
+        candidate = tmp_path / "candidate-repository"
+        candidate.mkdir()
+        displaced = tmp_path / "displaced-repository"
+
+        def replace_repository() -> None:
+            repository.rename(displaced)
+            candidate.rename(repository)
+
+    else:
+        source_parent = tmp_path / "source-parent"
+        source_parent.mkdir()
+        repository = source_parent / "repository"
+        repository.mkdir()
+        candidate_parent = tmp_path / "candidate-parent"
+        candidate_parent.mkdir()
+        displaced_parent = tmp_path / "displaced-parent"
+
+        def replace_repository() -> None:
+            source_parent.rename(displaced_parent)
+            candidate_parent.rename(source_parent)
+            (displaced_parent / "repository").rename(repository)
+
+    source_text = "VALUE = 'IDENTICAL_SOURCE_REPLACEMENT'\n"
+    (repository / "sample.py").write_text(source_text, encoding="utf-8")
+    if replacement == "root":
+        (candidate / "sample.py").write_text(source_text, encoding="utf-8")
+
+    args = cli.build_parser().parse_args(_retained_mcp_argv(tmp_path, repo=repository))
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            pass
+
+    class Resource:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    object_store = Resource()
+    catalog = Resource()
+    authorities: list[object] = []
+    topologies: list[object] = []
+    real_topology = cli._require_retained_materialization_topology
+    replacement_complete = False
+
+    def capture_topology(*values: object, **kwargs: object):
+        topology = real_topology(*values, **kwargs)
+        topologies.append(topology)
+        return topology
+
+    def load_after_replacement(*_args: object, **kwargs: object) -> None:
+        nonlocal replacement_complete
+        expected = kwargs["expected_root_authority"]
+        assert expected is not None
+        assert not expected.closed
+        assert kwargs["repo_path"] == repository
+        authorities.append(expected)
+        replace_repository()
+        replacement_complete = True
+        binding = source_fingerprint_module.capture_repository_source(
+            kwargs["repo_path"],
+            expected_root_authority=expected,
+        )
+        try:
+            pytest.fail("replacement source capture unexpectedly succeeded")
+        finally:
+            binding.close()
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_require_retained_materialization_topology",
+        capture_topology,
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "LocalCAS",
+        lambda *_args, **_kwargs: object_store,
+    )
+    monkeypatch.setattr(
+        storage_module,
+        "SQLiteCatalog",
+        lambda *_args, **_kwargs: catalog,
+    )
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_ref",
+        load_after_replacement,
+    )
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_snapshot",
+        lambda *_args, **_kwargs: pytest.fail("snapshot loader must not run"),
+    )
+    monkeypatch.setattr(
+        server_module,
+        "serve_retained_context",
+        lambda *_args, **_kwargs: pytest.fail("replaced source must not be served"),
+    )
+
+    with pytest.raises(
+        cli.CLIError,
+        match="expected repository root authority changed during capture",
+    ):
+        cli._run_mcp_retained(args)
+
+    assert replacement_complete
+    assert len(authorities) == 1
+    assert authorities[0].closed  # type: ignore[attr-defined]
+    assert object_store.closed
+    assert catalog.closed
+    assert len(topologies) == 1
+    assert topologies[0].closed  # type: ignore[attr-defined]
+    assert topologies[0].repository_authority.closed  # type: ignore[attr-defined]
+
+
+def test_mcp_retained_source_replacement_during_provider_probe_blocks_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.mcp.retained_context as retained_context_module
+    import codenib.mcp.server as server_module
+
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    candidate = tmp_path / "candidate-repository"
+    candidate.mkdir()
+    displaced = tmp_path / "displaced-repository"
+    source_text = "VALUE = 'IDENTICAL_PROVIDER_REPLACEMENT'\n"
+    (repository / "sample.py").write_text(source_text, encoding="utf-8")
+    (candidate / "sample.py").write_text(source_text, encoding="utf-8")
+    args = cli.build_parser().parse_args(_retained_mcp_argv(tmp_path, repo=repository))
+    captured_authorities: list[object] = []
+    real_pin = source_fingerprint_module.pin_repository_source_root
+
+    def capture_pin(*values: object, **kwargs: object):
+        authority = real_pin(*values, **kwargs)
+        captured_authorities.append(authority)
+        return authority
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            repository.rename(displaced)
+            candidate.rename(repository)
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("replaced repository must fail before retained storage or loading")
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "pin_repository_source_root",
+        capture_pin,
+    )
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(storage_module, "LocalCAS", unexpected)
+    monkeypatch.setattr(storage_module, "SQLiteCatalog", unexpected)
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_ref",
+        unexpected,
+    )
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_snapshot",
+        unexpected,
+    )
+    monkeypatch.setattr(server_module, "serve_retained_context", unexpected)
+
+    with pytest.raises(
+        cli.CLIError,
+        match="repository source authority changed",
+    ):
+        cli._run_mcp_retained(args)
+
+    assert len(captured_authorities) == 1
+    assert captured_authorities[0].closed  # type: ignore[attr-defined]
+
+
+def test_mcp_retained_cancellation_closes_source_storage_and_topology(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.mcp.retained_context as retained_context_module
+    import codenib.mcp.server as server_module
+
+    catalog_path = tmp_path / "catalog.sqlite3"
+    catalog_path.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    args = cli.build_parser().parse_args(_retained_mcp_argv(tmp_path, repo=repository))
+    primary = KeyboardInterrupt("retained MCP load cancelled")
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            pass
+
+    class Resource:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class Source(Resource):
+        pass
+
+    object_store = Resource()
+    catalog = Resource()
+    source = Source()
+    owners: list[object] = []
+    topologies: list[object] = []
+    real_topology = cli._require_retained_materialization_topology
+
+    def capture_topology(*values: object, **kwargs: object):
+        topology = real_topology(*values, **kwargs)
+        topologies.append(topology)
+        return topology
+
+    def cancel_load(*_args: object, **kwargs: object) -> None:
+        owner = kwargs["runtime_owner"]
+        owners.append(owner)
+        owner._source_owner.retain(source)  # type: ignore[attr-defined]  # noqa: SLF001
+        raise primary
+
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_require_retained_materialization_topology",
+        capture_topology,
+    )
+    monkeypatch.setattr(
+        storage_module, "LocalCAS", lambda *_args, **_kwargs: object_store
+    )
+    monkeypatch.setattr(
+        storage_module, "SQLiteCatalog", lambda *_args, **_kwargs: catalog
+    )
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_ref",
+        cancel_load,
+    )
+    monkeypatch.setattr(
+        retained_context_module,
+        "load_retained_server_context_snapshot",
+        lambda *_args, **_kwargs: pytest.fail("snapshot loader must not run"),
+    )
+    monkeypatch.setattr(
+        server_module,
+        "serve_retained_context",
+        lambda *_args, **_kwargs: pytest.fail("cancelled context must not be served"),
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        cli._run_mcp_retained(args)
+
+    assert caught.value is primary
+    assert len(owners) == 1
+    assert owners[0].closed  # type: ignore[attr-defined]
+    assert source.closed
+    assert object_store.closed
+    assert catalog.closed
+    assert len(topologies) == 1
+    assert topologies[0].closed  # type: ignore[attr-defined]
+    assert topologies[0].repository_authority.closed  # type: ignore[attr-defined]
 
 
 def test_mcp_runtime_probe_checks_the_complete_codegraph_runtime(

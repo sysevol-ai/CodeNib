@@ -21,11 +21,13 @@ from codenib.mcp import server as server_module
 from codenib.mcp.context import ServerContext
 from codenib.mcp.retained_context import RetainedServerContextOwner
 from codenib.mcp.tools.search import search_bm25_impl
+from codenib.mcp.tools.source import read_source_impl
 from codenib.paths import repo_index_dir
 from codenib.storage import LocalCAS, SQLiteCatalog, StorageIntegrityError
 
 _REPOSITORY_KEY = "owner/retained-mcp-route"
 _MARKER = "PRODUCTION_RETAINED_MCP_ROUTE"
+_SOURCE_TEXT = f"def retained_mcp_marker():\n    return {_MARKER!r}\n"
 
 
 def _git_commit(repository: Path) -> str:
@@ -76,6 +78,7 @@ def _capture_retained_mcp_cli_state() -> dict[str, object]:
 
     required = (
         "runtime_owner",
+        "repository_authority_owner",
         "topology_owner",
         "object_store_owner",
         "catalog_owner",
@@ -101,10 +104,16 @@ def _capture_retained_mcp_cli_state() -> dict[str, object]:
     return captured
 
 
+@pytest.mark.parametrize(
+    "source_bound",
+    (False, True),
+    ids=("query-only", "source-bound"),
+)
 def test_index_publish_retained_then_mcp_cold_starts_real_bm25(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    source_bound: bool,
 ) -> None:
     # Other MCP tests exercise the legacy module-global startup path.  Keep
     # this cold-start lifecycle isolated while still requiring the retained
@@ -112,10 +121,7 @@ def test_index_publish_retained_then_mcp_cold_starts_real_bm25(
     monkeypatch.setattr(server_module, "_ctx", None)
     repository = tmp_path / "repository"
     repository.mkdir(mode=0o700)
-    (repository / "sample.py").write_text(
-        f"def retained_mcp_marker():\n    return {_MARKER!r}\n",
-        encoding="utf-8",
-    )
+    (repository / "sample.py").write_text(_SOURCE_TEXT, encoding="utf-8")
     commit = _git_commit(repository)
 
     workspace = tmp_path / "workspace"
@@ -169,6 +175,7 @@ def test_index_publish_retained_then_mcp_cold_starts_real_bm25(
     materialized_output = workspace / "retained-mcp-context"
     captured: dict[str, object] = {}
     installed_contexts: list[ServerContext] = []
+    installed_sources: list[object] = []
 
     def run_stdio(*, transport: str) -> None:
         assert transport == "stdio"
@@ -180,12 +187,24 @@ def test_index_publish_retained_then_mcp_cold_starts_real_bm25(
         assert context.errors == {}
         assert context.artifact is not None
         assert context.artifact["verified"] is True
+        assert context.source_verified is source_bound
+        assert context.source_verification_scope == (
+            "content-bytes" if source_bound else None
+        )
+        assert context.commit_verified is False
 
         run_state = _capture_retained_mcp_cli_state()
         captured.update(run_state)
         for name in ("topology_owner", "object_store_owner", "catalog_owner"):
             assert run_state[name].closed  # type: ignore[attr-defined]
+        assert run_state["repository_authority_owner"].closed  # type: ignore[attr-defined]
         assert run_state["topology"].closed  # type: ignore[attr-defined]
+        repository_authority = run_state["topology"].repository_authority  # type: ignore[attr-defined]
+        if source_bound:
+            assert repository_authority is not None
+            assert repository_authority.closed
+        else:
+            assert repository_authority is None
         with pytest.raises(StorageIntegrityError, match="closed"):
             run_state["object_store"].has("0" * 64)  # type: ignore[attr-defined]
         with pytest.raises(sqlite3.ProgrammingError):
@@ -197,9 +216,20 @@ def test_index_publish_retained_then_mcp_cold_starts_real_bm25(
         assert type(runtime_owner) is RetainedServerContextOwner
         assert runtime_owner.state == "active"
         assert runtime_owner.context is context
+        assert runtime_owner._source_owner.closed is (not source_bound)  # noqa: SLF001
+        if source_bound:
+            assert context._source_binding is not None  # noqa: SLF001
+            assert not context._source_binding.closed  # noqa: SLF001
+            installed_sources.append(context._source_binding)  # noqa: SLF001
+        else:
+            assert context._source_binding is None  # noqa: SLF001
         results = search_bm25_impl(context, _MARKER, top_k=5)
         assert results
         assert results[0]["file"] == "sample.py"
+        if source_bound:
+            assert results[0]["content"] == _SOURCE_TEXT
+        else:
+            assert results[0].get("content") is None
         assert context.bm25 is not None
         normalized_marker = _MARKER.lower().replace("_", " ")
         assert any(
@@ -207,6 +237,22 @@ def test_index_publish_retained_then_mcp_cold_starts_real_bm25(
             for document in context.bm25.documents
         )
         assert search_bm25_impl(context, "retained_mcp_marker", top_k=1)
+        if source_bound:
+            source = read_source_impl(context, "sample.py", 1, 2)
+            assert source["file"] == "sample.py"
+            assert source["content"] == _SOURCE_TEXT
+            assert source["source"] == {
+                "repository": _REPOSITORY_KEY,
+                "commit": commit,
+                "source_fingerprint": context.manifest.source_fingerprint,
+                "verified": True,
+                "verification_scope": "content-bytes",
+                "commit_verified": False,
+                "checkout_state": "not-attested",
+            }
+        else:
+            with pytest.raises(RuntimeError, match="source reads are unavailable"):
+                read_source_impl(context, "sample.py", 1, 2)
         assert server_module.get_context() is context
         assert runtime_owner.state == "active"
         assert runtime_owner.context is context
@@ -215,25 +261,26 @@ def test_index_publish_retained_then_mcp_cold_starts_real_bm25(
 
     monkeypatch.setattr(server_module.mcp, "run", run_stdio)
     assert server_module._ctx is None
-    mcp_args = parser.parse_args(
-        [
-            "mcp",
-            "--catalog",
-            os.fspath(catalog_path),
-            "--cas-root",
-            os.fspath(cas_root),
-            "--workspace-root",
-            os.fspath(workspace),
-            "--repository",
-            _REPOSITORY_KEY,
-            "--ref",
-            "main",
-            "--expected-generation",
-            "1",
-            "--output",
-            os.fspath(materialized_output),
-        ]
-    )
+    mcp_command = [
+        "mcp",
+        "--catalog",
+        os.fspath(catalog_path),
+        "--cas-root",
+        os.fspath(cas_root),
+        "--workspace-root",
+        os.fspath(workspace),
+        "--repository",
+        _REPOSITORY_KEY,
+        "--ref",
+        "main",
+        "--expected-generation",
+        "1",
+        "--output",
+        os.fspath(materialized_output),
+    ]
+    if source_bound:
+        mcp_command.extend(("--repo", os.fspath(repository)))
+    mcp_args = parser.parse_args(mcp_command)
     assert mcp_args.handler is cli_module._run_mcp
     assert mcp_args.handler(mcp_args) == 0
 
@@ -246,7 +293,10 @@ def test_index_publish_retained_then_mcp_cold_starts_real_bm25(
     assert type(runtime_owner) is RetainedServerContextOwner
     assert runtime_owner.closed
     assert runtime_owner._context_close_complete  # noqa: SLF001
+    assert runtime_owner._source_owner.closed  # noqa: SLF001
     assert runtime_owner._receipt_owner.closed  # noqa: SLF001
+    assert len(installed_sources) == int(source_bound)
+    assert all(source.closed for source in installed_sources)  # type: ignore[attr-defined]
     with pytest.raises(RuntimeError, match="closed"):
         runtime_owner.context
 
@@ -254,6 +304,7 @@ def test_index_publish_retained_then_mcp_cold_starts_real_bm25(
         owner = captured[name]
         assert type(owner) is cli_module._RetainedMaterializationResourceOwner
         assert owner.closed
+    assert captured["repository_authority_owner"].closed  # type: ignore[attr-defined]
     assert captured["topology"].closed  # type: ignore[attr-defined]
 
     object_store = captured["object_store"]
