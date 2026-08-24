@@ -63,6 +63,7 @@ from codenib.source_fingerprint import (
     RepositoryChangedError,
     capture_repository_source,
     fingerprint_repository,
+    pin_repository_source_root,
 )
 
 
@@ -1190,6 +1191,54 @@ def test_bind_context_artifact_reader_loads_source_without_path_reopen(
         source_owner.close()
     assert source.closed
     assert source_owner.closed
+
+
+def test_bind_context_artifact_reader_threads_expected_root_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+    source_owner = SourceBindingCleanupOwner()
+    expected = pin_repository_source_root(repo)
+    real_capture = runtime_module.capture_repository_source
+    observed: list[object] = []
+
+    def capture(*args: object, **kwargs: object):
+        observed.append(kwargs.get("expected_root_authority"))
+        return real_capture(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_module, "capture_repository_source", capture)
+
+    def consume(publication: PublicationDirectoryReader):
+        return bind_context_artifact_reader(
+            receipt,
+            publication,
+            repo,
+            expected_root=artifact,
+            expected_ownership=ownership,
+            source_cleanup_owner=source_owner,
+            expected_root_authority=expected,
+            expected_repository="example/project",
+            expected_commit=commit,
+        )
+
+    try:
+        binding = reopen_authenticated_directory(
+            artifact,
+            ownership,
+            consume,
+        )
+        source = binding.source_binding
+        assert source is not None
+        assert observed == [expected]
+        expected.close()
+        assert source.read_bytes("sample.py", max_bytes=1024) == b"VALUE = 1\n"
+    finally:
+        if not expected.closed:
+            expected.close()
+        source_owner.close()
 
 
 def test_bind_context_artifact_reader_requires_exact_empty_cleanup_owner(

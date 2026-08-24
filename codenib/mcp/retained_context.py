@@ -59,7 +59,10 @@ from ..compiler.manifest_materialization import (
     materialize_retained_repo_manifest_snapshot,
 )
 from ..compiler.manifest_storage import DEFAULT_MAX_MANIFEST_BYTES
-from ..source_fingerprint import lexical_repository_path
+from ..source_fingerprint import (
+    RepositorySourceRootAuthority,
+    lexical_repository_path,
+)
 from ..storage.models import NamespaceIdentity
 from ..storage.protocols import ReceiptRetainingObjectStore, RetainedSnapshotCatalog
 from ..storage.view_bundle import (
@@ -600,6 +603,7 @@ def _cross_check_binding(
     *,
     repo_path: str | Path | None,
     source_cleanup_owner: SourceBindingCleanupOwner,
+    expected_root_authority: RepositorySourceRootAuthority | None,
 ) -> ContextArtifactBinding:
     """Verify and cross-bind every data and authority projection."""
 
@@ -663,6 +667,7 @@ def _cross_check_binding(
             expected_root=root,
             expected_ownership=ownership,
             source_cleanup_owner=source_cleanup_owner,
+            expected_root_authority=expected_root_authority,
             expected_repository=artifact_result.repository,
             expected_commit=artifact_result.commit,
         )
@@ -704,6 +709,7 @@ def _activate_materialization(
     runtime_owner: RetainedServerContextOwner,
     *,
     repo_path: str | Path | None,
+    expected_root_authority: RepositorySourceRootAuthority | None,
 ) -> RetainedServerContextResult:
     """Consume one publication reader and activate its selected runtime."""
 
@@ -719,6 +725,7 @@ def _activate_materialization(
             publication,
             repo_path=repo_path,
             source_cleanup_owner=runtime_owner._source_owner,
+            expected_root_authority=expected_root_authority,
         )
         if "bm25" not in artifact_result.views:
             raise ValueError("retained MCP contexts require a selected BM25 view")
@@ -794,6 +801,7 @@ def _load_retained_server_context(
     snapshot_id: str | None,
     expected_generation: int | None,
     repo_path: str | Path | None,
+    expected_root_authority: RepositorySourceRootAuthority | None,
 ) -> RetainedServerContextResult:
     if type(runtime_owner) is not RetainedServerContextOwner:
         raise TypeError("runtime_owner must be a RetainedServerContextOwner")
@@ -802,6 +810,16 @@ def _load_retained_server_context(
     # Fail before catalog/object-store/provider work, while leaving the actual
     # source capture inside the authenticated publication-reader callback.
     resolved_repo_path = _optional_lexical_repository_path(repo_path)
+    if expected_root_authority is not None:
+        if type(expected_root_authority) is not RepositorySourceRootAuthority:
+            raise TypeError(
+                "expected_root_authority must be a RepositorySourceRootAuthority"
+            )
+        if resolved_repo_path is None:
+            raise ValueError("expected_root_authority requires repo_path")
+        expected_root_authority.verify()
+        if expected_root_authority.root != resolved_repo_path:
+            raise ValueError("expected_root_authority differs from repo_path")
 
     reservation = object()
     cleanup = (
@@ -831,6 +849,7 @@ def _load_retained_server_context(
                 receipt_owner,
                 runtime_owner,
                 repo_path=resolved_repo_path,
+                expected_root_authority=expected_root_authority,
             ),
         )
 
@@ -847,6 +866,7 @@ def load_retained_server_context_ref(
     ref_name: str = DEFAULT_REF_NAME,
     expected_generation: int | None = None,
     repo_path: str | Path | None = None,
+    expected_root_authority: RepositorySourceRootAuthority | None = None,
     max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
     max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
     max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
@@ -886,6 +906,7 @@ def load_retained_server_context_ref(
         snapshot_id=None,
         expected_generation=expected_generation,
         repo_path=repo_path,
+        expected_root_authority=expected_root_authority,
     )
 
 
@@ -900,6 +921,7 @@ def load_retained_server_context_snapshot(
     runtime_owner: RetainedServerContextOwner,
     namespace_name: str = DEFAULT_NAMESPACE_NAME,
     repo_path: str | Path | None = None,
+    expected_root_authority: RepositorySourceRootAuthority | None = None,
     max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
     max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
     max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
@@ -938,6 +960,7 @@ def load_retained_server_context_snapshot(
         snapshot_id=snapshot_id,
         expected_generation=None,
         repo_path=repo_path,
+        expected_root_authority=expected_root_authority,
     )
 
 

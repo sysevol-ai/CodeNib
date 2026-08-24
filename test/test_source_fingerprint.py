@@ -36,11 +36,13 @@ from codenib.source_fingerprint import (
     SOURCE_FINGERPRINT_VERSION,
     RepositoryChangedError,
     RepositorySourceBinding,
+    RepositorySourceRootAuthority,
     capture_repository_source,
     fingerprint_repository,
     fingerprint_repository_v1_for_diagnostics,
     is_legacy_source_fingerprint_v1,
     is_secure_source_fingerprint_v2,
+    pin_repository_source_root,
     repository_source_is_dirty,
     source_fingerprint_version,
 )
@@ -2320,16 +2322,21 @@ def test_legacy_manifest_v11_compat_identity_is_exact_and_explicit(
     assert legacy.file_count == current.file_count == 1
     assert legacy.value != current.value
 
+    expected = pin_repository_source_root(tmp_path)
     binding = source_fingerprint_module._capture_repository_source_legacy_manifest_v11(
-        tmp_path
+        tmp_path,
+        expected_root_authority=expected,
     )
     try:
         snapshot = binding.authenticated_identity_snapshot()
         assert snapshot.fingerprint == legacy.value
         assert snapshot.source_selection is None
+        expected.close()
         assert binding.read_bytes("module.py", max_bytes=64) == b"VALUE = 1\n"
     finally:
         binding.close()
+        if not expected.closed:
+            expected.close()
 
 
 def test_fingerprint_rejects_non_selection_policy(tmp_path: Path) -> None:
@@ -2339,6 +2346,77 @@ def test_fingerprint_rejects_non_selection_policy(tmp_path: Path) -> None:
         fingerprint_repository(tmp_path, selection=None)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="RepositorySourceSelection"):
         capture_repository_source(tmp_path, selection=None)  # type: ignore[arg-type]
+
+
+def test_windows_expected_root_authority_uses_binding_only_casefolded_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    real_open_relative = api.open_relative
+
+    def casefold_open_relative(
+        parent_handle: int,
+        name: str,
+        **kwargs: object,
+    ) -> int:
+        parent_id = api.handles[parent_handle]
+        matches = [
+            candidate
+            for candidate in api._children(parent_id)
+            if candidate.casefold() == name.casefold()
+        ]
+        assert len(matches) == 1
+        return real_open_relative(parent_handle, matches[0], **kwargs)
+
+    def open_fake_root(
+        root: Path,
+        *,
+        api: object | None = None,
+        cleanup_slot: object | None = None,
+    ):
+        selected = api if api is not None else fake_api
+        return contained_source_module._open_windows_pinned_repository_root(
+            root,
+            api=selected,
+            cleanup_slot=cleanup_slot,
+        )
+
+    fake_api = api
+    monkeypatch.setattr(api, "open_relative", casefold_open_relative)
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_open_windows_pinned_repository_root",
+        open_fake_root,
+    )
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "sys",
+        SimpleNamespace(platform="win32", exc_info=sys.exc_info),
+    )
+
+    expected = pin_repository_source_root(Path(r"C:\REPO"))
+    api.nodes[api.root_id]["version"] = 2
+    binding = capture_repository_source(
+        Path(r"c:\repo"),
+        expected_root_authority=expected,
+    )
+    try:
+        assert binding.read_bytes("source.py", max_bytes=1024) == b"VALUE = 1\n"
+    finally:
+        binding.close()
+
+    replacement = api.add_directory()
+    api.add_file(replacement, "source.py", b"VALUE = 1\n")
+    api._children(api.volume_id)["repo"] = replacement
+    try:
+        with pytest.raises(RepositoryChangedError, match="authority changed"):
+            capture_repository_source(
+                Path(r"c:\repo"),
+                expected_root_authority=expected,
+            )
+    finally:
+        expected.close()
 
 
 def test_windows_fake_regular_tree_matches_posix_v1_and_v2(
@@ -4971,3 +5049,302 @@ def test_windows_real_source_failure_closes_all_handles_node(
     after = handle_count()
 
     assert after <= before + 2
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="exercises POSIX directory fds")
+def test_expected_root_authority_handoff_is_independent_and_binding_only(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent"
+    repo = parent / "repo"
+    repo.mkdir(parents=True)
+    (repo / "source.py").write_bytes(b"VALUE = 1\n")
+    expected = pin_repository_source_root(repo)
+
+    parent_before = parent.stat()
+    root_before = repo.stat()
+    os.utime(
+        parent,
+        ns=(parent_before.st_atime_ns, parent_before.st_mtime_ns + 1_000_000),
+    )
+    os.utime(
+        repo,
+        ns=(root_before.st_atime_ns, root_before.st_mtime_ns + 1_000_000),
+    )
+
+    binding = capture_repository_source(
+        repo,
+        expected_root_authority=expected,
+    )
+    try:
+        assert type(expected) is RepositorySourceRootAuthority
+        assert binding._posix_authority is not expected._posix_authority
+        expected.close()
+        assert binding.read_bytes("source.py", max_bytes=1024) == b"VALUE = 1\n"
+    finally:
+        if not expected.closed:
+            expected.close()
+        binding.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="exercises POSIX directory fds")
+@pytest.mark.parametrize("replacement", ["root", "ancestor"])
+def test_expected_root_authority_rejects_identical_replacement(
+    tmp_path: Path,
+    replacement: str,
+) -> None:
+    parent = tmp_path / "parent"
+    repo = parent / "repo"
+    repo.mkdir(parents=True)
+    payload = b"VALUE = 1\n"
+    (repo / "source.py").write_bytes(payload)
+    expected = pin_repository_source_root(repo)
+
+    if replacement == "root":
+        parked = parent / "parked-repo"
+        repo.rename(parked)
+        repo.mkdir()
+    else:
+        parked = tmp_path / "parked-parent"
+        parent.rename(parked)
+        repo.mkdir(parents=True)
+    (repo / "source.py").write_bytes(payload)
+
+    try:
+        with pytest.raises(RepositoryChangedError, match="authority changed"):
+            capture_repository_source(
+                repo,
+                expected_root_authority=expected,
+            )
+    finally:
+        expected.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="exercises POSIX directory fds")
+def test_expected_root_authority_validates_type_root_and_closed_state(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "source.py").write_bytes(b"FIRST\n")
+    (second / "source.py").write_bytes(b"SECOND\n")
+
+    with pytest.raises(TypeError, match="RepositorySourceRootAuthority"):
+        capture_repository_source(
+            first,
+            expected_root_authority=object(),  # type: ignore[arg-type]
+        )
+
+    foreign = pin_repository_source_root(second)
+    try:
+        with pytest.raises(ValueError, match="differs from root"):
+            capture_repository_source(first, expected_root_authority=foreign)
+    finally:
+        foreign.close()
+
+    closed = pin_repository_source_root(first)
+    closed.close()
+    with pytest.raises(RepositoryChangedError, match="authority changed"):
+        capture_repository_source(first, expected_root_authority=closed)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="exercises POSIX directory fds")
+def test_pin_root_installs_cleanup_slot_before_open_and_preserves_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    owner = SourceBindingCleanupOwner()
+    interruption = KeyboardInterrupt("injected root pin cancellation")
+
+    def interrupt_open(*_args: object, **_kwargs: object) -> int:
+        assert not owner.closed
+        assert len(owner._sources) == 1
+        raise interruption
+
+    monkeypatch.setattr(source_fingerprint_module.os, "open", interrupt_open)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        pin_repository_source_root(repo, _source_owner=owner.retain)
+
+    assert caught.value is interruption
+    assert not owner.closed
+    assert len(owner._sources) == 1
+    owner.close()
+    assert owner.closed
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="exercises POSIX directory fds")
+def test_pin_root_cancellation_retains_acquired_authority_for_cleanup_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    owner = SourceBindingCleanupOwner()
+    interruption = KeyboardInterrupt("injected completed root pin")
+    cleanup_failure = OSError(errno.EIO, "injected root authority close failure")
+    real_close = RepositorySourceRootAuthority.close
+
+    def interrupt_verify(_authority: RepositorySourceRootAuthority) -> None:
+        raise interruption
+
+    def fail_close(_authority: RepositorySourceRootAuthority) -> None:
+        raise cleanup_failure
+
+    monkeypatch.setattr(RepositorySourceRootAuthority, "verify", interrupt_verify)
+    monkeypatch.setattr(RepositorySourceRootAuthority, "close", fail_close)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        pin_repository_source_root(repo, _source_owner=owner.retain)
+
+    assert caught.value is interruption
+    assert caught.value.__cause__ is cleanup_failure
+    assert not owner.closed
+    assert len(owner.pending_sources) == 1
+    assert type(owner.pending_sources[0]) is RepositorySourceRootAuthority
+    assert caught.value.source_cleanup_owner is owner._sources[0]
+
+    monkeypatch.setattr(RepositorySourceRootAuthority, "close", real_close)
+    owner.close()
+    assert owner.closed
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="exercises POSIX directory fds")
+def test_expected_root_capture_lease_serializes_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_bytes(b"VALUE = 1\n")
+    expected = pin_repository_source_root(repo)
+    scan_entered = threading.Event()
+    allow_scan = threading.Event()
+    close_finished = threading.Event()
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    bindings: list[RepositorySourceBinding] = []
+    failures: list[BaseException] = []
+    scan_calls = 0
+
+    def blocking_scan(*args: object, **kwargs: object):
+        nonlocal scan_calls
+        scan_calls += 1
+        if scan_calls == 1:
+            scan_entered.set()
+            if not allow_scan.wait(timeout=5):
+                raise AssertionError("timed out waiting to finish repository scan")
+        return real_scan(*args, **kwargs)
+
+    def capture() -> None:
+        try:
+            bindings.append(
+                capture_repository_source(
+                    repo,
+                    expected_root_authority=expected,
+                )
+            )
+        except BaseException as exc:  # noqa: B036 - report thread failure
+            failures.append(exc)
+
+    def close() -> None:
+        try:
+            expected.close()
+        except BaseException as exc:  # noqa: B036 - report thread failure
+            failures.append(exc)
+        finally:
+            close_finished.set()
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        blocking_scan,
+    )
+    capture_thread = threading.Thread(target=capture)
+    close_thread = threading.Thread(target=close)
+    capture_thread.start()
+    assert scan_entered.wait(timeout=2)
+    close_thread.start()
+    assert not close_finished.wait(timeout=0.1)
+    allow_scan.set()
+    capture_thread.join(timeout=5)
+    close_thread.join(timeout=5)
+
+    try:
+        assert not capture_thread.is_alive()
+        assert not close_thread.is_alive()
+        assert failures == []
+        assert len(bindings) == 1
+        assert expected.closed
+        assert bindings[0].read_bytes("source.py", max_bytes=1024) == b"VALUE = 1\n"
+    finally:
+        allow_scan.set()
+        if capture_thread.is_alive():
+            capture_thread.join(timeout=5)
+        if close_thread.is_alive():
+            close_thread.join(timeout=5)
+        if not expected.closed:
+            expected.close()
+        for binding in bindings:
+            binding.close()
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "fork") or sys.platform == "win32",
+    reason="requires POSIX fork and directory fds",
+)
+def test_expected_root_child_close_revokes_without_inherited_lock(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_bytes(b"VALUE = 1\n")
+    expected = pin_repository_source_root(repo)
+    held = threading.Event()
+    release = threading.Event()
+
+    def hold_lock() -> None:
+        expected._lock.acquire()
+        held.set()
+        release.wait(timeout=10)
+        expected._lock.release()
+
+    thread = threading.Thread(target=hold_lock)
+    thread.start()
+    assert held.wait(timeout=2)
+    read_descriptor, write_descriptor = os.pipe()
+    child = os.fork()
+    if child == 0:  # pragma: no cover - child reports through the pipe
+        try:
+            os.close(read_descriptor)
+            try:
+                expected.close()
+            except RuntimeError as exc:
+                if "cannot cross processes" not in str(exc):
+                    raise
+            resources = expected._posix_authority._resources
+            os.write(
+                write_descriptor,
+                b"1" if expected.closed and not resources else b"0",
+            )
+        except BaseException:  # noqa: B036 - report child failure through pipe
+            os.write(write_descriptor, b"E")
+        finally:
+            os.close(write_descriptor)
+            os._exit(0)
+
+    os.close(write_descriptor)
+    try:
+        ready, _, _ = select.select([read_descriptor], [], [], 3)
+        if not ready:
+            os.kill(child, signal.SIGKILL)
+            pytest.fail("fork child deadlocked on inherited root authority lock")
+        assert os.read(read_descriptor, 1) == b"1"
+    finally:
+        os.close(read_descriptor)
+        release.set()
+        thread.join(timeout=2)
+        os.waitpid(child, 0)
+        expected.verify()
+        expected.close()

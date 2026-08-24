@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
+import codenib.artifacts.runtime as runtime_module
 import codenib.mcp.retained_context as retained_context_module
 from codenib.compiler.manifest import RepoManifest
 from codenib.mcp.context import ServerContext
@@ -23,6 +24,7 @@ from codenib.mcp.retained_context import (
     load_retained_server_context_ref,
     load_retained_server_context_snapshot,
 )
+from codenib.source_fingerprint import pin_repository_source_root
 from codenib.storage import PublishConflict
 from codenib.storage.models import NamespaceIdentity, RepositoryIdentity
 
@@ -161,6 +163,52 @@ def test_loads_retained_ref_with_reader_bound_source(
         assert owner.closed
         assert owner._source_owner.closed
         assert captured_sources and captured_sources[0].closed
+
+
+def test_retained_loader_threads_expected_root_authority_to_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (fixture, imported, object_store, catalog):
+        owner = RetainedServerContextOwner()
+        destination = tmp_path / "context"
+        expected = pin_repository_source_root(fixture.repository)
+        real_capture = runtime_module.capture_repository_source
+        observed: list[object] = []
+
+        def capture(*args: object, **kwargs: object):
+            observed.append(kwargs.get("expected_root_authority"))
+            return real_capture(*args, **kwargs)
+
+        monkeypatch.setattr(runtime_module, "capture_repository_source", capture)
+        try:
+            load_retained_server_context_ref(
+                "owner/repo",
+                destination,
+                catalog=catalog,
+                object_store=object_store,
+                workspace_provider=_TestWorkspaceProvider(),
+                runtime_owner=owner,
+                expected_generation=imported.generation,
+                repo_path=fixture.repository,
+                expected_root_authority=expected,
+            )
+
+            assert observed == [expected]
+            expected.close()
+            assert (
+                owner.context.read_source_bytes("sample.py", max_bytes=1024)
+                == b"VALUE = 1\n"
+            )
+        finally:
+            if not expected.closed:
+                expected.close()
+            owner.close()
+        assert owner.closed
+        assert owner._source_owner.closed
 
 
 def test_loads_retained_snapshot_with_vector_native_inert(
@@ -346,6 +394,95 @@ def test_invalid_source_repo_path_fails_before_materialization(
     materialize.assert_not_called()
     assert owner.state == "empty"
     owner.close()
+    assert owner.closed
+
+
+@pytest.mark.parametrize(
+    ("failure", "error_type", "message"),
+    [
+        ("wrong-type", TypeError, "RepositorySourceRootAuthority"),
+        ("closed", RuntimeError, "closed"),
+        ("wrong-root", ValueError, "differs from repo_path"),
+    ],
+)
+def test_invalid_expected_root_authority_fails_before_materialization(
+    tmp_path: Path,
+    failure: str,
+    error_type: type[BaseException],
+    message: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    authority: object
+    if failure == "wrong-type":
+        authority = object()
+    elif failure == "closed":
+        authority = pin_repository_source_root(repo)
+        authority.close()  # type: ignore[attr-defined]
+    else:
+        authority = pin_repository_source_root(foreign)
+
+    owner = RetainedServerContextOwner()
+    try:
+        with (
+            patch.object(
+                retained_context_module,
+                "materialize_retained_repo_manifest_ref",
+            ) as materialize,
+            pytest.raises(error_type, match=message),
+        ):
+            load_retained_server_context_ref(
+                "owner/repo",
+                tmp_path / "context",
+                catalog=object(),  # type: ignore[arg-type]
+                object_store=object(),  # type: ignore[arg-type]
+                workspace_provider=object(),  # type: ignore[arg-type]
+                runtime_owner=owner,
+                repo_path=repo,
+                expected_root_authority=authority,  # type: ignore[arg-type]
+            )
+
+        materialize.assert_not_called()
+        assert owner.state == "empty"
+    finally:
+        close = getattr(authority, "close", None)
+        closed = bool(getattr(authority, "closed", True))
+        if callable(close) and not closed:
+            close()
+        owner.close()
+    assert owner.closed
+
+
+def test_source_repo_without_expected_authority_reaches_materializer(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    owner = RetainedServerContextOwner()
+    failure = RuntimeError("materializer reached")
+
+    with (
+        patch.object(
+            retained_context_module,
+            "materialize_retained_repo_manifest_ref",
+            side_effect=failure,
+        ) as materialize,
+        pytest.raises(RuntimeError, match="materializer reached") as caught,
+    ):
+        load_retained_server_context_ref(
+            "owner/repo",
+            tmp_path / "context",
+            catalog=object(),  # type: ignore[arg-type]
+            object_store=object(),  # type: ignore[arg-type]
+            workspace_provider=object(),  # type: ignore[arg-type]
+            runtime_owner=owner,
+            repo_path=repo,
+        )
+
+    assert caught.value is failure
+    materialize.assert_called_once()
     assert owner.closed
 
 

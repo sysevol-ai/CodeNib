@@ -15,6 +15,7 @@ from ..repository_source_selection import RepositorySourceSelection
 from ..source_fingerprint import (
     RepositorySourceBinding,
     RepositorySourceIdentitySnapshot,
+    RepositorySourceRootAuthority,
     SourceFingerprint,
 )
 from .manifest import (
@@ -108,6 +109,7 @@ def capture_repository_source_for_manifest(
     *,
     exclude_roots: Iterable[str | Path] = (),
     _source_owner: Callable[[object], None] | None = None,
+    expected_root_authority: RepositorySourceRootAuthority | None = None,
 ) -> RepositorySourceBinding:
     """Capture retained reads using the manifest's persisted policy."""
 
@@ -117,12 +119,14 @@ def capture_repository_source_for_manifest(
             root,
             exclude_roots=exclude_roots,
             _source_owner=_source_owner,
+            expected_root_authority=expected_root_authority,
         )
     return source_fingerprint_module.capture_repository_source(
         root,
         exclude_roots=exclude_roots,
         selection=selection,
         _source_owner=_source_owner,
+        expected_root_authority=expected_root_authority,
     )
 
 

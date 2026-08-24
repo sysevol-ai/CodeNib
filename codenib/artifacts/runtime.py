@@ -50,6 +50,7 @@ from ..repository_filters import (
 from ..repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 from ..source_fingerprint import (
     RepositorySourceBinding,
+    RepositorySourceRootAuthority,
     _SourceLifecycleRLock,
     _SourceLockLease,
     is_secure_source_fingerprint_v2,
@@ -1232,6 +1233,7 @@ def _bind_verified_context_artifact(
     *,
     source_cleanup_owner: SourceBindingCleanupOwner,
     requires_authenticated_reader: bool,
+    expected_root_authority: RepositorySourceRootAuthority | None = None,
 ) -> ContextArtifactBinding:
     """Bind source bytes after an artifact authority has already been verified."""
 
@@ -1246,6 +1248,7 @@ def _bind_verified_context_artifact(
         manifest=artifact.manifest,
         exclude_roots=(artifact.root,),
         _source_owner=source_cleanup_owner.retain,
+        expected_root_authority=expected_root_authority,
     )
     # This is diagnostic provenance only. A mutable Git HEAD cannot be
     # attested by any finite sequence of path reads, so it never gates the
@@ -1432,6 +1435,7 @@ def bind_context_artifact_reader(
     expected_root: str | Path,
     expected_ownership: object,
     source_cleanup_owner: SourceBindingCleanupOwner,
+    expected_root_authority: RepositorySourceRootAuthority | None = None,
     expected_repository: str | None = None,
     expected_commit: str | None = None,
 ) -> ContextArtifactBinding:
@@ -1466,6 +1470,7 @@ def bind_context_artifact_reader(
             repo_path,
             source_cleanup_owner=source_cleanup_owner,
             requires_authenticated_reader=True,
+            expected_root_authority=expected_root_authority,
         )
     except BaseException as exc:  # noqa: B036 - cleanup before propagation
         _raise_context_artifact_bind_failure(exc, source_cleanup_owner)

@@ -51,7 +51,9 @@ from ._windows_fs_authority import WindowsDirectoryEntry as _WindowsDirectoryEnt
 from ._windows_fs_authority import WindowsHandleMetadata as _WindowsHandleMetadata
 from ._windows_fs_authority import WindowsKernelApi as _WindowsKernelApi
 from ._windows_fs_authority import WindowsReparsePoint as _WindowsReparsePoint
-from ._windows_fs_authority import _WindowsHandleCleanup
+from ._windows_fs_authority import (
+    _WindowsHandleCleanup,
+)
 from .repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     repository_path_is_visible,
@@ -2207,7 +2209,7 @@ class _PosixRepositoryRootAuthority:
         return self._closed
 
     def verify(self, expected_root_identity: tuple[int, ...]) -> None:
-        if self._closed:
+        if self._closed or not self._resources:
             raise ValueError("repository root authority is closed")
         anchor = self._resources[0]
         if _binding_identity(os.fstat(anchor)) != self._anchor_identity:
@@ -2224,6 +2226,35 @@ class _PosixRepositoryRootAuthority:
                 raise ValueError("repository root path changed")
         if _version_identity(os.fstat(self.descriptor)) != expected_root_identity:
             raise ValueError("repository root changed while it was retained")
+
+    def verify_binding(self) -> None:
+        """Verify only the live lexical object chain, not directory versions."""
+
+        if self._closed or not self._resources:
+            raise ValueError("repository root authority is closed")
+        anchor = self._resources[0]
+        opened_anchor = os.fstat(anchor)
+        if (
+            _descriptor_ownership_identity(opened_anchor)
+            != self._resource_identities.get(anchor)
+            or _binding_identity(opened_anchor)[:2] != self._anchor_identity[:2]
+        ):
+            raise ValueError("repository root anchor binding changed")
+        for parent, name, child, expected_binding in self._bindings:
+            opened_parent = os.fstat(parent)
+            observed = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            opened = os.fstat(child)
+            if (
+                _descriptor_ownership_identity(opened_parent)
+                != self._resource_identities.get(parent)
+                or _descriptor_ownership_identity(opened)
+                != self._resource_identities.get(child)
+                or _is_link_or_reparse(observed)
+                or not stat.S_ISDIR(observed.st_mode)
+                or _binding_identity(observed)[:2] != expected_binding[:2]
+                or _binding_identity(opened)[:2] != expected_binding[:2]
+            ):
+                raise ValueError("repository root path binding changed")
 
     def close(self) -> None:
         if self._closed:
@@ -2658,6 +2689,374 @@ def _verify_pinned_repository_root(
     authority.verify(expected_identity)
 
 
+class RepositorySourceRootAuthority:
+    """Pre-pinned lexical hierarchy used to authenticate a later source capture."""
+
+    __slots__ = (
+        "_root",
+        "_root_identity",
+        "_posix_authority",
+        "_windows_api",
+        "_windows_authority",
+        "_pid",
+        "_lock",
+        "_process_locks",
+    )
+
+    def __init__(
+        self,
+        *,
+        root: Path,
+        root_identity: tuple[object, ...],
+        posix_authority: _PosixRepositoryRootAuthority | None = None,
+        windows_api: _WindowsKernelApi | None = None,
+        windows_authority: object | None = None,
+    ) -> None:
+        if type(root) is not type(Path()) or type(root_identity) is not tuple:
+            raise TypeError("repository root authority fields must use exact types")
+        if not root_identity:
+            raise ValueError("repository root authority identity is empty")
+        posix = posix_authority is not None
+        windows = windows_api is not None or windows_authority is not None
+        if posix == windows or (
+            windows and (windows_api is None or windows_authority is None)
+        ):
+            raise ValueError("repository root authority backend is invalid")
+        self._root = type(root)(os.fspath(root))
+        self._root_identity = tuple(root_identity)
+        self._posix_authority = posix_authority
+        self._windows_api = windows_api
+        self._windows_authority = windows_authority
+        self._pid = os.getpid()
+        self._lock = _SourceLifecycleRLock()
+        self._process_locks = {self._pid: self._lock}
+
+    @property
+    def root(self) -> Path:
+        self._require_owner_pid()
+        with _SourceLockLease(self._lock) as acquisition_failure:
+            if acquisition_failure is not None:
+                raise acquisition_failure
+            self._verify_unlocked()
+            return type(self._root)(os.fspath(self._root))
+
+    @property
+    def root_identity(self) -> tuple[object, ...]:
+        self._require_owner_pid()
+        with _SourceLockLease(self._lock) as acquisition_failure:
+            if acquisition_failure is not None:
+                raise acquisition_failure
+            self._verify_unlocked()
+            posix = self._posix_authority
+            if posix is not None:
+                observed = tuple(_binding_identity(os.fstat(posix.descriptor))[:2])
+            else:
+                authority = self._windows_authority
+                if authority is None:  # pragma: no cover - constructor invariant
+                    raise RuntimeError("repository root authority backend changed")
+                observed = tuple(authority.identity[:2])  # type: ignore[attr-defined]
+            expected = tuple(self._root_identity[:2])
+            if observed != expected:
+                raise RuntimeError("repository root authority identity changed")
+            return expected
+
+    @property
+    def closed(self) -> bool:
+        if os.getpid() != self._pid:
+            return bool(self._authority.closed)  # type: ignore[attr-defined]
+        with _SourceLockLease(self._lock) as acquisition_failure:
+            if acquisition_failure is not None:
+                raise acquisition_failure
+            return bool(self._authority.closed)  # type: ignore[attr-defined]
+
+    @property
+    def _authority(self) -> object:
+        authority = self._posix_authority or self._windows_authority
+        if authority is None:  # pragma: no cover - constructor invariant
+            raise RuntimeError("repository root authority has no backend")
+        return authority
+
+    def _require_owner_pid(self) -> None:
+        if os.getpid() != self._pid:
+            raise RuntimeError("repository root authority cannot cross processes")
+
+    def _verify_unlocked(self) -> None:
+        if self.closed:
+            raise RuntimeError("repository root authority is closed")
+        posix = self._posix_authority
+        if posix is not None:
+            if posix.root != self._root:
+                raise RuntimeError("repository root authority path changed")
+            posix.verify_binding()
+            return
+        api = self._windows_api
+        authority = self._windows_authority
+        if api is None or authority is None:  # pragma: no cover - invariant
+            raise RuntimeError("repository root authority backend changed")
+        if authority.path != self._root:  # type: ignore[attr-defined]
+            raise RuntimeError("repository root authority path changed")
+        authority.verify_binding()  # type: ignore[attr-defined]
+
+    def verify(self) -> None:
+        self._require_owner_pid()
+        with _SourceLockLease(self._lock) as acquisition_failure:
+            if acquisition_failure is not None:
+                raise acquisition_failure
+            self._verify_unlocked()
+
+    @contextmanager
+    def capture_lease(self) -> Iterator["RepositorySourceRootAuthority"]:
+        """Borrow this exact expected hierarchy across one independent capture."""
+
+        self._require_owner_pid()
+        with _SourceLockLease(self._lock) as acquisition_failure:
+            if acquisition_failure is not None:
+                raise acquisition_failure
+            self._verify_unlocked()
+            yield self
+
+    def _hierarchy_identity(self) -> tuple[object, ...]:
+        """Return the verified anchor-to-root object chain for exact handoff."""
+
+        self.verify()
+        posix = self._posix_authority
+        if posix is not None:
+            return (
+                "posix",
+                os.fspath(self._root),
+                tuple(posix._anchor_identity[:2]),
+                tuple(
+                    (name, tuple(identity[:2]))
+                    for _parent, name, _child, identity in posix._bindings
+                ),
+            )
+        authority = self._windows_authority
+        if authority is None:  # pragma: no cover - constructor invariant
+            raise RuntimeError("repository root authority backend changed")
+        return (
+            "windows",
+            os.fspath(self._root).casefold(),
+            tuple(authority.anchor_identity[:2]),  # type: ignore[attr-defined]
+            tuple(
+                (
+                    observation.name.casefold(),
+                    tuple(observation.child_identity[:2]),
+                )
+                for observation in authority.observations  # type: ignore[attr-defined]
+            ),
+        )
+
+    def _close_with_lock(self, lock: _SourceLifecycleRLock) -> None:
+        with _SourceLockLease(lock) as first_failure:
+            if not self.closed:
+                try:
+                    self._authority.close()  # type: ignore[attr-defined]
+                except BaseException as exc:  # noqa: B036 - retryable owner
+                    first_failure = _remember_interruption(first_failure, exc)
+            if first_failure is not None:
+                raise first_failure
+
+    def close(self) -> None:
+        current_pid = os.getpid()
+        if current_pid == self._pid:
+            self._close_with_lock(self._lock)
+            return
+        child_lock = self._process_locks.setdefault(
+            current_pid,
+            _SourceLifecycleRLock(),
+        )
+        cleanup_failure: BaseException | None = None
+        try:
+            self._close_with_lock(child_lock)
+        except BaseException as exc:  # noqa: B036 - report boundary after cleanup
+            cleanup_failure = exc
+        if current_pid != self._pid:
+            boundary = RuntimeError("repository root authority cannot cross processes")
+            if cleanup_failure is not None:
+                raise boundary from cleanup_failure
+            raise boundary
+
+    def __enter__(self) -> "RepositorySourceRootAuthority":
+        self.verify()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+
+def pin_repository_source_root(
+    root: str | Path,
+    *,
+    _source_owner: Callable[[object], None] | None = None,
+) -> RepositorySourceRootAuthority:
+    """Pin a full lexical root hierarchy for a later exact capture handoff."""
+
+    if _source_owner is not None and not callable(_source_owner):
+        raise TypeError("source owner must be callable")
+    cleanup_slot = _SourceCleanupSlot()
+    if _source_owner is not None:
+        _source_owner(cleanup_slot)
+    try:
+        if sys.platform == "win32":
+            root_path = _lexical_windows_repository_path(root)
+            api, authority, root_identity = _open_windows_pinned_repository_root(
+                root_path,
+                cleanup_slot=cleanup_slot,
+            )
+            expected = RepositorySourceRootAuthority(
+                root=root_path,
+                root_identity=root_identity,
+                windows_api=api,
+                windows_authority=authority,
+            )
+        else:
+            root_path = lexical_repository_path(root)
+            authority = _open_pinned_repository_root(
+                root_path,
+                cleanup_slot=cleanup_slot,
+            )
+            expected = RepositorySourceRootAuthority(
+                root=root_path,
+                root_identity=authority.root_identity,
+                posix_authority=authority,
+            )
+        cleanup_slot.own(expected)
+        expected.verify()
+        return expected
+    except BaseException as primary:  # noqa: B036 - preserve acquisition primary
+        cleanup_failure: BaseException | None = None
+        try:
+            cleanup_slot.close()
+        except BaseException as exc:  # noqa: B036 - retain retryable cleanup
+            cleanup_failure = exc
+        _attach_source_cleanup_owner(primary, cleanup_slot)
+        if cleanup_failure is not None:
+            raise primary from cleanup_failure
+        raise
+
+
+def _require_expected_repository_root_authority(
+    expected: RepositorySourceRootAuthority | None,
+    root: Path,
+) -> RepositorySourceRootAuthority | None:
+    if expected is None:
+        return None
+    if type(expected) is not RepositorySourceRootAuthority:
+        raise TypeError(
+            "expected_root_authority must be a RepositorySourceRootAuthority"
+        )
+    try:
+        expected.verify()
+        expected_root = expected.root
+    except RepositoryChangedError:
+        raise
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RepositoryChangedError(
+            "expected repository root authority changed during capture"
+        ) from exc
+    same_root = (
+        os.fspath(expected_root).casefold() == os.fspath(root).casefold()
+        if sys.platform == "win32"
+        else expected_root == root
+    )
+    if not same_root:
+        raise ValueError("expected repository root authority differs from root")
+    return expected
+
+
+def _posix_root_hierarchy_identity(
+    root: Path,
+    authority: _PosixRepositoryRootAuthority,
+    root_identity: tuple[int, ...],
+) -> tuple[object, ...]:
+    authority.verify(root_identity)
+    return (
+        "posix",
+        os.fspath(root),
+        tuple(authority._anchor_identity[:2]),
+        tuple(
+            (name, tuple(identity[:2]))
+            for _parent, name, _child, identity in authority._bindings
+        ),
+    )
+
+
+def _windows_root_hierarchy_identity(
+    root: Path,
+    api: _WindowsKernelApi,
+    authority: object,
+    root_identity: tuple[object, ...],
+) -> tuple[object, ...]:
+    _verify_windows_pinned_repository_root(
+        api,
+        authority,  # type: ignore[arg-type]
+        root_identity,
+    )
+    return (
+        "windows",
+        os.fspath(root).casefold(),
+        tuple(authority.anchor_identity[:2]),  # type: ignore[attr-defined]
+        tuple(
+            (
+                observation.name.casefold(),
+                tuple(observation.child_identity[:2]),
+            )
+            for observation in authority.observations  # type: ignore[attr-defined]
+        ),
+    )
+
+
+def _require_repository_root_authority_handoff(
+    expected: RepositorySourceRootAuthority | None,
+    observed_identity: Callable[[], tuple[object, ...]],
+    verify_observed: Callable[[], None],
+) -> None:
+    if expected is None:
+        return
+    try:
+        expected.verify()
+        verify_observed()
+        matches = expected._hierarchy_identity() == observed_identity()
+        expected.verify()
+        verify_observed()
+    except RepositoryChangedError:
+        raise
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RepositoryChangedError(
+            "repository root authority changed during capture"
+        ) from exc
+    if not matches:
+        raise RepositoryChangedError(
+            "repository root hierarchy differs from its expected authority"
+        )
+
+
+@contextmanager
+def _expected_repository_root_capture_lease(
+    expected: RepositorySourceRootAuthority | None,
+) -> Iterator[None]:
+    if expected is None:
+        yield
+        return
+    if type(expected) is not RepositorySourceRootAuthority:
+        raise TypeError(
+            "expected_root_authority must be a RepositorySourceRootAuthority"
+        )
+    entered = False
+    try:
+        with expected.capture_lease():
+            entered = True
+            yield
+    except RepositoryChangedError:
+        raise
+    except (OSError, RuntimeError, ValueError) as exc:
+        if entered:
+            raise
+        raise RepositoryChangedError(
+            "expected repository root authority changed during capture"
+        ) from exc
+
+
 def _fingerprint_windows_repository(
     root: str | Path,
     *,
@@ -2669,6 +3068,7 @@ def _fingerprint_windows_repository(
     source_owner: Callable[[object], None] | None = None,
     cleanup_slot: _SourceCleanupSlot | None = None,
     identity_policy: object = _CURRENT_SOURCE_IDENTITY_POLICY,
+    expected_root_authority: RepositorySourceRootAuthority | None = None,
 ) -> SourceFingerprint | RepositorySourceBinding:
     """Hash a Windows repository through one retained HANDLE authority."""
 
@@ -2678,6 +3078,10 @@ def _fingerprint_windows_repository(
             source_owner(cleanup_slot)
     selected_source = _snapshot_repository_source_selection(selection)
     root_path = _lexical_windows_repository_path(root)
+    expected_root_authority = _require_expected_repository_root_authority(
+        expected_root_authority,
+        root_path,
+    )
     hasher = _new_source_fingerprint_hasher(
         version,
         selected_source,
@@ -2695,6 +3099,27 @@ def _fingerprint_windows_repository(
             root_path,
             api=api,
             cleanup_slot=cleanup_slot,
+        )
+
+        def observed_hierarchy() -> tuple[object, ...]:
+            return _windows_root_hierarchy_identity(
+                root_path,
+                selected,  # type: ignore[arg-type]
+                root_authority,
+                root_identity,
+            )
+
+        def verify_observed() -> None:
+            _verify_windows_pinned_repository_root(
+                selected,  # type: ignore[arg-type]
+                root_authority,
+                root_identity,
+            )
+
+        _require_repository_root_authority_handoff(
+            expected_root_authority,
+            observed_hierarchy,
+            verify_observed,
         )
         initial_scan = _scan_pinned_windows_repository(
             selected,
@@ -2840,6 +3265,11 @@ def _fingerprint_windows_repository(
                 hasher.update(b"\0")
             file_count += 1
 
+        _require_repository_root_authority_handoff(
+            expected_root_authority,
+            observed_hierarchy,
+            verify_observed,
+        )
         final_scan = _scan_pinned_windows_repository(
             selected,
             root_authority.handle,
@@ -2858,6 +3288,11 @@ def _fingerprint_windows_repository(
             selected,
             root_authority,
             root_identity,
+        )
+        _require_repository_root_authority_handoff(
+            expected_root_authority,
+            observed_hierarchy,
+            verify_observed,
         )
         _verify_windows_repository_links(
             root_path,
@@ -2954,6 +3389,7 @@ def _fingerprint_repository(
     retain_binding: bool = False,
     source_owner: Callable[[object], None] | None = None,
     identity_policy: object = _CURRENT_SOURCE_IDENTITY_POLICY,
+    expected_root_authority: RepositorySourceRootAuthority | None = None,
 ) -> SourceFingerprint | RepositorySourceBinding:
     """Hash visible repository contents with v2 or the diagnostic v1 format."""
 
@@ -2974,6 +3410,7 @@ def _fingerprint_repository(
             retain_binding=retain_binding,
             cleanup_slot=cleanup_slot,
             identity_policy=identity_policy,
+            expected_root_authority=expected_root_authority,
         )
 
     # Do not call Path.resolve() here. A reversible root-to-symlink swap during
@@ -2981,6 +3418,10 @@ def _fingerprint_repository(
     # foreign tree. The lexical path remains the rebind target for the pinned
     # no-follow descriptor throughout the operation.
     root_path = lexical_repository_path(root)
+    expected_root_authority = _require_expected_repository_root_authority(
+        expected_root_authority,
+        root_path,
+    )
 
     hasher = _new_source_fingerprint_hasher(
         version,
@@ -3001,6 +3442,25 @@ def _fingerprint_repository(
         )
         root_descriptor = root_authority.descriptor
         root_identity = root_authority.root_identity
+
+        def observed_hierarchy() -> tuple[object, ...]:
+            return _posix_root_hierarchy_identity(
+                root_path,
+                root_authority,
+                root_identity,
+            )
+
+        def verify_observed() -> None:
+            _verify_pinned_repository_root(
+                root_authority,
+                root_identity,
+            )
+
+        _require_repository_root_authority_handoff(
+            expected_root_authority,
+            observed_hierarchy,
+            verify_observed,
+        )
         initial_scan = _scan_pinned_repository(
             root_descriptor,
             excluded=excluded,
@@ -3145,6 +3605,11 @@ def _fingerprint_repository(
                 hasher.update(b"\0")
             file_count += 1
 
+        _require_repository_root_authority_handoff(
+            expected_root_authority,
+            observed_hierarchy,
+            verify_observed,
+        )
         final_scan = _scan_pinned_repository(
             root_descriptor,
             excluded=excluded,
@@ -3159,6 +3624,11 @@ def _fingerprint_repository(
                 "repository entries changed while they were being fingerprinted"
             )
         _verify_pinned_repository_root(root_authority, root_identity)
+        _require_repository_root_authority_handoff(
+            expected_root_authority,
+            observed_hierarchy,
+            verify_observed,
+        )
         _verify_posix_repository_links(
             root_path,
             root_descriptor,
@@ -3301,18 +3771,21 @@ def _capture_repository_source_legacy_manifest_v11(
     *,
     exclude_roots: Iterable[str | Path] = (),
     _source_owner: Callable[[object], None] | None = None,
+    expected_root_authority: RepositorySourceRootAuthority | None = None,
 ) -> RepositorySourceBinding:
     """Retain reads for an exact policy-3 manifest-v1.1 source identity."""
 
-    result = _fingerprint_repository(
-        root,
-        exclude_roots=exclude_roots,
-        selection=DEFAULT_REPOSITORY_SOURCE_SELECTION,
-        version=SOURCE_FINGERPRINT_VERSION,
-        retain_binding=True,
-        source_owner=_source_owner,
-        identity_policy=_LEGACY_MANIFEST_V11_SOURCE_IDENTITY_POLICY,
-    )
+    with _expected_repository_root_capture_lease(expected_root_authority):
+        result = _fingerprint_repository(
+            root,
+            exclude_roots=exclude_roots,
+            selection=DEFAULT_REPOSITORY_SOURCE_SELECTION,
+            version=SOURCE_FINGERPRINT_VERSION,
+            retain_binding=True,
+            source_owner=_source_owner,
+            identity_policy=_LEGACY_MANIFEST_V11_SOURCE_IDENTITY_POLICY,
+            expected_root_authority=expected_root_authority,
+        )
     if not isinstance(result, RepositorySourceBinding):  # pragma: no cover
         raise AssertionError("legacy source capture did not retain read authority")
     return result
@@ -3324,22 +3797,26 @@ def capture_repository_source(
     exclude_roots: Iterable[str | Path] = (),
     selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
     _source_owner: Callable[[object], None] | None = None,
+    expected_root_authority: RepositorySourceRootAuthority | None = None,
 ) -> RepositorySourceBinding:
     """Capture source fingerprint v2 and retain its exact read authority.
 
     ``_source_owner`` is an internal handoff sink used by callers that must own
     a stable cleanup slot before acquisition and the completed binding before
-    this Python frame returns.
+    this Python frame returns. ``expected_root_authority`` requires the newly
+    pinned hierarchy to be the same live object chain as an earlier preflight.
     """
 
-    result = _fingerprint_repository(
-        root,
-        exclude_roots=exclude_roots,
-        selection=selection,
-        version=SOURCE_FINGERPRINT_VERSION,
-        retain_binding=True,
-        source_owner=_source_owner,
-    )
+    with _expected_repository_root_capture_lease(expected_root_authority):
+        result = _fingerprint_repository(
+            root,
+            exclude_roots=exclude_roots,
+            selection=selection,
+            version=SOURCE_FINGERPRINT_VERSION,
+            retain_binding=True,
+            source_owner=_source_owner,
+            expected_root_authority=expected_root_authority,
+        )
     if not isinstance(result, RepositorySourceBinding):  # pragma: no cover
         raise AssertionError("source capture did not retain repository authority")
     return result
@@ -3438,6 +3915,7 @@ __all__ = [
     "RepositorySourceFileRecord",
     "RepositorySourceIdentitySnapshot",
     "RepositorySourceReader",
+    "RepositorySourceRootAuthority",
     "SOURCE_FINGERPRINT_VERSION",
     "SourceFingerprint",
     "capture_repository_source",
@@ -3446,6 +3924,7 @@ __all__ = [
     "is_legacy_source_fingerprint_v1",
     "is_secure_source_fingerprint_v2",
     "lexical_repository_path",
+    "pin_repository_source_root",
     "repository_source_is_dirty",
     "source_fingerprint_version",
 ]
