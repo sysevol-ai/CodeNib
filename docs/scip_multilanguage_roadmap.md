@@ -595,9 +595,10 @@ containment `ref=8 cand=8 missing=0 extra=0`, and references `ref=1 cand=0`.
 - [x] Keep a manifest-driven large-repository profiling harness for active
   SCIP languages whose C++ acceleration status is still serial-only or needs
   revalidation.
-- [x] Retain the [#558](https://github.com/sysevol-ai/CodeNib/issues/558)
-  native Python chunk-span POC in an isolated, default-off local/manual tier
-  after exact parity passed but the 20% end-to-end promotion gate failed.
+- [x] Retire the [#558](https://github.com/sysevol-ai/CodeNib/issues/558)
+  native Python chunk-span POC after exact parity passed but the 20%
+  end-to-end promotion gate failed; retain its measurements here rather than
+  retaining a dormant implementation.
 
 Exit condition: acceleration claims are backed by parity tests and profile
 numbers, and `core/` remains maintainable.
@@ -1039,13 +1040,11 @@ billed, and external clangd-generation benchmarks remain outside this
 deterministic job.
 
 Native Python chunk-span POC status
-([#558](https://github.com/sysevol-ai/CodeNib/issues/558)): the experiment
-builds separately under `build/core-chunk-poc`; both its build switch and
-`CODENIB_NATIVE_PYTHON_CHUNKER` runtime selection default to `off`. `auto`
-falls back per file and `required` fails closed. The maintained `build/core`
-extension, `make core-test`, and required CI do not enable the POC. Issue #558
-is closed with the per-file design archived as a measured negative experiment,
-not a pending production route.
+([#558](https://github.com/sysevol-ai/CodeNib/issues/558)): issue #558 closed
+the per-file design as a measured negative experiment, not a pending
+production route. On 2026-08-24 its implementation, private binding, build and
+runtime switches, profiler, and dedicated tests were retired under the
+cognitive-debt program. The evidence below remains the authoritative record.
 
 The final gate passed exact `CodeChunk` parity for decorators, async
 definitions, Unicode and PEP 695 syntax, nested and conditional definitions,
@@ -1061,8 +1060,8 @@ The 2026-08-11 clean-checkout reports were both negative:
 
 | Subject | Scope | Rounds / warmups | Existing median | Native POC median | Change | Decision |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
-| CodeNib `a33bb13118e3a04f8d3d76eabcfb2602f785477a` | 520 files / 6,630,346 bytes / 5,620 chunks | 6 / 1 | 0.6430s | 0.8088s | 25.8% slower | keep experimental |
-| HTTPie `2105caa49bae87c5809c274e407619a0de2639d1` | 89 files / 338,976 bytes / 498 chunks | 20 / 4 | 0.03588s | 0.04294s | 19.7% slower | keep experimental |
+| CodeNib `a33bb13118e3a04f8d3d76eabcfb2602f785477a` | 520 files / 6,630,346 bytes / 5,620 chunks | 6 / 1 | 0.6430s | 0.8088s | 25.8% slower | rejected |
+| HTTPie `2105caa49bae87c5809c274e407619a0de2639d1` | 89 files / 338,976 bytes / 498 chunks | 20 / 4 | 0.03588s | 0.04294s | 19.7% slower | rejected |
 
 Both reports had `git_dirty=false`, exact parity, and `promoted=false`. The
 candidate missed the requirement for at least 20% acceleration and was slower
@@ -1226,15 +1225,16 @@ implementation or production route; #600 was the subsequent bounded
 repository-native implementation experiment. Storage RFC #199 and Guardian
 #309 remain independent programs.
 
-M3 gate implementation status
+M3 gate record
 ([#599](https://github.com/sysevol-ai/CodeNib/issues/599)): this issue is the
-fail-closed controller and benchmark contract only. It contains no C++
-successor, does not reuse or retune the negative #558 per-file route, and
-could not publish candidate performance until #600 supplied the fixed private
+historical fail-closed controller and benchmark contract. It contained no C++
+successor, did not reuse or retune the negative #558 per-file route, and could
+not publish candidate performance until #600 supplied the fixed private
 `run_python_repository_batch` adapter. In that pre-adapter state, the command
-validates both pinned subjects and configurations, exercises the complete
-controller through deterministic fake adapters in unit tests, writes an atomic
-negative report, and exits nonzero rather than measuring legacy against itself.
+validated both pinned subjects and configurations, exercised the complete
+controller through deterministic fake adapters in unit tests, wrote an atomic
+negative report, and exited nonzero rather than measuring legacy against
+itself.
 
 The manifest fixes clean detached checkouts of CodeNib
 `a33bb13118e3a04f8d3d76eabcfb2602f785477a` and HTTPie
@@ -1268,18 +1268,11 @@ and the canonical protocol are also hard gates. A single worker count must
 pass every cell, with the smallest qualifying count selected; per-cell tuning
 or threshold averaging is forbidden.
 
-Run the local/manual preflight with:
-
-```bash
-make python-repository-chunk-gate \
-  CODENIB_CHUNK_GATE_CODENIB_ROOT=/path/to/CodeNib \
-  CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
-```
-
-The raw JSON remains local at
-`/tmp/codenib-python-repository-chunk-gate.json`. #600 supplied the fixed
-adapter only long enough to run the unchanged command and frozen contract as
-the formal four-cell gate. The measured outcome follows.
+#600 supplied the fixed adapter only long enough to run the frozen formal
+four-cell gate. The measured outcome follows. On 2026-08-24 the completed
+controller, subject manifest, and dedicated tests were retired together with
+the already-removed candidate; the recorded report remains sufficient to
+preserve the decision.
 
 M4 implementation and gate outcome
 ([#600](https://github.com/sysevol-ai/CodeNib/issues/600)): the private
@@ -1364,10 +1357,11 @@ Per-cell selection and averaging are forbidden, so no successor qualifies.
 In accordance with #600's outcome rule, the private Python adapter, C++
 implementation and tests, pybind entry points, CMake option, Make targets, CI
 configuration, and runtime environment switch were removed from the merge
-surface. The #599 fail-closed controller and manifest remain, together with
-the process-scoped RSS and failure-status hardening discovered during the
-measurement. Production chunking remains unchanged and no integration issue
-was opened. Milestone 3 completed with no consumer-boundary backend promoted;
+surface. On 2026-08-24, the now-closed #599 controller, subject manifest, and
+dedicated tests were also retired. Its exact contract, process-scoped RSS and
+failure-status decisions, cell results, and report receipt remain in this
+roadmap. Production chunking remains unchanged and no integration issue was
+opened. Milestone 3 completed with no consumer-boundary backend promoted;
 future warm-session or incremental-reuse hypotheses require a new focused
 issue and gate rather than reopening either rejected native design.
 
@@ -1405,11 +1399,13 @@ Current issue triage notes through August 12, 2026:
 - #556 and #557 are closed after the RepoNavigator adapter and bounded MCP
   explore/session ledger merged.
 - #558 is closed with exact parity but a negative per-file native chunking
-  result; repository batching is tracked separately by #599/#600.
+  result; repository batching was evaluated separately and rejected by
+  #599/#600.
 - #598 is resolved with exact parity and safety but negative Python and Rust
   consumer performance gates. No language was promoted; the subsequent #599
   and #600 repository-chunk gates are now also decided.
-- #599 is closed with its fail-closed repository-successor harness retained.
+- #599 is closed; its gate contract and exact receipts remain in this roadmap,
+  while its executable controller, manifest, and dedicated tests are retired.
 - #600 completed as a measured negative result. Its private batch POC was
   removed after no global worker count passed every fixed cell; no production
   integration follow-up was opened.
@@ -1458,12 +1454,6 @@ make graph-route-alignment \
   GRAPH_ALIGNMENT_CANDIDATE_ROUTE=lsp \
   GRAPH_ALIGNMENT_OUTPUT_DIR=${CODENIB_TEMP_DIR}/csharp-active-route-alignment \
   GRAPH_ALIGNMENT_EXTRA_ARGS=--candidate-include-references
-make core-chunk-poc-test
-make core-chunk-poc-profile \
-  PYTHON_CHUNK_PROFILE_REPO=/path/to/python/repository
-make python-repository-chunk-gate \
-  CODENIB_CHUNK_GATE_CODENIB_ROOT=/path/to/CodeNib \
-  CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
 python -m mkdocs build --strict
 ```
 

@@ -190,123 +190,21 @@ chunker = create_chunker("rust", chunk_depth=0, skeleton_mode=True)
 chunker = create_chunker("cpp", chunk_depth=2, l2_level_exclusive=False)
 ```
 
-## Experimental Native Python Span Extraction
+## Retired Native Python Chunk Experiments
 
-[#558](https://github.com/sysevol-ai/CodeNib/issues/558) retains an optional
-C++ proof of concept for Python parsing and L1/L2 definition-span traversal.
-Python decodes its compact 20-byte rows and name arena, then performs the
-normal line splitting, node-ID generation, and final `CodeChunk` assembly.
-The POC supports non-skeleton Python depths 1 and 2.
+Issues [#558](https://github.com/sysevol-ai/CodeNib/issues/558),
+[#599](https://github.com/sysevol-ai/CodeNib/issues/599), and
+[#600](https://github.com/sysevol-ai/CodeNib/issues/600) evaluated per-file and
+repository-batch native Python chunk extraction. Both candidates preserved the
+required chunk contract but failed their promotion gates on CodeNib and
+HTTPie. Their implementations, build switches, profilers, and dedicated tests
+have been retired; production Python chunking has one tree-sitter path.
 
-Both build and runtime selection are off by default. The POC builds separately
-under `build/core-chunk-poc`, and `auto` falls back to the established Python
-chunker per file. `required` fails closed for parity and benchmark runs.
-
-The final gate passed exact `CodeChunk` parity for decorators, async
-definitions, Unicode and PEP 695 syntax, L1/L2 selection, optional containers,
-headers, error recovery, and line splitting. Balanced clean-checkout profiles
-on CodeNib and HTTPie both missed the requirement for at least 20% end-to-end
-acceleration; the candidate was slower in both final reports. Exact subject
-revisions and medians are retained in the
-[multi-language roadmap](../../docs/scip_multilanguage_roadmap.md).
-
-```bash
-make core-chunk-poc-test
-make core-chunk-poc-profile \
-  PYTHON_CHUNK_PROFILE_REPO=/path/to/python/repository
-
-# Explicit experiment with compatible per-file fallback
-export CODENIB_NATIVE_PYTHON_CHUNKER=auto
-
-# Parity/profile mode: surface unsupported cases and native failures
-export CODENIB_NATIVE_PYTHON_CHUNKER=required
-```
-
-This target remains local/manual only and is not part of required CI. The next
-candidate should test incremental parse-tree reuse or repository-level batching
-instead of another per-file language-boundary crossing.
-
-## Repository-Batch Successor Gate
-
-[#599](https://github.com/sysevol-ai/CodeNib/issues/599) defines the rejection
-gate for one repository-level successor without adding that successor. It does
-not reuse or retune the #558 per-file candidate or change a production
-chunking route. [#600](https://github.com/sysevol-ai/CodeNib/issues/600)
-temporarily supplied the fixed private adapter
-`codenib.code_chunking.python_repository_batch_poc.run_python_repository_batch`
-and measured it with `CODENIB_NATIVE_PYTHON_CHUNK_BATCH=required`. The
-canonical gate rejected every global worker variant, so the adapter, C++
-batch implementation, bindings, build option, and runtime environment switch
-were removed rather than retained as dead experimental code.
-
-The versioned manifest fixes clean detached checkouts of CodeNib
-`a33bb13118e3a04f8d3d76eabcfb2602f785477a` and HTTPie
-`2105caa49bae87c5809c274e407619a0de2639d1`. It also fixes two Python-only
-repository configurations. Both exclude tests, use filter policy v3,
-`strict=True`, depth 2, non-skeleton output, and L2-exclusive chunks:
-
-- `continuity_l2_exclusive_unsplit` has no header/epilogue and no line cap.
-- `bm25_v8_l2_exclusive_headers_300` enables the header/epilogue and a
-  300-line cap for the current BM25 builder-schema-v8 consumer shape.
-
-The established arm calls the current `CodeChunker.chunk_repository()` path
-with `CODENIB_NATIVE_PYTHON_CHUNKER=off` and asserts the Python backend. The
-candidate worker counts are exactly 1, 2, and 4. One worker count must pass all
-four subject/configuration cells; if several pass, the smallest is selected.
-Per-cell worker tuning and threshold averaging are forbidden.
-
-Each arm receives four warmups and 20 measured samples in fresh, unique
-processes. Each pair contains one established and one candidate sample; pair
-order alternates AB then BA, GC treatment is symmetric, and filesystem page
-cache is uncontrolled. The stopwatch starts
-before cold adapter or chunker construction and includes discovery and
-filtering, minified-source inspection, reads, parser/worker setup, the native
-binding and ordered merge, buffer decode, complete `CodeChunk` construction,
-and node materialization. Controller-side identity, artifact, contract, and
-receipt checks happen before timing; the candidate's runtime contract safety
-check remains inside its stopwatch. Parity, backend checks, stage aggregation,
-and report serialization happen after timing.
-
-Every warmup and measured pair must preserve the complete ordered seven-field
-`CodeChunk` sequence, including content and node IDs. Because
-`CodeChunker.nodes` is accumulated through set iteration, node parity uses the
-sorted unique symbolic IDs; the raw list is diagnostic and chunk order is
-never normalized. The hard performance gates require candidate median p50 and
-nearest-rank p95 to be at most 80% of the established values, and candidate
-nearest-rank p95 absolute peak RSS to be at most 125%. Exact chunk/node parity,
-one native batch call, zero fallbacks, the expected backend, fresh PIDs, the
-canonical protocol, and unchanged clean subject/source and benchmark/candidate
-receipts must also pass in every cell.
-
-Run the local/manual controller with both pinned checkouts:
-
-```bash
-make python-repository-chunk-gate \
-  CODENIB_CHUNK_GATE_CODENIB_ROOT=/path/to/CodeNib \
-  CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
-```
-
-The August 12, 2026 formal run used 576 unique sample processes and preserved
-the ordered seven-field chunk sequence plus the canonical sorted-unique node
-set in all 288 pairs. Every candidate sample used one native batch call and
-zero fallbacks. Peak RSS used each Linux worker's process-scoped `VmHWM` from
-`/proc/self/status`; a missing or malformed value fails the canonical gate.
-Worker 1 regressed all four cells. Worker 2 cleared both time
-cutoffs for the two CodeNib cells but exceeded the RSS limit and missed both
-time cutoffs on HTTPie. Worker 4 cleared both CodeNib time cutoffs but exceeded
-their RSS limit; on HTTPie it passed only the continuity cell, while BM25
-improved by 17.115% at p50 and 12.761% at p95. No one worker count passed all
-four cells, so no successor was promoted and production chunking is unchanged.
-
-The authoritative local report has SHA-256
-`e580b29b5eb3e5c5373eb5b90bd107c7e5f7b6dfbaf326b64f941952ed9f01a4`;
-the complete receipt and all twelve cell results are retained in the
-[multi-language roadmap](../../docs/scip_multilanguage_roadmap.md). Raw
-machine JSON is not versioned. With the rejected adapter absent, the command
-above again performs the full subject/configuration preflight, writes an
-atomic diagnostic report to
-`/tmp/codenib-python-repository-chunk-gate.json`, and exits nonzero. It must
-not substitute legacy for the missing candidate.
+The exact revisions, configurations, timings, RSS observations, and decision
+receipts remain in the
+[multi-language roadmap](../../docs/scip_multilanguage_roadmap.md). A future
+acceleration hypothesis must define a new gate instead of reviving either
+retired ABI.
 
 ## File Extension Mapping
 

@@ -16,6 +16,7 @@ exclude_docs: |
   experiments/
   product_roadmap.md
   storage_backend_roadmap.md
+  cognitive_debt_roadmap.md
   agent_runner_architecture_goal.md
   agent_compile_design.md
   scip_multilanguage_roadmap.md

@@ -36,6 +36,12 @@ For the hybrid storage backend program, use
 whenever a storage milestone changes status, a publication or compatibility
 gate changes, or a related issue/PR is reconciled.
 
+For the cognitive-debt reduction program, use
+`docs/cognitive_debt_roadmap.md` as the durable objective record. Update it
+whenever a package changes lifecycle class, an experimental surface is retired,
+an architectural dependency direction changes, or a subtraction iteration is
+completed.
+
 ## Dev Commands
 
 ```bash

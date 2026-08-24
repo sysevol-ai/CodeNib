@@ -433,128 +433,21 @@ insertion. In `auto` mode a deterministic rejection is recorded in
 `query_fallback_error` and the established graph decoder is used. `required`
 fails closed, while `off` never invokes the native reader.
 
-## Native Python Chunk Span POC
+## Retired Python Chunk Acceleration Experiments
 
-The [#558](https://github.com/sysevol-ai/CodeNib/issues/558) proof of concept
-moves Python parsing and definition-span traversal behind an optional native
-buffer while leaving final `CodeChunk` assembly in Python. It supports
-non-skeleton Python L1/L2 chunking. The build option
-`CODENIB_BUILD_TREE_SITTER_POC` and runtime option
-`CODENIB_NATIVE_PYTHON_CHUNKER` both default to `off`.
+The per-file candidate from
+[#558](https://github.com/sysevol-ai/CodeNib/issues/558) was slower than the
+established chunker on both CodeNib and HTTPie. The repository-batch candidate
+from [#599](https://github.com/sysevol-ai/CodeNib/issues/599) and
+[#600](https://github.com/sysevol-ai/CodeNib/issues/600) preserved exact output
+but no single worker count passed every time and peak-RSS gate. Neither route
+was promoted.
 
-The POC uses the independent `build/core-chunk-poc` directory so enabling it
-cannot change the cached configuration or exported API of the maintained
-`build/core` extension. `auto` falls back per file, while `required` fails
-closed on unsupported configurations, contract mismatches, or native errors.
-
-The final gate passed exact `CodeChunk` parity across decorators, async
-definitions, Unicode and PEP 695 syntax, L1/L2 selection, optional containers,
-headers, error recovery, and line splitting. Balanced clean-checkout profiles
-on CodeNib and HTTPie both missed the requirement for at least 20% end-to-end
-acceleration and reported a slower candidate. Exact revisions, configurations,
-and medians are retained in the multi-language roadmap. The POC is therefore a
-local/manual experiment and is intentionally excluded from `make core-test`
-and required CI. Run its isolated gates explicitly:
-
-```bash
-make core-chunk-poc-test
-make core-chunk-poc-profile \
-  PYTHON_CHUNK_PROFILE_REPO=/path/to/python/repository
-```
-
-Python tree-sitter already performs parsing in native code, so the next
-experiment should amortize work through incremental parse-tree reuse or
-repository-level batching rather than repeat the same per-file boundary.
-
-## Python Repository-Batch Gate And Outcome
-
-[#599](https://github.com/sysevol-ai/CodeNib/issues/599) adds only the
-repository-successor controller and fail-closed contract. It does not reuse
-the #558 per-file span route and exposes no standard or production API.
-[#600](https://github.com/sysevol-ai/CodeNib/issues/600) tested exactly one
-private candidate: one repository call, a bounded worker set of 1, 2, or 4,
-and one flat result ordered by input file and span. The experimental binding
-released the GIL once, gave each worker private parser/tree and result state,
-and left repository discovery, source decoding, final chunk splitting, header
-and epilogue materialization, and node construction in Python.
-
-The candidate passed its ABI, bounds, malformed-payload, atomic fallback,
-thread-safety, deterministic ordering, and complete consumer-parity tests. The
-formal gate nevertheless rejected it. No global worker count passed every
-CodeNib/HTTPie x continuity/BM25 cell at the simultaneous 20% p50, 20% p95,
-and 1.25x peak-RSS cutoffs. The private adapter, C++ source, pybind APIs,
-CMake option, build targets, and environment switch were therefore removed.
-Normal builds and production routing contain no repository-batch POC surface.
-
-The manifest pins CodeNib
-`a33bb13118e3a04f8d3d76eabcfb2602f785477a` and HTTPie
-`2105caa49bae87c5809c274e407619a0de2639d1`, including canonical remotes and
-ordered selected-source receipts. Each repository is tested in both the
-`continuity_l2_exclusive_unsplit` and
-`bm25_v8_l2_exclusive_headers_300` configurations. Both use Python, filter
-policy v3, excluded tests, strict processing, non-skeleton depth 2, and
-L2-exclusive output; the latter additionally enables header/epilogue output
-and the schema-v8 300-line cap.
-
-For every subject/configuration cell, worker counts 1, 2, and 4 receive four
-warmups and 20 measured samples per arm. Samples run in fresh processes and
-paired order alternates AB/BA. The clock covers the entire cold repository
-consumer boundary: adapter/chunker construction, discovery and filtering,
-minified inspection, reads, parser/worker setup, binding, native batch work,
-ordered merge, buffer decode, Python chunk materialization, and node
-materialization. Controller artifact, contract, and subject-receipt checks
-occur before timing. The candidate repeats its runtime contract safety check
-inside its stopwatch. Parity, receipt observation, backend verification,
-telemetry aggregation, and report writing occur afterward. Filesystem page
-cache is intentionally uncontrolled.
-
-The controller requires the complete ordered seven-field `CodeChunk` sequence
-to match for every warmup and measured pair. Canonical node parity compares
-sorted unique symbolic IDs because the existing `CodeChunker.nodes` list is
-derived from set iteration; it never normalizes chunk ordering. It computes
-median p50 and nearest-rank p95 from raw repository-total wall samples and
-nearest-rank p95 from each process's absolute peak RSS.
-
-Promotion requires one global worker count to pass all four cells:
-
-```text
-candidate_p50 <= established_p50 * 0.80
-candidate_p95 <= established_p95 * 0.80
-candidate_peak_rss_p95 <= established_peak_rss_p95 * 1.25
-```
-
-Exact chunk and canonical-node parity, backend
-`native-repository-batch-poc`, one batch call, zero fallbacks, unique PIDs,
-canonical 20/4 protocol, and stable clean subject/source plus
-benchmark/adapter/binary/contract receipts are also mandatory. Multiple
-qualifying worker variants resolve to the smallest worker count; per-cell
-selection is not allowed. Any changed sample count, threshold, subject,
-configuration, or worker set makes the run noncanonical and ineligible.
-
-Run the local/manual gate with both fixed checkouts:
-
-```bash
-make python-repository-chunk-gate \
-  CODENIB_CHUNK_GATE_CODENIB_ROOT=/path/to/CodeNib \
-  CODENIB_CHUNK_GATE_HTTPIE_ROOT=/path/to/httpie
-```
-
-The authoritative August 12, 2026 run used benchmark implementation commit
-`8e922a3d9ae2132787f402e81aeafe930d84135c`, 576 unique sample processes,
-and Linux process-scoped `VmHWM` peak RSS. All 288 pairs preserved the complete
-ordered seven-field chunk digest and canonical sorted-unique node digest; all
-candidate samples reported the required backend, one batch call, and zero
-fallbacks. The report completed normally as `rejected` with no measurement
-failure and has SHA-256
-`e580b29b5eb3e5c5373eb5b90bd107c7e5f7b6dfbaf326b64f941952ed9f01a4`.
-The exact twelve-cell results and artifact receipts are in
-`docs/scip_multilanguage_roadmap.md`.
-
-The retained controller still expects the now-absent fixed adapter and fails
-closed after full preflight. Its default report path is
-`/tmp/codenib-python-repository-chunk-gate.json`; legacy-versus-legacy
-substitution is forbidden. A future hypothesis must use a new focused issue
-and candidate contract rather than silently reviving this rejected ABI.
+Their source, private bindings, build options, executable gates, profilers, and
+dedicated tests have been removed. Exact revisions, configurations, timings,
+RSS results, and report digests remain in the internal multi-language roadmap.
+A future Python chunk acceleration proposal must define a new hypothesis and
+gate rather than restore either retired ABI.
 
 ## Verify
 
@@ -585,8 +478,6 @@ skip report.
   by native content receipts.
 - `graph_layers.{h,cpp}` classifies normalized edge types into reusable graph
   layers.
-- `python_chunk_poc.{h,cpp}` implements the opt-in native Python
-  definition-span experiment.
 - `scip_decode_base.{h,cpp}` and `scip_decode_common.{h,cpp}` provide shared
   decoder mechanics.
 - `scip_decode_<language>.{h,cpp}` owns language-specific symbol and metadata

@@ -437,7 +437,6 @@ jobs:
           cmake -S core -B build/core \
             -DCMAKE_BUILD_TYPE=Release \
             -DCODENIB_BUILD_PYBIND=ON \
-            -DCODENIB_BUILD_TREE_SITTER_POC=OFF \
             -DPython_EXECUTABLE="$(which python)"
           cmake --build build/core -j "$(nproc)"
 
