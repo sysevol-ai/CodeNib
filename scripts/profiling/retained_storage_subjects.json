@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "benchmark": "retained_storage_explicit_route_gate_v2",
+  "schema_version": 3,
+  "benchmark": "retained_storage_explicit_route_gate_v3",
   "policy": {
     "status": "unratified",
     "canonical_iterations": 20,
@@ -16,7 +16,8 @@
     "compiler-cold",
     "compiler-current",
     "runtime-cold",
-    "runtime-cold-query-only"
+    "runtime-cold-query-only",
+    "runtime-cold-source-bound"
   ],
   "view_sets": [
     {

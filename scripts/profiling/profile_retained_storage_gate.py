@@ -21,12 +21,17 @@ The manifest-backed ``runtime-cold`` cell is intentionally retained as a
 compatibility sentinel: its live-source legacy arm and source-disabled retained
 arm are not authority-equivalent.  ``runtime-cold-query-only`` is the comparable
 runtime cost cell; it measures a direct portable artifact without ``--repo``
-against the retained portable-artifact route.
+against the retained portable-artifact route.  Its v3 timed workload includes
+the public manifest and the canonical source-read refusal.  The source-bound
+cell compares the ordinary manifest route with retained ``--repo`` delivery.
+Its narrow content-authority projection is the performance comparison; its
+full runtime projection preserves public-manifest and delivery differences.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import contextlib
 import hashlib
 import io
@@ -50,18 +55,18 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_MANIFEST = Path(__file__).with_name("retained_storage_subjects.json")
 _DEFAULT_OUTPUT = Path(tempfile.gettempdir()) / "codenib-retained-storage-gate.json"
 
-BENCHMARK_ID = "retained_storage_explicit_route_gate_v2"
-MANIFEST_SCHEMA_VERSION = 2
-REPORT_SCHEMA_VERSION = 2
+BENCHMARK_ID = "retained_storage_explicit_route_gate_v3"
+MANIFEST_SCHEMA_VERSION = 3
+REPORT_SCHEMA_VERSION = 3
 DEFAULT_ITERATIONS = 20
 DEFAULT_WARMUPS = 4
 DEFAULT_WORKER_TIMEOUT_SECONDS = 1800.0
 CANONICAL_PEAK_RSS_SOURCE = "proc-self-status-vmhwm-kib-v1"
 CANONICAL_IO_SOURCE = "proc-self-io-v1"
 _CANONICAL_MANIFEST_SHA256 = (
-    "sha256:2d7f95489567ef17993bd1f87b46864931645719e172731a68d15d7e7e6913cb"
+    "sha256:22e01bd5acd133186a039df5a8e383308687fd8c9f8fd0554ce9592087ede6f8"
 )
-_CANONICAL_MANIFEST_SIZE = 3164
+_CANONICAL_MANIFEST_SIZE = 3197
 
 ARMS = ("legacy", "candidate")
 CELLS = (
@@ -69,31 +74,101 @@ CELLS = (
     "compiler-current",
     "runtime-cold",
     "runtime-cold-query-only",
+    "runtime-cold-source-bound",
 )
 TRACKS = {
-    "compiler": ("compiler-cold", "compiler-current"),
-    "query-only-runtime": ("runtime-cold-query-only",),
-    "manifest-runtime-compatibility": ("runtime-cold",),
+    "compiler": {
+        "cells": ("compiler-cold", "compiler-current"),
+        "projection": "compiler",
+    },
+    "query-only-runtime": {
+        "cells": ("runtime-cold-query-only",),
+        "projection": "full-runtime",
+    },
+    "manifest-runtime-compatibility": {
+        "cells": ("runtime-cold",),
+        "projection": "full-runtime",
+    },
+    "source-bound-runtime": {
+        "cells": ("runtime-cold-source-bound",),
+        "projection": "content-authority",
+    },
+    "source-bound-manifest-compatibility": {
+        "cells": ("runtime-cold-source-bound",),
+        "projection": "full-runtime",
+    },
 }
-CELL_AUTHORITY_CONTRACTS = {
+PARITY_PROJECTIONS = ("compiler", "content-authority", "full-runtime")
+CELL_PRIMARY_PROJECTIONS = {
+    "compiler-cold": "compiler",
+    "compiler-current": "compiler",
+    "runtime-cold": "full-runtime",
+    "runtime-cold-query-only": "full-runtime",
+    "runtime-cold-source-bound": "content-authority",
+}
+CELL_ROUTE_CONTRACTS = {
     "compiler-cold": {
-        "legacy": "compiler-cache-index",
-        "candidate": "compiler-cache-index-and-retained-publication",
+        "legacy": {
+            "route": "compiler-cache-index",
+            "context_provenance": "compiler-cache-manifest",
+            "source": "not-exercised",
+        },
+        "candidate": {
+            "route": "compiler-cache-index-and-retained-publication",
+            "context_provenance": "compiler-cache-manifest",
+            "source": "not-exercised",
+        },
     },
     "compiler-current": {
-        "legacy": "compiler-cache-index",
-        "candidate": "compiler-cache-index-and-retained-publication",
+        "legacy": {
+            "route": "compiler-cache-index",
+            "context_provenance": "compiler-cache-manifest",
+            "source": "not-exercised",
+        },
+        "candidate": {
+            "route": "compiler-cache-index-and-retained-publication",
+            "context_provenance": "compiler-cache-manifest",
+            "source": "not-exercised",
+        },
     },
     "runtime-cold": {
-        "legacy": "manifest-live-source",
-        "candidate": "retained-portable-artifact-query-only",
+        "legacy": {
+            "route": "manifest-path",
+            "context_provenance": "ordinary-manifest",
+            "source": "content-bytes-v2",
+        },
+        "candidate": {
+            "route": "retained-ref",
+            "context_provenance": "portable-context-artifact",
+            "source": "source-disabled",
+        },
     },
     "runtime-cold-query-only": {
-        "legacy": "direct-portable-artifact-query-only-no-repo",
-        "candidate": "retained-portable-artifact-query-only",
+        "legacy": {
+            "route": "direct-artifact",
+            "context_provenance": "portable-context-artifact",
+            "source": "source-disabled",
+        },
+        "candidate": {
+            "route": "retained-ref",
+            "context_provenance": "portable-context-artifact",
+            "source": "source-disabled",
+        },
+    },
+    "runtime-cold-source-bound": {
+        "legacy": {
+            "route": "manifest-path",
+            "context_provenance": "ordinary-manifest",
+            "source": "content-bytes-v2",
+        },
+        "candidate": {
+            "route": "retained-ref",
+            "context_provenance": "portable-context-artifact",
+            "source": "content-bytes-v2",
+        },
     },
 }
-CANONICAL_SAMPLE_COUNT = 1152
+CANONICAL_SAMPLE_COUNT = 1440
 PHASES = ("warmup", "measured")
 PAYLOAD_CLASSES = ("small", "medium", "large")
 VIEW_SET_ID = "bm25-fast"
@@ -141,7 +216,7 @@ _INNER_SAMPLE_FIELDS = frozenset(
         "view_set_id",
         "process_id",
         "metrics",
-        "parity_identity",
+        "parity_identities",
         "result",
         "safety",
     }
@@ -181,14 +256,24 @@ _SAFETY_FIELDS = frozenset(
         "cleanup_complete",
         "storage_closed",
         "context_closed",
+        "source_closed",
         "ref_stable",
         "retained_matches_raw",
     }
 )
 _RESULT_FIELDS = frozenset(
-    {"manifest", "view", "retained_view", "queries", "snapshot", "authority"}
+    {
+        "bm25_plan",
+        "public_manifest",
+        "view",
+        "retained_view",
+        "queries",
+        "source_read",
+        "snapshot",
+        "runtime",
+    }
 )
-_MANIFEST_IDENTITY_FIELDS = frozenset(
+_BM25_PLAN_IDENTITY_FIELDS = frozenset(
     {
         "commit",
         "source_fingerprint",
@@ -208,15 +293,101 @@ _VIEW_IDENTITY_FIELDS = frozenset(
 )
 _QUERY_IDENTITY_FIELDS = frozenset({"sha256", "count", "nonempty"})
 _SNAPSHOT_FIELDS = frozenset({"snapshot_id", "ref_name", "generation", "changed"})
-_PARITY_FIELDS = frozenset({"manifest", "view", "queries", "authority"})
-_AUTHORITY_IDENTITY_FIELDS = frozenset(
+_PARITY_IDENTITIES_FIELDS = frozenset(PARITY_PROJECTIONS)
+_COMPILER_PARITY_FIELDS = frozenset({"bm25_plan", "view", "queries"})
+_CONTENT_AUTHORITY_PARITY_FIELDS = frozenset(
+    {"compiler", "source_read", "source_authority", "source_capabilities"}
+)
+_FULL_RUNTIME_PARITY_FIELDS = frozenset(
     {
-        "context_kind",
+        "content_authority",
+        "public_manifest",
+        "source_read",
+        "context_provenance",
         "artifact",
-        "source_verified",
-        "source_verification_scope",
+        "capabilities",
     }
 )
+_PUBLIC_MANIFEST_EVIDENCE_FIELDS = frozenset(
+    {"raw_sha256", "parity_sha256", "parity_schema"}
+)
+_PUBLIC_MANIFEST_PARITY_SCHEMA = "codenib.retained-storage-public-manifest-parity.v1"
+_PUBLIC_MANIFEST_RUNTIME_FIELDS = frozenset(
+    {
+        "loaded_views",
+        "view_errors",
+        "tool_surface",
+        "explore_session",
+        "source_read",
+        "lsp_provider",
+    }
+)
+_PUBLIC_MANIFEST_SOURCE_FIELDS = frozenset(
+    {
+        "verified",
+        "error",
+        "verification_scope",
+        "commit_verified",
+        "checkout_state",
+    }
+)
+_PUBLIC_MANIFEST_EXPLORE_FIELDS = frozenset(
+    {"calls", "ranges", "max_ranges", "evictions"}
+)
+_SOURCE_READ_EVIDENCE_FIELDS = frozenset(
+    {"status", "payload_sha256", "content_sha256", "error_sha256", "count"}
+)
+_SOURCE_READ_CONTENT_FIELDS = frozenset({"status", "content_sha256", "count"})
+_SOURCE_READ_PAYLOAD_FIELDS = frozenset(
+    {"file", "start_line", "end_line", "content", "content_projection", "source"}
+)
+_SOURCE_READ_PROVENANCE_FIELDS = frozenset(
+    {
+        "repository",
+        "commit",
+        "source_fingerprint",
+        "verified",
+        "verification_scope",
+        "commit_verified",
+        "checkout_state",
+    }
+)
+_SOURCE_CONTENT_PROJECTION_FIELDS = frozenset(
+    {"truncated", "original_chars", "returned_chars", "strategy"}
+)
+_RUNTIME_IDENTITY_FIELDS = frozenset(
+    {"delivery", "artifact", "source_authority", "capabilities"}
+)
+_PORTABLE_ARTIFACT_FIELDS = frozenset(
+    {"verified", "schema", "repository", "commit", "views"}
+)
+_DELIVERY_IDENTITY_FIELDS = frozenset({"route", "context_provenance"})
+_SOURCE_AUTHORITY_FIELDS = frozenset({"kind", "verified", "verification_scope"})
+_RUNTIME_CAPABILITY_FIELDS = frozenset(
+    {
+        "loaded_views",
+        "view_errors",
+        "read_source",
+        "native_vector_authorized",
+        "native_lsp_allowed",
+        "lsp_provider",
+        "commit_verified",
+        "checkout_state",
+    }
+)
+_LSP_PROVIDER_REQUIRED_FIELDS = frozenset(
+    {
+        "provider",
+        "backend",
+        "status",
+        "capabilities",
+    }
+)
+_LSP_PROVIDER_ALLOWED_FIELDS = _LSP_PROVIDER_REQUIRED_FIELDS | {
+    "index_snapshot",
+    "fallback_reason",
+}
+_LSP_CAPABILITY_FIELDS = frozenset({"definition", "references", "route"})
 _SOURCE_SELECTION_FIELDS = frozenset(
     {"schema", "repository_filter_policy", "exclude_subtrees"}
 )
@@ -608,7 +779,7 @@ def load_subject_manifest(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         or receipt["size"] != _CANONICAL_MANIFEST_SIZE
     ):
         raise ValueError(
-            "checked-in subject manifest differs from the v2 canonical anchor"
+            "checked-in subject manifest differs from the v3 canonical anchor"
         )
     if payload_bytes.startswith(b"\xef\xbb\xbf"):
         raise ValueError("subject manifest must not use a UTF-8 BOM")
@@ -990,15 +1161,18 @@ def _io_source() -> str:
 def _empty_tracks() -> dict[str, dict[str, Any]]:
     return {
         track: {
-            "cells": list(cells),
+            "cells": list(specification["cells"]),
+            "projection": specification["projection"],
             "measurement_complete": False,
             "parity_passed": False,
             "safety_passed": False,
+            "scope_complete": False,
+            "decision": "blocked",
             "passed": False,
             "policy_status": "unratified",
             "promotion_eligible": False,
         }
-        for track, cells in TRACKS.items()
+        for track, specification in TRACKS.items()
     }
 
 
@@ -1058,12 +1232,18 @@ def _base_report(
                 ),
                 "runtime-cold": (
                     "fresh-inner-import-parser-handler-through-ready-callback-"
-                    "fixed-queries-and-normal-cleanup-return"
+                    "fixed-queries-public-manifest-source-read-probe-or-refusal-"
+                    "and-normal-cleanup-return"
                 ),
                 "runtime-cold-query-only": (
                     "fresh-inner-import-parser-direct-or-retained-portable-"
-                    "artifact-handler-through-ready-callback-fixed-queries-and-"
-                    "normal-cleanup-return"
+                    "artifact-handler-through-ready-callback-fixed-queries-"
+                    "public-manifest-source-read-refusal-and-normal-cleanup-return"
+                ),
+                "runtime-cold-source-bound": (
+                    "fresh-inner-import-parser-ordinary-manifest-or-retained-"
+                    "source-bound-handler-through-ready-callback-fixed-queries-"
+                    "public-manifest-source-read-probe-and-normal-cleanup-return"
                 ),
             },
             "process_wall_boundary": (
@@ -1072,10 +1252,21 @@ def _base_report(
             "filesystem_page_cache": "uncontrolled",
             "cold_definitions": {
                 "compiler-cold": "empty-codenib-cache",
-                "runtime-cold": "fresh-process-and-context",
-                "runtime-cold-query-only": "fresh-process-and-context",
+                "runtime-cold": (
+                    "fresh-process-and-context-with-public-manifest-and-"
+                    "source-read-probe-or-refusal"
+                ),
+                "runtime-cold-query-only": (
+                    "fresh-process-and-context-with-public-manifest-and-"
+                    "source-read-refusal"
+                ),
+                "runtime-cold-source-bound": (
+                    "fresh-process-and-context-with-public-manifest-and-"
+                    "source-read-probe"
+                ),
             },
-            "cell_authority_contracts": _json_snapshot(CELL_AUTHORITY_CONTRACTS),
+            "cell_route_contracts": _json_snapshot(CELL_ROUTE_CONTRACTS),
+            "parity_projections": list(PARITY_PROJECTIONS),
         },
         "benchmark_receipts": {
             "before": None,
@@ -1172,8 +1363,15 @@ def _protocol(
         "iterations_per_arm": DEFAULT_ITERATIONS,
         "warmups_per_arm": DEFAULT_WARMUPS,
         "cells": list(CELLS),
-        "tracks": {track: list(cells) for track, cells in TRACKS.items()},
-        "cell_authority_contracts": _json_snapshot(CELL_AUTHORITY_CONTRACTS),
+        "tracks": {
+            track: {
+                "cells": list(specification["cells"]),
+                "projection": specification["projection"],
+            }
+            for track, specification in TRACKS.items()
+        },
+        "cell_route_contracts": _json_snapshot(CELL_ROUTE_CONTRACTS),
+        "parity_projections": list(PARITY_PROJECTIONS),
         "canonical_sample_count": CANONICAL_SAMPLE_COUNT,
         "view_set_ids": [VIEW_SET_ID],
         "payload_classes": list(PAYLOAD_CLASSES),
@@ -1199,8 +1397,15 @@ def _protocol(
         "iterations_per_arm": iterations,
         "warmups_per_arm": warmups,
         "cells": list(manifest["cells"]),
-        "tracks": {track: list(cells) for track, cells in TRACKS.items()},
-        "cell_authority_contracts": _json_snapshot(CELL_AUTHORITY_CONTRACTS),
+        "tracks": {
+            track: {
+                "cells": list(specification["cells"]),
+                "projection": specification["projection"],
+            }
+            for track, specification in TRACKS.items()
+        },
+        "cell_route_contracts": _json_snapshot(CELL_ROUTE_CONTRACTS),
+        "parity_projections": list(PARITY_PROJECTIONS),
         "canonical_sample_count": (
             len(manifest["subjects"])
             * len(media)
@@ -1230,13 +1435,13 @@ def _protocol(
     }
 
 
-def _validate_manifest_identity(
+def _validate_bm25_plan_identity(
     value: object,
     *,
     subject: Mapping[str, Any],
     label: str,
 ) -> dict[str, Any]:
-    identity = _require_exact_dict(value, _MANIFEST_IDENTITY_FIELDS, label=label)
+    identity = _require_exact_dict(value, _BM25_PLAN_IDENTITY_FIELDS, label=label)
     commit = _required_text(identity["commit"], label=f"{label} commit", maximum=40)
     if commit != subject["revision"]:
         raise RuntimeError(f"{label} commit differs from the fixed subject")
@@ -1330,42 +1535,280 @@ def _portable_artifact_identity(subject: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _expected_authority_identity(request: Mapping[str, Any]) -> dict[str, Any]:
+def _runtime_source_enabled(request: Mapping[str, Any]) -> bool | None:
     cell = request["cell"]
-    arm = request["arm"]
     if cell in {"compiler-cold", "compiler-current"}:
+        return None
+    return (request["arm"] == "legacy" and cell != "runtime-cold-query-only") or (
+        request["arm"] == "candidate" and cell == "runtime-cold-source-bound"
+    )
+
+
+def _runtime_uses_portable_artifact(request: Mapping[str, Any]) -> bool:
+    if request["cell"] in {"compiler-cold", "compiler-current"}:
+        return False
+    return request["arm"] == "candidate" or (
+        request["arm"] == "legacy" and request["cell"] == "runtime-cold-query-only"
+    )
+
+
+def _expected_runtime_identity(request: Mapping[str, Any]) -> dict[str, Any]:
+    route = CELL_ROUTE_CONTRACTS[request["cell"]][request["arm"]]
+    source_enabled = _runtime_source_enabled(request)
+    if source_enabled is None:
         return {
-            "context_kind": "compiler-portable-plan",
+            "delivery": {
+                "route": route["route"],
+                "context_provenance": route["context_provenance"],
+            },
             "artifact": None,
-            "source_verified": None,
-            "source_verification_scope": None,
+            "source_authority": None,
+            "capabilities": None,
         }
-    if cell == "runtime-cold" and arm == "legacy":
-        return {
-            "context_kind": "manifest-live-source",
-            "artifact": None,
-            "source_verified": True,
-            "source_verification_scope": "content-bytes",
-        }
+    portable = _runtime_uses_portable_artifact(request)
     return {
-        "context_kind": "portable-artifact-query-only",
-        "artifact": _portable_artifact_identity(request["subject"]),
-        "source_verified": False,
-        "source_verification_scope": None,
+        "delivery": {
+            "route": route["route"],
+            "context_provenance": route["context_provenance"],
+        },
+        "artifact": (
+            _portable_artifact_identity(request["subject"]) if portable else None
+        ),
+        "source_authority": {
+            "kind": "content-bytes-v2" if source_enabled else "source-disabled",
+            "verified": source_enabled,
+            "verification_scope": "content-bytes" if source_enabled else None,
+        },
+        "capabilities": {
+            "loaded_views": ["bm25"],
+            "view_errors": {},
+            "read_source": source_enabled,
+            "native_vector_authorized": False,
+            "native_lsp_allowed": not portable,
+            # Provider selection is host-observed evidence, not a fixed gate
+            # input.  The validator below enforces the route policy while the
+            # full-runtime projection retains the exact public selection.
+            "lsp_provider": None,
+            "commit_verified": False,
+            "checkout_state": "not-attested",
+        },
     }
 
 
-def _validate_authority_identity(
+def _validate_lsp_provider(value: object, *, label: str) -> dict[str, Any]:
+    if type(value) is not dict:
+        raise ValueError(f"{label} must be an exact JSON object")
+    observed_fields = set(value)
+    if not _LSP_PROVIDER_REQUIRED_FIELDS <= observed_fields or not observed_fields <= (
+        _LSP_PROVIDER_ALLOWED_FIELDS
+    ):
+        raise ValueError(f"{label} has invalid fields")
+    provider = value
+    capabilities = _require_exact_dict(
+        provider["capabilities"],
+        _LSP_CAPABILITY_FIELDS,
+        label=f"{label} capabilities",
+    )
+    if any(type(capabilities[field]) is not bool for field in capabilities):
+        raise RuntimeError(f"{label} capabilities must be exact booleans")
+    normalized = {
+        "provider": _required_text(
+            provider["provider"], label=f"{label} provider", maximum=128
+        ),
+        "backend": _required_text(
+            provider["backend"], label=f"{label} backend", maximum=128
+        ),
+        "status": _required_text(
+            provider["status"], label=f"{label} status", maximum=128
+        ),
+        "index_snapshot": provider.get("index_snapshot"),
+        "capabilities": dict(capabilities),
+    }
+    if "fallback_reason" in provider:
+        normalized["fallback_reason"] = _required_text(
+            provider["fallback_reason"],
+            label=f"{label} fallback reason",
+            maximum=256,
+        )
+    if normalized["index_snapshot"] is not None:
+        _required_text(
+            normalized["index_snapshot"],
+            label=f"{label} index snapshot",
+            maximum=512,
+        )
+    return normalized
+
+
+def _validate_runtime_identity(
     value: object,
     *,
     request: Mapping[str, Any],
     label: str,
 ) -> dict[str, Any]:
-    identity = _require_exact_dict(value, _AUTHORITY_IDENTITY_FIELDS, label=label)
-    expected = _expected_authority_identity(request)
-    if identity != expected:
+    identity = _require_exact_dict(value, _RUNTIME_IDENTITY_FIELDS, label=label)
+    delivery = _require_exact_dict(
+        identity["delivery"], _DELIVERY_IDENTITY_FIELDS, label=f"{label} delivery"
+    )
+    delivery = {
+        field: _required_text(
+            delivery[field],
+            label=f"{label} delivery {field}",
+            maximum=128,
+        )
+        for field in _DELIVERY_IDENTITY_FIELDS
+    }
+    artifact = identity["artifact"]
+    if artifact is not None:
+        artifact = _require_exact_dict(
+            artifact,
+            _PORTABLE_ARTIFACT_FIELDS,
+            label=f"{label} artifact",
+        )
+        if type(artifact["verified"]) is not bool:
+            raise RuntimeError(f"{label} artifact verification flag is malformed")
+        for field in ("schema", "repository", "commit"):
+            _required_text(
+                artifact[field],
+                label=f"{label} artifact {field}",
+                maximum=512,
+            )
+        if type(artifact["views"]) is not list or any(
+            type(view) is not str for view in artifact["views"]
+        ):
+            raise RuntimeError(f"{label} artifact views are malformed")
+    source = identity["source_authority"]
+    if source is not None:
+        source = _require_exact_dict(
+            source,
+            _SOURCE_AUTHORITY_FIELDS,
+            label=f"{label} source authority",
+        )
+        _required_text(
+            source["kind"],
+            label=f"{label} source authority kind",
+            maximum=128,
+        )
+        if type(source["verified"]) is not bool:
+            raise RuntimeError(f"{label} source authority flag is malformed")
+        if source["verification_scope"] is not None:
+            _required_text(
+                source["verification_scope"],
+                label=f"{label} source authority verification scope",
+                maximum=128,
+            )
+    capabilities = identity["capabilities"]
+    if capabilities is not None:
+        capabilities = _require_exact_dict(
+            capabilities,
+            _RUNTIME_CAPABILITY_FIELDS,
+            label=f"{label} capabilities",
+        )
+        for field in (
+            "read_source",
+            "native_vector_authorized",
+            "native_lsp_allowed",
+            "commit_verified",
+        ):
+            if type(capabilities[field]) is not bool:
+                raise RuntimeError(f"{label} capability flags are malformed")
+        if type(capabilities["loaded_views"]) is not list or any(
+            type(view) is not str for view in capabilities["loaded_views"]
+        ):
+            raise RuntimeError(f"{label} loaded views are malformed")
+        if type(capabilities["view_errors"]) is not dict:
+            raise RuntimeError(f"{label} view errors are malformed")
+        _required_text(
+            capabilities["checkout_state"],
+            label=f"{label} checkout state",
+            maximum=128,
+        )
+        capabilities = {
+            **capabilities,
+            "lsp_provider": _validate_lsp_provider(
+                capabilities["lsp_provider"],
+                label=f"{label} LSP provider",
+            ),
+        }
+    normalized = {
+        "delivery": delivery,
+        "artifact": None if artifact is None else _json_snapshot(artifact),
+        "source_authority": None if source is None else dict(source),
+        "capabilities": None if capabilities is None else dict(capabilities),
+    }
+    expected = _expected_runtime_identity(request)
+    observed_lsp = None
+    if expected["capabilities"] is not None:
+        expected["capabilities"].pop("lsp_provider")
+        observed_lsp = normalized["capabilities"].pop("lsp_provider")
+    matches_contract = normalized == expected
+    if expected["capabilities"] is not None:
+        normalized["capabilities"]["lsp_provider"] = observed_lsp
+    if not matches_contract:
         raise RuntimeError(f"{label} differs from its exact per-cell contract")
-    return _json_snapshot(expected)
+    if _runtime_uses_portable_artifact(request) and (
+        type(observed_lsp) is not dict
+        or observed_lsp.get("fallback_reason")
+        != "portable_artifact_uses_persisted_graph"
+    ):
+        raise RuntimeError(f"{label} portable LSP policy changed")
+    return _json_snapshot(normalized)
+
+
+def _validate_public_manifest_evidence(
+    value: object,
+    *,
+    runtime_expected: bool,
+    label: str,
+) -> dict[str, Any] | None:
+    if not runtime_expected:
+        if value is not None:
+            raise RuntimeError(f"{label} must be absent for compiler samples")
+        return None
+    evidence = _require_exact_dict(value, _PUBLIC_MANIFEST_EVIDENCE_FIELDS, label=label)
+    raw = _required_text(evidence["raw_sha256"], label=f"{label} raw", maximum=80)
+    parity = _required_text(
+        evidence["parity_sha256"], label=f"{label} parity", maximum=80
+    )
+    if not _SHA256_RE.fullmatch(raw) or not _SHA256_RE.fullmatch(parity):
+        raise RuntimeError(f"{label} digests are malformed")
+    if evidence["parity_schema"] != _PUBLIC_MANIFEST_PARITY_SCHEMA:
+        raise RuntimeError(f"{label} parity schema changed")
+    return {
+        "raw_sha256": raw,
+        "parity_sha256": parity,
+        "parity_schema": _PUBLIC_MANIFEST_PARITY_SCHEMA,
+    }
+
+
+def _validate_source_read_evidence(
+    value: object,
+    *,
+    expected_status: str,
+    label: str,
+) -> dict[str, Any]:
+    evidence = _require_exact_dict(value, _SOURCE_READ_EVIDENCE_FIELDS, label=label)
+    if evidence["status"] != expected_status:
+        raise RuntimeError(f"{label} status differs from its route contract")
+    count = _nonnegative_int(evidence["count"], label=f"{label} count")
+    expected_count = 0 if expected_status == "not-exercised" else 1
+    if count != expected_count:
+        raise RuntimeError(f"{label} count differs from its route contract")
+    digests: dict[str, str | None] = {}
+    for field in ("payload_sha256", "content_sha256", "error_sha256"):
+        digest = evidence[field]
+        if digest is not None:
+            digest = _required_text(digest, label=f"{label} {field}", maximum=80)
+            if not _SHA256_RE.fullmatch(digest):
+                raise RuntimeError(f"{label} contains a malformed digest")
+        digests[field] = digest
+    expected_presence = {
+        "not-exercised": (False, False, False),
+        "verified": (True, True, False),
+        "source-disabled": (False, False, True),
+    }[expected_status]
+    if tuple(digests[field] is not None for field in digests) != expected_presence:
+        raise RuntimeError(f"{label} digest presence differs from its route contract")
+    return {"status": expected_status, **digests, "count": count}
 
 
 def _validate_snapshot(
@@ -1394,6 +1837,7 @@ def _validate_snapshot(
         "compiler-current": False,
         "runtime-cold": None,
         "runtime-cold-query-only": None,
+        "runtime-cold-source-bound": None,
     }[cell]
     if snapshot["changed"] is not expected_changed:
         raise RuntimeError("candidate sample changed flag violates its cell contract")
@@ -1403,6 +1847,101 @@ def _validate_snapshot(
         "generation": generation,
         "changed": expected_changed,
     }
+
+
+def _source_read_status(request: Mapping[str, Any]) -> str:
+    source_enabled = _runtime_source_enabled(request)
+    if source_enabled is None:
+        return "not-exercised"
+    return "verified" if source_enabled else "source-disabled"
+
+
+def _parity_identities_from_result(result: Mapping[str, Any]) -> dict[str, Any]:
+    view = result["view"]
+    runtime = result["runtime"]
+    source_read = result["source_read"]
+    compiler = {
+        "bm25_plan": _json_snapshot(result["bm25_plan"]),
+        "view": {
+            "documents_sha256": view["documents_sha256"],
+            "metadata_sha256": view["metadata_sha256"],
+        },
+        "queries": _json_snapshot(result["queries"]),
+    }
+    content_authority = {
+        "compiler": _json_snapshot(compiler),
+        "source_read": {
+            "status": source_read["status"],
+            "content_sha256": source_read["content_sha256"],
+            "count": source_read["count"],
+        },
+        "source_authority": _json_snapshot(runtime["source_authority"]),
+        "source_capabilities": (
+            None
+            if runtime["capabilities"] is None
+            else {
+                field: _json_snapshot(runtime["capabilities"][field])
+                for field in (
+                    "loaded_views",
+                    "read_source",
+                    "commit_verified",
+                    "checkout_state",
+                )
+            }
+        ),
+    }
+    public_manifest = result["public_manifest"]
+    public_manifest_parity = (
+        None
+        if public_manifest is None
+        else {
+            "parity_schema": public_manifest["parity_schema"],
+            "parity_sha256": public_manifest["parity_sha256"],
+        }
+    )
+    full_runtime = {
+        "content_authority": _json_snapshot(content_authority),
+        "public_manifest": public_manifest_parity,
+        "source_read": _json_snapshot(source_read),
+        "context_provenance": runtime["delivery"]["context_provenance"],
+        "artifact": _json_snapshot(runtime["artifact"]),
+        "capabilities": _json_snapshot(runtime["capabilities"]),
+    }
+    return {
+        "compiler": compiler,
+        "content-authority": content_authority,
+        "full-runtime": full_runtime,
+    }
+
+
+def _validate_parity_identities(
+    value: object,
+    *,
+    expected: Mapping[str, Any],
+) -> dict[str, Any]:
+    identities = _require_exact_dict(
+        value,
+        _PARITY_IDENTITIES_FIELDS,
+        label="sample parity identities",
+    )
+    _require_exact_dict(
+        identities["compiler"],
+        _COMPILER_PARITY_FIELDS,
+        label="sample compiler parity identity",
+    )
+    _require_exact_dict(
+        identities["content-authority"],
+        _CONTENT_AUTHORITY_PARITY_FIELDS,
+        label="sample content-authority parity identity",
+    )
+    _require_exact_dict(
+        identities["full-runtime"],
+        _FULL_RUNTIME_PARITY_FIELDS,
+        label="sample full-runtime parity identity",
+    )
+    if identities != expected:
+        raise RuntimeError("sample parity projections differ from their result")
+    return _json_snapshot(expected)
 
 
 def _validate_sample_receipt(
@@ -1447,17 +1986,28 @@ def _validate_sample_receipt(
     result = _require_exact_dict(
         receipt["result"], _RESULT_FIELDS, label="sample result"
     )
-    manifest = _validate_manifest_identity(
-        result["manifest"], subject=subject, label="sample manifest identity"
+    bm25_plan = _validate_bm25_plan_identity(
+        result["bm25_plan"], subject=subject, label="sample BM25 plan identity"
     )
     view = _validate_view_identity(result["view"], label="sample BM25 identity")
     queries = _validate_query_identity(
         result["queries"], subject=subject, label="sample query identity"
     )
-    authority = _validate_authority_identity(
-        result["authority"],
+    runtime = _validate_runtime_identity(
+        result["runtime"],
         request=request,
-        label="sample authority identity",
+        label="sample runtime identity",
+    )
+    runtime_expected = _runtime_source_enabled(request) is not None
+    public_manifest = _validate_public_manifest_evidence(
+        result["public_manifest"],
+        runtime_expected=runtime_expected,
+        label="sample public manifest evidence",
+    )
+    source_read = _validate_source_read_evidence(
+        result["source_read"],
+        expected_status=_source_read_status(request),
+        label="sample source-read evidence",
     )
     retained_view = result["retained_view"]
     if retained_view is not None:
@@ -1478,20 +2028,20 @@ def _validate_sample_receipt(
         raise RuntimeError("sample payload byte metric differs from its BM25 identity")
     if normalized_metrics["payload_files"] != view["payload_files"]:
         raise RuntimeError("sample payload file metric differs from its BM25 identity")
-    parity = _require_exact_dict(
-        receipt["parity_identity"], _PARITY_FIELDS, label="sample parity identity"
-    )
-    expected_parity = {
-        "manifest": manifest,
-        "view": {
-            "documents_sha256": view["documents_sha256"],
-            "metadata_sha256": view["metadata_sha256"],
-        },
+    normalized_result = {
+        "bm25_plan": bm25_plan,
+        "public_manifest": public_manifest,
+        "view": view,
+        "retained_view": retained_view,
         "queries": queries,
-        "authority": authority,
+        "source_read": source_read,
+        "snapshot": snapshot,
+        "runtime": runtime,
     }
-    if parity != expected_parity:
-        raise RuntimeError("sample parity projection differs from its result")
+    expected_parity = _parity_identities_from_result(normalized_result)
+    parity_identities = _validate_parity_identities(
+        receipt["parity_identities"], expected=expected_parity
+    )
     safety = _require_exact_dict(
         receipt["safety"], _SAFETY_FIELDS, label="sample safety"
     )
@@ -1513,15 +2063,8 @@ def _validate_sample_receipt(
         "view_set_id": receipt["view_set_id"],
         "process_id": process_id,
         "metrics": normalized_metrics,
-        "parity_identity": expected_parity,
-        "result": {
-            "manifest": manifest,
-            "view": view,
-            "retained_view": retained_view,
-            "queries": queries,
-            "snapshot": snapshot,
-            "authority": authority,
-        },
+        "parity_identities": parity_identities,
+        "result": normalized_result,
         "safety": dict(safety),
     }
 
@@ -1582,7 +2125,7 @@ def _run_cell(
         "candidate": [],
     }
     all_samples: list[dict[str, Any]] = []
-    every_pair = True
+    every_pair = {projection: True for projection in PARITY_PROJECTIONS}
     for phase, rounds, report_phase in (
         ("warmup", warmups, "warmups"),
         ("measured", iterations, "measured"),
@@ -1618,8 +2161,15 @@ def _run_cell(
                 process_ids.append(receipt["process_id"])
                 if phase == "measured":
                     measured_by_arm[arm].append(receipt)
-            pair_equal = pair[0]["parity_identity"] == pair[1]["parity_identity"]
-            every_pair = every_pair and pair_equal
+            pair_equal = {
+                projection: (
+                    pair[0]["parity_identities"][projection]
+                    == pair[1]["parity_identities"][projection]
+                )
+                for projection in PARITY_PROJECTIONS
+            }
+            for projection, equal in pair_equal.items():
+                every_pair[projection] = every_pair[projection] and equal
             runs[report_phase].append(
                 {
                     "round_index": round_index,
@@ -1628,28 +2178,48 @@ def _run_cell(
                     "samples": pair,
                 }
             )
-    identities = {_json_digest(sample["parity_identity"]) for sample in all_samples}
-    stable = len(identities) == 1
+    identities = {
+        projection: {
+            arm: {
+                _json_digest(sample["parity_identities"][projection])
+                for sample in all_samples
+                if sample["arm"] == arm
+            }
+            for arm in ARMS
+        }
+        for projection in PARITY_PROJECTIONS
+    }
+    parity = {
+        projection: {
+            "every_pair_equal": every_pair[projection],
+            "stable_within_arm": {
+                arm: len(identities[projection][arm]) == 1 for arm in ARMS
+            },
+            "identity_sha256": {
+                arm: sorted(identities[projection][arm]) for arm in ARMS
+            },
+            "passed": every_pair[projection]
+            and all(len(identities[projection][arm]) == 1 for arm in ARMS),
+        }
+        for projection in PARITY_PROJECTIONS
+    }
     summary = {arm: _summarize_arm(measured_by_arm[arm]) for arm in ARMS}
     safety_checks = {
         field: all(sample["safety"][field] for sample in all_samples)
         for field in sorted(_SAFETY_FIELDS)
     }
-    passed = every_pair and stable and all(safety_checks.values())
+    primary_projection = CELL_PRIMARY_PROJECTIONS[cell]
+    passed = parity[primary_projection]["passed"] and all(safety_checks.values())
     return {
         "subject_id": frozen_subject["id"],
         "media_id": media_id,
         "view_set_id": frozen_view_set["id"],
         "cell": cell,
+        "primary_projection": primary_projection,
         "passed": passed,
         "runs": runs,
         "summary": summary,
-        "parity": {
-            "every_pair": every_pair,
-            "stable_across_runs": stable,
-            "identity_sha256": sorted(identities),
-            "passed": every_pair and stable,
-        },
+        "parity": parity,
         "safety": {
             "checks": safety_checks,
             "passed": all(safety_checks.values()),
@@ -1708,12 +2278,43 @@ def _cell_measurement_complete(
             if (
                 pair.get("round_index") != round_index
                 or pair.get("arm_order") != order
-                or type(pair.get("parity")) is not bool
+                or type(pair.get("parity")) is not dict
+                or set(pair["parity"]) != set(PARITY_PROJECTIONS)
+                or any(type(value) is not bool for value in pair["parity"].values())
                 or type(samples) is not list
                 or len(samples) != len(ARMS)
                 or [sample.get("arm") for sample in samples] != order
             ):
                 return False
+    primary_projection = cell.get("primary_projection")
+    if primary_projection != CELL_PRIMARY_PROJECTIONS.get(cell.get("cell")):
+        return False
+    parity = cell.get("parity")
+    if type(parity) is not dict or set(parity) != set(PARITY_PROJECTIONS):
+        return False
+    for projection in PARITY_PROJECTIONS:
+        projection_parity = parity[projection]
+        if (
+            type(projection_parity) is not dict
+            or set(projection_parity)
+            != {
+                "every_pair_equal",
+                "stable_within_arm",
+                "identity_sha256",
+                "passed",
+            }
+            or type(projection_parity["every_pair_equal"]) is not bool
+            or type(projection_parity["passed"]) is not bool
+            or type(projection_parity["stable_within_arm"]) is not dict
+            or set(projection_parity["stable_within_arm"]) != set(ARMS)
+            or any(
+                type(value) is not bool
+                for value in projection_parity["stable_within_arm"].values()
+            )
+            or type(projection_parity["identity_sha256"]) is not dict
+            or set(projection_parity["identity_sha256"]) != set(ARMS)
+        ):
+            return False
     summary = cell.get("summary")
     if type(summary) is not dict or set(summary) != set(ARMS):
         return False
@@ -1754,7 +2355,13 @@ def _aggregate_tracks(
         by_cell[str(value["cell"])].append(value)
 
     tracks: dict[str, dict[str, Any]] = {}
-    for track, track_cells in TRACKS.items():
+    incomplete_scope_tracks = {
+        "manifest-runtime-compatibility",
+        "source-bound-manifest-compatibility",
+    }
+    for track, specification in TRACKS.items():
+        track_cells = specification["cells"]
+        projection = specification["projection"]
         instances = [item for cell in track_cells for item in by_cell[cell]]
         expected_count = expected_instances * len(track_cells)
         identities = {
@@ -1780,19 +2387,32 @@ def _aggregate_tracks(
             )
         )
         parity_passed = measurement_complete and all(
-            type(item.get("parity")) is dict and item["parity"].get("passed") is True
+            type(item.get("parity")) is dict
+            and type(item["parity"].get(projection)) is dict
+            and item["parity"][projection].get("passed") is True
             for item in instances
         )
         safety_passed = measurement_complete and all(
             type(item.get("safety")) is dict and item["safety"].get("passed") is True
             for item in instances
         )
+        scope_complete = (
+            track not in incomplete_scope_tracks
+            and measurement_complete
+            and safety_passed
+        )
+        passed = (
+            measurement_complete and parity_passed and safety_passed and scope_complete
+        )
         tracks[track] = {
             "cells": list(track_cells),
+            "projection": projection,
             "measurement_complete": measurement_complete,
             "parity_passed": parity_passed,
             "safety_passed": safety_passed,
-            "passed": measurement_complete and parity_passed and safety_passed,
+            "scope_complete": scope_complete,
+            "decision": "passed" if passed else "blocked",
+            "passed": passed,
             "policy_status": "unratified",
             "promotion_eligible": False,
         }
@@ -2045,7 +2665,7 @@ def profile_retained_storage_gate(
         return _failure(
             report,
             "protocol",
-            RuntimeError("measurement protocol is not canonical v2"),
+            RuntimeError("measurement protocol is not canonical v3"),
         )
 
     tracks_passed = all(
@@ -2056,12 +2676,23 @@ def profile_retained_storage_gate(
     report["promotion_eligible"] = False
     report["failure"] = None
     if not tracks_passed:
+        blocked_causes: list[str] = []
+        if any(
+            aggregate["parity_passed"] is not True
+            for aggregate in report["tracks"].values()
+        ):
+            blocked_causes.append("one or more track parity projections are red")
+        if any(
+            aggregate["scope_complete"] is not True
+            for aggregate in report["tracks"].values()
+        ):
+            blocked_causes.append("one or more compatibility scopes remain incomplete")
         report["decision"] = {
             "policy_status": "unratified",
             "report_only": True,
             "promotion_eligible": False,
             "recommendation": "retain-explicit-routes",
-            "reason": "one or more compatibility tracks are parity red",
+            "reason": "; ".join(blocked_causes),
         }
     return report
 
@@ -2446,7 +3077,11 @@ def _prepare_sample(request: Mapping[str, Any], paths: Mapping[str, str]) -> Non
         _provision_storage(paths)
     if cell == "compiler-current":
         _invoke_cli(_index_arguments(request, paths, candidate=arm == "candidate"))
-    elif cell in {"runtime-cold", "runtime-cold-query-only"}:
+    elif cell in {
+        "runtime-cold",
+        "runtime-cold-query-only",
+        "runtime-cold-source-bound",
+    }:
         _invoke_cli(_index_arguments(request, paths, candidate=arm == "candidate"))
         if cell == "runtime-cold-query-only" and arm == "legacy":
             _invoke_cli(
@@ -2503,24 +3138,48 @@ def _normalize_manifest_measurement_metadata(
 ) -> dict[str, Any]:
     if type(normalized) is not dict or set(normalized.get("indexes", {})) != {"bm25"}:
         raise RuntimeError("BM25 gate manifest has an unexpected view set")
-    normalized["compiled_at"] = "<measurement-metadata>"
-    normalized["compiled_at_epoch"] = 0
+    if "compiled_at" not in normalized or "compiled_at_epoch" not in normalized:
+        raise RuntimeError("BM25 gate manifest compilation timestamps are missing")
+    _required_text(
+        normalized["compiled_at"],
+        label="BM25 gate manifest compiled_at",
+        maximum=256,
+    )
+    _finite_nonnegative(
+        normalized["compiled_at_epoch"],
+        label="BM25 gate manifest compiled_at_epoch",
+    )
     entry = normalized["indexes"]["bm25"]
     if type(entry) is not dict:
         raise RuntimeError("BM25 gate manifest entry is malformed")
     raw_entry_path = entry.get("path")
     if type(raw_entry_path) is not str:
         raise RuntimeError("BM25 gate manifest path is malformed")
-    entry["path"] = "<isolated-bm25-view>"
-    entry["built_at"] = "<measurement-metadata>"
-    entry["built_at_epoch"] = 0
+    if "built_at" not in entry or "built_at_epoch" not in entry:
+        raise RuntimeError("BM25 gate manifest build timestamps are missing")
+    _required_text(
+        entry["built_at"],
+        label="BM25 gate manifest built_at",
+        maximum=256,
+    )
+    _finite_nonnegative(
+        entry["built_at_epoch"],
+        label="BM25 gate manifest built_at_epoch",
+    )
     metadata = entry.get("metadata")
     if type(metadata) is not dict:
         raise RuntimeError("BM25 gate manifest metadata is malformed")
     if "build_duration_seconds" in metadata:
-        if type(metadata["build_duration_seconds"]) not in {int, float}:
-            raise RuntimeError("BM25 build duration metadata is malformed")
+        _finite_nonnegative(
+            metadata["build_duration_seconds"],
+            label="BM25 build duration metadata",
+        )
         metadata["build_duration_seconds"] = "<measurement-metadata>"
+    normalized["compiled_at"] = "<measurement-metadata>"
+    normalized["compiled_at_epoch"] = 0
+    entry["path"] = "<isolated-bm25-view>"
+    entry["built_at"] = "<measurement-metadata>"
+    entry["built_at_epoch"] = 0
     return normalized
 
 
@@ -2581,6 +3240,390 @@ def _normalized_portable_manifest_semantics(manifest: Any) -> dict[str, Any]:
         raise RuntimeError("portable BM25 plan paths are not canonical")
     repo["path"] = "<isolated-source>"
     return _normalize_manifest_measurement_metadata(normalized)
+
+
+def _normalized_public_manifest_payload(
+    value: Mapping[str, Any],
+    *,
+    request: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Mask only per-sample paths and times in the real public response."""
+
+    normalized = _json_snapshot(dict(value))
+    indexes = normalized.get("indexes")
+    repo = normalized.get("repo")
+    if type(indexes) is not dict or set(indexes) != {"bm25"}:
+        raise RuntimeError("public manifest has an unexpected view set")
+    if type(repo) is not dict or type(repo.get("path")) is not str:
+        raise RuntimeError("public manifest repository path is malformed")
+    entry = indexes["bm25"]
+    if type(entry) is not dict or type(entry.get("path")) is not str:
+        raise RuntimeError("public manifest BM25 path is malformed")
+
+    portable_query_context = (
+        _runtime_uses_portable_artifact(request)
+        and _runtime_source_enabled(request) is False
+    )
+    if portable_query_context:
+        if repo["path"] != "source" or entry["path"] != "views/bm25":
+            raise RuntimeError("portable public manifest paths are not canonical")
+        repository_path = "source"
+        view_path = "views/bm25"
+    else:
+        subject_root = Path(request["subject_root"])
+        raw_repository = Path(repo["path"])
+        raw_view = Path(entry["path"])
+        if (
+            not raw_repository.is_absolute()
+            or Path(os.path.abspath(os.fspath(raw_repository))) != subject_root
+            or not raw_view.is_absolute()
+        ):
+            raise RuntimeError("ordinary public manifest paths changed")
+        repository_path = "<authenticated-benchmark-subject>"
+        view_path = "<isolated-bm25-view>"
+
+    normalized = _normalize_manifest_measurement_metadata(normalized)
+    normalized["repo"]["path"] = repository_path
+    normalized["indexes"]["bm25"]["path"] = view_path
+    return normalized
+
+
+def _validated_public_manifest_payload(
+    value: Mapping[str, Any],
+    *,
+    request: Mapping[str, Any],
+    context_manifest: Mapping[str, Any],
+    context_state: Mapping[str, Any],
+    tool_surface: str,
+) -> dict[str, Any]:
+    if type(value) is not dict:
+        raise RuntimeError("public get_manifest response must be an exact object")
+    raw = _json_snapshot(value)
+    typed = dict(raw)
+    runtime_value = typed.pop("runtime", None)
+    runtime = _require_exact_dict(
+        runtime_value,
+        _PUBLIC_MANIFEST_RUNTIME_FIELDS,
+        label="public get_manifest runtime",
+    )
+
+    portable = _runtime_uses_portable_artifact(request)
+    if portable:
+        if "artifact" not in typed:
+            raise RuntimeError("portable public get_manifest omitted its artifact")
+        artifact = typed.pop("artifact")
+        if artifact != context_state["artifact"] or artifact is None:
+            raise RuntimeError("public get_manifest artifact changed")
+    elif "artifact" in typed or context_state["artifact"] is not None:
+        raise RuntimeError("ordinary public get_manifest claimed an artifact")
+    if typed != context_manifest:
+        raise RuntimeError("public get_manifest differs from its active manifest")
+
+    explore = _require_exact_dict(
+        runtime["explore_session"],
+        _PUBLIC_MANIFEST_EXPLORE_FIELDS,
+        label="public get_manifest explore session",
+    )
+    for field in _PUBLIC_MANIFEST_EXPLORE_FIELDS:
+        _nonnegative_int(
+            explore[field], label=f"public get_manifest explore session {field}"
+        )
+    if explore["max_ranges"] == 0:
+        raise RuntimeError("public get_manifest explore capacity must be positive")
+
+    source = _require_exact_dict(
+        runtime["source_read"],
+        _PUBLIC_MANIFEST_SOURCE_FIELDS,
+        label="public get_manifest source-read state",
+    )
+    if (
+        type(source["verified"]) is not bool
+        or type(source["commit_verified"]) is not bool
+    ):
+        raise RuntimeError("public get_manifest source flags are malformed")
+    if source["error"] is not None:
+        _required_text(
+            source["error"],
+            label="public get_manifest source error",
+        )
+    if source["verification_scope"] is not None:
+        _required_text(
+            source["verification_scope"],
+            label="public get_manifest source verification scope",
+            maximum=128,
+        )
+    _required_text(
+        source["checkout_state"],
+        label="public get_manifest source checkout state",
+        maximum=128,
+    )
+    expected_source = {
+        "verified": context_state["source_verified"],
+        "error": context_state["source_error"],
+        "verification_scope": context_state["source_verification_scope"],
+        "commit_verified": context_state["commit_verified"],
+        "checkout_state": "not-attested",
+    }
+    if source != expected_source:
+        raise RuntimeError("public get_manifest source-read state changed")
+    expected_surface = _required_text(
+        tool_surface,
+        label="active MCP tool surface",
+        maximum=64,
+    )
+    if expected_surface != "full" or runtime["tool_surface"] != expected_surface:
+        raise RuntimeError("public get_manifest tool surface changed")
+    if (
+        runtime["loaded_views"] != context_state["loaded_views"]
+        or runtime["view_errors"] != context_state["errors"]
+        or runtime["lsp_provider"] != context_state["lsp_provider"]
+    ):
+        raise RuntimeError("public get_manifest runtime state changed")
+    return raw
+
+
+def _public_manifest_evidence(
+    value: Mapping[str, Any],
+    *,
+    request: Mapping[str, Any],
+    context_manifest: Mapping[str, Any],
+    context_state: Mapping[str, Any],
+    tool_surface: str,
+) -> dict[str, Any]:
+    raw = _validated_public_manifest_payload(
+        value,
+        request=request,
+        context_manifest=context_manifest,
+        context_state=context_state,
+        tool_surface=tool_surface,
+    )
+    parity = _normalized_public_manifest_payload(raw, request=request)
+    return {
+        "raw_sha256": _json_digest(raw),
+        "parity_sha256": _json_digest(parity),
+        "parity_schema": _PUBLIC_MANIFEST_PARITY_SCHEMA,
+    }
+
+
+def _source_probe_coordinates(
+    query_payload: Sequence[Mapping[str, Any]],
+) -> tuple[str, int]:
+    if not query_payload:
+        raise RuntimeError("source probe requires one BM25 query payload")
+    results = query_payload[0].get("results")
+    if type(results) is not list or not results or type(results[0]) is not dict:
+        raise RuntimeError("source probe requires one BM25 result")
+    first = results[0]
+    file_path = _required_text(
+        first.get("file"), label="source probe file", maximum=4096
+    )
+    start_line = _positive_int(first.get("start_line"), label="source probe line")
+    return file_path, start_line
+
+
+def _validate_source_content_projection(
+    value: object,
+    *,
+    content: str,
+) -> dict[str, Any]:
+    if type(value) is not dict:
+        raise RuntimeError("public source content projection must be an exact object")
+    fields = frozenset(value)
+    base_fields = _SOURCE_CONTENT_PROJECTION_FIELDS
+    if fields not in {
+        base_fields,
+        base_fields | {"line_truncated"},
+        base_fields | {"next_start_line"},
+    }:
+        raise RuntimeError("public source content projection fields changed")
+    if type(value["truncated"]) is not bool:
+        raise RuntimeError("public source content truncation flag is malformed")
+    original = _nonnegative_int(
+        value["original_chars"],
+        label="public source original character count",
+    )
+    returned = _nonnegative_int(
+        value["returned_chars"],
+        label="public source returned character count",
+    )
+    strategy = _required_text(
+        value["strategy"],
+        label="public source content strategy",
+        maximum=64,
+    )
+    if returned != len(content) or original < returned:
+        raise RuntimeError("public source content projection counts changed")
+    if value["truncated"] is False:
+        if fields != base_fields or strategy != "complete" or original != returned:
+            raise RuntimeError("complete public source projection is malformed")
+    else:
+        if strategy != "sequential_window" or original <= returned:
+            raise RuntimeError("truncated public source projection is malformed")
+        if "line_truncated" in value:
+            if value["line_truncated"] is not True:
+                raise RuntimeError("public source line truncation flag is malformed")
+        elif "next_start_line" in value:
+            _positive_int(
+                value["next_start_line"],
+                label="public source next start line",
+            )
+        else:
+            raise RuntimeError("truncated public source projection lacks continuation")
+    return _json_snapshot(value)
+
+
+def _validated_public_source_payload(
+    value: object,
+    *,
+    request: Mapping[str, Any],
+    file_path: str,
+    start_line: int,
+    source_fingerprint: str,
+) -> dict[str, Any]:
+    payload = _require_exact_dict(
+        value,
+        _SOURCE_READ_PAYLOAD_FIELDS,
+        label="public source-read payload",
+    )
+    observed_file = _required_text(
+        payload["file"],
+        label="public source-read file",
+        maximum=4096,
+    )
+    observed_start = _positive_int(
+        payload["start_line"],
+        label="public source-read start line",
+    )
+    observed_end = _positive_int(
+        payload["end_line"],
+        label="public source-read end line",
+    )
+    if (
+        observed_file != file_path
+        or observed_start != start_line
+        or observed_end != start_line
+    ):
+        raise RuntimeError("public source-read coordinates changed")
+    if type(payload["content"]) is not str:
+        raise RuntimeError("public source-read content is malformed")
+    payload["content_projection"] = _validate_source_content_projection(
+        payload["content_projection"],
+        content=payload["content"],
+    )
+    provenance = _require_exact_dict(
+        payload["source"],
+        _SOURCE_READ_PROVENANCE_FIELDS,
+        label="public source-read provenance",
+    )
+    for field in (
+        "repository",
+        "commit",
+        "source_fingerprint",
+        "verification_scope",
+        "checkout_state",
+    ):
+        _required_text(
+            provenance[field],
+            label=f"public source-read provenance {field}",
+            maximum=4096,
+        )
+    if (
+        type(provenance["verified"]) is not bool
+        or type(provenance["commit_verified"]) is not bool
+    ):
+        raise RuntimeError("public source-read provenance flags are malformed")
+    expected_fingerprint = _required_text(
+        source_fingerprint,
+        label="active context source fingerprint",
+        maximum=80,
+    )
+    if not _SOURCE_V2_RE.fullmatch(expected_fingerprint):
+        raise RuntimeError("active context source fingerprint is not secure v2")
+    expected_repository = (
+        request["subject"]["repository_key"]
+        if _runtime_uses_portable_artifact(request)
+        else request["subject_root"]
+    )
+    expected_provenance = {
+        "repository": expected_repository,
+        "commit": request["subject"]["revision"],
+        "source_fingerprint": expected_fingerprint,
+        "verified": True,
+        "verification_scope": "content-bytes",
+        "commit_verified": False,
+        "checkout_state": "not-attested",
+    }
+    if provenance != expected_provenance:
+        raise RuntimeError("public source-read provenance changed")
+    return _json_snapshot(payload)
+
+
+def _source_read_evidence(
+    server_module: Any,
+    context: Any,
+    query_payload: Sequence[Mapping[str, Any]],
+    *,
+    request: Mapping[str, Any],
+) -> dict[str, Any]:
+    file_path, start_line = _source_probe_coordinates(query_payload)
+    source_enabled = _runtime_source_enabled(request)
+    if source_enabled is None:
+        raise RuntimeError("compiler samples must not execute a source probe")
+    if server_module.get_context() is not context:
+        raise RuntimeError("public source probe lost its active MCP context")
+    try:
+        payload = asyncio.run(
+            server_module.read_source(file_path, start_line, start_line)
+        )
+    except RuntimeError as exc:
+        expected_error = "source reads are unavailable: " + (
+            context.source_error or "source binding is unverified"
+        )
+        if (
+            source_enabled
+            or type(exc) is not RuntimeError
+            or str(exc) != expected_error
+        ):
+            raise
+        if server_module.get_context() is not context:
+            raise RuntimeError(
+                "public source probe changed its active MCP context"
+            ) from exc
+        return {
+            "status": "source-disabled",
+            "payload_sha256": None,
+            "content_sha256": None,
+            "error_sha256": _json_digest(
+                {"error_type": type(exc).__name__, "message": str(exc)}
+            ),
+            "count": 1,
+        }
+    if not source_enabled:
+        raise RuntimeError("source-disabled runtime unexpectedly served source bytes")
+    if server_module.get_context() is not context:
+        raise RuntimeError("public source probe changed its active MCP context")
+    payload = _validated_public_source_payload(
+        _json_snapshot(payload),
+        request=request,
+        file_path=file_path,
+        start_line=start_line,
+        source_fingerprint=context.manifest.source_fingerprint,
+    )
+    content_fields = (
+        "file",
+        "start_line",
+        "end_line",
+        "content",
+        "content_projection",
+    )
+    content = {field: payload[field] for field in content_fields}
+    return {
+        "status": "verified",
+        "payload_sha256": _json_digest(payload),
+        "content_sha256": _json_digest(content),
+        "error_sha256": None,
+        "count": 1,
+    }
 
 
 def _view_inventory_receipts(view_root: Path) -> dict[str, dict[str, Any]]:
@@ -2787,6 +3830,45 @@ def _canonical_cache_identity(
     return manifest_identity, view_identity
 
 
+def _validate_runtime_context_manifest(
+    value: object,
+    *,
+    persisted: Mapping[str, Any],
+    request: Mapping[str, Any],
+    paths: Mapping[str, str],
+) -> dict[str, Any]:
+    if type(value) is not dict or type(persisted) is not dict:
+        raise RuntimeError("runtime context manifests must be exact objects")
+    expected = _json_snapshot(persisted)
+    source_bound_retained = (
+        request["cell"] == "runtime-cold-source-bound" and request["arm"] == "candidate"
+    )
+    if source_bound_retained:
+        repo = expected.get("repo")
+        indexes = expected.get("indexes")
+        if (
+            type(repo) is not dict
+            or repo.get("path") != "source"
+            or type(indexes) is not dict
+            or set(indexes) != {"bm25"}
+            or type(indexes["bm25"]) is not dict
+            or indexes["bm25"].get("path") != "views/bm25"
+        ):
+            raise RuntimeError(
+                "source-bound retained manifest is not canonically portable"
+            )
+        runtime_view = (Path(paths["runtime_output"]) / "views" / "bm25").resolve(
+            strict=True
+        )
+        repo["path"] = request["subject_root"]
+        indexes["bm25"]["path"] = os.fspath(runtime_view)
+    if value != expected:
+        raise RuntimeError(
+            "runtime context manifest differs from its exact persisted binding"
+        )
+    return expected
+
+
 def _query_payload(context: Any, subject: Mapping[str, Any]) -> list[dict[str, Any]]:
     from codenib.mcp.tools.search import search_bm25_impl
 
@@ -2830,7 +3912,7 @@ def _route_result_from_manifest(
     *,
     request: Mapping[str, Any],
     subject: Mapping[str, Any],
-    manifest_identity: Mapping[str, Any],
+    bm25_plan_identity: Mapping[str, Any],
     view_identity: Mapping[str, Any],
 ) -> tuple[dict[str, Any], bool]:
     from codenib.mcp.context import ServerContext
@@ -2854,12 +3936,20 @@ def _route_result_from_manifest(
             active_context.close()
             closed = True
     result = {
-        "manifest": dict(manifest_identity),
+        "bm25_plan": dict(bm25_plan_identity),
+        "public_manifest": None,
         "view": dict(view_identity),
         "retained_view": None,
         "queries": queries,
+        "source_read": {
+            "status": "not-exercised",
+            "payload_sha256": None,
+            "content_sha256": None,
+            "error_sha256": None,
+            "count": 0,
+        },
         "snapshot": {field: None for field in _SNAPSHOT_FIELDS},
-        "authority": _expected_authority_identity(request),
+        "runtime": _expected_runtime_identity(request),
     }
     return result, closed
 
@@ -2870,8 +3960,12 @@ def _runtime_context_state(context: Any) -> dict[str, Any]:
         "errors": dict(context.errors),
         "artifact": None if context.artifact is None else dict(context.artifact),
         "source_verified": context.source_verified,
+        "source_error": context.source_error,
         "source_verification_scope": context.source_verification_scope,
-        "vector_loaded": context.vector is not None,
+        "native_vector_authorized": context._native_index_authorization is not None,
+        "native_lsp_allowed": context._lsp_allow_native,
+        "lsp_provider": _json_snapshot(context.lsp_provider_selection),
+        "commit_verified": context.commit_verified,
     }
 
 
@@ -2886,31 +3980,65 @@ def _validate_runtime_context_state(
             "errors",
             "artifact",
             "source_verified",
+            "source_error",
             "source_verification_scope",
-            "vector_loaded",
+            "native_vector_authorized",
+            "native_lsp_allowed",
+            "lsp_provider",
+            "commit_verified",
         }
     )
     state = _require_exact_dict(value, fields, label="runtime context state")
     if (
+        type(state["source_verified"]) is not bool
+        or type(state["native_vector_authorized"]) is not bool
+        or type(state["native_lsp_allowed"]) is not bool
+        or type(state["commit_verified"]) is not bool
+    ):
+        raise RuntimeError("MCP runtime capability flags are malformed")
+    if state["source_verified"]:
+        if state["source_error"] is not None:
+            raise RuntimeError("verified MCP source context retained an error")
+    else:
+        _required_text(
+            state["source_error"],
+            label="unverified MCP source error",
+        )
+    if (
         state["loaded_views"] != ["bm25"]
         or state["errors"] != {}
-        or state["vector_loaded"] is not False
+        or state["native_vector_authorized"] is not False
+        or state["commit_verified"] is not False
     ):
         raise RuntimeError("MCP route is not an exact clean BM25 context")
+    route = CELL_ROUTE_CONTRACTS[request["cell"]][request["arm"]]
+    source_verified = state["source_verified"]
     observed = {
-        "context_kind": (
-            "manifest-live-source"
-            if state["artifact"] is None
-            else "portable-artifact-query-only"
-        ),
+        "delivery": {
+            "route": route["route"],
+            "context_provenance": route["context_provenance"],
+        },
         "artifact": state["artifact"],
-        "source_verified": state["source_verified"],
-        "source_verification_scope": state["source_verification_scope"],
+        "source_authority": {
+            "kind": ("content-bytes-v2" if source_verified else "source-disabled"),
+            "verified": source_verified,
+            "verification_scope": state["source_verification_scope"],
+        },
+        "capabilities": {
+            "loaded_views": list(state["loaded_views"]),
+            "view_errors": dict(state["errors"]),
+            "read_source": source_verified,
+            "native_vector_authorized": state["native_vector_authorized"],
+            "native_lsp_allowed": state["native_lsp_allowed"],
+            "lsp_provider": state["lsp_provider"],
+            "commit_verified": state["commit_verified"],
+            "checkout_state": "not-attested",
+        },
     }
-    return _validate_authority_identity(
+    return _validate_runtime_identity(
         observed,
         request=request,
-        label="runtime context authority",
+        label="runtime context contract",
     )
 
 
@@ -2999,7 +4127,7 @@ def _runtime_arguments(
         return ["mcp", os.fspath(_cache_manifest_path(Path(request["subject_root"])))]
     if generation is None:
         raise RuntimeError("candidate runtime route requires a retained ref")
-    return [
+    arguments = [
         "mcp",
         "--catalog",
         paths["catalog"],
@@ -3016,6 +4144,9 @@ def _runtime_arguments(
         "--output",
         paths["runtime_output"],
     ]
+    if request["cell"] == "runtime-cold-source-bound":
+        arguments.extend(("--repo", request["subject_root"]))
+    return arguments
 
 
 def _validate_route_config(value: object) -> tuple[dict[str, Any], dict[str, str]]:
@@ -3076,6 +4207,7 @@ def _route_worker(value: object) -> dict[str, Any]:
     cpu_started = time.process_time()
     wall_started = time.perf_counter()
     context_closed = False
+    source_closed = False
     route_result: dict[str, Any] | None = None
     metrics: dict[str, float | int] | None = None
     with _sample_environment(paths):
@@ -3100,9 +4232,10 @@ def _route_worker(value: object) -> dict[str, Any]:
                 _cache_manifest_path(Path(request["subject_root"])),
                 request=request,
                 subject=request["subject"],
-                manifest_identity=canonical_manifest,
+                bm25_plan_identity=canonical_manifest,
                 view_identity=canonical_view,
             )
+            source_closed = True
         else:
             from codenib.compiler.manifest import MANIFEST_FILENAME
             from codenib.mcp import server as server_module
@@ -3122,12 +4255,26 @@ def _route_worker(value: object) -> dict[str, Any]:
                 if transport != "stdio":
                     raise RuntimeError("MCP route selected a non-stdio transport")
                 context = server_module.get_context()
+                if server_module.get_context() is not context:
+                    raise RuntimeError("MCP ready callback changed its context")
+                captured["source_binding"] = context._source_binding
+                captured["tool_surface"] = server_module.mcp.tool_surface
                 captured["context_manifest"] = context.manifest.to_dict()
-                captured["context_state"] = _runtime_context_state(context)
-                captured["query_payload"] = _query_payload(
+                query_payload = _query_payload(
                     context,
                     request["subject"],
                 )
+                captured["query_payload"] = query_payload
+                captured["public_manifest"] = asyncio.run(server_module.get_manifest())
+                captured["source_read"] = _source_read_evidence(
+                    server_module,
+                    context,
+                    query_payload,
+                    request=request,
+                )
+                if server_module.get_context() is not context:
+                    raise RuntimeError("MCP public probes changed their context")
+                captured["context_state"] = _runtime_context_state(context)
 
             server_module.mcp.run = run_stdio
             try:
@@ -3152,16 +4299,31 @@ def _route_worker(value: object) -> dict[str, Any]:
             context_manifest = captured.get("context_manifest")
             context_state = captured.get("context_state")
             query_payload = captured.get("query_payload")
+            public_manifest = captured.get("public_manifest")
+            source_read = captured.get("source_read")
+            tool_surface = captured.get("tool_surface")
             if (
                 type(context_manifest) is not dict
                 or type(context_state) is not dict
                 or type(query_payload) is not list
+                or type(public_manifest) is not dict
+                or type(source_read) is not dict
+                or type(tool_surface) is not str
+                or "source_binding" not in captured
             ):
                 raise RuntimeError("MCP benchmark callback did not observe a context")
-            authority = _validate_runtime_context_state(
+            runtime = _validate_runtime_context_state(
                 context_state,
                 request=request,
             )
+            source_binding = captured["source_binding"]
+            if _runtime_source_enabled(request):
+                source_closed = (
+                    source_binding is not None
+                    and getattr(source_binding, "closed", False) is True
+                )
+            else:
+                source_closed = source_binding is None
             canonical_manifest, canonical_view = _canonical_cache_identity(
                 request,
                 paths,
@@ -3188,20 +4350,30 @@ def _route_worker(value: object) -> dict[str, Any]:
 
                 manifest = RepoManifest.load(runtime_manifest)
                 actual_view = None
-            if context_manifest != manifest.to_dict():
-                raise RuntimeError(
-                    "runtime context manifest differs from its persisted manifest"
-                )
+            _validate_runtime_context_manifest(
+                context_manifest,
+                persisted=manifest.to_dict(),
+                request=request,
+                paths=paths,
+            )
             route_result = {
-                "manifest": canonical_manifest,
+                "bm25_plan": canonical_manifest,
+                "public_manifest": _public_manifest_evidence(
+                    public_manifest,
+                    request=request,
+                    context_manifest=context_manifest,
+                    context_state=context_state,
+                    tool_surface=tool_surface,
+                ),
                 "view": canonical_view,
                 "retained_view": None,
                 "queries": _query_identity_from_payload(
                     query_payload,
                     subject=request["subject"],
                 ),
+                "source_read": source_read,
                 "snapshot": {field: None for field in _SNAPSHOT_FIELDS},
-                "authority": authority,
+                "runtime": runtime,
             }
             if request["arm"] == "candidate":
                 route_result["retained_view"] = actual_view
@@ -3220,6 +4392,7 @@ def _route_worker(value: object) -> dict[str, Any]:
         "metrics": metrics,
         "result": route_result,
         "context_closed": context_closed,
+        "source_closed": source_closed,
     }
 
 
@@ -3253,7 +4426,16 @@ def _invoke_materialize(
 def _validate_route_result(value: object) -> dict[str, Any]:
     route = _require_exact_dict(
         value,
-        frozenset({"operation", "process_id", "metrics", "result", "context_closed"}),
+        frozenset(
+            {
+                "operation",
+                "process_id",
+                "metrics",
+                "result",
+                "context_closed",
+                "source_closed",
+            }
+        ),
         label="inner route result",
     )
     if route["operation"] != "route":
@@ -3265,6 +4447,8 @@ def _validate_route_result(value: object) -> dict[str, Any]:
         raise RuntimeError("inner route result shape changed")
     if type(route["context_closed"]) is not bool:
         raise RuntimeError("inner route context cleanup flag is malformed")
+    if type(route["source_closed"]) is not bool:
+        raise RuntimeError("inner route source cleanup flag is malformed")
     return route
 
 
@@ -3359,7 +4543,7 @@ def _sample_worker(value: object) -> dict[str, Any]:
                         )
                     )
                     retained_matches_raw = (
-                        retained_manifest == result["manifest"]
+                        retained_manifest == result["bm25_plan"]
                         and retained_view == result["view"]
                     )
                     result["retained_view"] = retained_view
@@ -3369,7 +4553,7 @@ def _sample_worker(value: object) -> dict[str, Any]:
                         paths,
                     )
                     retained_matches_raw = (
-                        raw_manifest == result["manifest"]
+                        raw_manifest == result["bm25_plan"]
                         and raw_view == result["view"]
                         and result["retained_view"] == result["view"]
                     )
@@ -3383,16 +4567,7 @@ def _sample_worker(value: object) -> dict[str, Any]:
             subject_unchanged = before == after
             if not subject_unchanged:
                 raise RuntimeError("benchmark subject changed during a sample")
-            view = result["view"]
-            parity = {
-                "manifest": dict(result["manifest"]),
-                "view": {
-                    "documents_sha256": view["documents_sha256"],
-                    "metadata_sha256": view["metadata_sha256"],
-                },
-                "queries": dict(result["queries"]),
-                "authority": _json_snapshot(result["authority"]),
-            }
+            parity_identities = _parity_identities_from_result(result)
             receipt = {
                 "schema_version": REPORT_SCHEMA_VERSION,
                 "operation": "sample",
@@ -3406,7 +4581,7 @@ def _sample_worker(value: object) -> dict[str, Any]:
                 "view_set_id": request["view_set"]["id"],
                 "process_id": route["process_id"],
                 "metrics": dict(route["metrics"]),
-                "parity_identity": parity,
+                "parity_identities": parity_identities,
                 "result": result,
                 "safety": {
                     "subject_unchanged": subject_unchanged,
@@ -3414,6 +4589,7 @@ def _sample_worker(value: object) -> dict[str, Any]:
                     "cleanup_complete": False,
                     "storage_closed": True,
                     "context_closed": route["context_closed"],
+                    "source_closed": route["source_closed"],
                     "ref_stable": ref_stable,
                     "retained_matches_raw": retained_matches_raw,
                 },

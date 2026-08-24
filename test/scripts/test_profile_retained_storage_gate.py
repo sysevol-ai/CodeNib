@@ -10,6 +10,7 @@ import math
 import os
 import signal
 import subprocess
+import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -178,73 +179,111 @@ def _use_distinct_media_classes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(profiler, "_media_identity", distinct)
 
 
-def _parity_identity(request: Mapping[str, Any]) -> dict[str, Any]:
+def _bm25_plan_identity(request: Mapping[str, Any]) -> dict[str, Any]:
     subject = request["subject"]
+    return {
+        "commit": subject["revision"],
+        "source_fingerprint": _SOURCE_V2,
+        "source_selection_digest": _json_digest(subject["source_selection"]),
+        "semantic_sha256": _SHA_B,
+        "languages": list(subject["languages"]),
+        "file_count": 1,
+    }
+
+
+def _public_manifest_evidence(request: Mapping[str, Any]) -> dict[str, Any] | None:
+    if request["cell"] in {"compiler-cold", "compiler-current"}:
+        return None
+    portable = request["arm"] == "candidate" or (
+        request["arm"] == "legacy" and request["cell"] == "runtime-cold-query-only"
+    )
+    return {
+        "raw_sha256": _SHA_D if portable else _SHA_C,
+        "parity_sha256": _SHA_D if portable else _SHA_C,
+        "parity_schema": "codenib.retained-storage-public-manifest-parity.v1",
+    }
+
+
+def _source_read_evidence(request: Mapping[str, Any]) -> dict[str, Any]:
+    cell = request["cell"]
+    if cell in {"compiler-cold", "compiler-current"}:
+        return {
+            "status": "not-exercised",
+            "payload_sha256": None,
+            "content_sha256": None,
+            "error_sha256": None,
+            "count": 0,
+        }
+    source_enabled = (
+        request["arm"] == "legacy" and cell != "runtime-cold-query-only"
+    ) or (request["arm"] == "candidate" and cell == "runtime-cold-source-bound")
+    if source_enabled:
+        return {
+            "status": "verified",
+            "payload_sha256": _SHA_C,
+            "content_sha256": _SHA_D,
+            "error_sha256": None,
+            "count": 1,
+        }
+    return {
+        "status": "source-disabled",
+        "payload_sha256": None,
+        "content_sha256": None,
+        "error_sha256": _SHA_C,
+        "count": 1,
+    }
+
+
+def _runtime_identity(request: Mapping[str, Any]) -> dict[str, Any]:
+    runtime = profiler._expected_runtime_identity(request)  # noqa: SLF001
+    capabilities = runtime["capabilities"]
+    if capabilities is None:
+        return runtime
+    portable = request["arm"] == "candidate" or (
+        request["arm"] == "legacy" and request["cell"] == "runtime-cold-query-only"
+    )
+    capabilities["lsp_provider"] = {
+        "provider": "codenib_static_index",
+        "backend": "unavailable",
+        "status": "unavailable",
+        "index_snapshot": None,
+        "fallback_reason": (
+            "portable_artifact_uses_persisted_graph"
+            if portable
+            else "repository_source_policy_requires_persisted_graph"
+        ),
+        "capabilities": {
+            "definition": False,
+            "references": False,
+            "route": False,
+        },
+    }
+    return runtime
+
+
+def _sample_receipt(request: Mapping[str, Any], *, process_id: int) -> dict[str, Any]:
     queries_sha256 = (
         _SHA_B
         if request["cell"] == "runtime-cold" and request["arm"] == "candidate"
         else _SHA_A
     )
-    return {
-        "manifest": {
-            "commit": subject["revision"],
-            "source_fingerprint": _SOURCE_V2,
-            "source_selection_digest": _json_digest(subject["source_selection"]),
-            "semantic_sha256": _SHA_B,
-            "languages": list(subject["languages"]),
-            "file_count": 1,
-        },
+    result = {
+        "bm25_plan": _bm25_plan_identity(request),
+        "public_manifest": _public_manifest_evidence(request),
         "view": {
             "documents_sha256": _SHA_C,
             "metadata_sha256": _SHA_D,
+            "payload_bytes": 128,
+            "payload_files": 2,
         },
         "queries": {
             "sha256": queries_sha256,
-            "count": len(subject["queries"]),
+            "count": len(request["subject"]["queries"]),
             "nonempty": True,
         },
-        "authority": _authority_identity(request),
+        "source_read": _source_read_evidence(request),
+        "runtime": _runtime_identity(request),
     }
-
-
-def _authority_identity(request: Mapping[str, Any]) -> dict[str, Any]:
-    cell = request["cell"]
-    arm = request["arm"]
-    if cell in {"compiler-cold", "compiler-current"}:
-        return {
-            "context_kind": "compiler-portable-plan",
-            "artifact": None,
-            "source_verified": None,
-            "source_verification_scope": None,
-        }
-    if cell == "runtime-cold" and arm == "legacy":
-        return {
-            "context_kind": "manifest-live-source",
-            "artifact": None,
-            "source_verified": True,
-            "source_verification_scope": "content-bytes",
-        }
-
-    from codenib.artifacts.context import CONTEXT_ARTIFACT_SCHEMA
-
-    return {
-        "context_kind": "portable-artifact-query-only",
-        "artifact": {
-            "verified": True,
-            "schema": CONTEXT_ARTIFACT_SCHEMA,
-            "repository": request["subject"]["repository_key"],
-            "commit": request["subject"]["revision"],
-            "views": ["bm25"],
-        },
-        "source_verified": False,
-        "source_verification_scope": None,
-    }
-
-
-def _sample_receipt(request: Mapping[str, Any], *, process_id: int) -> dict[str, Any]:
-    parity = _parity_identity(request)
-    result = deepcopy(parity)
-    result["view"].update({"payload_bytes": 128, "payload_files": 2})
     result["retained_view"] = (
         deepcopy(result["view"]) if request["arm"] == "candidate" else None
     )
@@ -261,6 +300,7 @@ def _sample_receipt(request: Mapping[str, Any], *, process_id: int) -> dict[str,
             "compiler-current": False,
             "runtime-cold": None,
             "runtime-cold-query-only": None,
+            "runtime-cold-source-bound": None,
         }[request["cell"]]
         result["snapshot"] = {
             "snapshot_id": _SNAPSHOT_ID,
@@ -268,6 +308,7 @@ def _sample_receipt(request: Mapping[str, Any], *, process_id: int) -> dict[str,
             "generation": 1,
             "changed": changed,
         }
+    parity = profiler._parity_identities_from_result(result)  # noqa: SLF001
     return {
         "schema_version": profiler.REPORT_SCHEMA_VERSION,
         "operation": request["operation"],
@@ -290,7 +331,7 @@ def _sample_receipt(request: Mapping[str, Any], *, process_id: int) -> dict[str,
             "payload_bytes": 128,
             "payload_files": 2,
         },
-        "parity_identity": parity,
+        "parity_identities": parity,
         "result": result,
         "safety": {
             "subject_unchanged": True,
@@ -298,6 +339,7 @@ def _sample_receipt(request: Mapping[str, Any], *, process_id: int) -> dict[str,
             "cleanup_complete": True,
             "storage_closed": True,
             "context_closed": True,
+            "source_closed": True,
             "ref_stable": True,
             "retained_matches_raw": True,
         },
@@ -327,6 +369,8 @@ def _run_fake_cell(
     media_roots: Mapping[str, Path],
     cell: str,
     sample_runner: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+    iterations: int = 1,
+    warmups: int = 0,
 ) -> dict[str, Any]:
     manifest, _receipt = profiler.load_subject_manifest(manifest_path)
     subject = manifest["subjects"][0]
@@ -340,30 +384,81 @@ def _run_fake_cell(
         media_identity=profiler._media_identity(media_root),
         view_set=manifest["view_sets"][0],
         cell=cell,
-        iterations=1,
-        warmups=0,
+        iterations=iterations,
+        warmups=warmups,
         sample_runner=sample_runner,
         process_ids=process_ids,
     )
-    assert len(process_ids) == 2
-    assert len(set(process_ids)) == 2
+    expected_samples = (iterations + warmups) * len(profiler.ARMS)
+    assert len(process_ids) == expected_samples
+    assert len(set(process_ids)) == expected_samples
     return result
 
 
-def test_public_v2_contract_and_deterministic_paired_order() -> None:
+def test_public_v3_contract_and_deterministic_paired_order() -> None:
     assert profiler.ARMS == ("legacy", "candidate")
     assert profiler.CELLS == (
         "compiler-cold",
         "compiler-current",
         "runtime-cold",
         "runtime-cold-query-only",
+        "runtime-cold-source-bound",
     )
     assert profiler.TRACKS == {
-        "compiler": ("compiler-cold", "compiler-current"),
-        "query-only-runtime": ("runtime-cold-query-only",),
-        "manifest-runtime-compatibility": ("runtime-cold",),
+        "compiler": {
+            "cells": ("compiler-cold", "compiler-current"),
+            "projection": "compiler",
+        },
+        "query-only-runtime": {
+            "cells": ("runtime-cold-query-only",),
+            "projection": "full-runtime",
+        },
+        "manifest-runtime-compatibility": {
+            "cells": ("runtime-cold",),
+            "projection": "full-runtime",
+        },
+        "source-bound-runtime": {
+            "cells": ("runtime-cold-source-bound",),
+            "projection": "content-authority",
+        },
+        "source-bound-manifest-compatibility": {
+            "cells": ("runtime-cold-source-bound",),
+            "projection": "full-runtime",
+        },
     }
-    assert profiler.CANONICAL_SAMPLE_COUNT == 1152
+    assert profiler.PARITY_PROJECTIONS == (
+        "compiler",
+        "content-authority",
+        "full-runtime",
+    )
+    assert profiler.CELL_PRIMARY_PROJECTIONS == {
+        "compiler-cold": "compiler",
+        "compiler-current": "compiler",
+        "runtime-cold": "full-runtime",
+        "runtime-cold-query-only": "full-runtime",
+        "runtime-cold-source-bound": "content-authority",
+    }
+    expected_compiler_delivery = {
+        "legacy": {
+            "route": "compiler-cache-index",
+            "context_provenance": "compiler-cache-manifest",
+        },
+        "candidate": {
+            "route": "compiler-cache-index-and-retained-publication",
+            "context_provenance": "compiler-cache-manifest",
+        },
+    }
+    for cell in ("compiler-cold", "compiler-current"):
+        assert {
+            arm: {
+                "route": contract["route"],
+                "context_provenance": contract["context_provenance"],
+            }
+            for arm, contract in profiler.CELL_ROUTE_CONTRACTS[cell].items()
+        } == expected_compiler_delivery
+        for arm, delivery in expected_compiler_delivery.items():
+            assert _runtime_identity({"cell": cell, "arm": arm})["delivery"] == delivery
+    assert profiler.CANONICAL_SAMPLE_COUNT == 1440
     assert [profiler.paired_arm_order(index) for index in range(4)] == [
         ("legacy", "candidate"),
         ("candidate", "legacy"),
@@ -396,22 +491,46 @@ def test_runtime_manifest_sentinel_is_negative_but_query_only_is_exact(
 
     sentinel_pair = sentinel["runs"]["measured"][0]
     legacy_sentinel, candidate_sentinel = sentinel_pair["samples"]
-    assert sentinel_pair["parity"] is False
-    assert sentinel["parity"]["every_pair"] is False
-    assert sentinel["parity"]["stable_across_runs"] is False
-    assert sentinel["parity"]["passed"] is False
-    assert len(sentinel["parity"]["identity_sha256"]) == 2
+    assert sentinel_pair["parity"] == {
+        "compiler": False,
+        "content-authority": False,
+        "full-runtime": False,
+    }
+    assert sentinel["primary_projection"] == "full-runtime"
+    assert sentinel["parity"]["full-runtime"]["every_pair_equal"] is False
+    assert sentinel["parity"]["full-runtime"]["stable_within_arm"] == {
+        "legacy": True,
+        "candidate": True,
+    }
+    assert sentinel["parity"]["full-runtime"]["passed"] is False
+    assert sentinel["parity"]["full-runtime"]["identity_sha256"].keys() == {
+        "legacy",
+        "candidate",
+    }
     assert (
         legacy_sentinel["result"]["queries"]["sha256"]
         != candidate_sentinel["result"]["queries"]["sha256"]
     )
-    assert legacy_sentinel["result"]["authority"] == {
-        "context_kind": "manifest-live-source",
+    assert legacy_sentinel["result"]["runtime"] == {
+        "delivery": {
+            "route": "manifest-path",
+            "context_provenance": "ordinary-manifest",
+        },
         "artifact": None,
-        "source_verified": True,
-        "source_verification_scope": "content-bytes",
+        "source_authority": {
+            "kind": "content-bytes-v2",
+            "verified": True,
+            "verification_scope": "content-bytes",
+        },
+        "capabilities": _runtime_identity(
+            {
+                "cell": "runtime-cold",
+                "arm": "legacy",
+                "subject": subject,
+            }
+        )["capabilities"],
     }
-    assert candidate_sentinel["result"]["authority"] == _authority_identity(
+    assert candidate_sentinel["result"]["runtime"] == _runtime_identity(
         {
             "cell": "runtime-cold",
             "arm": "candidate",
@@ -420,12 +539,246 @@ def test_runtime_manifest_sentinel_is_negative_but_query_only_is_exact(
     )
 
     query_only_pair = query_only["runs"]["measured"][0]
-    assert query_only_pair["parity"] is True
-    assert query_only["parity"]["passed"] is True
+    assert query_only_pair["parity"] == {
+        "compiler": True,
+        "content-authority": True,
+        "full-runtime": True,
+    }
+    assert query_only["parity"]["full-runtime"]["passed"] is True
     assert (
-        query_only_pair["samples"][0]["parity_identity"]
-        == query_only_pair["samples"][1]["parity_identity"]
+        query_only_pair["samples"][0]["parity_identities"]
+        == query_only_pair["samples"][1]["parity_identities"]
     )
+
+
+def test_source_bound_runtime_has_content_authority_parity_not_manifest_parity(
+    tmp_path: Path,
+) -> None:
+    manifest_path, subject_roots, media_roots = _fixture(tmp_path)
+
+    source_bound = _run_fake_cell(
+        manifest_path=manifest_path,
+        subject_roots=subject_roots,
+        media_roots=media_roots,
+        cell="runtime-cold-source-bound",
+        sample_runner=_fake_sample_runner(),
+    )
+
+    pair = source_bound["runs"]["measured"][0]
+    legacy, candidate = pair["samples"]
+    assert source_bound["primary_projection"] == "content-authority"
+    assert pair["parity"] == {
+        "compiler": True,
+        "content-authority": True,
+        "full-runtime": False,
+    }
+    assert source_bound["parity"]["content-authority"] == {
+        "every_pair_equal": True,
+        "stable_within_arm": {"legacy": True, "candidate": True},
+        "identity_sha256": {
+            "legacy": [_json_digest(legacy["parity_identities"]["content-authority"])],
+            "candidate": [
+                _json_digest(candidate["parity_identities"]["content-authority"])
+            ],
+        },
+        "passed": True,
+    }
+    assert source_bound["parity"]["full-runtime"]["every_pair_equal"] is False
+    assert source_bound["parity"]["full-runtime"]["stable_within_arm"] == {
+        "legacy": True,
+        "candidate": True,
+    }
+    assert source_bound["passed"] is True
+    assert legacy["result"]["source_read"] == candidate["result"]["source_read"]
+    assert (
+        legacy["result"]["runtime"]["source_authority"]
+        == candidate["result"]["runtime"]["source_authority"]
+    )
+    assert legacy["result"]["public_manifest"] != candidate["result"]["public_manifest"]
+    assert legacy["result"]["runtime"]["delivery"] == {
+        "route": "manifest-path",
+        "context_provenance": "ordinary-manifest",
+    }
+    assert candidate["result"]["runtime"]["delivery"] == {
+        "route": "retained-ref",
+        "context_provenance": "portable-context-artifact",
+    }
+
+
+def test_content_authority_projection_keeps_only_source_capability_evidence(
+    tmp_path: Path,
+) -> None:
+    manifest_path, subject_roots, media_roots = _fixture(tmp_path)
+    manifest, _receipt = profiler.load_subject_manifest(manifest_path)
+    subject = manifest["subjects"][0]
+    media_id, media_root = next(iter(media_roots.items()))
+
+    def result(arm: str) -> dict[str, Any]:
+        request = {
+            "operation": "sample",
+            "arm": arm,
+            "phase": "measured",
+            "round_index": 0,
+            "cell": "runtime-cold-source-bound",
+            "subject": subject,
+            "subject_root": os.fspath(subject_roots[subject["id"]]),
+            "media_id": media_id,
+            "media_root": os.fspath(media_root),
+            "media_identity": profiler._media_identity(media_root),
+            "view_set": manifest["view_sets"][0],
+            "run_id": "1" * 32,
+        }
+        return _sample_receipt(request, process_id=1234)["result"]
+
+    legacy = profiler._parity_identities_from_result(result("legacy"))  # noqa: SLF001
+    candidate_result = result("candidate")
+    candidate = profiler._parity_identities_from_result(  # noqa: SLF001
+        candidate_result
+    )
+    assert set(candidate["content-authority"]) == {
+        "compiler",
+        "source_read",
+        "source_authority",
+        "source_capabilities",
+    }
+    assert (
+        legacy["content-authority"]["source_capabilities"]
+        == candidate["content-authority"]["source_capabilities"]
+        == {
+            "loaded_views": ["bm25"],
+            "read_source": True,
+            "commit_verified": False,
+            "checkout_state": "not-attested",
+        }
+    )
+    assert legacy["content-authority"] == candidate["content-authority"]
+    compiler_result = deepcopy(candidate_result)
+    compiler_result["runtime"] = _runtime_identity(
+        {"cell": "compiler-cold", "arm": "legacy", "subject": subject}
+    )
+    compiler_result["source_read"] = {
+        "status": "not-exercised",
+        "payload_sha256": None,
+        "content_sha256": None,
+        "error_sha256": None,
+        "count": 0,
+    }
+    assert (
+        profiler._parity_identities_from_result(compiler_result)[  # noqa: SLF001
+            "content-authority"
+        ]["source_capabilities"]
+        is None
+    )
+
+    for field, replacement in (
+        ("loaded_views", []),
+        ("read_source", False),
+        ("commit_verified", True),
+        ("checkout_state", "attested"),
+    ):
+        changed = deepcopy(candidate_result)
+        changed["runtime"]["capabilities"][field] = replacement
+        projection = profiler._parity_identities_from_result(changed)  # noqa: SLF001
+        assert projection["content-authority"] != candidate["content-authority"]
+        assert projection["full-runtime"] != candidate["full-runtime"]
+
+    excluded_changes: list[tuple[Callable[[dict[str, Any]], None], bool]] = [
+        (
+            lambda changed: changed["runtime"]["capabilities"].__setitem__(
+                "native_vector_authorized", True
+            ),
+            True,
+        ),
+        (
+            lambda changed: changed["runtime"]["capabilities"].__setitem__(
+                "native_lsp_allowed", True
+            ),
+            True,
+        ),
+        (
+            lambda changed: changed["runtime"]["capabilities"][
+                "lsp_provider"
+            ].__setitem__("status", "changed"),
+            True,
+        ),
+        (
+            lambda changed: changed["runtime"]["delivery"].__setitem__(
+                "route", "treatment-route"
+            ),
+            False,
+        ),
+        (
+            lambda changed: changed["runtime"]["delivery"].__setitem__(
+                "context_provenance", "changed-provenance"
+            ),
+            True,
+        ),
+        (
+            lambda changed: changed["runtime"]["artifact"].__setitem__(
+                "commit", "b" * 40
+            ),
+            True,
+        ),
+    ]
+    for mutate, full_changes in excluded_changes:
+        changed = deepcopy(candidate_result)
+        mutate(changed)
+        projection = profiler._parity_identities_from_result(changed)  # noqa: SLF001
+        assert projection["content-authority"] == candidate["content-authority"]
+        assert (projection["full-runtime"] != candidate["full-runtime"]) is full_changes
+
+
+def test_each_projection_reports_pair_equality_and_per_arm_stability(
+    tmp_path: Path,
+) -> None:
+    manifest_path, subject_roots, media_roots = _fixture(tmp_path)
+
+    def vary_only_full_runtime(
+        receipt: dict[str, Any], request: Mapping[str, Any], call: int
+    ) -> None:
+        if request["arm"] == "candidate" and call == 3:
+            receipt["result"]["source_read"]["error_sha256"] = _SHA_D
+            receipt["parity_identities"] = (
+                profiler._parity_identities_from_result(  # noqa: SLF001
+                    receipt["result"]
+                )
+            )
+
+    query_only = _run_fake_cell(
+        manifest_path=manifest_path,
+        subject_roots=subject_roots,
+        media_roots=media_roots,
+        cell="runtime-cold-query-only",
+        sample_runner=_fake_sample_runner(vary_only_full_runtime),
+        iterations=2,
+    )
+
+    for projection in ("compiler", "content-authority"):
+        assert query_only["parity"][projection] == {
+            "every_pair_equal": True,
+            "stable_within_arm": {"legacy": True, "candidate": True},
+            "identity_sha256": {
+                "legacy": query_only["parity"][projection]["identity_sha256"]["legacy"],
+                "candidate": query_only["parity"][projection]["identity_sha256"][
+                    "candidate"
+                ],
+            },
+            "passed": True,
+        }
+        assert all(
+            len(query_only["parity"][projection]["identity_sha256"][arm]) == 1
+            for arm in profiler.ARMS
+        )
+    assert query_only["parity"]["full-runtime"]["every_pair_equal"] is False
+    assert query_only["parity"]["full-runtime"]["stable_within_arm"] == {
+        "legacy": True,
+        "candidate": False,
+    }
+    assert {
+        arm: len(query_only["parity"]["full-runtime"]["identity_sha256"][arm])
+        for arm in profiler.ARMS
+    } == {"legacy": 1, "candidate": 2}
+    assert query_only["parity"]["full-runtime"]["passed"] is False
 
 
 def test_runtime_manifest_authority_mismatch_blocks_equal_query_digest(
@@ -438,7 +791,11 @@ def test_runtime_manifest_authority_mismatch_blocks_equal_query_digest(
     ) -> None:
         if request["cell"] == "runtime-cold" and request["arm"] == "candidate":
             receipt["result"]["queries"]["sha256"] = _SHA_A
-            receipt["parity_identity"]["queries"]["sha256"] = _SHA_A
+            receipt["parity_identities"] = (
+                profiler._parity_identities_from_result(  # noqa: SLF001
+                    receipt["result"]
+                )
+            )
 
     sentinel = _run_fake_cell(
         manifest_path=manifest_path,
@@ -451,9 +808,11 @@ def test_runtime_manifest_authority_mismatch_blocks_equal_query_digest(
     pair = sentinel["runs"]["measured"][0]
     legacy, candidate = pair["samples"]
     assert legacy["result"]["queries"] == candidate["result"]["queries"]
-    assert legacy["result"]["authority"] != candidate["result"]["authority"]
-    assert pair["parity"] is False
-    assert sentinel["parity"]["passed"] is False
+    assert legacy["result"]["runtime"] != candidate["result"]["runtime"]
+    assert pair["parity"]["compiler"] is True
+    assert pair["parity"]["content-authority"] is False
+    assert pair["parity"]["full-runtime"] is False
+    assert sentinel["parity"]["full-runtime"]["passed"] is False
 
 
 def test_track_aggregation_isolates_parity_and_completeness(
@@ -481,11 +840,60 @@ def test_track_aggregation_isolates_parity_and_completeness(
         "compiler": True,
         "query-only-runtime": True,
         "manifest-runtime-compatibility": False,
+        "source-bound-runtime": True,
+        "source-bound-manifest-compatibility": False,
     }
     assert all(track["measurement_complete"] for track in baseline.values())
+    assert baseline["source-bound-runtime"] == {
+        "cells": ["runtime-cold-source-bound"],
+        "projection": "content-authority",
+        "measurement_complete": True,
+        "parity_passed": True,
+        "safety_passed": True,
+        "scope_complete": True,
+        "decision": "passed",
+        "passed": True,
+        "policy_status": "unratified",
+        "promotion_eligible": False,
+    }
+    assert baseline["source-bound-manifest-compatibility"] == {
+        "cells": ["runtime-cold-source-bound"],
+        "projection": "full-runtime",
+        "measurement_complete": True,
+        "parity_passed": False,
+        "safety_passed": True,
+        "scope_complete": False,
+        "decision": "blocked",
+        "passed": False,
+        "policy_status": "unratified",
+        "promotion_eligible": False,
+    }
+
+    parity_laundered = deepcopy(cells)
+    parity_laundered["runtime-cold"]["parity"]["full-runtime"]["passed"] = True
+    parity_laundered["runtime-cold-source-bound"]["parity"]["full-runtime"][
+        "passed"
+    ] = True
+    laundered_tracks = profiler._aggregate_tracks(
+        parity_laundered,
+        expected_instances_per_cell=1,
+        iterations=1,
+        warmups=0,
+    )
+    for track in (
+        "manifest-runtime-compatibility",
+        "source-bound-manifest-compatibility",
+    ):
+        assert laundered_tracks[track]["parity_passed"] is True
+        assert laundered_tracks[track]["scope_complete"] is False
+        assert laundered_tracks[track]["decision"] == "blocked"
+        assert laundered_tracks[track]["passed"] is False
+    assert all(track["passed"] for track in laundered_tracks.values()) is False
 
     query_parity_red = deepcopy(cells)
-    query_parity_red["runtime-cold-query-only"]["parity"]["passed"] = False
+    query_parity_red["runtime-cold-query-only"]["parity"]["full-runtime"][
+        "passed"
+    ] = False
     query_tracks = profiler._aggregate_tracks(
         query_parity_red,
         expected_instances_per_cell=1,
@@ -500,6 +908,11 @@ def test_track_aggregation_isolates_parity_and_completeness(
     assert (
         query_tracks["manifest-runtime-compatibility"]
         == baseline["manifest-runtime-compatibility"]
+    )
+    assert query_tracks["source-bound-runtime"] == baseline["source-bound-runtime"]
+    assert (
+        query_tracks["source-bound-manifest-compatibility"]
+        == baseline["source-bound-manifest-compatibility"]
     )
 
     missing_query_cell = {
@@ -516,9 +929,12 @@ def test_track_aggregation_isolates_parity_and_completeness(
     assert incomplete_tracks["compiler"] == baseline["compiler"]
     assert incomplete_tracks["query-only-runtime"] == {
         "cells": ["runtime-cold-query-only"],
+        "projection": "full-runtime",
         "measurement_complete": False,
         "parity_passed": False,
         "safety_passed": False,
+        "scope_complete": False,
+        "decision": "blocked",
         "passed": False,
         "policy_status": "unratified",
         "promotion_eligible": False,
@@ -527,6 +943,7 @@ def test_track_aggregation_isolates_parity_and_completeness(
         incomplete_tracks["manifest-runtime-compatibility"]
         == baseline["manifest-runtime-compatibility"]
     )
+    assert incomplete_tracks["source-bound-runtime"] == baseline["source-bound-runtime"]
 
 
 def test_summary_uses_median_and_nearest_rank_p95() -> None:
@@ -576,6 +993,645 @@ def test_full_public_query_payload_keeps_optional_content_in_the_digest() -> Non
     )
 
 
+def test_public_manifest_normalizer_masks_only_times_and_isolated_paths(
+    tmp_path: Path,
+) -> None:
+    subject_root = tmp_path / "subject"
+    ordinary = {
+        "schema_version": 3,
+        "repo": {
+            "path": os.fspath(subject_root),
+            "commit": "a" * 40,
+            "source_fingerprint": _SOURCE_V2,
+        },
+        "compiled_at": "2026-08-24T10:11:12Z",
+        "compiled_at_epoch": 1234.5,
+        "indexes": {
+            "bm25": {
+                "path": os.fspath(tmp_path / "isolated-bm25"),
+                "built_at": "2026-08-24T10:11:13Z",
+                "built_at_epoch": 1235.5,
+                "metadata": {
+                    "build_duration_seconds": 9.25,
+                    "content_authority": "must-survive",
+                },
+            }
+        },
+        "runtime": {
+            "source_read": {
+                "verified": True,
+                "verification_scope": "content-bytes",
+            },
+            "lsp_provider": {"provider": "codenib_static_index"},
+        },
+        "artifact": None,
+    }
+    request = {
+        "cell": "runtime-cold-source-bound",
+        "arm": "legacy",
+        "subject_root": os.fspath(subject_root),
+    }
+
+    normalized = profiler._normalized_public_manifest_payload(  # noqa: SLF001
+        ordinary,
+        request=request,
+    )
+
+    expected = deepcopy(ordinary)
+    expected["repo"]["path"] = "<authenticated-benchmark-subject>"
+    expected["compiled_at"] = "<measurement-metadata>"
+    expected["compiled_at_epoch"] = 0
+    expected["indexes"]["bm25"]["path"] = "<isolated-bm25-view>"
+    expected["indexes"]["bm25"]["built_at"] = "<measurement-metadata>"
+    expected["indexes"]["bm25"]["built_at_epoch"] = 0
+    expected["indexes"]["bm25"]["metadata"][
+        "build_duration_seconds"
+    ] = "<measurement-metadata>"
+    assert normalized == expected
+    assert ordinary["compiled_at"] == "2026-08-24T10:11:12Z"
+
+    authority_changed = deepcopy(ordinary)
+    authority_changed["runtime"]["source_read"]["verified"] = False
+    assert _json_digest(
+        profiler._normalized_public_manifest_payload(  # noqa: SLF001
+            ordinary,
+            request=request,
+        )
+    ) != _json_digest(
+        profiler._normalized_public_manifest_payload(  # noqa: SLF001
+            authority_changed,
+            request=request,
+        )
+    )
+
+    portable = deepcopy(ordinary)
+    portable["repo"]["path"] = "source"
+    portable["indexes"]["bm25"]["path"] = "views/bm25"
+    portable["artifact"] = {"verified": True, "schema": "portable"}
+    portable_request = {
+        **request,
+        "cell": "runtime-cold-query-only",
+        "arm": "candidate",
+    }
+    portable_normalized = profiler._normalized_public_manifest_payload(  # noqa: SLF001
+        portable,
+        request=portable_request,
+    )
+    assert portable_normalized["repo"]["path"] == "source"
+    assert portable_normalized["indexes"]["bm25"]["path"] == "views/bm25"
+    assert portable_normalized["artifact"] == portable["artifact"]
+    assert (
+        portable_normalized["runtime"]["lsp_provider"]
+        == portable["runtime"]["lsp_provider"]
+    )
+    assert _json_digest(normalized) != _json_digest(portable_normalized)
+
+
+def test_public_manifest_receipt_is_exactly_bound_to_the_active_context(
+    tmp_path: Path,
+) -> None:
+    subject_root = tmp_path / "subject"
+
+    def contract(
+        *, portable: bool
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+        artifact = (
+            {
+                "verified": True,
+                "schema": "codenib.context-artifact.v1",
+                "repository": "benchmark/fixture",
+                "commit": "a" * 40,
+                "views": ["bm25"],
+            }
+            if portable
+            else None
+        )
+        context_manifest = {
+            "schema_version": 3,
+            "repo": {
+                "path": os.fspath(subject_root),
+                "commit": "a" * 40,
+                "source_fingerprint": _SOURCE_V2,
+            },
+            "compiled_at": "2026-08-24T10:11:12Z",
+            "compiled_at_epoch": 1234.5,
+            "indexes": {
+                "bm25": {
+                    "path": (os.fspath(tmp_path / "isolated-bm25")),
+                    "built_at": "2026-08-24T10:11:13Z",
+                    "built_at_epoch": 1235.5,
+                    "metadata": {"build_duration_seconds": 0.25},
+                }
+            },
+        }
+        lsp_provider = {"provider": "codenib_static_index", "status": "unavailable"}
+        context_state = {
+            "loaded_views": ["bm25"],
+            "errors": {},
+            "artifact": artifact,
+            "source_verified": True,
+            "source_error": None,
+            "source_verification_scope": "content-bytes",
+            "lsp_provider": lsp_provider,
+            "commit_verified": False,
+        }
+        public = {
+            **deepcopy(context_manifest),
+            "runtime": {
+                "loaded_views": ["bm25"],
+                "view_errors": {},
+                "tool_surface": "full",
+                "explore_session": {
+                    "calls": 0,
+                    "ranges": 0,
+                    "max_ranges": 256,
+                    "evictions": 0,
+                },
+                "source_read": {
+                    "verified": True,
+                    "error": None,
+                    "verification_scope": "content-bytes",
+                    "commit_verified": False,
+                    "checkout_state": "not-attested",
+                },
+                "lsp_provider": deepcopy(lsp_provider),
+            },
+        }
+        if portable:
+            public["artifact"] = deepcopy(artifact)
+        request = {
+            "cell": "runtime-cold-source-bound",
+            "arm": "candidate" if portable else "legacy",
+            "subject_root": os.fspath(subject_root),
+        }
+        return request, context_manifest, context_state, public
+
+    for portable in (False, True):
+        request, context_manifest, context_state, public = contract(portable=portable)
+        assert (
+            profiler._validated_public_manifest_payload(  # noqa: SLF001
+                public,
+                request=request,
+                context_manifest=context_manifest,
+                context_state=context_state,
+                tool_surface="full",
+            )
+            == public
+        )
+        assert profiler._public_manifest_evidence(  # noqa: SLF001
+            public,
+            request=request,
+            context_manifest=context_manifest,
+            context_state=context_state,
+            tool_surface="full",
+        ) == {
+            "raw_sha256": _json_digest(public),
+            "parity_sha256": _json_digest(
+                profiler._normalized_public_manifest_payload(  # noqa: SLF001
+                    public,
+                    request=request,
+                )
+            ),
+            "parity_schema": "codenib.retained-storage-public-manifest-parity.v1",
+        }
+
+    request, context_manifest, context_state, public = contract(portable=False)
+    invalid_ordinary: list[dict[str, Any]] = []
+    missing_runtime = deepcopy(public)
+    missing_runtime["runtime"].pop("loaded_views")
+    invalid_ordinary.append(missing_runtime)
+    extra_runtime = deepcopy(public)
+    extra_runtime["runtime"]["unexpected"] = True
+    invalid_ordinary.append(extra_runtime)
+    manifest_drift = deepcopy(public)
+    manifest_drift["repo"]["commit"] = "b" * 40
+    invalid_ordinary.append(manifest_drift)
+    extra_artifact = deepcopy(public)
+    extra_artifact["artifact"] = {"verified": True}
+    invalid_ordinary.append(extra_artifact)
+    source_drift = deepcopy(public)
+    source_drift["runtime"]["source_read"]["verified"] = False
+    invalid_ordinary.append(source_drift)
+    lsp_drift = deepcopy(public)
+    lsp_drift["runtime"]["lsp_provider"]["status"] = "ready"
+    invalid_ordinary.append(lsp_drift)
+    view_drift = deepcopy(public)
+    view_drift["runtime"]["loaded_views"] = []
+    invalid_ordinary.append(view_drift)
+    view_error_drift = deepcopy(public)
+    view_error_drift["runtime"]["view_errors"] = {"bm25": "broken"}
+    invalid_ordinary.append(view_error_drift)
+    for invalid in invalid_ordinary:
+        with pytest.raises((RuntimeError, ValueError)):
+            profiler._validated_public_manifest_payload(  # noqa: SLF001
+                invalid,
+                request=request,
+                context_manifest=context_manifest,
+                context_state=context_state,
+                tool_surface="full",
+            )
+
+    request, context_manifest, context_state, public = contract(portable=True)
+    missing_artifact = deepcopy(public)
+    missing_artifact.pop("artifact")
+    artifact_drift = deepcopy(public)
+    artifact_drift["artifact"]["commit"] = "b" * 40
+    for invalid in (missing_artifact, artifact_drift):
+        with pytest.raises((RuntimeError, ValueError)):
+            profiler._validated_public_manifest_payload(  # noqa: SLF001
+                invalid,
+                request=request,
+                context_manifest=context_manifest,
+                context_state=context_state,
+                tool_surface="full",
+            )
+
+
+def test_public_manifest_normalizer_masks_authority_differences_in_no_field(
+    tmp_path: Path,
+) -> None:
+    """Changing source, artifact, or LSP evidence must change parity."""
+
+    subject_root = tmp_path / "subject"
+    ordinary = {
+        "repo": {"path": os.fspath(subject_root)},
+        "compiled_at": "first",
+        "compiled_at_epoch": 1,
+        "indexes": {
+            "bm25": {
+                "path": os.fspath(tmp_path / "view"),
+                "built_at": "first",
+                "built_at_epoch": 1,
+                "metadata": {"build_duration_seconds": 1},
+            }
+        },
+        "runtime": {
+            "source_read": {"verified": True},
+            "lsp_provider": {"provider": "persisted"},
+        },
+        "artifact": None,
+    }
+    request = {
+        "cell": "runtime-cold-source-bound",
+        "arm": "legacy",
+        "subject_root": os.fspath(subject_root),
+    }
+    baseline = profiler._normalized_public_manifest_payload(  # noqa: SLF001
+        ordinary,
+        request=request,
+    )
+    for path, replacement in (
+        (("runtime", "source_read", "verified"), False),
+        (("runtime", "lsp_provider", "provider"), "native"),
+        (("artifact",), {"verified": True}),
+    ):
+        changed = deepcopy(ordinary)
+        target = changed
+        for component in path[:-1]:
+            target = target[component]
+        target[path[-1]] = replacement
+        assert (
+            profiler._normalized_public_manifest_payload(  # noqa: SLF001
+                changed,
+                request=request,
+            )
+            != baseline
+        )
+
+
+def test_public_manifest_normalizer_rejects_malformed_measurement_metadata(
+    tmp_path: Path,
+) -> None:
+    subject_root = tmp_path / "subject"
+    request = {
+        "cell": "runtime-cold-source-bound",
+        "arm": "legacy",
+        "subject_root": os.fspath(subject_root),
+    }
+
+    def payload() -> dict[str, Any]:
+        return {
+            "repo": {"path": os.fspath(subject_root)},
+            "compiled_at": "2026-08-24T10:11:12Z",
+            "compiled_at_epoch": 1234.5,
+            "indexes": {
+                "bm25": {
+                    "path": os.fspath(tmp_path / "isolated-bm25"),
+                    "built_at": "2026-08-24T10:11:13Z",
+                    "built_at_epoch": 1235.5,
+                    "metadata": {"build_duration_seconds": 0.25},
+                }
+            },
+        }
+
+    for container, field in (
+        ((), "compiled_at"),
+        ((), "compiled_at_epoch"),
+        (("indexes", "bm25"), "built_at"),
+        (("indexes", "bm25"), "built_at_epoch"),
+    ):
+        malformed = payload()
+        target = malformed
+        for component in container:
+            target = target[component]
+        target.pop(field)
+        with pytest.raises(RuntimeError):
+            profiler._normalized_public_manifest_payload(  # noqa: SLF001
+                malformed,
+                request=request,
+            )
+
+    for container, field in (
+        ((), "compiled_at"),
+        (("indexes", "bm25"), "built_at"),
+    ):
+        for invalid in (None, True, 1, 1.5):
+            malformed = payload()
+            target = malformed
+            for component in container:
+                target = target[component]
+            target[field] = invalid
+            with pytest.raises((RuntimeError, ValueError)):
+                profiler._normalized_public_manifest_payload(  # noqa: SLF001
+                    malformed,
+                    request=request,
+                )
+
+    for container, field in (
+        ((), "compiled_at_epoch"),
+        (("indexes", "bm25"), "built_at_epoch"),
+    ):
+        for invalid in (None, True, "1", math.nan, math.inf, -math.inf, -1):
+            malformed = payload()
+            target = malformed
+            for component in container:
+                target = target[component]
+            target[field] = invalid
+            with pytest.raises((RuntimeError, ValueError)):
+                profiler._normalized_public_manifest_payload(  # noqa: SLF001
+                    malformed,
+                    request=request,
+                )
+
+    for invalid in (None, True, "1", math.nan, math.inf, -math.inf, -1):
+        malformed = payload()
+        malformed["indexes"]["bm25"]["metadata"]["build_duration_seconds"] = invalid
+        with pytest.raises((RuntimeError, ValueError)):
+            profiler._normalized_public_manifest_payload(  # noqa: SLF001
+                malformed,
+                request=request,
+            )
+
+    first = payload()
+    second = payload()
+    second["compiled_at"] = "2027-01-02T03:04:05Z"
+    second["compiled_at_epoch"] = 9999
+    second["indexes"]["bm25"]["built_at"] = "2027-01-02T03:04:06Z"
+    second["indexes"]["bm25"]["built_at_epoch"] = 10_000
+    second["indexes"]["bm25"]["metadata"]["build_duration_seconds"] = 4.5
+    assert profiler._normalized_public_manifest_payload(  # noqa: SLF001
+        first,
+        request=request,
+    ) == profiler._normalized_public_manifest_payload(  # noqa: SLF001
+        second,
+        request=request,
+    )
+
+
+def test_public_server_source_probe_separates_payload_content_and_refusal_digests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codenib.mcp import server as server_module
+
+    class Manifest:
+        repo_path = "benchmark/fixture"
+        commit = "a" * 40
+        source_fingerprint = _SOURCE_V2
+
+    class SourceContext:
+        source_verified = True
+        source_error = None
+        artifact = {"repository": "benchmark/fixture"}
+        manifest = Manifest()
+
+        def read_source_bytes(self, path: str, *, max_bytes: int) -> bytes:
+            assert path == "package.py"
+            assert max_bytes == 64 * 1024 * 1024
+            return b"first line\nsecond line\n"
+
+    context = SourceContext()
+    monkeypatch.setattr(server_module, "_ctx", context)
+    query_payload = [
+        {
+            "query": {"text": "package"},
+            "results": [{"file": "package.py", "start_line": 1}],
+        }
+    ]
+    request = {
+        "cell": "runtime-cold-source-bound",
+        "arm": "candidate",
+        "subject": {
+            "repository_key": "benchmark/fixture",
+            "revision": "a" * 40,
+        },
+        "subject_root": "/unused-benchmark-subject",
+    }
+
+    verified = profiler._source_read_evidence(  # noqa: SLF001
+        server_module,
+        context,
+        query_payload,
+        request=request,
+    )
+    content = {
+        "content": "first line\n",
+        "content_projection": {
+            "truncated": False,
+            "original_chars": 11,
+            "returned_chars": 11,
+            "strategy": "complete",
+        },
+        "end_line": 1,
+        "file": "package.py",
+        "start_line": 1,
+    }
+    payload = {
+        **content,
+        "source": {
+            "repository": "benchmark/fixture",
+            "commit": "a" * 40,
+            "source_fingerprint": _SOURCE_V2,
+            "verified": True,
+            "verification_scope": "content-bytes",
+            "commit_verified": False,
+            "checkout_state": "not-attested",
+        },
+    }
+    assert verified == {
+        "status": "verified",
+        "payload_sha256": _json_digest(payload),
+        "content_sha256": _json_digest(content),
+        "error_sha256": None,
+        "count": 1,
+    }
+    assert verified["payload_sha256"] != verified["content_sha256"]
+
+    class DisabledContext(SourceContext):
+        source_verified = False
+        source_error = "retained route has no repository source"
+
+        def read_source_bytes(self, path: str, *, max_bytes: int) -> bytes:
+            raise AssertionError("disabled public source route reached storage")
+
+    disabled_context = DisabledContext()
+    monkeypatch.setattr(server_module, "_ctx", disabled_context)
+    disabled_request = {
+        **request,
+        "cell": "runtime-cold-query-only",
+    }
+    message = "source reads are unavailable: retained route has no repository source"
+    assert profiler._source_read_evidence(  # noqa: SLF001
+        server_module,
+        disabled_context,
+        query_payload,
+        request=disabled_request,
+    ) == {
+        "status": "source-disabled",
+        "payload_sha256": None,
+        "content_sha256": None,
+        "error_sha256": _json_digest(
+            {"error_type": "RuntimeError", "message": message}
+        ),
+        "count": 1,
+    }
+
+
+def test_public_source_payload_validator_rejects_any_shape_or_authority_drift(
+    tmp_path: Path,
+) -> None:
+    subject_root = tmp_path / "subject"
+    subject = {
+        "repository_key": "benchmark/fixture",
+        "revision": "a" * 40,
+    }
+    portable_request = {
+        "cell": "runtime-cold-source-bound",
+        "arm": "candidate",
+        "subject": subject,
+        "subject_root": os.fspath(subject_root),
+    }
+
+    def payload(*, repository: str = "benchmark/fixture") -> dict[str, Any]:
+        return {
+            "file": "package.py",
+            "start_line": 1,
+            "end_line": 1,
+            "content": "first line\n",
+            "content_projection": {
+                "truncated": False,
+                "original_chars": 11,
+                "returned_chars": 11,
+                "strategy": "complete",
+            },
+            "source": {
+                "repository": repository,
+                "commit": "a" * 40,
+                "source_fingerprint": _SOURCE_V2,
+                "verified": True,
+                "verification_scope": "content-bytes",
+                "commit_verified": False,
+                "checkout_state": "not-attested",
+            },
+        }
+
+    valid = payload()
+    assert (
+        profiler._validated_public_source_payload(  # noqa: SLF001
+            valid,
+            request=portable_request,
+            file_path="package.py",
+            start_line=1,
+            source_fingerprint=_SOURCE_V2,
+        )
+        == valid
+    )
+    ordinary_request = {
+        **portable_request,
+        "arm": "legacy",
+    }
+    ordinary = payload(repository=os.fspath(subject_root))
+    assert (
+        profiler._validated_public_source_payload(  # noqa: SLF001
+            ordinary,
+            request=ordinary_request,
+            file_path="package.py",
+            start_line=1,
+            source_fingerprint=_SOURCE_V2,
+        )
+        == ordinary
+    )
+
+    invalid_payloads: list[dict[str, Any]] = []
+    for field in valid:
+        missing = deepcopy(valid)
+        missing.pop(field)
+        invalid_payloads.append(missing)
+    extra = deepcopy(valid)
+    extra["unexpected"] = True
+    invalid_payloads.append(extra)
+    for field in valid["source"]:
+        missing = deepcopy(valid)
+        missing["source"].pop(field)
+        invalid_payloads.append(missing)
+    extra_source = deepcopy(valid)
+    extra_source["source"]["unexpected"] = True
+    invalid_payloads.append(extra_source)
+
+    for field, replacement in (
+        ("repository", "wrong/repository"),
+        ("commit", "b" * 40),
+        ("source_fingerprint", "sha256-v2:" + "f" * 64),
+        ("verified", False),
+        ("verified", 1),
+        ("verification_scope", "commit"),
+        ("commit_verified", True),
+        ("commit_verified", 0),
+        ("checkout_state", "attested"),
+    ):
+        drift = deepcopy(valid)
+        drift["source"][field] = replacement
+        invalid_payloads.append(drift)
+
+    for field, replacement in (
+        ("file", None),
+        ("file", "other.py"),
+        ("start_line", True),
+        ("start_line", 0),
+        ("end_line", 2),
+        ("content", None),
+        ("content_projection", None),
+    ):
+        malformed = deepcopy(valid)
+        malformed[field] = replacement
+        invalid_payloads.append(malformed)
+    projection_extra = deepcopy(valid)
+    projection_extra["content_projection"]["unexpected"] = True
+    invalid_payloads.append(projection_extra)
+    projection_count_drift = deepcopy(valid)
+    projection_count_drift["content_projection"]["returned_chars"] = 10
+    invalid_payloads.append(projection_count_drift)
+
+    for invalid in invalid_payloads:
+        with pytest.raises((RuntimeError, ValueError)):
+            profiler._validated_public_source_payload(  # noqa: SLF001
+                invalid,
+                request=portable_request,
+                file_path="package.py",
+                start_line=1,
+                source_fingerprint=_SOURCE_V2,
+            )
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
@@ -609,7 +1665,7 @@ def test_manifest_schema_is_exact_and_bm25_only(
         profiler.load_subject_manifest(path)
 
 
-def test_v2_manifest_accepts_only_the_frozen_four_cell_order(tmp_path: Path) -> None:
+def test_v3_manifest_accepts_only_the_frozen_five_cell_order(tmp_path: Path) -> None:
     subjects = [
         _subject_row(
             identifier=f"fixture-{payload_class}",
@@ -632,8 +1688,8 @@ def test_v2_manifest_accepts_only_the_frozen_four_cell_order(tmp_path: Path) -> 
         "view_sets",
         "subjects",
     }
-    assert manifest["schema_version"] == 2
-    assert manifest["benchmark"] == "retained_storage_explicit_route_gate_v2"
+    assert manifest["schema_version"] == 3
+    assert manifest["benchmark"] == "retained_storage_explicit_route_gate_v3"
     assert manifest["cells"] == list(profiler.CELLS)
     metadata = path.stat()
     assert receipt == {
@@ -667,7 +1723,7 @@ def test_atomic_writer_emits_canonical_json_and_preserves_old_report_on_nan(
     assert list(tmp_path.iterdir()) == [output]
 
 
-def test_canonical_v2_report_has_exact_shape_tracks_and_process_count(
+def test_canonical_v3_report_has_exact_shape_tracks_and_process_count(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     manifest_path, subject_roots, media_roots = _fixture(tmp_path)
@@ -732,7 +1788,8 @@ def test_canonical_v2_report_has_exact_shape_tracks_and_process_count(
         "warmups_per_arm",
         "cells",
         "tracks",
-        "cell_authority_contracts",
+        "cell_route_contracts",
+        "parity_projections",
         "canonical_sample_count",
         "view_set_ids",
         "payload_classes",
@@ -748,26 +1805,75 @@ def test_canonical_v2_report_has_exact_shape_tracks_and_process_count(
     }
     assert report["protocol"]["expected"]["cells"] == list(profiler.CELLS)
     assert report["protocol"]["expected"]["tracks"] == {
-        name: list(cells) for name, cells in profiler.TRACKS.items()
+        name: {
+            "cells": list(specification["cells"]),
+            "projection": specification["projection"],
+        }
+        for name, specification in profiler.TRACKS.items()
     }
-    assert report["protocol"]["expected"]["cell_authority_contracts"] == (
-        profiler.CELL_AUTHORITY_CONTRACTS
+    assert report["protocol"]["expected"]["cell_route_contracts"] == (
+        profiler.CELL_ROUTE_CONTRACTS
     )
-    assert report["protocol"]["expected"]["canonical_sample_count"] == 1152
-    assert report["configuration"]["cell_authority_contracts"] == (
-        profiler.CELL_AUTHORITY_CONTRACTS
+    assert report["protocol"]["expected"]["parity_projections"] == list(
+        profiler.PARITY_PROJECTIONS
     )
+    assert report["protocol"]["expected"]["canonical_sample_count"] == 1440
+    assert report["configuration"]["cell_route_contracts"] == (
+        profiler.CELL_ROUTE_CONTRACTS
+    )
+    assert report["configuration"]["parity_projections"] == list(
+        profiler.PARITY_PROJECTIONS
+    )
+    assert report["configuration"]["stopwatch_boundaries"] == {
+        "compiler-cold": (
+            "fresh-inner-codenib-cli-import-parser-index-handler-through-return"
+        ),
+        "compiler-current": (
+            "fresh-inner-codenib-cli-import-parser-index-handler-through-return"
+        ),
+        "runtime-cold": (
+            "fresh-inner-import-parser-handler-through-ready-callback-fixed-"
+            "queries-public-manifest-source-read-probe-or-refusal-and-normal-"
+            "cleanup-return"
+        ),
+        "runtime-cold-query-only": (
+            "fresh-inner-import-parser-direct-or-retained-portable-artifact-"
+            "handler-through-ready-callback-fixed-queries-public-manifest-"
+            "source-read-refusal-and-normal-cleanup-return"
+        ),
+        "runtime-cold-source-bound": (
+            "fresh-inner-import-parser-ordinary-manifest-or-retained-source-"
+            "bound-handler-through-ready-callback-fixed-queries-public-manifest-"
+            "source-read-probe-and-normal-cleanup-return"
+        ),
+    }
+    assert report["configuration"]["cold_definitions"] == {
+        "compiler-cold": "empty-codenib-cache",
+        "runtime-cold": (
+            "fresh-process-and-context-with-public-manifest-and-source-read-"
+            "probe-or-refusal"
+        ),
+        "runtime-cold-query-only": (
+            "fresh-process-and-context-with-public-manifest-and-source-read-refusal"
+        ),
+        "runtime-cold-source-bound": (
+            "fresh-process-and-context-with-public-manifest-and-source-read-probe"
+        ),
+    }
     assert report["decision"] == {
         "policy_status": "unratified",
         "report_only": True,
         "promotion_eligible": False,
         "recommendation": "retain-explicit-routes",
-        "reason": "one or more compatibility tracks are parity red",
+        "reason": (
+            "one or more track parity projections are red; one or more "
+            "compatibility scopes remain incomplete"
+        ),
     }
     assert report["benchmark_receipts"]["unchanged"] is True
     assert len(report["subjects"]) == 3
     assert len(report["media"]) == 2
-    assert len(report["cells"]) == 24
+    assert len(report["cells"]) == 30
     assert {
         cell: sum(item["cell"] == cell for item in report["cells"].values())
         for cell in profiler.CELLS
@@ -776,44 +1882,91 @@ def test_canonical_v2_report_has_exact_shape_tracks_and_process_count(
         "compiler",
         "query-only-runtime",
         "manifest-runtime-compatibility",
+        "source-bound-runtime",
+        "source-bound-manifest-compatibility",
     ]
     assert report["tracks"] == {
         "compiler": {
             "cells": ["compiler-cold", "compiler-current"],
+            "projection": "compiler",
             "measurement_complete": True,
             "parity_passed": True,
             "safety_passed": True,
+            "scope_complete": True,
+            "decision": "passed",
             "passed": True,
             "policy_status": "unratified",
             "promotion_eligible": False,
         },
         "query-only-runtime": {
             "cells": ["runtime-cold-query-only"],
+            "projection": "full-runtime",
             "measurement_complete": True,
             "parity_passed": True,
             "safety_passed": True,
+            "scope_complete": True,
+            "decision": "passed",
             "passed": True,
             "policy_status": "unratified",
             "promotion_eligible": False,
         },
         "manifest-runtime-compatibility": {
             "cells": ["runtime-cold"],
+            "projection": "full-runtime",
             "measurement_complete": True,
             "parity_passed": False,
             "safety_passed": True,
+            "scope_complete": False,
+            "decision": "blocked",
+            "passed": False,
+            "policy_status": "unratified",
+            "promotion_eligible": False,
+        },
+        "source-bound-runtime": {
+            "cells": ["runtime-cold-source-bound"],
+            "projection": "content-authority",
+            "measurement_complete": True,
+            "parity_passed": True,
+            "safety_passed": True,
+            "scope_complete": True,
+            "decision": "passed",
+            "passed": True,
+            "policy_status": "unratified",
+            "promotion_eligible": False,
+        },
+        "source-bound-manifest-compatibility": {
+            "cells": ["runtime-cold-source-bound"],
+            "projection": "full-runtime",
+            "measurement_complete": True,
+            "parity_passed": False,
+            "safety_passed": True,
+            "scope_complete": False,
+            "decision": "blocked",
             "passed": False,
             "policy_status": "unratified",
             "promotion_eligible": False,
         },
     }
     assert report["process_isolation"]["passed"] is True
-    assert report["process_isolation"]["expected_samples"] == 1152
-    assert report["process_isolation"]["observed_samples"] == 1152
-    assert len(report["process_isolation"]["inner_process_ids"]) == 1152
-    assert len(set(report["process_isolation"]["inner_process_ids"])) == 1152
+    assert report["process_isolation"]["expected_samples"] == 1440
+    assert report["process_isolation"]["observed_samples"] == 1440
+    assert len(report["process_isolation"]["inner_process_ids"]) == 1440
+    assert len(set(report["process_isolation"]["inner_process_ids"])) == 1440
     assert report["process_isolation"]["duplicate_process_ids"] == []
     for cell in report["cells"].values():
         assert {"runs", "summary", "parity", "safety", "performance"} <= set(cell)
+        assert (
+            cell["primary_projection"]
+            == profiler.CELL_PRIMARY_PROJECTIONS[cell["cell"]]
+        )
+        assert set(cell["parity"]) == set(profiler.PARITY_PROJECTIONS)
+        for projection in profiler.PARITY_PROJECTIONS:
+            assert set(cell["parity"][projection]) == {
+                "every_pair_equal",
+                "stable_within_arm",
+                "identity_sha256",
+                "passed",
+            }
         assert len(cell["runs"]["warmups"]) == profiler.DEFAULT_WARMUPS
         assert len(cell["runs"]["measured"]) == profiler.DEFAULT_ITERATIONS
 
@@ -923,7 +2076,7 @@ def test_override_protocol_is_an_operational_failure_after_measurement(
     assert report["status"] == "failed"
     assert report["passed"] is False
     assert report["failure"]["stage"] == "protocol"
-    assert report["process_isolation"]["observed_samples"] == 48
+    assert report["process_isolation"]["observed_samples"] == 60
     assert report["protocol"]["canonical"] is False
     assert report["protocol"]["observed"]["iterations_per_arm"] == 1
     assert report["protocol"]["observed"]["warmups_per_arm"] == 0
@@ -1043,11 +2196,13 @@ def test_worker_crash_and_timeout_produce_negative_reports(
         lambda receipt, _request, _call: receipt["safety"].__setitem__(
             "subject_unchanged", False
         ),
-        lambda receipt, _request, _call: receipt["result"]["manifest"].__setitem__(
+        lambda receipt, _request, _call: receipt["result"]["bm25_plan"].__setitem__(
             "source_fingerprint", _SHA_D
         ),
         lambda receipt, request, _call: (
-            receipt["parity_identity"]["view"].__setitem__("documents_sha256", _SHA_B)
+            receipt["parity_identities"]["compiler"]["view"].__setitem__(
+                "documents_sha256", _SHA_B
+            )
             if request["arm"] == "candidate"
             else None
         ),
@@ -1268,6 +2423,27 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
                 ),
             ),
         ],
+        ("runtime-cold-source-bound", "legacy"): [
+            (
+                "cli",
+                profiler._index_arguments(
+                    request("runtime-cold-source-bound", "legacy"),
+                    paths,
+                    candidate=False,
+                ),
+            )
+        ],
+        ("runtime-cold-source-bound", "candidate"): [
+            ("provision", paths),
+            (
+                "cli",
+                profiler._index_arguments(
+                    request("runtime-cold-source-bound", "candidate"),
+                    paths,
+                    candidate=True,
+                ),
+            ),
+        ],
     }
 
     for cell in profiler.CELLS:
@@ -1310,6 +2486,102 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
         paths["runtime_output"],
     ]
     assert "--repo" not in retained_arguments
+    source_bound_arguments = profiler._runtime_arguments(
+        request("runtime-cold-source-bound", "candidate"), paths, generation=1
+    )
+    assert source_bound_arguments == [
+        *retained_arguments,
+        "--repo",
+        os.fspath(subject_root.resolve()),
+    ]
+    assert profiler._runtime_arguments(
+        request("runtime-cold-source-bound", "legacy"), paths, generation=None
+    ) == ["mcp", os.fspath(profiler._cache_manifest_path(subject_root))]
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="the canonical profiler route requires Linux /proc accounting",
+)
+def test_real_local_runtime_route_matrix_uses_each_public_mcp_delivery(
+    tmp_path: Path,
+) -> None:
+    manifest_path, subject_roots, media_roots = _fixture(tmp_path)
+    manifest, _receipt = profiler.load_subject_manifest(manifest_path)
+    subject = manifest["subjects"][0]
+    subject_root = subject_roots[subject["id"]]
+    media_id, media_root = next(iter(media_roots.items()))
+    route_matrix = (
+        ("runtime-cold", "legacy", "manifest-path", "verified"),
+        (
+            "runtime-cold-query-only",
+            "legacy",
+            "direct-artifact",
+            "source-disabled",
+        ),
+        (
+            "runtime-cold-query-only",
+            "candidate",
+            "retained-ref",
+            "source-disabled",
+        ),
+        (
+            "runtime-cold-source-bound",
+            "candidate",
+            "retained-ref",
+            "verified",
+        ),
+    )
+    receipts: dict[tuple[str, str], dict[str, Any]] = {}
+
+    for index, (cell, arm, route, source_status) in enumerate(route_matrix, start=1):
+        request = {
+            "operation": "sample",
+            "arm": arm,
+            "phase": "measured",
+            "round_index": 0,
+            "cell": cell,
+            "subject": subject,
+            "subject_root": os.fspath(subject_root.resolve()),
+            "media_id": media_id,
+            "media_root": os.fspath(media_root.resolve()),
+            "media_identity": profiler._media_identity(media_root.resolve()),
+            "view_set": manifest["view_sets"][0],
+            "run_id": f"{index:032x}",
+        }
+
+        try:
+            receipt = profiler._sample_worker(request)  # noqa: SLF001
+        except Exception as exc:
+            raise AssertionError(f"real route failed for {cell}/{arm}") from exc
+        receipt = profiler._validate_sample_receipt(  # noqa: SLF001
+            receipt,
+            request=request,
+        )
+
+        assert receipt["result"]["runtime"]["delivery"]["route"] == route
+        assert receipt["result"]["source_read"]["status"] == source_status
+        assert receipt["result"]["public_manifest"] is not None
+        assert receipt["safety"]["context_closed"] is True
+        assert receipt["safety"]["source_closed"] is True
+        assert receipt["safety"]["cleanup_complete"] is True
+        receipts[(cell, arm)] = receipt
+
+    direct = receipts[("runtime-cold-query-only", "legacy")]
+    retained_query_only = receipts[("runtime-cold-query-only", "candidate")]
+    assert direct["parity_identities"] == retained_query_only["parity_identities"]
+
+    ordinary = receipts[("runtime-cold", "legacy")]
+    retained_source = receipts[("runtime-cold-source-bound", "candidate")]
+    assert (
+        ordinary["parity_identities"]["content-authority"]
+        == retained_source["parity_identities"]["content-authority"]
+    )
+    assert (
+        ordinary["parity_identities"]["full-runtime"]
+        != retained_source["parity_identities"]["full-runtime"]
+    )
+    assert not any(media_root.iterdir())
 
 
 def test_outer_sample_hides_prep_and_reports_the_inner_route_pid(
@@ -1362,6 +2634,7 @@ def test_outer_sample_hides_prep_and_reports_the_inner_route_pid(
                 },
                 "result": result,
                 "context_closed": True,
+                "source_closed": True,
             },
             1.25,
         )
@@ -1472,78 +2745,259 @@ def test_inner_route_requires_the_exact_derived_authority_paths(
             )
 
 
-def test_runtime_context_authority_contract_is_cell_and_arm_specific() -> None:
-    from codenib.artifacts.context import CONTEXT_ARTIFACT_SCHEMA
+def test_source_bound_runtime_manifest_allows_only_the_two_authenticated_rebinds(
+    tmp_path: Path,
+) -> None:
+    subject_root = tmp_path / "subject"
+    subject_root.mkdir()
+    runtime_output = tmp_path / "runtime-output"
+    runtime_view = runtime_output / "views" / "bm25"
+    runtime_view.mkdir(parents=True)
+    persisted = {
+        "version": "1.2",
+        "repo": {
+            "path": "source",
+            "commit": "a" * 40,
+            "source_fingerprint": _SOURCE_V2,
+        },
+        "indexes": {
+            "bm25": {
+                "path": "views/bm25",
+                "status": "fresh",
+                "metadata": {"builder_schema": 8},
+            }
+        },
+    }
+    request = {
+        "cell": "runtime-cold-source-bound",
+        "arm": "candidate",
+        "subject_root": os.fspath(subject_root),
+    }
+    expected = deepcopy(persisted)
+    expected["repo"]["path"] = os.fspath(subject_root)
+    expected["indexes"]["bm25"]["path"] = os.fspath(runtime_view.resolve())
 
+    assert (
+        profiler._validate_runtime_context_manifest(  # noqa: SLF001
+            expected,
+            persisted=persisted,
+            request=request,
+            paths={"runtime_output": os.fspath(runtime_output)},
+        )
+        == expected
+    )
+    assert persisted["repo"]["path"] == "source"
+    assert persisted["indexes"]["bm25"]["path"] == "views/bm25"
+
+    invalid_values: list[dict[str, Any]] = []
+    for mutate in (
+        lambda value: value["repo"].__setitem__("commit", "b" * 40),
+        lambda value: value["indexes"]["bm25"]["metadata"].__setitem__(
+            "builder_schema", 9
+        ),
+        lambda value: value.__setitem__("unexpected", True),
+        lambda value: value.pop("version"),
+        lambda value: value["repo"].__setitem__("path", "source"),
+        lambda value: value["indexes"]["bm25"].__setitem__(
+            "path", os.fspath(tmp_path / "other-view")
+        ),
+    ):
+        changed = deepcopy(expected)
+        mutate(changed)
+        invalid_values.append(changed)
+    for invalid in invalid_values:
+        with pytest.raises(RuntimeError, match="exact persisted binding"):
+            profiler._validate_runtime_context_manifest(  # noqa: SLF001
+                invalid,
+                persisted=persisted,
+                request=request,
+                paths={"runtime_output": os.fspath(runtime_output)},
+            )
+
+    malformed_persisted = deepcopy(persisted)
+    malformed_persisted["repo"]["path"] = os.fspath(subject_root)
+    malformed_view = deepcopy(persisted)
+    malformed_view["indexes"]["bm25"]["path"] = "views/other"
+    for malformed in (malformed_persisted, malformed_view):
+        with pytest.raises(RuntimeError, match="canonically portable"):
+            profiler._validate_runtime_context_manifest(  # noqa: SLF001
+                expected,
+                persisted=malformed,
+                request=request,
+                paths={"runtime_output": os.fspath(runtime_output)},
+            )
+
+
+def test_other_runtime_manifests_require_exact_persisted_identity(
+    tmp_path: Path,
+) -> None:
+    ordinary = {
+        "version": "1.2",
+        "repo": {"path": os.fspath(tmp_path / "subject"), "commit": "a" * 40},
+        "indexes": {
+            "bm25": {
+                "path": os.fspath(tmp_path / "ordinary-view"),
+                "status": "fresh",
+            }
+        },
+    }
+    portable = {
+        "version": "1.2",
+        "repo": {"path": "source", "commit": "a" * 40},
+        "indexes": {"bm25": {"path": "views/bm25", "status": "fresh"}},
+    }
+    routes = (
+        ({"cell": "runtime-cold", "arm": "legacy"}, ordinary),
+        ({"cell": "runtime-cold-query-only", "arm": "legacy"}, portable),
+        ({"cell": "runtime-cold-query-only", "arm": "candidate"}, portable),
+    )
+    paths = {"runtime_output": os.fspath(tmp_path / "unused-runtime")}
+    for request, persisted in routes:
+        assert (
+            profiler._validate_runtime_context_manifest(  # noqa: SLF001
+                persisted,
+                persisted=persisted,
+                request=request,
+                paths=paths,
+            )
+            == persisted
+        )
+        for mutation in (
+            lambda value: value["repo"].__setitem__("commit", "b" * 40),
+            lambda value: value["indexes"]["bm25"].__setitem__("status", "stale"),
+            lambda value: value.pop("version"),
+            lambda value: value.__setitem__("unexpected", True),
+        ):
+            changed = deepcopy(persisted)
+            mutation(changed)
+            with pytest.raises(RuntimeError, match="exact persisted binding"):
+                profiler._validate_runtime_context_manifest(  # noqa: SLF001
+                    changed,
+                    persisted=persisted,
+                    request=request,
+                    paths=paths,
+                )
+
+
+def test_runtime_context_authority_contract_is_cell_and_arm_specific() -> None:
     subject = {
         "repository_key": "benchmark/fixture",
         "revision": "a" * 40,
+    }
+    ordinary_request = {
+        "cell": "runtime-cold",
+        "arm": "legacy",
+        "subject": subject,
+    }
+    candidate_request = {
+        "cell": "runtime-cold",
+        "arm": "candidate",
+        "subject": subject,
+    }
+    direct_request = {
+        "cell": "runtime-cold-query-only",
+        "arm": "legacy",
+        "subject": subject,
     }
     legacy = {
         "loaded_views": ["bm25"],
         "errors": {},
         "artifact": None,
         "source_verified": True,
+        "source_error": None,
         "source_verification_scope": "content-bytes",
-        "vector_loaded": False,
+        "native_vector_authorized": False,
+        "native_lsp_allowed": True,
+        "lsp_provider": _runtime_identity(ordinary_request)["capabilities"][
+            "lsp_provider"
+        ],
+        "commit_verified": False,
     }
     candidate = {
         **legacy,
-        "artifact": {
-            "verified": True,
-            "schema": CONTEXT_ARTIFACT_SCHEMA,
-            "repository": subject["repository_key"],
-            "commit": subject["revision"],
-            "views": ["bm25"],
-        },
+        "artifact": _runtime_identity(candidate_request)["artifact"],
         "source_verified": False,
+        "source_error": "retained route has no repository source",
         "source_verification_scope": None,
+        "native_lsp_allowed": False,
+        "lsp_provider": _runtime_identity(candidate_request)["capabilities"][
+            "lsp_provider"
+        ],
     }
 
     legacy_authority = profiler._validate_runtime_context_state(
         legacy,
-        request={"cell": "runtime-cold", "arm": "legacy", "subject": subject},
+        request=ordinary_request,
     )
     candidate_authority = profiler._validate_runtime_context_state(
         candidate,
-        request={"cell": "runtime-cold", "arm": "candidate", "subject": subject},
+        request=candidate_request,
     )
     direct_authority = profiler._validate_runtime_context_state(
         candidate,
-        request={
-            "cell": "runtime-cold-query-only",
-            "arm": "legacy",
-            "subject": subject,
-        },
+        request=direct_request,
     )
 
-    assert legacy_authority == {
-        "context_kind": "manifest-live-source",
-        "artifact": None,
-        "source_verified": True,
-        "source_verification_scope": "content-bytes",
+    assert legacy_authority == _runtime_identity(ordinary_request)
+    assert direct_authority == _runtime_identity(direct_request)
+    assert candidate_authority == _runtime_identity(candidate_request)
+    assert direct_authority["delivery"] == {
+        "route": "direct-artifact",
+        "context_provenance": "portable-context-artifact",
     }
-    assert direct_authority == candidate_authority
-    assert candidate_authority["context_kind"] == "portable-artifact-query-only"
-    assert candidate_authority["source_verified"] is False
+    assert candidate_authority["delivery"] == {
+        "route": "retained-ref",
+        "context_provenance": "portable-context-artifact",
+    }
+    assert {
+        key: value for key, value in direct_authority.items() if key != "delivery"
+    } == {key: value for key, value in candidate_authority.items() if key != "delivery"}
+    assert candidate_authority["source_authority"] == {
+        "kind": "source-disabled",
+        "verified": False,
+        "verification_scope": None,
+    }
+    assert set(candidate_authority["capabilities"]) == {
+        "loaded_views",
+        "view_errors",
+        "read_source",
+        "native_vector_authorized",
+        "native_lsp_allowed",
+        "lsp_provider",
+        "commit_verified",
+        "checkout_state",
+    }
+    assert candidate_authority["capabilities"]["view_errors"] == {}
+
+    for invalid_view_errors in ([], {"bm25": "synthetic failure"}):
+        invalid_runtime = _runtime_identity(candidate_request)
+        invalid_runtime["capabilities"]["view_errors"] = invalid_view_errors
+        with pytest.raises((RuntimeError, ValueError)):
+            profiler._validate_runtime_identity(  # noqa: SLF001
+                invalid_runtime,
+                request=candidate_request,
+                label="synthetic runtime identity",
+            )
 
     with pytest.raises(RuntimeError, match="exact per-cell contract"):
         profiler._validate_runtime_context_state(
-            {**legacy, "source_verified": False},
-            request={
-                "cell": "runtime-cold",
-                "arm": "legacy",
-                "subject": subject,
+            {
+                **legacy,
+                "source_verified": False,
+                "source_error": "synthetic unverified source",
+                "source_verification_scope": None,
             },
+            request=ordinary_request,
         )
     with pytest.raises(RuntimeError, match="exact per-cell contract"):
         profiler._validate_runtime_context_state(
-            {**candidate, "source_verified": True},
-            request={
-                "cell": "runtime-cold-query-only",
-                "arm": "legacy",
-                "subject": subject,
+            {
+                **candidate,
+                "source_verified": True,
+                "source_error": None,
+                "source_verification_scope": "content-bytes",
             },
+            request=direct_request,
         )
 
 
