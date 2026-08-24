@@ -883,6 +883,15 @@ that collecting a fast result cannot silently approve a production route:
 | B2 source-bound | Promote a specifically scoped source-bound BM25 retained cold start. | Pending A2 source-bound BM25 runtime; it cannot satisfy the full manifest-compatibility gate. |
 | C | Supply the `provider-bound-exact` strict BM25 native provider. | Complete. The request still carries only its immutable receipt-derived binding. `run_strict_workspace(...)` accepts the separately active exact source owner and gives Local only a PID-bound, callback-scoped one-shot gate tied by object identity to that request, binding, operation, native owner, and workspace. Local captures and leases before the gate synchronously binds the source, provisions only through the handed-off workspace, and publishes only through the protocol-v5 dual-root seam. The displaced incumbent remains a reopenable `linux-renameat2` orphan. Automatic GC, a crash journal, hostile same-UID defense, and default-route promotion remain outside Gate C. |
 
+An initial v3 1x0 readiness smoke stopped before completion because strict BM25
+applied per-document node and token defaults to its whole-file lexical prepass.
+That prepass now derives only its aggregate node and token budgets from the
+authenticated `documents.json` record size; whole-file byte, depth, key,
+string, and atom limits and the per-document complexity caps remain unchanged.
+This is a readiness correction, not A2 evidence. A2 remains pending a fresh
+60/60 readiness smoke and canonical 20x4 measurements, and no compiler or
+runtime route or default is promoted.
+
 The A1 harness fixes the BM25 `fast` compiler/runtime comparison rather than
 accepting arbitrary route substitutions. For compiler cold start, arm A runs
 `codenib index --preset fast` from an empty cache and arm B runs the same build

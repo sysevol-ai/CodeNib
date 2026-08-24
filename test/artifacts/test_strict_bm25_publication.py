@@ -18,7 +18,11 @@ import pytest
 import codenib.artifacts.strict_bm25 as strict_bm25_module
 from codenib import LocalWorkspaceProvider
 from codenib._atomic_directory import TreeFileRecord
-from codenib._bounded_json import canonical_json_value_chunks
+from codenib._bounded_json import (
+    DEFAULT_MAX_LEXICAL_TOKENS,
+    DEFAULT_MAX_NODES_PER_ELEMENT,
+    canonical_json_value_chunks,
+)
 from codenib._captured_directory import (
     OwnedWorkspaceAuthority,
     PublishedWorkspaceReceiptOwner,
@@ -1555,6 +1559,174 @@ def test_strict_bm25_documents_are_bounded_before_element_dom(tmp_path: Path) ->
                 environ={},
             )
     finally:
+        source_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_streams_aggregate_nodes_through_exact_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _repository(tmp_path)
+    document = {"page_content": "safe", "metadata": {}}
+    # Each document has three value nodes and five lexical tokens. The complete
+    # array exceeds both aggregate defaults while every document remains tiny.
+    document_count = DEFAULT_MAX_LEXICAL_TOKENS // 5
+    assert 1 + (3 * document_count) > DEFAULT_MAX_NODES_PER_ELEMENT
+    assert 1 + (5 * document_count) > DEFAULT_MAX_LEXICAL_TOKENS
+    documents = _canonical_bytes([document] * document_count)
+    destination, source_owner = _publish_source(
+        tmp_path,
+        repository,
+        documents=documents,
+    )
+    repository_source = capture_repository_source(repository)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider()
+    real_validate = strict_bm25_module.validate_bounded_json_stream
+    observed_document_limits: list[dict[str, Any]] = []
+
+    def observe_document_limits(source, **limits):
+        if limits.get("label") == "portable BM25 documents":
+            observed_document_limits.append(dict(limits))
+        return real_validate(source, **limits)
+
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "validate_bounded_json_stream",
+        observe_document_limits,
+    )
+    try:
+        normalize_owned_query_view_strict(
+            destination,
+            source_generation=source_owner,
+            repository_source=repository_source,
+            workspace_provider=provider,
+            output_receipt_owner=output_owner,
+            view_type="bm25",
+            view_config={},
+            environ={},
+        )
+
+        assert provider.support_count == 1
+        assert provider.run_count == 1
+        assert provider.requests[0].destination_expectation == "provider-bound-exact"
+        assert (
+            provider.requests[0].destination_binding is source_owner.destination_binding
+        )
+        assert source_owner.active
+        assert output_owner.active
+        assert (destination / "documents.json").read_bytes() == documents
+        expected_limits = {
+            "label": "portable BM25 documents",
+            "max_bytes": strict_bm25_module._MAX_DOCUMENTS_JSON_BYTES,
+            "max_nodes": len(documents),
+            "max_lexical_tokens": len(documents),
+        }
+        assert observed_document_limits
+        assert all(limits == expected_limits for limits in observed_document_limits)
+    finally:
+        output_owner.close()
+        source_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_record_budget_still_rejects_source_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _repository(tmp_path)
+    documents = _canonical_bytes([{"page_content": "safe", "metadata": {}}])
+    mutated_documents = documents.replace(b"safe", b"evil", 1)
+    assert len(mutated_documents) == len(documents)
+    destination, source_owner = _publish_source(
+        tmp_path,
+        repository,
+        documents=documents,
+    )
+    repository_source = capture_repository_source(repository)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider()
+    real_record = strict_bm25_module._PublicationBm25Reader.record
+    mutated = False
+
+    def mutate_after_record(self, path):
+        nonlocal mutated
+        record = real_record(self, path)
+        if not mutated and record.path == "documents.json":
+            mutated = True
+            (destination / "documents.json").write_bytes(mutated_documents)
+        return record
+
+    monkeypatch.setattr(
+        strict_bm25_module._PublicationBm25Reader,
+        "record",
+        mutate_after_record,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="changed|differs"):
+            normalize_owned_query_view_strict(
+                destination,
+                source_generation=source_owner,
+                repository_source=repository_source,
+                workspace_provider=provider,
+                output_receipt_owner=output_owner,
+                view_type="bm25",
+                view_config={},
+                environ={},
+            )
+
+        assert mutated
+        assert provider.support_count == 0
+        assert provider.run_count == 0
+        assert source_owner.active
+        assert output_owner.state == "empty"
+    finally:
+        output_owner.close()
+        source_owner.close()
+        repository_source.close()
+
+
+def test_strict_bm25_rejects_one_oversized_document_before_provider(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    document = {
+        "page_content": "safe",
+        "metadata": {"nodes": [None] * DEFAULT_MAX_NODES_PER_ELEMENT},
+    }
+    documents = _canonical_bytes([document])
+    destination, source_owner = _publish_source(
+        tmp_path,
+        repository,
+        documents=documents,
+    )
+    repository_source = capture_repository_source(repository)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider()
+    try:
+        with pytest.raises(
+            ValueError,
+            match=rf"{DEFAULT_MAX_NODES_PER_ELEMENT}-node limit",
+        ):
+            normalize_owned_query_view_strict(
+                destination,
+                source_generation=source_owner,
+                repository_source=repository_source,
+                workspace_provider=provider,
+                output_receipt_owner=output_owner,
+                view_type="bm25",
+                view_config={},
+                environ={},
+            )
+
+        assert provider.support_count == 0
+        assert provider.run_count == 0
+        assert source_owner.active
+        assert output_owner.state == "empty"
+        assert (destination / "documents.json").read_bytes() == documents
+    finally:
+        output_owner.close()
         source_owner.close()
         repository_source.close()
 

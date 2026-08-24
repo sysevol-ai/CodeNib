@@ -678,8 +678,11 @@ def _payloads(
     environ: Mapping[str, str],
     authenticated_source_files: frozenset[str],
 ) -> tuple[bytes, Iterable[bytes]]:
-    # Apply the whole-file lexical budgets, including string and atom limits,
-    # before the element iterator allocates any decoded document object.
+    # Apply whole-file lexical framing before any decoded document allocation.
+    # Aggregate counts are bounded by authenticated bytes; the iterator below
+    # independently preserves the stricter per-document complexity budgets.
+    documents_record = reader.record("documents.json")
+    lexical_budget = max(1, documents_record.size)
     with reader.open_file(
         "documents.json",
         max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
@@ -688,6 +691,8 @@ def _payloads(
             source,
             label="portable BM25 documents",
             max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
+            max_nodes=lexical_budget,
+            max_lexical_tokens=lexical_budget,
         )
     metadata = _load_json_object(
         reader,
