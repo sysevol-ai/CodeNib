@@ -282,58 +282,86 @@ authenticated reader pinned through synchronous consumption. The contract
 remains provider-neutral, and a concrete `LocalWorkspaceProvider` now supplies
 it on Linux for missing destinations below one private, quiescent root owned by
 the current effective UID with exact mode `0700`. Native workspace-owner
-protocol v4 preserves the v2 publication contract: it pins the namespace and
+protocol v5 preserves the v2 publication contract: it pins the namespace and
 owns every file descriptor, acquires and writes files without exposing raw file
 descriptors to Python, and gates the only forward rename with a one-shot publish
 permit. The caller-owned receipt slot is the publication-authority
 linearization point: unreceipted same-process failures quarantine the exact
 candidate, while a fork child authenticates and closes only its inherited
 descriptor pairs. The v3-compatible capture state authenticates the private
-root and exact destination name/device/inode binding without mutation. V4 adds
-a distinct one-shot replacement permit and one aggregate for that incumbent
-plus a hidden, same-parent candidate. Its success states are
-`destination-captured` -> `replacement-provisioning` ->
-`replacement-provisioned` -> `replacement-adopted` ->
-`replacement-exchanged-unreceipted` -> `replacement-receipted`, followed by
-`closed`; interrupted paths may instead enter
-`replacement-recovery-required` or `quarantined`. The only exchange is Linux
-`renameat2(RENAME_EXCHANGE)` for two same-device directories under the captured
-parent, with no portable or multi-rename fallback. A nonblocking owner-held
-parent-directory open-file-description (OFD)
-`flock(LOCK_EX | LOCK_NB)` guards the cooperative commit window through receipt
-commit or an authenticated reverse exchange and parent `fsync`. That flock
-serializes only exchange-to-settlement, not the earlier capture or complete
-writer lifecycle. A future provider/caller must keep replacements of the same
-incumbent single-writer and quiescent from capture through receipt or abort. A
-second stale owner that captured before another owner committed classifies the
-later mapping as unknown, stays `replacement-recovery-required`, and retains
-its lease and descriptors; the primitive neither auto-adopts nor quarantines
-that capture. This assumes a private `0700` namespace whose CodeNib writers
-honor the outer serialization and guard; it is not a claim against hostile
-same-UID mutation. Before receipt settlement,
-same-process recovery can restore the incumbent and retain the candidate at its
-pre-existing, caller-supplied authenticated hidden slot. The primitive validates
-the hidden basename but does not generate or prove randomness. A committed
-exchange leaves the candidate live and the incumbent at that slot. This is live
-atomicity without a crash journal: `SIGKILL`, host failure, and power loss have
-no promised rollback. If the mapping becomes unknown, callers must retain and
-explicitly retry the recovery owner. Forward parent `fsync` runs inside exchange
-before a token is returned; its failure leaves the caller with no token and
-requires owner recovery/abort. A reachable receipt-commit dual-binding or
-`LOCK_UN` failure instead leaves the already-returned same exact receipt token
-unconsumed. While the exact owner remains active and before close, it may retry
-commit only after native reclassification proves the exchanged mapping; after
-close, the token is no longer a retry capability and commit fails closed. Owner
-abort remains the alternative reclassifying/reversing settlement. Every
-lease-active recovery, including an operator-restored mapping or receipt retry,
-performs parent `fsync` before
-eventual unlock. Abandoning recovery authority deliberately retains the raw
-descriptors and cooperative flock until process
-exit rather than silently discarding the only authority. Every borrowed
-incumbent, candidate, parent, or planned-directory descriptor remains
-owner-owned and callers must not close it. Trusted internal code could still
-use those descriptors with `*at` syscalls, so the primitive is not full
-`_TreeOwnership`.
+root and exact destination name/device/inode binding without mutation. Protocol
+v4 added a distinct one-shot replacement permit and one aggregate for that
+incumbent plus a hidden, same-parent candidate. Protocol v5 retains that atomic
+exchange history and inserts a required parent lease before candidate mutation.
+Its success states are `destination-captured` -> `destination-leased` ->
+`replacement-provisioning` -> `replacement-provisioned` ->
+`replacement-adopted` -> `replacement-exchanged-unreceipted` ->
+`replacement-receipted`, followed by `closed`; interrupted paths may instead
+enter `replacement-recovery-required` or `quarantined`.
+
+Capture is speculative and lock-free. It retains one owner/guard pair for the
+borrowable parent authority used by namespace operations and `fsync`, and opens
+a separate, never-exposed parent descriptor plus guard for the lease. Native
+capture authenticates the hidden pair as the same parent identity, internally
+the same open-file-description (OFD), and a different OFD from the borrowable
+parent pair. Lease
+acquisition applies nonblocking `flock(LOCK_EX | LOCK_NB)` only to that hidden
+OFD, then revalidates the complete parent chain and captured destination binding
+under the lock. A borrower's `LOCK_UN` on the exposed parent cannot release the
+lease. A stale capture is rejected under lock with zero candidate mutation and
+releases the lease, remaining `destination-captured`; it neither auto-adopts nor
+quarantines the newer mapping. Contention likewise makes no candidate. If an
+earlier owner reverses its exchange and restores the captured incumbent,
+another owner may acquire successfully on retry. The parent-wide flock provides
+one cooperative cross-process single-writer boundary, including different
+destination names under the same parent, from before provisioning through
+receipt commit or an authenticated reverse exchange and parent `fsync`.
+
+The only exchange is Linux `renameat2(RENAME_EXCHANGE)` for two same-device
+directories under the captured parent, with no portable or multi-rename
+fallback. Before receipt settlement, same-process recovery can restore the
+incumbent and retain the candidate at its pre-existing, caller-supplied
+authenticated hidden slot. The primitive validates the hidden basename but
+does not generate or prove randomness. A committed exchange leaves the
+candidate live and the incumbent at that slot. This is live atomicity without a
+crash journal: `SIGKILL`, host failure, and power loss have no promised
+rollback. This assumes a private, quiescent `0700` namespace whose cooperative
+CodeNib writers honor the guard; it is not protection against hostile same-UID
+mutation.
+
+If the mapping becomes unknown, callers must retain and explicitly retry the
+recovery owner. Forward parent `fsync` runs inside exchange before a token is
+returned; its failure leaves the caller with no token and requires owner
+recovery/abort. A reachable receipt-commit dual-binding or `LOCK_UN` failure
+instead leaves the already-returned same exact receipt token unconsumed. While
+the exact owner remains active and before close, it may retry commit only after
+native reclassification proves the exchanged mapping; after close, the token is
+no longer a retry capability and commit fails closed. Owner abort remains the
+alternative reclassifying/reversing settlement. Every lease-active recovery,
+including an operator-restored mapping or receipt retry, performs parent `fsync`
+before eventual unlock. If replacement `mkdirat` reports failure before a
+candidate identity is confirmed, settlement keeps the lease held while it
+authenticates the incumbent and hidden authorities. Only an exact
+`fstatat(..., AT_SYMLINK_NOFOLLOW)` `ENOENT` for the configured slot authorizes
+no-candidate settlement, parent `fsync`, unlock, configuration reset, and close.
+An existing or rebound slot, or any ambiguous stat result, enters or retains
+`replacement-recovery-required` with the lease and configuration intact for
+retry. A no-candidate unlock/close retry can therefore settle without requiring
+an externally stale live name to be restored. If native lease acquisition
+returns but Python return is interrupted, the owner remains
+`destination-leased` and repeated acquisition is idempotent without taking a
+second flock. A fork child cannot mutate, reverse, commit, or unlock the
+parent's lease; it only authenticates and closes its own inherited descriptor
+pairs.
+
+The receipted aggregate seals its path-based live-name verifier and new parent
+borrows, while earlier borrowed descriptors remain owner-owned until close.
+Abandoning unknown recovery authority deliberately retains the raw descriptors
+and cooperative flock until process exit rather than silently discarding the
+only authority. Every borrowed incumbent, candidate, parent, or
+planned-directory descriptor remains owner-owned and callers must not close it.
+Trusted internal code could still use those descriptors with `*at` syscalls, so
+the primitive is not full `_TreeOwnership`.
 The provider remains an authority boundary for trusted callbacks, not an
 in-process Python sandbox.
 The explicit retained workflows construct it for operator-requested publication
@@ -797,7 +825,7 @@ that collecting a fast result cannot silently approve a production route:
 | B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
 | B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | B2 source-bound | Promote a specifically scoped source-bound BM25 retained cold start. | Pending A2 source-bound BM25 runtime; it cannot satisfy the full manifest-compatibility gate. |
-| C | Supply the `provider-bound-exact` strict BM25 native provider. | Protocol v4 implements a Linux-only, same-parent `RENAME_EXCHANGE` primitive with receipt settlement and bounded same-process rollback, but `LocalWorkspaceProvider` still rejects this expectation and no strict producer selects the primitive. Gate C remains pending and required before M1 closes. |
+| C | Supply the `provider-bound-exact` strict BM25 native provider. | Protocol v4 introduced the Linux-only, same-parent `RENAME_EXCHANGE` primitive; protocol v5 moves a parent-wide cross-process flock before candidate mutation and retains receipt settlement and bounded same-process rollback. `LocalWorkspaceProvider` still rejects this expectation and no strict producer selects the primitive. Gate C remains pending and required before M1 closes. |
 
 The A1 harness fixes the BM25 `fast` compiler/runtime comparison rather than
 accepting arbitrary route substitutions. For compiler cold start, arm A runs

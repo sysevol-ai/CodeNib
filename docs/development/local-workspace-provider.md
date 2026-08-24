@@ -22,18 +22,20 @@ import-cache` recaptures an already existing selected cache, `codenib artifact
 materialize` publishes a retained catalog ref or immutable snapshot to a
 missing portable-artifact directory, and retained `codenib mcp` cold-start
 materializes and holds one such generation for a single stdio server lifetime.
-Protocol v4 also exposes an internal existing-destination replacement
-primitive. It captures the incumbent, provisions and authenticates one hidden
-same-parent candidate, exchanges the two exact directory bindings with Linux
-`renameat2(RENAME_EXCHANGE)`, and returns an opaque receipt token. The native
-aggregate owns the incumbent and candidate descriptors throughout; every
-descriptor borrowed by trusted internal code remains owner-owned and must
-never be closed by the borrower.
+Protocol v4 introduced an internal existing-destination replacement primitive:
+it captures the incumbent, provisions and authenticates one hidden same-parent
+candidate, exchanges the two exact directory bindings with Linux
+`renameat2(RENAME_EXCHANGE)`, and returns an opaque receipt token. Protocol v5
+keeps that exchange contract and moves a cooperative, parent-wide cross-process
+lease ahead of every candidate mutation. The native aggregate owns the parent,
+incumbent, and candidate descriptors throughout; every descriptor borrowed by
+trusted internal code remains owner-owned and must never be closed by the
+borrower.
 
 This primitive does not change `LocalWorkspaceProvider`: the provider remains
 missing-only and still rejects the strict BM25 producer's
 `provider-bound-exact` destination mode. Provider integration is a separate
-Gate C change, so Gate C and M1 remain open even though the protocol-v4
+Gate C change, so Gate C and M1 remain open even though the protocol-v5
 primitive is available.
 
 ## Publish a normal index build
@@ -558,7 +560,7 @@ The provider deliberately has a narrow first release:
 - One absolute authority root owned by the current effective UID, with exact
   mode `0700`. The root must be a private, quiescent namespace rather than a
   directory another same-UID process actively mutates.
-- A complete protocol-v4 native extension and a successful Linux ownership
+- A complete protocol-v5 native extension and a successful Linux ownership
   support probe before the first namespace mutation.
 - A plan small enough for the process descriptor limit. The format permits up
   to 100,000 directories, but the native `RLIMIT_NOFILE` preflight may reject a
@@ -582,7 +584,7 @@ policy permits cleanup; discarding it forfeits recoverability.
 
 ## Publication guarantees
 
-The protocol-v4 native aggregate preserves the protocol-v2 missing-destination
+The protocol-v5 native aggregate preserves the protocol-v2 missing-destination
 publication contract. In that publication mode it owns the namespace and file
 descriptors for the whole operation, creates and writes files without returning
 raw file descriptors to Python, pins the root and planned directory identities,
@@ -599,11 +601,13 @@ Staged and published validators run inside that transaction. The returned
 receipt therefore names one exact, durably published generation rather than a
 path checked after the fact.
 
-Protocol v4 extends capture with a primitive-only replacement transaction. Its
-success path has these native owner states:
+Protocol v4 extended capture with a primitive-only replacement transaction.
+Protocol v5 preserves that history and adds a required pre-mutation lease
+transition. Its success path has these native owner states:
 
 ```text
 destination-captured
+  -> destination-leased
   -> replacement-provisioning
   -> replacement-provisioned
   -> replacement-adopted
@@ -612,27 +616,48 @@ destination-captured
   -> closed
 ```
 
-The native ABI adds
-`claim_owner_replacement_permit_exact`,
+Protocol v4 added `claim_owner_replacement_permit_exact`,
 `provision_owner_replacement_exact`,
 `verify_owner_replacement_binding_exact`, and
-`exchange_owner_replacement_exact`. The fail-closed facade exposes the same
-operations without `_exact`. Claim returns a distinct opaque
+`exchange_owner_replacement_exact`. Protocol v5 adds
+`acquire_owner_replacement_lease_exact` and requires it after capture and before
+permit claim or provisioning. The fail-closed facade exposes the same
+operations without `_exact`, including `acquire_owner_replacement_lease`.
+Claim returns a distinct opaque
 `WorkspaceReplacementPermit`; exchange consumes that permit and returns an
 opaque `WorkspaceReceiptToken` for the existing `commit_owner_receipt`
 operation. Permits and receipt tokens do not expose a separate public state
 API; `owner_state` reports the aggregate state above.
 
+`destination-captured` is speculative and does not hold the lease. Capture
+retains one owner/guard pair for the borrowable parent authority used by
+namespace operations and `fsync`, and separately opens a never-exposed parent
+descriptor plus guard for the lease. The lease pair is authenticated as the
+same parent identity, internally the same open-file-description (OFD), and a
+different OFD from the
+borrowable parent pair. Acquisition flocks only that hidden OFD and then
+revalidates the complete captured parent chain and incumbent
+name/device/inode binding under the lock. Only success enters
+`destination-leased`. A borrower's `flock(LOCK_UN)` on the exposed parent
+therefore cannot release the replacement lease. Lease contention returns cleanly in
+`destination-captured`, and a stale capture is rejected under lock with zero
+candidate mutation before the flock is released. If an earlier owner instead
+reverses its exchange and restores the captured incumbent, a waiting owner may
+acquire normally on a later retry.
+
 `replacement-provisioning` is the in-call construction state; a successful
 provision call returns in `replacement-provisioned`. Claiming the distinct
-one-shot replacement permit does not change `destination-captured`. After the
+one-shot replacement permit does not change `destination-leased`. After the
 candidate is adopted, written, sealed, and rebound to the aggregate, exchange
 returns an opaque receipt token. While the exact owner authority remains active
 and before close, committing that token is idempotent, releases the cooperative
 flock lease while retaining the authenticated parent descriptor and guard until
-owner/receipt close, and enters `replacement-receipted`. Closing a receipted
-owner only closes its handles and does not mutate either path; after close, the
-token is no longer a retry capability and commit fails closed.
+owner/receipt close, and enters `replacement-receipted`. The receipted state is
+sealed against a path-based live-name verifier: replacement binding verification
+and new parent-descriptor borrows are unavailable there, while descriptors
+borrowed earlier remain owner-owned until close. Closing a receipted owner only
+closes its handles and does not mutate either path; after close, the token is no
+longer a retry capability and commit fails closed.
 The forward parent `fsync` occurs inside exchange before a token is returned.
 If it fails, the caller has no token: the aggregate enters
 `replacement-recovery-required`, retains its lease and descriptors, and must be
@@ -651,20 +676,23 @@ The exchange contract is deliberately narrow. It is Linux-only, requires the
 incumbent and hidden candidate to be distinct directories under the same
 captured parent and on the same device, and uses exactly
 `renameat2(RENAME_EXCHANGE)`. There is no portable or multi-rename fallback.
-The parent-directory open-file-description (OFD) guard is acquired nonblocking
-with `flock(LOCK_EX | LOCK_NB)` and is held across the live exchange until
-either the receipt is committed or an authenticated reverse exchange plus
-parent-directory `fsync` completes. This serializes only the
-exchange-to-receipt-or-reverse settlement window; it does
-not refresh an earlier capture or lock the complete writer lifecycle. A future
-provider or other cooperative caller replacing the same incumbent must supply
-outer single-writer, quiescent serialization for the entire
-capture-to-receipt-or-abort lifetime. If two owners capture the same incumbent,
-the first commits, and the second later attempts exchange, the second classifies
-the mapping as unknown, stays `replacement-recovery-required`, and retains its
-lease and descriptors. The primitive does not auto-adopt or quarantine that
-stale capture. The containing `0700` root must remain private and quiescent; a
-hostile same-UID process that ignores the guard is outside the contract.
+The separately opened, hidden parent open-file-description (OFD) is acquired
+nonblocking with `flock(LOCK_EX | LOCK_NB)` before candidate mutation and is held across
+provisioning, adoption, the live exchange, and return settlement until either
+the receipt is committed or an authenticated reverse exchange plus
+parent-directory `fsync` completes. Namespace operations and durability syncs
+continue to use the original parent authority; the hidden lease pair is never
+borrowed. Because the flock covers the parent rather than one basename, it
+provides one cooperative cross-process single-writer boundary even for
+different destination names under that parent. Capture itself remains
+speculative, but all live capture revalidation occurs under the lease before
+mutation. If two owners capture the same incumbent and the first commits, the
+second later rejects its stale capture during lease acquisition, performs zero
+candidate mutation, releases its newly acquired lease, and remains
+`destination-captured`; it does not auto-adopt or quarantine the newer mapping.
+The containing `0700` root must remain private and quiescent. This is a
+cooperative/private threat model, not protection against a hostile same-UID
+process that ignores the guard.
 
 Before receipt settlement, same-process abort verifies the swapped incumbent
 and candidate mappings, reverses the exchange, flushes the parent, restores the
@@ -675,14 +703,28 @@ randomness. A committed exchange leaves the new candidate at the destination
 and the old incumbent at that slot; the primitive does not reclaim it. Readers
 observing the live namespace see one complete binding or the other at the
 single exchange point, but this is live
-atomicity, not crash recovery. There is no journal and no promise to roll back
+atomicity, not crash recovery. There is no crash journal and no promise to roll back
 after `SIGKILL`, host failure, or power loss. A caller that observes
 `replacement-recovery-required` must retain the owner and explicitly retry
 recovery, plus the same receipt token when a reachable receipt-commit attempt
 failed. If all references are abandoned while the mapping is unknown, native
 deallocation deliberately retains the raw descriptors and cooperative flock
 until process exit rather than silently releasing the only exclusion and
-authority; restarting is the final recovery boundary.
+authority; restarting is the final recovery boundary. If acquisition or
+pre-mutation provisioning reported an error before a candidate was confirmed,
+settlement first authenticates the incumbent and hidden authorities while the
+lease remains held. It treats the attempt as no-candidate only when
+`fstatat(..., AT_SYMLINK_NOFOLLOW)` reports exact `ENOENT` for the configured
+slot, then syncs the parent before unlock. An existing or rebound slot, or any
+ambiguous stat result, enters or retains `replacement-recovery-required` with
+the lease and configuration intact for retry. Unlock or close interruption is
+handled by the same retained-authority retry rather than requiring an
+externally stale live name to be restored. An interruption after the native
+lease return but before Python observes it leaves `destination-leased`;
+repeating acquisition is idempotent and
+does not take a second flock. A fork child cannot mutate, reverse, commit, or
+unlock the parent's lease. It only authenticates and closes its inherited
+descriptor pairs, leaving the parent process's authority and lock intact.
 
 All borrowed incumbent, candidate-root, parent, and planned-directory
 descriptors remain owned by the aggregate and are valid only for its lifetime;
