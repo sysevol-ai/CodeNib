@@ -34,6 +34,7 @@ def test_build_multimodal_knowledge_script_writes_bundle(tmp_path):
     completed = subprocess.run(
         [
             sys.executable,
+            "-I",
             "scripts/build_multimodal_knowledge.py",
             str(repo),
             "--output",
@@ -54,3 +55,26 @@ def test_build_multimodal_knowledge_script_writes_bundle(tmp_path):
     assert counts["knowledge_entries"] == 1
     assert bundle["media_manifest"]["commit"] == "abc123"
     assert bundle["knowledge_view"]["entry_count"] == 1
+
+
+def test_build_multimodal_knowledge_script_rejects_missing_repository(tmp_path):
+    output = tmp_path / "bundle.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "scripts/build_multimodal_knowledge.py",
+            str(tmp_path / "missing"),
+            "--output",
+            str(output),
+        ],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "repository root does not exist" in completed.stderr
+    assert not output.exists()

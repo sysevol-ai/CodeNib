@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from codenib.wiki import (
     build_multimodal_knowledge_view,
     build_multimodal_repository_knowledge,
@@ -137,3 +139,14 @@ def test_pipeline_materializes_exclude_roots_for_each_stage(tmp_path):
 
     assert bundle["media_manifest"]["artifact_count"] == 1
     assert bundle["grounding_manifest"]["binding_count"] == 0
+
+
+def test_pipeline_rejects_invalid_repository_roots(tmp_path):
+    missing = tmp_path / "missing"
+    with pytest.raises(FileNotFoundError):
+        build_multimodal_repository_knowledge(missing)
+
+    file_path = tmp_path / "repository.txt"
+    file_path.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(NotADirectoryError, match="not a directory"):
+        build_multimodal_repository_knowledge(file_path)

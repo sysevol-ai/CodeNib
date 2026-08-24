@@ -36,9 +36,10 @@ def build_multimodal_repository_knowledge(
 ) -> dict[str, Any]:
     """Build the deterministic multimodal repository knowledge bundle."""
 
+    root = _repository_root(repo_path)
     excluded = tuple(exclude_roots)
     media_manifest = discover_media_manifest(
-        repo_path,
+        root,
         commit=commit,
         exclude_roots=excluded,
         selection=selection,
@@ -49,7 +50,7 @@ def build_multimodal_repository_knowledge(
         facts_kwargs["extractor"] = extractor
     visual_facts_manifest = build_visual_facts_manifest(media_manifest, **facts_kwargs)
     source_candidates = discover_source_symbol_candidates(
-        repo_path,
+        root,
         exclude_roots=excluded,
         selection=selection,
         max_candidates=max_source_candidates,
@@ -71,6 +72,13 @@ def build_multimodal_repository_knowledge(
         "grounding_manifest": grounding_manifest,
         "knowledge_view": knowledge_view,
     }
+
+
+def _repository_root(repo_path: str | Path) -> Path:
+    root = Path(repo_path).expanduser().resolve(strict=True)
+    if not root.is_dir():
+        raise NotADirectoryError(f"repository root is not a directory: {root}")
+    return root
 
 
 __all__ = ["build_multimodal_repository_knowledge"]

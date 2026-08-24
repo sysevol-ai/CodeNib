@@ -9,9 +9,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from codenib.wiki import build_multimodal_repository_knowledge
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from codenib.wiki import build_multimodal_repository_knowledge  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,9 +55,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    repo = Path(args.repo).expanduser()
+    if not repo.exists():
+        parser.error(f"repository root does not exist: {repo}")
+    if not repo.is_dir():
+        parser.error(f"repository root is not a directory: {repo}")
     bundle = build_multimodal_repository_knowledge(
-        args.repo,
+        repo,
         commit=args.commit,
         exclude_roots=tuple(args.exclude_root),
         max_artifacts=args.max_artifacts,
