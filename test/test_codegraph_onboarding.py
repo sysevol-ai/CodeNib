@@ -381,9 +381,6 @@ def test_server_command_must_report_the_active_codenib_version(tmp_path: Path) -
             "-m",
             "codenib",
             "mcp",
-            str(repo.resolve()),
-            "--tool-surface",
-            "full",
             "--runtime-probe",
         ),
     ]
@@ -409,6 +406,32 @@ def test_server_command_must_report_the_active_codenib_version(tmp_path: Path) -
     )
     assert failed_probe.ready is False
     assert "runtime probe failed" in failed_probe.detail
+
+
+def test_server_runtime_probe_uses_the_context_free_mcp_mode(tmp_path: Path) -> None:
+    from codenib._version import package_version
+
+    repo = _repository(tmp_path)
+    server = _server(repo)
+
+    def runner(command, **_kwargs):
+        if command[-1] == "--version":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                f"codenib {package_version()}\n",
+                "",
+            )
+        probe_args = cli.build_parser().parse_args(list(command[1:]))
+        assert cli._mcp_context_mode(probe_args) == "probe"
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "codenib codegraph mcp runtime ready\n",
+            "",
+        )
+
+    assert inspect_server_command(server, repo, runner=runner).ready is True
 
 
 def _ready_plan(repo: Path) -> SimpleNamespace:

@@ -446,7 +446,7 @@ def inspect_server_command(
             f"expected {expected!r}, observed {observed[:240]!r}",
         )
     probe = _invoke_client(
-        (server.command, *server.args, "--runtime-probe"),
+        (server.command, *prefix, "mcp", "--runtime-probe"),
         repository=Path(repository).expanduser().resolve(),
         runner=runner,
     )
