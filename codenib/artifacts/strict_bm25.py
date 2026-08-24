@@ -1175,6 +1175,15 @@ def _publish_planned_bm25_view_with_identity(
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
 ) -> dict[str, Any]:
+    destination_binding = source_generation.destination_binding
+    if (
+        destination_binding.destination != source_receipt.path
+        or destination_binding.parent_identity != source_receipt.parent_identity
+        or destination_binding.ownership != source_receipt.ownership
+    ):
+        raise RuntimeError(
+            "strict BM25 source receipt differs from its destination binding"
+        )
     config_digest, forbidden, authenticated_files = _policy(
         repository_identity,
         view_config,
@@ -1191,7 +1200,7 @@ def _publish_planned_bm25_view_with_identity(
         purpose="portable-bm25-normalization",
         destination=lexical_destination,
         plan=planned.plan,
-        destination_expectation="provider-bound-exact",
+        destination_binding=destination_binding,
     )
 
     def operation(session: StrictWorkspaceSession) -> None:
@@ -1423,7 +1432,7 @@ def _publish_recaptured_bm25_view_with_identity(
         purpose="portable-bm25-recapture",
         destination=lexical_destination,
         plan=planned.plan,
-        destination_expectation="missing",
+        destination_binding=None,
     )
 
     def operation(session: StrictWorkspaceSession) -> None:

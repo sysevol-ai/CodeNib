@@ -18,6 +18,7 @@ import codenib._local_workspace_provider as local_provider_module
 import codenib._workspace_owner as workspace_owner
 from codenib._atomic_directory import publication_parent_identity
 from codenib._captured_directory import (
+    PublishedWorkspaceDestinationBinding,
     PublishedWorkspaceReceiptOwner,
     UnsupportedWorkspaceCreation,
     WorkspaceDirectory,
@@ -26,7 +27,6 @@ from codenib._captured_directory import (
 )
 from codenib._local_workspace_provider import LocalWorkspaceProvider
 from codenib._workspace_provider import (
-    DestinationExpectation,
     StrictWorkspaceRequest,
     StrictWorkspaceSession,
     run_strict_workspace,
@@ -61,13 +61,13 @@ def _plan() -> WorkspacePlan:
 def _request(
     root: Path,
     *,
-    expectation: DestinationExpectation = "missing",
+    destination_binding: PublishedWorkspaceDestinationBinding | None = None,
 ) -> StrictWorkspaceRequest:
     return StrictWorkspaceRequest(
         purpose="test-local-workspace-provider",
         destination=root / "published",
         plan=_plan(),
-        destination_expectation=expectation,
+        destination_binding=destination_binding,
     )
 
 
@@ -388,24 +388,76 @@ def test_local_provider_preserves_an_existing_destination(tmp_path: Path) -> Non
     assert receipt_owner.state == "empty"
 
 
-def test_local_provider_rejects_bound_exact_expectation_before_mutation(
+def test_local_provider_rejects_receipt_bound_exact_before_mutation(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "authority"
     provider = _require_native_provider(root)
-    request = _request(root, expectation="provider-bound-exact")
+    source_owner = PublishedWorkspaceReceiptOwner()
+    source_request = _request(root)
+    run_strict_workspace(
+        provider,
+        source_request,
+        receipt_owner=source_owner,
+        operation=lambda session: _write_and_publish(session, b"old"),
+    )
+    binding = source_owner.destination_binding
+    request = _request(root, destination_binding=binding)
     receipt_owner = PublishedWorkspaceReceiptOwner()
+    before = tuple(sorted(path.name for path in root.iterdir()))
+    support_calls = 0
+    mutation_calls: list[str] = []
+    real_require_support = LocalWorkspaceProvider.require_support
 
-    with pytest.raises(UnsupportedWorkspaceCreation, match="missing destination"):
-        run_strict_workspace(
-            provider,
-            request,
-            receipt_owner=receipt_owner,
-            operation=lambda session: _write_and_publish(session, b"forbidden"),
-        )
+    def counted_require_support(self: LocalWorkspaceProvider) -> None:
+        nonlocal support_calls
+        support_calls += 1
+        real_require_support(self)
 
-    assert tuple(root.iterdir()) == ()
-    assert receipt_owner.state == "empty"
+    def forbid_native_owner() -> object:
+        mutation_calls.append("create")
+        raise AssertionError("exact rejection reached native owner creation")
+
+    def forbid_native_provision(*_args: object, **_kwargs: object) -> None:
+        mutation_calls.append("provision")
+        raise AssertionError("exact rejection reached native provisioning")
+
+    monkeypatch.setattr(
+        LocalWorkspaceProvider,
+        "require_support",
+        counted_require_support,
+    )
+    monkeypatch.setattr(workspace_owner, "create_owner", forbid_native_owner)
+    monkeypatch.setattr(
+        workspace_owner,
+        "provision_owner",
+        forbid_native_provision,
+    )
+
+    try:
+        with pytest.raises(UnsupportedWorkspaceCreation, match="missing destination"):
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=receipt_owner,
+                operation=lambda session: _write_and_publish(
+                    session,
+                    b"forbidden",
+                ),
+            )
+
+        assert tuple(sorted(path.name for path in root.iterdir())) == before
+        assert not tuple(root.glob(".codenib-workspace-stage-*"))
+        assert not tuple(root.glob(".codenib-workspace-orphan-*"))
+        assert request.destination.joinpath("data/result.json").read_bytes() == b"old"
+        assert source_owner.active
+        assert receipt_owner.state == "empty"
+        assert support_calls == 1
+        assert mutation_calls == []
+    finally:
+        receipt_owner.close()
+        source_owner.close()
 
 
 def test_local_provider_fails_closed_without_the_complete_native_abi(

@@ -1453,7 +1453,7 @@ def test_native_owner_publishes_through_the_caller_receipt(
         provisioned_owner=owner,
         publication_permit=publication_permit,
         plan=plan,
-        expected_destination=None,
+        destination_binding=None,
     )
     record = workspace.write_file(
         "views/bm25/documents.json",
@@ -1488,7 +1488,7 @@ def test_native_publication_binds_exact_rename_before_validators(
         provisioned_owner=owner,
         publication_permit=publication_permit,
         plan=plan,
-        expected_destination=None,
+        destination_binding=None,
     )
     workspace.write_file("views/bm25/documents.json", (b"{}",))
     workspace.seal()
@@ -1538,7 +1538,7 @@ def test_native_publication_binds_receipt_installation_before_validators(
         provisioned_owner=owner,
         publication_permit=publication_permit,
         plan=plan,
-        expected_destination=None,
+        destination_binding=None,
     )
     workspace.write_file("views/bm25/documents.json", (b"{}",))
     workspace.seal()
@@ -1594,7 +1594,7 @@ def test_native_workspace_close_aborts_before_receipt_publication(
         provisioned_owner=owner,
         publication_permit=publication_permit,
         plan=plan,
-        expected_destination=None,
+        destination_binding=None,
     )
 
     workspace.close()
@@ -1619,7 +1619,7 @@ def test_native_post_rename_validation_failure_aborts_the_candidate(
         provisioned_owner=owner,
         publication_permit=publication_permit,
         plan=plan,
-        expected_destination=None,
+        destination_binding=None,
     )
     workspace.write_file("views/bm25/documents.json", (b"{}",))
     workspace.seal()
@@ -1654,7 +1654,7 @@ def test_staged_validator_cannot_mint_native_publication_authority(
         provisioned_owner=owner,
         publication_permit=publication_permit,
         plan=plan,
-        expected_destination=None,
+        destination_binding=None,
     )
     workspace.write_file("views/bm25/documents.json", (b"{}",))
     workspace.seal()
@@ -1702,7 +1702,7 @@ def test_published_validator_cannot_forge_native_receipt_commit(
         provisioned_owner=owner,
         publication_permit=publication_permit,
         plan=plan,
-        expected_destination=None,
+        destination_binding=None,
     )
     workspace.write_file("views/bm25/documents.json", (b"{}",))
     workspace.seal()
@@ -1813,7 +1813,7 @@ def test_native_receipt_slot_store_is_the_publication_authority_boundary(
         provisioned_owner=owner,
         publication_permit=publication_permit,
         plan=plan,
-        expected_destination=None,
+        destination_binding=None,
     )
     workspace.write_file("views/bm25/documents.json", (b"{}",))
     workspace.seal()
@@ -1862,7 +1862,7 @@ def test_native_receipt_commit_return_interruption_keeps_active_authority(
         provisioned_owner=owner,
         publication_permit=publication_permit,
         plan=plan,
-        expected_destination=None,
+        destination_binding=None,
     )
     workspace.write_file("views/bm25/documents.json", (b"{}",))
     workspace.seal()

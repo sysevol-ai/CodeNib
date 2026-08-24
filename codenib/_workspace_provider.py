@@ -26,6 +26,7 @@ from ._atomic_directory import (
 )
 from ._captured_directory import (
     OwnedWorkspaceAuthority,
+    PublishedWorkspaceDestinationBinding,
     PublishedWorkspaceReceiptOwner,
     WorkspacePlan,
     _snapshot_workspace_plan,
@@ -36,6 +37,7 @@ from ._owned_file_publication import _CancellationSafeRLock
 _OperationResult = TypeVar("_OperationResult")
 _ValidationResult = TypeVar("_ValidationResult")
 DestinationExpectation = Literal["missing", "provider-bound-exact"]
+_PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE = PublishedWorkspaceDestinationBinding
 _SESSION_RECOVERY_LIMIT = 64
 _UNSET_RESULT = object()
 _CONSUMED_SESSION_PROVENANCE = object()
@@ -119,7 +121,7 @@ class StrictWorkspaceRequest:
     purpose: str
     destination: Path
     plan: WorkspacePlan
-    destination_expectation: DestinationExpectation = "missing"
+    destination_binding: PublishedWorkspaceDestinationBinding | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -139,10 +141,24 @@ class StrictWorkspaceRequest:
             raise ValueError("strict workspace destination must name one directory")
         destination = Path(os.path.abspath(os.fspath(requested_destination)))
         plan = _snapshot_workspace_plan(self.plan)
-        if self.destination_expectation not in {"missing", "provider-bound-exact"}:
-            raise ValueError("strict workspace destination expectation is invalid")
+        binding = self.destination_binding
+        if (
+            binding is not None
+            and type(binding) is not _PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE
+        ):
+            raise TypeError("strict workspace destination binding is invalid")
+        if binding is not None and binding.destination != destination:
+            raise ValueError(
+                "strict workspace destination binding differs from its destination"
+            )
         object.__setattr__(self, "destination", destination)
         object.__setattr__(self, "plan", plan)
+
+    @property
+    def destination_expectation(self) -> DestinationExpectation:
+        """Describe the destination mode derived from its exact binding."""
+
+        return "missing" if self.destination_binding is None else "provider-bound-exact"
 
 
 class StrictWorkspaceSession(Protocol):
@@ -241,14 +257,12 @@ class _AdoptedWorkspaceSession:
             raise ValueError("adopted workspace plan differs from its request")
         if self._workspace.destination != self._request.destination:
             raise ValueError("adopted workspace destination differs from its request")
-        expected = (
-            "missing"
-            if self._workspace.expected_destination_ownership is None
-            else "provider-bound-exact"
-        )
-        if expected != self._request.destination_expectation:
+        if (
+            self._workspace.expected_destination_binding
+            != self._request.destination_binding
+        ):
             raise ValueError(
-                "adopted workspace destination expectation differs from its request"
+                "adopted workspace destination binding differs from its request"
             )
 
     def _require_operation_request(self, request: StrictWorkspaceRequest) -> None:

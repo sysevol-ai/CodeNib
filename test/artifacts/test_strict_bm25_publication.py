@@ -81,11 +81,9 @@ class _TestWorkspaceProvider:
     def __init__(
         self,
         *,
-        expected_destination: object | None,
         workspace_plan: WorkspacePlan | None = None,
         support_hook: Callable[[], None] | None = None,
     ) -> None:
-        self.expected_destination = expected_destination
         self.workspace_plan = workspace_plan
         self.support_hook = support_hook
         self.support_count = 0
@@ -136,7 +134,7 @@ class _TestWorkspaceProvider:
                 root_descriptor=root_descriptor,
                 directory_descriptors=directory_descriptors,
                 plan=plan,
-                expected_destination=self.expected_destination,
+                destination_binding=request.destination_binding,
             )
             try:
                 return run_adopted_workspace_operation(
@@ -206,7 +204,7 @@ def _publish_source(
         plan=plan,
     )
     owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(expected_destination=None)
+    provider = _TestWorkspaceProvider()
 
     def publish(session: StrictWorkspaceSession) -> None:
         written = session.write_file("documents.json", (documents,))
@@ -305,9 +303,7 @@ def test_strict_bm25_plans_replays_and_serves_same_query_semantics(
         (fixture.destination / "bm25_metadata.json").read_text(encoding="utf-8")
     )
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     try:
         adjustments = publish_planned_bm25_view_strict(
             fixture.destination,
@@ -322,6 +318,10 @@ def test_strict_bm25_plans_replays_and_serves_same_query_semantics(
         assert provider.run_count == 1
         assert provider.support_count == 1
         assert provider.requests[0].destination_expectation == "provider-bound-exact"
+        assert (
+            provider.requests[0].destination_binding
+            is fixture.source_owner.destination_binding
+        )
         assert output_owner.active
         assert fixture.source_owner.active
         assert output_owner.receipt.plan == planned.plan
@@ -357,6 +357,57 @@ def test_strict_bm25_plans_replays_and_serves_same_query_semantics(
             doc.page_content for doc in after.retriever.invoke("VALUE")
         ]
     finally:
+        output_owner.close()
+
+
+def test_strict_bm25_rejects_source_receipt_projection_binding_mismatch(
+    strict_generation,
+) -> None:
+    fixture = strict_generation
+    planned = plan_bm25_view_strict(
+        fixture.source_owner,
+        repository_source=fixture.repository_source,
+        view_config={},
+        environ={},
+    )
+    original_documents = (fixture.destination / "documents.json").read_bytes()
+    original_metadata = (fixture.destination / "bm25_metadata.json").read_bytes()
+    source_receipt = fixture.source_owner.receipt
+    original_parent_identity = source_receipt.parent_identity
+    object.__setattr__(source_receipt, "parent_identity", (0, 0))
+    provider = _TestWorkspaceProvider()
+    output_owner = PublishedWorkspaceReceiptOwner()
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="source receipt differs from its destination binding",
+        ):
+            publish_planned_bm25_view_strict(
+                fixture.destination,
+                planned=planned,
+                source_generation=fixture.source_owner,
+                repository_source=fixture.repository_source,
+                workspace_provider=provider,
+                output_receipt_owner=output_owner,
+                view_config={},
+                environ={},
+            )
+        assert provider.support_count == 0
+        assert provider.run_count == 0
+        assert output_owner.state == "empty"
+        assert fixture.source_owner.active
+        assert (
+            fixture.destination / "documents.json"
+        ).read_bytes() == original_documents
+        assert (
+            fixture.destination / "bm25_metadata.json"
+        ).read_bytes() == original_metadata
+    finally:
+        object.__setattr__(
+            source_receipt,
+            "parent_identity",
+            original_parent_identity,
+        )
         output_owner.close()
 
 
@@ -409,7 +460,7 @@ def test_strict_bm25_recaptures_raw_directory_with_missing_test_provider(
     source_documents, source_metadata = _write_raw_bm25_source(source, repository)
     repository_source = capture_repository_source(repository)
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(expected_destination=None)
+    provider = _TestWorkspaceProvider()
     view_config = {"builder_schema": 2, "tokenizer": "code-aware-v1"}
     try:
         planned = strict_bm25_module._plan_recaptured_bm25_view(
@@ -454,6 +505,7 @@ def test_strict_bm25_recaptures_raw_directory_with_missing_test_provider(
         assert provider.support_count == 1
         assert provider.run_count == 1
         assert provider.requests[0].destination_expectation == "missing"
+        assert provider.requests[0].destination_binding is None
         assert provider.requests[0].plan == planned.plan
         assert output_owner.active
         assert output_owner.receipt.path == destination
@@ -542,7 +594,7 @@ def test_strict_bm25_recapture_accepts_excluded_source_inside_repository(
     )
     destination = tmp_path / "strict-output" / "bm25"
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(expected_destination=None)
+    provider = _TestWorkspaceProvider()
     try:
         identity = repository_source.authenticated_identity_snapshot()
         assert not any(
@@ -616,7 +668,7 @@ def test_strict_bm25_recapture_rejects_destination_preflight_without_mutation(
         destination = repository / "strict-output"
         marker = None
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(expected_destination=None)
+    provider = _TestWorkspaceProvider()
 
     def forbidden_capture(*_args, **_kwargs):
         raise AssertionError("source capture ran after invalid destination preflight")
@@ -666,7 +718,7 @@ def test_strict_bm25_recapture_rejects_source_drift_before_provider(
     )
     (source / "documents.json").write_bytes(_canonical_bytes([]))
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(expected_destination=None)
+    provider = _TestWorkspaceProvider()
     try:
         with pytest.raises(ValueError, match="another source generation"):
             strict_bm25_module._publish_recaptured_bm25_view(
@@ -712,7 +764,7 @@ def test_strict_bm25_recapture_rejects_plan_tamper_before_source_reopen(
         ),
     )
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(expected_destination=None)
+    provider = _TestWorkspaceProvider()
 
     def forbidden_capture(*_args, **_kwargs):
         raise AssertionError("source was recaptured before plan validation")
@@ -763,7 +815,6 @@ def test_strict_bm25_recapture_detects_tamper_at_reopen_and_rolls_back(
 
     output_owner = PublishedWorkspaceReceiptOwner()
     provider = _TestWorkspaceProvider(
-        expected_destination=None,
         support_hook=tamper_before_workspace,
     )
     try:
@@ -798,7 +849,7 @@ def test_strict_bm25_recapture_rejects_forbidden_policy_postflight(
     forbidden = tmp_path / "private-build-root"
     repository_source = capture_repository_source(repository)
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(expected_destination=None)
+    provider = _TestWorkspaceProvider()
     candidate_calls = 0
     real_candidate_records = strict_bm25_module._candidate_records
 
@@ -887,9 +938,7 @@ def test_strict_bm25_high_level_freezes_caller_mappings_once(
     config = _ReadOnceMapping({"builder_schema": 2})
     environment = _ReadOnceMapping({"SAFE_VALUE": "public"})
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     try:
         normalize_owned_query_view_strict(
             fixture.destination,
@@ -953,9 +1002,7 @@ def test_strict_bm25_high_level_uses_one_detached_source_identity(
     )
     monkeypatch.setattr(strict_bm25_module, "_policy", mutate_public_projection)
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     try:
         normalize_owned_query_view_strict(
             fixture.destination,
@@ -1024,7 +1071,6 @@ def test_strict_bm25_invokes_provider_support_once_after_freezing_inputs(
         environ["CODENIB_STRICT_TEST"] = "mutated"
 
     provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
         support_hook=mutate_caller_inputs,
     )
     try:
@@ -1176,9 +1222,7 @@ def test_strict_bm25_rejects_physical_repository_alias_before_source_consume(
     alias.symlink_to(repository, target_is_directory=True)
     repository_source = capture_repository_source(repository)
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     retained_destination = retained / "state" / "bm25"
     original_documents = (retained_destination / "documents.json").read_bytes()
     original_metadata = (retained_destination / "bm25_metadata.json").read_bytes()
@@ -1226,9 +1270,7 @@ def test_strict_bm25_rejects_repository_overlap_before_source_consume(
     destination, source_owner = _publish_source(repository, repository)
     repository_source = capture_repository_source(repository)
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     original_documents = (destination / "documents.json").read_bytes()
     original_metadata = (destination / "bm25_metadata.json").read_bytes()
     consume_calls = 0
@@ -1282,9 +1324,7 @@ def test_strict_bm25_rejects_wrong_destination_before_source_consume(
 ) -> None:
     fixture = strict_generation
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     consume_calls = 0
     real_consume = PublishedWorkspaceReceiptOwner.consume
 
@@ -1444,9 +1484,7 @@ def test_strict_bm25_rejects_tampered_plan_before_provider(
         ),
     )
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
 
     class ForgedPlan(PlannedBm25View):
         pass
@@ -1534,9 +1572,7 @@ def test_strict_bm25_detects_source_drift_between_plan_and_replay(
     )
     (fixture.destination / "documents.json").write_bytes(_canonical_bytes([]))
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     try:
         with pytest.raises(RuntimeError, match="changed|differs"):
             publish_planned_bm25_view_strict(
@@ -1568,9 +1604,7 @@ def test_strict_bm25_rolls_back_when_repository_changes_during_publication(
     original_documents = (fixture.destination / "documents.json").read_bytes()
     original_metadata = (fixture.destination / "bm25_metadata.json").read_bytes()
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     candidate_calls = 0
     real_candidate_records = strict_bm25_module._candidate_records
 
@@ -1618,7 +1652,7 @@ def test_strict_bm25_rolls_back_when_repository_changes_during_publication(
         output_owner.close()
 
 
-def test_strict_bm25_rejects_provider_plan_and_expectation_mismatch(
+def test_strict_bm25_rejects_provider_plan_mismatch(
     strict_generation,
 ) -> None:
     fixture = strict_generation
@@ -1632,34 +1666,26 @@ def test_strict_bm25_rejects_provider_plan_and_expectation_mismatch(
         subject_digest=hashlib.sha256(b"wrong-workspace-plan").hexdigest(),
         files=planned.plan.files,
     )
-    providers = (
-        _TestWorkspaceProvider(
-            expected_destination=fixture.source_owner.receipt.ownership,
-            workspace_plan=wrong_plan,
-        ),
-        _TestWorkspaceProvider(expected_destination=None),
+    provider = _TestWorkspaceProvider(
+        workspace_plan=wrong_plan,
     )
-    for provider in providers:
-        output_owner = PublishedWorkspaceReceiptOwner()
-        try:
-            with pytest.raises(
-                (RuntimeError, ValueError),
-                match="plan|expectation|expected missing",
-            ):
-                publish_planned_bm25_view_strict(
-                    fixture.destination,
-                    planned=planned,
-                    source_generation=fixture.source_owner,
-                    repository_source=fixture.repository_source,
-                    workspace_provider=provider,
-                    output_receipt_owner=output_owner,
-                    view_config={},
-                    environ={},
-                )
-            assert provider.run_count == 1
-            assert output_owner.state == "empty"
-        finally:
-            output_owner.close()
+    output_owner = PublishedWorkspaceReceiptOwner()
+    try:
+        with pytest.raises((RuntimeError, ValueError), match="plan"):
+            publish_planned_bm25_view_strict(
+                fixture.destination,
+                planned=planned,
+                source_generation=fixture.source_owner,
+                repository_source=fixture.repository_source,
+                workspace_provider=provider,
+                output_receipt_owner=output_owner,
+                view_config={},
+                environ={},
+            )
+        assert provider.run_count == 1
+        assert output_owner.state == "empty"
+    finally:
+        output_owner.close()
 
 
 def test_strict_bm25_validates_staged_and_published_generations(
@@ -1674,9 +1700,7 @@ def test_strict_bm25_validates_staged_and_published_generations(
         environ={},
     )
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     calls = 0
     real_candidate_records = strict_bm25_module._candidate_records
 
@@ -1741,9 +1765,7 @@ def test_strict_bm25_never_falls_back_for_vector(
 ) -> None:
     fixture = strict_generation
     output_owner = PublishedWorkspaceReceiptOwner()
-    provider = _TestWorkspaceProvider(
-        expected_destination=fixture.source_owner.receipt.ownership,
-    )
+    provider = _TestWorkspaceProvider()
     try:
         with pytest.raises(ValueError, match="only bm25"):
             normalize_owned_query_view_strict(

@@ -1611,7 +1611,7 @@ def _publish_plan(
         purpose="retained-context-materialization",
         destination=destination,
         plan=planned.workspace,
-        destination_expectation="missing",
+        destination_binding=None,
     )
 
     def operation(session: StrictWorkspaceSession) -> None:

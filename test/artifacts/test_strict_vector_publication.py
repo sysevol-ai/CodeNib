@@ -41,9 +41,7 @@ from codenib.index.embedding.artifact_integrity import (
     vector_config_artifact_record,
 )
 from codenib.index.embedding.vector_store import CodeVectorStore
-from codenib.native_index_authorization import (
-    _mint_trusted_local_admin_authorization,
-)
+from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import capture_repository_source
 
@@ -118,7 +116,7 @@ class _TestWorkspaceProvider:
                 root_descriptor=root_descriptor,
                 directory_descriptors=directory_descriptors,
                 plan=request.plan,
-                expected_destination=None,
+                destination_binding=None,
             )
             try:
                 return run_adopted_workspace_operation(

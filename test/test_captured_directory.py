@@ -21,14 +21,17 @@ import codenib._atomic_directory as atomic_directory
 import codenib._captured_directory as captured_directory
 import codenib._windows_fs_authority as windows_authority
 from codenib._atomic_directory import (
+    _TreeOwnership,
     capture_directory_ownership,
     directory_ownership_file_records,
+    publication_parent_identity,
 )
 from codenib._captured_directory import (
     AuthenticatedSnapshotReader,
     CapturedDirectoryReader,
     OwnedDirectoryStage,
     OwnedWorkspaceAuthority,
+    PublishedWorkspaceDestinationBinding,
     PublishedWorkspaceReceipt,
     PublishedWorkspaceReceiptOwner,
     UnsupportedWorkspaceCreation,
@@ -72,6 +75,53 @@ def _preopened_workspace(
             os.close(descriptor)
         os.close(root_descriptor)
         os.close(parent_descriptor)
+
+
+def _publish_payload_generation(
+    parent: Path,
+    *,
+    destination_name: str = "published",
+    stage_name: str = ".source-stage",
+    payload: bytes = b"same bytes",
+) -> tuple[Path, WorkspacePlan, PublishedWorkspaceReceiptOwner]:
+    """Publish one real generation and retain its caller-owned receipt."""
+
+    parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination = parent / destination_name
+    stage = parent / stage_name
+    stage.mkdir(mode=0o700)
+    plan = WorkspacePlan(
+        subject_digest="f" * 64,
+        files=(WorkspaceFile("payload", max_bytes=len(payload)),),
+    )
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    parent_descriptor = os.open(parent, flags)
+    root_descriptor = os.open(stage, flags)
+    workspace = OwnedWorkspaceAuthority()
+    owner = PublishedWorkspaceReceiptOwner()
+    try:
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_descriptor,
+            root_descriptor=root_descriptor,
+            directory_descriptors={},
+            plan=plan,
+            destination_binding=None,
+        )
+        workspace.write_file("payload", (payload,))
+        workspace.seal()
+        workspace.publish_into(owner)
+    except BaseException:
+        if owner.state == "empty":
+            workspace.close()
+        owner.close()
+        raise
+    finally:
+        os.close(root_descriptor)
+        os.close(parent_descriptor)
+    return destination, plan, owner
 
 
 def _as_windows_ownership(ownership: object) -> object:
@@ -1176,7 +1226,7 @@ def test_workspace_plan_and_publication_preserve_raw_filesystem_paths(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.write_file(raw_name, [b"raw"])
         workspace.seal()
@@ -1361,10 +1411,10 @@ def test_preopened_workspace_writes_only_planned_files_without_mkdir(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         assert workspace.destination == destination
-        assert workspace.expected_destination_ownership is None
+        assert workspace.expected_destination_binding is None
         root_record = workspace.write_file("root.bin", [b"root"])
         nested_record = workspace.write_file("nested/payload.bin", [b"payload"])
         ownership = workspace.seal()
@@ -1419,7 +1469,7 @@ def test_preopened_workspace_rejects_root_name_replacement(
                 root_descriptor=root_fd,
                 directory_descriptors=directories,
                 plan=plan,
-                expected_destination=None,
+                destination_binding=None,
             )
 
         assert not (stage / "payload").exists()
@@ -1450,7 +1500,7 @@ def test_preopened_workspace_rejects_nested_handle_replacement(
                 root_descriptor=root_fd,
                 directory_descriptors=directories,
                 plan=plan,
-                expected_destination=None,
+                destination_binding=None,
             )
 
         assert not (nested / "payload").exists()
@@ -1476,7 +1526,7 @@ def test_preopened_workspace_rejects_any_unplanned_skeleton_file(
                 root_descriptor=root_fd,
                 directory_descriptors=directories,
                 plan=plan,
-                expected_destination=None,
+                destination_binding=None,
             )
 
         assert (stage / "foreign").read_bytes() == b"preserve"
@@ -1502,7 +1552,7 @@ def test_preopened_workspace_rejects_existing_destination_when_missing_expected(
                 root_descriptor=root_fd,
                 directory_descriptors=directories,
                 plan=plan,
-                expected_destination=None,
+                destination_binding=None,
             )
 
 
@@ -1523,7 +1573,7 @@ def test_preopened_workspace_noreplace_refuses_foreign_planned_leaf(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         (stage / "payload").write_bytes(b"evil")
 
@@ -1579,7 +1629,7 @@ def test_preopened_workspace_rejects_darwin_before_state_or_resource_acquisition
                     root_descriptor=root_fd,
                     directory_descriptors=directories,
                     plan=plan,
-                    expected_destination=None,
+                    destination_binding=None,
                 )
 
         assert workspace.state == "empty"
@@ -1611,7 +1661,7 @@ def test_preopened_workspace_seal_rejects_external_hardlink(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.write_file("payload", [b"safe"])
         os.link(stage / "payload", tmp_path / "external-alias")
@@ -1637,7 +1687,7 @@ def test_preopened_workspace_seal_is_idempotently_recoverable(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.write_file("payload", [b"safe"])
 
@@ -1665,7 +1715,7 @@ def test_preopened_workspace_seal_return_interruption_keeps_token_recoverable(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.write_file("payload", [b"safe"])
 
@@ -1708,7 +1758,7 @@ def test_preopened_workspace_rejects_producer_reentrant_close(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
 
         def chunks() -> Iterator[bytes]:
@@ -1740,7 +1790,7 @@ def test_preopened_workspace_retains_file_owner_after_persistent_close_eio(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         real_close = os.close
         retained: set[int] = set()
@@ -1785,7 +1835,7 @@ def test_preopened_workspace_close_reconciliation_preserves_first_error(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         real_close = os.close
         armed = [False]
@@ -1854,7 +1904,7 @@ def test_preopened_workspace_iterator_close_lookup_preserves_primary_and_fds(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         with pytest.raises(RuntimeError, match="producer primary") as caught:
             workspace.write_file("payload", RaisingCloseLookup())
@@ -1891,7 +1941,7 @@ def test_preopened_workspace_record_install_interruption_terminally_fails(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace._written_files = InterruptingRecords()
 
@@ -1922,7 +1972,7 @@ def test_preopened_workspace_record_construction_interruption_terminally_fails(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
 
         def interrupt_record(*_args, **_kwargs):
@@ -1956,7 +2006,7 @@ def test_owned_workspace_child_closes_inherited_resources_without_parent_effect(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         authority = workspace._parent_owner.authority
         assert authority is not None
@@ -2076,7 +2126,7 @@ def test_owned_workspace_adopt_skeleton_validation_is_linear(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
 
         assert count <= calls < count * 20
@@ -2104,7 +2154,7 @@ def test_owned_workspace_seal_flushes_directories_bottom_up(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         descriptor_paths = {
             descriptor: path
@@ -2144,7 +2194,7 @@ def test_owned_workspace_publish_installs_fresh_durable_receipt(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.write_file("payload", [b"durable"])
         sealed = workspace.seal()
@@ -2174,6 +2224,206 @@ def test_owned_workspace_publish_installs_fresh_durable_receipt(
         assert receipt.closed
 
 
+def test_published_destination_binding_is_private_and_active_owner_derived(
+    tmp_path: Path,
+) -> None:
+    empty_owner = PublishedWorkspaceReceiptOwner()
+    with pytest.raises(RuntimeError, match="empty, expected active"):
+        _ = empty_owner.destination_binding
+    empty_owner.close()
+    with pytest.raises(RuntimeError, match="closed, expected active"):
+        _ = empty_owner.destination_binding
+
+    destination, _plan, owner = _publish_payload_generation(tmp_path / "binding-parent")
+    try:
+        binding = owner.destination_binding
+        receipt = owner.receipt
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        parent_descriptor = os.open(destination.parent, flags)
+        try:
+            assert type(binding) is PublishedWorkspaceDestinationBinding
+            assert binding.destination == destination
+            assert binding.parent_identity == publication_parent_identity(
+                parent_descriptor
+            )
+        finally:
+            os.close(parent_descriptor)
+        assert type(binding.ownership) is _TreeOwnership
+        assert binding.ownership == capture_directory_ownership(destination)
+        assert binding is owner.destination_binding
+        assert (
+            owner.consume(lambda _receipt, _reader: owner.destination_binding)
+            is binding
+        )
+
+        with pytest.raises(TypeError, match="minted by an active receipt owner"):
+            PublishedWorkspaceDestinationBinding(
+                destination=destination,
+                parent_identity=binding.parent_identity,
+                ownership=binding.ownership,
+            )
+        with pytest.raises(AttributeError):
+            binding.destination = tmp_path / "forged"  # type: ignore[misc]
+
+        original_path = receipt.path
+        original_parent = receipt.parent_identity
+        original_ownership = receipt.ownership
+        object.__setattr__(receipt, "path", tmp_path / "wrong-receipt-path")
+        object.__setattr__(receipt, "parent_identity", (0, 0))
+        object.__setattr__(
+            receipt,
+            "ownership",
+            capture_directory_ownership(destination.parent, allow_empty_root=True),
+        )
+        try:
+            assert owner.destination_binding is binding
+            assert binding.destination == destination
+            assert binding.parent_identity != receipt.parent_identity
+            assert binding.ownership != receipt.ownership
+        finally:
+            object.__setattr__(receipt, "path", original_path)
+            object.__setattr__(receipt, "parent_identity", original_parent)
+            object.__setattr__(receipt, "ownership", original_ownership)
+    finally:
+        owner.close()
+
+    with pytest.raises(RuntimeError, match="closed, expected active"):
+        _ = owner.destination_binding
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_published_destination_binding_cannot_cross_pid_boundary(
+    tmp_path: Path,
+) -> None:
+    _destination, _plan, owner = _publish_payload_generation(
+        tmp_path / "binding-parent"
+    )
+    child = os.fork()
+    if child == 0:  # pragma: no branch - exact child result via exit
+        try:
+            _ = owner.destination_binding
+        except RuntimeError as error:
+            os._exit(0 if "PID boundary" in str(error) else 81)
+        except BaseException:  # noqa: B036 - child reports exact failure
+            os._exit(82)
+        os._exit(83)
+
+    _pid, status = os.waitpid(child, 0)
+    assert os.WIFEXITED(status)
+    assert os.WEXITSTATUS(status) == 0
+    assert owner.active
+    owner.close()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_type", "message"),
+    [
+        ("wrong-path", ValueError, "binding differs from its destination"),
+        ("wrong-parent", RuntimeError, "parent differs from its binding"),
+        ("wrong-tree", RuntimeError, "destination changed"),
+        ("same-bytes-new-inode", RuntimeError, "destination changed"),
+        ("raw-tree-token", TypeError, "destination binding is invalid"),
+    ],
+)
+def test_owned_workspace_rejects_inauthentic_destination_binding(
+    tmp_path: Path,
+    mutation: str,
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    payload = b"same bytes"
+    parent = tmp_path / "binding-parent"
+    destination, plan, owner = _publish_payload_generation(
+        parent,
+        payload=payload,
+    )
+    binding: object = owner.destination_binding
+    adopted_destination = destination
+
+    if mutation == "wrong-path":
+        adopted_destination = parent / "wrong-destination"
+    elif mutation == "wrong-parent":
+        parked_parent = tmp_path / "original-binding-parent"
+        parent.rename(parked_parent)
+        parent.mkdir(mode=0o700)
+        destination.mkdir(mode=0o700)
+        (destination / "payload").write_bytes(payload)
+    elif mutation == "wrong-tree":
+        (destination / "payload").write_bytes(b"wrong tree")
+    elif mutation == "same-bytes-new-inode":
+        original_inode = os.stat(destination, follow_symlinks=False).st_ino
+        destination.rename(parent / "original-generation")
+        destination.mkdir(mode=0o700)
+        (destination / "payload").write_bytes(payload)
+        assert os.stat(destination, follow_symlinks=False).st_ino != original_inode
+    else:
+        assert mutation == "raw-tree-token"
+        binding = capture_directory_ownership(destination)
+
+    stage = adopted_destination.parent / ".replacement-stage"
+    stage.mkdir(mode=plan.root_mode)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    parent_descriptor = os.open(adopted_destination.parent, flags)
+    root_descriptor = os.open(stage, flags)
+    workspace = OwnedWorkspaceAuthority()
+    try:
+        with pytest.raises(error_type, match=message):
+            workspace.adopt(
+                destination=adopted_destination,
+                stage_name=stage.name,
+                parent_descriptor=parent_descriptor,
+                root_descriptor=root_descriptor,
+                directory_descriptors={},
+                plan=plan,
+                destination_binding=binding,  # type: ignore[arg-type]
+            )
+    finally:
+        workspace.close()
+        os.close(root_descriptor)
+        os.close(parent_descriptor)
+        owner.close()
+
+
+def test_owned_workspace_rejects_binding_from_wrong_active_receipt(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "binding-parent"
+    destination, plan, owner = _publish_payload_generation(parent)
+    _other, _other_plan, wrong_owner = _publish_payload_generation(
+        parent,
+        destination_name="other-published",
+        stage_name=".other-source-stage",
+    )
+    stage = parent / ".replacement-stage"
+    stage.mkdir(mode=plan.root_mode)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    parent_descriptor = os.open(parent, flags)
+    root_descriptor = os.open(stage, flags)
+    workspace = OwnedWorkspaceAuthority()
+    try:
+        with pytest.raises(ValueError, match="binding differs from its destination"):
+            workspace.adopt(
+                destination=destination,
+                stage_name=stage.name,
+                parent_descriptor=parent_descriptor,
+                root_descriptor=root_descriptor,
+                directory_descriptors={},
+                plan=plan,
+                destination_binding=wrong_owner.destination_binding,
+            )
+        assert owner.active
+        assert wrong_owner.active
+    finally:
+        workspace.close()
+        os.close(root_descriptor)
+        os.close(parent_descriptor)
+        wrong_owner.close()
+        owner.close()
+
+
 def test_owned_workspace_publish_runs_staged_and_published_validators(
     tmp_path: Path,
 ) -> None:
@@ -2191,7 +2441,7 @@ def test_owned_workspace_publish_runs_staged_and_published_validators(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         record = workspace.write_file("payload", [b"validated"])
         workspace.seal()
@@ -2228,6 +2478,74 @@ def test_owned_workspace_publish_runs_staged_and_published_validators(
         receipt_owner.close()
 
 
+def test_published_validator_cannot_intercept_destination_binding_mint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="3" * 64,
+        files=(WorkspaceFile("payload", max_bytes=4),),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        workspace.write_file("payload", (b"safe",))
+        workspace.seal()
+        receipt_owner = PublishedWorkspaceReceiptOwner()
+
+        forged = object.__new__(PublishedWorkspaceDestinationBinding)
+        object.__setattr__(forged, "destination", tmp_path / "forged")
+        object.__setattr__(forged, "parent_identity", (0, 0))
+        object.__setattr__(
+            forged,
+            "ownership",
+            capture_directory_ownership(stage, allow_empty_root=True),
+        )
+        intercepted: list[dict[str, object]] = []
+
+        def intercept_freeze(**kwargs: object) -> object:
+            intercepted.append(kwargs)
+            return lambda _ownership: forged
+
+        class ForgedPublicBinding:
+            pass
+
+        def replace_public_symbols(_reader: object) -> None:
+            monkeypatch.setattr(
+                captured_directory,
+                "_freeze_published_workspace_destination_binding_minter",
+                intercept_freeze,
+            )
+            monkeypatch.setattr(
+                captured_directory,
+                "PublishedWorkspaceDestinationBinding",
+                ForgedPublicBinding,
+            )
+
+        workspace.publish_into(
+            receipt_owner,
+            validate_published_destination=replace_public_symbols,
+        )
+
+        binding = receipt_owner.destination_binding
+        assert intercepted == []
+        assert type(binding) is PublishedWorkspaceDestinationBinding
+        assert binding is not forged
+        assert binding.destination == destination
+        assert binding.parent_identity == publication_parent_identity(parent_fd)
+        assert binding.ownership == capture_directory_ownership(destination)
+        receipt_owner.close()
+
+
 @pytest.mark.parametrize(
     ("validator_name", "message"),
     [
@@ -2252,7 +2570,7 @@ def test_owned_workspace_rejects_noncallable_validator_before_transfer(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2307,7 +2625,7 @@ def test_owned_workspace_detaches_caller_and_public_plan_mutation(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
 
         object.__setattr__(source_directory, "path", PurePosixPath("rebound"))
@@ -2370,7 +2688,7 @@ def test_owned_workspace_rejects_polluted_plan_before_resource_acquisition(
                 root_descriptor=root_fd,
                 directory_descriptors=directories,
                 plan=plan,
-                expected_destination=None,
+                destination_binding=None,
             )
 
         assert workspace.state == "empty"
@@ -2395,7 +2713,7 @@ def test_published_workspace_child_closes_transfer_without_parent_effect(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2485,7 +2803,7 @@ def test_owned_workspace_publish_reserves_transfer_before_atomic_helper(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2526,7 +2844,7 @@ def test_owned_workspace_install_after_store_interruption_keeps_active_owner(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.write_file("payload", [b"safe"])
         workspace.seal()
@@ -2572,7 +2890,7 @@ def test_owned_workspace_parent_fsync_failure_installs_no_receipt(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2618,7 +2936,7 @@ def test_owned_workspace_receipt_rejects_suppressed_authentication_failure(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.write_file("payload", [b"safe"])
         workspace.seal()
@@ -2652,7 +2970,7 @@ def test_owned_workspace_receipt_rejects_post_publish_root_change(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2679,7 +2997,7 @@ def test_owned_workspace_receipt_close_persistent_eio_is_retryable(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2708,37 +3026,46 @@ def test_owned_workspace_receipt_close_persistent_eio_is_retryable(
 def test_owned_workspace_existing_destination_receipt_retains_exact_orphan(
     tmp_path: Path,
 ) -> None:
+    parent = tmp_path / "workspace-parent"
+    destination, _initial_plan, initial_owner = _publish_payload_generation(
+        parent,
+        destination_name="destination",
+        payload=b"old",
+    )
     plan = WorkspacePlan(
         subject_digest="a" * 64,
         files=(WorkspaceFile("new", max_bytes=3),),
     )
-    with _preopened_workspace(tmp_path, plan) as opened:
-        destination, stage, parent_fd, root_fd, directories = opened
-        destination.mkdir(mode=0o700)
-        (destination / "old").write_bytes(b"old")
-        expected_destination = capture_directory_ownership(destination)
-        workspace = OwnedWorkspaceAuthority()
+    stage = parent / ".replacement-stage"
+    stage.mkdir(mode=plan.root_mode)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    parent_fd = os.open(parent, flags)
+    root_fd = os.open(stage, flags)
+    workspace = OwnedWorkspaceAuthority()
+    receipt_owner = PublishedWorkspaceReceiptOwner()
+    binding = initial_owner.destination_binding
+    try:
         workspace.adopt(
             destination=destination,
             stage_name=stage.name,
             parent_descriptor=parent_fd,
             root_descriptor=root_fd,
-            directory_descriptors=directories,
+            directory_descriptors={},
             plan=plan,
-            expected_destination=expected_destination,
+            destination_binding=binding,
         )
         assert workspace.destination == destination
-        assert workspace.expected_destination_ownership == expected_destination
+        assert workspace.expected_destination_binding is binding
         workspace.write_file("new", [b"new"])
         workspace.seal()
-        receipt_owner = PublishedWorkspaceReceiptOwner()
 
         workspace.publish_into(receipt_owner)
 
         orphan = receipt_owner.receipt.orphan
         assert orphan is not None
         assert (
-            orphan.reopen(lambda reader: reader.read_bytes("old", max_bytes=3))
+            orphan.reopen(lambda reader: reader.read_bytes("payload", max_bytes=3))
             == b"old"
         )
         assert (
@@ -2747,7 +3074,13 @@ def test_owned_workspace_existing_destination_receipt_retains_exact_orphan(
             )
             == b"new"
         )
+    finally:
+        if receipt_owner.state == "empty":
+            workspace.close()
         receipt_owner.close()
+        initial_owner.close()
+        os.close(root_fd)
+        os.close(parent_fd)
 
 
 def test_owned_workspace_receipt_constructor_interruption_keeps_cleanup_owner(
@@ -2765,7 +3098,7 @@ def test_owned_workspace_receipt_constructor_interruption_keeps_cleanup_owner(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2806,7 +3139,7 @@ def test_owned_workspace_reservation_after_store_interruption_is_cleanup_owned(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2847,7 +3180,7 @@ def test_owned_workspace_child_closes_reserved_publication_resources(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2917,7 +3250,7 @@ def test_owned_workspace_first_transfer_store_interruption_is_reconciled(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -2961,7 +3294,7 @@ def test_owned_workspace_post_install_failure_does_not_deadlock_owner_state(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()
@@ -3040,7 +3373,7 @@ def test_owned_workspace_consume_and_close_are_linear(
             root_descriptor=root_fd,
             directory_descriptors=directories,
             plan=plan,
-            expected_destination=None,
+            destination_binding=None,
         )
         workspace.seal()
         receipt_owner = PublishedWorkspaceReceiptOwner()

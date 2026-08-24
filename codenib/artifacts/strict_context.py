@@ -1003,7 +1003,7 @@ def _publish_frozen(
         purpose="portable-context-generation",
         destination=lexical_destination,
         plan=planned.plan,
-        destination_expectation="missing",
+        destination_binding=None,
     )
 
     owners = dict(inputs.view_generations)

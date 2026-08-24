@@ -143,7 +143,7 @@ class LocalWorkspaceProvider:
             raise TypeError("strict workspace request has an invalid type")
         if type(receipt_owner) is not PublishedWorkspaceReceiptOwner:
             raise TypeError("strict workspace receipt owner has an invalid type")
-        if request.destination_expectation != "missing":
+        if request.destination_binding is not None:
             raise UnsupportedWorkspaceCreation(
                 "local workspace provider currently requires a missing destination"
             )
@@ -205,7 +205,7 @@ class LocalWorkspaceProvider:
                 provisioned_owner=native_owner,
                 publication_permit=publication_permit,
                 plan=detached_plan,
-                expected_destination=None,
+                destination_binding=request.destination_binding,
             )
             return run_adopted_workspace_operation(
                 request,

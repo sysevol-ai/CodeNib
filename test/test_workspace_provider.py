@@ -17,13 +17,14 @@ import codenib._workspace_provider as workspace_provider
 from codenib._atomic_directory import capture_directory_ownership
 from codenib._captured_directory import (
     OwnedWorkspaceAuthority,
+    PublishedWorkspaceDestinationBinding,
     PublishedWorkspaceReceiptOwner,
     UnsupportedWorkspaceCreation,
     WorkspaceFile,
     WorkspacePlan,
 )
 
-_DEFAULT_EXPECTATION = object()
+_DEFAULT_BINDING = object()
 from codenib._workspace_provider import (
     StrictWorkspaceRequest,
     StrictWorkspaceSession,
@@ -75,13 +76,13 @@ class _TestProvider:
         self,
         *,
         adopted_destination: Path | None = None,
-        expected_destination: object = _DEFAULT_EXPECTATION,
+        destination_binding: object = _DEFAULT_BINDING,
     ) -> None:
         self.support_checks = 0
         self.runs = 0
         self.last_workspace: OwnedWorkspaceAuthority | None = None
         self.adopted_destination = adopted_destination
-        self.expected_destination = expected_destination
+        self.destination_binding = destination_binding
 
     def require_support(self) -> None:
         self.support_checks += 1
@@ -105,16 +106,9 @@ class _TestProvider:
         root_descriptor = os.open(stage, flags)
         workspace = OwnedWorkspaceAuthority()
         self.last_workspace = workspace
-        expected_destination = self.expected_destination
-        if expected_destination is _DEFAULT_EXPECTATION:
-            expected_destination = (
-                capture_directory_ownership(
-                    destination,
-                    allow_empty_root=True,
-                )
-                if request.destination_expectation == "provider-bound-exact"
-                else None
-            )
+        destination_binding = self.destination_binding
+        if destination_binding is _DEFAULT_BINDING:
+            destination_binding = request.destination_binding
         try:
             workspace.adopt(
                 destination=destination,
@@ -123,7 +117,7 @@ class _TestProvider:
                 root_descriptor=root_descriptor,
                 directory_descriptors={},
                 plan=request.plan,
-                expected_destination=expected_destination,
+                destination_binding=destination_binding,  # type: ignore[arg-type]
             )
             return run_adopted_workspace_operation(
                 request,
@@ -136,6 +130,31 @@ class _TestProvider:
             os.close(parent_descriptor)
             if receipt_owner.state == "empty":
                 workspace.close()
+
+
+def _publish_generation(
+    destination: Path,
+    *,
+    payload: bytes = b"same bytes",
+) -> PublishedWorkspaceReceiptOwner:
+    owner = PublishedWorkspaceReceiptOwner()
+    request = StrictWorkspaceRequest("binding-source", destination, _plan())
+
+    def publish(session: StrictWorkspaceSession) -> None:
+        session.write_file("payload.bin", (payload,))
+        session.publish_validated(lambda _reader: None)
+
+    try:
+        run_strict_workspace(
+            _TestProvider(),
+            request,
+            receipt_owner=owner,
+            operation=publish,
+        )
+    except BaseException:
+        owner.close()
+        raise
+    return owner
 
 
 def _run_thread(
@@ -209,14 +228,16 @@ def test_request_is_lexical_and_rejects_invalid_contract(tmp_path: Path) -> None
     request = StrictWorkspaceRequest("bm25-normalize", destination, _plan())
 
     assert request.destination == Path(os.path.abspath(destination))
+    assert request.destination_binding is None
+    assert request.destination_expectation == "missing"
     with pytest.raises(ValueError, match="purpose"):
         StrictWorkspaceRequest("bad\nname", destination, _plan())
-    with pytest.raises(ValueError, match="expectation"):
+    with pytest.raises(TypeError, match="unexpected keyword"):
         StrictWorkspaceRequest(
             "test",
             destination,
             _plan(),
-            destination_expectation="ambient",  # type: ignore[arg-type]
+            destination_expectation="provider-bound-exact",  # type: ignore[call-arg]
         )
     with pytest.raises(ValueError, match="name one directory"):
         StrictWorkspaceRequest("test", tmp_path / "parent" / "..", _plan())
@@ -239,6 +260,55 @@ def test_request_is_lexical_and_rejects_invalid_contract(tmp_path: Path) -> None
     object.__setattr__(original, "digest", "0" * 64)
     with pytest.raises(ValueError, match="digest is inconsistent"):
         StrictWorkspaceRequest("test", destination, original)
+
+
+def test_request_accepts_only_exact_binding_for_its_lexical_destination(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "parent" / "published"
+    source_owner = _publish_generation(destination)
+    try:
+        binding = source_owner.destination_binding
+        request = StrictWorkspaceRequest(
+            "replace",
+            destination,
+            _plan(),
+            destination_binding=binding,
+        )
+        assert request.destination_binding is binding
+        assert request.destination_expectation == "provider-bound-exact"
+
+        with pytest.raises(ValueError, match="binding differs from its destination"):
+            StrictWorkspaceRequest(
+                "replace",
+                tmp_path / "wrong" / "published",
+                _plan(),
+                destination_binding=binding,
+            )
+        with pytest.raises(TypeError, match="destination binding is invalid"):
+            StrictWorkspaceRequest(
+                "replace",
+                destination,
+                _plan(),
+                destination_binding=capture_directory_ownership(destination),  # type: ignore[arg-type]
+            )
+
+        class DerivedBinding(PublishedWorkspaceDestinationBinding):
+            pass
+
+        forged = object.__new__(DerivedBinding)
+        object.__setattr__(forged, "destination", binding.destination)
+        object.__setattr__(forged, "parent_identity", binding.parent_identity)
+        object.__setattr__(forged, "ownership", binding.ownership)
+        with pytest.raises(TypeError, match="destination binding is invalid"):
+            StrictWorkspaceRequest(
+                "replace",
+                destination,
+                _plan(),
+                destination_binding=forged,
+            )
+    finally:
+        source_owner.close()
 
 
 def test_provider_runs_one_callback_scoped_validated_publication(
@@ -616,11 +686,11 @@ def test_adopted_workspace_rejects_exact_binding_for_missing_request(
     tmp_path: Path,
 ) -> None:
     destination = tmp_path / "published"
-    destination.mkdir()
-    (destination / "old").write_bytes(b"old")
-    exact = capture_directory_ownership(destination)
+    source_owner = _publish_generation(destination)
     request = StrictWorkspaceRequest("test", destination, _plan())
-    provider = _TestProvider(expected_destination=exact)
+    provider = _TestProvider(
+        destination_binding=source_owner.destination_binding,
+    )
     owner = PublishedWorkspaceReceiptOwner()
     called = False
 
@@ -628,30 +698,37 @@ def test_adopted_workspace_rejects_exact_binding_for_missing_request(
         nonlocal called
         called = True
 
-    with pytest.raises(ValueError, match="expectation differs"):
-        run_strict_workspace(
-            provider,
-            request,
-            receipt_owner=owner,
-            operation=operation,
-        )
+    try:
+        with pytest.raises(ValueError, match="binding differs"):
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=owner,
+                operation=operation,
+            )
 
-    assert called is False
-    assert owner.state == "empty"
-    assert (destination / "old").read_bytes() == b"old"
+        assert called is False
+        assert owner.state == "empty"
+        assert destination.joinpath("payload.bin").read_bytes() == b"same bytes"
+    finally:
+        owner.close()
+        source_owner.close()
 
 
 def test_adopted_workspace_rejects_missing_binding_for_exact_request(
     tmp_path: Path,
 ) -> None:
     destination = tmp_path / "published"
+    source_owner = _publish_generation(destination)
+    binding = source_owner.destination_binding
+    destination.rename(tmp_path / "parked-generation")
     request = StrictWorkspaceRequest(
         "test",
         destination,
         _plan(),
-        destination_expectation="provider-bound-exact",
+        destination_binding=binding,
     )
-    provider = _TestProvider(expected_destination=None)
+    provider = _TestProvider(destination_binding=None)
     owner = PublishedWorkspaceReceiptOwner()
     called = False
 
@@ -659,30 +736,34 @@ def test_adopted_workspace_rejects_missing_binding_for_exact_request(
         nonlocal called
         called = True
 
-    with pytest.raises(ValueError, match="expectation differs"):
-        run_strict_workspace(
-            provider,
-            request,
-            receipt_owner=owner,
-            operation=operation,
-        )
+    try:
+        with pytest.raises(ValueError, match="binding differs"):
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=owner,
+                operation=operation,
+            )
 
-    assert called is False
-    assert owner.state == "empty"
-    assert not destination.exists()
+        assert called is False
+        assert owner.state == "empty"
+        assert not destination.exists()
+    finally:
+        owner.close()
+        source_owner.close()
 
 
 def test_provider_bound_exact_request_replaces_only_captured_destination(
     tmp_path: Path,
 ) -> None:
     destination = tmp_path / "published"
-    destination.mkdir()
-    (destination / "old").write_bytes(b"old")
+    source_owner = _publish_generation(destination, payload=b"old")
+    binding = source_owner.destination_binding
     request = StrictWorkspaceRequest(
         "test",
         destination,
         _plan(),
-        destination_expectation="provider-bound-exact",
+        destination_binding=binding,
     )
     provider = _TestProvider()
     owner = PublishedWorkspaceReceiptOwner()
@@ -705,9 +786,93 @@ def test_provider_bound_exact_request_replaces_only_captured_destination(
         )
         assert owner.active
         assert owner.receipt.orphan is not None
+        assert provider.last_workspace is not None
+        assert provider.last_workspace.expected_destination_binding is binding
         assert destination.joinpath("payload.bin").read_bytes() == b"owned"
     finally:
         owner.close()
+        source_owner.close()
+
+
+def test_session_compares_entire_genuine_destination_binding(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    first_owner = _publish_generation(destination)
+    first_binding = first_owner.destination_binding
+    destination.rename(tmp_path / "first-generation")
+    second_owner = _publish_generation(destination)
+    second_binding = second_owner.destination_binding
+    assert first_binding.destination == second_binding.destination
+    assert first_binding.parent_identity == second_binding.parent_identity
+    assert first_binding.ownership != second_binding.ownership
+
+    request = StrictWorkspaceRequest(
+        "replace",
+        destination,
+        _plan(),
+        destination_binding=first_binding,
+    )
+    provider = _TestProvider(destination_binding=second_binding)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    called = False
+
+    def operation(_session: StrictWorkspaceSession) -> None:
+        nonlocal called
+        called = True
+
+    try:
+        with pytest.raises(ValueError, match="binding differs"):
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=operation,
+            )
+        assert called is False
+        assert output_owner.state == "empty"
+        assert destination.joinpath("payload.bin").read_bytes() == b"same bytes"
+    finally:
+        output_owner.close()
+        second_owner.close()
+        first_owner.close()
+
+
+def test_provider_cannot_launder_independently_captured_tree_token(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination)
+    request = StrictWorkspaceRequest(
+        "replace",
+        destination,
+        _plan(),
+        destination_binding=source_owner.destination_binding,
+    )
+    provider = _TestProvider(
+        destination_binding=capture_directory_ownership(destination),
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    called = False
+
+    def operation(_session: StrictWorkspaceSession) -> None:
+        nonlocal called
+        called = True
+
+    try:
+        with pytest.raises(TypeError, match="destination binding is invalid"):
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=operation,
+            )
+        assert called is False
+        assert output_owner.state == "empty"
+        assert source_owner.active
+    finally:
+        output_owner.close()
+        source_owner.close()
 
 
 def test_adopted_workspace_rechecks_destination_before_write(tmp_path: Path) -> None:
@@ -732,7 +897,7 @@ def test_adopted_workspace_rechecks_destination_before_write(tmp_path: Path) -> 
     assert not request.destination.exists()
 
 
-def test_adopted_workspace_rechecks_expectation_after_staged_validator(
+def test_adopted_workspace_rechecks_binding_after_staged_validator(
     tmp_path: Path,
 ) -> None:
     request = StrictWorkspaceRequest("test", tmp_path / "published", _plan())
@@ -744,12 +909,12 @@ def test_adopted_workspace_rechecks_expectation_after_staged_validator(
 
         def validate(_reader) -> None:
             assert provider.last_workspace is not None
-            provider.last_workspace._expected_destination = object()  # type: ignore[attr-defined]  # noqa: SLF001
+            provider.last_workspace._destination_binding = object()  # type: ignore[attr-defined]  # noqa: SLF001
 
         session.publish_validated(validate)
 
     try:
-        with pytest.raises(ValueError, match="expectation differs"):
+        with pytest.raises(ValueError, match="binding differs"):
             run_strict_workspace(
                 provider,
                 request,

@@ -1526,7 +1526,7 @@ def _publish_recaptured_vector_view_with_identity(
         purpose="portable-vector-recapture",
         destination=lexical_destination,
         plan=planned.plan,
-        destination_expectation="missing",
+        destination_binding=None,
     )
 
     def operation(session: StrictWorkspaceSession) -> None:

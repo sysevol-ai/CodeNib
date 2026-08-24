@@ -211,7 +211,7 @@ class _TestWorkspaceProvider:
                 root_descriptor=root_descriptor,
                 directory_descriptors=directory_descriptors,
                 plan=plan,
-                expected_destination=None,
+                destination_binding=None,
             )
             try:
                 return run_adopted_workspace_operation(

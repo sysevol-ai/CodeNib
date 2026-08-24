@@ -42,6 +42,7 @@ from ._atomic_directory import (
     _rename_noreplace_at,
     _require_matching_ownership,
     _require_rename_noreplace_platform,
+    _TreeOwnership,
     _validate_ownership_inventory_budget,
     directory_ownership_entry_identities,
     directory_ownership_file_records,
@@ -93,6 +94,7 @@ _WORKSPACE_RECEIPT_EMPTY = object()
 _WORKSPACE_RECEIPT_CLOSED = object()
 _WORKSPACE_RECEIPT_CLOSE = object()
 _WORKSPACE_OWNER_RECOVERY_LIMIT = 64
+_TREE_OWNERSHIP_TYPE = _TreeOwnership
 _WorkspaceResult = TypeVar("_WorkspaceResult")
 
 
@@ -648,6 +650,58 @@ class _WorkspaceCleanup:
     attempted: bool = False
 
 
+@dataclass(frozen=True, slots=True, init=False)
+class PublishedWorkspaceDestinationBinding:
+    """Immutable exact destination authority minted by an active receipt owner."""
+
+    destination: Path
+    parent_identity: tuple[int, ...]
+    ownership: _TreeOwnership
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        raise TypeError(
+            "published workspace destination bindings are minted by an active "
+            "receipt owner"
+        )
+
+
+# Keep authority checks independent from later mutation of the public module
+# attribute.  Trusted providers may import the type, but cannot replace the
+# discriminator used by already-live owners.
+_PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE = PublishedWorkspaceDestinationBinding
+
+
+def _freeze_published_workspace_destination_binding_minter(
+    *,
+    destination: Path,
+    parent_identity: tuple[int, ...],
+) -> Callable[[_TreeOwnership], PublishedWorkspaceDestinationBinding]:
+    """Freeze one private binding constructor before publication callbacks."""
+
+    lexical_destination = lexical_directory_path(destination)
+    if (
+        type(parent_identity) is not tuple
+        or len(parent_identity) < 2
+        or any(type(value) is not int for value in parent_identity)
+    ):
+        raise TypeError("published workspace parent identity is invalid")
+    binding_type = _PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE
+    ownership_type = _TREE_OWNERSHIP_TYPE
+    binding_new = object.__new__
+    binding_setattr = object.__setattr__
+
+    def mint(ownership: _TreeOwnership) -> PublishedWorkspaceDestinationBinding:
+        if type(ownership) is not ownership_type:
+            raise TypeError("published workspace ownership token is invalid")
+        binding = binding_new(binding_type)
+        binding_setattr(binding, "destination", lexical_destination)
+        binding_setattr(binding, "parent_identity", parent_identity)
+        binding_setattr(binding, "ownership", ownership)
+        return binding
+
+    return mint
+
+
 class PublishedWorkspaceReceipt:
     """Borrowed exact-generation receipt controlled by its caller-owned slot."""
 
@@ -662,6 +716,7 @@ class PublishedWorkspaceReceipt:
         "_transfer",
         "_native_receipt_token",
         "_owner_pid",
+        "_destination_binding",
     )
 
     def __init__(
@@ -671,14 +726,19 @@ class PublishedWorkspaceReceipt:
         path: Path,
         plan: WorkspacePlan,
         sealed_ownership: object,
-        published_ownership: object,
+        published_ownership: _TreeOwnership,
         parent_identity: tuple[int, ...],
+        destination_binding: PublishedWorkspaceDestinationBinding,
         orphan: DirectoryOrphan | None,
         native_receipt_token: object | None,
     ) -> None:
         # Store the shared aggregate first.  A constructor interruption can
         # therefore be reconciled against the same transfer held by the owner.
         self._transfer = transfer
+        # Freeze the replacement authority before storing the mutable public
+        # compatibility projections below.  Only the active receipt owner can
+        # later expose this private binding to another strict request.
+        self._destination_binding = destination_binding
         self.path = path
         self._plan = _snapshot_workspace_plan(plan)
         self.sealed_ownership = sealed_ownership
@@ -783,6 +843,26 @@ class PublishedWorkspaceReceiptOwner:
                     f"{self._state_locked()}, expected active"
                 )
             return self._slot
+
+        return self._lock.run(borrow)
+
+    @property
+    def destination_binding(self) -> PublishedWorkspaceDestinationBinding:
+        """Project the exact destination binding from this active generation."""
+
+        self._require_owner_pid()
+
+        def borrow() -> PublishedWorkspaceDestinationBinding:
+            self._normalize_closed_locked()
+            if type(self._slot) is not _PUBLISHED_WORKSPACE_RECEIPT_TYPE:
+                raise RuntimeError(
+                    "published workspace receipt owner is "
+                    f"{self._state_locked()}, expected active"
+                )
+            binding = self._slot._destination_binding
+            if type(binding) is not _PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE:
+                raise RuntimeError("published workspace destination binding is invalid")
+            return binding
 
         return self._lock.run(borrow)
 
@@ -2076,7 +2156,7 @@ class OwnedWorkspaceAuthority:
         self._destination: Path | None = None
         self._stage_path: Path | None = None
         self._plan: WorkspacePlan | None = None
-        self._expected_destination: object | None = None
+        self._destination_binding: PublishedWorkspaceDestinationBinding | None = None
         self._root_descriptor = -1
         self._root_identity: tuple[int, ...] | None = None
         self._directory_descriptors: dict[str, int] = {}
@@ -2122,17 +2202,19 @@ class OwnedWorkspaceAuthority:
         return self._lock.run(get_destination)
 
     @property
-    def expected_destination_ownership(self) -> object | None:
-        """Return the exact adopted destination token, or ``None`` if missing."""
+    def expected_destination_binding(
+        self,
+    ) -> PublishedWorkspaceDestinationBinding | None:
+        """Return the exact adopted destination binding, or ``None`` if missing."""
 
         self._require_owner_pid()
 
-        def get_expected_destination() -> object | None:
+        def get_destination_binding() -> PublishedWorkspaceDestinationBinding | None:
             if self._destination is None:
                 raise RuntimeError("owned workspace authority has not been adopted")
-            return self._expected_destination
+            return self._destination_binding
 
-        return self._lock.run(get_expected_destination)
+        return self._lock.run(get_destination_binding)
 
     @classmethod
     def create(cls, *_args: object, **_kwargs: object) -> OwnedWorkspaceAuthority:
@@ -2154,7 +2236,7 @@ class OwnedWorkspaceAuthority:
             int,
         ],
         plan: WorkspacePlan,
-        expected_destination: object | None,
+        destination_binding: PublishedWorkspaceDestinationBinding | None,
     ) -> None:
         """Adopt a pre-opened sibling root and exact empty-file skeleton."""
 
@@ -2172,7 +2254,7 @@ class OwnedWorkspaceAuthority:
                 root_descriptor=root_descriptor,
                 directory_descriptors=directory_descriptors,
                 plan=plan,
-                expected_destination=expected_destination,
+                destination_binding=destination_binding,
             )
         )
 
@@ -2184,7 +2266,7 @@ class OwnedWorkspaceAuthority:
         provisioned_owner: object,
         publication_permit: object,
         plan: WorkspacePlan,
-        expected_destination: object | None,
+        destination_binding: PublishedWorkspaceDestinationBinding | None,
     ) -> None:
         """Adopt a native-owned skeleton without duplicating its descriptors."""
 
@@ -2201,7 +2283,7 @@ class OwnedWorkspaceAuthority:
                 provisioned_owner=provisioned_owner,
                 publication_permit=publication_permit,
                 plan=plan,
-                expected_destination=expected_destination,
+                destination_binding=destination_binding,
             )
         )
 
@@ -2213,12 +2295,18 @@ class OwnedWorkspaceAuthority:
         provisioned_owner: object,
         publication_permit: object,
         plan: WorkspacePlan,
-        expected_destination: object | None,
+        destination_binding: PublishedWorkspaceDestinationBinding | None,
     ) -> None:
         self._require_owner_pid()
         if self._state != "empty" or self._native_owner is not None:
             raise RuntimeError("owned workspace authority is not empty")
-        if expected_destination is not None:
+        if (
+            destination_binding is not None
+            and type(destination_binding)
+            is not _PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE
+        ):
+            raise TypeError("workspace destination binding is invalid")
+        if destination_binding is not None:
             raise UnsupportedWorkspaceCreation(
                 "native local workspaces currently require a missing destination"
             )
@@ -2258,7 +2346,7 @@ class OwnedWorkspaceAuthority:
                 ),
                 directory_descriptors=directory_descriptors,
                 plan=detached_plan,
-                expected_destination=None,
+                destination_binding=None,
                 native_publication_permit=publication_permit,
             )
         except BaseException as adoption_error:  # noqa: B036 - settle owner
@@ -2287,7 +2375,7 @@ class OwnedWorkspaceAuthority:
             int,
         ],
         plan: WorkspacePlan,
-        expected_destination: object | None,
+        destination_binding: PublishedWorkspaceDestinationBinding | None,
         native_publication_permit: object | None = None,
     ) -> None:
         self._require_owner_pid()
@@ -2310,6 +2398,19 @@ class OwnedWorkspaceAuthority:
         stage_path = destination_path.parent / stage_relative.name
         if stage_path == destination_path:
             raise ValueError("workspace stage and destination must differ")
+        if (
+            destination_binding is not None
+            and type(destination_binding)
+            is not _PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE
+        ):
+            raise TypeError("workspace destination binding is invalid")
+        if (
+            destination_binding is not None
+            and destination_binding.destination != destination_path
+        ):
+            raise ValueError(
+                "workspace destination binding differs from its destination"
+            )
 
         expected_directory_paths = {item.path.as_posix() for item in plan.directories}
         normalized_descriptors: dict[str, int] = {}
@@ -2333,15 +2434,11 @@ class OwnedWorkspaceAuthority:
                 "workspace directory descriptors must exactly match the plan"
             )
 
-        if expected_destination is not None:
-            # Validate the private token before acquiring any authority.
-            directory_ownership_root_identity(expected_destination)
-
         self._state = "adopting"
         self._destination = destination_path
         self._stage_path = stage_path
         self._plan = plan
-        self._expected_destination = expected_destination
+        self._destination_binding = destination_binding
         self._file_specs = {item.path.as_posix(): item for item in plan.files}
         try:
             if self._native_owner is None:
@@ -2365,6 +2462,13 @@ class OwnedWorkspaceAuthority:
                     authority_owner=self._parent_owner,
                 )
             authority = self._require_parent_authority()
+            if (
+                destination_binding is not None
+                and authority.identity != destination_binding.parent_identity
+            ):
+                raise RuntimeError(
+                    "workspace destination parent differs from its binding"
+                )
             flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
             flags |= getattr(os, "O_CLOEXEC", 0) | getattr(
                 os,
@@ -2488,7 +2592,7 @@ class OwnedWorkspaceAuthority:
                 path=destination_path,
                 label="owned workspace destination",
             )
-            if expected_destination is None:
+            if destination_binding is None:
                 if destination_metadata is not None:
                     raise RuntimeError(
                         "owned workspace destination was expected missing"
@@ -2502,7 +2606,7 @@ class OwnedWorkspaceAuthority:
                     label="owned workspace destination",
                     allow_empty_root=True,
                 )
-                if observed_destination != expected_destination:
+                if observed_destination != destination_binding.ownership:
                     raise RuntimeError("owned workspace destination changed")
             authority.verify_path_binding()
             self._refresh_locked(require_complete=False)
@@ -2933,6 +3037,8 @@ class OwnedWorkspaceAuthority:
         destination = self._destination
         plan = self._plan
         authority = self._require_parent_authority()
+        parent_identity = authority.identity
+        receipt_plan = _snapshot_workspace_plan(plan)
         # Freeze every token-receiving Python callable before either validator
         # runs.  Fault-injection may replace these before publish_into enters,
         # but validator-time module/class mutation cannot intercept the private
@@ -2941,10 +3047,16 @@ class OwnedWorkspaceAuthority:
         receipt_new = receipt_type.__new__
         receipt_init = receipt_type.__init__
         install_receipt_exact = PublishedWorkspaceReceiptOwner._install
+        mint_destination_binding_exact = (
+            _freeze_published_workspace_destination_binding_minter(
+                destination=destination,
+                parent_identity=parent_identity,
+            )
+        )
 
         def install_receipt(
             committed_sealed: object,
-            published_ownership: object,
+            published_ownership: _TreeOwnership,
             previous_orphan: DirectoryOrphan | None,
             native_receipt_token: object | None,
         ) -> None:
@@ -2956,15 +3068,17 @@ class OwnedWorkspaceAuthority:
                 label="published workspace",
                 allow_root_rename=True,
             )
+            destination_binding = mint_destination_binding_exact(published_ownership)
             receipt = receipt_new(receipt_type)
             receipt_init(
                 receipt,
                 transfer=transfer,
                 path=destination,
-                plan=_snapshot_workspace_plan(plan),
+                plan=receipt_plan,
                 sealed_ownership=sealed_ownership,
                 published_ownership=published_ownership,
-                parent_identity=authority.identity,
+                parent_identity=parent_identity,
+                destination_binding=destination_binding,
                 orphan=previous_orphan,
                 native_receipt_token=native_receipt_token,
             )
@@ -2980,7 +3094,11 @@ class OwnedWorkspaceAuthority:
             self._stage_path,
             self._destination,
             expected_stage_root_ownership=sealed_ownership,
-            expected_destination_ownership=self._expected_destination,
+            expected_destination_ownership=(
+                None
+                if self._destination_binding is None
+                else self._destination_binding.ownership
+            ),
             validate_staged_directory=validate_staged_directory,
             validate_published_destination=validate_published_destination,
             commit_callback=install_receipt,
@@ -4309,6 +4427,7 @@ __all__ = [
     "CapturedDirectoryReader",
     "OwnedDirectoryStage",
     "OwnedWorkspaceAuthority",
+    "PublishedWorkspaceDestinationBinding",
     "PublishedWorkspaceReceipt",
     "PublishedWorkspaceReceiptOwner",
     "UnsupportedWorkspaceCreation",
