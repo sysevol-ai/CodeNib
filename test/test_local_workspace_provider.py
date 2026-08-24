@@ -423,6 +423,10 @@ def test_local_provider_rejects_receipt_bound_exact_before_mutation(
         mutation_calls.append("provision")
         raise AssertionError("exact rejection reached native provisioning")
 
+    def forbid_replacement_seam(*_args: object, **_kwargs: object) -> None:
+        mutation_calls.append("replacement-seam")
+        raise AssertionError("Local exact rejection reached replacement authority")
+
     monkeypatch.setattr(
         LocalWorkspaceProvider,
         "require_support",
@@ -434,6 +438,16 @@ def test_local_provider_rejects_receipt_bound_exact_before_mutation(
         "provision_owner",
         forbid_native_provision,
     )
+    for method in (
+        "bind_replacement_source",
+        "provision_bound_replacement",
+        "publish_replacement_into",
+    ):
+        monkeypatch.setattr(
+            local_provider_module.OwnedWorkspaceAuthority,
+            method,
+            forbid_replacement_seam,
+        )
 
     try:
         with pytest.raises(UnsupportedWorkspaceCreation, match="missing destination"):

@@ -68,6 +68,7 @@ _MAX_ORDERED_ACTION_CANCELLATION_RETRIES = 8
 _DURABLE_PUBLICATION_FSYNC_BACKENDS = frozenset(
     {"linux-native-workspace-owner", "linux-renameat2"}
 )
+_NATIVE_REPLACEMENT_PUBLICATION_BACKEND = "linux-native-workspace-replacement"
 _WINDOWS_RESERVED_BASENAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL"}
     | {f"COM{number}" for number in range(1, 10)}
@@ -3371,6 +3372,704 @@ def _adopt_native_posix_publication_authority(
     return authority
 
 
+class _NativeReplacementPublication:
+    """One borrowed dual-root view of a native replacement transaction.
+
+    The native aggregate remains the sole descriptor owner.  Before receipt
+    settlement this facade authenticates the candidate and incumbent through
+    distinct, already-borrowed root descriptors.  After settlement it becomes
+    candidate-only: the displaced incumbent is represented solely by its
+    independently reopenable :class:`DirectoryOrphan` locator.
+    """
+
+    __slots__ = (
+        "candidate_descriptor",
+        "candidate_identity",
+        "destination_name",
+        "display_parent",
+        "exchanged",
+        "incumbent_descriptor",
+        "incumbent_identity",
+        "native_owner",
+        "parent_descriptor",
+        "parent_identity",
+        "receipted",
+        "replacement_slot",
+        "_authority_pair_verifier",
+        "_exchange_callback",
+        "_native_state_callback",
+        "_verify_native_callback",
+        "_verify_parent_path_callback",
+    )
+
+    def __init__(
+        self,
+        *,
+        display_parent: Path,
+        native_owner: object,
+        parent_descriptor: int,
+        candidate_descriptor: int,
+        incumbent_descriptor: int,
+        destination_name: str,
+        replacement_slot: str,
+        exchange_callback: Callable[[bytes, bytes, int], object],
+        expected_parent_identity: tuple[int, ...],
+        expected_incumbent_identity: tuple[int, ...],
+    ) -> None:
+        if not sys.platform.startswith("linux"):
+            raise RuntimeError("native workspace replacement requires Linux")
+        self.display_parent = lexical_directory_path(display_parent)
+        self.native_owner = _native_workspace_owner.require_exact_owner(native_owner)
+        self.parent_descriptor = parent_descriptor
+        self.candidate_descriptor = candidate_descriptor
+        self.incumbent_descriptor = incumbent_descriptor
+        self.destination_name = _simple_child_name(
+            destination_name,
+            label="workspace replacement destination",
+        )
+        self.replacement_slot = _simple_child_name(
+            replacement_slot,
+            label="workspace replacement slot",
+        )
+        if self.destination_name == self.replacement_slot:
+            raise ValueError("workspace replacement roots must have distinct names")
+        if not callable(exchange_callback):
+            raise TypeError("workspace replacement exchange callback is invalid")
+        self._exchange_callback = exchange_callback
+        verify_native_exact = _native_workspace_owner.verify_owner_authority
+        native_state_exact = _native_workspace_owner.owner_state
+        verify_parent_path_exact = _require_publication_parent_path
+        self._verify_native_callback = lambda: verify_native_exact(self.native_owner)
+        self._native_state_callback = lambda: native_state_exact(self.native_owner)
+        self._verify_parent_path_callback = lambda: verify_parent_path_exact(
+            self.display_parent,
+            self.parent_identity,
+        )
+        self._authority_pair_verifier: (
+            Callable[[_PublicationAuthority], None] | None
+        ) = None
+        self.parent_identity = publication_parent_identity(parent_descriptor)
+        self.candidate_identity = self._descriptor_identity(
+            candidate_descriptor,
+            label="workspace replacement candidate",
+        )
+        self.incumbent_identity = self._descriptor_identity(
+            incumbent_descriptor,
+            label="workspace replacement incumbent",
+        )
+        if self.parent_identity != expected_parent_identity:
+            raise RuntimeError("workspace replacement parent authority changed")
+        if self.incumbent_identity != expected_incumbent_identity:
+            raise RuntimeError("workspace replacement incumbent authority changed")
+        if self.candidate_identity == self.incumbent_identity:
+            raise RuntimeError("workspace replacement roots are not distinct")
+        if (
+            self.candidate_identity[0] != self.parent_identity[0]
+            or self.incumbent_identity[0] != self.parent_identity[0]
+        ):
+            raise ValueError("workspace replacement roots cross the parent device")
+        self.exchanged = False
+        self.receipted = False
+        self.verify_current()
+
+    @staticmethod
+    def _descriptor_identity(descriptor: int, *, label: str) -> tuple[int, ...]:
+        if type(descriptor) is not int or descriptor < 0:
+            raise ValueError(f"{label} descriptor is invalid")
+        metadata = os.fstat(descriptor)
+        if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+            raise RuntimeError(f"{label} descriptor is not a directory")
+        identity = _directory_inode_identity(metadata)
+        if not identity[0] or not identity[1]:
+            raise RuntimeError(f"{label} has no reliable identity")
+        return identity
+
+    def _linked_identity(self, name: str, *, label: str) -> tuple[int, ...]:
+        try:
+            metadata = os.stat(
+                name,
+                dir_fd=self.parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise RuntimeError(f"{label} namespace binding changed") from exc
+        if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+            raise RuntimeError(f"{label} namespace binding changed")
+        return _directory_inode_identity(metadata)
+
+    def _verify_descriptor_identities(self) -> None:
+        if publication_parent_identity(self.parent_descriptor) != self.parent_identity:
+            raise RuntimeError("workspace replacement parent authority changed")
+        if (
+            self._descriptor_identity(
+                self.candidate_descriptor,
+                label="workspace replacement candidate",
+            )
+            != self.candidate_identity
+            or self._descriptor_identity(
+                self.incumbent_descriptor,
+                label="workspace replacement incumbent",
+            )
+            != self.incumbent_identity
+        ):
+            raise RuntimeError("workspace replacement descriptor authority changed")
+
+    def _verify_candidate_only(self) -> None:
+        if not self.receipted or not self.exchanged:
+            raise RuntimeError("workspace replacement is not receipted")
+        if publication_parent_identity(self.parent_descriptor) != self.parent_identity:
+            raise RuntimeError("workspace replacement parent authority changed")
+        if (
+            self._descriptor_identity(
+                self.candidate_descriptor,
+                label="workspace replacement candidate",
+            )
+            != self.candidate_identity
+            or self._linked_identity(
+                self.destination_name,
+                label="workspace replacement candidate",
+            )
+            != self.candidate_identity
+        ):
+            raise RuntimeError("workspace replacement candidate authority changed")
+        self._verify_parent_path_callback()
+
+    def verify_current(self) -> None:
+        if self.receipted:
+            self._verify_candidate_only()
+            return
+        self._verify_native_callback()
+        self._verify_descriptor_identities()
+        expected_candidate = (
+            self.destination_name if self.exchanged else self.replacement_slot
+        )
+        expected_incumbent = (
+            self.replacement_slot if self.exchanged else self.destination_name
+        )
+        if (
+            self._linked_identity(
+                expected_candidate,
+                label="workspace replacement candidate",
+            )
+            != self.candidate_identity
+            or self._linked_identity(
+                expected_incumbent,
+                label="workspace replacement incumbent",
+            )
+            != self.incumbent_identity
+        ):
+            raise RuntimeError("workspace replacement dual-root binding changed")
+
+    def _read_descriptor(
+        self,
+        *,
+        descriptor: int,
+        identity: tuple[int, ...],
+        name: str,
+        display_path: Path,
+        label: str,
+        expected_ownership: _TreeOwnership | None,
+        callback: Callable[[_PublicationTreeReader], _T],
+        verify: Callable[[], None],
+    ) -> _T:
+        verify()
+        if self._linked_identity(name, label=label) != identity:
+            raise RuntimeError(f"{label} namespace binding changed")
+        reader: _PublicationTreeReader | None = None
+
+        def deactivate_reader() -> None:
+            if reader is not None:
+                reader._deactivate()
+
+        cleanup_actions = (
+            _OrderedAction(
+                label="publication reader deactivation also failed",
+                action=deactivate_reader,
+                complete=lambda: reader is None or not reader._lifetime.active,
+                retry_incomplete="cancellation",
+            ),
+        )
+        with _run_context_with_cleanup_actions(cleanup_actions):
+            reader = _PublicationTreeReader(
+                display_path,
+                identity,
+                lambda required_root_file, allow_empty_root, entry_policy: (
+                    _capture_posix_directory_descriptor(
+                        descriptor,
+                        display_path,
+                        required_root_file=required_root_file,
+                        allow_empty_root=allow_empty_root,
+                        entry_policy=entry_policy,
+                    )
+                ),
+                lambda relative, max_bytes, expected: (
+                    _open_posix_authenticated_file(
+                        descriptor,
+                        display_path,
+                        relative,
+                        max_bytes=max_bytes,
+                        expected=expected,
+                    )
+                ),
+                expected_ownership,
+            )
+
+            def validate_binding() -> None:
+                if self._linked_identity(name, label=label) != identity:
+                    raise RuntimeError(f"{label} namespace binding changed")
+                verify()
+
+            return _run_publication_reader_callback(
+                reader,
+                callback,
+                validate_binding,
+            )
+
+    @property
+    def candidate_name(self) -> str:
+        return self.destination_name if self.exchanged else self.replacement_slot
+
+    @property
+    def incumbent_name(self) -> str:
+        if self.receipted:
+            raise RuntimeError("receipted replacement has no incumbent reader")
+        return self.replacement_slot if self.exchanged else self.destination_name
+
+    def candidate_metadata(
+        self,
+        name: str,
+        display_path: Path,
+        label: str,
+    ) -> os.stat_result:
+        if name != self.candidate_name:
+            raise RuntimeError(f"{label} is not the replacement candidate")
+        self.verify_current()
+        metadata = os.stat(
+            name,
+            dir_fd=self.parent_descriptor,
+            follow_symlinks=False,
+        )
+        if _directory_inode_identity(metadata) != self.candidate_identity:
+            raise RuntimeError(f"{label} namespace binding changed: {display_path}")
+        return metadata
+
+    def read_candidate(
+        self,
+        name: str,
+        display_path: Path,
+        label: str,
+        expected_ownership: _TreeOwnership | None,
+        callback: Callable[[_PublicationTreeReader], _T],
+    ) -> _T:
+        if name != self.candidate_name:
+            raise RuntimeError(f"{label} is not the replacement candidate")
+        return self._read_descriptor(
+            descriptor=self.candidate_descriptor,
+            identity=self.candidate_identity,
+            name=name,
+            display_path=display_path,
+            label=label,
+            expected_ownership=expected_ownership,
+            callback=callback,
+            verify=self.verify_current,
+        )
+
+    def read_incumbent(
+        self,
+        name: str,
+        display_path: Path,
+        label: str,
+        expected_ownership: _TreeOwnership | None,
+        callback: Callable[[_PublicationTreeReader], _T],
+    ) -> _T:
+        if self.receipted or name != self.incumbent_name:
+            raise RuntimeError(f"{label} is not the replacement incumbent")
+        return self._read_descriptor(
+            descriptor=self.incumbent_descriptor,
+            identity=self.incumbent_identity,
+            name=name,
+            display_path=display_path,
+            label=label,
+            expected_ownership=expected_ownership,
+            callback=callback,
+            verify=self.verify_current,
+        )
+
+    def capture_incumbent(
+        self,
+        *,
+        path: Path,
+        label: str,
+    ) -> _TreeOwnership:
+        return self.read_incumbent(
+            self.incumbent_name,
+            path,
+            label,
+            None,
+            lambda reader: reader.capture_ownership(allow_empty_root=True),
+        )
+
+    def exchange(self, deadline_ns: int) -> object:
+        if self.receipted or self.exchanged:
+            raise RuntimeError("workspace replacement exchange is unavailable")
+        token = self._exchange_callback(
+            os.fsencode(self.replacement_slot),
+            os.fsencode(self.destination_name),
+            deadline_ns,
+        )
+        self.exchanged = True
+        return token
+
+    def mark_receipted(self) -> None:
+        if not self.exchanged:
+            raise RuntimeError("workspace replacement was not exchanged")
+        if self._native_state_callback() != "replacement-receipted":
+            raise RuntimeError("native workspace replacement is not receipted")
+        self.receipted = True
+
+    def _seal_publication_authority(
+        self,
+        authority: _PublicationAuthority,
+        *,
+        metadata_callback: Callable[[str, Path, str], object | None],
+        reader_callback: Callable[
+            [
+                str,
+                Path,
+                str,
+                _TreeOwnership | None,
+                Callable[[_PublicationTreeReader], _T],
+            ],
+            _T,
+        ],
+        verify_callback: Callable[[], None],
+    ) -> None:
+        """One-shot seal this context to its exact callback authority."""
+
+        if self._authority_pair_verifier is not None:
+            raise RuntimeError("workspace replacement authority is already sealed")
+        if (
+            getattr(metadata_callback, "__self__", None) is not self
+            or getattr(reader_callback, "__self__", None) is not self
+            or getattr(verify_callback, "__self__", None) is not self
+        ):
+            raise RuntimeError("workspace replacement callbacks are not bound")
+        authority_type = _PublicationAuthority
+        expected_parent = self.display_parent
+        expected_identity = self.parent_identity
+        expected_resource = self.parent_descriptor
+
+        def verify_pair(candidate: _PublicationAuthority) -> None:
+            if type(candidate) is not authority_type or candidate is not authority:
+                raise TypeError("workspace replacement authority pairing is invalid")
+            if (
+                candidate.display_parent != expected_parent
+                or candidate.identity != expected_identity
+                or candidate.backend_tag != _NATIVE_REPLACEMENT_PUBLICATION_BACKEND
+                or candidate._resource != expected_resource
+                or candidate._metadata_callback is not metadata_callback
+                or candidate._reader_callback is not reader_callback
+                or candidate._verify_callback is not verify_callback
+            ):
+                raise RuntimeError("workspace replacement authority seal changed")
+
+        verify_pair(authority)
+        self._authority_pair_verifier = verify_pair
+
+
+_NATIVE_REPLACEMENT_PUBLICATION_TYPE = _NativeReplacementPublication
+
+
+def _adopt_native_posix_replacement_authority(
+    path: Path,
+    *,
+    native_owner: object,
+    parent_descriptor: int,
+    candidate_descriptor: int,
+    incumbent_descriptor: int,
+    expected_parent_identity: tuple[int, ...],
+    expected_incumbent_identity: tuple[int, ...],
+    destination_name: str,
+    replacement_slot: str,
+    exchange_callback: Callable[[bytes, bytes, int], object],
+    authority_owner: _PublicationAuthorityOwner,
+) -> tuple[_PublicationAuthority, _NativeReplacementPublication]:
+    """Adopt separate candidate/incumbent readers from one native owner."""
+
+    if not sys.platform.startswith("linux"):
+        raise RuntimeError("native workspace replacement adoption requires Linux")
+    if authority_owner.authority is not None:
+        raise RuntimeError("publication authority owner is already active")
+    owner = _native_workspace_owner.require_exact_owner(native_owner)
+    replacement = _NativeReplacementPublication(
+        display_parent=path,
+        native_owner=owner,
+        parent_descriptor=parent_descriptor,
+        candidate_descriptor=candidate_descriptor,
+        incumbent_descriptor=incumbent_descriptor,
+        destination_name=destination_name,
+        replacement_slot=replacement_slot,
+        exchange_callback=exchange_callback,
+        expected_parent_identity=expected_parent_identity,
+        expected_incumbent_identity=expected_incumbent_identity,
+    )
+
+    def reject_generic_rename(_source: str, _destination: str) -> object | None:
+        raise RuntimeError(
+            "native workspace replacement requires its dedicated exchange path"
+        )
+
+    def reject_generic_sync() -> None:
+        raise RuntimeError(
+            "native workspace replacement parent sync is owned by settlement"
+        )
+
+    facade_closed = False
+
+    def close_callback(_resource: int) -> None:
+        nonlocal facade_closed
+        facade_closed = True
+
+    metadata_callback = replacement.candidate_metadata
+    reader_callback = replacement.read_candidate
+    verify_callback = replacement.verify_current
+    authority = _PublicationAuthority(
+        display_parent=replacement.display_parent,
+        identity=replacement.parent_identity,
+        backend_tag=_NATIVE_REPLACEMENT_PUBLICATION_BACKEND,
+        resource=parent_descriptor,
+        close_callback=close_callback,
+        metadata_callback=metadata_callback,
+        reader_callback=reader_callback,
+        rename_callback=reject_generic_rename,
+        verify_callback=verify_callback,
+        close_complete_callback=lambda: facade_closed,
+        sync_callback=reject_generic_sync,
+    )
+    try:
+        replacement._seal_publication_authority(
+            authority,
+            metadata_callback=metadata_callback,
+            reader_callback=reader_callback,
+            verify_callback=verify_callback,
+        )
+        replacement.verify_current()
+        authority_owner.install(authority)
+    except BaseException as primary_error:  # noqa: B036 - facade-only cleanup
+        if authority_owner.authority is authority:
+            authority_owner.close_after_error(primary_error)
+        raise
+    return authority, replacement
+
+
+def _publish_native_replacement_with_authority(
+    publication_authority: _PublicationAuthority,
+    replacement: _NativeReplacementPublication,
+    stage: Path,
+    destination: Path,
+    *,
+    expected_stage_root_ownership: _TreeOwnership,
+    expected_destination_ownership: _TreeOwnership,
+    deadline_ns: int,
+    validate_staged_directory: (
+        Callable[[PublicationDirectoryReader], None] | None
+    ) = None,
+    validate_published_destination: (
+        Callable[[PublicationDirectoryReader], None] | None
+    ) = None,
+    commit_callback: Callable[
+        [_TreeOwnership, _TreeOwnership, DirectoryOrphan, object],
+        None,
+    ],
+) -> DirectoryOrphan:
+    """Publish one native replacement without generic isolation or sync."""
+
+    stage_display = lexical_directory_path(stage)
+    destination_display = lexical_directory_path(destination)
+    if type(replacement) is not _NATIVE_REPLACEMENT_PUBLICATION_TYPE:
+        raise TypeError("workspace replacement context is invalid")
+    verify_authority_pair_exact = replacement._authority_pair_verifier
+    if not callable(verify_authority_pair_exact):
+        raise RuntimeError("workspace replacement authority is not sealed")
+    verify_authority_pair_exact(publication_authority)
+    if publication_authority.backend_tag != _NATIVE_REPLACEMENT_PUBLICATION_BACKEND:
+        raise TypeError("workspace replacement publication authority is invalid")
+    if stage_display.parent != destination_display.parent:
+        raise ValueError("workspace replacement roots must share one parent")
+    if stage_display.parent != publication_authority.display_parent:
+        raise ValueError("workspace replacement roots differ from their authority")
+    if (
+        stage_display.name != replacement.replacement_slot
+        or destination_display.name != replacement.destination_name
+    ):
+        raise ValueError("workspace replacement names differ from their authority")
+    if type(expected_stage_root_ownership) is not _TreeOwnership:
+        raise TypeError("workspace replacement candidate ownership is invalid")
+    if type(expected_destination_ownership) is not _TreeOwnership:
+        raise TypeError("workspace replacement incumbent ownership is invalid")
+    if type(deadline_ns) is not int or deadline_ns <= 0:
+        raise ValueError("workspace replacement deadline is invalid")
+    if validate_staged_directory is not None and not callable(
+        validate_staged_directory
+    ):
+        raise TypeError("workspace replacement staged validator is invalid")
+    if validate_published_destination is not None and not callable(
+        validate_published_destination
+    ):
+        raise TypeError("workspace replacement published validator is invalid")
+    if not callable(commit_callback):
+        raise TypeError("workspace replacement commit callback is invalid")
+
+    # Freeze every authority method, capability receiver, ownership check, and
+    # receipt constructor before either validator runs.  A validator may
+    # mutate public/private module or class attributes for fault injection, but
+    # it cannot intercept the native exchange/receipt token in this frame.
+    verify_replacement_exact = replacement.verify_current
+    capture_incumbent_exact = replacement.capture_incumbent
+    exchange_replacement_exact = replacement.exchange
+    read_candidate_exact = publication_authority.read_child
+    verify_path_binding_exact = publication_authority.verify_path_binding
+    capture_ownership_exact = _PublicationTreeReader.capture_ownership
+    require_publishable_exact = require_publishable_directory_ownership
+    require_matching_exact = _require_matching_ownership
+    locator_type = _DirectoryOrphanLocator
+    locator_new = object.__new__
+    locator_init = locator_type.__init__
+    orphan_type = DirectoryOrphan
+    orphan_new = object.__new__
+    orphan_init = orphan_type.__init__
+
+    def capture_candidate_exact(
+        name: str,
+        *,
+        path: Path,
+        label: str,
+    ) -> _TreeOwnership:
+        return read_candidate_exact(
+            name,
+            path=path,
+            label=label,
+            expected_ownership=None,
+            callback=lambda reader: capture_ownership_exact(
+                reader,
+                allow_empty_root=True,
+            ),
+        )
+
+    verify_replacement_exact()
+    staged = capture_candidate_exact(
+        stage_display.name,
+        path=stage_display,
+        label="workspace replacement candidate",
+    )
+    require_publishable_exact(
+        staged,
+        label="workspace replacement candidate",
+    )
+    if staged != expected_stage_root_ownership:
+        raise RuntimeError("workspace replacement candidate changed before exchange")
+    if validate_staged_directory is not None:
+        read_candidate_exact(
+            stage_display.name,
+            path=stage_display,
+            label="workspace replacement candidate",
+            expected_ownership=staged,
+            callback=validate_staged_directory,
+        )
+        verify_authority_pair_exact(publication_authority)
+        if (
+            capture_candidate_exact(
+                stage_display.name,
+                path=stage_display,
+                label="workspace replacement candidate",
+            )
+            != staged
+        ):
+            raise RuntimeError(
+                "workspace replacement candidate changed during validation"
+            )
+
+    incumbent = capture_incumbent_exact(
+        path=destination_display,
+        label="workspace replacement incumbent",
+    )
+    if incumbent != expected_destination_ownership:
+        raise RuntimeError("workspace replacement incumbent changed before exchange")
+    verify_authority_pair_exact(publication_authority)
+    verify_replacement_exact()
+
+    receipt_token = exchange_replacement_exact(deadline_ns)
+    verify_replacement_exact()
+
+    published = capture_candidate_exact(
+        destination_display.name,
+        path=destination_display,
+        label="published workspace replacement candidate",
+    )
+    require_matching_exact(
+        published,
+        staged,
+        label="published workspace replacement candidate",
+        allow_root_rename=True,
+    )
+    if validate_published_destination is not None:
+        read_candidate_exact(
+            destination_display.name,
+            path=destination_display,
+            label="published workspace replacement candidate",
+            expected_ownership=published,
+            callback=validate_published_destination,
+        )
+        verify_authority_pair_exact(publication_authority)
+    published = capture_candidate_exact(
+        destination_display.name,
+        path=destination_display,
+        label="published workspace replacement candidate",
+    )
+    require_matching_exact(
+        published,
+        staged,
+        label="published workspace replacement candidate",
+        allow_root_rename=True,
+    )
+
+    displaced = capture_incumbent_exact(
+        path=stage_display,
+        label="displaced workspace incumbent",
+    )
+    require_matching_exact(
+        displaced,
+        incumbent,
+        label="displaced workspace incumbent",
+        allow_root_rename=True,
+    )
+    locator = locator_new(locator_type)
+    locator_init(
+        locator,
+        parent_path=publication_authority.display_parent,
+        child_name=stage_display.name,
+        # Reopening uses the ordinary Linux parent authority.  The native
+        # replacement backend exists only for this live transaction.
+        backend_tag="linux-renameat2",
+        parent_identity=publication_authority.identity,
+        ownership=displaced,
+    )
+    previous_orphan = orphan_new(orphan_type)
+    orphan_init(
+        previous_orphan,
+        locator=locator,
+        ownership_digest=displaced.digest,
+        entries=displaced.entries,
+        byte_count=displaced.byte_count,
+        verified_at_isolation=True,
+    )
+    verify_replacement_exact()
+    verify_authority_pair_exact(publication_authority)
+    verify_path_binding_exact()
+    commit_callback(staged, published, previous_orphan, receipt_token)
+    return previous_orphan
+
+
 def _require_publication_parent_path(
     path: Path,
     expected_identity: tuple[int, ...],
@@ -6238,6 +6937,10 @@ def _publish_staged_directory_with_authority(
     if stage_display.parent != publication_authority.display_parent:
         raise ValueError(
             "staged and destination directories must match the authority parent"
+        )
+    if publication_authority.backend_tag == _NATIVE_REPLACEMENT_PUBLICATION_BACKEND:
+        raise RuntimeError(
+            "native workspace replacement requires its dedicated exchange path"
         )
     if commit_callback is not None:
         if not callable(commit_callback):

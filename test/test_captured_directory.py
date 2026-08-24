@@ -10,9 +10,11 @@ import signal
 import stat
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 from typing import Iterator
 
 import pytest
@@ -20,6 +22,7 @@ import pytest
 import codenib._atomic_directory as atomic_directory
 import codenib._captured_directory as captured_directory
 import codenib._windows_fs_authority as windows_authority
+import codenib._workspace_owner as workspace_owner
 from codenib._atomic_directory import (
     _TreeOwnership,
     capture_directory_ownership,
@@ -122,6 +125,80 @@ def _publish_payload_generation(
         os.close(root_descriptor)
         os.close(parent_descriptor)
     return destination, plan, owner
+
+
+def _replacement_deadline_ns() -> int:
+    return time.monotonic_ns() + 10_000_000_000
+
+
+def _leased_native_replacement_owner(parent: Path, destination: Path) -> object:
+    if not sys.platform.startswith("linux"):
+        pytest.skip("native workspace replacement is Linux-only")
+    if not workspace_owner._workspace_owner_protocol_available:
+        pytest.skip("native workspace-owner protocol v5 is unavailable")
+    owner = workspace_owner.create_owner()
+    try:
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(parent),
+            os.fsencode(destination.name),
+            _replacement_deadline_ns(),
+        )
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            _replacement_deadline_ns(),
+        )
+    except BaseException:
+        if not workspace_owner.owner_closed(owner):
+            workspace_owner.abort_owner(owner)
+        raise
+    return owner
+
+
+@contextmanager
+def _bound_native_replacement(
+    tmp_path: Path,
+    *,
+    old_payload: bytes = b"old",
+) -> Iterator[SimpleNamespace]:
+    parent = tmp_path / "native-replacement-parent"
+    destination, plan, source_owner = _publish_payload_generation(
+        parent,
+        destination_name="published",
+        payload=old_payload,
+    )
+    native_owner = _leased_native_replacement_owner(parent, destination)
+    workspace = OwnedWorkspaceAuthority()
+    output_owner = PublishedWorkspaceReceiptOwner()
+    binding = source_owner.destination_binding
+    try:
+        workspace.bind_replacement_source(
+            source_owner,
+            destination_binding=binding,
+            native_owner=native_owner,
+            stage_name=".replacement-stage",
+            plan=plan,
+        )
+        yield SimpleNamespace(
+            binding=binding,
+            destination=destination,
+            native_owner=native_owner,
+            output_owner=output_owner,
+            parent=parent,
+            plan=plan,
+            source_owner=source_owner,
+            stage=parent / ".replacement-stage",
+            workspace=workspace,
+        )
+    finally:
+        if not output_owner.closed:
+            output_owner.close()
+        if workspace.state != "closed":
+            workspace.close()
+        if not workspace_owner.owner_closed(native_owner):
+            workspace_owner.abort_owner(native_owner)
+        if not source_owner.closed:
+            source_owner.close()
 
 
 def _as_windows_ownership(ownership: object) -> object:
@@ -3417,3 +3494,511 @@ def test_owned_workspace_consume_and_close_are_linear(
         assert consumer_done.is_set()
         assert close_done.is_set()
         assert receipt_owner.closed
+
+
+@pytest.mark.parametrize("source_state", ("wrong-owner", "closed-owner"))
+def test_replacement_bind_requires_the_active_owner_of_the_exact_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_state: str,
+) -> None:
+    parent = tmp_path / "replacement-bind-owner"
+    destination, plan, source_owner = _publish_payload_generation(
+        parent,
+        destination_name="published",
+        stage_name=".first-source",
+        payload=b"old",
+    )
+    _other_destination, _other_plan, other_owner = _publish_payload_generation(
+        parent,
+        destination_name="other",
+        stage_name=".second-source",
+        payload=b"old",
+    )
+    binding = source_owner.destination_binding
+    selected_owner = other_owner
+    if source_state == "closed-owner":
+        source_owner.close()
+        selected_owner = source_owner
+    native_owner = _leased_native_replacement_owner(parent, destination)
+    workspace = OwnedWorkspaceAuthority()
+    provision_calls: list[object] = []
+
+    def forbidden_provision(*_args: object, **_kwargs: object) -> None:
+        provision_calls.append(object())
+        raise AssertionError("inactive binding reached candidate provisioning")
+
+    monkeypatch.setattr(
+        workspace_owner,
+        "provision_owner_replacement",
+        forbidden_provision,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="active|closed"):
+            workspace.bind_replacement_source(
+                selected_owner,
+                destination_binding=binding,
+                native_owner=native_owner,
+                stage_name=".replacement-stage",
+                plan=plan,
+            )
+
+        assert provision_calls == []
+        assert workspace.state == "empty"
+        assert workspace_owner.owner_state(native_owner) == "destination-leased"
+        assert not parent.joinpath(".replacement-stage").exists()
+        assert destination.joinpath("payload").read_bytes() == b"old"
+    finally:
+        workspace.close()
+        if not workspace_owner.owner_closed(native_owner):
+            workspace_owner.abort_owner(native_owner)
+        if not source_owner.closed:
+            source_owner.close()
+        other_owner.close()
+
+
+@pytest.mark.parametrize("mismatch", ("parent", "incumbent"))
+def test_replacement_bind_rejects_native_mismatch_before_candidate_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch: str,
+) -> None:
+    parent = tmp_path / "replacement-bind-mismatch"
+    destination, plan, source_owner = _publish_payload_generation(
+        parent,
+        destination_name="published",
+        payload=b"old",
+    )
+    binding = source_owner.destination_binding
+    native_owner = _leased_native_replacement_owner(parent, destination)
+    workspace = OwnedWorkspaceAuthority()
+    foreign_descriptor = -1
+    provision_calls: list[object] = []
+
+    if mismatch == "parent":
+        foreign_parent = tmp_path / "foreign-parent"
+        foreign_parent.mkdir()
+        foreign_descriptor = os.open(
+            foreign_parent,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
+        monkeypatch.setattr(
+            workspace_owner,
+            "borrow_owner_parent_descriptor",
+            lambda _owner: foreign_descriptor,
+        )
+        expected_message = "parent differs"
+    else:
+        alternate = tmp_path / "alternate-incumbent"
+        alternate.mkdir()
+        alternate.joinpath("payload").write_bytes(b"old")
+        alternate_ownership = capture_directory_ownership(alternate)
+        monkeypatch.setattr(
+            captured_directory,
+            "_capture_posix_directory_descriptor",
+            lambda *_args, **_kwargs: alternate_ownership,
+        )
+        expected_message = "incumbent differs"
+
+    def forbidden_provision(*_args: object, **_kwargs: object) -> None:
+        provision_calls.append(object())
+        raise AssertionError("mismatched binding reached candidate provisioning")
+
+    monkeypatch.setattr(
+        workspace_owner,
+        "provision_owner_replacement",
+        forbidden_provision,
+    )
+    try:
+        with pytest.raises(RuntimeError, match=expected_message):
+            workspace.bind_replacement_source(
+                source_owner,
+                destination_binding=binding,
+                native_owner=native_owner,
+                stage_name=".replacement-stage",
+                plan=plan,
+            )
+
+        assert provision_calls == []
+        assert workspace.state == "closed"
+        assert workspace_owner.owner_closed(native_owner)
+        assert not parent.joinpath(".replacement-stage").exists()
+        assert destination.joinpath("payload").read_bytes() == b"old"
+        if foreign_descriptor >= 0:
+            os.fstat(foreign_descriptor)
+    finally:
+        if workspace.state != "closed":
+            workspace.close()
+        if not workspace_owner.owner_closed(native_owner):
+            workspace_owner.abort_owner(native_owner)
+        if foreign_descriptor >= 0:
+            os.close(foreign_descriptor)
+        source_owner.close()
+
+
+def test_real_v5_replacement_has_exact_order_and_candidate_only_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    with _bound_native_replacement(tmp_path) as prepared:
+        workspace = prepared.workspace
+        real_exchange = workspace._replacement_exchange
+        assert real_exchange is not None
+
+        def observed_exchange(
+            source: bytes,
+            destination: bytes,
+            deadline_ns: int,
+        ) -> object:
+            events.append("exchange")
+            return real_exchange(source, destination, deadline_ns)
+
+        workspace._replacement_exchange = observed_exchange
+        real_provision = workspace_owner.provision_owner_replacement
+
+        def observed_provision(*args: object, **kwargs: object) -> None:
+            events.append("provision")
+            real_provision(*args, **kwargs)
+
+        monkeypatch.setattr(
+            workspace_owner,
+            "provision_owner_replacement",
+            observed_provision,
+        )
+        assert workspace.state == "replacement-bound"
+        assert not prepared.stage.exists()
+        workspace.provision_bound_replacement(deadline_ns=_replacement_deadline_ns())
+        workspace.write_file("payload", (b"new",))
+        workspace.seal()
+
+        with pytest.raises(RuntimeError, match="replacement|dedicated"):
+            workspace.publish_into(prepared.output_owner)
+        assert prepared.output_owner.state == "empty"
+        assert prepared.destination.joinpath("payload").read_bytes() == b"old"
+
+        real_commit = workspace_owner.commit_owner_receipt
+
+        def observed_commit(token: object) -> None:
+            events.append("commit")
+            real_commit(token)
+
+        monkeypatch.setattr(
+            workspace_owner,
+            "commit_owner_receipt",
+            observed_commit,
+        )
+
+        def forbidden_global(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("validator intercepted a frozen native callback")
+
+        def validate_staged(
+            reader: atomic_directory.PublicationDirectoryReader,
+        ) -> None:
+            assert reader.read_bytes("payload", max_bytes=3) == b"new"
+            events.append("validate-staged")
+            monkeypatch.setattr(
+                workspace_owner,
+                "_exchange_owner_replacement_exact",
+                forbidden_global,
+            )
+            monkeypatch.setattr(
+                workspace_owner,
+                "commit_owner_receipt",
+                forbidden_global,
+            )
+            monkeypatch.setattr(
+                workspace_owner,
+                "verify_owner_authority",
+                forbidden_global,
+            )
+            monkeypatch.setattr(
+                workspace_owner,
+                "verify_owner_replacement_binding",
+                forbidden_global,
+            )
+            monkeypatch.setattr(
+                captured_directory,
+                "_publish_staged_directory_with_authority",
+                forbidden_global,
+            )
+            monkeypatch.setattr(
+                atomic_directory,
+                "DirectoryOrphan",
+                forbidden_global,
+            )
+            monkeypatch.setattr(
+                atomic_directory,
+                "_DirectoryOrphanLocator",
+                forbidden_global,
+            )
+            monkeypatch.setattr(
+                atomic_directory._NativeReplacementPublication,
+                "capture_incumbent",
+                forbidden_global,
+            )
+
+        def validate_published(
+            reader: atomic_directory.PublicationDirectoryReader,
+        ) -> None:
+            assert reader.read_bytes("payload", max_bytes=3) == b"new"
+            assert prepared.stage.joinpath("payload").read_bytes() == b"old"
+            events.append("validate-published")
+
+        workspace.publish_replacement_into(
+            prepared.output_owner,
+            deadline_ns=_replacement_deadline_ns(),
+            validate_staged_directory=validate_staged,
+            validate_published_destination=validate_published,
+        )
+
+        assert events == [
+            "provision",
+            "validate-staged",
+            "exchange",
+            "validate-published",
+            "commit",
+        ]
+        assert prepared.output_owner.active
+        assert (
+            workspace_owner.owner_state(prepared.native_owner)
+            == "replacement-receipted"
+        )
+        orphan = prepared.output_owner.receipt.orphan
+        assert orphan is not None
+        assert orphan.locator.backend_tag == "linux-renameat2"
+        assert (
+            orphan.reopen(lambda reader: reader.read_bytes("payload", max_bytes=3))
+            == b"old"
+        )
+        with pytest.raises(RuntimeError):
+            prepared.source_owner.consume(lambda _receipt, _reader: None)
+
+        parked = prepared.parent / ".parked-incumbent"
+        orphan.path.rename(parked)
+        assert (
+            prepared.output_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(
+                    "payload",
+                    max_bytes=3,
+                )
+            )
+            == b"new"
+        )
+
+        parked_candidate = prepared.parent / ".parked-candidate"
+        prepared.destination.rename(parked_candidate)
+        prepared.destination.mkdir()
+        prepared.destination.joinpath("payload").write_bytes(b"new")
+        with pytest.raises(RuntimeError):
+            prepared.output_owner.consume(lambda _receipt, _reader: None)
+
+        prepared.output_owner.close()
+        assert workspace_owner.owner_closed(prepared.native_owner)
+        assert parked.joinpath("payload").read_bytes() == b"old"
+        parked.rename(orphan.path)
+        assert (
+            orphan.reopen(lambda reader: reader.read_bytes("payload", max_bytes=3))
+            == b"old"
+        )
+        parked = prepared.parent / ".original-displaced-incumbent"
+        orphan.path.rename(parked)
+        orphan.path.mkdir()
+        orphan.path.joinpath("payload").write_bytes(b"old")
+        with pytest.raises(RuntimeError):
+            orphan.reopen(lambda _reader: None)
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_bound_replacement_child_cleanup_cannot_affect_parent_lease_or_mapping(
+    tmp_path: Path,
+) -> None:
+    with _bound_native_replacement(tmp_path) as prepared:
+        workspace = prepared.workspace
+        workspace.provision_bound_replacement(deadline_ns=_replacement_deadline_ns())
+        descriptors = {
+            workspace._replacement_parent_descriptor,
+            workspace._replacement_incumbent_descriptor,
+            workspace._root_descriptor,
+            *workspace._directory_descriptors.values(),
+        }
+        descriptors.discard(-1)
+        child = os.fork()
+        if child == 0:  # pragma: no branch - child reports exact status
+            signal.signal(signal.SIGALRM, lambda *_args: os._exit(80))
+            signal.alarm(3)
+            try:
+                workspace.close()
+            except RuntimeError as error:
+                if "PID boundary" not in str(error):
+                    os._exit(81)
+            except BaseException:  # noqa: B036 - child reports exact failure
+                os._exit(82)
+            else:
+                os._exit(83)
+            for descriptor in descriptors:
+                try:
+                    os.fstat(descriptor)
+                except OSError as error:
+                    if error.errno != errno.EBADF:
+                        os._exit(84)
+                else:
+                    os._exit(85)
+            os._exit(0)
+
+        _pid, status = os.waitpid(child, 0)
+        assert os.WIFEXITED(status)
+        assert os.WEXITSTATUS(status) == 0
+        for descriptor in descriptors:
+            os.fstat(descriptor)
+        assert workspace_owner.owner_state(prepared.native_owner) == (
+            "replacement-adopted"
+        )
+        assert prepared.destination.joinpath("payload").read_bytes() == b"old"
+        assert prepared.stage.is_dir()
+
+        workspace.write_file("payload", (b"new",))
+        workspace.seal()
+        workspace.publish_replacement_into(
+            prepared.output_owner,
+            deadline_ns=_replacement_deadline_ns(),
+        )
+        assert (
+            prepared.output_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(
+                    "payload",
+                    max_bytes=3,
+                )
+            )
+            == b"new"
+        )
+
+
+@pytest.mark.parametrize("install_point", ("before-store", "after-store"))
+def test_replacement_baseexception_settles_on_the_receipt_slot_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    install_point: str,
+) -> None:
+    with _bound_native_replacement(tmp_path) as prepared:
+        workspace = prepared.workspace
+        workspace.provision_bound_replacement(deadline_ns=_replacement_deadline_ns())
+        workspace.write_file("payload", (b"new",))
+        workspace.seal()
+        real_install = PublishedWorkspaceReceiptOwner._install
+        real_abort = workspace_owner.abort_owner
+        real_commit = workspace_owner.commit_owner_receipt
+        abort_calls: list[object] = []
+        commit_calls: list[object] = []
+        interruption = KeyboardInterrupt(install_point)
+
+        def observed_abort(owner: object) -> None:
+            abort_calls.append(owner)
+            real_abort(owner)
+
+        def observed_commit(token: object) -> None:
+            commit_calls.append(token)
+            real_commit(token)
+
+        def interrupted_install(self, reservation, receipt) -> None:
+            if install_point == "after-store":
+                real_install(self, reservation, receipt)
+            raise interruption
+
+        monkeypatch.setattr(workspace_owner, "abort_owner", observed_abort)
+        monkeypatch.setattr(
+            workspace_owner,
+            "commit_owner_receipt",
+            observed_commit,
+        )
+        monkeypatch.setattr(
+            PublishedWorkspaceReceiptOwner,
+            "_install",
+            interrupted_install,
+        )
+
+        with pytest.raises(KeyboardInterrupt) as caught:
+            workspace.publish_replacement_into(
+                prepared.output_owner,
+                deadline_ns=_replacement_deadline_ns(),
+            )
+        assert caught.value is interruption
+
+        if install_point == "before-store":
+            assert abort_calls == [prepared.native_owner]
+            assert commit_calls == []
+            assert prepared.output_owner.state == "cleanup"
+            with pytest.raises(RuntimeError, match="expected active"):
+                _ = prepared.output_owner.receipt
+            assert workspace_owner.owner_closed(prepared.native_owner)
+            assert prepared.destination.joinpath("payload").read_bytes() == b"old"
+            prepared.output_owner.close()
+            assert prepared.output_owner.closed
+            assert workspace.state == "closed"
+        else:
+            assert abort_calls == []
+            assert len(commit_calls) == 1
+            assert prepared.output_owner.active
+            assert (
+                workspace_owner.owner_state(prepared.native_owner)
+                == "replacement-receipted"
+            )
+            assert prepared.destination.joinpath("payload").read_bytes() == b"new"
+
+
+def test_replacement_commit_failure_retries_same_token_without_abort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _bound_native_replacement(tmp_path) as prepared:
+        workspace = prepared.workspace
+        workspace.provision_bound_replacement(deadline_ns=_replacement_deadline_ns())
+        workspace.write_file("payload", (b"new",))
+        workspace.seal()
+        real_commit = workspace_owner.commit_owner_receipt
+        real_abort = workspace_owner.abort_owner
+        commit_calls: list[object] = []
+        abort_calls: list[object] = []
+        first_error = OSError(errno.EIO, "injected receipt commit failure")
+
+        def retrying_commit(token: object) -> None:
+            commit_calls.append(token)
+            if len(commit_calls) == 1:
+                raise first_error
+            real_commit(token)
+
+        def observed_abort(owner: object) -> None:
+            abort_calls.append(owner)
+            real_abort(owner)
+
+        monkeypatch.setattr(
+            workspace_owner,
+            "commit_owner_receipt",
+            retrying_commit,
+        )
+        monkeypatch.setattr(workspace_owner, "abort_owner", observed_abort)
+
+        with pytest.raises(OSError, match="receipt commit failure") as caught:
+            workspace.publish_replacement_into(
+                prepared.output_owner,
+                deadline_ns=_replacement_deadline_ns(),
+            )
+
+        assert caught.value is first_error
+        assert len(commit_calls) == 2
+        assert commit_calls[0] is commit_calls[1]
+        assert abort_calls == []
+        assert prepared.output_owner.active
+        assert (
+            workspace_owner.owner_state(prepared.native_owner)
+            == "replacement-receipted"
+        )
+        assert (
+            prepared.output_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(
+                    "payload",
+                    max_bytes=3,
+                )
+            )
+            == b"new"
+        )

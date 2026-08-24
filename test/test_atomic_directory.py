@@ -33,6 +33,140 @@ def _write_tree(root: Path, name: str, value: str) -> None:
     (root / name).write_text(value, encoding="utf-8")
 
 
+def _adopt_fake_native_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    events: list[str] | None = None,
+) -> SimpleNamespace:
+    """Adopt the real dual-root facade around test-owned POSIX descriptors."""
+
+    parent = tmp_path / "authority"
+    parent.mkdir()
+    stage = parent / ".candidate"
+    destination = parent / "published"
+    _write_tree(stage, "payload.bin", "new")
+    _write_tree(destination, "payload.bin", "old")
+    parent_descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+    candidate_descriptor = os.open(stage, os.O_RDONLY | os.O_DIRECTORY)
+    incumbent_descriptor = os.open(destination, os.O_RDONLY | os.O_DIRECTORY)
+    native_owner = object()
+    native_state = {"value": "replacement-adopted"}
+    receipt_token = object()
+    exchange_calls: list[tuple[bytes, bytes, int]] = []
+
+    def require_owner(candidate: object) -> object:
+        if candidate is not native_owner:
+            raise TypeError("wrong native owner")
+        return candidate
+
+    def verify_owner(candidate: object) -> None:
+        if candidate is not native_owner:
+            raise TypeError("wrong native owner")
+
+    def exchange(source: bytes, target: bytes, deadline_ns: int) -> object:
+        exchange_calls.append((source, target, deadline_ns))
+        if events is not None:
+            events.append("exchange")
+        source_name = os.fsdecode(source)
+        target_name = os.fsdecode(target)
+        swap_name = ".test-only-exchange-swap"
+        os.rename(
+            source_name,
+            swap_name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
+        os.rename(
+            target_name,
+            source_name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
+        os.rename(
+            swap_name,
+            target_name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
+        native_state["value"] = "replacement-exchanged-unreceipted"
+        return receipt_token
+
+    native_module = atomic_module._native_workspace_owner
+    monkeypatch.setattr(native_module, "require_exact_owner", require_owner)
+    monkeypatch.setattr(native_module, "verify_owner_authority", verify_owner)
+
+    def forbidden_late_borrow(_candidate: object) -> int:
+        raise AssertionError("replacement adoption borrowed a descriptor late")
+
+    monkeypatch.setattr(
+        native_module,
+        "borrow_owner_parent_descriptor",
+        forbidden_late_borrow,
+    )
+    monkeypatch.setattr(
+        native_module,
+        "borrow_owner_root_descriptor",
+        forbidden_late_borrow,
+    )
+    monkeypatch.setattr(
+        native_module,
+        "owner_state",
+        lambda candidate: (
+            native_state["value"] if candidate is native_owner else "wrong-native-owner"
+        ),
+    )
+    authority_owner = atomic_module._PublicationAuthorityOwner()
+    try:
+        authority, replacement = (
+            atomic_module._adopt_native_posix_replacement_authority(
+                parent,
+                native_owner=native_owner,
+                parent_descriptor=parent_descriptor,
+                candidate_descriptor=candidate_descriptor,
+                incumbent_descriptor=incumbent_descriptor,
+                expected_parent_identity=publication_parent_identity(parent_descriptor),
+                expected_incumbent_identity=(
+                    atomic_module._directory_inode_identity(
+                        os.fstat(incumbent_descriptor)
+                    )
+                ),
+                destination_name=destination.name,
+                replacement_slot=stage.name,
+                exchange_callback=exchange,
+                authority_owner=authority_owner,
+            )
+        )
+    except BaseException:
+        authority_owner.close()
+        os.close(incumbent_descriptor)
+        os.close(candidate_descriptor)
+        os.close(parent_descriptor)
+        raise
+    return SimpleNamespace(
+        authority=authority,
+        authority_owner=authority_owner,
+        candidate_descriptor=candidate_descriptor,
+        destination=destination,
+        exchange_calls=exchange_calls,
+        incumbent_descriptor=incumbent_descriptor,
+        native_owner=native_owner,
+        native_state=native_state,
+        parent=parent,
+        parent_descriptor=parent_descriptor,
+        receipt_token=receipt_token,
+        replacement=replacement,
+        stage=stage,
+    )
+
+
+def _close_fake_native_replacement(prepared: SimpleNamespace) -> None:
+    prepared.authority_owner.close()
+    os.close(prepared.incumbent_descriptor)
+    os.close(prepared.candidate_descriptor)
+    os.close(prepared.parent_descriptor)
+
+
 def _exception_notes(error: BaseException) -> tuple[str, ...]:
     return (
         *tuple(getattr(error, "__notes__", ())),
@@ -10298,3 +10432,482 @@ def test_posix_nested_exit_handoff_defers_cleanup_to_authority(
     assert owners[0].closed
     assert authority_owners[0].authority is None
     assert atomic_module._RETAINED_PUBLICATION_AUTHORITY_OWNERS == []
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="native workspace replacement is Linux-only",
+)
+def test_native_replacement_dual_readers_never_cross_route_and_receipt_is_candidate_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _adopt_fake_native_replacement(tmp_path, monkeypatch)
+    replacement = prepared.replacement
+    candidate_before = capture_directory_ownership(prepared.stage)
+    incumbent_before = capture_directory_ownership(prepared.destination)
+
+    def payload(reader: atomic_module.PublicationDirectoryReader) -> bytes:
+        return reader.read_bytes("payload.bin", max_bytes=16)
+
+    try:
+        assert (
+            prepared.authority.read_child(
+                prepared.stage.name,
+                path=prepared.stage,
+                label="candidate",
+                expected_ownership=candidate_before,
+                callback=payload,
+            )
+            == b"new"
+        )
+        assert (
+            replacement.read_incumbent(
+                prepared.destination.name,
+                prepared.destination,
+                "incumbent",
+                incumbent_before,
+                payload,
+            )
+            == b"old"
+        )
+        with pytest.raises(RuntimeError, match="not the replacement candidate"):
+            replacement.read_candidate(
+                prepared.destination.name,
+                prepared.destination,
+                "candidate",
+                None,
+                payload,
+            )
+        with pytest.raises(RuntimeError, match="not the replacement incumbent"):
+            replacement.read_incumbent(
+                prepared.stage.name,
+                prepared.stage,
+                "incumbent",
+                None,
+                payload,
+            )
+
+        assert replacement.exchange(1) is prepared.receipt_token
+        candidate_after = replacement.read_candidate(
+            prepared.destination.name,
+            prepared.destination,
+            "candidate",
+            None,
+            lambda reader: reader.capture_ownership(allow_empty_root=True),
+        )
+        incumbent_after = replacement.read_incumbent(
+            prepared.stage.name,
+            prepared.stage,
+            "incumbent",
+            None,
+            lambda reader: reader.capture_ownership(allow_empty_root=True),
+        )
+        assert (
+            prepared.authority.read_child(
+                prepared.destination.name,
+                path=prepared.destination,
+                label="candidate",
+                expected_ownership=candidate_after,
+                callback=payload,
+            )
+            == b"new"
+        )
+        assert (
+            replacement.read_incumbent(
+                prepared.stage.name,
+                prepared.stage,
+                "incumbent",
+                incumbent_after,
+                payload,
+            )
+            == b"old"
+        )
+
+        prepared.native_state["value"] = "replacement-receipted"
+        replacement.mark_receipted()
+
+        def forbidden_native_verifier(_owner: object) -> None:
+            raise AssertionError("postreceipt read reached the native verifier")
+
+        monkeypatch.setattr(
+            atomic_module._native_workspace_owner,
+            "verify_owner_authority",
+            forbidden_native_verifier,
+        )
+        displaced = prepared.parent / ".displaced-incumbent"
+        prepared.stage.rename(displaced)
+        assert (
+            prepared.authority.read_child(
+                prepared.destination.name,
+                path=prepared.destination,
+                label="candidate",
+                expected_ownership=candidate_after,
+                callback=payload,
+            )
+            == b"new"
+        )
+        with pytest.raises(RuntimeError, match="no incumbent reader"):
+            _ = replacement.incumbent_name
+
+        prepared.authority_owner.close()
+        os.fstat(prepared.parent_descriptor)
+        os.fstat(prepared.candidate_descriptor)
+        os.fstat(prepared.incumbent_descriptor)
+    finally:
+        _close_fake_native_replacement(prepared)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="native workspace replacement is Linux-only",
+)
+def test_native_replacement_helper_orders_exchange_validation_commit_and_orphan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    prepared = _adopt_fake_native_replacement(
+        tmp_path,
+        monkeypatch,
+        events=events,
+    )
+    expected_candidate = capture_directory_ownership(prepared.stage)
+    expected_incumbent = capture_directory_ownership(prepared.destination)
+    observed: list[tuple[object, object, DirectoryOrphan, object]] = []
+    orphan: DirectoryOrphan | None = None
+
+    def validate_staged(reader: atomic_module.PublicationDirectoryReader) -> None:
+        assert reader.read_bytes("payload.bin", max_bytes=16) == b"new"
+        events.append("validate-staged")
+
+    def validate_published(reader: atomic_module.PublicationDirectoryReader) -> None:
+        assert reader.read_bytes("payload.bin", max_bytes=16) == b"new"
+        assert (prepared.stage / "payload.bin").read_bytes() == b"old"
+        events.append("validate-published")
+
+    def commit(
+        staged: object,
+        published: object,
+        displaced: DirectoryOrphan,
+        receipt_token: object,
+    ) -> None:
+        assert events == ["validate-staged", "exchange", "validate-published"]
+        assert receipt_token is prepared.receipt_token
+        observed.append((staged, published, displaced, receipt_token))
+        prepared.native_state["value"] = "replacement-receipted"
+        prepared.replacement.mark_receipted()
+        events.append("commit")
+
+    try:
+        orphan = atomic_module._publish_native_replacement_with_authority(
+            prepared.authority,
+            prepared.replacement,
+            prepared.stage,
+            prepared.destination,
+            expected_stage_root_ownership=expected_candidate,
+            expected_destination_ownership=expected_incumbent,
+            deadline_ns=1,
+            validate_staged_directory=validate_staged,
+            validate_published_destination=validate_published,
+            commit_callback=commit,
+        )
+        assert events == [
+            "validate-staged",
+            "exchange",
+            "validate-published",
+            "commit",
+        ]
+        assert len(observed) == 1
+        assert observed[0][0] == expected_candidate
+        assert observed[0][2] is orphan
+        assert orphan.locator.backend_tag == "linux-renameat2"
+        assert prepared.exchange_calls == [
+            (
+                os.fsencode(prepared.stage.name),
+                os.fsencode(prepared.destination.name),
+                1,
+            )
+        ]
+    finally:
+        _close_fake_native_replacement(prepared)
+
+    assert orphan is not None
+    assert (
+        orphan.reopen(lambda reader: reader.read_bytes("payload.bin", max_bytes=16))
+        == b"old"
+    )
+    parked = orphan.path.with_name(".parked-displaced-incumbent")
+    orphan.path.rename(parked)
+    _write_tree(orphan.path, "payload.bin", "old")
+    with pytest.raises(RuntimeError, match="directory orphan|root differs"):
+        orphan.reopen(lambda _reader: None)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="native workspace replacement is Linux-only",
+)
+def test_native_replacement_authority_traps_the_generic_publication_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _adopt_fake_native_replacement(tmp_path, monkeypatch)
+    expected_candidate = capture_directory_ownership(prepared.stage)
+    expected_incumbent = capture_directory_ownership(prepared.destination)
+    try:
+        with pytest.raises(RuntimeError, match="dedicated exchange path"):
+            atomic_module._publish_staged_directory_with_authority(
+                prepared.authority,
+                prepared.stage,
+                prepared.destination,
+                expected_stage_root_ownership=expected_candidate,
+                expected_destination_ownership=expected_incumbent,
+            )
+        assert prepared.exchange_calls == []
+        assert (prepared.stage / "payload.bin").read_bytes() == b"new"
+        assert (prepared.destination / "payload.bin").read_bytes() == b"old"
+        assert not tuple(prepared.parent.glob(".published.previous-*"))
+    finally:
+        _close_fake_native_replacement(prepared)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="native workspace replacement is Linux-only",
+)
+def test_native_replacement_helper_rejects_an_exact_wrong_authority_pair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _adopt_fake_native_replacement(tmp_path, monkeypatch)
+    foreign_owner = atomic_module._PublicationAuthorityOwner()
+    events: list[str] = []
+
+    def forbidden_exchange(
+        _source: bytes,
+        _destination: bytes,
+        _deadline_ns: int,
+    ) -> object:
+        events.append("exchange")
+        raise AssertionError("wrong replacement pair reached its token callback")
+
+    foreign_authority, foreign_replacement = (
+        atomic_module._adopt_native_posix_replacement_authority(
+            prepared.parent,
+            native_owner=prepared.native_owner,
+            parent_descriptor=prepared.parent_descriptor,
+            candidate_descriptor=prepared.candidate_descriptor,
+            incumbent_descriptor=prepared.incumbent_descriptor,
+            expected_parent_identity=publication_parent_identity(
+                prepared.parent_descriptor
+            ),
+            expected_incumbent_identity=(
+                atomic_module._directory_inode_identity(
+                    os.fstat(prepared.incumbent_descriptor)
+                )
+            ),
+            destination_name=prepared.destination.name,
+            replacement_slot=prepared.stage.name,
+            exchange_callback=forbidden_exchange,
+            authority_owner=foreign_owner,
+        )
+    )
+    assert type(foreign_authority) is type(prepared.authority)
+    assert type(foreign_replacement) is type(prepared.replacement)
+    expected_candidate = capture_directory_ownership(prepared.stage)
+    expected_incumbent = capture_directory_ownership(prepared.destination)
+
+    try:
+        with pytest.raises(
+            TypeError,
+            match="authority.*pair|pair.*authority|pairing",
+        ):
+            atomic_module._publish_native_replacement_with_authority(
+                prepared.authority,
+                foreign_replacement,
+                prepared.stage,
+                prepared.destination,
+                expected_stage_root_ownership=expected_candidate,
+                expected_destination_ownership=expected_incumbent,
+                deadline_ns=1,
+                validate_staged_directory=lambda _reader: events.append(
+                    "validate-staged"
+                ),
+                validate_published_destination=lambda _reader: events.append(
+                    "validate-published"
+                ),
+                commit_callback=lambda *_args: events.append("commit"),
+            )
+
+        assert events == []
+        assert prepared.exchange_calls == []
+        assert not prepared.replacement.exchanged
+        assert not foreign_replacement.exchanged
+        assert (prepared.stage / "payload.bin").read_bytes() == b"new"
+        assert (prepared.destination / "payload.bin").read_bytes() == b"old"
+    finally:
+        foreign_owner.close()
+        _close_fake_native_replacement(prepared)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="native workspace replacement is Linux-only",
+)
+def test_native_replacement_helper_requires_the_exact_replacement_type(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _adopt_fake_native_replacement(tmp_path, monkeypatch)
+    events: list[str] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        events.append("forged-callback")
+        raise AssertionError("forged replacement reached a protected callback")
+
+    forged = SimpleNamespace(
+        replacement_slot=prepared.stage.name,
+        destination_name=prepared.destination.name,
+        verify_current=forbidden,
+        capture_incumbent=forbidden,
+        exchange=forbidden,
+    )
+    expected_candidate = capture_directory_ownership(prepared.stage)
+    expected_incumbent = capture_directory_ownership(prepared.destination)
+    try:
+        with pytest.raises(TypeError, match="replacement.*invalid"):
+            atomic_module._publish_native_replacement_with_authority(
+                prepared.authority,
+                forged,  # type: ignore[arg-type]
+                prepared.stage,
+                prepared.destination,
+                expected_stage_root_ownership=expected_candidate,
+                expected_destination_ownership=expected_incumbent,
+                deadline_ns=1,
+                validate_staged_directory=lambda _reader: events.append(
+                    "validate-staged"
+                ),
+                validate_published_destination=lambda _reader: events.append(
+                    "validate-published"
+                ),
+                commit_callback=lambda *_args: events.append("commit"),
+            )
+
+        assert events == []
+        assert prepared.exchange_calls == []
+        assert not prepared.replacement.exchanged
+        assert (prepared.stage / "payload.bin").read_bytes() == b"new"
+        assert (prepared.destination / "payload.bin").read_bytes() == b"old"
+    finally:
+        _close_fake_native_replacement(prepared)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="native workspace replacement is Linux-only",
+)
+def test_native_replacement_validator_cannot_intercept_late_native_globals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _adopt_fake_native_replacement(tmp_path, monkeypatch)
+    expected_candidate = capture_directory_ownership(prepared.stage)
+    expected_incumbent = capture_directory_ownership(prepared.destination)
+    interceptions: list[str] = []
+
+    def intercept_verify(_owner: object) -> None:
+        interceptions.append("verify")
+        raise AssertionError("validator intercepted native verification")
+
+    def intercept_state(_owner: object) -> str:
+        interceptions.append("state")
+        raise AssertionError("validator intercepted native receipt state")
+
+    def validate_staged(_reader: atomic_module.PublicationDirectoryReader) -> None:
+        monkeypatch.setattr(
+            atomic_module._native_workspace_owner,
+            "verify_owner_authority",
+            intercept_verify,
+        )
+        monkeypatch.setattr(
+            atomic_module._native_workspace_owner,
+            "owner_state",
+            intercept_state,
+        )
+
+    def commit(
+        _staged: object,
+        _published: object,
+        _displaced: DirectoryOrphan,
+        _receipt_token: object,
+    ) -> None:
+        prepared.native_state["value"] = "replacement-receipted"
+        prepared.replacement.mark_receipted()
+
+    try:
+        atomic_module._publish_native_replacement_with_authority(
+            prepared.authority,
+            prepared.replacement,
+            prepared.stage,
+            prepared.destination,
+            expected_stage_root_ownership=expected_candidate,
+            expected_destination_ownership=expected_incumbent,
+            deadline_ns=1,
+            validate_staged_directory=validate_staged,
+            commit_callback=commit,
+        )
+        assert interceptions == []
+        assert (prepared.destination / "payload.bin").read_bytes() == b"new"
+    finally:
+        _close_fake_native_replacement(prepared)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux") or not hasattr(os, "fork"),
+    reason="native workspace replacement fork fencing requires Linux fork",
+)
+def test_native_replacement_authority_rejects_fork_without_closing_parent_fds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _adopt_fake_native_replacement(tmp_path, monkeypatch)
+    expected_candidate = capture_directory_ownership(prepared.stage)
+    child = os.fork()
+    if child == 0:  # pragma: no branch - child reports exact status
+        try:
+            prepared.authority.read_child(
+                prepared.stage.name,
+                path=prepared.stage,
+                label="candidate",
+                expected_ownership=expected_candidate,
+                callback=lambda _reader: None,
+            )
+        except RuntimeError as error:
+            os._exit(0 if "process boundary" in str(error) else 2)
+        except BaseException:  # noqa: B036 - child reports exact failure
+            os._exit(3)
+        os._exit(4)
+
+    try:
+        _, status = os.waitpid(child, 0)
+        assert os.WIFEXITED(status)
+        assert os.WEXITSTATUS(status) == 0
+        assert (
+            prepared.authority.read_child(
+                prepared.stage.name,
+                path=prepared.stage,
+                label="candidate",
+                expected_ownership=expected_candidate,
+                callback=lambda reader: reader.read_bytes(
+                    "payload.bin",
+                    max_bytes=16,
+                ),
+            )
+            == b"new"
+        )
+        os.fstat(prepared.parent_descriptor)
+        os.fstat(prepared.candidate_descriptor)
+        os.fstat(prepared.incumbent_descriptor)
+    finally:
+        _close_fake_native_replacement(prepared)

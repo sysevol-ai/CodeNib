@@ -33,11 +33,15 @@ from ._atomic_directory import (
     PublicationDirectoryReader,
     TreeFileRecord,
     _adopt_native_posix_publication_authority,
+    _adopt_native_posix_replacement_authority,
     _annotate_secondary_error,
+    _capture_posix_directory_descriptor,
+    _NativeReplacementPublication,
     _open_publication_authority,
     _PosixResourceOwner,
     _PublicationAuthority,
     _PublicationAuthorityOwner,
+    _publish_native_replacement_with_authority,
     _publish_staged_directory_with_authority,
     _rename_noreplace_at,
     _require_matching_ownership,
@@ -635,6 +639,10 @@ class _WorkspacePublicationTransfer:
     """Shared aggregate owner installed before any publication mutation."""
 
     workspace: "OwnedWorkspaceAuthority"
+    native_receipt_commit: Callable[[object], None]
+    native_owner_closed: Callable[[object], bool]
+    native_owner_state: Callable[[object], str]
+    mark_replacement_receipted: Callable[[], None] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2171,6 +2179,12 @@ class OwnedWorkspaceAuthority:
         self._publication_transfer: _WorkspacePublicationTransfer | None = None
         self._resources_transferred = False
         self._native_owner: object | None = None
+        self._native_replacement: _NativeReplacementPublication | None = None
+        self._replacement_exchange: Callable[[bytes, bytes, int], object] | None = None
+        self._replacement_parent_descriptor = -1
+        self._replacement_parent_identity: tuple[int, ...] | None = None
+        self._replacement_incumbent_descriptor = -1
+        self._replacement_incumbent_identity: tuple[int, ...] | None = None
 
     @property
     def state(self) -> str:
@@ -2223,6 +2237,302 @@ class OwnedWorkspaceAuthority:
         raise UnsupportedWorkspaceCreation(
             "strict workspace creation requires a trusted pre-opened skeleton"
         )
+
+    def bind_replacement_source(
+        self,
+        source_owner: PublishedWorkspaceReceiptOwner,
+        *,
+        destination_binding: PublishedWorkspaceDestinationBinding,
+        native_owner: object,
+        stage_name: str,
+        plan: WorkspacePlan,
+    ) -> None:
+        """Bind one leased native owner to an active incumbent generation.
+
+        This is the first phase of exact replacement.  The active receipt is
+        consumed synchronously, while the native owner still holds the same
+        incumbent and parent under its cooperative lease.  The one-shot native
+        exchange permit remains private to this authority; no detached request
+        binding or replayable replacement capability is returned.
+        """
+
+        self._require_owner_pid()
+        if not sys.platform.startswith("linux"):
+            raise UnsupportedWorkspaceCreation(
+                "native workspace replacement binding requires Linux"
+            )
+        if type(source_owner) is not PublishedWorkspaceReceiptOwner:
+            raise TypeError(
+                "replacement source owner must be an exact "
+                "PublishedWorkspaceReceiptOwner"
+            )
+        if (
+            type(destination_binding)
+            is not _PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE
+        ):
+            raise TypeError("workspace destination binding is invalid")
+        self._reject_reentrant("bind replacement source")
+        detached_plan = _snapshot_workspace_plan(plan)
+        destination = lexical_directory_path(destination_binding.destination)
+        stage_relative = _relative_path(stage_name)
+        if len(stage_relative.parts) != 1 or not stage_relative.name.startswith("."):
+            raise ValueError(
+                "workspace replacement stage must be one hidden child name"
+            )
+        if stage_relative.name == destination.name:
+            raise ValueError("workspace replacement roots must have distinct names")
+        owner = _native_workspace_owner.require_exact_owner(native_owner)
+        consume_source_exact = PublishedWorkspaceReceiptOwner.consume
+        capture_ownership_exact = PublicationDirectoryReader.capture_ownership
+
+        def bind_active_source(
+            receipt: PublishedWorkspaceReceipt,
+            reader: PublicationDirectoryReader,
+        ) -> None:
+            if type(receipt) is not _PUBLISHED_WORKSPACE_RECEIPT_TYPE:
+                raise RuntimeError("workspace replacement source receipt is invalid")
+            if receipt._destination_binding is not destination_binding:
+                raise RuntimeError("workspace replacement source binding is not active")
+            if (
+                receipt.path != destination
+                or receipt.parent_identity != destination_binding.parent_identity
+                or receipt.ownership != destination_binding.ownership
+            ):
+                raise RuntimeError(
+                    "workspace replacement source binding fields changed"
+                )
+            source_ownership = capture_ownership_exact(
+                reader,
+                allow_empty_root=True,
+            )
+            if source_ownership != destination_binding.ownership:
+                raise RuntimeError("workspace replacement source generation changed")
+            self._lock.run(
+                lambda: self._bind_replacement_source_locked(
+                    destination=destination,
+                    stage_name=stage_relative.name,
+                    plan=detached_plan,
+                    destination_binding=destination_binding,
+                    source_ownership=source_ownership,
+                    native_owner=owner,
+                )
+            )
+
+        try:
+            consume_source_exact(source_owner, bind_active_source)
+        except BaseException as bind_error:  # noqa: B036 - settle transferred owner
+            primary_error = bind_error
+
+            def settle_failed_bind() -> None:
+                if self._native_owner is not owner or self._state == "closed":
+                    return
+                self._state = "failed"
+                self._close_resources_after_error_locked(primary_error)
+
+            try:
+                self._lock.run(settle_failed_bind)
+            except BaseException as cleanup_error:  # noqa: B036 - keep primary
+                _annotate_secondary_error(
+                    primary_error,
+                    "workspace replacement bind cleanup also failed",
+                    cleanup_error,
+                )
+            raise
+
+    def _bind_replacement_source_locked(
+        self,
+        *,
+        destination: Path,
+        stage_name: str,
+        plan: WorkspacePlan,
+        destination_binding: PublishedWorkspaceDestinationBinding,
+        source_ownership: _TreeOwnership,
+        native_owner: object,
+    ) -> None:
+        self._require_owner_pid()
+        if self._state != "empty" or self._native_owner is not None:
+            raise RuntimeError("owned workspace authority is not empty")
+
+        # From this store onward workspace cleanup is the sole Python mutation
+        # authority for the leased aggregate.  Every later failure aborts it,
+        # reverses any unreceipted exchange natively, and releases the lease.
+        self._native_owner = native_owner
+        self._state = "binding-replacement"
+        try:
+            if _native_workspace_owner.owner_state(native_owner) != (
+                "destination-leased"
+            ):
+                raise RuntimeError("native workspace destination is not leased")
+            _native_workspace_owner.verify_owner_destination_binding(native_owner)
+            parent_descriptor = _native_workspace_owner.borrow_owner_parent_descriptor(
+                native_owner
+            )
+            incumbent_descriptor = (
+                _native_workspace_owner.borrow_owner_destination_descriptor(
+                    native_owner
+                )
+            )
+            parent_identity = publication_parent_identity(parent_descriptor)
+            incumbent_identity = _root_identity(os.fstat(incumbent_descriptor))
+            native_incumbent = _capture_posix_directory_descriptor(
+                incumbent_descriptor,
+                destination,
+                required_root_file=None,
+                allow_empty_root=True,
+                entry_policy=None,
+            )
+            if parent_identity != destination_binding.parent_identity:
+                raise RuntimeError(
+                    "native workspace parent differs from the active source"
+                )
+            if (
+                native_incumbent != destination_binding.ownership
+                or native_incumbent != source_ownership
+            ):
+                raise RuntimeError(
+                    "native workspace incumbent differs from the active source"
+                )
+            _native_workspace_owner.verify_owner_destination_binding(native_owner)
+            if publication_parent_identity(parent_descriptor) != parent_identity:
+                raise RuntimeError(
+                    "native workspace parent changed during source binding"
+                )
+            if _root_identity(os.fstat(incumbent_descriptor)) != incumbent_identity:
+                raise RuntimeError(
+                    "native workspace incumbent changed during source binding"
+                )
+            replacement_permit = _native_workspace_owner.claim_owner_replacement_permit(
+                native_owner
+            )
+            exchange = _native_workspace_owner._bind_owner_replacement_permit(
+                replacement_permit
+            )
+
+            self._destination = destination
+            self._stage_path = destination.parent / stage_name
+            self._plan = plan
+            self._destination_binding = destination_binding
+            self._replacement_exchange = exchange
+            self._replacement_parent_descriptor = parent_descriptor
+            self._replacement_parent_identity = parent_identity
+            self._replacement_incumbent_descriptor = incumbent_descriptor
+            self._replacement_incumbent_identity = incumbent_identity
+            self._state = "replacement-bound"
+        except BaseException as bind_error:  # noqa: B036 - settle leased owner
+            self._state = "failed"
+            self._close_resources_after_error_locked(bind_error)
+            raise
+
+    def provision_bound_replacement(self, *, deadline_ns: int) -> None:
+        """Provision and adopt the candidate retained by phase-one binding."""
+
+        self._require_owner_pid()
+        if not sys.platform.startswith("linux"):
+            raise UnsupportedWorkspaceCreation(
+                "native workspace replacement provisioning requires Linux"
+            )
+        if type(deadline_ns) is not int or deadline_ns <= 0:
+            raise ValueError("workspace replacement deadline is invalid")
+        self._reject_reentrant("provision bound replacement")
+        self._lock.run(
+            lambda: self._provision_bound_replacement_locked(deadline_ns=deadline_ns)
+        )
+
+    def _provision_bound_replacement_locked(self, *, deadline_ns: int) -> None:
+        self._require_owner_pid()
+        if self._state != "replacement-bound":
+            raise RuntimeError(
+                "owned workspace replacement is not bound for provisioning"
+            )
+        owner = self._native_owner
+        destination = self._destination
+        stage_path = self._stage_path
+        plan = self._plan
+        destination_binding = self._destination_binding
+        exchange = self._replacement_exchange
+        parent_descriptor = self._replacement_parent_descriptor
+        parent_identity = self._replacement_parent_identity
+        incumbent_descriptor = self._replacement_incumbent_descriptor
+        incumbent_identity = self._replacement_incumbent_identity
+        if (
+            owner is None
+            or destination is None
+            or stage_path is None
+            or plan is None
+            or destination_binding is None
+            or exchange is None
+            or parent_descriptor < 0
+            or parent_identity is None
+            or incumbent_descriptor < 0
+            or incumbent_identity is None
+        ):
+            raise RuntimeError("owned workspace replacement binding is incomplete")
+
+        self._state = "provisioning-replacement"
+        try:
+            if publication_parent_identity(parent_descriptor) != parent_identity:
+                raise RuntimeError("workspace replacement parent authority changed")
+            if _root_identity(os.fstat(incumbent_descriptor)) != incumbent_identity:
+                raise RuntimeError("workspace replacement incumbent authority changed")
+            _native_workspace_owner.verify_owner_destination_binding(owner)
+            _native_workspace_owner.provision_owner_replacement(
+                owner,
+                os.fsencode(stage_path.name),
+                plan.digest.encode("ascii"),
+                plan.root_mode,
+                tuple(
+                    (os.fsencode(item.path.as_posix()), item.mode)
+                    for item in plan.directories
+                ),
+                deadline_ns,
+            )
+            _native_workspace_owner.verify_owner_adoption_binding(
+                owner,
+                os.fsencode(destination),
+                os.fsencode(stage_path.name),
+                plan.digest.encode("ascii"),
+            )
+            root_descriptor = _native_workspace_owner.borrow_owner_root_descriptor(
+                owner
+            )
+            directory_descriptors = {
+                item.path.as_posix(): (
+                    _native_workspace_owner.borrow_owner_directory_descriptor(
+                        owner,
+                        os.fsencode(item.path.as_posix()),
+                    )
+                )
+                for item in plan.directories
+            }
+            _authority, replacement = _adopt_native_posix_replacement_authority(
+                destination.parent,
+                native_owner=owner,
+                parent_descriptor=parent_descriptor,
+                candidate_descriptor=root_descriptor,
+                incumbent_descriptor=incumbent_descriptor,
+                expected_parent_identity=parent_identity,
+                expected_incumbent_identity=incumbent_identity,
+                destination_name=destination.name,
+                replacement_slot=stage_path.name,
+                exchange_callback=exchange,
+                authority_owner=self._parent_owner,
+            )
+            self._native_replacement = replacement
+            self._adopt_locked(
+                destination=destination,
+                stage_name=stage_path.name,
+                parent_descriptor=parent_descriptor,
+                root_descriptor=root_descriptor,
+                directory_descriptors=directory_descriptors,
+                plan=plan,
+                destination_binding=destination_binding,
+                native_replacement=replacement,
+            )
+        except BaseException as provision_error:  # noqa: B036 - settle owner
+            if self._state != "closed":
+                self._state = "failed"
+                self._abort_native_after_error_locked(provision_error)
+            raise
 
     def adopt(
         self,
@@ -2377,9 +2687,18 @@ class OwnedWorkspaceAuthority:
         plan: WorkspacePlan,
         destination_binding: PublishedWorkspaceDestinationBinding | None,
         native_publication_permit: object | None = None,
+        native_replacement: _NativeReplacementPublication | None = None,
     ) -> None:
         self._require_owner_pid()
-        if self._state != "empty":
+        replacement_adoption = native_replacement is not None
+        if replacement_adoption:
+            if (
+                type(native_replacement) is not _NativeReplacementPublication
+                or self._state != "provisioning-replacement"
+                or self._native_replacement is not native_replacement
+            ):
+                raise RuntimeError("owned workspace replacement adoption is not active")
+        elif self._state != "empty":
             raise RuntimeError("owned workspace authority is not empty")
         plan = _snapshot_workspace_plan(plan)
         if (
@@ -2410,6 +2729,15 @@ class OwnedWorkspaceAuthority:
         ):
             raise ValueError(
                 "workspace destination binding differs from its destination"
+            )
+        if replacement_adoption and (
+            self._destination != destination_path
+            or self._stage_path != stage_path
+            or self._plan != plan
+            or self._destination_binding is not destination_binding
+        ):
+            raise RuntimeError(
+                "workspace replacement slot, plan, or source binding changed"
             )
 
         expected_directory_paths = {item.path.as_posix() for item in plan.directories}
@@ -2450,7 +2778,7 @@ class OwnedWorkspaceAuthority:
                     ),
                     authority_owner=self._parent_owner,
                 )
-            else:
+            elif not replacement_adoption:
                 if native_publication_permit is None:
                     raise RuntimeError(
                         "native workspace publication capability is missing"
@@ -2587,31 +2915,46 @@ class OwnedWorkspaceAuthority:
                 self._directory_descriptors[path] = descriptor
                 self._directory_identities[path] = identity
 
-            destination_metadata = authority.child_metadata(
-                destination_path.name,
-                path=destination_path,
-                label="owned workspace destination",
-            )
-            if destination_binding is None:
-                if destination_metadata is not None:
+            if replacement_adoption:
+                assert native_replacement is not None
+                if destination_binding is None:
                     raise RuntimeError(
-                        "owned workspace destination was expected missing"
+                        "workspace replacement destination binding is missing"
                     )
-            else:
-                if destination_metadata is None:
-                    raise RuntimeError("owned workspace destination disappeared")
-                observed_destination = authority.capture_child(
-                    destination_path.name,
+                observed_destination = native_replacement.capture_incumbent(
                     path=destination_path,
-                    label="owned workspace destination",
-                    allow_empty_root=True,
+                    label="owned workspace replacement incumbent",
                 )
                 if observed_destination != destination_binding.ownership:
                     raise RuntimeError("owned workspace destination changed")
+            else:
+                destination_metadata = authority.child_metadata(
+                    destination_path.name,
+                    path=destination_path,
+                    label="owned workspace destination",
+                )
+                if destination_binding is None:
+                    if destination_metadata is not None:
+                        raise RuntimeError(
+                            "owned workspace destination was expected missing"
+                        )
+                else:
+                    if destination_metadata is None:
+                        raise RuntimeError("owned workspace destination disappeared")
+                    observed_destination = authority.capture_child(
+                        destination_path.name,
+                        path=destination_path,
+                        label="owned workspace destination",
+                        allow_empty_root=True,
+                    )
+                    if observed_destination != destination_binding.ownership:
+                        raise RuntimeError("owned workspace destination changed")
             authority.verify_path_binding()
             self._refresh_locked(require_complete=False)
             if self._native_owner is not None:
                 _native_workspace_owner.mark_owner_adopted(self._native_owner)
+            if native_replacement is not None:
+                native_replacement.verify_current()
             self._state = "adopted"
         except BaseException as refresh_error:
             self._state = "failed"
@@ -2987,7 +3330,7 @@ class OwnedWorkspaceAuthority:
             validate_published_destination
         ):
             raise TypeError("published workspace validator must be callable")
-        transfer = _WorkspacePublicationTransfer(self)
+        transfer = self._lock.run(self._new_publication_transfer_locked)
         reservation = _WorkspaceReservation(transfer)
         try:
             self._lock.run(
@@ -3008,6 +3351,66 @@ class OwnedWorkspaceAuthority:
             )
             raise
 
+    def publish_replacement_into(
+        self,
+        receipt_owner: PublishedWorkspaceReceiptOwner,
+        *,
+        deadline_ns: int,
+        validate_staged_directory: (
+            Callable[[PublicationDirectoryReader], None] | None
+        ) = None,
+        validate_published_destination: (
+            Callable[[PublicationDirectoryReader], None] | None
+        ) = None,
+    ) -> None:
+        """Exchange a sealed replacement and install its exact receipt."""
+
+        self._require_owner_pid()
+        self._reject_reentrant("publish replacement")
+        if type(receipt_owner) is not PublishedWorkspaceReceiptOwner:
+            raise TypeError("receipt_owner must be a PublishedWorkspaceReceiptOwner")
+        if type(deadline_ns) is not int or deadline_ns <= 0:
+            raise ValueError("workspace replacement deadline is invalid")
+        if validate_staged_directory is not None and not callable(
+            validate_staged_directory
+        ):
+            raise TypeError("staged workspace validator must be callable")
+        if validate_published_destination is not None and not callable(
+            validate_published_destination
+        ):
+            raise TypeError("published workspace validator must be callable")
+        transfer = self._lock.run(self._new_publication_transfer_locked)
+        reservation = _WorkspaceReservation(transfer)
+        try:
+            self._lock.run(
+                lambda: self._publish_replacement_into_locked(
+                    receipt_owner,
+                    transfer,
+                    reservation,
+                    deadline_ns,
+                    validate_staged_directory,
+                    validate_published_destination,
+                )
+            )
+        except BaseException as primary_error:  # noqa: B036 - reconcile owners
+            self._reconcile_publish_failure_outside_lock(
+                receipt_owner,
+                transfer,
+                reservation,
+                primary_error,
+            )
+            raise
+
+    def _new_publication_transfer_locked(self) -> _WorkspacePublicationTransfer:
+        replacement = self._native_replacement
+        return _WorkspacePublicationTransfer(
+            self,
+            _native_workspace_owner.commit_owner_receipt,
+            _native_workspace_owner.owner_closed,
+            _native_workspace_owner.owner_state,
+            None if replacement is None else replacement.mark_receipted,
+        )
+
     def _publish_into_locked(
         self,
         receipt_owner: PublishedWorkspaceReceiptOwner,
@@ -3023,6 +3426,10 @@ class OwnedWorkspaceAuthority:
             raise RuntimeError(f"owned workspace cannot publish while {self._state}")
         if self._destination is None or self._stage_path is None or self._plan is None:
             raise RuntimeError("owned workspace publication state is incomplete")
+        if self._native_replacement is not None:
+            raise RuntimeError(
+                "owned workspace replacement requires publish_replacement_into"
+            )
 
         # This first ownership store and every later publication operation are
         # covered by publish_into's outer exception reconciliation.  Keeping
@@ -3047,6 +3454,8 @@ class OwnedWorkspaceAuthority:
         receipt_new = receipt_type.__new__
         receipt_init = receipt_type.__init__
         install_receipt_exact = PublishedWorkspaceReceiptOwner._install
+        require_matching_exact = _require_matching_ownership
+        ensure_receipted_exact = self._ensure_native_receipted_locked
         mint_destination_binding_exact = (
             _freeze_published_workspace_destination_binding_minter(
                 destination=destination,
@@ -3062,7 +3471,7 @@ class OwnedWorkspaceAuthority:
         ) -> None:
             if committed_sealed != sealed_ownership:
                 raise RuntimeError("published workspace sealed token changed")
-            _require_matching_ownership(
+            require_matching_exact(
                 published_ownership,
                 sealed_ownership,
                 label="published workspace",
@@ -3086,7 +3495,7 @@ class OwnedWorkspaceAuthority:
             # Before it, reconciliation aborts a native candidate; after it,
             # every active/retain path idempotently commits that candidate.
             install_receipt_exact(receipt_owner, reservation, receipt)
-            self._ensure_native_receipted_locked(native_receipt_token)
+            ensure_receipted_exact(native_receipt_token, transfer)
             self._state = "published"
 
         _publish_staged_directory_with_authority(
@@ -3099,6 +3508,107 @@ class OwnedWorkspaceAuthority:
                 if self._destination_binding is None
                 else self._destination_binding.ownership
             ),
+            validate_staged_directory=validate_staged_directory,
+            validate_published_destination=validate_published_destination,
+            commit_callback=install_receipt,
+        )
+
+    def _publish_replacement_into_locked(
+        self,
+        receipt_owner: PublishedWorkspaceReceiptOwner,
+        transfer: _WorkspacePublicationTransfer,
+        reservation: _WorkspaceReservation,
+        deadline_ns: int,
+        validate_staged_directory: Callable[[PublicationDirectoryReader], None] | None,
+        validate_published_destination: (
+            Callable[[PublicationDirectoryReader], None] | None
+        ),
+    ) -> None:
+        self._require_owner_pid()
+        replacement = self._native_replacement
+        if self._state != "sealed" or self._sealed_ownership is None:
+            raise RuntimeError(
+                f"owned workspace cannot publish replacement while {self._state}"
+            )
+        if (
+            self._destination is None
+            or self._stage_path is None
+            or self._plan is None
+            or self._destination_binding is None
+            or replacement is None
+            or transfer.mark_replacement_receipted is None
+        ):
+            raise RuntimeError("owned workspace replacement state is incomplete")
+
+        self._store_publication_transfer_locked(transfer)
+        self._resources_transferred = True
+        self._state = "reserving-publication"
+        receipt_owner._reserve(reservation)
+        self._state = "publishing"
+        sealed_ownership = self._sealed_ownership
+        destination = self._destination
+        stage_path = self._stage_path
+        destination_binding = self._destination_binding
+        plan = self._plan
+        authority = self._require_parent_authority()
+        parent_identity = authority.identity
+        receipt_plan = _snapshot_workspace_plan(plan)
+        receipt_type = _PUBLISHED_WORKSPACE_RECEIPT_TYPE
+        receipt_new = receipt_type.__new__
+        receipt_init = receipt_type.__init__
+        install_receipt_exact = PublishedWorkspaceReceiptOwner._install
+        require_matching_exact = _require_matching_ownership
+        ensure_receipted_exact = self._ensure_native_receipted_locked
+        mint_destination_binding_exact = (
+            _freeze_published_workspace_destination_binding_minter(
+                destination=destination,
+                parent_identity=parent_identity,
+            )
+        )
+
+        def install_receipt(
+            committed_sealed: _TreeOwnership,
+            published_ownership: _TreeOwnership,
+            previous_orphan: DirectoryOrphan,
+            native_receipt_token: object,
+        ) -> None:
+            if committed_sealed != sealed_ownership:
+                raise RuntimeError("published workspace sealed token changed")
+            require_matching_exact(
+                published_ownership,
+                sealed_ownership,
+                label="published workspace replacement",
+                allow_root_rename=True,
+            )
+            destination_binding = mint_destination_binding_exact(published_ownership)
+            receipt = receipt_new(receipt_type)
+            receipt_init(
+                receipt,
+                transfer=transfer,
+                path=destination,
+                plan=receipt_plan,
+                sealed_ownership=sealed_ownership,
+                published_ownership=published_ownership,
+                parent_identity=parent_identity,
+                destination_binding=destination_binding,
+                orphan=previous_orphan,
+                native_receipt_token=native_receipt_token,
+            )
+            # The owner slot is the only Python linearization point.  Native
+            # abort reverses an exchange before this store; after the store,
+            # active/retain reconciliation idempotently commits the receipt.
+            install_receipt_exact(receipt_owner, reservation, receipt)
+            ensure_receipted_exact(native_receipt_token, transfer)
+            self._state = "published"
+
+        _publish_native_replacement_with_authority(
+            authority,
+            replacement,
+            stage_path,
+            destination,
+            expected_stage_root_ownership=sealed_ownership,
+            expected_destination_ownership=destination_binding.ownership,
+            deadline_ns=deadline_ns,
             validate_staged_directory=validate_staged_directory,
             validate_published_destination=validate_published_destination,
             commit_callback=install_receipt,
@@ -3205,7 +3715,7 @@ class OwnedWorkspaceAuthority:
             if self._publication_transfer is not transfer:
                 return
             if transfer_state in {"active", "cleanup-retain"}:
-                self._ensure_native_receipted_locked(native_receipt_token)
+                self._ensure_native_receipted_locked(native_receipt_token, transfer)
                 self._state = "published"
                 return
             if transfer_state == "cleanup-abort":
@@ -3291,7 +3801,10 @@ class OwnedWorkspaceAuthority:
                 or self._plan != receipt._plan
             ):
                 raise RuntimeError("published workspace receipt is not active")
-            self._ensure_native_receipted_locked(receipt._native_receipt_token)
+            self._ensure_native_receipted_locked(
+                receipt._native_receipt_token,
+                receipt._transfer,
+            )
             authority = self._require_parent_authority()
             if authority.identity != receipt.parent_identity:
                 raise RuntimeError("published workspace parent authority changed")
@@ -3380,6 +3893,7 @@ class OwnedWorkspaceAuthority:
                 self._close_resources_locked(
                     abort_unreceipted=abort_unreceipted,
                     native_receipt_token=native_receipt_token,
+                    native_receipt_settlement=transfer,
                 )
             except BaseException as close_error:  # noqa: B036 - reconcile transfer
                 primary_error = close_error
@@ -3436,28 +3950,41 @@ class OwnedWorkspaceAuthority:
     def _ensure_native_receipted_locked(
         self,
         native_receipt_token: object | None,
+        settlement: _WorkspacePublicationTransfer,
     ) -> None:
         owner = self._native_owner
         if owner is None:
             return
-        if _native_workspace_owner.owner_closed(owner):
+        if settlement.workspace is not self:
+            raise RuntimeError("native workspace receipt settlement changed")
+        if settlement.native_owner_closed(owner):
             if self._state != "closed":
                 raise RuntimeError(
                     "native workspace owner closed before receipt settlement"
                 )
             return
-        if _native_workspace_owner.owner_state(owner) != "receipted":
+        expected_state = (
+            "replacement-receipted"
+            if settlement.mark_replacement_receipted is not None
+            else "receipted"
+        )
+        if settlement.native_owner_state(owner) != expected_state:
             if native_receipt_token is None:
                 raise RuntimeError("native workspace receipt capability is missing")
-            _native_workspace_owner.commit_owner_receipt(native_receipt_token)
-        if _native_workspace_owner.owner_state(owner) != "receipted":
+            settlement.native_receipt_commit(native_receipt_token)
+        if settlement.native_owner_state(owner) != expected_state:
             raise RuntimeError("native workspace receipt did not commit")
+        if settlement.mark_replacement_receipted is not None:
+            settlement.mark_replacement_receipted()
 
     def _abort_native_owner_locked(self) -> None:
         owner = self._native_owner
         if owner is None or _native_workspace_owner.owner_closed(owner):
             return
-        if _native_workspace_owner.owner_state(owner) == "receipted":
+        if _native_workspace_owner.owner_state(owner) in {
+            "receipted",
+            "replacement-receipted",
+        }:
             raise RuntimeError("receipted native workspace cannot be aborted")
         _native_workspace_owner.abort_owner(owner)
         if not _native_workspace_owner.owner_closed(owner):
@@ -3852,6 +4379,7 @@ class OwnedWorkspaceAuthority:
         *,
         abort_unreceipted: bool = True,
         native_receipt_token: object | None = None,
+        native_receipt_settlement: _WorkspacePublicationTransfer | None = None,
     ) -> None:
         if self._state == "closed":
             return
@@ -3861,7 +4389,14 @@ class OwnedWorkspaceAuthority:
                 if abort_unreceipted:
                     self._abort_native_owner_locked()
                 else:
-                    self._ensure_native_receipted_locked(native_receipt_token)
+                    if native_receipt_settlement is None:
+                        raise RuntimeError(
+                            "native workspace receipt settlement is missing"
+                        )
+                    self._ensure_native_receipted_locked(
+                        native_receipt_token,
+                        native_receipt_settlement,
+                    )
                     _native_workspace_owner.close_owner_exact(self._native_owner)
             except BaseException as close_error:  # noqa: B036 - cleanup all
                 primary_error = close_error

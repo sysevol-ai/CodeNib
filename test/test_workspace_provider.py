@@ -370,6 +370,57 @@ def test_provider_runs_one_callback_scoped_validated_publication(
         owner.close()
 
 
+def test_missing_destination_request_never_selects_the_replacement_seam(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = StrictWorkspaceRequest("missing", tmp_path / "published", _plan())
+    provider = _TestProvider()
+    owner = PublishedWorkspaceReceiptOwner()
+    replacement_calls: list[str] = []
+
+    def forbidden_replacement(
+        _workspace: OwnedWorkspaceAuthority,
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
+        replacement_calls.append("replacement")
+        raise AssertionError("missing destination selected replacement authority")
+
+    for method in (
+        "bind_replacement_source",
+        "provision_bound_replacement",
+        "publish_replacement_into",
+    ):
+        monkeypatch.setattr(
+            OwnedWorkspaceAuthority,
+            method,
+            forbidden_replacement,
+        )
+
+    def publish(session: StrictWorkspaceSession) -> bytes:
+        session.write_file("payload.bin", (b"missing",))
+        return session.publish_validated(
+            lambda reader: reader.read_bytes("payload.bin", max_bytes=32)
+        )
+
+    try:
+        assert (
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=owner,
+                operation=publish,
+            )
+            == b"missing"
+        )
+        assert replacement_calls == []
+        assert owner.active
+        assert request.destination.joinpath("payload.bin").read_bytes() == b"missing"
+    finally:
+        owner.close()
+
+
 def test_provider_cannot_substitute_the_callback_result(tmp_path: Path) -> None:
     request = StrictWorkspaceRequest("test", tmp_path / "published", _plan())
     delegate = _TestProvider()
