@@ -184,6 +184,23 @@ def test_visual_fact_extractor_bounds_response_bytes(tmp_path, monkeypatch):
         extractor.extract(_artifact())
 
 
+def test_visual_fact_extractor_bounds_image_bytes_during_read(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(media_vlm, "_MAX_IMAGE_BYTES", 2)
+    (tmp_path / "docs" / "assets").mkdir(parents=True)
+    (tmp_path / "docs" / "assets" / "architecture.png").write_bytes(b"png")
+    extractor = OpenAICompatibleVisualFactExtractor(
+        model="qwen-vl",
+        api_base="https://api.example/v1",
+        urlopen=lambda _request, timeout: _Response({"choices": []}),
+    )
+
+    with pytest.raises(ValueError, match="artifact exceeds"):
+        extractor.extract(_artifact(), repo_path=tmp_path)
+
+
 def test_visual_fact_extractor_rejects_non_json_content():
     extractor = OpenAICompatibleVisualFactExtractor(
         model="qwen-vl",

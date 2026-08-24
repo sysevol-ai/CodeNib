@@ -168,9 +168,7 @@ def _artifact_data_url(repo_path: str | Path, artifact: Mapping[str, Any]) -> st
     size = path.stat().st_size
     if size < 0 or size > _MAX_IMAGE_BYTES:
         raise ValueError("visual artifact exceeds the byte limit")
-    data = path.read_bytes()
-    if len(data) > _MAX_IMAGE_BYTES:
-        raise ValueError("visual artifact exceeds the byte limit")
+    data = _read_bounded_file(path, max_bytes=_MAX_IMAGE_BYTES)
     return f"data:{mime_type};base64,{base64.b64encode(data).decode('ascii')}"
 
 
@@ -182,6 +180,18 @@ def _safe_relative_path(value: Any) -> Path:
     if path.is_absolute() or ".." in path.parts or path.as_posix() != text:
         raise ValueError("visual artifact path must be repository-relative")
     return Path(*path.parts)
+
+
+def _read_bounded_file(path: Path, *, max_bytes: int) -> bytes:
+    chunks = []
+    consumed = 0
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            consumed += len(chunk)
+            if consumed > max_bytes:
+                raise ValueError("visual artifact exceeds the byte limit")
+            chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _validated_timeout(value: Any) -> float:
