@@ -86,11 +86,18 @@ server-specific MCP registration path.
 ### Incremental updates
 
 `codenib.wiki.media_incremental` provides deterministic update planning for
-multimodal views. It compares two media manifests by path and content hash,
-marks artifacts as added, removed, changed, or unchanged, and identifies which
-visual fact packs can be reused without another VLM call. Reused packs are
-re-normalized against the current trusted artifact record; missing, stale, or
-invalid packs are scheduled for extraction instead.
+multimodal views. It compares two media manifests by path and by a stable
+fingerprint of every extraction input: media bytes, MIME/role metadata,
+captions, surrounding Markdown, and references. It marks artifacts as added,
+removed, changed, or unchanged and identifies which visual fact packs can be
+reused without another VLM call. Reused packs are re-normalized against the
+current trusted artifact record. Missing, stale, invalid, or digest-mismatched
+packs are scheduled for extraction instead.
+
+Reuse is opt-in through `expected_extractor`. Omitting it safely schedules all
+current artifacts for extraction. Callers should use a distinct extractor
+identifier whenever the model or extraction policy changes so an upgrade
+cannot silently retain facts produced by an older policy.
 
 This is the first step toward incremental multimodal maintenance:
 

@@ -160,13 +160,31 @@ class VisualFactsManifest:
 
     @property
     def manifest_sha256(self) -> str:
-        payload = {
-            "schema": self.schema,
-            "version": self.version,
-            "media_manifest_sha256": self.media_manifest_sha256,
-            "facts": [fact.to_dict() for fact in self.facts],
+        return compute_visual_facts_manifest_sha256(
+            schema=self.schema,
+            version=self.version,
+            media_manifest_sha256=self.media_manifest_sha256,
+            facts=(fact.to_dict() for fact in self.facts),
+        )
+
+
+def compute_visual_facts_manifest_sha256(
+    *,
+    schema: str,
+    version: int,
+    media_manifest_sha256: str,
+    facts: Iterable[Mapping[str, Any]],
+) -> str:
+    """Return the canonical digest used by :class:`VisualFactsManifest`."""
+
+    return _sha256_json(
+        {
+            "schema": schema,
+            "version": version,
+            "media_manifest_sha256": media_manifest_sha256,
+            "facts": list(facts),
         }
-        return _sha256_json(payload)
+    )
 
 
 def build_visual_fact_extraction_prompt(artifact: Mapping[str, Any]) -> str:
@@ -577,6 +595,7 @@ __all__ = [
     "VisualRelation",
     "build_visual_fact_extraction_prompt",
     "build_visual_facts_manifest",
+    "compute_visual_facts_manifest_sha256",
     "deterministic_visual_facts",
     "normalize_visual_fact_pack",
 ]

@@ -15,6 +15,7 @@ from typing import Any, Iterable, Mapping
 from .media_facts import (
     MEDIA_FACTS_SCHEMA,
     MEDIA_FACTS_VERSION,
+    compute_visual_facts_manifest_sha256,
     normalize_visual_fact_pack,
 )
 
@@ -24,6 +25,7 @@ MEDIA_MANIFEST_DIFF_SCHEMA = "codenib.media-manifest-diff.v1"
 MEDIA_MANIFEST_DIFF_VERSION = 1
 _MAX_ARTIFACTS = 4096
 _MAX_FACT_PACKS = 4096
+_MAX_REFERENCES_PER_ARTIFACT = 64
 _MAX_TEXT_BYTES = 4096
 
 
@@ -56,11 +58,17 @@ def _diff_artifact_maps(
         after = current_artifacts.get(path)
         previous_sha256 = _safe_text((before or {}).get("sha256"))
         current_sha256 = _safe_text((after or {}).get("sha256"))
+        previous_extraction_sha256 = (
+            _artifact_extraction_sha256(before) if before is not None else ""
+        )
+        current_extraction_sha256 = (
+            _artifact_extraction_sha256(after) if after is not None else ""
+        )
         if before is None:
             status = "added"
         elif after is None:
             status = "removed"
-        elif previous_sha256 == current_sha256:
+        elif previous_extraction_sha256 == current_extraction_sha256:
             status = "unchanged"
         else:
             status = "changed"
@@ -70,6 +78,8 @@ def _diff_artifact_maps(
                 "status": status,
                 "previous_sha256": previous_sha256,
                 "current_sha256": current_sha256,
+                "previous_extraction_sha256": previous_extraction_sha256,
+                "current_extraction_sha256": current_extraction_sha256,
             }
         )
     payload = {
@@ -95,8 +105,15 @@ def plan_incremental_visual_fact_update(
     previous_media_manifest: Mapping[str, Any],
     current_media_manifest: Mapping[str, Any],
     previous_visual_facts_manifest: Mapping[str, Any],
+    *,
+    expected_extractor: str | None = None,
 ) -> dict[str, Any]:
-    """Plan which visual facts can be reused and which artifacts need VLM work."""
+    """Plan reusable facts for the explicitly selected extraction policy.
+
+    Reuse is disabled unless ``expected_extractor`` names the extractor that
+    will be used for new work. Callers should change that identifier whenever
+    their model or extraction policy changes.
+    """
 
     previous_artifacts = _artifacts_by_path(previous_media_manifest)
     current_artifacts = _artifacts_by_path(current_media_manifest)
@@ -110,14 +127,26 @@ def plan_incremental_visual_fact_update(
         previous_visual_facts_manifest,
         label="previous visual facts manifest",
     )
-    previous_facts: dict[str, Mapping[str, Any]] = {}
-    for fact in _mapping_items(
-        previous_visual_facts_manifest.get("facts"),
-        limit=_MAX_FACT_PACKS,
-    ):
-        path = _safe_relative_path(fact.get("artifact_path"))
-        if path:
-            previous_facts.setdefault(path, fact)
+    if expected_extractor is not None and not isinstance(expected_extractor, str):
+        raise ValueError("expected_extractor must be a non-empty string")
+    extractor = _safe_text(expected_extractor)
+    if expected_extractor is not None and not extractor:
+        raise ValueError("expected_extractor must be a non-empty string")
+    previous_fact_items = _bounded_fact_items(
+        previous_visual_facts_manifest.get("facts")
+    )
+    previous_facts = (
+        _trusted_previous_facts(
+            previous_visual_facts_manifest,
+            previous_media_manifest_sha256=_safe_text(
+                previous_media_manifest.get("manifest_sha256")
+            ),
+            previous_artifacts=previous_artifacts,
+            facts=previous_fact_items,
+        )
+        if previous_fact_items is not None
+        else {}
+    )
     reusable_fact_packs = []
     extract_artifact_paths = []
     removed_artifact_paths = []
@@ -126,8 +155,12 @@ def plan_incremental_visual_fact_update(
         if change["status"] == "unchanged":
             artifact = current_artifacts[path]
             fact = previous_facts.get(path)
-            if fact is None or _safe_text(fact.get("artifact_sha256")) != _safe_text(
-                artifact.get("sha256")
+            if (
+                not extractor
+                or fact is None
+                or _safe_text(fact.get("extractor")) != extractor
+                or _safe_text(fact.get("artifact_sha256"))
+                != _safe_text(artifact.get("sha256"))
             ):
                 extract_artifact_paths.append(path)
                 continue
@@ -151,6 +184,7 @@ def plan_incremental_visual_fact_update(
         "previous_visual_facts_manifest_sha256": _safe_text(
             previous_visual_facts_manifest.get("manifest_sha256") or ""
         ),
+        "expected_extractor": extractor,
         "reusable_fact_packs": reusable_fact_packs,
         "extract_artifact_paths": sorted(extract_artifact_paths),
         "removed_artifact_paths": sorted(removed_artifact_paths),
@@ -191,10 +225,73 @@ def merge_incremental_visual_facts(
         "fact_count": len(facts),
         "facts": facts,
     }
-    payload["manifest_sha256"] = _sha256_json(
-        {key: value for key, value in payload.items() if key != "manifest_sha256"}
+    payload["manifest_sha256"] = compute_visual_facts_manifest_sha256(
+        schema=MEDIA_FACTS_SCHEMA,
+        version=MEDIA_FACTS_VERSION,
+        media_manifest_sha256=payload["media_manifest_sha256"],
+        facts=facts,
     )
     return payload
+
+
+def _trusted_previous_facts(
+    manifest: Mapping[str, Any],
+    *,
+    previous_media_manifest_sha256: str,
+    previous_artifacts: Mapping[str, Mapping[str, Any]],
+    facts: list[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    if (
+        not previous_media_manifest_sha256
+        or manifest.get("schema") != MEDIA_FACTS_SCHEMA
+        or type(manifest.get("version")) is not int
+        or manifest.get("version") != MEDIA_FACTS_VERSION
+        or _safe_text(manifest.get("media_manifest_sha256"))
+        != previous_media_manifest_sha256
+    ):
+        return {}
+    try:
+        expected_manifest_sha256 = compute_visual_facts_manifest_sha256(
+            schema=MEDIA_FACTS_SCHEMA,
+            version=MEDIA_FACTS_VERSION,
+            media_manifest_sha256=previous_media_manifest_sha256,
+            facts=facts,
+        )
+    except (TypeError, ValueError):
+        return {}
+    if _safe_text(manifest.get("manifest_sha256")) != expected_manifest_sha256:
+        return {}
+
+    trusted: dict[str, dict[str, Any]] = {}
+    for fact in facts:
+        path = _safe_relative_path(fact.get("artifact_path"))
+        artifact = previous_artifacts.get(path)
+        if not path or path in trusted or artifact is None:
+            return {}
+        try:
+            normalized = normalize_visual_fact_pack(fact, artifact=artifact)
+        except ValueError:
+            return {}
+        if _safe_text(fact.get("fact_pack_sha256")) != normalized.get(
+            "fact_pack_sha256"
+        ):
+            return {}
+        trusted[path] = normalized
+    return trusted
+
+
+def _bounded_fact_items(value: Any) -> list[Mapping[str, Any]] | None:
+    if isinstance(value, (str, bytes, bytearray, Mapping)):
+        return None
+    try:
+        items = list(islice(iter(value), _MAX_FACT_PACKS + 1))
+    except TypeError:
+        return None
+    if len(items) > _MAX_FACT_PACKS or any(
+        not isinstance(item, Mapping) for item in items
+    ):
+        return None
+    return items
 
 
 def _artifacts_by_path(manifest: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -214,6 +311,36 @@ def _artifacts_by_path(manifest: Mapping[str, Any]) -> dict[str, dict[str, Any]]
             raise ValueError(f"media artifact sha256 is required: {path}")
         artifacts[path] = {**artifact, "path": path, "sha256": sha256}
     return artifacts
+
+
+def _artifact_extraction_sha256(artifact: Mapping[str, Any]) -> str:
+    references = [
+        {
+            "markdown_path": _safe_text(reference.get("markdown_path")),
+            "line": (
+                reference.get("line") if type(reference.get("line")) is int else 0
+            ),
+            "alt_text": _safe_text(reference.get("alt_text")),
+            "title": _safe_text(reference.get("title")),
+            "surrounding_text": _safe_text(reference.get("surrounding_text")),
+        }
+        for reference in _mapping_items(
+            artifact.get("references"),
+            limit=_MAX_REFERENCES_PER_ARTIFACT,
+        )
+    ]
+    return _sha256_json(
+        {
+            "path": _safe_relative_path(artifact.get("path")),
+            "sha256": _safe_text(artifact.get("sha256")),
+            "media_type": _safe_text(artifact.get("media_type")),
+            "mime_type": _safe_text(artifact.get("mime_type")),
+            "role_hint": _safe_text(artifact.get("role_hint")),
+            "caption": _safe_text(artifact.get("caption")),
+            "surrounding_text": _safe_text(artifact.get("surrounding_text")),
+            "references": references,
+        }
+    )
 
 
 def _require_mapping(value: Any, *, label: str) -> Mapping[str, Any]:
