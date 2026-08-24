@@ -2744,11 +2744,15 @@ def test_artifact_materialize_resource_store_interruption_closes_authorities(
     # A line event at the next source line is the portable trace boundary after
     # STORE_ATTR and before acquire() returns.  Some supported CPython builds do
     # not emit the optional per-opcode trace events.
-    post_store_line = next(
-        instruction.starts_line
+    post_store_instruction = next(
+        instruction
         for instruction in instructions[store_index + 1 :]
-        if instruction.starts_line is not None
+        if instruction.starts_line
     )
+    post_store_line = getattr(post_store_instruction, "line_number", None)
+    if type(post_store_line) is not int:
+        post_store_line = post_store_instruction.starts_line
+    assert type(post_store_line) is int
     injected = False
     previous_trace = sys.gettrace()
 
