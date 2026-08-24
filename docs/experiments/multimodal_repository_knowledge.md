@@ -118,6 +118,10 @@ wiki knowledge:
 - visual-code grounding path hit@k;
 - visual-code grounding symbol hit@k.
 
+Inputs and report payloads are bounded and normalized. Grounding `k` is limited
+to 1-20, non-finite ranking scores cannot destabilize ordering, and reports
+emit only canonical binding fields rather than arbitrary prediction metadata.
+
 Gold instances use this shape:
 
 ```json
