@@ -137,6 +137,32 @@ def test_plan_extracts_unchanged_artifact_when_previous_fact_is_missing():
     assert plan["extract_artifact_paths"] == ["missing-fact.png"]
 
 
+def test_plan_materializes_generator_manifests_once():
+    previous_media = {
+        "manifest_sha256": "previous-media",
+        "artifacts": (artifact for artifact in [_artifact("diagram.png", "same")]),
+    }
+    current_media = {
+        "manifest_sha256": "current-media",
+        "artifacts": (artifact for artifact in [_artifact("diagram.png", "same")]),
+    }
+    previous_facts = {
+        "manifest_sha256": "facts",
+        "facts": (fact for fact in [_fact("diagram.png", "same")]),
+    }
+
+    plan = plan_incremental_visual_fact_update(
+        previous_media,
+        current_media,
+        previous_facts,
+    )
+
+    assert [fact["artifact_path"] for fact in plan["reusable_fact_packs"]] == [
+        "diagram.png"
+    ]
+    assert plan["extract_artifact_paths"] == []
+
+
 def test_merge_incremental_visual_facts_keeps_current_artifacts_only():
     current_media = {
         "manifest_sha256": "current-media",

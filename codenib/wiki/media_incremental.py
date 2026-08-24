@@ -35,6 +35,21 @@ def diff_media_manifests(
 
     previous_artifacts = _artifacts_by_path(previous)
     current_artifacts = _artifacts_by_path(current)
+    return _diff_artifact_maps(
+        previous,
+        current,
+        previous_artifacts=previous_artifacts,
+        current_artifacts=current_artifacts,
+    )
+
+
+def _diff_artifact_maps(
+    previous: Mapping[str, Any],
+    current: Mapping[str, Any],
+    *,
+    previous_artifacts: Mapping[str, Mapping[str, Any]],
+    current_artifacts: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
     changes = []
     for path in sorted(set(previous_artifacts) | set(current_artifacts)):
         before = previous_artifacts.get(path)
@@ -83,8 +98,14 @@ def plan_incremental_visual_fact_update(
 ) -> dict[str, Any]:
     """Plan which visual facts can be reused and which artifacts need VLM work."""
 
-    diff = diff_media_manifests(previous_media_manifest, current_media_manifest)
+    previous_artifacts = _artifacts_by_path(previous_media_manifest)
     current_artifacts = _artifacts_by_path(current_media_manifest)
+    diff = _diff_artifact_maps(
+        previous_media_manifest,
+        current_media_manifest,
+        previous_artifacts=previous_artifacts,
+        current_artifacts=current_artifacts,
+    )
     previous_visual_facts_manifest = _require_mapping(
         previous_visual_facts_manifest,
         label="previous visual facts manifest",
