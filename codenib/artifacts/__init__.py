@@ -27,8 +27,10 @@ from .portable_views import (
 )
 from .runtime import (
     ContextArtifactBinding,
+    SourceBindingCleanupOwner,
     VerifiedContextArtifact,
     bind_context_artifact,
+    bind_context_artifact_reader,
     query_context_artifact,
     query_context_artifact_reader,
     verify_context_artifact,
@@ -63,8 +65,10 @@ __all__ = [
     "PlannedContextView",
     "PlannedVectorView",
     "SourceTrust",
+    "SourceBindingCleanupOwner",
     "VerifiedContextArtifact",
     "bind_context_artifact",
+    "bind_context_artifact_reader",
     "extract_context_artifact_archive",
     "fetch_github_context_artifact",
     "normalize_owned_query_view",

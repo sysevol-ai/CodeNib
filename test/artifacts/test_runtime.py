@@ -39,7 +39,9 @@ from codenib._atomic_directory import (
 from codenib._captured_directory import PublishedWorkspaceReceipt
 from codenib.artifacts import (
     CONTEXT_ARTIFACT_MANIFEST,
+    SourceBindingCleanupOwner,
     bind_context_artifact,
+    bind_context_artifact_reader,
     extract_context_artifact_archive,
     fetch_github_context_artifact,
     query_context_artifact,
@@ -805,6 +807,34 @@ def test_bind_promotes_source_cleanup_cancellation_over_value_error(
     assert captured[0].closed
 
 
+def test_source_cleanup_owner_promotes_observation_interruption() -> None:
+    owner = SourceBindingCleanupOwner()
+    close_failure = RuntimeError("source close failed")
+    interruption = KeyboardInterrupt("source close observation interrupted")
+
+    class InterruptedSource:
+        def close(self) -> None:
+            raise close_failure
+
+        @property
+        def closed(self) -> bool:
+            raise interruption
+
+    source = InterruptedSource()
+    owner.retain(source)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        owner.close()
+
+    assert caught.value is interruption
+    assert owner.pending_sources == (source,)
+    notes = (
+        *getattr(caught.value, "__notes__", ()),
+        *getattr(caught.value, "_codenib_cleanup_notes", ()),
+    )
+    assert any("earlier source cleanup also failed" in note for note in notes)
+
+
 def test_bind_rejects_artifact_root_replaced_after_internal_verification(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1091,6 +1121,330 @@ def test_v1_artifact_supports_inert_bm25_query_but_cannot_bind(
 
     with pytest.raises(ValueError, match="query-only"):
         bind_context_artifact(artifact, repo)
+
+
+def test_bind_context_artifact_reader_loads_source_without_path_reopen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+    source_owner = SourceBindingCleanupOwner()
+
+    def consume(publication: PublicationDirectoryReader):
+        def reject_reopen(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("reader-bound source bind reopened its artifact path")
+
+        monkeypatch.setattr(
+            runtime_module,
+            "reopen_authenticated_directory",
+            reject_reopen,
+        )
+        binding = bind_context_artifact_reader(
+            receipt,
+            publication,
+            repo,
+            expected_root=artifact,
+            expected_ownership=ownership,
+            source_cleanup_owner=source_owner,
+            expected_repository="example/project",
+            expected_commit=commit,
+        )
+        source = binding.source_binding
+        assert source is not None
+        context = ServerContext.load(
+            binding.manifest,
+            views=["bm25"],
+            artifact_binding=binding,
+            artifact_reader=publication,
+            source_binding=source,
+        )
+        return binding, context, source
+
+    binding, context, source = reopen_authenticated_directory(
+        artifact,
+        ownership,
+        consume,
+    )
+    try:
+        assert binding._requires_authenticated_reader is True
+        assert binding.source_binding is None
+        assert binding.repo_path == repo
+        assert binding.manifest.repo_path == str(repo)
+        assert binding.manifest.indexes["bm25"].path == str(artifact / "views" / "bm25")
+        assert binding.artifact.root == artifact
+        assert binding.artifact.ownership == ownership
+        assert binding.artifact.metadata_path == artifact / CONTEXT_ARTIFACT_MANIFEST
+        assert binding.artifact.manifest_path == artifact / "repo_manifest.json"
+        assert binding.checkout_commit_observed == commit
+        assert source_owner.pending_sources == (source,)
+        assert not source_owner.closed
+        assert context.source_verified
+        assert context.bm25 is not None
+        results = context.bm25.search("value", return_code_content=True)
+        assert results[0].file == "sample.py"
+        assert "VALUE = 1" in (results[0].content or "")
+    finally:
+        context.close()
+        source_owner.close()
+    assert source.closed
+    assert source_owner.closed
+
+
+def test_bind_context_artifact_reader_requires_exact_empty_cleanup_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, _commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+
+    class CleanupOwnerSubclass(SourceBindingCleanupOwner):
+        pass
+
+    class PendingSource:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    pending = PendingSource()
+    occupied_owner = SourceBindingCleanupOwner()
+    occupied_owner.retain(pending)
+
+    def consume(publication: PublicationDirectoryReader) -> None:
+        def reject_verification(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("invalid cleanup owner reached artifact verification")
+
+        monkeypatch.setattr(
+            runtime_module,
+            "verify_context_artifact_reader",
+            reject_verification,
+        )
+        with pytest.raises(TypeError, match="cleanup owner.*invalid type"):
+            bind_context_artifact_reader(
+                receipt,
+                publication,
+                repo,
+                expected_root=artifact,
+                expected_ownership=ownership,
+                source_cleanup_owner=CleanupOwnerSubclass(),
+            )
+        with pytest.raises(ValueError, match="cleanup owner must be empty"):
+            bind_context_artifact_reader(
+                receipt,
+                publication,
+                repo,
+                expected_root=artifact,
+                expected_ownership=ownership,
+                source_cleanup_owner=occupied_owner,
+            )
+
+    reopen_authenticated_directory(artifact, ownership, consume)
+    assert occupied_owner.pending_sources == (pending,)
+    occupied_owner.close()
+    assert occupied_owner.closed
+
+
+def test_bind_context_artifact_reader_requires_exact_receipt_and_reader_types(
+    tmp_path: Path,
+) -> None:
+    repo, artifact, _commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+
+    with pytest.raises(TypeError, match="publication reader.*invalid type"):
+        bind_context_artifact_reader(
+            receipt,
+            SimpleNamespace(),  # type: ignore[arg-type]
+            repo,
+            expected_root=artifact,
+            expected_ownership=ownership,
+            source_cleanup_owner=SourceBindingCleanupOwner(),
+        )
+
+    def consume(publication: PublicationDirectoryReader) -> None:
+        with pytest.raises(TypeError, match="receipt.*invalid type"):
+            bind_context_artifact_reader(
+                SimpleNamespace(path=artifact, ownership=ownership),  # type: ignore[arg-type]
+                publication,
+                repo,
+                expected_root=artifact,
+                expected_ownership=ownership,
+                source_cleanup_owner=SourceBindingCleanupOwner(),
+            )
+
+    reopen_authenticated_directory(artifact, ownership, consume)
+
+
+def test_bind_context_artifact_reader_rejects_legacy_before_source_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, _commit = _bm25_artifact(tmp_path)
+    legacy = f"sha256:{'a' * 64}"
+    _rewrite_artifact_as_legacy_source_fingerprint(artifact, legacy)
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+    source_owner = SourceBindingCleanupOwner()
+
+    def consume(publication: PublicationDirectoryReader) -> None:
+        def reject_capture(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("legacy artifact reached source capture")
+
+        monkeypatch.setattr(
+            runtime_module,
+            "capture_repository_source",
+            reject_capture,
+        )
+        with pytest.raises(ValueError, match="query-only"):
+            bind_context_artifact_reader(
+                receipt,
+                publication,
+                repo,
+                expected_root=artifact,
+                expected_ownership=ownership,
+                source_cleanup_owner=source_owner,
+            )
+
+    reopen_authenticated_directory(artifact, ownership, consume)
+    assert source_owner.closed
+
+
+def test_bind_context_artifact_reader_source_mismatch_closes_caller_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    (repo / "sample.py").write_text("VALUE = 2\n", encoding="utf-8")
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+    source_owner = SourceBindingCleanupOwner()
+    captured = []
+    real_capture = runtime_module.capture_repository_source
+
+    def capture(*args, **kwargs):
+        source = real_capture(*args, **kwargs)
+        captured.append(source)
+        return source
+
+    monkeypatch.setattr(runtime_module, "capture_repository_source", capture)
+
+    def consume(publication: PublicationDirectoryReader) -> None:
+        with pytest.raises(ValueError, match="do not match"):
+            bind_context_artifact_reader(
+                receipt,
+                publication,
+                repo,
+                expected_root=artifact,
+                expected_ownership=ownership,
+                source_cleanup_owner=source_owner,
+                expected_commit=commit,
+            )
+
+    reopen_authenticated_directory(artifact, ownership, consume)
+    assert len(captured) == 1
+    assert captured[0].closed
+    assert source_owner.closed
+
+
+def test_bind_context_artifact_reader_cancellation_closes_caller_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+    source_owner = SourceBindingCleanupOwner()
+    captured = []
+    real_capture = runtime_module.capture_repository_source
+    interruption = KeyboardInterrupt("injected reader-bind cancellation")
+
+    def capture(*args, **kwargs):
+        source = real_capture(*args, **kwargs)
+        captured.append(source)
+        raise interruption
+
+    monkeypatch.setattr(runtime_module, "capture_repository_source", capture)
+
+    def consume(publication: PublicationDirectoryReader) -> None:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            bind_context_artifact_reader(
+                receipt,
+                publication,
+                repo,
+                expected_root=artifact,
+                expected_ownership=ownership,
+                source_cleanup_owner=source_owner,
+                expected_commit=commit,
+            )
+        assert caught.value is interruption
+
+    reopen_authenticated_directory(artifact, ownership, consume)
+    assert len(captured) == 1
+    assert captured[0].closed
+    assert source_owner.closed
+
+
+def test_bind_context_artifact_reader_exposes_retryable_caller_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, artifact, commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    receipt = _receipt_stub(artifact, ownership)
+    source_owner = SourceBindingCleanupOwner()
+    captured = []
+    real_capture = runtime_module.capture_repository_source
+    interruption = KeyboardInterrupt("injected reader-bind cancellation")
+
+    def capture(*args, **kwargs):
+        source = real_capture(*args, **kwargs)
+        captured.append(source)
+        return source
+
+    def interrupt_checkout(_repo: Path) -> str:
+        raise interruption
+
+    monkeypatch.setattr(runtime_module, "capture_repository_source", capture)
+    monkeypatch.setattr(runtime_module, "checkout_commit", interrupt_checkout)
+    probe = capture_repository_source(repo, exclude_roots=(artifact,))
+    source_type = type(probe)
+    probe.close()
+    real_close = source_type.close
+
+    def persistent_close(source) -> None:
+        if source in captured:
+            raise OSError("injected persistent reader-source close failure")
+        real_close(source)
+
+    monkeypatch.setattr(source_type, "close", persistent_close)
+
+    def consume(publication: PublicationDirectoryReader) -> None:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            bind_context_artifact_reader(
+                receipt,
+                publication,
+                repo,
+                expected_root=artifact,
+                expected_ownership=ownership,
+                source_cleanup_owner=source_owner,
+                expected_commit=commit,
+            )
+        assert caught.value is interruption
+        assert caught.value.source_cleanup_owner is source_owner
+
+    reopen_authenticated_directory(artifact, ownership, consume)
+    assert len(captured) == 1
+    assert source_owner.pending_sources == (captured[0],)
+    assert not captured[0].closed
+
+    monkeypatch.setattr(source_type, "close", real_close)
+    source_owner.close()
+    assert source_owner.closed
+    assert captured[0].closed
 
 
 def test_query_context_artifact_reader_relocates_without_reopening(

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Verify and bind portable context artifacts for query-only runtimes."""
+"""Verify and bind portable context artifacts to exact runtime authorities."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from .._atomic_directory import (
     PublicationAuthenticatedFile,
     PublicationDirectoryReader,
     TreeFileRecord,
+    _annotate_secondary_error,
     capture_directory_ownership,
     directory_ownership_file_records,
     lexical_directory_path,
@@ -154,19 +155,46 @@ class SourceBindingCleanupOwner:
             try:
                 source.close()  # type: ignore[attr-defined]
             except BaseException as exc:  # noqa: B036 - cleanup all sources
-                if first_failure is None:
-                    first_failure = exc
+                first_failure = _retain_source_owner_cleanup_failure(
+                    first_failure,
+                    exc,
+                )
             try:
                 fully_closed = bool(source.closed)  # type: ignore[attr-defined]
             except BaseException as exc:  # noqa: B036 - retain uncertain owner
                 fully_closed = False
-                if first_failure is None:
-                    first_failure = exc
+                first_failure = _retain_source_owner_cleanup_failure(
+                    first_failure,
+                    exc,
+                )
             if not fully_closed:
                 pending.append(source)
         self._sources[:] = pending
         if first_failure is not None:
             raise first_failure
+
+
+def _retain_source_owner_cleanup_failure(
+    deferred: BaseException | None,
+    failure: BaseException,
+) -> BaseException:
+    """Preserve cancellation priority while retaining all cleanup diagnostics."""
+
+    if deferred is None:
+        return failure
+    if isinstance(deferred, Exception) and not isinstance(failure, Exception):
+        _annotate_secondary_error(
+            failure,
+            "earlier source cleanup also failed",
+            deferred,
+        )
+        return failure
+    _annotate_secondary_error(
+        deferred,
+        "additional source cleanup also failed",
+        failure,
+    )
+    return deferred
 
 
 def _source_cleanup_owner_is_pending(owner: object | None) -> bool:
@@ -1181,57 +1209,11 @@ def bind_context_artifact(
     cleanup_owner = SourceBindingCleanupOwner()
 
     def bind(_publication: PublicationDirectoryReader) -> ContextArtifactBinding:
-        if not is_secure_source_fingerprint_v2(artifact.source_fingerprint):
-            raise ValueError(
-                "legacy context artifact source fingerprints are query-only; "
-                "rebuild with source fingerprint v2 before binding a live checkout"
-            )
-        repo = lexical_repository_path(repo_path)
-        source = capture_repository_source(
-            repo,
-            manifest=artifact.manifest,
-            exclude_roots=(artifact.root,),
-            _source_owner=cleanup_owner.retain,
-        )
-        # This is diagnostic provenance only. A mutable Git HEAD cannot be
-        # attested by any finite sequence of path reads, so it never gates the
-        # retained content authority or native trust.
-        actual_commit = checkout_commit(repo)
-        source_identity = source.authenticated_identity_snapshot()
-        authenticated_repo = source_identity.root
-        require_manifest_source_identity(
-            source_identity,
-            artifact.manifest,
-            label="context artifact repository",
-            mismatch_message=(
-                "repository source files do not match the context artifact fingerprint"
-            ),
-        )
-        source_records = {record.path for record in source_identity.file_records}
-        missing_source_paths = sorted(set(artifact.source_paths) - source_records)
-        if missing_source_paths:
-            raise ValueError(
-                "context artifact source paths are absent from the authenticated "
-                "repository: " + ", ".join(missing_source_paths)
-            )
-
-        manifest_data = artifact.manifest.to_dict()
-        manifest_data["repo"]["path"] = str(authenticated_repo)
-        for view, entry in manifest_data["indexes"].items():
-            entry["path"] = str(
-                _artifact_path(
-                    artifact.root,
-                    entry["path"],
-                    label=f"context artifact {view} view path",
-                )
-            )
-        manifest = RepoManifest.from_dict(manifest_data)
-        return ContextArtifactBinding(
-            artifact=artifact,
-            repo_path=authenticated_repo,
-            manifest=manifest,
-            checkout_commit_observed=actual_commit or None,
-            _source_binding=source,
+        return _bind_verified_context_artifact(
+            artifact,
+            repo_path,
+            source_cleanup_owner=cleanup_owner,
+            requires_authenticated_reader=False,
         )
 
     try:
@@ -1241,40 +1223,115 @@ def bind_context_artifact(
             bind,
         )
     except BaseException as exc:  # noqa: B036 - cleanup before propagation
-        cleanup_failure: BaseException | None = None
-        try:
-            cleanup_owner.close()
-        except BaseException as failure:  # noqa: B036 - shared priority below
-            cleanup_failure = failure
-        pending_owner = (
-            cleanup_owner if _source_cleanup_owner_is_pending(cleanup_owner) else None
+        _raise_context_artifact_bind_failure(exc, cleanup_owner)
+
+
+def _bind_verified_context_artifact(
+    artifact: VerifiedContextArtifact,
+    repo_path: str | Path,
+    *,
+    source_cleanup_owner: SourceBindingCleanupOwner,
+    requires_authenticated_reader: bool,
+) -> ContextArtifactBinding:
+    """Bind source bytes after an artifact authority has already been verified."""
+
+    if not is_secure_source_fingerprint_v2(artifact.source_fingerprint):
+        raise ValueError(
+            "legacy context artifact source fingerprints are query-only; "
+            "rebuild with source fingerprint v2 before binding a live checkout"
         )
-        if isinstance(exc, ValueError):
-            if cleanup_failure is not None or pending_owner is not None:
-                _raise_source_cleanup_failure(
-                    exc,
-                    cleanup_failure,
-                    pending_owner,
-                )
-            raise
-        if not isinstance(exc, (OSError, RuntimeError)):
-            if cleanup_failure is not None or pending_owner is not None:
-                _raise_source_cleanup_failure(
-                    exc,
-                    cleanup_failure,
-                    pending_owner,
-                )
-            raise
-        translated = ValueError(
-            "context artifact changed between verification and source binding"
+    repo = lexical_repository_path(repo_path)
+    source = capture_repository_source(
+        repo,
+        manifest=artifact.manifest,
+        exclude_roots=(artifact.root,),
+        _source_owner=source_cleanup_owner.retain,
+    )
+    # This is diagnostic provenance only. A mutable Git HEAD cannot be
+    # attested by any finite sequence of path reads, so it never gates the
+    # retained content authority or native trust.
+    actual_commit = checkout_commit(repo)
+    source_identity = source.authenticated_identity_snapshot()
+    authenticated_repo = source_identity.root
+    require_manifest_source_identity(
+        source_identity,
+        artifact.manifest,
+        label="context artifact repository",
+        mismatch_message=(
+            "repository source files do not match the context artifact fingerprint"
+        ),
+    )
+    source_records = {record.path for record in source_identity.file_records}
+    missing_source_paths = sorted(set(artifact.source_paths) - source_records)
+    if missing_source_paths:
+        raise ValueError(
+            "context artifact source paths are absent from the authenticated "
+            "repository: " + ", ".join(missing_source_paths)
         )
+
+    manifest_data = artifact.manifest.to_dict()
+    manifest_data["repo"]["path"] = str(authenticated_repo)
+    for view, entry in manifest_data["indexes"].items():
+        entry["path"] = str(
+            _artifact_path(
+                artifact.root,
+                entry["path"],
+                label=f"context artifact {view} view path",
+            )
+        )
+    manifest = RepoManifest.from_dict(manifest_data)
+    return ContextArtifactBinding(
+        artifact=artifact,
+        repo_path=authenticated_repo,
+        manifest=manifest,
+        checkout_commit_observed=actual_commit or None,
+        _requires_authenticated_reader=requires_authenticated_reader,
+        _source_binding=source,
+    )
+
+
+def _raise_context_artifact_bind_failure(
+    primary: BaseException,
+    source_cleanup_owner: SourceBindingCleanupOwner,
+) -> NoReturn:
+    """Close a failed bind and retain any source authority that did not close."""
+
+    cleanup_failure: BaseException | None = None
+    try:
+        source_cleanup_owner.close()
+    except BaseException as failure:  # noqa: B036 - shared priority below
+        cleanup_failure = failure
+    pending_owner = (
+        source_cleanup_owner
+        if _source_cleanup_owner_is_pending(source_cleanup_owner)
+        else None
+    )
+    if isinstance(primary, ValueError):
         if cleanup_failure is not None or pending_owner is not None:
             _raise_source_cleanup_failure(
-                translated,
+                primary,
                 cleanup_failure,
                 pending_owner,
             )
-        raise translated from exc
+        raise primary
+    if not isinstance(primary, (OSError, RuntimeError)):
+        if cleanup_failure is not None or pending_owner is not None:
+            _raise_source_cleanup_failure(
+                primary,
+                cleanup_failure,
+                pending_owner,
+            )
+        raise primary
+    translated = ValueError(
+        "context artifact changed between verification and source binding"
+    )
+    if cleanup_failure is not None or pending_owner is not None:
+        _raise_source_cleanup_failure(
+            translated,
+            cleanup_failure,
+            pending_owner,
+        )
+    raise translated from primary
 
 
 def query_context_artifact(
@@ -1300,16 +1357,14 @@ def query_context_artifact(
     )
 
 
-def query_context_artifact_reader(
+def _require_context_artifact_reader_authority(
     receipt: PublishedWorkspaceReceipt,
     publication: PublicationDirectoryReader,
     *,
     expected_root: str | Path,
     expected_ownership: object,
-    expected_repository: str | None = None,
-    expected_commit: str | None = None,
-) -> ContextArtifactBinding:
-    """Create a query binding inside one exact workspace-receipt callback."""
+) -> Path:
+    """Validate the exact receipt and active publication-reader relationship."""
 
     if type(receipt) is not PublishedWorkspaceReceipt:
         raise TypeError("context artifact receipt has an invalid type")
@@ -1325,6 +1380,18 @@ def query_context_artifact_reader(
         raise RuntimeError("context artifact receipt ownership changed")
     if publication._require_expected_ownership_token() != expected_ownership:
         raise RuntimeError("context artifact publication ownership changed")
+    return real_root
+
+
+def _relocate_context_artifact_reader(
+    publication: PublicationDirectoryReader,
+    *,
+    real_root: Path,
+    expected_ownership: object,
+    expected_repository: str | None = None,
+    expected_commit: str | None = None,
+) -> VerifiedContextArtifact:
+    """Verify and relocate reader-native artifact paths to their receipt root."""
 
     artifact = verify_context_artifact_reader(
         publication,
@@ -1354,6 +1421,80 @@ def query_context_artifact_reader(
         metadata_path=real_root / metadata_relative,
         manifest_path=real_root / manifest_relative,
     )
+    return relocated
+
+
+def bind_context_artifact_reader(
+    receipt: PublishedWorkspaceReceipt,
+    publication: PublicationDirectoryReader,
+    repo_path: str | Path,
+    *,
+    expected_root: str | Path,
+    expected_ownership: object,
+    source_cleanup_owner: SourceBindingCleanupOwner,
+    expected_repository: str | None = None,
+    expected_commit: str | None = None,
+) -> ContextArtifactBinding:
+    """Bind source inside one exact, still-active workspace-receipt callback.
+
+    The caller-provided cleanup owner must be a dedicated empty owner. It stays
+    retained across a successful return so cancellation cannot strand source
+    authority before the binding is installed into its runtime owner.
+    """
+
+    real_root = _require_context_artifact_reader_authority(
+        receipt,
+        publication,
+        expected_root=expected_root,
+        expected_ownership=expected_ownership,
+    )
+    if type(source_cleanup_owner) is not SourceBindingCleanupOwner:
+        raise TypeError("context artifact source cleanup owner has an invalid type")
+    if not source_cleanup_owner.closed:
+        raise ValueError("context artifact source cleanup owner must be empty")
+
+    artifact = _relocate_context_artifact_reader(
+        publication,
+        real_root=real_root,
+        expected_ownership=expected_ownership,
+        expected_repository=expected_repository,
+        expected_commit=expected_commit,
+    )
+    try:
+        return _bind_verified_context_artifact(
+            artifact,
+            repo_path,
+            source_cleanup_owner=source_cleanup_owner,
+            requires_authenticated_reader=True,
+        )
+    except BaseException as exc:  # noqa: B036 - cleanup before propagation
+        _raise_context_artifact_bind_failure(exc, source_cleanup_owner)
+
+
+def query_context_artifact_reader(
+    receipt: PublishedWorkspaceReceipt,
+    publication: PublicationDirectoryReader,
+    *,
+    expected_root: str | Path,
+    expected_ownership: object,
+    expected_repository: str | None = None,
+    expected_commit: str | None = None,
+) -> ContextArtifactBinding:
+    """Create a query binding inside one exact workspace-receipt callback."""
+
+    real_root = _require_context_artifact_reader_authority(
+        receipt,
+        publication,
+        expected_root=expected_root,
+        expected_ownership=expected_ownership,
+    )
+    relocated = _relocate_context_artifact_reader(
+        publication,
+        real_root=real_root,
+        expected_ownership=expected_ownership,
+        expected_repository=expected_repository,
+        expected_commit=expected_commit,
+    )
     return ContextArtifactBinding(
         artifact=relocated,
         repo_path=None,
@@ -1369,6 +1510,7 @@ __all__ = [
     "SourceBindingCleanupOwner",
     "VerifiedContextArtifact",
     "bind_context_artifact",
+    "bind_context_artifact_reader",
     "query_context_artifact",
     "query_context_artifact_reader",
     "verify_context_artifact",
