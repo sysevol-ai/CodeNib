@@ -631,7 +631,13 @@ def test_registry_publishers_use_separate_workflows() -> None:
         in wheel_env["CIBW_REPAIR_WHEEL_COMMAND_LINUX"]
     )
     wheel_smoke = wheel_env["CIBW_TEST_COMMAND"]
-    assert "workspace_owner_protocol_version == 2" in wheel_smoke
+    assert "workspace_owner_protocol_version == 3" in wheel_smoke
+    for symbol in (
+        "capture_owner_destination_exact",
+        "verify_owner_destination_binding_exact",
+        "borrow_owner_destination_descriptor_exact",
+    ):
+        assert symbol in wheel_smoke
     assert "implementation.require_support() is None" in wheel_smoke
     assert "_workspace_owner.require_support()" in wheel_smoke
 
@@ -700,7 +706,13 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "run"
     ]
     assert 'name == "_workspace_owner_impl.abi3.so"' in abi3_exercise
-    assert "workspace_owner_protocol_version == 2" in abi3_exercise
+    assert "workspace_owner_protocol_version == 3" in abi3_exercise
+    for symbol in (
+        "capture_owner_destination_exact",
+        "verify_owner_destination_binding_exact",
+        "borrow_owner_destination_descriptor_exact",
+    ):
+        assert symbol in abi3_exercise
     assert "implementation.require_support() is None" in abi3_exercise
     assert "_workspace_owner.require_support() is None" in abi3_exercise
     assert "LocalWorkspaceProvider(root)" in abi3_exercise
@@ -711,6 +723,18 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert "receipt_owner.active" in abi3_exercise
     assert "receipt_owner.close()" in abi3_exercise
     assert "receipt_owner.closed" in abi3_exercise
+    assert "_workspace_owner.capture_owner_destination(" in abi3_exercise
+    assert "destination-captured" in abi3_exercise
+    assert "_workspace_owner.verify_owner_destination_binding(" in abi3_exercise
+    assert "_workspace_owner.borrow_owner_destination_descriptor(" in abi3_exercise
+    assert "stat.S_ISDIR(descriptor_metadata.st_mode)" in abi3_exercise
+    assert "not os.get_inheritable(destination_descriptor)" in abi3_exercise
+    assert "os.close(destination_descriptor)" not in abi3_exercise
+    assert "_workspace_owner.close_owner_exact(captured_owner)" in abi3_exercise
+    assert "_workspace_owner.owner_closed(captured_owner)" in abi3_exercise
+    assert "tuple(path.name for path in root.iterdir()) == destination_names" in (
+        abi3_exercise
+    )
     assert abi3_exercise.count("assert output.read_bytes() == payload") == 2
 
     compatible_install_steps = {

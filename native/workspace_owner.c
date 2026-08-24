@@ -69,6 +69,7 @@ enum workspace_namespace_state {
   WORKSPACE_PUBLISHED_UNRECEIPTED = 4,
   WORKSPACE_RECEIPTED = 5,
   WORKSPACE_QUARANTINED = 6,
+  WORKSPACE_DESTINATION_CAPTURED = 7,
 };
 
 typedef struct {
@@ -88,6 +89,7 @@ typedef struct WorkspaceOwner {
   int allowed_root_policy_known;
   int closed;
   int provision_started;
+  int destination_capture_started;
   int namespace_created;
   int namespace_sync_pending;
   enum workspace_namespace_state namespace_state;
@@ -99,6 +101,9 @@ typedef struct WorkspaceOwner {
   int root_fd;
   int root_guard_fd;
   int root_exposed;
+  int captured_destination_fd;
+  int captured_destination_guard_fd;
+  int captured_destination_exposed;
   dev_t anchor_device;
   ino_t anchor_inode;
   int anchor_identity_known;
@@ -108,6 +113,9 @@ typedef struct WorkspaceOwner {
   dev_t root_device;
   ino_t root_inode;
   int root_identity_known;
+  dev_t captured_destination_device;
+  ino_t captured_destination_inode;
+  int captured_destination_identity_known;
   char *destination_name;
   char *destination_path;
   char *initial_stage_name;
@@ -201,6 +209,8 @@ static int check_deadline(long long deadline_ns) {
 
 static int verify_parent_binding(WorkspaceOwner *self);
 static int verify_owner_authority(WorkspaceOwner *self);
+static int verify_descriptor(int descriptor, int guard, dev_t device,
+                             ino_t inode);
 static int verify_hidden_directory(int descriptor, dev_t device, ino_t inode);
 static int quarantine_namespace_internal(WorkspaceOwner *self);
 
@@ -729,6 +739,15 @@ static int close_inherited_descriptors(WorkspaceOwner *self) {
       first_error = error;
     }
   }
+  error = close_one(self, &self->captured_destination_fd,
+                    &self->captured_destination_guard_fd,
+                    &self->captured_destination_device,
+                    &self->captured_destination_inode,
+                    &self->captured_destination_identity_known,
+                    self->captured_destination_exposed);
+  if (first_error == 0 && error != 0) {
+    first_error = error;
+  }
   error = close_one(self, &self->root_fd, &self->root_guard_fd,
                     &self->root_device, &self->root_inode,
                     &self->root_identity_known, self->root_exposed);
@@ -756,9 +775,11 @@ static int close_inherited_descriptors(WorkspaceOwner *self) {
       first_error = error;
     }
   }
-  self->closed = self->root_fd < 0 && self->root_guard_fd < 0 &&
-                 self->parent_fd < 0 && self->parent_guard_fd < 0 &&
-                 self->anchor_fd < 0 && self->anchor_guard_fd < 0;
+  self->closed = self->captured_destination_fd < 0 &&
+                 self->captured_destination_guard_fd < 0 && self->root_fd < 0 &&
+                 self->root_guard_fd < 0 && self->parent_fd < 0 &&
+                 self->parent_guard_fd < 0 && self->anchor_fd < 0 &&
+                 self->anchor_guard_fd < 0;
   for (index = 0; index < self->directory_count; ++index) {
     if (self->directories[index].fd >= 0 ||
         self->directories[index].guard_fd >= 0) {
@@ -806,6 +827,15 @@ static int close_all(WorkspaceOwner *self) {
       first_error = error;
     }
   }
+  error = close_one(self, &self->captured_destination_fd,
+                    &self->captured_destination_guard_fd,
+                    &self->captured_destination_device,
+                    &self->captured_destination_inode,
+                    &self->captured_destination_identity_known,
+                    self->captured_destination_exposed);
+  if (first_error == 0 && error != 0) {
+    first_error = error;
+  }
   error = close_one(self, &self->root_fd, &self->root_guard_fd,
                     &self->root_device, &self->root_inode,
                     &self->root_identity_known, self->root_exposed);
@@ -833,9 +863,11 @@ static int close_all(WorkspaceOwner *self) {
       first_error = error;
     }
   }
-  self->closed = self->root_fd < 0 && self->root_guard_fd < 0 &&
-                 self->parent_fd < 0 && self->parent_guard_fd < 0 &&
-                 self->anchor_fd < 0 && self->anchor_guard_fd < 0;
+  self->closed = self->captured_destination_fd < 0 &&
+                 self->captured_destination_guard_fd < 0 && self->root_fd < 0 &&
+                 self->root_guard_fd < 0 && self->parent_fd < 0 &&
+                 self->parent_guard_fd < 0 && self->anchor_fd < 0 &&
+                 self->anchor_guard_fd < 0;
   for (index = 0; index < self->directory_count; ++index) {
     if (self->directories[index].fd >= 0 ||
         self->directories[index].guard_fd >= 0) {
@@ -1577,6 +1609,7 @@ static PyObject *WorkspaceOwner_new(PyTypeObject *type, PyObject *args,
   self->allowed_root_policy_known = 0;
   self->closed = 0;
   self->provision_started = 0;
+  self->destination_capture_started = 0;
   self->namespace_created = 0;
   self->namespace_sync_pending = 0;
   self->namespace_state = WORKSPACE_EMPTY;
@@ -1588,9 +1621,13 @@ static PyObject *WorkspaceOwner_new(PyTypeObject *type, PyObject *args,
   self->root_fd = -1;
   self->root_guard_fd = -1;
   self->root_exposed = 0;
+  self->captured_destination_fd = -1;
+  self->captured_destination_guard_fd = -1;
+  self->captured_destination_exposed = 0;
   self->anchor_identity_known = 0;
   self->parent_identity_known = 0;
   self->root_identity_known = 0;
+  self->captured_destination_identity_known = 0;
   self->destination_name = NULL;
   self->destination_path = NULL;
   self->initial_stage_name = NULL;
@@ -2064,6 +2101,260 @@ error:
   return NULL;
 }
 
+static PyObject *WorkspaceOwner_capture_destination(WorkspaceOwner *self,
+                                                    PyObject *args) {
+  PyObject *allowed_root_object;
+  PyObject *destination_object;
+  PyObject *deadline_object;
+  char *allowed_root = NULL;
+  char *destination = NULL;
+  char *parent_path = NULL;
+  char *destination_name = NULL;
+  char *destination_path = NULL;
+  long long deadline_ns;
+  struct stat linked_metadata;
+  dev_t opened_device;
+  ino_t opened_inode;
+  int acquisition_started = 0;
+
+  if (require_linux() < 0 || require_owner_pid(self) < 0) {
+    return NULL;
+  }
+#if !defined(SYS_fstat) || !defined(SYS_newfstatat) || !defined(SYS_kcmp) ||   \
+    !defined(SYS_close)
+  PyErr_SetString(PyExc_RuntimeError,
+                  "native strict destination capture requires Linux "
+                  "descriptor and OFD-comparison syscalls");
+  return NULL;
+#else
+  if (probe_kcmp_support() < 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native strict destination capture requires permitted "
+                    "same-process kcmp OFD comparison");
+    return NULL;
+  }
+#endif
+  if (self->closed || self->provision_started ||
+      self->destination_capture_started || self->namespace_created ||
+      self->namespace_sync_pending ||
+      self->namespace_state != WORKSPACE_EMPTY ||
+      self->publish_permit_claimed || self->publish_permit_active ||
+      self->anchor_fd >= 0 || self->anchor_guard_fd >= 0 ||
+      self->parent_fd >= 0 || self->parent_guard_fd >= 0 ||
+      self->root_fd >= 0 || self->root_guard_fd >= 0 ||
+      self->captured_destination_fd >= 0 ||
+      self->captured_destination_guard_fd >= 0 || self->directories != NULL ||
+      self->directory_count != 0 || self->scratch_count != 0 ||
+      self->absolute_chain_count != 0 || self->relative_chain_count != 0 ||
+      self->destination_name != NULL || self->destination_path != NULL ||
+      self->initial_stage_name != NULL || self->stage_name != NULL ||
+      self->plan_digest != NULL || self->orphan_name != NULL ||
+      self->file_fd >= 0 || self->file_guard_fd >= 0 ||
+      self->file_name != NULL || self->file_active || self->file_failed ||
+      self->receipt_generation != 0 || self->allowed_root_policy_known ||
+      self->anchor_identity_known || self->parent_identity_known ||
+      self->root_identity_known || self->captured_destination_identity_known) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace owner is not empty for destination "
+                    "capture");
+    return NULL;
+  }
+  if (!PyArg_UnpackTuple(args, "capture_destination", 3, 3,
+                         &allowed_root_object, &destination_object,
+                         &deadline_object)) {
+    return NULL;
+  }
+  if (!PyLong_CheckExact(deadline_object)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "workspace capture deadline must be an exact integer");
+    return NULL;
+  }
+  deadline_ns = PyLong_AsLongLong(deadline_object);
+  if (deadline_ns == -1 && PyErr_Occurred()) {
+    return NULL;
+  }
+  if (deadline_ns <= 0) {
+    PyErr_SetString(PyExc_ValueError, "workspace capture deadline is invalid");
+    return NULL;
+  }
+  if (check_deadline(deadline_ns) < 0) {
+    return NULL;
+  }
+  allowed_root = copy_exact_bytes(allowed_root_object, "allowed root",
+                                  CODENIB_MAX_PATH_BYTES);
+  destination = copy_exact_bytes(destination_object, "workspace destination",
+                                 CODENIB_MAX_PATH_BYTES);
+  if (allowed_root == NULL || destination == NULL) {
+    goto error;
+  }
+  if (allowed_root[0] != '/') {
+    PyErr_SetString(PyExc_ValueError,
+                    "workspace allowed root must be an absolute path");
+    goto error;
+  }
+  if (split_destination(destination, &parent_path, &destination_name) < 0 ||
+      preflight_descriptor_budget(self, allowed_root, parent_path) < 0) {
+    goto error;
+  }
+  destination_path = join_destination_path(allowed_root, destination);
+  if (destination_path == NULL || check_deadline(deadline_ns) < 0) {
+    goto error;
+  }
+
+  self->destination_name = destination_name;
+  destination_name = NULL;
+  self->destination_path = destination_path;
+  destination_path = NULL;
+  acquisition_started = 1;
+  self->provision_started = 1;
+  self->destination_capture_started = 1;
+
+  self->anchor_fd = open_absolute_directory(self, allowed_root);
+  self->absolute_chain_count = self->scratch_count;
+  if (self->anchor_fd >= 0) {
+    self->anchor_fd = transfer_scratch_descriptor(
+        self, self->anchor_fd, &self->anchor_guard_fd, &self->anchor_device,
+        &self->anchor_inode);
+    if (self->anchor_fd >= 0) {
+      self->anchor_identity_known = 1;
+    }
+  }
+  if (self->anchor_fd < 0 ||
+      record_identity(self->anchor_fd, &self->anchor_device,
+                      &self->anchor_inode, S_IFDIR) < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  self->allowed_root_euid = geteuid();
+  self->allowed_root_policy_known = 1;
+  if (verify_allowed_root_policy(self) < 0) {
+    if (errno == EPERM) {
+      PyErr_SetString(PyExc_PermissionError,
+                      "workspace allowed root must be owned by the current "
+                      "effective user with exact mode 0700");
+    } else {
+      PyErr_SetFromErrno(PyExc_OSError);
+    }
+    goto error;
+  }
+  if (check_deadline(deadline_ns) < 0) {
+    goto error;
+  }
+  self->relative_chain_start = self->scratch_count;
+  self->parent_fd = walk_relative_directory(self, self->anchor_fd, parent_path);
+  self->relative_chain_count = self->scratch_count - self->relative_chain_start;
+  if (self->parent_fd >= 0) {
+    self->parent_fd = transfer_scratch_descriptor(
+        self, self->parent_fd, &self->parent_guard_fd, &self->parent_device,
+        &self->parent_inode);
+    if (self->parent_fd >= 0) {
+      self->parent_identity_known = 1;
+    }
+  }
+  if (self->parent_fd < 0 ||
+      record_identity(self->parent_fd, &self->parent_device,
+                      &self->parent_inode, S_IFDIR) < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  if (self->parent_device != self->anchor_device) {
+    PyErr_SetString(PyExc_ValueError,
+                    "workspace destination crosses the allowed-root device");
+    goto error;
+  }
+  if (verify_parent_binding(self) < 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "workspace allowed-root binding changed during destination "
+                    "capture");
+    goto error;
+  }
+  if (native_fstatat_retry(self->parent_guard_fd, self->destination_name,
+                           &linked_metadata, AT_SYMLINK_NOFOLLOW) < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  if (!S_ISDIR(linked_metadata.st_mode) || linked_metadata.st_dev == 0 ||
+      linked_metadata.st_ino == 0) {
+    PyErr_SetString(PyExc_ValueError,
+                    "workspace capture destination is not a directory");
+    goto error;
+  }
+  if (linked_metadata.st_dev != self->parent_device) {
+    PyErr_SetString(PyExc_ValueError,
+                    "workspace capture destination crosses the parent device");
+    goto error;
+  }
+  self->captured_destination_device = linked_metadata.st_dev;
+  self->captured_destination_inode = linked_metadata.st_ino;
+  self->captured_destination_fd =
+      open_directory_at(self->parent_guard_fd, self->destination_name);
+  if (self->captured_destination_fd < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  self->captured_destination_guard_fd =
+      duplicate_cloexec(self->captured_destination_fd);
+  if (self->captured_destination_guard_fd < 0) {
+    int error_number = errno;
+    discard_uncommitted_pair(&self->captured_destination_fd,
+                             &self->captured_destination_guard_fd,
+                             error_number);
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  if (record_identity(self->captured_destination_fd, &opened_device,
+                      &opened_inode, S_IFDIR) < 0) {
+    int error_number = errno;
+    discard_uncommitted_pair(&self->captured_destination_fd,
+                             &self->captured_destination_guard_fd,
+                             error_number);
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  if (opened_device != self->captured_destination_device ||
+      opened_inode != self->captured_destination_inode ||
+      opened_device != self->parent_device) {
+    errno = ESTALE;
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  self->captured_destination_identity_known = 1;
+  if (check_deadline(deadline_ns) < 0 || verify_parent_binding(self) < 0 ||
+      verify_descriptor(self->captured_destination_fd,
+                        self->captured_destination_guard_fd,
+                        self->captured_destination_device,
+                        self->captured_destination_inode) < 0 ||
+      same_identity_at(self->parent_guard_fd, self->destination_name,
+                       self->captured_destination_device,
+                       self->captured_destination_inode) < 0 ||
+      verify_allowed_root_policy(self) < 0) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      "workspace destination binding changed before capture "
+                      "commit");
+    }
+    goto error;
+  }
+  self->namespace_created = 0;
+  self->namespace_sync_pending = 0;
+  self->namespace_state = WORKSPACE_DESTINATION_CAPTURED;
+  free(allowed_root);
+  free(destination);
+  free(parent_path);
+  Py_RETURN_NONE;
+
+error:
+  if (!acquisition_started) {
+    free_configuration(self);
+  }
+  free(allowed_root);
+  free(destination);
+  free(parent_path);
+  free(destination_name);
+  free(destination_path);
+  return NULL;
+}
+
 static int verify_descriptor(int descriptor, int guard, dev_t device,
                              ino_t inode) {
   struct stat metadata;
@@ -2206,8 +2497,43 @@ static int verify_parent_binding(WorkspaceOwner *self) {
   return 0;
 }
 
+static int verify_captured_destination_binding(WorkspaceOwner *self) {
+  if (self->namespace_state != WORKSPACE_DESTINATION_CAPTURED || self->closed ||
+      !self->provision_started || !self->destination_capture_started ||
+      self->namespace_created || self->namespace_sync_pending ||
+      self->publish_permit_claimed || self->publish_permit_active ||
+      self->destination_name == NULL || self->destination_path == NULL ||
+      !self->captured_destination_identity_known ||
+      self->captured_destination_device == 0 ||
+      self->captured_destination_inode == 0 || self->root_fd >= 0 ||
+      self->root_guard_fd >= 0 || self->root_identity_known ||
+      self->directories != NULL || self->directory_count != 0 ||
+      self->file_fd >= 0 || self->file_guard_fd >= 0 || self->file_active ||
+      self->file_failed || self->file_name != NULL ||
+      self->initial_stage_name != NULL || self->stage_name != NULL ||
+      self->plan_digest != NULL || self->orphan_name != NULL ||
+      self->receipt_generation != 0 ||
+      self->parent_device != self->anchor_device ||
+      self->captured_destination_device != self->parent_device ||
+      verify_parent_binding(self) < 0 ||
+      verify_descriptor(self->captured_destination_fd,
+                        self->captured_destination_guard_fd,
+                        self->captured_destination_device,
+                        self->captured_destination_inode) < 0 ||
+      same_identity_at(self->parent_guard_fd, self->destination_name,
+                       self->captured_destination_device,
+                       self->captured_destination_inode) < 0) {
+    errno = ESTALE;
+    return -1;
+  }
+  return 0;
+}
+
 static int verify_owner_authority(WorkspaceOwner *self) {
   Py_ssize_t index;
+  if (self->destination_capture_started) {
+    return verify_captured_destination_binding(self);
+  }
   if (verify_parent_binding(self) < 0 || !self->root_identity_known ||
       verify_descriptor(self->root_fd, self->root_guard_fd, self->root_device,
                         self->root_inode) < 0 ||
@@ -2235,6 +2561,20 @@ static int verify_owner_authority(WorkspaceOwner *self) {
     }
   }
   return 0;
+}
+
+static PyObject *
+WorkspaceOwner_verify_destination_binding(WorkspaceOwner *self,
+                                          PyObject *Py_UNUSED(ignored)) {
+  if (require_owner_pid(self) < 0) {
+    return NULL;
+  }
+  if (verify_captured_destination_binding(self) < 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace destination binding changed");
+    return NULL;
+  }
+  Py_RETURN_NONE;
 }
 
 static PyObject *WorkspaceOwner_verify(WorkspaceOwner *self,
@@ -2581,6 +2921,11 @@ static PyObject *WorkspaceOwner_write_file(WorkspaceOwner *self,
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
+  if (self->destination_capture_started) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "captured destination owner cannot write a file");
+    return NULL;
+  }
   if (!PyBytes_CheckExact(payload) ||
       PyBytes_AsStringAndSize(payload, &data, &size) < 0) {
     if (self->file_active) {
@@ -2650,6 +2995,11 @@ static PyObject *WorkspaceOwner_finish_file(WorkspaceOwner *self,
   PyObject *result;
 
   if (require_owner_pid(self) < 0) {
+    return NULL;
+  }
+  if (self->destination_capture_started) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "captured destination owner cannot finish a file");
     return NULL;
   }
   if (exact_file_mode(mode_object, "workspace file final mode", &final_mode) <
@@ -2735,6 +3085,11 @@ static PyObject *WorkspaceOwner_abort_file(WorkspaceOwner *self,
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
+  if (self->destination_capture_started) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "captured destination owner cannot abort a file");
+    return NULL;
+  }
   if (!self->file_active && self->file_fd < 0 && self->file_guard_fd < 0) {
     Py_RETURN_NONE;
   }
@@ -2783,6 +3138,11 @@ static PyObject *
 WorkspaceOwner_sync_parent_method(WorkspaceOwner *self,
                                   PyObject *Py_UNUSED(ignored)) {
   if (require_owner_pid(self) < 0) {
+    return NULL;
+  }
+  if (self->destination_capture_started) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "captured destination owner cannot sync its parent");
     return NULL;
   }
   if (self->closed || verify_parent_binding(self) < 0 ||
@@ -3098,6 +3458,11 @@ static PyObject *WorkspaceOwner_quarantine(WorkspaceOwner *self,
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
+  if (self->destination_capture_started) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "captured destination owner cannot be quarantined");
+    return NULL;
+  }
   if (quarantine_namespace_internal(self) < 0) {
     if (errno == ENOMEM) {
       PyErr_NoMemory();
@@ -3190,7 +3555,7 @@ static PyObject *WorkspaceOwner_directory_descriptor(WorkspaceOwner *self,
   Py_ssize_t index;
 
   if (require_owner_pid(self) < 0 || self->closed ||
-      verify_owner_authority(self) < 0) {
+      self->destination_capture_started || verify_owner_authority(self) < 0) {
     if (!PyErr_Occurred()) {
       PyErr_SetString(PyExc_RuntimeError, "native workspace owner is closed");
     }
@@ -3222,7 +3587,8 @@ static PyObject *WorkspaceOwner_directory_descriptor(WorkspaceOwner *self,
 static PyObject *WorkspaceOwner_get_parent_descriptor(WorkspaceOwner *self,
                                                       void *closure) {
   (void)closure;
-  if (require_owner_pid(self) < 0 || self->closed || self->parent_fd < 0 ||
+  if (require_owner_pid(self) < 0 || self->closed ||
+      self->destination_capture_started || self->parent_fd < 0 ||
       verify_parent_binding(self) < 0) {
     if (!PyErr_Occurred()) {
       PyErr_SetString(PyExc_RuntimeError,
@@ -3247,6 +3613,21 @@ static PyObject *WorkspaceOwner_get_root_descriptor(WorkspaceOwner *self,
   }
   self->root_exposed = 1;
   return PyLong_FromLong(self->root_fd);
+}
+
+static PyObject *WorkspaceOwner_get_destination_descriptor(WorkspaceOwner *self,
+                                                           void *closure) {
+  (void)closure;
+  if (require_owner_pid(self) < 0 ||
+      verify_captured_destination_binding(self) < 0) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      "native workspace destination descriptor is unavailable");
+    }
+    return NULL;
+  }
+  self->captured_destination_exposed = 1;
+  return PyLong_FromLong(self->captured_destination_fd);
 }
 
 static PyObject *WorkspaceOwner_get_closed(WorkspaceOwner *self,
@@ -3282,6 +3663,9 @@ static PyObject *WorkspaceOwner_get_state(WorkspaceOwner *self, void *closure) {
       break;
     case WORKSPACE_QUARANTINED:
       state = "quarantined";
+      break;
+    case WORKSPACE_DESTINATION_CAPTURED:
+      state = "destination-captured";
       break;
     default:
       state = "invalid";
@@ -3537,6 +3921,14 @@ static PyObject *module_provision_owner_exact(PyObject *module,
                                       WorkspaceOwner_provision);
 }
 
+static PyObject *module_capture_owner_destination_exact(PyObject *module,
+                                                        PyObject *args) {
+  (void)module;
+  return dispatch_owner_varargs_exact(args, 4,
+                                      "capture_owner_destination_exact",
+                                      WorkspaceOwner_capture_destination);
+}
+
 static PyObject *module_claim_owner_publish_permit_exact(PyObject *module,
                                                          PyObject *owner) {
   (void)module;
@@ -3548,6 +3940,14 @@ static PyObject *module_verify_owner_authority_exact(PyObject *module,
                                                      PyObject *owner) {
   (void)module;
   return dispatch_owner_noargs_exact(owner, WorkspaceOwner_verify);
+}
+
+static PyObject *
+module_verify_owner_destination_binding_exact(PyObject *module,
+                                              PyObject *owner) {
+  (void)module;
+  return dispatch_owner_noargs_exact(owner,
+                                     WorkspaceOwner_verify_destination_binding);
 }
 
 static PyObject *module_verify_owner_adoption_binding_exact(PyObject *module,
@@ -3578,6 +3978,18 @@ static PyObject *module_borrow_owner_root_descriptor_exact(PyObject *module,
     return NULL;
   }
   return WorkspaceOwner_get_root_descriptor(exact_owner, NULL);
+}
+
+static PyObject *
+module_borrow_owner_destination_descriptor_exact(PyObject *module,
+                                                 PyObject *owner) {
+  WorkspaceOwner *exact_owner;
+  (void)module;
+  exact_owner = require_workspace_owner_exact(owner);
+  if (exact_owner == NULL) {
+    return NULL;
+  }
+  return WorkspaceOwner_get_destination_descriptor(exact_owner, NULL);
 }
 
 static PyObject *
@@ -3733,7 +4145,7 @@ static PyObject *module_require_owner_exact(PyObject *module, PyObject *owner) {
   return owner;
 }
 
-#define CODENIB_WORKSPACE_OWNER_PROTOCOL_VERSION 2
+#define CODENIB_WORKSPACE_OWNER_PROTOCOL_VERSION 3
 
 static PyObject *module_require_support(PyObject *module,
                                         PyObject *Py_UNUSED(ignored)) {
@@ -3775,12 +4187,18 @@ static PyMethodDef workspace_module_methods[] = {
      "Authenticate against the internally pinned native owner type."},
     {"provision_owner_exact", (PyCFunction)module_provision_owner_exact,
      METH_VARARGS, "Provision through exact native-owner dispatch."},
+    {"capture_owner_destination_exact",
+     (PyCFunction)module_capture_owner_destination_exact, METH_VARARGS,
+     "Capture one existing destination through exact native-owner dispatch."},
     {"claim_owner_publish_permit_exact",
      (PyCFunction)module_claim_owner_publish_permit_exact, METH_O,
      "Claim the exact owner's private one-shot publication capability."},
     {"verify_owner_authority_exact",
      (PyCFunction)module_verify_owner_authority_exact, METH_O,
      "Verify authority through exact native-owner dispatch."},
+    {"verify_owner_destination_binding_exact",
+     (PyCFunction)module_verify_owner_destination_binding_exact, METH_O,
+     "Verify one exact captured destination binding."},
     {"verify_owner_adoption_binding_exact",
      (PyCFunction)module_verify_owner_adoption_binding_exact, METH_VARARGS,
      "Verify adoption binding through exact native-owner dispatch."},
@@ -3790,6 +4208,9 @@ static PyMethodDef workspace_module_methods[] = {
     {"borrow_owner_root_descriptor_exact",
      (PyCFunction)module_borrow_owner_root_descriptor_exact, METH_O,
      "Borrow the exact owner's workspace-root descriptor."},
+    {"borrow_owner_destination_descriptor_exact",
+     (PyCFunction)module_borrow_owner_destination_descriptor_exact, METH_O,
+     "Borrow the exact owner's captured-destination descriptor."},
     {"borrow_owner_directory_descriptor_exact",
      (PyCFunction)module_borrow_owner_directory_descriptor_exact, METH_VARARGS,
      "Borrow one planned directory through exact native-owner dispatch."},

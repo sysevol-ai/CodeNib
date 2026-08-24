@@ -117,7 +117,11 @@ jobs:
             import codenib._workspace_owner_impl as implementation;
             from codenib import _workspace_owner;
             assert platform.machine() == '${{ matrix.arch }}';
-            assert implementation.workspace_owner_protocol_version == 2;
+            assert implementation.workspace_owner_protocol_version == 3;
+            assert all(callable(getattr(implementation, name, None)) for name in
+            ('capture_owner_destination_exact',
+            'verify_owner_destination_binding_exact',
+            'borrow_owner_destination_descriptor_exact'));
             assert implementation.require_support() is None;
             _workspace_owner.require_support()"
 
@@ -345,7 +349,9 @@ jobs:
         run: |
           python - <<'PY'
           import hashlib
+          import os
           import stat
+          import time
           from pathlib import Path
           from tempfile import TemporaryDirectory
 
@@ -363,9 +369,21 @@ jobs:
           )
 
           assert Path(implementation.__file__).name == "_workspace_owner_impl.abi3.so"
-          assert implementation.workspace_owner_protocol_version == 2
+          assert implementation.workspace_owner_protocol_version == 3
+          capture_symbols = (
+              "capture_owner_destination_exact",
+              "verify_owner_destination_binding_exact",
+              "borrow_owner_destination_descriptor_exact",
+          )
+          assert all(
+              callable(getattr(implementation, name, None))
+              for name in capture_symbols
+          )
           assert implementation.require_support() is None
           assert _workspace_owner.require_support() is None
+          assert callable(_workspace_owner.capture_owner_destination)
+          assert callable(_workspace_owner.verify_owner_destination_binding)
+          assert callable(_workspace_owner.borrow_owner_destination_descriptor)
 
           payload = b'{"release-smoke":"ok"}'
           with TemporaryDirectory() as temporary:
@@ -418,6 +436,45 @@ jobs:
               receipt_owner.close()
 
               assert receipt_owner.closed
+              destination_identity = (destination.stat().st_dev, destination.stat().st_ino)
+              destination_names = tuple(path.name for path in root.iterdir())
+              captured_owner = _workspace_owner.create_owner()
+              try:
+                  _workspace_owner.capture_owner_destination(
+                      captured_owner,
+                      os.fsencode(root),
+                      b"published",
+                      time.monotonic_ns() + 10_000_000_000,
+                  )
+                  assert _workspace_owner.owner_state(captured_owner) == (
+                      "destination-captured"
+                  )
+                  assert (
+                      _workspace_owner.verify_owner_destination_binding(
+                          captured_owner
+                      )
+                      is None
+                  )
+                  destination_descriptor = (
+                      _workspace_owner.borrow_owner_destination_descriptor(
+                          captured_owner
+                      )
+                  )
+                  descriptor_metadata = os.fstat(destination_descriptor)
+                  assert stat.S_ISDIR(descriptor_metadata.st_mode)
+                  assert (
+                      descriptor_metadata.st_dev,
+                      descriptor_metadata.st_ino,
+                  ) == destination_identity
+                  assert not os.get_inheritable(destination_descriptor)
+              finally:
+                  _workspace_owner.close_owner_exact(captured_owner)
+
+              assert _workspace_owner.owner_closed(captured_owner)
+              assert tuple(path.name for path in root.iterdir()) == destination_names
+              assert (destination.stat().st_dev, destination.stat().st_ino) == (
+                  destination_identity
+              )
               assert output.read_bytes() == payload
           PY
 

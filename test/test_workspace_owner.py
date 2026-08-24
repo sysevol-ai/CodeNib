@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 import ctypes.util
+import fcntl
 import gc
 import hashlib
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -94,6 +96,46 @@ def _provision(
     return owner, selected_plan, publication_permit
 
 
+def _capture_existing_destination(root: Path, destination: bytes) -> object:
+    owner = _require_native_owner()
+    assert (
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            destination,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        is None
+    )
+    return owner
+
+
+def _tree_fingerprint(root: Path) -> tuple[tuple[object, ...], ...]:
+    entries: list[tuple[object, ...]] = []
+    for path in (root, *sorted(root.rglob("*"))):
+        metadata = path.lstat()
+        payload: bytes | str | None = None
+        if stat.S_ISREG(metadata.st_mode):
+            payload = path.read_bytes()
+        elif stat.S_ISLNK(metadata.st_mode):
+            payload = os.readlink(path)
+        entries.append(
+            (
+                os.fspath(path.relative_to(root.parent)),
+                stat.S_IFMT(metadata.st_mode),
+                stat.S_IMODE(metadata.st_mode),
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_nlink,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+                metadata.st_ctime_ns,
+                payload,
+            )
+        )
+    return tuple(entries)
+
+
 def test_workspace_owner_facade_rejects_an_incomplete_abi(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -108,7 +150,7 @@ def test_workspace_owner_facade_rejects_an_incomplete_abi(
         workspace_owner.require_support()
 
 
-def test_workspace_owner_facade_rejects_symbol_complete_protocol_v1() -> None:
+def test_workspace_owner_facade_rejects_symbol_complete_protocol_v2() -> None:
     required_symbols = (
         "require_support",
         "create_owner_exact",
@@ -141,7 +183,7 @@ def test_workspace_owner_facade_rejects_symbol_complete_protocol_v1() -> None:
         import types
 
         implementation = types.ModuleType("codenib._workspace_owner_impl")
-        implementation.workspace_owner_protocol_version = 1
+        implementation.workspace_owner_protocol_version = 2
         for name in {required_symbols!r}:
             setattr(implementation, name, lambda *args, **kwargs: None)
         sys.modules[implementation.__name__] = implementation
@@ -154,7 +196,90 @@ def test_workspace_owner_facade_rejects_symbol_complete_protocol_v1() -> None:
         except RuntimeError as error:
             assert "workspace-owner extension" in str(error)
         else:
-            raise AssertionError("protocol-v1 implementation was accepted")
+            raise AssertionError("protocol-v2 implementation was accepted")
+        """
+    )
+    repository_root = Path(__file__).resolve().parents[1]
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(repository_root), environment.get("PYTHONPATH", ""))
+    )
+
+    subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repository_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_workspace_owner_facade_rejects_each_incomplete_protocol_v3_abi() -> None:
+    required_symbols = (
+        "require_support",
+        "create_owner_exact",
+        "claim_owner_publish_permit_exact",
+        "require_owner_exact",
+        "close_owner_exact",
+        "provision_owner_exact",
+        "capture_owner_destination_exact",
+        "verify_owner_authority_exact",
+        "verify_owner_adoption_binding_exact",
+        "verify_owner_destination_binding_exact",
+        "borrow_owner_parent_descriptor_exact",
+        "borrow_owner_root_descriptor_exact",
+        "borrow_owner_destination_descriptor_exact",
+        "borrow_owner_directory_descriptor_exact",
+        "begin_owner_file_exact",
+        "write_owner_file_exact",
+        "finish_owner_file_exact",
+        "abort_owner_file_exact",
+        "seal_owner_directories_exact",
+        "sync_owner_parent_exact",
+        "mark_owner_adopted_exact",
+        "rename_owner_child_noreplace_exact",
+        "commit_owner_receipt_exact",
+        "abort_owner_exact",
+        "quarantine_owner_exact",
+        "owner_state_exact",
+        "owner_closed_exact",
+    )
+    script = textwrap.dedent(
+        f"""
+        import importlib
+        import sys
+        import types
+
+        import codenib
+
+        required = {required_symbols!r}
+        cached = tuple(
+            "_require_support_exact" if name == "require_support" else f"_{{name}}"
+            for name in required
+        )
+        for missing in required:
+            implementation = types.ModuleType("codenib._workspace_owner_impl")
+            implementation.workspace_owner_protocol_version = 3
+            for name in required:
+                if name != missing:
+                    setattr(implementation, name, lambda *args, **kwargs: None)
+            sys.modules[implementation.__name__] = implementation
+            setattr(codenib, "_workspace_owner_impl", implementation)
+            sys.modules.pop("codenib._workspace_owner", None)
+            if hasattr(codenib, "_workspace_owner"):
+                delattr(codenib, "_workspace_owner")
+
+            facade = importlib.import_module("codenib._workspace_owner")
+            assert not facade._workspace_owner_protocol_available, missing
+            for cached_name in cached:
+                assert getattr(facade, cached_name) is None, (missing, cached_name)
+            try:
+                facade.require_support()
+            except RuntimeError as error:
+                assert "workspace-owner extension" in str(error)
+            else:
+                raise AssertionError(f"incomplete protocol-v3 ABI accepted: {{missing}}")
         """
     )
     repository_root = Path(__file__).resolve().parents[1]
@@ -1096,3 +1221,642 @@ def test_native_owner_child_cleanup_does_not_close_reused_foreign_fds(
     assert (tmp_path / ".stage").is_dir()
     workspace_owner.abort_owner(owner)
     assert workspace_owner.owner_closed(owner)
+
+
+@pytest.mark.parametrize("cleanup", ("close", "abort"))
+def test_native_owner_captures_existing_destination_without_mutation(
+    tmp_path: Path,
+    cleanup: str,
+) -> None:
+    root = tmp_path / "authority"
+    destination = root / "nested" / "published"
+    destination.mkdir(mode=0o750, parents=True)
+    root.chmod(0o700)
+    (destination / "payload.txt").write_bytes(b"retained")
+    before = _tree_fingerprint(root)
+    expected = destination.stat()
+
+    owner = _capture_existing_destination(root, b"nested/published")
+
+    assert workspace_owner.owner_state(owner) == "destination-captured"
+    assert not workspace_owner.owner_closed(owner)
+    assert workspace_owner.require_exact_owner(owner) is owner
+    assert workspace_owner.verify_owner_authority(owner) is None
+    assert workspace_owner.verify_owner_destination_binding(owner) is None
+    descriptor = workspace_owner.borrow_owner_destination_descriptor(owner)
+    assert workspace_owner.borrow_owner_destination_descriptor(owner) == descriptor
+    observed = os.fstat(descriptor)
+    assert stat.S_ISDIR(observed.st_mode)
+    assert (observed.st_dev, observed.st_ino) == (
+        expected.st_dev,
+        expected.st_ino,
+    )
+    assert fcntl.fcntl(descriptor, fcntl.F_GETFD) & fcntl.FD_CLOEXEC
+    assert _tree_fingerprint(root) == before
+
+    if cleanup == "close":
+        assert workspace_owner.close_owner_exact(owner) is None
+        assert workspace_owner.close_owner_exact(owner) is None
+    else:
+        assert workspace_owner.abort_owner(owner) is None
+        assert workspace_owner.abort_owner(owner) is None
+    assert workspace_owner.owner_closed(owner)
+    assert _tree_fingerprint(root) == before
+
+
+def test_native_destination_capture_return_interruption_preserves_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "payload.txt").write_bytes(b"preserved")
+    before = _tree_fingerprint(root)
+    owner = _require_native_owner()
+    interruption = KeyboardInterrupt("after native destination capture")
+
+    def interrupt_after_capture(result: object, label: str) -> None:
+        assert result is None
+        assert label == "destination-capture"
+        assert workspace_owner.owner_state(owner) == "destination-captured"
+        raise interruption
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            workspace_owner,
+            "_require_none_result",
+            interrupt_after_capture,
+        )
+        with pytest.raises(KeyboardInterrupt) as captured:
+            workspace_owner.capture_owner_destination(
+                owner,
+                os.fsencode(root),
+                b"published",
+                time.monotonic_ns() + 10_000_000_000,
+            )
+
+    assert captured.value is interruption
+    assert workspace_owner.verify_owner_destination_binding(owner) is None
+    assert _tree_fingerprint(root) == before
+    workspace_owner.abort_owner(owner)
+    assert workspace_owner.owner_closed(owner)
+    assert _tree_fingerprint(root) == before
+
+
+def test_native_destination_capture_symbols_require_the_exact_owner_type(
+    tmp_path: Path,
+) -> None:
+    probe = _require_native_owner()
+    workspace_owner.close_owner_exact(probe)
+    candidate = object()
+
+    with pytest.raises(TypeError, match="invalid native type"):
+        workspace_owner.capture_owner_destination(
+            candidate,
+            os.fsencode(tmp_path),
+            b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+    with pytest.raises(TypeError, match="invalid native type"):
+        workspace_owner.verify_owner_destination_binding(candidate)
+    with pytest.raises(TypeError, match="invalid native type"):
+        workspace_owner.borrow_owner_destination_descriptor(candidate)
+
+
+def test_native_captured_destination_rejects_every_legacy_owner_operation(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "payload.txt").write_bytes(b"immutable")
+    before = _tree_fingerprint(root)
+    owner = _capture_existing_destination(root, b"published")
+
+    rejected = (
+        lambda: workspace_owner.claim_owner_publish_permit(owner),
+        lambda: workspace_owner.provision_owner(
+            owner,
+            os.fsencode(root),
+            b"other",
+            b".stage",
+            b"0" * 64,
+            0o700,
+            (),
+            time.monotonic_ns() + 10_000_000_000,
+        ),
+        lambda: workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        ),
+        lambda: workspace_owner.verify_owner_adoption_binding(
+            owner,
+            os.fsencode(destination),
+            b".stage",
+            b"0" * 64,
+        ),
+        lambda: workspace_owner.borrow_owner_parent_descriptor(owner),
+        lambda: workspace_owner.borrow_owner_root_descriptor(owner),
+        lambda: workspace_owner.borrow_owner_directory_descriptor(owner, b"views"),
+        lambda: workspace_owner.begin_owner_file(owner, b"", b"new", 0o600),
+        lambda: workspace_owner.write_owner_file(owner, b"new"),
+        lambda: workspace_owner.finish_owner_file(owner, 0o600),
+        lambda: workspace_owner.abort_owner_file(owner),
+        lambda: workspace_owner.seal_owner_directories(owner),
+        lambda: workspace_owner.sync_owner_parent(owner),
+        lambda: workspace_owner.mark_owner_adopted(owner),
+        lambda: workspace_owner.rename_owner_child_noreplace(
+            owner,
+            b"published",
+            b"other",
+        ),
+        lambda: workspace_owner.commit_owner_receipt(owner),
+        lambda: workspace_owner.quarantine_owner(owner),
+    )
+    for operation in rejected:
+        with pytest.raises((RuntimeError, TypeError)):
+            operation()
+        assert workspace_owner.owner_state(owner) == "destination-captured"
+        assert workspace_owner.verify_owner_destination_binding(owner) is None
+        assert _tree_fingerprint(root) == before
+
+    workspace_owner.abort_owner(owner)
+    assert workspace_owner.owner_closed(owner)
+    assert _tree_fingerprint(root) == before
+
+
+def test_native_destination_capture_requires_exact_bounded_arguments(
+    tmp_path: Path,
+) -> None:
+    class BytesSubclass(bytes):
+        pass
+
+    root = tmp_path / "authority"
+    (root / "published").mkdir(parents=True)
+    root.chmod(0o700)
+    valid_root = os.fsencode(root)
+    valid_destination = b"published"
+    valid_deadline = time.monotonic_ns() + 10_000_000_000
+    invalid_arguments = (
+        (os.fspath(root), valid_destination, valid_deadline, TypeError),
+        (BytesSubclass(valid_root), valid_destination, valid_deadline, TypeError),
+        (valid_root, "published", valid_deadline, TypeError),
+        (valid_root, BytesSubclass(valid_destination), valid_deadline, TypeError),
+        (valid_root, valid_destination, True, TypeError),
+        (valid_root, valid_destination, 1.0, TypeError),
+        (valid_root, valid_destination, 0, ValueError),
+        (valid_root, valid_destination, -1, ValueError),
+        (b"relative", valid_destination, valid_deadline, ValueError),
+        (valid_root, b"", valid_deadline, ValueError),
+        (valid_root, b"/published", valid_deadline, ValueError),
+        (valid_root, b"./published", valid_deadline, ValueError),
+        (valid_root, b"nested/../published", valid_deadline, ValueError),
+        (valid_root, b"published/", valid_deadline, ValueError),
+        (valid_root, b"published\x00other", valid_deadline, ValueError),
+    )
+
+    for allowed_root, destination, deadline, error_type in invalid_arguments:
+        owner = _require_native_owner()
+        with pytest.raises(error_type):
+            workspace_owner.capture_owner_destination(
+                owner,
+                allowed_root,  # type: ignore[arg-type]
+                destination,  # type: ignore[arg-type]
+                deadline,  # type: ignore[arg-type]
+            )
+        assert workspace_owner.owner_state(owner) == "empty"
+        workspace_owner.close_owner_exact(owner)
+        assert workspace_owner.owner_closed(owner)
+
+
+def test_native_expired_capture_deadline_is_retryable_before_acquisition(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    (root / "published").mkdir(parents=True)
+    root.chmod(0o700)
+    owner = _require_native_owner()
+
+    with pytest.raises(TimeoutError):
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            b"published",
+            time.monotonic_ns() - 1,
+        )
+
+    assert workspace_owner.owner_state(owner) == "empty"
+    assert (
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            b"published",
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        is None
+    )
+    workspace_owner.abort_owner(owner)
+    assert (root / "published").is_dir()
+
+
+@pytest.mark.parametrize(
+    "destination_kind",
+    ("missing", "file", "symlink", "symlink-parent"),
+)
+def test_native_capture_rejects_non_directory_or_unpinned_destinations_and_poison_closes(
+    tmp_path: Path,
+    destination_kind: str,
+) -> None:
+    root = tmp_path / "authority"
+    root.mkdir(mode=0o700)
+    root.chmod(0o700)
+    relative = b"published"
+    if destination_kind == "file":
+        (root / "published").write_bytes(b"not-a-directory")
+    elif destination_kind == "symlink":
+        (root / "real").mkdir()
+        (root / "published").symlink_to("real", target_is_directory=True)
+    elif destination_kind == "symlink-parent":
+        (root / "real-parent" / "published").mkdir(parents=True)
+        (root / "alias").symlink_to("real-parent", target_is_directory=True)
+        relative = b"alias/published"
+    before = _tree_fingerprint(root)
+    owner = _require_native_owner()
+
+    with pytest.raises((OSError, ValueError)):
+        workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            relative,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+
+    assert workspace_owner.owner_state(owner) == "empty"
+    for operation in (
+        lambda: workspace_owner.claim_owner_publish_permit(owner),
+        lambda: workspace_owner.capture_owner_destination(
+            owner,
+            os.fsencode(root),
+            relative,
+            time.monotonic_ns() + 10_000_000_000,
+        ),
+        lambda: workspace_owner.borrow_owner_parent_descriptor(owner),
+        lambda: workspace_owner.abort_owner_file(owner),
+        lambda: workspace_owner.sync_owner_parent(owner),
+        lambda: workspace_owner.quarantine_owner(owner),
+    ):
+        with pytest.raises(RuntimeError):
+            operation()
+    assert _tree_fingerprint(root) == before
+    workspace_owner.abort_owner(owner)
+    assert workspace_owner.owner_closed(owner)
+    assert _tree_fingerprint(root) == before
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="requires Linux")
+def test_native_capture_rejects_destination_exchanged_between_stat_and_open(
+    tmp_path: Path,
+) -> None:
+    probe = _require_native_owner()
+    workspace_owner.close_owner_exact(probe)
+    compiler = shutil.which("cc")
+    if compiler is None:
+        pytest.skip("a C compiler is required for the deterministic race shim")
+    source = tmp_path / "capture_race.c"
+    library = tmp_path / "capture_race.so"
+    source.write_text(
+        textwrap.dedent(
+            r"""
+            #define _GNU_SOURCE
+            #include <dlfcn.h>
+            #include <errno.h>
+            #include <fcntl.h>
+            #include <stdarg.h>
+            #include <stdlib.h>
+            #include <string.h>
+            #include <sys/syscall.h>
+            #include <sys/types.h>
+            #include <unistd.h>
+
+            #ifndef RENAME_EXCHANGE
+            #define RENAME_EXCHANGE (1U << 1)
+            #endif
+
+            typedef int (*openat64_function)(int, const char *, int, ...);
+
+            int openat64(int parent, const char *name, int flags, ...) {
+              static openat64_function real_openat64 = NULL;
+              static int injected = 0;
+              mode_t mode = 0;
+              va_list arguments;
+
+              if (real_openat64 == NULL) {
+                real_openat64 =
+                    (openat64_function)dlsym(RTLD_NEXT, "openat64");
+                if (real_openat64 == NULL) {
+                  errno = ENOSYS;
+                  return -1;
+                }
+              }
+              if (!injected && name != NULL &&
+                  strcmp(name, "published") == 0 &&
+                  (flags & O_DIRECTORY) != 0 &&
+                  getenv("CODENIB_CAPTURE_RACE") != NULL) {
+                injected = 1;
+                if (syscall(SYS_renameat2, parent, "published", parent,
+                            "alternate", RENAME_EXCHANGE) != 0) {
+                  return -1;
+                }
+              }
+              if ((flags & O_CREAT) != 0) {
+                va_start(arguments, flags);
+                mode = va_arg(arguments, mode_t);
+                va_end(arguments);
+                return real_openat64(parent, name, flags, mode);
+              }
+              return real_openat64(parent, name, flags);
+            }
+            """
+        ),
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [compiler, "-shared", "-fPIC", "-O2", "-Wall", "-o", library, source, "-ldl"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    root = tmp_path / "authority"
+    published = root / "published"
+    alternate = root / "alternate"
+    published.mkdir(parents=True)
+    alternate.mkdir()
+    root.chmod(0o700)
+    (published / "identity.txt").write_bytes(b"published-before-race")
+    (alternate / "identity.txt").write_bytes(b"alternate-before-race")
+    script = textwrap.dedent(
+        """
+        import os
+        import sys
+        import time
+        from pathlib import Path
+
+        import codenib._workspace_owner as workspace_owner
+
+        root = Path(sys.argv[1])
+        owner = workspace_owner.create_owner()
+        try:
+            workspace_owner.capture_owner_destination(
+                owner,
+                os.fsencode(root),
+                b"published",
+                time.monotonic_ns() + 10_000_000_000,
+            )
+        except OSError:
+            pass
+        else:
+            raise AssertionError("capture accepted a stat/open destination exchange")
+        assert workspace_owner.owner_state(owner) == "empty"
+        assert (root / "published" / "identity.txt").read_bytes() == (
+            b"alternate-before-race"
+        )
+        assert (root / "alternate" / "identity.txt").read_bytes() == (
+            b"published-before-race"
+        )
+        after_failure = tuple(
+            sorted(
+                (path.relative_to(root).as_posix(), path.read_bytes())
+                for path in root.glob("*/identity.txt")
+            )
+        )
+        for operation in (
+            lambda: workspace_owner.borrow_owner_parent_descriptor(owner),
+            lambda: workspace_owner.verify_owner_destination_binding(owner),
+            lambda: workspace_owner.quarantine_owner(owner),
+        ):
+            try:
+                operation()
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("poisoned capture owner remained usable")
+        workspace_owner.abort_owner(owner)
+        assert workspace_owner.owner_closed(owner)
+        after_cleanup = tuple(
+            sorted(
+                (path.relative_to(root).as_posix(), path.read_bytes())
+                for path in root.glob("*/identity.txt")
+            )
+        )
+        assert after_cleanup == after_failure
+        """
+    )
+    repository_root = Path(__file__).resolve().parents[1]
+    environment = dict(os.environ)
+    existing_preload = environment.get("LD_PRELOAD")
+    environment["LD_PRELOAD"] = os.pathsep.join(
+        value for value in (os.fspath(library), existing_preload) if value
+    )
+    environment["CODENIB_CAPTURE_RACE"] = "1"
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(repository_root), environment.get("PYTHONPATH", ""))
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script, os.fspath(root)],
+        cwd=repository_root,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+@pytest.mark.parametrize("rebind", ("destination", "parent", "allowed-root"))
+def test_native_captured_destination_detects_every_lexical_rebind(
+    tmp_path: Path,
+    rebind: str,
+) -> None:
+    root = tmp_path / "authority"
+    destination = root / "nested" / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "payload.txt").write_bytes(b"original")
+    owner = _capture_existing_destination(root, b"nested/published")
+
+    if rebind == "destination":
+        destination.rename(root / "nested" / "captured-original")
+        destination.mkdir()
+    elif rebind == "parent":
+        (root / "nested").rename(root / "captured-parent")
+        destination.mkdir(parents=True)
+    else:
+        root.rename(tmp_path / "captured-root")
+        destination.mkdir(parents=True)
+        root.chmod(0o700)
+    before_cleanup = _tree_fingerprint(tmp_path)
+
+    with pytest.raises(RuntimeError, match="changed"):
+        workspace_owner.verify_owner_destination_binding(owner)
+    with pytest.raises(RuntimeError, match="changed"):
+        workspace_owner.verify_owner_authority(owner)
+    with pytest.raises(RuntimeError, match="unavailable"):
+        workspace_owner.borrow_owner_destination_descriptor(owner)
+
+    workspace_owner.abort_owner(owner)
+    assert workspace_owner.owner_closed(owner)
+    assert _tree_fingerprint(tmp_path) == before_cleanup
+
+
+def test_native_captured_destination_cleanup_does_not_close_reused_foreign_fd(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    before = _tree_fingerprint(root)
+    owner = _capture_existing_destination(root, b"published")
+    descriptor = workspace_owner.borrow_owner_destination_descriptor(owner)
+    os.close(descriptor)
+    foreign_source = os.open(
+        destination,
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0),
+    )
+    if foreign_source != descriptor:
+        os.dup2(foreign_source, descriptor, inheritable=False)
+
+    try:
+        with pytest.raises(RuntimeError, match="changed"):
+            workspace_owner.verify_owner_destination_binding(owner)
+        with pytest.raises(OSError):
+            workspace_owner.abort_owner(owner)
+        assert workspace_owner.owner_closed(owner)
+        replacement = os.fstat(descriptor)
+        expected = destination.stat()
+        assert stat.S_ISDIR(replacement.st_mode)
+        assert (replacement.st_dev, replacement.st_ino) == (
+            expected.st_dev,
+            expected.st_ino,
+        )
+        assert _tree_fingerprint(root) == before
+        assert workspace_owner.abort_owner(owner) is None
+    finally:
+        os.close(descriptor)
+        if foreign_source != descriptor:
+            os.close(foreign_source)
+
+
+def test_native_captured_destination_deallocation_only_closes_descriptors(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "payload.txt").write_bytes(b"preserved")
+    before = _tree_fingerprint(root)
+    owner = _capture_existing_destination(root, b"published")
+    workspace_owner.borrow_owner_destination_descriptor(owner)
+
+    del owner
+    gc.collect()
+
+    owned_targets = []
+    for name in os.listdir("/proc/self/fd"):
+        try:
+            target = os.readlink(f"/proc/self/fd/{name}")
+        except OSError:
+            continue
+        if os.fspath(root) in target:
+            owned_targets.append(target)
+    assert owned_targets == []
+    assert _tree_fingerprint(root) == before
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires fork")
+def test_native_captured_destination_child_revokes_inherited_fds_without_mutation(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    destination = root / "published"
+    destination.mkdir(parents=True)
+    root.chmod(0o700)
+    (destination / "payload.txt").write_bytes(b"preserved")
+    before = _tree_fingerprint(root)
+    owner = _capture_existing_destination(root, b"published")
+    borrowed = workspace_owner.borrow_owner_destination_descriptor(owner)
+    read_descriptor, write_descriptor = os.pipe()
+    child_pid = os.fork()
+    if child_pid == 0:
+        os.close(read_descriptor)
+        foreign_source = -1
+        try:
+            for operation in (
+                lambda: workspace_owner.verify_owner_destination_binding(owner),
+                lambda: workspace_owner.borrow_owner_destination_descriptor(owner),
+                lambda: workspace_owner.abort_owner(owner),
+            ):
+                try:
+                    operation()
+                except RuntimeError as error:
+                    assert "PID boundary" in str(error)
+                else:
+                    raise AssertionError("cross-PID owner operation succeeded")
+            os.close(borrowed)
+            foreign_source = os.open(
+                "/dev/null",
+                os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+            )
+            if foreign_source != borrowed:
+                os.dup2(foreign_source, borrowed, inheritable=False)
+            try:
+                workspace_owner.close_owner_exact(owner)
+            except RuntimeError as error:
+                assert "PID boundary" in str(error)
+            else:
+                raise AssertionError("cross-PID close did not report its boundary")
+            assert stat.S_ISCHR(os.fstat(borrowed).st_mode)
+            owned_targets = []
+            for name in os.listdir("/proc/self/fd"):
+                try:
+                    target = os.readlink(f"/proc/self/fd/{name}")
+                except OSError:
+                    continue
+                if os.fspath(root) in target:
+                    owned_targets.append(target)
+            assert owned_targets == []
+            os.write(write_descriptor, b"ok")
+        except BaseException as error:  # noqa: B036 - report child failure
+            os.write(write_descriptor, repr(error).encode("utf-8"))
+        finally:
+            try:
+                os.close(borrowed)
+            except OSError:
+                pass
+            if foreign_source >= 0 and foreign_source != borrowed:
+                os.close(foreign_source)
+            os.close(write_descriptor)
+            os._exit(0)
+
+    os.close(write_descriptor)
+    report = os.read(read_descriptor, 4096)
+    os.close(read_descriptor)
+    waited_pid, status = os.waitpid(child_pid, 0)
+    assert waited_pid == child_pid
+    assert os.waitstatus_to_exitcode(status) == 0
+    assert report == b"ok"
+    assert workspace_owner.verify_owner_destination_binding(owner) is None
+    assert _tree_fingerprint(root) == before
+    workspace_owner.abort_owner(owner)
+    assert workspace_owner.owner_closed(owner)
+    assert _tree_fingerprint(root) == before

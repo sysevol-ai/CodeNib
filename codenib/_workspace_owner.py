@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-_EXPECTED_WORKSPACE_OWNER_PROTOCOL_VERSION = 2
+_EXPECTED_WORKSPACE_OWNER_PROTOCOL_VERSION = 3
 _IMPORT_ERROR: BaseException | None = None
 
 try:
@@ -39,17 +39,26 @@ _claim_owner_publish_permit_exact = _implementation_attribute(
 _require_owner_exact = _implementation_attribute("require_owner_exact")
 _close_owner_exact = _implementation_attribute("close_owner_exact")
 _provision_owner_exact = _implementation_attribute("provision_owner_exact")
+_capture_owner_destination_exact = _implementation_attribute(
+    "capture_owner_destination_exact"
+)
 _verify_owner_authority_exact = _implementation_attribute(
     "verify_owner_authority_exact"
 )
 _verify_owner_adoption_binding_exact = _implementation_attribute(
     "verify_owner_adoption_binding_exact"
 )
+_verify_owner_destination_binding_exact = _implementation_attribute(
+    "verify_owner_destination_binding_exact"
+)
 _borrow_owner_parent_descriptor_exact = _implementation_attribute(
     "borrow_owner_parent_descriptor_exact"
 )
 _borrow_owner_root_descriptor_exact = _implementation_attribute(
     "borrow_owner_root_descriptor_exact"
+)
+_borrow_owner_destination_descriptor_exact = _implementation_attribute(
+    "borrow_owner_destination_descriptor_exact"
 )
 _borrow_owner_directory_descriptor_exact = _implementation_attribute(
     "borrow_owner_directory_descriptor_exact"
@@ -84,10 +93,13 @@ _workspace_owner_protocol_available = (
             _require_owner_exact,
             _close_owner_exact,
             _provision_owner_exact,
+            _capture_owner_destination_exact,
             _verify_owner_authority_exact,
             _verify_owner_adoption_binding_exact,
+            _verify_owner_destination_binding_exact,
             _borrow_owner_parent_descriptor_exact,
             _borrow_owner_root_descriptor_exact,
+            _borrow_owner_destination_descriptor_exact,
             _borrow_owner_directory_descriptor_exact,
             _begin_owner_file_exact,
             _write_owner_file_exact,
@@ -113,10 +125,13 @@ if not _workspace_owner_protocol_available:
     _require_owner_exact = None
     _close_owner_exact = None
     _provision_owner_exact = None
+    _capture_owner_destination_exact = None
     _verify_owner_authority_exact = None
     _verify_owner_adoption_binding_exact = None
+    _verify_owner_destination_binding_exact = None
     _borrow_owner_parent_descriptor_exact = None
     _borrow_owner_root_descriptor_exact = None
+    _borrow_owner_destination_descriptor_exact = None
     _borrow_owner_directory_descriptor_exact = None
     _begin_owner_file_exact = None
     _write_owner_file_exact = None
@@ -238,10 +253,40 @@ def provision_owner(
     )
 
 
+def capture_owner_destination(
+    owner: object,
+    allowed_root: bytes,
+    destination: bytes,
+    deadline_ns: int,
+) -> None:
+    """Capture one exact existing destination without mutating its namespace."""
+
+    _require_protocol()
+    assert _capture_owner_destination_exact is not None
+    _require_none_result(
+        _capture_owner_destination_exact(
+            owner,
+            allowed_root,
+            destination,
+            deadline_ns,
+        ),
+        "destination-capture",
+    )
+
+
 def verify_owner_authority(owner: object) -> None:
     _require_protocol()
     assert _verify_owner_authority_exact is not None
     _require_none_result(_verify_owner_authority_exact(owner), "verify")
+
+
+def verify_owner_destination_binding(owner: object) -> None:
+    _require_protocol()
+    assert _verify_owner_destination_binding_exact is not None
+    _require_none_result(
+        _verify_owner_destination_binding_exact(owner),
+        "destination-binding verification",
+    )
 
 
 def verify_owner_adoption_binding(
@@ -284,6 +329,17 @@ def borrow_owner_root_descriptor(owner: object) -> int:
     return _require_descriptor(
         _borrow_owner_root_descriptor_exact(owner),
         "root-descriptor",
+    )
+
+
+def borrow_owner_destination_descriptor(owner: object) -> int:
+    """Borrow the owner-held destination FD; callers must not close it."""
+
+    _require_protocol()
+    assert _borrow_owner_destination_descriptor_exact is not None
+    return _require_descriptor(
+        _borrow_owner_destination_descriptor_exact(owner),
+        "destination-descriptor",
     )
 
 
@@ -409,10 +465,12 @@ __all__ = [
     "abort_owner",
     "abort_owner_file",
     "begin_owner_file",
+    "borrow_owner_destination_descriptor",
     "borrow_owner_directory_descriptor",
     "borrow_owner_parent_descriptor",
     "borrow_owner_root_descriptor",
     "claim_owner_publish_permit",
+    "capture_owner_destination",
     "close_owner_exact",
     "commit_owner_receipt",
     "create_owner",
@@ -429,5 +487,6 @@ __all__ = [
     "sync_owner_parent",
     "verify_owner_adoption_binding",
     "verify_owner_authority",
+    "verify_owner_destination_binding",
     "write_owner_file",
 ]
