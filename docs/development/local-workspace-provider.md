@@ -23,6 +23,13 @@ import-cache` recaptures an already existing selected cache, `codenib artifact
 materialize` publishes a retained catalog ref or immutable snapshot to a
 missing portable-artifact directory, and retained `codenib mcp` cold-start
 materializes and holds one such generation for a single stdio server lifetime.
+Storage-backend defaults are separate from route defaults. SQLite WAL and the
+local filesystem SHA-256 CAS are CodeNib's canonical supported production
+backends, not temporary bridges. PostgreSQL and S3-compatible adapters remain
+optional and demand-gated; they are not prerequisites for M1-M5 or retained
+route promotion. This backend choice does not enable any compiler or runtime
+route: A2, B1, and B2 remain separate gates.
+
 Protocol v4 introduced an internal existing-destination replacement primitive:
 it captures the incumbent, provisions and authenticates one hidden same-parent
 candidate, exchanges the two exact directory bindings with Linux

@@ -966,3 +966,34 @@ def test_protocol_v5_workspace_replacement_limits_are_documented() -> None:
         "provider. | Complete." in roadmap
     )
     assert "M1 remains in progress" in roadmap
+
+
+def test_embedded_storage_backend_policy_is_documented() -> None:
+    root = Path(__file__).resolve().parents[1]
+    provider = (root / "docs/development/local-workspace-provider.md").read_text(
+        encoding="utf-8"
+    )
+    roadmap = (root / "docs/storage_backend_roadmap.md").read_text(encoding="utf-8")
+    provider_prose = " ".join(provider.split())
+    roadmap_prose = " ".join(roadmap.split())
+
+    assert (
+        "SQLite WAL and the local filesystem SHA-256 CAS are CodeNib's "
+        "canonical supported storage backends and production defaults, not "
+        "temporary bridge implementations"
+    ) in roadmap_prose
+    assert (
+        "Neither adapter is a prerequisite for M1-M5, embedded completion, "
+        "or retained-route promotion"
+    ) in roadmap_prose
+    assert "### M6: Optional server storage adapters" in roadmap
+    assert "Status: deferred; demand gate not activated." in roadmap
+    assert "Activate the PostgreSQL catalog and S3-compatible" in roadmap
+    assert "Neither adapter requires the other." in roadmap_prose
+    assert (
+        "M6 and M7 are optional extensions and do not hold embedded completion "
+        "open unless their demand or benchmark gates are explicitly activated"
+    ) in roadmap_prose
+    assert "Storage-backend defaults are separate from route defaults." in provider
+    assert "not temporary bridges" in provider_prose
+    assert "A2, B1, and B2 remain separate gates" in provider_prose

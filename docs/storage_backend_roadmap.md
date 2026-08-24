@@ -4,15 +4,20 @@
 
 CodeNib will publish repository context through a transactional catalog and
 immutable, content-addressed artifacts without replacing the query engines
-that make the artifacts useful.  The embedded deployment uses SQLite in WAL
-mode plus a local filesystem object store.  A server deployment may replace
-those two implementations with PostgreSQL and an S3-compatible object store
-without changing compiler or retrieval contracts.
+that make the artifacts useful. SQLite WAL and the local filesystem SHA-256
+CAS are CodeNib's canonical supported storage backends and production defaults,
+not temporary bridge implementations. PostgreSQL and S3-compatible object
+storage are optional adapters that may be activated independently only after
+documented deployment demand and representative benchmark or operational
+evidence justify them. Neither adapter is a prerequisite for M1-M5, embedded
+completion, or retained-route promotion.
 
-The program is complete only when repository updates, concurrent readers,
-multi-version queries, overlays, garbage collection, and server-backed
-storage all preserve the existing `RepoManifest`, MCP, BM25, FAISS, graph, and
-portable artifact behavior.
+The embedded program is complete only when repository updates, concurrent
+readers, multi-version queries, overlays, and garbage collection preserve the
+existing `RepoManifest`, MCP, BM25, FAISS, graph, and portable artifact
+behavior over those canonical backends. Choosing the canonical backends does
+not itself promote retained compiler or runtime routes; A2, B1, and B2 remain
+separate gates.
 
 ## Architectural Boundaries
 
@@ -20,12 +25,13 @@ The storage system has three independent layers:
 
 1. **Transactional catalog** — repositories, source revisions, profiles,
    immutable view generations, published snapshots, refs, jobs, leases, and
-   authorization metadata.  SQLite is the embedded implementation;
-   PostgreSQL is the future multi-worker implementation.
+   authorization metadata. SQLite WAL is the canonical supported production
+   default; PostgreSQL is an optional future multi-worker adapter.
 2. **Content-addressed object store** — large immutable payloads such as BM25
    documents, FAISS indexes and document mappings, graph payloads, and
-   portable context artifacts.  The embedded implementation uses regular
-   files; the server implementation uses object storage.
+   portable context artifacts. The local filesystem SHA-256 CAS is the
+   canonical supported production default; S3-compatible storage is an
+   optional future adapter.
 3. **Materialized query views** — BM25, FAISS, and igraph remain the execution
    formats used by a pinned snapshot.  They are read models, not the catalog
    or the source of versioning semantics.
@@ -1144,16 +1150,22 @@ isolation.
 - Generalize the clangd semantic-facts upsert/delete generation to the
   remaining adapters and enforce owner isolation.
 
-### M6: PostgreSQL and object-storage deployment
+### M6: Optional server storage adapters
 
-Status: pending and demand-gated.
+Status: deferred; demand gate not activated.
 
-- Implement the same catalog semantics with PostgreSQL transactions, row
-  locking/`SKIP LOCKED`, leases, and namespace-scoped authorization.
-- Implement S3/MinIO object publication, verification, materialization cache,
-  and deletion recovery.
-- Validate multi-worker contention, backup/restore, migration, quotas, audit,
-  and failure injection before making the server backend supported.
+- Activate the PostgreSQL catalog and S3-compatible object-store gates
+  independently. Neither adapter requires the other.
+- Before activating either gate, document a concrete deployment constraint
+  that the canonical SQLite WAL catalog or local filesystem CAS cannot meet,
+  and retain representative workload plus operational acceptance evidence.
+- Once activated, implement the same `IndexCatalog` or `ObjectStore` contract;
+  PostgreSQL retains transactions, row locking/`SKIP LOCKED`, leases, and
+  namespace-scoped authorization, while S3/MinIO retains publication,
+  verification, materialization-cache, and deletion-recovery semantics.
+- Validate contention, backup/restore, migration, quotas, audit, and failure
+  injection before declaring an activated adapter supported.
+- Keep M1-M5 and embedded completion independent of this deferred milestone.
 
 ### M7: Managed semantic and optional shared ANN
 
@@ -1168,7 +1180,9 @@ Status: pending and benchmark-gated.
 
 ## Completion Gate
 
-The program is complete when all milestones are implemented, locally and
-remotely verified at their required test tiers, documented, and reconciled
-with their issues and PRs.  Passing one backend test, landing the catalog
-schema, or publishing a single snapshot is not completion of the objective.
+The embedded storage program is complete when M0-M5 are implemented, locally
+and remotely verified at their required test tiers, documented, and reconciled
+with their issues and PRs. M6 and M7 are optional extensions and do not hold
+embedded completion open unless their demand or benchmark gates are explicitly
+activated. Passing one backend test, landing the catalog schema, or publishing
+a single snapshot is not completion of the embedded objective.
