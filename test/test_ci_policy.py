@@ -284,6 +284,36 @@ def test_trusted_full_ci_is_separate_from_pull_request_ci() -> None:
         assert full_ci["jobs"][name]["runs-on"] == "self-hosted"
 
 
+def test_native_core_uses_vendored_igraph_header_contract() -> None:
+    core_sources = sorted(
+        path for suffix in ("*.cpp", "*.h") for path in (ROOT / "core").rglob(suffix)
+    )
+    installed_layout_users = [
+        str(path.relative_to(ROOT))
+        for path in core_sources
+        if "#include <igraph/igraph.h>" in path.read_text(encoding="utf-8")
+    ]
+    code_graph_header = (ROOT / "core/code_graph.h").read_text(encoding="utf-8")
+    core_cmake = (ROOT / "core/CMakeLists.txt").read_text(encoding="utf-8")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    core_packages = next(
+        line
+        for line in makefile.splitlines()
+        if line.startswith("CORE_SYSTEM_PACKAGES")
+    )
+
+    assert installed_layout_users == []
+    assert "#include <igraph.h>" in code_graph_header
+    assert "FetchContent_Declare(\n    igraph" in core_cmake
+    assert "FetchContent_MakeAvailable(igraph)" in core_cmake
+    assert re.search(r"find_package\s*\(\s*igraph\b", core_cmake, re.IGNORECASE) is None
+    assert (
+        re.search(r"pkg_check_modules\s*\([^)]*\bigraph\b", core_cmake, re.IGNORECASE)
+        is None
+    )
+    assert "libigraph-dev" not in core_packages
+
+
 def test_full_ci_enforces_the_maintained_native_core_gate() -> None:
     workflow = _workflow(".github/workflows/ci-full.yml")
     steps = workflow["jobs"]["scip-core"]["steps"]

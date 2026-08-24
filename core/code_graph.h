@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <igraph/igraph.h>
+#include <igraph.h>
 
 #include <optional>
 #include <string>
