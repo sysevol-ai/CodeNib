@@ -81,10 +81,86 @@ def test_loads_retained_ref_with_bm25_inside_exact_reader(
                 "commit": "a" * 40,
                 "views": ["bm25"],
             }
+            assert owner.context.source_verified is False
+            assert owner._source_owner.closed
         finally:
             owner.close()
         assert owner.closed
         assert destination.is_dir()
+
+
+def test_loads_retained_ref_with_reader_bound_source(
+    tmp_path: Path,
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (fixture, imported, object_store, catalog):
+        owner = RetainedServerContextOwner()
+        destination = tmp_path / "context"
+        captured_sources: list[object] = []
+        real_bind = retained_context_module.bind_context_artifact_reader
+
+        def capture_binding(*args: object, **kwargs: object):
+            binding = real_bind(*args, **kwargs)
+            source = binding.source_binding
+            assert source is not None
+            captured_sources.append(source)
+            return binding
+
+        try:
+            with (
+                patch(
+                    "codenib.artifacts.runtime.reopen_authenticated_directory",
+                    side_effect=AssertionError(
+                        "reader-bound retained artifact reopened a path"
+                    ),
+                ),
+                patch(
+                    "codenib.mcp.context.reopen_authenticated_directory",
+                    side_effect=AssertionError("retained BM25 reopened a path"),
+                ),
+                patch.object(
+                    retained_context_module,
+                    "bind_context_artifact_reader",
+                    side_effect=capture_binding,
+                ),
+            ):
+                result = load_retained_server_context_ref(
+                    "owner/repo",
+                    destination,
+                    catalog=catalog,
+                    object_store=object_store,
+                    workspace_provider=_TestWorkspaceProvider(),
+                    runtime_owner=owner,
+                    expected_generation=imported.generation,
+                    repo_path=fixture.repository,
+                )
+
+            assert result is owner.result
+            assert owner.state == "active"
+            assert len(captured_sources) == 1
+            source = captured_sources[0]
+            assert owner.context._source_binding is source
+            assert owner._source_owner.pending_sources == (source,)
+            assert owner.context.source_verified is True
+            assert owner.context.source_verification_scope == "content-bytes"
+            assert owner.context.commit_verified is False
+            assert owner.context.manifest.repo_path == str(fixture.repository)
+            assert (
+                owner.context.read_source_bytes(
+                    "sample.py",
+                    max_bytes=1024,
+                )
+                == b"VALUE = 1\n"
+            )
+            hits = owner.context.bm25.search("VALUE", return_code_content=True)
+            assert hits and hits[0].node_id == "sample.VALUE"
+        finally:
+            owner.close()
+        assert owner.closed
+        assert owner._source_owner.closed
+        assert captured_sources and captured_sources[0].closed
 
 
 def test_loads_retained_snapshot_with_vector_native_inert(
@@ -124,6 +200,55 @@ def test_loads_retained_snapshot_with_vector_native_inert(
             )
             assert owner.context.vector is None
             assert owner.context._native_index_authorization is None
+        finally:
+            owner.close()
+
+
+def test_loads_retained_snapshot_with_source_and_vector_native_inert(
+    tmp_path: Path,
+) -> None:
+    with _retained_fixture(tmp_path / "retained") as (
+        fixture,
+        imported,
+        object_store,
+        catalog,
+    ):
+        owner = RetainedServerContextOwner()
+        destination = tmp_path / "context"
+        try:
+            with patch(
+                "codenib.mcp.context.require_authorized_vector_view"
+            ) as native_gate:
+                result = load_retained_server_context_snapshot(
+                    "owner/repo",
+                    imported.snapshot_id,
+                    destination,
+                    catalog=catalog,
+                    object_store=object_store,
+                    workspace_provider=_TestWorkspaceProvider(),
+                    runtime_owner=owner,
+                    repo_path=fixture.repository,
+                )
+
+            native_gate.assert_not_called()
+            assert result.loaded_views == ("bm25",)
+            assert result.view_error_items == (
+                (
+                    "vector",
+                    "portable artifact contexts cannot use external authorization "
+                    "for native vector parsing",
+                ),
+            )
+            assert owner.context.vector is None
+            assert owner.context._native_index_authorization is None
+            assert owner.context.source_verified is True
+            assert (
+                owner.context.read_source_bytes(
+                    "sample.py",
+                    max_bytes=1024,
+                )
+                == b"VALUE = 1\n"
+            )
         finally:
             owner.close()
 
@@ -184,6 +309,44 @@ def test_expected_generation_conflict_never_reads_object_storage(
 
         assert owner.closed
         assert not destination.exists()
+
+
+@pytest.mark.parametrize(
+    ("repo_path", "error_type", "message"),
+    [
+        (object(), TypeError, "text or a Path"),
+        ("", ValueError, "non-empty path text"),
+        ("bad\x00path", ValueError, "without NUL"),
+    ],
+)
+def test_invalid_source_repo_path_fails_before_materialization(
+    tmp_path: Path,
+    repo_path: object,
+    error_type: type[BaseException],
+    message: str,
+) -> None:
+    owner = RetainedServerContextOwner()
+    with (
+        patch.object(
+            retained_context_module,
+            "materialize_retained_repo_manifest_ref",
+        ) as materialize,
+        pytest.raises(error_type, match=message),
+    ):
+        load_retained_server_context_ref(
+            "owner/repo",
+            tmp_path / "context",
+            catalog=object(),  # type: ignore[arg-type]
+            object_store=object(),  # type: ignore[arg-type]
+            workspace_provider=object(),  # type: ignore[arg-type]
+            runtime_owner=owner,
+            repo_path=repo_path,  # type: ignore[arg-type]
+        )
+
+    materialize.assert_not_called()
+    assert owner.state == "empty"
+    owner.close()
+    assert owner.closed
 
 
 @pytest.mark.parametrize("forgery", ["digest", "size"])
@@ -432,6 +595,83 @@ class _RetryReceiptOwner:
         self.closed = True
 
 
+class _RetrySourceOwner:
+    def __init__(self, events: list[str], *, fail_once: bool = False) -> None:
+        self.events = events
+        self.fail_once = fail_once
+        self.closed = False
+
+    @property
+    def pending_sources(self) -> tuple[object, ...]:
+        return () if self.closed else (self,)
+
+    def close(self) -> None:
+        self.events.append("source")
+        if self.fail_once:
+            self.fail_once = False
+            raise RuntimeError("source close failed")
+        self.closed = True
+
+
+class _InjectedSourceOwner:
+    def __init__(
+        self,
+        events: list[str],
+        failure: BaseException,
+        *,
+        closes_before_failure: bool,
+    ) -> None:
+        self.events = events
+        self.failure: BaseException | None = failure
+        self.closes_before_failure = closes_before_failure
+        self.closed = False
+
+    @property
+    def pending_sources(self) -> tuple[object, ...]:
+        return () if self.closed else (self,)
+
+    def close(self) -> None:
+        self.events.append("source")
+        failure = self.failure
+        self.failure = None
+        if failure is not None:
+            if self.closes_before_failure:
+                self.closed = True
+            raise failure
+        self.closed = True
+
+
+class _InjectedReceiptOwner:
+    def __init__(
+        self,
+        events: list[str],
+        failure: BaseException,
+        *,
+        closes_before_failure: bool,
+    ) -> None:
+        self.events = events
+        self.failure: BaseException | None = failure
+        self.closes_before_failure = closes_before_failure
+        self.closed = False
+
+    def close(self) -> None:
+        self.events.append("receipt")
+        failure = self.failure
+        self.failure = None
+        if failure is not None:
+            if self.closes_before_failure:
+                self.closed = True
+            raise failure
+        self.closed = True
+
+
+def _cleanup_notes(error: BaseException) -> tuple[str, ...]:
+    return (
+        *getattr(error, "__notes__", ()),
+        *getattr(error, "_codenib_cleanup_notes", ()),
+    )
+
+
 def _loading_owner_with_context() -> tuple[RetainedServerContextOwner, ServerContext]:
     owner = RetainedServerContextOwner()
     owner._begin_loading(object())
@@ -445,7 +685,9 @@ def test_context_cleanup_failure_blocks_receipt_and_remains_retryable(
 ) -> None:
     owner, context = _loading_owner_with_context()
     events: list[str] = []
+    source_owner = _RetrySourceOwner(events)
     receipt_owner = _RetryReceiptOwner(events)
+    owner._source_owner = source_owner  # type: ignore[assignment]
     owner._receipt_owner = receipt_owner  # type: ignore[assignment]
     attempts = 0
 
@@ -462,12 +704,186 @@ def test_context_cleanup_failure_blocks_receipt_and_remains_retryable(
     with pytest.raises(RuntimeError, match="context close failed") as caught:
         owner.close()
     assert owner.state == "close-failed"
-    assert events == ["context"]
+    assert events == ["context", "source"]
+    assert source_owner.closed
+    assert not receipt_owner.closed
     assert caught.value.publication_cleanup_owners == (owner,)  # type: ignore[attr-defined]
 
     owner.close()
-    assert events == ["context", "context", "receipt"]
+    assert events == ["context", "source", "context", "receipt"]
+    assert source_owner.closed
     assert receipt_owner.closed
+    assert owner.closed
+
+
+def test_context_cleanup_failure_remains_primary_when_source_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner, context = _loading_owner_with_context()
+    events: list[str] = []
+    source_owner = _RetrySourceOwner(events, fail_once=True)
+    receipt_owner = _RetryReceiptOwner(events)
+    owner._source_owner = source_owner  # type: ignore[assignment]
+    owner._receipt_owner = receipt_owner  # type: ignore[assignment]
+    context_failure = RuntimeError("context close failed")
+    attempts = 0
+
+    def close_context(observed: ServerContext) -> None:
+        nonlocal attempts
+        assert observed is context
+        attempts += 1
+        events.append("context")
+        if attempts == 1:
+            raise context_failure
+
+    monkeypatch.setattr(ServerContext, "close", close_context)
+
+    with pytest.raises(RuntimeError) as caught:
+        owner.close()
+    assert caught.value is context_failure
+    assert owner.state == "close-failed"
+    assert events == ["context", "source"]
+    assert not source_owner.closed
+    assert not receipt_owner.closed
+    assert any(
+        "retained source cleanup also failed" in note
+        for note in _cleanup_notes(caught.value)
+    )
+
+    owner.close()
+    assert events == ["context", "source", "context", "source", "receipt"]
+    assert owner.closed
+
+
+def test_source_cancellation_promotes_context_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner, context = _loading_owner_with_context()
+    events: list[str] = []
+    context_failure = RuntimeError("context close failed")
+    source_interruption = KeyboardInterrupt("source close interrupted")
+    source_owner = _InjectedSourceOwner(
+        events,
+        source_interruption,
+        closes_before_failure=False,
+    )
+    receipt_owner = _RetryReceiptOwner(events)
+    owner._source_owner = source_owner  # type: ignore[assignment]
+    owner._receipt_owner = receipt_owner  # type: ignore[assignment]
+    attempts = 0
+
+    def close_context(observed: ServerContext) -> None:
+        nonlocal attempts
+        assert observed is context
+        attempts += 1
+        events.append("context")
+        if attempts == 1:
+            raise context_failure
+
+    monkeypatch.setattr(ServerContext, "close", close_context)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        owner.close()
+    assert caught.value is source_interruption
+    assert owner.state == "close-failed"
+    assert events == ["context", "source"]
+    assert not source_owner.closed
+    assert not receipt_owner.closed
+    assert caught.value.publication_cleanup_owners == (owner,)  # type: ignore[attr-defined]
+    assert any(
+        "retained context cleanup also failed" in note
+        and "context close failed" in note
+        for note in _cleanup_notes(caught.value)
+    )
+
+    owner.close()
+    assert events == ["context", "source", "context", "source", "receipt"]
+    assert owner.closed
+
+
+def test_receipt_cancellation_promotes_completed_source_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner, context = _loading_owner_with_context()
+    events: list[str] = []
+    source_failure = RuntimeError("source close failed after completion")
+    receipt_exit = SystemExit("receipt close interrupted")
+    source_owner = _InjectedSourceOwner(
+        events,
+        source_failure,
+        closes_before_failure=True,
+    )
+    receipt_owner = _InjectedReceiptOwner(
+        events,
+        receipt_exit,
+        closes_before_failure=False,
+    )
+    owner._source_owner = source_owner  # type: ignore[assignment]
+    owner._receipt_owner = receipt_owner  # type: ignore[assignment]
+
+    def close_context(observed: ServerContext) -> None:
+        assert observed is context
+        events.append("context")
+
+    monkeypatch.setattr(ServerContext, "close", close_context)
+
+    with pytest.raises(SystemExit) as caught:
+        owner.close()
+    assert caught.value is receipt_exit
+    assert owner.state == "close-failed"
+    assert events == ["context", "source", "receipt"]
+    assert source_owner.closed
+    assert not receipt_owner.closed
+    assert caught.value.publication_cleanup_owners == (owner,)  # type: ignore[attr-defined]
+    assert any(
+        "retained context or source cleanup also failed" in note
+        and "source close failed after completion" in note
+        for note in _cleanup_notes(caught.value)
+    )
+
+    owner.close()
+    assert events == ["context", "source", "receipt", "receipt"]
+    assert owner.closed
+
+
+def test_inherited_receipt_cancellation_promotes_source_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = RetainedServerContextOwner()
+    events: list[str] = []
+    source_failure = RuntimeError("inherited source close failed")
+    receipt_exit = SystemExit("inherited receipt close interrupted")
+    source_owner = _InjectedSourceOwner(
+        events,
+        source_failure,
+        closes_before_failure=True,
+    )
+    receipt_owner = _InjectedReceiptOwner(
+        events,
+        receipt_exit,
+        closes_before_failure=True,
+    )
+    owner._source_owner = source_owner  # type: ignore[assignment]
+    owner._receipt_owner = receipt_owner  # type: ignore[assignment]
+    owner_pid = owner._owner_pid
+
+    with monkeypatch.context() as child:
+        child.setattr(retained_context_module.os, "getpid", lambda: owner_pid + 1)
+        with pytest.raises(SystemExit) as caught:
+            owner.close()
+
+    assert caught.value is receipt_exit
+    assert events == ["source", "receipt"]
+    assert source_owner.closed
+    assert receipt_owner.closed
+    assert any(
+        "retained source cleanup also failed" in note
+        and "inherited source close failed" in note
+        for note in _cleanup_notes(receipt_exit)
+    )
+    assert any(
+        "PID boundary also observed" in note for note in _cleanup_notes(receipt_exit)
+    )
     assert owner.closed
 
 
@@ -476,7 +892,9 @@ def test_receipt_cleanup_retry_does_not_reclose_context(
 ) -> None:
     owner, context = _loading_owner_with_context()
     events: list[str] = []
+    source_owner = _RetrySourceOwner(events)
     receipt_owner = _RetryReceiptOwner(events, fail_once=True)
+    owner._source_owner = source_owner  # type: ignore[assignment]
     owner._receipt_owner = receipt_owner  # type: ignore[assignment]
 
     def close_context(observed: ServerContext) -> None:
@@ -488,11 +906,43 @@ def test_receipt_cleanup_retry_does_not_reclose_context(
     with pytest.raises(RuntimeError, match="receipt close failed") as caught:
         owner.close()
     assert owner.state == "close-failed"
-    assert events == ["context", "receipt"]
+    assert events == ["context", "source", "receipt"]
     assert caught.value.publication_cleanup_owners == (owner,)  # type: ignore[attr-defined]
 
     owner.close()
-    assert events == ["context", "receipt", "receipt"]
+    assert events == ["context", "source", "receipt", "receipt"]
+    assert source_owner.closed
+    assert owner.closed
+
+
+def test_source_cleanup_failure_blocks_receipt_and_remains_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner, context = _loading_owner_with_context()
+    events: list[str] = []
+    source_owner = _RetrySourceOwner(events, fail_once=True)
+    receipt_owner = _RetryReceiptOwner(events)
+    owner._source_owner = source_owner  # type: ignore[assignment]
+    owner._receipt_owner = receipt_owner  # type: ignore[assignment]
+
+    def close_context(observed: ServerContext) -> None:
+        assert observed is context
+        events.append("context")
+
+    monkeypatch.setattr(ServerContext, "close", close_context)
+
+    with pytest.raises(RuntimeError, match="source close failed") as caught:
+        owner.close()
+    assert owner.state == "close-failed"
+    assert events == ["context", "source"]
+    assert not source_owner.closed
+    assert not receipt_owner.closed
+    assert caught.value.publication_cleanup_owners == (owner,)  # type: ignore[attr-defined]
+
+    owner.close()
+    assert events == ["context", "source", "source", "receipt"]
+    assert source_owner.closed
+    assert receipt_owner.closed
     assert owner.closed
 
 
@@ -618,6 +1068,148 @@ def test_postpublication_preinstall_failure_closes_receipt_and_keeps_output(
         assert destination.is_dir()
 
 
+def test_interruption_after_reader_source_bind_closes_source_before_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (fixture, imported, object_store, catalog):
+        owner = RetainedServerContextOwner()
+        destination = tmp_path / "context"
+        interruption = KeyboardInterrupt("after reader source binding")
+        captured_sources: list[object] = []
+        cleanup_events: list[str] = []
+        real_bind = retained_context_module.bind_context_artifact_reader
+        receipt_type = type(owner._receipt_owner)
+        real_receipt_close = receipt_type.close
+
+        def bind_then_interrupt(*args: object, **kwargs: object) -> None:
+            binding = real_bind(*args, **kwargs)
+            source = binding.source_binding
+            assert source is not None
+            captured_sources.append(source)
+            raise interruption
+
+        def close_receipt(receipt: object) -> None:
+            assert captured_sources and captured_sources[0].closed
+            cleanup_events.append("receipt")
+            real_receipt_close(receipt)
+
+        monkeypatch.setattr(
+            retained_context_module,
+            "bind_context_artifact_reader",
+            bind_then_interrupt,
+        )
+        monkeypatch.setattr(receipt_type, "close", close_receipt)
+
+        with pytest.raises(KeyboardInterrupt) as caught:
+            load_retained_server_context_ref(
+                "owner/repo",
+                destination,
+                catalog=catalog,
+                object_store=object_store,
+                workspace_provider=_TestWorkspaceProvider(),
+                runtime_owner=owner,
+                expected_generation=imported.generation,
+                repo_path=fixture.repository,
+            )
+
+        assert caught.value is interruption
+        assert len(captured_sources) == 1
+        assert captured_sources[0].closed
+        assert owner._source_owner.closed
+        assert owner._receipt_owner.closed
+        assert cleanup_events == ["receipt"]
+        assert owner.closed
+        assert destination.is_dir()
+
+
+def test_source_bound_result_interruption_closes_context_source_then_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (fixture, imported, object_store, catalog):
+        owner = RetainedServerContextOwner()
+        destination = tmp_path / "context"
+        interruption = KeyboardInterrupt("after source-bound result installation")
+        cleanup_events: list[str] = []
+        installed: list[ServerContext] = []
+        real_install_context = RetainedServerContextOwner._install_context
+        real_install_result = RetainedServerContextOwner._install_result
+        real_context_close = ServerContext.close
+        source_owner_type = type(owner._source_owner)
+        real_source_close = source_owner_type.close
+        receipt_type = type(owner._receipt_owner)
+        real_receipt_close = receipt_type.close
+
+        def install_context(
+            observed: RetainedServerContextOwner,
+            context: ServerContext,
+        ) -> None:
+            installed.append(context)
+            real_install_context(observed, context)
+
+        def install_result_then_interrupt(
+            observed: RetainedServerContextOwner,
+            result: RetainedServerContextResult,
+        ) -> None:
+            real_install_result(observed, result)
+            raise interruption
+
+        def close_context(context: ServerContext) -> None:
+            cleanup_events.append("context")
+            real_context_close(context)
+
+        def close_source(source_owner: object) -> None:
+            assert installed and installed[0]._source_binding is None
+            cleanup_events.append("source")
+            real_source_close(source_owner)
+
+        def close_receipt(receipt: object) -> None:
+            assert owner._source_owner.closed
+            cleanup_events.append("receipt")
+            real_receipt_close(receipt)
+
+        monkeypatch.setattr(
+            RetainedServerContextOwner,
+            "_install_context",
+            install_context,
+        )
+        monkeypatch.setattr(
+            RetainedServerContextOwner,
+            "_install_result",
+            install_result_then_interrupt,
+        )
+        monkeypatch.setattr(ServerContext, "close", close_context)
+        monkeypatch.setattr(source_owner_type, "close", close_source)
+        monkeypatch.setattr(receipt_type, "close", close_receipt)
+
+        with pytest.raises(KeyboardInterrupt) as caught:
+            load_retained_server_context_ref(
+                "owner/repo",
+                destination,
+                catalog=catalog,
+                object_store=object_store,
+                workspace_provider=_TestWorkspaceProvider(),
+                runtime_owner=owner,
+                expected_generation=imported.generation,
+                repo_path=fixture.repository,
+            )
+
+        assert caught.value is interruption
+        assert len(installed) == 1
+        assert cleanup_events == ["context", "source", "receipt"]
+        assert owner.closed
+        assert owner._source_owner.closed
+        assert owner._receipt_owner.closed
+        assert destination.is_dir()
+
+
 @pytest.mark.parametrize("phase", ["context", "result"])
 def test_late_activation_interruption_closes_context_before_receipt(
     tmp_path: Path,
@@ -705,13 +1297,17 @@ def test_late_activation_interruption_closes_context_before_receipt(
     not hasattr(os, "fork") or not Path("/proc/self/fd").is_dir(),
     reason="requires fork and Linux descriptor inspection",
 )
-def test_fork_child_revokes_inherited_context_authority_only(
+def test_fork_child_revokes_source_and_publication_without_context_lock(
     tmp_path: Path,
 ) -> None:
     with _retained_fixture(
         tmp_path / "retained",
         views=("bm25",),
-    ) as (_fixture, imported, object_store, catalog):
+    ) as (fixture, imported, object_store, catalog):
+        # The fixture's import authority is unrelated to the runtime owner.
+        # Release it before the fork so any remaining repository descriptor in
+        # the child can only belong to the source-bound retained context.
+        fixture.repository_source.close()
         owner = RetainedServerContextOwner()
         destination = tmp_path / "context"
         load_retained_server_context_ref(
@@ -722,7 +1318,9 @@ def test_fork_child_revokes_inherited_context_authority_only(
             workspace_provider=_TestWorkspaceProvider(),
             runtime_owner=owner,
             expected_generation=imported.generation,
+            repo_path=fixture.repository,
         )
+        assert owner.context.source_verified
 
         lock_acquired = threading.Event()
         release_lock = threading.Event()
@@ -765,7 +1363,10 @@ def test_fork_child_revokes_inherited_context_authority_only(
                             target = os.readlink(f"/proc/self/fd/{name}")
                         except OSError:
                             continue
-                        if str(destination) in target:
+                        if (
+                            str(destination) in target
+                            or str(fixture.repository) in target
+                        ):
                             descriptor_targets.append(target)
                     report = repr((state_report, str(close_error), descriptor_targets))
                     os.write(write_descriptor, report.encode("utf-8"))

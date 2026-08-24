@@ -7,8 +7,9 @@
 The retained materializer deliberately returns data while leaving the published
 workspace authority in a caller-created :class:`PublishedWorkspaceReceiptOwner`.
 This module joins those two outputs without reopening the published path.  The
-receipt callback verifies the context artifact, loads its query-only runtime,
-and installs both the live context and a detached result in a PID-bound owner.
+receipt callback verifies the context artifact, loads its query-only or
+explicitly source-bound runtime, and installs both the live context and a
+detached result in a PID-bound owner.
 """
 
 from __future__ import annotations
@@ -38,7 +39,12 @@ from ..artifacts.context import (
     CONTEXT_ARTIFACT_SCHEMA,
     ContextArtifactResult,
 )
-from ..artifacts.runtime import ContextArtifactBinding, query_context_artifact_reader
+from ..artifacts.runtime import (
+    ContextArtifactBinding,
+    SourceBindingCleanupOwner,
+    bind_context_artifact_reader,
+    query_context_artifact_reader,
+)
 from ..compiler.manifest import MANIFEST_FILENAME
 from ..compiler.manifest_import import (
     DEFAULT_MAX_CONTEXT_BYTES,
@@ -53,6 +59,7 @@ from ..compiler.manifest_materialization import (
     materialize_retained_repo_manifest_snapshot,
 )
 from ..compiler.manifest_storage import DEFAULT_MAX_MANIFEST_BYTES
+from ..source_fingerprint import lexical_repository_path
 from ..storage.models import NamespaceIdentity
 from ..storage.protocols import ReceiptRetainingObjectStore, RetainedSnapshotCatalog
 from ..storage.view_bundle import (
@@ -66,6 +73,24 @@ _Result = TypeVar("_Result")
 
 _OWNER_EMPTY = object()
 _OWNER_CLOSED = object()
+
+
+def _retain_ordered_cleanup_error(
+    current: BaseException | None,
+    later: BaseException,
+    *,
+    earlier_label: str,
+    later_label: str,
+) -> BaseException:
+    """Retain cleanup order while never demoting cancellation-class failures."""
+
+    if current is None:
+        return later
+    if isinstance(current, Exception) and not isinstance(later, Exception):
+        _annotate_secondary_error(later, earlier_label, current)
+        return later
+    _annotate_secondary_error(current, later_label, later)
+    return current
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,10 +154,12 @@ class RetainedServerContextOwner:
         "_reservation",
         "_result",
         "_receipt_owner",
+        "_source_owner",
         "_lock",
         "_owner_pid",
         "_process_locks",
         "_context_close_complete",
+        "_source_close_complete",
         "_close_failed",
     )
 
@@ -143,10 +170,16 @@ class RetainedServerContextOwner:
         # The publication destination is pre-created with this aggregate.  No
         # materializer return/store seam ever becomes the sole receipt owner.
         self._receipt_owner = PublishedWorkspaceReceiptOwner()
+        # Source capture can acquire native authority before returning a
+        # binding.  Keep its cleanup owner reachable for the entire one-shot
+        # lifecycle, including cancellation between binding and context
+        # installation.
+        self._source_owner = SourceBindingCleanupOwner()
         self._lock = _CancellationSafeRLock()
         self._owner_pid = os.getpid()
         self._process_locks = {self._owner_pid: self._lock}
         self._context_close_complete = False
+        self._source_close_complete = False
         self._close_failed = False
 
     @property
@@ -204,6 +237,8 @@ class RetainedServerContextOwner:
                 raise RuntimeError(
                     "retained server context publication owner is not empty"
                 )
+            if not self._source_owner.closed:
+                raise RuntimeError("retained server context source owner is not empty")
             # Retain the caller-created identity first.  Cleanup can therefore
             # recognize this invocation even if cancellation lands before the
             # following slot store or before this method returns.
@@ -284,7 +319,7 @@ class RetainedServerContextOwner:
         self._lock.run(install)
 
     def close(self) -> None:
-        """In the owning process, close context before its publication receipt."""
+        """In the owning process, close context and source before the receipt."""
 
         current_pid = os.getpid()
         owner_changed = current_pid != self._owner_pid
@@ -311,71 +346,156 @@ class RetainedServerContextOwner:
                 "retained server context owner cannot cross a PID boundary"
             )
             if close_error is not None:
+                if not isinstance(close_error, Exception):
+                    _annotate_secondary_error(
+                        close_error,
+                        "retained server context PID boundary also observed",
+                        boundary_error,
+                    )
+                    raise close_error
                 raise boundary_error from close_error
             raise boundary_error
         if close_error is not None:
-            if not self.closed:
+            owner_closed = False
+            try:
+                owner_closed = self.closed
+            except BaseException as observation_error:  # noqa: B036
+                close_error = _retain_ordered_cleanup_error(
+                    close_error,
+                    observation_error,
+                    earlier_label="retained owner cleanup also failed",
+                    later_label="retained owner close-state observation also failed",
+                )
+            if not owner_closed:
                 _attach_publication_cleanup_owner(close_error, self)
             raise close_error
 
     def _close_inherited_locked(self) -> None:
-        """Revoke inherited publication handles without touching copied locks."""
+        """Revoke inherited source and publication handles without context locks."""
 
         # A lock in the copied ServerContext may have been owned by a different
         # thread at fork time.  That thread does not exist in the child, so
-        # context.close() could block forever before reaching the publication
-        # receipt.  The retained context is source-disabled and native-inert;
-        # the PID-bound receipt is the authority that must be revoked here.
-        self._receipt_owner.close()
+        # context.close() could block forever before reaching either authority.
+        # Both lower-level owners have their own child-process cleanup paths;
+        # visit both even though each reports its PID boundary after cleanup.
+        first_error: BaseException | None = None
+        try:
+            self._source_owner.close()
+        except BaseException as exc:  # noqa: B036 - visit receipt after source
+            first_error = exc
+        try:
+            self._receipt_owner.close()
+        except BaseException as exc:  # noqa: B036 - preserve first child fault
+            first_error = _retain_ordered_cleanup_error(
+                first_error,
+                exc,
+                earlier_label="retained source cleanup also failed",
+                later_label="retained publication cleanup also failed",
+            )
         self._finish_closed_locked()
+        if first_error is not None:
+            raise first_error
 
     def _close_locked(self) -> None:
         if self._slot is _OWNER_CLOSED:
             return
         self._close_failed = False
 
+        primary_error: BaseException | None = None
         context = self._slot if type(self._slot) is ServerContext else None
-        if context is not None and not self._context_close_complete:
+        if context is None:
+            self._context_close_complete = True
+        elif not self._context_close_complete:
             try:
                 context.close()
-            except BaseException as exc:  # noqa: B036 - receipt must stay active
-                self._close_failed = True
-                _attach_publication_cleanup_owner(exc, self)
-                raise
-            self._context_close_complete = True
+            except BaseException as exc:  # noqa: B036 - still visit source owner
+                primary_error = exc
+            else:
+                self._context_close_complete = True
+
+        if not self._source_close_complete:
+            source_error: BaseException | None = None
+            try:
+                self._source_owner.close()
+            except BaseException as exc:  # noqa: B036 - observe retry authority
+                source_error = exc
+            try:
+                source_closed = self._source_owner.closed
+            except BaseException as observation_error:  # noqa: B036
+                source_closed = False
+                source_error = _retain_ordered_cleanup_error(
+                    source_error,
+                    observation_error,
+                    earlier_label="retained source cleanup also failed",
+                    later_label=("retained source close-state observation also failed"),
+                )
+            self._source_close_complete = source_closed
+            if source_error is not None:
+                primary_error = _retain_ordered_cleanup_error(
+                    primary_error,
+                    source_error,
+                    earlier_label="retained context cleanup also failed",
+                    later_label="retained source cleanup also failed",
+                )
+            elif not source_closed:
+                incomplete = RuntimeError("retained source cleanup is incomplete")
+                primary_error = _retain_ordered_cleanup_error(
+                    primary_error,
+                    incomplete,
+                    earlier_label="retained context cleanup also failed",
+                    later_label="retained source cleanup also failed",
+                )
+
+        if not self._context_close_complete or not self._source_close_complete:
+            self._close_failed = True
+            failure = primary_error or RuntimeError(
+                "retained context or source cleanup is incomplete"
+            )
+            _attach_publication_cleanup_owner(failure, self)
+            raise failure
 
         try:
             self._receipt_owner.close()
-        except BaseException as exc:  # noqa: B036 - retain receipt retry authority
+        except BaseException as exc:  # noqa: B036 - observe retry authority
+            primary_error = _retain_ordered_cleanup_error(
+                primary_error,
+                exc,
+                earlier_label="retained context or source cleanup also failed",
+                later_label="retained publication cleanup also failed",
+            )
+        try:
+            receipt_closed = self._receipt_owner.closed
+        except BaseException as observation_error:  # noqa: B036
             receipt_closed = False
-            if os.getpid() == self._owner_pid:
-                try:
-                    receipt_closed = self._receipt_owner.closed
-                except BaseException as observation_error:  # noqa: B036
-                    _annotate_secondary_error(
-                        exc,
-                        "retained publication close-state observation also failed",
-                        observation_error,
-                    )
-            if receipt_closed:
-                self._finish_closed_locked()
-            else:
-                self._close_failed = True
-                _attach_publication_cleanup_owner(exc, self)
-            raise
-
-        if os.getpid() == self._owner_pid and not self._receipt_owner.closed:
+            primary_error = _retain_ordered_cleanup_error(
+                primary_error,
+                observation_error,
+                earlier_label="retained earlier cleanup also failed",
+                later_label=(
+                    "retained publication close-state observation also failed"
+                ),
+            )
+        if not receipt_closed:
             self._close_failed = True
-            failure = RuntimeError("retained publication cleanup is incomplete")
+            failure = primary_error or RuntimeError(
+                "retained publication cleanup is incomplete"
+            )
             _attach_publication_cleanup_owner(failure, self)
             raise failure
+
         self._finish_closed_locked()
+        if primary_error is not None:
+            # A close may report cancellation after fully revoking its owner.
+            # Preserve that exact fault without retaining an already-closed
+            # aggregate for retry.
+            raise primary_error
 
     def _finish_closed_locked(self) -> None:
         self._slot = _OWNER_CLOSED
         self._reservation = None
         self._result = None
         self._context_close_complete = True
+        self._source_close_complete = True
         self._close_failed = False
 
     def _state_locked(self) -> str:
@@ -409,6 +529,19 @@ def _require_materialization_result(
     if type(value) is not RepoManifestMaterializationResult:
         raise TypeError("retained MCP materializer returned an invalid result")
     return value
+
+
+def _optional_lexical_repository_path(value: object) -> Path | None:
+    """Validate source-binding intent without opening the repository."""
+
+    if value is None:
+        return None
+    if not isinstance(value, (str, Path)):
+        raise TypeError("repo_path must be text or a Path")
+    raw = os.fspath(value)
+    if not raw or "\x00" in raw:
+        raise ValueError("repo_path must be non-empty path text without NUL")
+    return lexical_repository_path(value)
 
 
 def _require_requested_materialization(
@@ -464,6 +597,9 @@ def _cross_check_binding(
     materialization: RepoManifestMaterializationResult,
     receipt: PublishedWorkspaceReceipt,
     publication: PublicationDirectoryReader,
+    *,
+    repo_path: str | Path | None,
+    source_cleanup_owner: SourceBindingCleanupOwner,
 ) -> ContextArtifactBinding:
     """Verify and cross-bind every data and authority projection."""
 
@@ -510,13 +646,26 @@ def _cross_check_binding(
             "retained MCP export receipt differs from the materialized manifest"
         )
 
-    binding = query_context_artifact_reader(
-        receipt,
-        publication,
-        expected_root=root,
-        expected_ownership=ownership,
-        expected_repository=artifact_result.repository,
-        expected_commit=artifact_result.commit,
+    binding = (
+        query_context_artifact_reader(
+            receipt,
+            publication,
+            expected_root=root,
+            expected_ownership=ownership,
+            expected_repository=artifact_result.repository,
+            expected_commit=artifact_result.commit,
+        )
+        if repo_path is None
+        else bind_context_artifact_reader(
+            receipt,
+            publication,
+            repo_path,
+            expected_root=root,
+            expected_ownership=ownership,
+            source_cleanup_owner=source_cleanup_owner,
+            expected_repository=artifact_result.repository,
+            expected_commit=artifact_result.commit,
+        )
     )
     verified = binding.artifact
     if (
@@ -553,8 +702,10 @@ def _activate_materialization(
     materialization: RepoManifestMaterializationResult,
     receipt_owner: PublishedWorkspaceReceiptOwner,
     runtime_owner: RetainedServerContextOwner,
+    *,
+    repo_path: str | Path | None,
 ) -> RetainedServerContextResult:
-    """Consume one exact publication reader and activate its query runtime."""
+    """Consume one publication reader and activate its selected runtime."""
 
     artifact_result = materialization.artifact
 
@@ -562,7 +713,13 @@ def _activate_materialization(
         receipt: PublishedWorkspaceReceipt,
         publication: PublicationDirectoryReader,
     ) -> RetainedServerContextResult:
-        binding = _cross_check_binding(materialization, receipt, publication)
+        binding = _cross_check_binding(
+            materialization,
+            receipt,
+            publication,
+            repo_path=repo_path,
+            source_cleanup_owner=runtime_owner._source_owner,
+        )
         if "bm25" not in artifact_result.views:
             raise ValueError("retained MCP contexts require a selected BM25 view")
         artifact = binding.artifact
@@ -579,6 +736,7 @@ def _activate_materialization(
             artifact=metadata,
             artifact_binding=binding,
             artifact_reader=publication,
+            source_binding=binding.source_binding,
             _context_owner=runtime_owner._install_context,
         )
         if runtime_owner._slot is not context:
@@ -586,11 +744,15 @@ def _activate_materialization(
         if (
             context.manifest is not binding.manifest
             or context._artifact_binding is not binding
-            or context._source_binding is not None
             or context._native_index_authorization is not None
             or context.artifact != metadata
         ):
-            raise RuntimeError("retained MCP query-only context binding changed")
+            raise RuntimeError("retained MCP context binding changed")
+        if repo_path is None:
+            if context._source_binding is not None or context.source_verified:
+                raise RuntimeError("retained MCP query-only source binding changed")
+        elif context._source_binding is None or not context.source_verified:
+            raise RuntimeError("retained MCP source authority was not installed")
         if context.bm25 is None:
             detail = context.errors.get("bm25", "BM25 view did not load")
             raise RuntimeError(f"retained MCP BM25 view is unavailable: {detail}")
@@ -631,11 +793,15 @@ def _load_retained_server_context(
     ref_name: str | None,
     snapshot_id: str | None,
     expected_generation: int | None,
+    repo_path: str | Path | None,
 ) -> RetainedServerContextResult:
     if type(runtime_owner) is not RetainedServerContextOwner:
         raise TypeError("runtime_owner must be a RetainedServerContextOwner")
     if not callable(materialize):
         raise TypeError("retained MCP materializer must be callable")
+    # Fail before catalog/object-store/provider work, while leaving the actual
+    # source capture inside the authenticated publication-reader callback.
+    resolved_repo_path = _optional_lexical_repository_path(repo_path)
 
     reservation = object()
     cleanup = (
@@ -664,6 +830,7 @@ def _load_retained_server_context(
                 ),
                 receipt_owner,
                 runtime_owner,
+                repo_path=resolved_repo_path,
             ),
         )
 
@@ -679,6 +846,7 @@ def load_retained_server_context_ref(
     namespace_name: str = DEFAULT_NAMESPACE_NAME,
     ref_name: str = DEFAULT_REF_NAME,
     expected_generation: int | None = None,
+    repo_path: str | Path | None = None,
     max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
     max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
     max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
@@ -688,7 +856,7 @@ def load_retained_server_context_ref(
     max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
     environ: Mapping[str, str] | None = None,
 ) -> RetainedServerContextResult:
-    """Resolve one retained ref and activate its exact query-only context."""
+    """Resolve one retained ref and activate its exact portable context."""
 
     return _load_retained_server_context(
         runtime_owner,
@@ -717,6 +885,7 @@ def load_retained_server_context_ref(
         ref_name=ref_name,
         snapshot_id=None,
         expected_generation=expected_generation,
+        repo_path=repo_path,
     )
 
 
@@ -730,6 +899,7 @@ def load_retained_server_context_snapshot(
     workspace_provider: StrictWorkspaceProvider,
     runtime_owner: RetainedServerContextOwner,
     namespace_name: str = DEFAULT_NAMESPACE_NAME,
+    repo_path: str | Path | None = None,
     max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
     max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
     max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
@@ -739,7 +909,7 @@ def load_retained_server_context_snapshot(
     max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
     environ: Mapping[str, str] | None = None,
 ) -> RetainedServerContextResult:
-    """Read one retained snapshot and activate its exact query-only context."""
+    """Read one retained snapshot and activate its exact portable context."""
 
     return _load_retained_server_context(
         runtime_owner,
@@ -767,6 +937,7 @@ def load_retained_server_context_snapshot(
         ref_name=None,
         snapshot_id=snapshot_id,
         expected_generation=None,
+        repo_path=repo_path,
     )
 
 
