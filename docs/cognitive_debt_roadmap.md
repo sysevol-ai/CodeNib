@@ -105,13 +105,25 @@ Status: in progress.
       retaining its recorded result in the SCIP roadmap.
 - [x] Remove every build switch, environment variable, test, profiler, and
       active documentation instruction owned only by those experiments.
-- [ ] Inventory unowned scripts and delete them in independently reviewable
+- [x] Retire the unowned RFC #133 retrieval comparator and manual skill smoke,
+      plus the standalone metric recomputation superseded by
+      `codenib.eval.retrieval_eval`.
+- [ ] Inventory scripts by command entrypoint, module consumer, documentation,
+      tests, and lifecycle owner; a missing literal path reference alone is not
+      dead-code evidence. Delete confirmed orphans in independently reviewable
       groups.
+- [ ] Retire the failed, default-off SCIP MCP consumer provider and its gate
+      without removing the promoted `FactQueryIndex` and clangd consumers;
+      retain the exact negative M2 receipts in the SCIP roadmap.
 
 ### S1: Stable versus labs packaging
 
 Status: pending.
 
+- Correct the package-discovery boundary: `exclude = ["eval*"]` does not match
+  the shipped `codenib.eval` namespace, and stable console scripts currently
+  expose evaluation and benchmark commands. Treat their removal as a
+  release-managed compatibility change rather than incidental cleanup.
 - Classify `eval`, `dataset`, `clients`, `integrations`, `serving`, legacy model
   pipelines, and graph incremental patching.
 - Move research console scripts and dependencies out of the default wheel.
@@ -174,6 +186,7 @@ Status: pending.
 | --- | --- | --- | --- |
 | 2026-08-24 | Begin the cognitive-debt program with pure subtraction | This baseline and the SCIP acceleration receipts | First subtraction iteration opened |
 | 2026-08-24 | Treat failed Python chunk acceleration candidates as closed experiments | Exact revisions, parity, timings, RSS, and gate decisions remain in `scip_multilanguage_roadmap.md` | Remove POC/gate code, ABIs, commands, tests, and active instructions |
+| 2026-08-24 | Retire three unowned retrieval evaluation scripts | RFC #133 remains closed and canonical retrieval metrics remain covered in `codenib.eval.retrieval_eval` | Remove the transitional comparator, manual smoke, and duplicate metric recomputation |
 
 ## Completion Gate
 
