@@ -22,22 +22,19 @@ import-cache` recaptures an already existing selected cache, `codenib artifact
 materialize` publishes a retained catalog ref or immutable snapshot to a
 missing portable-artifact directory, and retained `codenib mcp` cold-start
 materializes and holds one such generation for a single stdio server lifetime.
-Protocol v3 also adds an internal, capture-only authority primitive for an
-existing destination directory. It moves an otherwise empty native owner into
-the distinct `destination-captured` state, where callers may verify the
-captured root plus destination name/device/inode binding, borrow its
-authenticated directory descriptor, and close or abort the owner. The internal
-native/facade primitive performs no namespace mutation, exposes neither the
-destination-parent nor staged-workspace-root descriptor, and performs no
-publication, rename, exchange, or replacement. The borrowed destination
-descriptor remains owner-owned and valid only for the owner's lifetime;
-trusted internal callers must not close it and could still use it as a
-capability, so capture is an authority boundary rather than a Python sandbox.
+Protocol v4 also exposes an internal existing-destination replacement
+primitive. It captures the incumbent, provisions and authenticates one hidden
+same-parent candidate, exchanges the two exact directory bindings with Linux
+`renameat2(RENAME_EXCHANGE)`, and returns an opaque receipt token. The native
+aggregate owns the incumbent and candidate descriptors throughout; every
+descriptor borrowed by trusted internal code remains owner-owned and must
+never be closed by the borrower.
 
-`LocalWorkspaceProvider` remains missing-only and still rejects the strict
-BM25 producer's `provider-bound-exact` destination mode. Completing that Gate C
-provider requires an atomic exchange/replacement protocol v4, or a separately
-advertised capability; protocol v3 preparation does not close the gate.
+This primitive does not change `LocalWorkspaceProvider`: the provider remains
+missing-only and still rejects the strict BM25 producer's
+`provider-bound-exact` destination mode. Provider integration is a separate
+Gate C change, so Gate C and M1 remain open even though the protocol-v4
+primitive is available.
 
 ## Publish a normal index build
 
@@ -362,10 +359,10 @@ These retained-read routes and the explicit BM25/vector ingress above do not
 complete the hybrid-storage M1 milestone. Benchmark-backed promotion of the
 opt-in compiler and runtime routes is still missing, as is a production
 provider for the strict BM25 replacement producer's `provider-bound-exact`
-destination contract. The capture-only protocol-v3 root authority does not
-change that provider rejection and cannot exchange or replace the captured
-directory. Graph and Zoekt ingress remain M2 or later work; fenced jobs and
-runtime hot switching remain separate milestones.
+destination contract. Protocol v4 supplies the lower-level exact exchange
+primitive, but no production provider selects it and the local provider still
+rejects replacement requests. Graph and Zoekt ingress remain M2 or later work;
+fenced jobs and runtime hot switching remain separate milestones.
 
 ## Measure the retained storage gate
 
@@ -506,10 +503,10 @@ capability policy, and required view coverage. A future source-bound BM25
 default requires its own A2 decision and does not satisfy that full
 compatibility gate. The independent gate C
 `provider-bound-exact` native provider is still required before M1 closes.
-Protocol v3 supplies only its non-mutating capture preparation; the later
-exchange/replacement operation must use protocol v4 or an explicit independent
-capability. This harness does not add M2 generic generation publication or
-fenced jobs, M3 hot switching or request pins, or M5 retention and garbage
+Protocol v4 supplies a primitive-only exact exchange; it does not wire that
+primitive into `LocalWorkspaceProvider` or authorize the strict BM25 route to
+use it. This harness does not add M2 generic generation publication or fenced
+jobs, M3 hot switching or request pins, or M5 retention and garbage
 collection.
 
 ## Lifecycle
@@ -561,7 +558,7 @@ The provider deliberately has a narrow first release:
 - One absolute authority root owned by the current effective UID, with exact
   mode `0700`. The root must be a private, quiescent namespace rather than a
   directory another same-UID process actively mutates.
-- A complete protocol-v3 native extension and a successful Linux ownership
+- A complete protocol-v4 native extension and a successful Linux ownership
   support probe before the first namespace mutation.
 - A plan small enough for the process descriptor limit. The format permits up
   to 100,000 directories, but the native `RLIMIT_NOFILE` preflight may reject a
@@ -585,7 +582,7 @@ policy permits cleanup; discarding it forfeits recoverability.
 
 ## Publication guarantees
 
-The protocol-v3 native aggregate preserves the protocol-v2 missing-destination
+The protocol-v4 native aggregate preserves the protocol-v2 missing-destination
 publication contract. In that publication mode it owns the namespace and file
 descriptors for the whole operation, creates and writes files without returning
 raw file descriptors to Python, pins the root and planned directory identities,
@@ -593,8 +590,8 @@ and performs one no-replace forward rename under a one-shot permit. The
 caller's receipt-slot store is the authority linearization point:
 
 - before the store, failure quarantines the exact candidate;
-- after the store, recovery commits the same native receipt token
-  idempotently;
+- after the store, while the exact native authority remains active and before
+  its close, recovery commits the same native receipt token idempotently;
 - a fork child only authenticates and closes its inherited descriptor pairs and
   cannot rename, quarantine, or commit the parent generation.
 
@@ -602,17 +599,94 @@ Staged and published validators run inside that transaction. The returned
 receipt therefore names one exact, durably published generation rather than a
 path checked after the fact.
 
-Protocol v3's additive capture mode instead binds the private allowed root,
-destination-parent chain, existing destination directory, and exact
-name/device/inode without mutating any of them. A `destination-captured` owner
-permits only destination verification, an owner-owned borrowed destination
-descriptor, and owner close or abort; legacy destination-parent,
-staged-workspace-root, and planned-directory borrows plus file, publication,
-quarantine, and rename operations fail closed. The borrowed descriptor is valid
-only for the owner lifetime and callers must not close it. The native capture
-operation itself makes no namespace change. Trusted internal code could still
-use the destination descriptor with `*at` syscalls, so this is an authority
-boundary rather than a Python sandbox. It is root-authority evidence for future
-Gate C work, not full `_TreeOwnership` and not a `provider-bound-exact`
-provider. Atomic exchange or replacement remains a protocol-v4 or separately
-advertised capability.
+Protocol v4 extends capture with a primitive-only replacement transaction. Its
+success path has these native owner states:
+
+```text
+destination-captured
+  -> replacement-provisioning
+  -> replacement-provisioned
+  -> replacement-adopted
+  -> replacement-exchanged-unreceipted
+  -> replacement-receipted
+  -> closed
+```
+
+The native ABI adds
+`claim_owner_replacement_permit_exact`,
+`provision_owner_replacement_exact`,
+`verify_owner_replacement_binding_exact`, and
+`exchange_owner_replacement_exact`. The fail-closed facade exposes the same
+operations without `_exact`. Claim returns a distinct opaque
+`WorkspaceReplacementPermit`; exchange consumes that permit and returns an
+opaque `WorkspaceReceiptToken` for the existing `commit_owner_receipt`
+operation. Permits and receipt tokens do not expose a separate public state
+API; `owner_state` reports the aggregate state above.
+
+`replacement-provisioning` is the in-call construction state; a successful
+provision call returns in `replacement-provisioned`. Claiming the distinct
+one-shot replacement permit does not change `destination-captured`. After the
+candidate is adopted, written, sealed, and rebound to the aggregate, exchange
+returns an opaque receipt token. While the exact owner authority remains active
+and before close, committing that token is idempotent, releases the cooperative
+flock lease while retaining the authenticated parent descriptor and guard until
+owner/receipt close, and enters `replacement-receipted`. Closing a receipted
+owner only closes its handles and does not mutate either path; after close, the
+token is no longer a retry capability and commit fails closed.
+The forward parent `fsync` occurs inside exchange before a token is returned.
+If it fails, the caller has no token: the aggregate enters
+`replacement-recovery-required`, retains its lease and descriptors, and must be
+settled through owner recovery/abort. In a reachable receipt-commit path, a
+dual-binding validation or `LOCK_UN` failure also enters recovery-required but
+leaves the already-returned token unconsumed. That same exact token may retry
+`commit_owner_receipt` only while the owner remains active and after native
+reclassification proves the exchanged mapping. `abort_owner` is the alternative
+settlement authority; it reclassifies the mapping and reverses the exchange
+when required. Every lease-active
+recovery, including an operator-restored mapping or receipt retry, completes a
+parent `fsync` before eventual unlock. Other interrupted paths may enter
+`replacement-recovery-required`, `quarantined`, or `closed`.
+
+The exchange contract is deliberately narrow. It is Linux-only, requires the
+incumbent and hidden candidate to be distinct directories under the same
+captured parent and on the same device, and uses exactly
+`renameat2(RENAME_EXCHANGE)`. There is no portable or multi-rename fallback.
+The parent-directory open-file-description (OFD) guard is acquired nonblocking
+with `flock(LOCK_EX | LOCK_NB)` and is held across the live exchange until
+either the receipt is committed or an authenticated reverse exchange plus
+parent-directory `fsync` completes. This serializes only the
+exchange-to-receipt-or-reverse settlement window; it does
+not refresh an earlier capture or lock the complete writer lifecycle. A future
+provider or other cooperative caller replacing the same incumbent must supply
+outer single-writer, quiescent serialization for the entire
+capture-to-receipt-or-abort lifetime. If two owners capture the same incumbent,
+the first commits, and the second later attempts exchange, the second classifies
+the mapping as unknown, stays `replacement-recovery-required`, and retains its
+lease and descriptors. The primitive does not auto-adopt or quarantine that
+stale capture. The containing `0700` root must remain private and quiescent; a
+hostile same-UID process that ignores the guard is outside the contract.
+
+Before receipt settlement, same-process abort verifies the swapped incumbent
+and candidate mappings, reverses the exchange, flushes the parent, restores the
+incumbent at the destination, and retains the candidate at its pre-existing
+caller-supplied, authenticated hidden replacement slot for quarantine. The
+primitive validates the hidden basename but does not generate or prove
+randomness. A committed exchange leaves the new candidate at the destination
+and the old incumbent at that slot; the primitive does not reclaim it. Readers
+observing the live namespace see one complete binding or the other at the
+single exchange point, but this is live
+atomicity, not crash recovery. There is no journal and no promise to roll back
+after `SIGKILL`, host failure, or power loss. A caller that observes
+`replacement-recovery-required` must retain the owner and explicitly retry
+recovery, plus the same receipt token when a reachable receipt-commit attempt
+failed. If all references are abandoned while the mapping is unknown, native
+deallocation deliberately retains the raw descriptors and cooperative flock
+until process exit rather than silently releasing the only exclusion and
+authority; restarting is the final recovery boundary.
+
+All borrowed incumbent, candidate-root, parent, and planned-directory
+descriptors remain owned by the aggregate and are valid only for its lifetime;
+borrowers must never close them. The primitive remains an authority boundary
+for trusted internal code, not a Python sandbox or full `_TreeOwnership`.
+`LocalWorkspaceProvider` does not yet integrate it, continues to reject
+`provider-bound-exact`, and therefore does not close Gate C or M1.

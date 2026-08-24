@@ -282,24 +282,60 @@ authenticated reader pinned through synchronous consumption. The contract
 remains provider-neutral, and a concrete `LocalWorkspaceProvider` now supplies
 it on Linux for missing destinations below one private, quiescent root owned by
 the current effective UID with exact mode `0700`. Native workspace-owner
-protocol v3 preserves the v2 publication contract: it pins the namespace and
+protocol v4 preserves the v2 publication contract: it pins the namespace and
 owns every file descriptor, acquires and writes files without exposing raw file
 descriptors to Python, and gates the only forward rename with a one-shot publish
 permit. The caller-owned receipt slot is the publication-authority
 linearization point: unreceipted same-process failures quarantine the exact
 candidate, while a fork child authenticates and closes only its inherited
-descriptor pairs. V3 also adds a non-mutating capture-only mode for an existing
-destination. It enters the distinct `destination-captured` state, authenticates
-the private root and exact destination name/device/inode binding, and permits
-only verification, an owner-owned borrowed destination descriptor, and owner
-close or abort. Legacy destination-parent, staged-workspace-root, and
-planned-directory borrows reject this state, so capture creates no accidental
-parent or staged-workspace-root capability. The borrowed descriptor is valid
-only for the owner lifetime and callers must not close it. The native primitive
-performs no namespace mutation and cannot publish, exchange, or replace the
-directory. Trusted internal code could still use the descriptor with `*at`
-syscalls, so capture is not full `_TreeOwnership`. The provider remains an
-authority boundary for trusted callbacks, not an in-process Python sandbox.
+descriptor pairs. The v3-compatible capture state authenticates the private
+root and exact destination name/device/inode binding without mutation. V4 adds
+a distinct one-shot replacement permit and one aggregate for that incumbent
+plus a hidden, same-parent candidate. Its success states are
+`destination-captured` -> `replacement-provisioning` ->
+`replacement-provisioned` -> `replacement-adopted` ->
+`replacement-exchanged-unreceipted` -> `replacement-receipted`, followed by
+`closed`; interrupted paths may instead enter
+`replacement-recovery-required` or `quarantined`. The only exchange is Linux
+`renameat2(RENAME_EXCHANGE)` for two same-device directories under the captured
+parent, with no portable or multi-rename fallback. A nonblocking owner-held
+parent-directory open-file-description (OFD)
+`flock(LOCK_EX | LOCK_NB)` guards the cooperative commit window through receipt
+commit or an authenticated reverse exchange and parent `fsync`. That flock
+serializes only exchange-to-settlement, not the earlier capture or complete
+writer lifecycle. A future provider/caller must keep replacements of the same
+incumbent single-writer and quiescent from capture through receipt or abort. A
+second stale owner that captured before another owner committed classifies the
+later mapping as unknown, stays `replacement-recovery-required`, and retains
+its lease and descriptors; the primitive neither auto-adopts nor quarantines
+that capture. This assumes a private `0700` namespace whose CodeNib writers
+honor the outer serialization and guard; it is not a claim against hostile
+same-UID mutation. Before receipt settlement,
+same-process recovery can restore the incumbent and retain the candidate at its
+pre-existing, caller-supplied authenticated hidden slot. The primitive validates
+the hidden basename but does not generate or prove randomness. A committed
+exchange leaves the candidate live and the incumbent at that slot. This is live
+atomicity without a crash journal: `SIGKILL`, host failure, and power loss have
+no promised rollback. If the mapping becomes unknown, callers must retain and
+explicitly retry the recovery owner. Forward parent `fsync` runs inside exchange
+before a token is returned; its failure leaves the caller with no token and
+requires owner recovery/abort. A reachable receipt-commit dual-binding or
+`LOCK_UN` failure instead leaves the already-returned same exact receipt token
+unconsumed. While the exact owner remains active and before close, it may retry
+commit only after native reclassification proves the exchanged mapping; after
+close, the token is no longer a retry capability and commit fails closed. Owner
+abort remains the alternative reclassifying/reversing settlement. Every
+lease-active recovery, including an operator-restored mapping or receipt retry,
+performs parent `fsync` before
+eventual unlock. Abandoning recovery authority deliberately retains the raw
+descriptors and cooperative flock until process
+exit rather than silently discarding the only authority. Every borrowed
+incumbent, candidate, parent, or planned-directory descriptor remains
+owner-owned and callers must not close it. Trusted internal code could still
+use those descriptors with `*at` syscalls, so the primitive is not full
+`_TreeOwnership`.
+The provider remains an authority boundary for trusted callbacks, not an
+in-process Python sandbox.
 The explicit retained workflows construct it for operator-requested publication
 and cold start; no compiler or runtime route constructs it by default yet.
 
@@ -387,11 +423,10 @@ materialization APIs are now available as injectable library producers. The
 Linux local provider deliberately accepts only missing destinations, so
 whole-context retained materialization can use it explicitly, while strict BM25
 replacement requests `provider-bound-exact` and still lacks a concrete
-production provider. Protocol v3 now supplies its capture-only,
-root-authority-preparation half, but `LocalWorkspaceProvider` still rejects the
-request and no exchange/replacement operation exists. That mutation boundary
-must be protocol v4 or a separately advertised capability. The explicit
-retained workflows can now construct the whole-context producer for one
+production provider. Protocol v4 now supplies the lower-level exact exchange
+primitive, but `LocalWorkspaceProvider` still rejects the request and does not
+select that primitive. Provider integration remains separate Gate C work. The
+explicit retained workflows can now construct the whole-context producer for one
 existing catalog selection, publish normal compiler output, and load one
 selected generation at MCP cold start, but no default compiler/runtime route
 constructs them. M1 remains in progress and the M2 BM25 profile adapter is still
@@ -743,10 +778,9 @@ advance refs, or make retained storage the default. Benchmark-backed promotion
 of the explicit compiler and runtime routes remains outstanding M1 work; graph
 and Zoekt cache ingress and fenced job publication remain M2 or later work.
 Strict BM25 replacement also still lacks the `provider-bound-exact` production
-provider. Protocol-v3 destination capture is non-mutating preparation only;
-`LocalWorkspaceProvider` continues to reject that expectation, and atomic
-exchange/replacement remains a protocol-v4 or separately advertised
-capability.
+provider. Protocol v4 implements the primitive-only exact exchange, but
+`LocalWorkspaceProvider` continues to reject that expectation and no strict
+producer is wired to the new operation. Provider integration remains separate.
 
 #### Retained storage promotion protocol
 
@@ -763,7 +797,7 @@ that collecting a fast result cannot silently approve a production route:
 | B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
 | B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | B2 source-bound | Promote a specifically scoped source-bound BM25 retained cold start. | Pending A2 source-bound BM25 runtime; it cannot satisfy the full manifest-compatibility gate. |
-| C | Supply the `provider-bound-exact` strict BM25 native provider. | Capture-only protocol-v3 root authority is implemented as non-mutating preparation, but `LocalWorkspaceProvider` still rejects this expectation. Exchange/replacement requires protocol v4 or a separately advertised capability, so Gate C remains pending and required before M1 closes. |
+| C | Supply the `provider-bound-exact` strict BM25 native provider. | Protocol v4 implements a Linux-only, same-parent `RENAME_EXCHANGE` primitive with receipt settlement and bounded same-process rollback, but `LocalWorkspaceProvider` still rejects this expectation and no strict producer selects the primitive. Gate C remains pending and required before M1 closes. |
 
 The A1 harness fixes the BM25 `fast` compiler/runtime comparison rather than
 accepting arbitrary route substitutions. For compiler cold start, arm A runs
