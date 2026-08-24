@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from codenib.wiki.media_incremental import (
     diff_media_manifests,
     merge_incremental_visual_facts,
@@ -61,6 +63,8 @@ def test_diff_media_manifests_reports_added_removed_changed_unchanged():
 
     diff = diff_media_manifests(previous, current)
 
+    assert diff["schema"] == "codenib.media-manifest-diff.v1"
+    assert diff["diff_sha256"]
     assert diff["counts"] == {
         "added": 1,
         "removed": 1,
@@ -113,6 +117,24 @@ def test_plan_incremental_visual_fact_update_reuses_only_matching_facts():
     ]
     assert plan["extract_artifact_paths"] == ["added.png", "changed.png"]
     assert plan["removed_artifact_paths"] == ["removed.png"]
+    assert plan["schema"] == "codenib.media-incremental-plan.v1"
+    assert plan["plan_sha256"]
+
+
+def test_plan_extracts_unchanged_artifact_when_previous_fact_is_missing():
+    media = {
+        "manifest_sha256": "media",
+        "artifacts": [_artifact("missing-fact.png", "same")],
+    }
+
+    plan = plan_incremental_visual_fact_update(
+        media,
+        media,
+        {"manifest_sha256": "facts", "facts": []},
+    )
+
+    assert plan["reusable_fact_packs"] == []
+    assert plan["extract_artifact_paths"] == ["missing-fact.png"]
 
 
 def test_merge_incremental_visual_facts_keeps_current_artifacts_only():
@@ -142,3 +164,60 @@ def test_merge_incremental_visual_facts_keeps_current_artifacts_only():
         "unchanged.png",
     ]
     assert merged["manifest_sha256"]
+
+
+def test_merge_anchors_reused_facts_to_current_artifact_provenance():
+    artifact = _artifact("diagram.png", "same")
+    fact = _fact("diagram.png", "same", name="Reused")
+    fact["role_hint"] = "forged"
+
+    merged = merge_incremental_visual_facts(
+        {"manifest_sha256": "media", "artifacts": [artifact]},
+        reusable_fact_packs=(pack for pack in [fact]),
+        new_fact_packs=(),
+    )
+
+    assert merged["facts"][0]["artifact_path"] == "diagram.png"
+    assert merged["facts"][0]["artifact_sha256"] == "same"
+    assert merged["facts"][0]["role_hint"] == "repository_image"
+
+
+@pytest.mark.parametrize("path", ["../secret.png", "/tmp/secret.png", "bad\\x.png"])
+def test_incremental_helpers_reject_unsafe_artifact_paths(path):
+    manifest = {
+        "manifest_sha256": "media",
+        "artifacts": [_artifact(path, "same")],
+    }
+
+    with pytest.raises(ValueError, match="repository-relative"):
+        diff_media_manifests({}, manifest)
+
+
+def test_incremental_helpers_reject_duplicate_artifact_paths():
+    manifest = {
+        "manifest_sha256": "media",
+        "artifacts": [
+            _artifact("diagram.png", "first"),
+            _artifact("diagram.png", "second"),
+        ],
+    }
+
+    with pytest.raises(ValueError, match="duplicate"):
+        diff_media_manifests({}, manifest)
+
+
+def test_incremental_helpers_reject_artifacts_without_content_hashes():
+    manifest = {
+        "manifest_sha256": "media",
+        "artifacts": [_artifact("diagram.png", "")],
+    }
+
+    with pytest.raises(ValueError, match="sha256"):
+        diff_media_manifests({}, manifest)
+
+
+def test_incremental_helpers_reject_non_object_manifests():
+    with pytest.raises(ValueError, match="media manifest"):
+        diff_media_manifests([], {})
+    with pytest.raises(ValueError, match="visual facts manifest"):
+        plan_incremental_visual_fact_update({}, {}, [])

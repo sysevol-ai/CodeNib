@@ -88,7 +88,9 @@ server-specific MCP registration path.
 `codenib.wiki.media_incremental` provides deterministic update planning for
 multimodal views. It compares two media manifests by path and content hash,
 marks artifacts as added, removed, changed, or unchanged, and identifies which
-visual fact packs can be reused without another VLM call.
+visual fact packs can be reused without another VLM call. Reused packs are
+re-normalized against the current trusted artifact record; missing, stale, or
+invalid packs are scheduled for extraction instead.
 
 This is the first step toward incremental multimodal maintenance:
 
