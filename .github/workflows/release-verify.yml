@@ -112,18 +112,289 @@ jobs:
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
             auditwheel repair --plat manylinux_2_28_${{ matrix.arch }}
             -w {dest_dir} {wheel}
-          CIBW_TEST_COMMAND: >-
-            python -c "import platform;
-            import codenib._workspace_owner_impl as implementation;
-            from codenib import _workspace_owner;
-            assert platform.machine() == '${{ matrix.arch }}';
-            assert implementation.workspace_owner_protocol_version == 3;
-            assert all(callable(getattr(implementation, name, None)) for name in
-            ('capture_owner_destination_exact',
-            'verify_owner_destination_binding_exact',
-            'borrow_owner_destination_descriptor_exact'));
-            assert implementation.require_support() is None;
-            _workspace_owner.require_support()"
+          CIBW_TEST_COMMAND: |
+            python - <<'PY'
+            import hashlib
+            import os
+            import platform
+            import secrets
+            import stat
+            import time
+            from pathlib import Path
+            from tempfile import TemporaryDirectory
+
+            import codenib._workspace_owner_impl as implementation
+            from codenib import _workspace_owner
+
+            assert platform.machine() == '${{ matrix.arch }}'
+            assert implementation.workspace_owner_protocol_version == 4
+            protocol_v4_symbols = (
+                "capture_owner_destination_exact",
+                "verify_owner_destination_binding_exact",
+                "borrow_owner_destination_descriptor_exact",
+                "claim_owner_replacement_permit_exact",
+                "provision_owner_replacement_exact",
+                "verify_owner_replacement_binding_exact",
+                "exchange_owner_replacement_exact",
+            )
+            assert all(
+                callable(getattr(implementation, name, None))
+                for name in protocol_v4_symbols
+            )
+            facade_v4_symbols = (
+                "capture_owner_destination",
+                "verify_owner_destination_binding",
+                "borrow_owner_destination_descriptor",
+                "claim_owner_replacement_permit",
+                "provision_owner_replacement",
+                "verify_owner_replacement_binding",
+                "exchange_owner_replacement",
+                "_bind_owner_replacement_permit",
+            )
+            assert all(
+                callable(getattr(_workspace_owner, name, None))
+                for name in facade_v4_symbols
+            )
+            assert implementation.require_support() is None
+            assert _workspace_owner.require_support() is None
+
+            plan_digest = hashlib.sha256(b"cibuildwheel-protocol-v4").hexdigest()
+            plan_digest_bytes = plan_digest.encode("ascii")
+            directories = ((b"data", 0o700),)
+            incumbent_payload = b"incumbent"
+            candidate_payload = b"candidate"
+
+            def deadline():
+                return time.monotonic_ns() + 10_000_000_000
+
+            def identity(path):
+                metadata = path.stat()
+                return metadata.st_dev, metadata.st_ino
+
+            def prepare_replacement(authority, slot_name):
+                destination = authority / "published"
+                destination.mkdir(mode=0o700)
+                destination.joinpath("incumbent.txt").write_bytes(
+                    incumbent_payload
+                )
+                incumbent_identity = identity(destination)
+                owner = _workspace_owner.create_owner()
+                try:
+                    _workspace_owner.capture_owner_destination(
+                        owner,
+                        os.fsencode(authority),
+                        b"published",
+                        deadline(),
+                    )
+                    assert _workspace_owner.owner_state(owner) == (
+                        "destination-captured"
+                    )
+                    assert (
+                        _workspace_owner.verify_owner_destination_binding(owner)
+                        is None
+                    )
+                    incumbent_descriptor = (
+                        _workspace_owner.borrow_owner_destination_descriptor(
+                            owner
+                        )
+                    )
+                    assert not os.get_inheritable(incumbent_descriptor)
+                    replacement_permit = (
+                        _workspace_owner.claim_owner_replacement_permit(owner)
+                    )
+                    _workspace_owner.provision_owner_replacement(
+                        owner,
+                        slot_name,
+                        plan_digest_bytes,
+                        0o700,
+                        directories,
+                        deadline(),
+                    )
+                    assert _workspace_owner.owner_state(owner) == (
+                        "replacement-provisioned"
+                    )
+                    _workspace_owner.verify_owner_adoption_binding(
+                        owner,
+                        os.fsencode(destination),
+                        slot_name,
+                        plan_digest_bytes,
+                    )
+                    candidate_descriptor = (
+                        _workspace_owner.borrow_owner_root_descriptor(owner)
+                    )
+                    candidate_metadata = os.fstat(candidate_descriptor)
+                    candidate_identity = (
+                        candidate_metadata.st_dev,
+                        candidate_metadata.st_ino,
+                    )
+                    assert stat.S_ISDIR(candidate_metadata.st_mode)
+                    assert candidate_identity != incumbent_identity
+                    assert not os.get_inheritable(candidate_descriptor)
+                    _workspace_owner.mark_owner_adopted(owner)
+                    _workspace_owner.begin_owner_file(
+                        owner,
+                        b"data",
+                        b"result.json",
+                        0o600,
+                    )
+                    _workspace_owner.write_owner_file(owner, candidate_payload)
+                    record = _workspace_owner.finish_owner_file(owner, 0o600)
+                    assert len(record) == 8
+                    _workspace_owner.seal_owner_directories(owner)
+                    assert _workspace_owner.owner_state(owner) == (
+                        "replacement-adopted"
+                    )
+                    assert (
+                        _workspace_owner.verify_owner_replacement_binding(owner)
+                        is None
+                    )
+                    return (
+                        owner,
+                        replacement_permit,
+                        incumbent_descriptor,
+                        candidate_descriptor,
+                        incumbent_identity,
+                        candidate_identity,
+                        destination,
+                        authority / os.fsdecode(slot_name),
+                    )
+                except BaseException:
+                    if not _workspace_owner.owner_closed(owner):
+                        _workspace_owner.abort_owner(owner)
+                    raise
+
+            with TemporaryDirectory() as temporary:
+                root = Path(temporary)
+
+                success_root = root / "success"
+                success_root.mkdir(mode=0o700)
+                success_slot_name = (
+                    f".replacement-success-{secrets.token_hex(16)}".encode(
+                        "ascii"
+                    )
+                )
+                (
+                    success_owner,
+                    success_permit,
+                    success_incumbent_descriptor,
+                    success_candidate_descriptor,
+                    success_incumbent_identity,
+                    success_candidate_identity,
+                    success_destination,
+                    success_slot,
+                ) = prepare_replacement(success_root, success_slot_name)
+                success_committed = False
+                try:
+                    success_receipt = (
+                        _workspace_owner.exchange_owner_replacement(
+                            success_permit,
+                            success_slot_name,
+                            b"published",
+                            deadline(),
+                        )
+                    )
+                    assert _workspace_owner.owner_state(success_owner) == (
+                        "replacement-exchanged-unreceipted"
+                    )
+                    assert identity(success_destination) == (
+                        success_candidate_identity
+                    )
+                    assert identity(success_slot) == success_incumbent_identity
+                    assert (
+                        success_destination / "data/result.json"
+                    ).read_bytes() == candidate_payload
+                    assert (
+                        success_slot / "incumbent.txt"
+                    ).read_bytes() == incumbent_payload
+                    assert (
+                        os.fstat(success_incumbent_descriptor).st_dev,
+                        os.fstat(success_incumbent_descriptor).st_ino,
+                    ) == success_incumbent_identity
+                    assert (
+                        os.fstat(success_candidate_descriptor).st_dev,
+                        os.fstat(success_candidate_descriptor).st_ino,
+                    ) == success_candidate_identity
+                    _workspace_owner.commit_owner_receipt(success_receipt)
+                    _workspace_owner.commit_owner_receipt(success_receipt)
+                    success_committed = True
+                    assert _workspace_owner.owner_state(success_owner) == (
+                        "replacement-receipted"
+                    )
+                    assert (
+                        os.fstat(success_incumbent_descriptor).st_dev,
+                        os.fstat(success_incumbent_descriptor).st_ino,
+                    ) == success_incumbent_identity
+                    assert (
+                        os.fstat(success_candidate_descriptor).st_dev,
+                        os.fstat(success_candidate_descriptor).st_ino,
+                    ) == success_candidate_identity
+                finally:
+                    if not _workspace_owner.owner_closed(success_owner):
+                        if success_committed:
+                            _workspace_owner.close_owner_exact(success_owner)
+                        else:
+                            _workspace_owner.abort_owner(success_owner)
+                assert _workspace_owner.owner_closed(success_owner)
+                assert _workspace_owner.owner_state(success_owner) == "closed"
+                assert identity(success_destination) == success_candidate_identity
+                assert identity(success_slot) == success_incumbent_identity
+
+                rollback_root = root / "rollback"
+                rollback_root.mkdir(mode=0o700)
+                rollback_slot_name = (
+                    f".replacement-rollback-{secrets.token_hex(16)}".encode(
+                        "ascii"
+                    )
+                )
+                (
+                    rollback_owner,
+                    rollback_permit,
+                    rollback_incumbent_descriptor,
+                    rollback_candidate_descriptor,
+                    rollback_incumbent_identity,
+                    rollback_candidate_identity,
+                    rollback_destination,
+                    rollback_slot,
+                ) = prepare_replacement(rollback_root, rollback_slot_name)
+                try:
+                    _workspace_owner.exchange_owner_replacement(
+                        rollback_permit,
+                        rollback_slot_name,
+                        b"published",
+                        deadline(),
+                    )
+                    assert _workspace_owner.owner_state(rollback_owner) == (
+                        "replacement-exchanged-unreceipted"
+                    )
+                    assert identity(rollback_destination) == (
+                        rollback_candidate_identity
+                    )
+                    assert identity(rollback_slot) == rollback_incumbent_identity
+                    assert (
+                        os.fstat(rollback_incumbent_descriptor).st_dev,
+                        os.fstat(rollback_incumbent_descriptor).st_ino,
+                    ) == rollback_incumbent_identity
+                    assert (
+                        os.fstat(rollback_candidate_descriptor).st_dev,
+                        os.fstat(rollback_candidate_descriptor).st_ino,
+                    ) == rollback_candidate_identity
+                    _workspace_owner.abort_owner(rollback_owner)
+                finally:
+                    if not _workspace_owner.owner_closed(rollback_owner):
+                        _workspace_owner.abort_owner(rollback_owner)
+                assert _workspace_owner.owner_closed(rollback_owner)
+                assert _workspace_owner.owner_state(rollback_owner) == "closed"
+                assert identity(rollback_destination) == (
+                    rollback_incumbent_identity
+                )
+                assert identity(rollback_slot) == rollback_candidate_identity
+                assert (
+                    rollback_destination / "incumbent.txt"
+                ).read_bytes() == incumbent_payload
+                assert (
+                    rollback_slot / "data/result.json"
+                ).read_bytes() == candidate_payload
+            PY
 
       - name: Upload wheel
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
@@ -369,21 +640,36 @@ jobs:
           )
 
           assert Path(implementation.__file__).name == "_workspace_owner_impl.abi3.so"
-          assert implementation.workspace_owner_protocol_version == 3
-          capture_symbols = (
+          assert implementation.workspace_owner_protocol_version == 4
+          protocol_v4_symbols = (
               "capture_owner_destination_exact",
               "verify_owner_destination_binding_exact",
               "borrow_owner_destination_descriptor_exact",
+              "claim_owner_replacement_permit_exact",
+              "provision_owner_replacement_exact",
+              "verify_owner_replacement_binding_exact",
+              "exchange_owner_replacement_exact",
           )
           assert all(
               callable(getattr(implementation, name, None))
-              for name in capture_symbols
+              for name in protocol_v4_symbols
           )
           assert implementation.require_support() is None
           assert _workspace_owner.require_support() is None
-          assert callable(_workspace_owner.capture_owner_destination)
-          assert callable(_workspace_owner.verify_owner_destination_binding)
-          assert callable(_workspace_owner.borrow_owner_destination_descriptor)
+          facade_v4_symbols = (
+              "capture_owner_destination",
+              "verify_owner_destination_binding",
+              "borrow_owner_destination_descriptor",
+              "claim_owner_replacement_permit",
+              "provision_owner_replacement",
+              "verify_owner_replacement_binding",
+              "exchange_owner_replacement",
+              "_bind_owner_replacement_permit",
+          )
+          assert all(
+              callable(getattr(_workspace_owner, name, None))
+              for name in facade_v4_symbols
+          )
 
           payload = b'{"release-smoke":"ok"}'
           with TemporaryDirectory() as temporary:
@@ -436,8 +722,15 @@ jobs:
               receipt_owner.close()
 
               assert receipt_owner.closed
-              destination_identity = (destination.stat().st_dev, destination.stat().st_ino)
-              destination_names = tuple(path.name for path in root.iterdir())
+              incumbent_identity = (
+                  destination.stat().st_dev,
+                  destination.stat().st_ino,
+              )
+              replacement_name = (
+                  f".replacement-{os.getpid()}-{time.monotonic_ns()}".encode("ascii")
+              )
+              replacement = root / os.fsdecode(replacement_name)
+              replacement_payload = b'{"release-smoke":"replacement"}'
               captured_owner = _workspace_owner.create_owner()
               try:
                   _workspace_owner.capture_owner_destination(
@@ -465,17 +758,143 @@ jobs:
                   assert (
                       descriptor_metadata.st_dev,
                       descriptor_metadata.st_ino,
-                  ) == destination_identity
+                  ) == incumbent_identity
                   assert not os.get_inheritable(destination_descriptor)
+
+                  replacement_permit = (
+                      _workspace_owner.claim_owner_replacement_permit(
+                          captured_owner
+                      )
+                  )
+                  assert _workspace_owner.owner_state(captured_owner) == (
+                      "destination-captured"
+                  )
+                  _workspace_owner.provision_owner_replacement(
+                      captured_owner,
+                      replacement_name,
+                      plan.digest.encode("ascii"),
+                      plan.root_mode,
+                      tuple(
+                          (os.fsencode(item.path.as_posix()), item.mode)
+                          for item in plan.directories
+                      ),
+                      time.monotonic_ns() + 10_000_000_000,
+                  )
+                  assert _workspace_owner.owner_state(captured_owner) == (
+                      "replacement-provisioned"
+                  )
+                  _workspace_owner.verify_owner_adoption_binding(
+                      captured_owner,
+                      os.fsencode(destination),
+                      replacement_name,
+                      plan.digest.encode("ascii"),
+                  )
+                  _workspace_owner.verify_owner_replacement_binding(
+                      captured_owner
+                  )
+                  replacement_descriptor = (
+                      _workspace_owner.borrow_owner_root_descriptor(
+                          captured_owner
+                      )
+                  )
+                  replacement_metadata = os.fstat(replacement_descriptor)
+                  replacement_identity = (
+                      replacement_metadata.st_dev,
+                      replacement_metadata.st_ino,
+                  )
+                  assert stat.S_ISDIR(replacement_metadata.st_mode)
+                  assert replacement_identity != incumbent_identity
+                  assert not os.get_inheritable(replacement_descriptor)
+
+                  _workspace_owner.mark_owner_adopted(captured_owner)
+                  assert _workspace_owner.owner_state(captured_owner) == (
+                      "replacement-adopted"
+                  )
+                  _workspace_owner.begin_owner_file(
+                      captured_owner,
+                      b"data",
+                      b"result.json",
+                      0o600,
+                  )
+                  _workspace_owner.write_owner_file(
+                      captured_owner,
+                      replacement_payload,
+                  )
+                  replacement_record = _workspace_owner.finish_owner_file(
+                      captured_owner,
+                      0o600,
+                  )
+                  assert len(replacement_record) == 8
+                  _workspace_owner.seal_owner_directories(captured_owner)
+                  _workspace_owner.verify_owner_replacement_binding(
+                      captured_owner
+                  )
+                  assert replacement.joinpath("data/result.json").read_bytes() == (
+                      replacement_payload
+                  )
+
+                  replacement_receipt = (
+                      _workspace_owner.exchange_owner_replacement(
+                          replacement_permit,
+                          replacement_name,
+                          b"published",
+                          time.monotonic_ns() + 10_000_000_000,
+                      )
+                  )
+                  assert _workspace_owner.owner_state(captured_owner) == (
+                      "replacement-exchanged-unreceipted"
+                  )
+                  assert (
+                      destination.stat().st_dev,
+                      destination.stat().st_ino,
+                  ) == replacement_identity
+                  assert (
+                      replacement.stat().st_dev,
+                      replacement.stat().st_ino,
+                  ) == incumbent_identity
+                  assert output.read_bytes() == replacement_payload
+                  assert replacement.joinpath("data/result.json").read_bytes() == (
+                      payload
+                  )
+                  assert (
+                      os.fstat(destination_descriptor).st_dev,
+                      os.fstat(destination_descriptor).st_ino,
+                  ) == incumbent_identity
+                  assert (
+                      os.fstat(replacement_descriptor).st_dev,
+                      os.fstat(replacement_descriptor).st_ino,
+                  ) == replacement_identity
+
+                  _workspace_owner.commit_owner_receipt(replacement_receipt)
+                  _workspace_owner.commit_owner_receipt(replacement_receipt)
+                  assert _workspace_owner.owner_state(captured_owner) == (
+                      "replacement-receipted"
+                  )
+                  assert (
+                      os.fstat(destination_descriptor).st_dev,
+                      os.fstat(destination_descriptor).st_ino,
+                  ) == incumbent_identity
+                  assert (
+                      os.fstat(replacement_descriptor).st_dev,
+                      os.fstat(replacement_descriptor).st_ino,
+                  ) == replacement_identity
               finally:
                   _workspace_owner.close_owner_exact(captured_owner)
 
               assert _workspace_owner.owner_closed(captured_owner)
-              assert tuple(path.name for path in root.iterdir()) == destination_names
+              assert _workspace_owner.owner_state(captured_owner) == "closed"
+              assert {path.name for path in root.iterdir()} == {
+                  "published",
+                  os.fsdecode(replacement_name),
+              }
               assert (destination.stat().st_dev, destination.stat().st_ino) == (
-                  destination_identity
+                  replacement_identity
               )
-              assert output.read_bytes() == payload
+              assert (replacement.stat().st_dev, replacement.stat().st_ino) == (
+                  incumbent_identity
+              )
+              assert output.read_bytes() == replacement_payload
+              assert replacement.joinpath("data/result.json").read_bytes() == payload
           PY
 
   install-smoke:

@@ -631,11 +631,23 @@ def test_registry_publishers_use_separate_workflows() -> None:
         in wheel_env["CIBW_REPAIR_WHEEL_COMMAND_LINUX"]
     )
     wheel_smoke = wheel_env["CIBW_TEST_COMMAND"]
-    assert "workspace_owner_protocol_version == 3" in wheel_smoke
+    assert "workspace_owner_protocol_version == 4" in wheel_smoke
     for symbol in (
         "capture_owner_destination_exact",
         "verify_owner_destination_binding_exact",
         "borrow_owner_destination_descriptor_exact",
+        "claim_owner_replacement_permit_exact",
+        "provision_owner_replacement_exact",
+        "verify_owner_replacement_binding_exact",
+        "exchange_owner_replacement_exact",
+    ):
+        assert symbol in wheel_smoke
+    for symbol in (
+        "claim_owner_replacement_permit",
+        "provision_owner_replacement",
+        "verify_owner_replacement_binding",
+        "exchange_owner_replacement",
+        "_bind_owner_replacement_permit",
     ):
         assert symbol in wheel_smoke
     assert "implementation.require_support() is None" in wheel_smoke
@@ -706,11 +718,15 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "run"
     ]
     assert 'name == "_workspace_owner_impl.abi3.so"' in abi3_exercise
-    assert "workspace_owner_protocol_version == 3" in abi3_exercise
+    assert "workspace_owner_protocol_version == 4" in abi3_exercise
     for symbol in (
         "capture_owner_destination_exact",
         "verify_owner_destination_binding_exact",
         "borrow_owner_destination_descriptor_exact",
+        "claim_owner_replacement_permit_exact",
+        "provision_owner_replacement_exact",
+        "verify_owner_replacement_binding_exact",
+        "exchange_owner_replacement_exact",
     ):
         assert symbol in abi3_exercise
     assert "implementation.require_support() is None" in abi3_exercise
@@ -729,13 +745,30 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert "_workspace_owner.borrow_owner_destination_descriptor(" in abi3_exercise
     assert "stat.S_ISDIR(descriptor_metadata.st_mode)" in abi3_exercise
     assert "not os.get_inheritable(destination_descriptor)" in abi3_exercise
+    assert "_workspace_owner.claim_owner_replacement_permit(" in abi3_exercise
+    assert "_workspace_owner.provision_owner_replacement(" in abi3_exercise
+    assert "replacement-provisioned" in abi3_exercise
+    assert "_workspace_owner.verify_owner_adoption_binding(" in abi3_exercise
+    assert "_workspace_owner.verify_owner_replacement_binding(" in abi3_exercise
+    assert "_workspace_owner.borrow_owner_root_descriptor(" in abi3_exercise
+    assert "not os.get_inheritable(replacement_descriptor)" in abi3_exercise
+    assert "_workspace_owner.mark_owner_adopted(" in abi3_exercise
+    assert "replacement-adopted" in abi3_exercise
+    assert "_workspace_owner.begin_owner_file(" in abi3_exercise
+    assert "_workspace_owner.write_owner_file(" in abi3_exercise
+    assert "_workspace_owner.finish_owner_file(" in abi3_exercise
+    assert "_workspace_owner.seal_owner_directories(" in abi3_exercise
+    assert "_workspace_owner.exchange_owner_replacement(" in abi3_exercise
+    assert "replacement-exchanged-unreceipted" in abi3_exercise
+    assert abi3_exercise.count("_workspace_owner.commit_owner_receipt(") == 2
+    assert "replacement-receipted" in abi3_exercise
     assert "os.close(destination_descriptor)" not in abi3_exercise
+    assert "os.close(replacement_descriptor)" not in abi3_exercise
     assert "_workspace_owner.close_owner_exact(captured_owner)" in abi3_exercise
     assert "_workspace_owner.owner_closed(captured_owner)" in abi3_exercise
-    assert "tuple(path.name for path in root.iterdir()) == destination_names" in (
-        abi3_exercise
-    )
-    assert abi3_exercise.count("assert output.read_bytes() == payload") == 2
+    assert 'owner_state(captured_owner) == "closed"' in abi3_exercise
+    assert "assert output.read_bytes() == replacement_payload" in abi3_exercise
+    assert "replacement.joinpath" in abi3_exercise
 
     compatible_install_steps = {
         "abi3-smoke": "Install the compatible ABI3 wheel",
@@ -767,3 +800,107 @@ def test_registry_publishers_use_separate_workflows() -> None:
                 revision = action.rpartition("@")[2]
                 assert len(revision) == 40
                 assert all(character in "0123456789abcdef" for character in revision)
+
+
+def test_both_release_wheel_architectures_run_protocol_v4_exchange_smoke() -> None:
+    root = Path(__file__).resolve().parents[1]
+    with (root / ".github/workflows/release-verify.yml").open(
+        encoding="utf-8"
+    ) as handle:
+        verification = yaml.load(handle, Loader=yaml.BaseLoader)
+
+    wheel_job = verification["jobs"]["build-wheel"]
+    architectures = wheel_job["strategy"]["matrix"]["arch"]
+    wheel_step = next(
+        step
+        for step in wheel_job["steps"]
+        if step["name"] == "Build and smoke-test wheel"
+    )
+    smoke_template = wheel_step["env"]["CIBW_TEST_COMMAND"]
+    expanded_smokes = {
+        architecture: smoke_template.replace("${{ matrix.arch }}", architecture)
+        for architecture in architectures
+    }
+
+    assert set(expanded_smokes) == {"x86_64", "aarch64"}
+    for architecture, smoke in expanded_smokes.items():
+        assert f"platform.machine() == {architecture!r}" in smoke
+        for operation in (
+            "capture_owner_destination(",
+            "verify_owner_destination_binding(",
+            "claim_owner_replacement_permit(",
+            "provision_owner_replacement(",
+            "verify_owner_adoption_binding(",
+            "borrow_owner_root_descriptor(",
+            "mark_owner_adopted(",
+            "begin_owner_file(",
+            "write_owner_file(",
+            "finish_owner_file(",
+            "seal_owner_directories(",
+            "verify_owner_replacement_binding(",
+        ):
+            assert f"_workspace_owner.{operation}" in smoke
+        assert smoke.count("_workspace_owner.exchange_owner_replacement(") == 2
+        assert smoke.count("_workspace_owner.commit_owner_receipt(") == 2
+        assert "success_committed = True" in smoke
+        assert "replacement-exchanged-unreceipted" in smoke
+        assert "replacement-receipted" in smoke
+        assert smoke.count('owner_state(success_owner) == "closed"') == 1
+        assert smoke.count('owner_state(rollback_owner) == "closed"') == 1
+        assert "_workspace_owner.abort_owner(rollback_owner)" in smoke
+        assert "rollback_incumbent_identity" in smoke
+        assert "rollback_candidate_identity" in smoke
+        assert 'rollback_destination / "incumbent.txt"' in smoke
+        assert 'rollback_slot / "data/result.json"' in smoke
+        assert "os.close(" not in smoke
+
+
+def test_protocol_v4_workspace_replacement_limits_are_documented() -> None:
+    root = Path(__file__).resolve().parents[1]
+    provider = (root / "docs/development/local-workspace-provider.md").read_text(
+        encoding="utf-8"
+    )
+    roadmap = (root / "docs/storage_backend_roadmap.md").read_text(encoding="utf-8")
+    provider_prose = " ".join(provider.split())
+
+    for text in (provider, roadmap):
+        prose = " ".join(text.split())
+        assert "protocol v4" in text.lower()
+        assert "renameat2(RENAME_EXCHANGE)" in text
+        assert "flock(LOCK_EX | LOCK_NB)" in text
+        assert "open-file-description (OFD)" in text
+        assert "replacement-exchanged-unreceipted" in text
+        assert "replacement-receipted" in text
+        assert "replacement-recovery-required" in text
+        assert "SIGKILL" in text
+        assert "process exit" in prose
+        assert "same exact" in prose
+        assert "unconsumed" in prose
+        assert "reclassification" in prose
+        assert "before a token is returned" in prose
+        assert "no token" in prose
+        assert "operator-restored" in prose
+        assert "before eventual unlock" in prose
+        assert "after close" in prose
+        assert "no longer a retry capability" in prose
+        assert "single-writer" in prose
+        assert "stale" in prose
+        assert "auto-adopt" in prose
+        assert "does not generate" in prose
+        assert "randomness" in prose
+
+    assert "There is no portable or multi-rename fallback" in provider
+    assert "this is live atomicity, not crash recovery" in provider_prose
+    assert "borrowers must never close them" in provider_prose
+    for symbol in (
+        "claim_owner_replacement_permit_exact",
+        "provision_owner_replacement_exact",
+        "verify_owner_replacement_binding_exact",
+        "exchange_owner_replacement_exact",
+        "WorkspaceReplacementPermit",
+        "WorkspaceReceiptToken",
+    ):
+        assert symbol in provider
+    assert "the provider remains missing-only" in provider_prose
+    assert "Gate C and M1 remain open" in provider_prose
+    assert "Gate C remains pending and required before M1 closes" in roadmap

@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -47,6 +48,9 @@
 #ifndef RENAME_NOREPLACE
 #define RENAME_NOREPLACE (1U << 0)
 #endif
+#ifndef RENAME_EXCHANGE
+#define RENAME_EXCHANGE (1U << 1)
+#endif
 #ifndef KCMP_FILE
 #define KCMP_FILE 0
 #endif
@@ -70,6 +74,23 @@ enum workspace_namespace_state {
   WORKSPACE_RECEIPTED = 5,
   WORKSPACE_QUARANTINED = 6,
   WORKSPACE_DESTINATION_CAPTURED = 7,
+  WORKSPACE_REPLACEMENT_PROVISIONING = 8,
+  WORKSPACE_REPLACEMENT_PROVISIONED = 9,
+  WORKSPACE_REPLACEMENT_ADOPTED = 10,
+  WORKSPACE_REPLACEMENT_EXCHANGED_UNRECEIPTED = 11,
+  WORKSPACE_REPLACEMENT_RECEIPTED = 12,
+  WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED = 13,
+};
+
+enum workspace_receipt_kind {
+  WORKSPACE_RECEIPT_PUBLISH = 1,
+  WORKSPACE_RECEIPT_REPLACEMENT = 2,
+};
+
+enum workspace_replacement_mapping {
+  WORKSPACE_REPLACEMENT_MAPPING_UNKNOWN = 0,
+  WORKSPACE_REPLACEMENT_MAPPING_PREEXCHANGE = 1,
+  WORKSPACE_REPLACEMENT_MAPPING_EXCHANGED = 2,
 };
 
 typedef struct {
@@ -120,6 +141,7 @@ typedef struct WorkspaceOwner {
   char *destination_path;
   char *initial_stage_name;
   char *stage_name;
+  char *replacement_slot_name;
   char *plan_digest;
   char *orphan_name;
   WorkspaceDirectoryRecord *directories;
@@ -141,6 +163,9 @@ typedef struct WorkspaceOwner {
   off_t file_offset;
   int publish_permit_claimed;
   int publish_permit_active;
+  int replacement_permit_claimed;
+  int replacement_permit_active;
+  int replacement_lock_active;
   uint64_t receipt_generation;
 } WorkspaceOwner;
 
@@ -153,15 +178,26 @@ typedef struct {
 typedef struct {
   PyObject_HEAD WorkspaceOwner *owner;
   pid_t owner_pid;
+  int consumed;
+} WorkspaceReplacementPermit;
+
+typedef struct {
+  PyObject_HEAD WorkspaceOwner *owner;
+  pid_t owner_pid;
   uint64_t generation;
+  enum workspace_receipt_kind kind;
   int consumed;
 } WorkspaceReceiptToken;
 
 static PyObject *WorkspacePublishPermitTypeObject = NULL;
+static PyObject *WorkspaceReplacementPermitTypeObject = NULL;
 static PyObject *WorkspaceReceiptTokenTypeObject = NULL;
 
 static PyObject *new_workspace_publish_permit(WorkspaceOwner *owner);
-static PyObject *new_workspace_receipt_token(WorkspaceOwner *owner);
+static PyObject *new_workspace_replacement_permit(WorkspaceOwner *owner);
+static PyObject *new_workspace_receipt_token(WorkspaceOwner *owner,
+                                             uint64_t generation,
+                                             enum workspace_receipt_kind kind);
 
 static int set_errno_error(int error) {
   errno = error;
@@ -208,11 +244,15 @@ static int check_deadline(long long deadline_ns) {
 }
 
 static int verify_parent_binding(WorkspaceOwner *self);
+static int verify_captured_destination_binding(WorkspaceOwner *self);
 static int verify_owner_authority(WorkspaceOwner *self);
+static int verify_replacement_binding(WorkspaceOwner *self);
 static int verify_descriptor(int descriptor, int guard, dev_t device,
                              ino_t inode);
 static int verify_hidden_directory(int descriptor, dev_t device, ino_t inode);
 static int quarantine_namespace_internal(WorkspaceOwner *self);
+static int settle_replacement_namespace_internal(WorkspaceOwner *self);
+static int workspace_state_is_replacement(WorkspaceOwner *self);
 
 static int native_fsync_retry(int descriptor) {
   int attempts;
@@ -226,6 +266,49 @@ static int native_fsync_retry(int descriptor) {
   }
   errno = EINTR;
   return -1;
+}
+
+static int native_flock_retry(int descriptor, int operation) {
+#if defined(__linux__)
+  int attempts;
+  for (attempts = 0; attempts < 64; ++attempts) {
+    if (flock(descriptor, operation) == 0) {
+      return 0;
+    }
+    if (errno != EINTR) {
+      return -1;
+    }
+  }
+  errno = EINTR;
+  return -1;
+#else
+  (void)descriptor;
+  (void)operation;
+  errno = ENOSYS;
+  return -1;
+#endif
+}
+
+static void enter_replacement_recovery(WorkspaceOwner *self) {
+  self->namespace_state = WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED;
+  if (self->replacement_lock_active) {
+    self->namespace_sync_pending = 1;
+  }
+}
+
+static int release_replacement_lock(WorkspaceOwner *self) {
+  if (!self->replacement_lock_active) {
+    return 0;
+  }
+  if (getpid() != self->owner_pid) {
+    errno = EPERM;
+    return -1;
+  }
+  if (native_flock_retry(self->parent_guard_fd, LOCK_UN) < 0) {
+    return -1;
+  }
+  self->replacement_lock_active = 0;
+  return 0;
 }
 
 static int native_fchmod_retry(int descriptor, mode_t mode) {
@@ -904,12 +987,30 @@ static void free_configuration(WorkspaceOwner *self) {
   self->initial_stage_name = NULL;
   free(self->stage_name);
   self->stage_name = NULL;
+  free(self->replacement_slot_name);
+  self->replacement_slot_name = NULL;
   free(self->plan_digest);
   self->plan_digest = NULL;
   free(self->orphan_name);
   self->orphan_name = NULL;
   free(self->file_name);
   self->file_name = NULL;
+}
+
+static void free_unprovisioned_replacement_configuration(WorkspaceOwner *self) {
+  Py_ssize_t index;
+
+  for (index = 0; index < self->directory_count; ++index) {
+    free(self->directories[index].path);
+    self->directories[index].path = NULL;
+  }
+  free(self->directories);
+  self->directories = NULL;
+  self->directory_count = 0;
+  free(self->replacement_slot_name);
+  self->replacement_slot_name = NULL;
+  free(self->plan_digest);
+  self->plan_digest = NULL;
 }
 
 static char *copy_exact_bytes(PyObject *value, const char *label,
@@ -1261,14 +1362,21 @@ static int same_identity_at(int parent, const char *name, dev_t device,
   return 0;
 }
 
+static const char *candidate_namespace_name(WorkspaceOwner *self) {
+  if (self->replacement_slot_name != NULL) {
+    return self->replacement_slot_name;
+  }
+  return self->stage_name;
+}
+
 static int identify_created_root(WorkspaceOwner *self) {
   struct stat metadata;
-  if (!self->namespace_created || self->parent_guard_fd < 0 ||
-      self->stage_name == NULL) {
+  const char *name = candidate_namespace_name(self);
+  if (!self->namespace_created || self->parent_guard_fd < 0 || name == NULL) {
     errno = EINVAL;
     return -1;
   }
-  if (native_fstatat_retry(self->parent_guard_fd, self->stage_name, &metadata,
+  if (native_fstatat_retry(self->parent_guard_fd, name, &metadata,
                            AT_SYMLINK_NOFOLLOW) < 0) {
     return -1;
   }
@@ -1559,6 +1667,35 @@ static int preflight_descriptor_budget(WorkspaceOwner *self,
   return 0;
 }
 
+static int preflight_additional_descriptor_budget(size_t owner_pairs) {
+  struct rlimit limit;
+  size_t required;
+  uintmax_t open_descriptors;
+
+  if (owner_pairs > (SIZE_MAX - 2 - CODENIB_FD_SAFETY_MARGIN) / (size_t)2) {
+    PyErr_SetString(PyExc_OverflowError,
+                    "workspace descriptor budget overflowed");
+    return -1;
+  }
+  required = (owner_pairs * 2) + 2 + CODENIB_FD_SAFETY_MARGIN;
+  if (getrlimit(RLIMIT_NOFILE, &limit) < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    return -1;
+  }
+  if (count_open_descriptors(&open_descriptors) < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    return -1;
+  }
+  if (limit.rlim_cur != RLIM_INFINITY &&
+      (open_descriptors > (uintmax_t)limit.rlim_cur ||
+       (uintmax_t)required > (uintmax_t)limit.rlim_cur - open_descriptors)) {
+    errno = EMFILE;
+    PyErr_SetFromErrno(PyExc_OSError);
+    return -1;
+  }
+  return 0;
+}
+
 static int verify_allowed_root_policy(WorkspaceOwner *self) {
   struct stat metadata;
   int flags;
@@ -1632,6 +1769,7 @@ static PyObject *WorkspaceOwner_new(PyTypeObject *type, PyObject *args,
   self->destination_path = NULL;
   self->initial_stage_name = NULL;
   self->stage_name = NULL;
+  self->replacement_slot_name = NULL;
   self->plan_digest = NULL;
   self->orphan_name = NULL;
   self->directories = NULL;
@@ -1650,6 +1788,9 @@ static PyObject *WorkspaceOwner_new(PyTypeObject *type, PyObject *args,
   self->file_offset = 0;
   self->publish_permit_claimed = 0;
   self->publish_permit_active = 0;
+  self->replacement_permit_claimed = 0;
+  self->replacement_permit_active = 0;
+  self->replacement_lock_active = 0;
   self->receipt_generation = 0;
   for (Py_ssize_t index = 0; index < CODENIB_MAX_SCRATCH_FDS; ++index) {
     self->scratch[index].path = NULL;
@@ -1663,16 +1804,37 @@ static PyObject *WorkspaceOwner_new(PyTypeObject *type, PyObject *args,
 
 static void WorkspaceOwner_dealloc(WorkspaceOwner *self) {
   freefunc release;
-  if (!self->closed && getpid() == self->owner_pid && self->namespace_created &&
-      self->namespace_state != WORKSPACE_RECEIPTED) {
+  PyObject *error_type;
+  PyObject *error_value;
+  PyObject *error_traceback;
+  int settlement_failed = 0;
+
+  PyErr_Fetch(&error_type, &error_value, &error_traceback);
+  if (!self->closed && getpid() == self->owner_pid &&
+      workspace_state_is_replacement(self)) {
+    if (settle_replacement_namespace_internal(self) < 0 &&
+        (self->replacement_lock_active ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED)) {
+      /* Lease-held or recovery-required replacement ownership must not release
+         its cooperative lease or close its pinned descriptors.  A pre-exchange
+         contention failure acquired no lease and changed no namespace, so its
+         descriptors can be closed without settling the sibling-owned names. */
+      settlement_failed = 1;
+    }
+  } else if (!self->closed && getpid() == self->owner_pid &&
+             self->namespace_created &&
+             self->namespace_state != WORKSPACE_RECEIPTED) {
     (void)quarantine_namespace_internal(self);
   }
-  close_all(self);
+  if (!settlement_failed) {
+    close_all(self);
+  }
   free_configuration(self);
   release = (freefunc)PyType_GetSlot(Py_TYPE(self), Py_tp_free);
   if (release != NULL) {
     release((PyObject *)self);
   }
+  PyErr_Restore(error_type, error_value, error_traceback);
 }
 
 static PyObject *
@@ -1685,6 +1847,7 @@ WorkspaceOwner_claim_publish_permit(WorkspaceOwner *self,
   }
   if (self->closed || self->publish_permit_claimed || self->provision_started ||
       self->namespace_state != WORKSPACE_EMPTY || self->namespace_created ||
+      self->replacement_permit_claimed || self->replacement_permit_active ||
       self->anchor_fd >= 0) {
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace publish permit is not claimable");
@@ -1696,6 +1859,33 @@ WorkspaceOwner_claim_publish_permit(WorkspaceOwner *self,
   }
   self->publish_permit_claimed = 1;
   self->publish_permit_active = 1;
+  return permit;
+}
+
+static PyObject *
+WorkspaceOwner_claim_replacement_permit(WorkspaceOwner *self,
+                                        PyObject *Py_UNUSED(ignored)) {
+  PyObject *permit;
+
+  if (require_owner_pid(self) < 0) {
+    return NULL;
+  }
+  if (self->closed || self->namespace_state != WORKSPACE_DESTINATION_CAPTURED ||
+      self->replacement_permit_claimed || self->replacement_permit_active ||
+      self->publish_permit_claimed || self->publish_permit_active ||
+      self->namespace_created || self->root_fd >= 0 ||
+      self->root_guard_fd >= 0 ||
+      verify_captured_destination_binding(self) < 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace replacement permit is not claimable");
+    return NULL;
+  }
+  permit = new_workspace_replacement_permit(self);
+  if (permit == NULL) {
+    return NULL;
+  }
+  self->replacement_permit_claimed = 1;
+  self->replacement_permit_active = 1;
   return permit;
 }
 
@@ -1749,7 +1939,8 @@ static PyObject *WorkspaceOwner_provision(WorkspaceOwner *self,
     return NULL;
   }
   if (self->namespace_state != WORKSPACE_EMPTY || self->closed ||
-      self->provision_started || self->anchor_fd >= 0) {
+      self->provision_started || self->replacement_permit_claimed ||
+      self->replacement_permit_active || self->anchor_fd >= 0) {
     PyErr_SetString(PyExc_RuntimeError, "native workspace owner is not empty");
     return NULL;
   }
@@ -2139,21 +2330,23 @@ static PyObject *WorkspaceOwner_capture_destination(WorkspaceOwner *self,
       self->namespace_sync_pending ||
       self->namespace_state != WORKSPACE_EMPTY ||
       self->publish_permit_claimed || self->publish_permit_active ||
-      self->anchor_fd >= 0 || self->anchor_guard_fd >= 0 ||
-      self->parent_fd >= 0 || self->parent_guard_fd >= 0 ||
-      self->root_fd >= 0 || self->root_guard_fd >= 0 ||
-      self->captured_destination_fd >= 0 ||
+      self->replacement_permit_claimed || self->replacement_permit_active ||
+      self->replacement_lock_active || self->anchor_fd >= 0 ||
+      self->anchor_guard_fd >= 0 || self->parent_fd >= 0 ||
+      self->parent_guard_fd >= 0 || self->root_fd >= 0 ||
+      self->root_guard_fd >= 0 || self->captured_destination_fd >= 0 ||
       self->captured_destination_guard_fd >= 0 || self->directories != NULL ||
       self->directory_count != 0 || self->scratch_count != 0 ||
       self->absolute_chain_count != 0 || self->relative_chain_count != 0 ||
       self->destination_name != NULL || self->destination_path != NULL ||
       self->initial_stage_name != NULL || self->stage_name != NULL ||
-      self->plan_digest != NULL || self->orphan_name != NULL ||
-      self->file_fd >= 0 || self->file_guard_fd >= 0 ||
-      self->file_name != NULL || self->file_active || self->file_failed ||
-      self->receipt_generation != 0 || self->allowed_root_policy_known ||
-      self->anchor_identity_known || self->parent_identity_known ||
-      self->root_identity_known || self->captured_destination_identity_known) {
+      self->replacement_slot_name != NULL || self->plan_digest != NULL ||
+      self->orphan_name != NULL || self->file_fd >= 0 ||
+      self->file_guard_fd >= 0 || self->file_name != NULL ||
+      self->file_active || self->file_failed || self->receipt_generation != 0 ||
+      self->allowed_root_policy_known || self->anchor_identity_known ||
+      self->parent_identity_known || self->root_identity_known ||
+      self->captured_destination_identity_known) {
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace owner is not empty for destination "
                     "capture");
@@ -2355,6 +2548,306 @@ error:
   return NULL;
 }
 
+static int verify_incumbent_at_destination(WorkspaceOwner *self) {
+  if (verify_parent_binding(self) < 0 ||
+      verify_descriptor(self->captured_destination_fd,
+                        self->captured_destination_guard_fd,
+                        self->captured_destination_device,
+                        self->captured_destination_inode) < 0 ||
+      self->captured_destination_device != self->parent_device ||
+      same_identity_at(self->parent_guard_fd, self->destination_name,
+                       self->captured_destination_device,
+                       self->captured_destination_inode) < 0) {
+    return -1;
+  }
+  return 0;
+}
+
+static PyObject *WorkspaceOwner_provision_replacement(WorkspaceOwner *self,
+                                                      PyObject *args) {
+  PyObject *slot_object;
+  PyObject *digest_object;
+  PyObject *root_mode_object;
+  PyObject *directories_object;
+  PyObject *deadline_object;
+  char *slot_name = NULL;
+  char *plan_digest = NULL;
+  long root_mode;
+  long long deadline_ns;
+  struct stat metadata;
+  dev_t opened_device;
+  ino_t opened_inode;
+  Py_ssize_t index;
+  int parent;
+  int mutation_attempted = 0;
+  const char *name;
+
+  if (require_linux() < 0 || require_owner_pid(self) < 0) {
+    return NULL;
+  }
+#if !defined(SYS_renameat2) || !defined(SYS_fstat) ||                          \
+    !defined(SYS_newfstatat) || !defined(SYS_kcmp) || !defined(SYS_close)
+  PyErr_SetString(PyExc_RuntimeError,
+                  "native strict workspace replacement requires Linux "
+                  "descriptor, flock, and renameat2 syscalls");
+  return NULL;
+#endif
+  if (self->closed || self->namespace_state != WORKSPACE_DESTINATION_CAPTURED ||
+      !self->replacement_permit_claimed || !self->replacement_permit_active ||
+      self->namespace_created || self->root_fd >= 0 ||
+      self->root_guard_fd >= 0 || self->replacement_slot_name != NULL ||
+      self->directories != NULL ||
+      verify_captured_destination_binding(self) < 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace owner is not replacement-ready");
+    return NULL;
+  }
+  if (!PyArg_UnpackTuple(args, "provision_replacement", 5, 5, &slot_object,
+                         &digest_object, &root_mode_object, &directories_object,
+                         &deadline_object)) {
+    return NULL;
+  }
+  if (!PyLong_CheckExact(deadline_object)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "workspace replacement deadline must be an exact integer");
+    return NULL;
+  }
+  deadline_ns = PyLong_AsLongLong(deadline_object);
+  if (deadline_ns == -1 && PyErr_Occurred()) {
+    return NULL;
+  }
+  if (deadline_ns <= 0) {
+    PyErr_SetString(PyExc_ValueError,
+                    "workspace replacement deadline is invalid");
+    return NULL;
+  }
+  if (check_deadline(deadline_ns) < 0) {
+    return NULL;
+  }
+  slot_name = copy_exact_bytes(slot_object, "workspace replacement slot",
+                               CODENIB_MAX_COMPONENT_BYTES);
+  plan_digest = copy_exact_bytes(digest_object, "workspace plan digest", 128);
+  if (slot_name == NULL || plan_digest == NULL) {
+    goto error;
+  }
+  if (!valid_component(slot_name) || slot_name[0] != '.' ||
+      strcmp(slot_name, self->destination_name) == 0 ||
+      strlen(plan_digest) != 64) {
+    PyErr_SetString(PyExc_ValueError,
+                    "native workspace replacement arguments are invalid");
+    goto error;
+  }
+  for (index = 0; index < 64; ++index) {
+    if (!((plan_digest[index] >= '0' && plan_digest[index] <= '9') ||
+          (plan_digest[index] >= 'a' && plan_digest[index] <= 'f'))) {
+      PyErr_SetString(PyExc_ValueError,
+                      "workspace plan digest must be lowercase hexadecimal");
+      goto error;
+    }
+  }
+  if (!PyLong_CheckExact(root_mode_object)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "workspace root mode must be an exact integer");
+    goto error;
+  }
+  root_mode = PyLong_AsLong(root_mode_object);
+  if (root_mode == -1 && PyErr_Occurred()) {
+    goto error;
+  }
+  if (root_mode < 0 || root_mode > 0777) {
+    PyErr_SetString(PyExc_ValueError, "workspace root mode is invalid");
+    goto error;
+  }
+  if (parse_directories(self, directories_object, deadline_ns) < 0 ||
+      validate_directory_plan(self, deadline_ns) < 0 ||
+      preflight_additional_descriptor_budget((size_t)self->directory_count +
+                                             1) < 0) {
+    goto error;
+  }
+  self->replacement_slot_name = slot_name;
+  slot_name = NULL;
+  self->plan_digest = plan_digest;
+  plan_digest = NULL;
+  if (check_deadline(deadline_ns) < 0 ||
+      verify_incumbent_at_destination(self) < 0) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      "workspace incumbent binding changed before provision");
+    }
+    goto error;
+  }
+  if (native_fstatat_retry(self->parent_guard_fd, self->replacement_slot_name,
+                           &metadata, AT_SYMLINK_NOFOLLOW) == 0) {
+    PyErr_SetString(PyExc_FileExistsError,
+                    "workspace replacement slot already exists");
+    goto error;
+  }
+  if (errno != ENOENT || check_deadline(deadline_ns) < 0) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetFromErrno(PyExc_OSError);
+    }
+    goto error;
+  }
+  if (verify_incumbent_at_destination(self) < 0 ||
+      verify_allowed_root_policy(self) < 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "workspace replacement binding changed before mutation");
+    goto error;
+  }
+  self->namespace_state = WORKSPACE_REPLACEMENT_PROVISIONING;
+  mutation_attempted = 1;
+  if (mkdirat(self->parent_guard_fd, self->replacement_slot_name, 0700) < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  self->namespace_created = 1;
+  self->namespace_sync_pending = 1;
+  if (identify_created_root(self) < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  self->root_identity_known = 1;
+  self->root_fd =
+      open_directory_at(self->parent_guard_fd, self->replacement_slot_name);
+  if (self->root_fd < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  self->root_guard_fd = duplicate_cloexec(self->root_fd);
+  if (self->root_guard_fd < 0) {
+    int error_number = errno;
+    discard_uncommitted_pair(&self->root_fd, &self->root_guard_fd,
+                             error_number);
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  if (record_identity(self->root_fd, &opened_device, &opened_inode, S_IFDIR) <
+      0) {
+    int error_number = errno;
+    discard_uncommitted_pair(&self->root_fd, &self->root_guard_fd,
+                             error_number);
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  if (opened_device != self->root_device || opened_inode != self->root_inode) {
+    errno = ESTALE;
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  if (native_fchmod_retry(self->root_guard_fd, (mode_t)root_mode) < 0 ||
+      same_identity_at(self->parent_guard_fd, self->replacement_slot_name,
+                       self->root_device, self->root_inode) < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  if (self->root_device != self->parent_device ||
+      self->root_device != self->captured_destination_device) {
+    PyErr_SetString(PyExc_ValueError,
+                    "workspace replacement roots cross the parent device");
+    goto error;
+  }
+  for (index = 0; index < self->directory_count; ++index) {
+    if (check_deadline(deadline_ns) < 0 ||
+        verify_incumbent_at_destination(self) < 0) {
+      if (!PyErr_Occurred()) {
+        PyErr_SetString(
+            PyExc_RuntimeError,
+            "workspace replacement binding changed during provision");
+      }
+      goto error;
+    }
+    parent = find_parent_descriptor(self, self->directories[index].path);
+    if (parent < 0) {
+      PyErr_SetString(PyExc_ValueError,
+                      "workspace directory parent is absent from its plan");
+      goto error;
+    }
+    name = path_basename(self->directories[index].path);
+    if (verify_allowed_root_policy(self) < 0 ||
+        mkdirat(parent, name, 0700) < 0 ||
+        native_fstatat_retry(parent, name, &metadata, AT_SYMLINK_NOFOLLOW) <
+            0) {
+      PyErr_SetFromErrno(PyExc_OSError);
+      goto error;
+    }
+    if (!S_ISDIR(metadata.st_mode) || metadata.st_dev == 0 ||
+        metadata.st_ino == 0) {
+      errno = EINVAL;
+      PyErr_SetFromErrno(PyExc_OSError);
+      goto error;
+    }
+    self->directories[index].device = metadata.st_dev;
+    self->directories[index].inode = metadata.st_ino;
+    self->directories[index].identity_known = 1;
+    self->directories[index].fd = open_directory_at(parent, name);
+    if (self->directories[index].fd < 0) {
+      PyErr_SetFromErrno(PyExc_OSError);
+      goto error;
+    }
+    self->directories[index].guard_fd =
+        duplicate_cloexec(self->directories[index].fd);
+    if (self->directories[index].guard_fd < 0) {
+      int error_number = errno;
+      discard_uncommitted_pair(&self->directories[index].fd,
+                               &self->directories[index].guard_fd,
+                               error_number);
+      PyErr_SetFromErrno(PyExc_OSError);
+      goto error;
+    }
+    if (record_identity(self->directories[index].fd, &opened_device,
+                        &opened_inode, S_IFDIR) < 0) {
+      int error_number = errno;
+      discard_uncommitted_pair(&self->directories[index].fd,
+                               &self->directories[index].guard_fd,
+                               error_number);
+      PyErr_SetFromErrno(PyExc_OSError);
+      goto error;
+    }
+    if (opened_device != self->directories[index].device ||
+        opened_inode != self->directories[index].inode) {
+      errno = ESTALE;
+      PyErr_SetFromErrno(PyExc_OSError);
+      goto error;
+    }
+    if (native_fchmod_retry(self->directories[index].guard_fd,
+                            self->directories[index].mode) < 0 ||
+        same_identity_at(parent, name, self->directories[index].device,
+                         self->directories[index].inode) < 0) {
+      PyErr_SetFromErrno(PyExc_OSError);
+      goto error;
+    }
+    if (self->directories[index].device != self->root_device) {
+      PyErr_SetString(
+          PyExc_ValueError,
+          "workspace directory crosses the replacement root device");
+      goto error;
+    }
+  }
+  if (native_fsync_retry(self->root_guard_fd) < 0 ||
+      native_fsync_retry(self->parent_guard_fd) < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+    goto error;
+  }
+  self->namespace_sync_pending = 0;
+  if (verify_replacement_binding(self) < 0 ||
+      verify_allowed_root_policy(self) < 0) {
+    PyErr_SetString(
+        PyExc_RuntimeError,
+        "workspace replacement binding changed before provision commit");
+    goto error;
+  }
+  self->namespace_state = WORKSPACE_REPLACEMENT_PROVISIONED;
+  Py_RETURN_NONE;
+
+error:
+  if (!mutation_attempted) {
+    free_unprovisioned_replacement_configuration(self);
+  }
+  free(slot_name);
+  free(plan_digest);
+  return NULL;
+}
+
 static int verify_descriptor(int descriptor, int guard, dev_t device,
                              ino_t inode) {
   struct stat metadata;
@@ -2497,12 +2990,125 @@ static int verify_parent_binding(WorkspaceOwner *self) {
   return 0;
 }
 
+static int metadata_matches_directory(const struct stat *metadata, dev_t device,
+                                      ino_t inode) {
+  return S_ISDIR(metadata->st_mode) && metadata->st_dev == device &&
+         metadata->st_ino == inode;
+}
+
+static enum workspace_replacement_mapping
+classify_replacement_mapping(WorkspaceOwner *self) {
+  struct stat destination_metadata;
+  struct stat slot_metadata;
+  int destination_result;
+  int slot_result;
+
+  if (self->parent_guard_fd < 0 || self->destination_name == NULL ||
+      self->replacement_slot_name == NULL || !self->root_identity_known ||
+      !self->captured_destination_identity_known) {
+    return WORKSPACE_REPLACEMENT_MAPPING_UNKNOWN;
+  }
+  destination_result =
+      native_fstatat_retry(self->parent_guard_fd, self->destination_name,
+                           &destination_metadata, AT_SYMLINK_NOFOLLOW);
+  slot_result =
+      native_fstatat_retry(self->parent_guard_fd, self->replacement_slot_name,
+                           &slot_metadata, AT_SYMLINK_NOFOLLOW);
+  if (destination_result < 0 || slot_result < 0) {
+    return WORKSPACE_REPLACEMENT_MAPPING_UNKNOWN;
+  }
+  if (metadata_matches_directory(&destination_metadata,
+                                 self->captured_destination_device,
+                                 self->captured_destination_inode) &&
+      metadata_matches_directory(&slot_metadata, self->root_device,
+                                 self->root_inode)) {
+    return WORKSPACE_REPLACEMENT_MAPPING_PREEXCHANGE;
+  }
+  if (metadata_matches_directory(&destination_metadata, self->root_device,
+                                 self->root_inode) &&
+      metadata_matches_directory(&slot_metadata,
+                                 self->captured_destination_device,
+                                 self->captured_destination_inode)) {
+    return WORKSPACE_REPLACEMENT_MAPPING_EXCHANGED;
+  }
+  return WORKSPACE_REPLACEMENT_MAPPING_UNKNOWN;
+}
+
+static int replacement_state_expects_preexchange(WorkspaceOwner *self) {
+  return self->namespace_state == WORKSPACE_REPLACEMENT_PROVISIONING ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_PROVISIONED ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_ADOPTED;
+}
+
+static int replacement_state_expects_exchange(WorkspaceOwner *self) {
+  return self->namespace_state == WORKSPACE_REPLACEMENT_EXCHANGED_UNRECEIPTED ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_RECEIPTED;
+}
+
+static int verify_replacement_binding(WorkspaceOwner *self) {
+  enum workspace_replacement_mapping mapping;
+  Py_ssize_t index;
+
+  if (self->closed || !self->destination_capture_started ||
+      !self->namespace_created || !self->replacement_permit_claimed ||
+      self->publish_permit_claimed || self->publish_permit_active ||
+      self->destination_name == NULL || self->destination_path == NULL ||
+      self->replacement_slot_name == NULL || self->plan_digest == NULL ||
+      !self->root_identity_known ||
+      !self->captured_destination_identity_known || self->root_device == 0 ||
+      self->root_inode == 0 || self->captured_destination_device == 0 ||
+      self->captured_destination_inode == 0 ||
+      self->root_device != self->parent_device ||
+      self->captured_destination_device != self->parent_device ||
+      verify_parent_binding(self) < 0 ||
+      verify_descriptor(self->root_fd, self->root_guard_fd, self->root_device,
+                        self->root_inode) < 0 ||
+      verify_descriptor(self->captured_destination_fd,
+                        self->captured_destination_guard_fd,
+                        self->captured_destination_device,
+                        self->captured_destination_inode) < 0) {
+    errno = ESTALE;
+    return -1;
+  }
+  mapping = classify_replacement_mapping(self);
+  if ((replacement_state_expects_preexchange(self) &&
+       mapping != WORKSPACE_REPLACEMENT_MAPPING_PREEXCHANGE) ||
+      (replacement_state_expects_exchange(self) &&
+       mapping != WORKSPACE_REPLACEMENT_MAPPING_EXCHANGED) ||
+      (!replacement_state_expects_preexchange(self) &&
+       !replacement_state_expects_exchange(self))) {
+    errno = ESTALE;
+    return -1;
+  }
+  for (index = 0; index < self->directory_count; ++index) {
+    int parent;
+    const char *name;
+    if (!self->directories[index].identity_known ||
+        verify_descriptor(self->directories[index].fd,
+                          self->directories[index].guard_fd,
+                          self->directories[index].device,
+                          self->directories[index].inode) < 0) {
+      return -1;
+    }
+    parent = find_parent_descriptor(self, self->directories[index].path);
+    name = path_basename(self->directories[index].path);
+    if (parent < 0 ||
+        same_identity_at(parent, name, self->directories[index].device,
+                         self->directories[index].inode) < 0) {
+      return -1;
+    }
+  }
+  return 0;
+}
+
 static int verify_captured_destination_binding(WorkspaceOwner *self) {
   if (self->namespace_state != WORKSPACE_DESTINATION_CAPTURED || self->closed ||
       !self->provision_started || !self->destination_capture_started ||
       self->namespace_created || self->namespace_sync_pending ||
       self->publish_permit_claimed || self->publish_permit_active ||
-      self->destination_name == NULL || self->destination_path == NULL ||
+      self->replacement_permit_active > self->replacement_permit_claimed ||
+      self->replacement_lock_active || self->destination_name == NULL ||
+      self->destination_path == NULL ||
       !self->captured_destination_identity_known ||
       self->captured_destination_device == 0 ||
       self->captured_destination_inode == 0 || self->root_fd >= 0 ||
@@ -2511,8 +3117,8 @@ static int verify_captured_destination_binding(WorkspaceOwner *self) {
       self->file_fd >= 0 || self->file_guard_fd >= 0 || self->file_active ||
       self->file_failed || self->file_name != NULL ||
       self->initial_stage_name != NULL || self->stage_name != NULL ||
-      self->plan_digest != NULL || self->orphan_name != NULL ||
-      self->receipt_generation != 0 ||
+      self->replacement_slot_name != NULL || self->plan_digest != NULL ||
+      self->orphan_name != NULL || self->receipt_generation != 0 ||
       self->parent_device != self->anchor_device ||
       self->captured_destination_device != self->parent_device ||
       verify_parent_binding(self) < 0 ||
@@ -2531,6 +3137,9 @@ static int verify_captured_destination_binding(WorkspaceOwner *self) {
 
 static int verify_owner_authority(WorkspaceOwner *self) {
   Py_ssize_t index;
+  if (self->replacement_slot_name != NULL) {
+    return verify_replacement_binding(self);
+  }
   if (self->destination_capture_started) {
     return verify_captured_destination_binding(self);
   }
@@ -2577,13 +3186,33 @@ WorkspaceOwner_verify_destination_binding(WorkspaceOwner *self,
   Py_RETURN_NONE;
 }
 
+static PyObject *
+WorkspaceOwner_verify_replacement_binding(WorkspaceOwner *self,
+                                          PyObject *Py_UNUSED(ignored)) {
+  if (require_owner_pid(self) < 0) {
+    return NULL;
+  }
+  if ((self->namespace_state != WORKSPACE_REPLACEMENT_PROVISIONED &&
+       self->namespace_state != WORKSPACE_REPLACEMENT_ADOPTED &&
+       self->namespace_state != WORKSPACE_REPLACEMENT_EXCHANGED_UNRECEIPTED &&
+       self->namespace_state != WORKSPACE_REPLACEMENT_RECEIPTED) ||
+      verify_replacement_binding(self) < 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace replacement binding changed");
+    return NULL;
+  }
+  Py_RETURN_NONE;
+}
+
 static PyObject *WorkspaceOwner_verify(WorkspaceOwner *self,
                                        PyObject *Py_UNUSED(ignored)) {
   Py_ssize_t index;
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
-  if (self->closed || verify_owner_authority(self) < 0) {
+  if (self->closed ||
+      self->namespace_state == WORKSPACE_REPLACEMENT_PROVISIONING ||
+      verify_owner_authority(self) < 0) {
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace descriptor authority changed");
     return NULL;
@@ -2613,18 +3242,42 @@ static PyObject *WorkspaceOwner_verify(WorkspaceOwner *self,
   Py_RETURN_NONE;
 }
 
+static int workspace_state_is_provisioned(WorkspaceOwner *self) {
+  return self->namespace_state == WORKSPACE_PROVISIONED ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_PROVISIONED;
+}
+
+static int workspace_state_is_adopted(WorkspaceOwner *self) {
+  return self->namespace_state == WORKSPACE_ADOPTED ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_ADOPTED;
+}
+
+static int workspace_state_is_replacement(WorkspaceOwner *self) {
+  return self->replacement_permit_claimed ||
+         self->replacement_slot_name != NULL || self->replacement_lock_active ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_PROVISIONING ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_PROVISIONED ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_ADOPTED ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_EXCHANGED_UNRECEIPTED ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_RECEIPTED ||
+         self->namespace_state == WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED;
+}
+
 static PyObject *WorkspaceOwner_mark_adopted(WorkspaceOwner *self,
                                              PyObject *Py_UNUSED(ignored)) {
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
-  if (self->closed || self->namespace_state != WORKSPACE_PROVISIONED ||
+  if (self->closed || !workspace_state_is_provisioned(self) ||
       verify_owner_authority(self) < 0) {
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace owner is not provisioned");
     return NULL;
   }
-  self->namespace_state = WORKSPACE_ADOPTED;
+  self->namespace_state =
+      self->namespace_state == WORKSPACE_REPLACEMENT_PROVISIONED
+          ? WORKSPACE_REPLACEMENT_ADOPTED
+          : WORKSPACE_ADOPTED;
   Py_RETURN_NONE;
 }
 
@@ -2657,6 +3310,7 @@ static PyObject *WorkspaceOwner_verify_adoption_binding(WorkspaceOwner *self,
   PyObject *destination;
   PyObject *stage;
   PyObject *plan_digest;
+  const char *candidate_name;
 
   if (require_owner_pid(self) < 0) {
     return NULL;
@@ -2665,8 +3319,9 @@ static PyObject *WorkspaceOwner_verify_adoption_binding(WorkspaceOwner *self,
                          &stage, &plan_digest)) {
     return NULL;
   }
-  if (self->closed || self->namespace_state != WORKSPACE_PROVISIONED ||
-      self->destination_path == NULL || self->stage_name == NULL ||
+  candidate_name = candidate_namespace_name(self);
+  if (self->closed || !workspace_state_is_provisioned(self) ||
+      self->destination_path == NULL || candidate_name == NULL ||
       self->plan_digest == NULL) {
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace owner is not provisioned");
@@ -2674,7 +3329,7 @@ static PyObject *WorkspaceOwner_verify_adoption_binding(WorkspaceOwner *self,
   }
   if (exact_bytes_equal(destination, self->destination_path,
                         "workspace adoption destination") < 0 ||
-      exact_bytes_equal(stage, self->stage_name, "workspace adoption stage") <
+      exact_bytes_equal(stage, candidate_name, "workspace adoption stage") <
           0 ||
       exact_bytes_equal(plan_digest, self->plan_digest,
                         "workspace adoption plan digest") < 0) {
@@ -2849,9 +3504,8 @@ static PyObject *WorkspaceOwner_begin_file(WorkspaceOwner *self,
                          &mode_object)) {
     return NULL;
   }
-  if (self->closed || self->namespace_state != WORKSPACE_ADOPTED ||
-      self->file_active || self->file_failed ||
-      verify_owner_authority(self) < 0) {
+  if (self->closed || !workspace_state_is_adopted(self) || self->file_active ||
+      self->file_failed || verify_owner_authority(self) < 0) {
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace owner cannot begin a file");
     return NULL;
@@ -2921,7 +3575,7 @@ static PyObject *WorkspaceOwner_write_file(WorkspaceOwner *self,
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
-  if (self->destination_capture_started) {
+  if (self->destination_capture_started && !workspace_state_is_adopted(self)) {
     PyErr_SetString(PyExc_RuntimeError,
                     "captured destination owner cannot write a file");
     return NULL;
@@ -2945,7 +3599,7 @@ static PyObject *WorkspaceOwner_write_file(WorkspaceOwner *self,
                     "workspace file payload exceeds the native chunk budget");
     return NULL;
   }
-  if (self->closed || self->namespace_state != WORKSPACE_ADOPTED ||
+  if (self->closed || !workspace_state_is_adopted(self) ||
       verify_inflight_file(self, &metadata) < 0) {
     self->file_failed = 1;
     PyErr_SetString(PyExc_RuntimeError,
@@ -2997,7 +3651,7 @@ static PyObject *WorkspaceOwner_finish_file(WorkspaceOwner *self,
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
-  if (self->destination_capture_started) {
+  if (self->destination_capture_started && !workspace_state_is_adopted(self)) {
     PyErr_SetString(PyExc_RuntimeError,
                     "captured destination owner cannot finish a file");
     return NULL;
@@ -3009,7 +3663,7 @@ static PyObject *WorkspaceOwner_finish_file(WorkspaceOwner *self,
     }
     return NULL;
   }
-  if (self->closed || self->namespace_state != WORKSPACE_ADOPTED) {
+  if (self->closed || !workspace_state_is_adopted(self)) {
     self->file_failed = 1;
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace file is not finishable");
@@ -3085,7 +3739,7 @@ static PyObject *WorkspaceOwner_abort_file(WorkspaceOwner *self,
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
-  if (self->destination_capture_started) {
+  if (self->destination_capture_started && !workspace_state_is_adopted(self)) {
     PyErr_SetString(PyExc_RuntimeError,
                     "captured destination owner cannot abort a file");
     return NULL;
@@ -3109,9 +3763,8 @@ static PyObject *WorkspaceOwner_seal_directories(WorkspaceOwner *self,
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
-  if (self->closed || self->namespace_state != WORKSPACE_ADOPTED ||
-      self->file_active || self->file_failed ||
-      verify_owner_authority(self) < 0) {
+  if (self->closed || !workspace_state_is_adopted(self) || self->file_active ||
+      self->file_failed || verify_owner_authority(self) < 0) {
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace directories are not seal-ready");
     return NULL;
@@ -3140,12 +3793,17 @@ WorkspaceOwner_sync_parent_method(WorkspaceOwner *self,
   if (require_owner_pid(self) < 0) {
     return NULL;
   }
-  if (self->destination_capture_started) {
+  if (self->destination_capture_started &&
+      self->namespace_state != WORKSPACE_REPLACEMENT_PROVISIONED &&
+      self->namespace_state != WORKSPACE_REPLACEMENT_ADOPTED) {
     PyErr_SetString(PyExc_RuntimeError,
                     "captured destination owner cannot sync its parent");
     return NULL;
   }
-  if (self->closed || verify_parent_binding(self) < 0 ||
+  if (self->closed ||
+      (workspace_state_is_replacement(self)
+           ? verify_owner_authority(self)
+           : verify_parent_binding(self)) < 0 ||
       sync_parent(self) < 0) {
     if (errno == ESTALE) {
       PyErr_SetString(PyExc_RuntimeError,
@@ -3168,6 +3826,19 @@ static int rename_noreplace(int parent, const char *source,
   (void)parent;
   (void)source;
   (void)destination;
+  errno = ENOSYS;
+  return -1;
+#endif
+}
+
+static int rename_exchange(int parent, const char *left, const char *right) {
+#if defined(__linux__) && defined(SYS_renameat2)
+  return (int)syscall(SYS_renameat2, parent, left, parent, right,
+                      RENAME_EXCHANGE);
+#else
+  (void)parent;
+  (void)left;
+  (void)right;
   errno = ENOSYS;
   return -1;
 #endif
@@ -3297,7 +3968,8 @@ WorkspacePublishPermit_rename_child_noreplace(WorkspacePublishPermit *permit,
   self->namespace_sync_pending = 0;
   if (publishes_receipt) {
     ++self->receipt_generation;
-    receipt_token = new_workspace_receipt_token(self);
+    receipt_token = new_workspace_receipt_token(self, self->receipt_generation,
+                                                WORKSPACE_RECEIPT_PUBLISH);
     if (receipt_token == NULL) {
       goto error;
     }
@@ -3315,20 +3987,258 @@ error:
   return NULL;
 }
 
+static PyObject *
+WorkspaceReplacementPermit_exchange(WorkspaceReplacementPermit *permit,
+                                    PyObject *args) {
+  WorkspaceOwner *self = permit->owner;
+  PyObject *slot_object;
+  PyObject *destination_object;
+  PyObject *deadline_object;
+  char *slot = NULL;
+  char *destination = NULL;
+  long long deadline_ns;
+  uint64_t generation;
+  PyObject *receipt_token = NULL;
+  int exchange_result;
+  int exchange_error;
+  int deadline_expired;
+  enum workspace_replacement_mapping mapping;
+
+  if (self == NULL || permit->consumed || !self->replacement_permit_claimed ||
+      !self->replacement_permit_active) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace replacement permit is unavailable");
+    return NULL;
+  }
+  if (getpid() != permit->owner_pid) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace owner cannot cross a PID boundary");
+    return NULL;
+  }
+  if (require_owner_pid(self) < 0) {
+    return NULL;
+  }
+  if (!PyArg_UnpackTuple(args, "exchange_replacement", 3, 3, &slot_object,
+                         &destination_object, &deadline_object)) {
+    return NULL;
+  }
+  slot = copy_exact_bytes(slot_object, "workspace replacement slot",
+                          CODENIB_MAX_COMPONENT_BYTES);
+  destination =
+      copy_exact_bytes(destination_object, "workspace replacement destination",
+                       CODENIB_MAX_COMPONENT_BYTES);
+  if (slot == NULL || destination == NULL) {
+    goto error;
+  }
+  if (!valid_component(slot) || !valid_component(destination) ||
+      self->replacement_slot_name == NULL || self->destination_name == NULL ||
+      strcmp(slot, self->replacement_slot_name) != 0 ||
+      strcmp(destination, self->destination_name) != 0 ||
+      strcmp(slot, destination) == 0) {
+    PyErr_SetString(PyExc_ValueError,
+                    "native workspace replacement names differ");
+    goto error;
+  }
+  if (!PyLong_CheckExact(deadline_object)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "workspace exchange deadline must be an exact integer");
+    goto error;
+  }
+  deadline_ns = PyLong_AsLongLong(deadline_object);
+  if (deadline_ns == -1 && PyErr_Occurred()) {
+    goto error;
+  }
+  if (deadline_ns <= 0) {
+    PyErr_SetString(PyExc_ValueError, "workspace exchange deadline is invalid");
+    goto error;
+  }
+  if (self->closed || self->namespace_state != WORKSPACE_REPLACEMENT_ADOPTED ||
+      self->file_active || self->file_failed || self->replacement_lock_active ||
+      verify_replacement_binding(self) < 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace replacement is not exchange-ready");
+    goto error;
+  }
+  if (check_deadline(deadline_ns) < 0) {
+    goto error;
+  }
+  if (self->receipt_generation == UINT64_MAX) {
+    PyErr_SetString(PyExc_OverflowError,
+                    "native workspace receipt generation exhausted");
+    goto error;
+  }
+  generation = self->receipt_generation + 1;
+  receipt_token = new_workspace_receipt_token(self, generation,
+                                              WORKSPACE_RECEIPT_REPLACEMENT);
+  if (receipt_token == NULL) {
+    goto error;
+  }
+
+  permit->consumed = 1;
+  self->replacement_permit_active = 0;
+  if (native_flock_retry(self->parent_guard_fd, LOCK_EX | LOCK_NB) < 0) {
+    if (errno == EWOULDBLOCK || errno == EAGAIN) {
+      PyErr_SetFromErrno(PyExc_BlockingIOError);
+    } else {
+      PyErr_SetFromErrno(PyExc_OSError);
+    }
+    goto error;
+  }
+  self->replacement_lock_active = 1;
+  deadline_expired = check_deadline(deadline_ns) < 0;
+  if (verify_replacement_binding(self) < 0) {
+    enter_replacement_recovery(self);
+    if (!deadline_expired) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      "native workspace replacement binding changed under "
+                      "its commit lease");
+    }
+    goto error;
+  }
+  if (deadline_expired) {
+    if (release_replacement_lock(self) < 0) {
+      enter_replacement_recovery(self);
+    }
+    goto error;
+  }
+  if (check_deadline(deadline_ns) < 0) {
+    if (release_replacement_lock(self) < 0) {
+      enter_replacement_recovery(self);
+    }
+    goto error;
+  }
+
+  exchange_result =
+      rename_exchange(self->parent_guard_fd, self->replacement_slot_name,
+                      self->destination_name);
+  exchange_error = exchange_result < 0 ? (errno == 0 ? EIO : errno) : 0;
+  mapping = classify_replacement_mapping(self);
+  if (mapping == WORKSPACE_REPLACEMENT_MAPPING_EXCHANGED) {
+    self->namespace_state = WORKSPACE_REPLACEMENT_EXCHANGED_UNRECEIPTED;
+    self->namespace_sync_pending = 1;
+    self->receipt_generation = generation;
+    if (native_fsync_retry(self->parent_guard_fd) < 0) {
+      enter_replacement_recovery(self);
+      PyErr_SetFromErrno(PyExc_OSError);
+      goto error;
+    }
+    self->namespace_sync_pending = 0;
+    free(slot);
+    free(destination);
+    return receipt_token;
+  }
+  if (mapping == WORKSPACE_REPLACEMENT_MAPPING_PREEXCHANGE) {
+    if (exchange_result == 0) {
+      self->namespace_sync_pending = 1;
+      if (native_fsync_retry(self->parent_guard_fd) < 0) {
+        enter_replacement_recovery(self);
+        PyErr_SetFromErrno(PyExc_OSError);
+        goto error;
+      }
+      self->namespace_sync_pending = 0;
+    }
+    if (verify_replacement_binding(self) < 0) {
+      enter_replacement_recovery(self);
+      PyErr_SetString(PyExc_RuntimeError,
+                      "native workspace replacement binding changed after "
+                      "its exchange attempt");
+      goto error;
+    }
+    if (release_replacement_lock(self) < 0) {
+      enter_replacement_recovery(self);
+      if (exchange_result < 0) {
+        errno = exchange_error;
+        PyErr_SetFromErrno(PyExc_OSError);
+      } else {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "native workspace exchange reported success without "
+                        "swapping its exact roots");
+      }
+      goto error;
+    }
+    if (exchange_result < 0) {
+      errno = exchange_error;
+      PyErr_SetFromErrno(PyExc_OSError);
+    } else {
+      PyErr_SetString(PyExc_RuntimeError,
+                      "native workspace exchange reported success without "
+                      "swapping its exact roots");
+    }
+    goto error;
+  }
+  enter_replacement_recovery(self);
+  PyErr_SetString(PyExc_RuntimeError,
+                  "native workspace exchange outcome is unknown");
+
+error:
+  free(slot);
+  free(destination);
+  Py_XDECREF(receipt_token);
+  return NULL;
+}
+
 static PyObject *WorkspaceReceiptToken_commit(WorkspaceReceiptToken *token) {
   WorkspaceOwner *self = token->owner;
 
-  if (self == NULL || getpid() != token->owner_pid ||
-      require_owner_pid(self) < 0) {
-    if (!PyErr_Occurred()) {
-      PyErr_SetString(PyExc_RuntimeError,
-                      "native workspace receipt token is unavailable");
-    }
+  if (self == NULL) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace receipt token is unavailable");
+    return NULL;
+  }
+  if (getpid() != token->owner_pid) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace owner cannot cross a PID boundary");
+    return NULL;
+  }
+  if (require_owner_pid(self) < 0) {
     return NULL;
   }
   if (self->closed) {
     PyErr_SetString(PyExc_RuntimeError,
                     "closed native workspace owner cannot commit a receipt");
+    return NULL;
+  }
+  if (token->kind == WORKSPACE_RECEIPT_REPLACEMENT) {
+    if (token->consumed &&
+        self->namespace_state == WORKSPACE_REPLACEMENT_RECEIPTED &&
+        token->generation == self->receipt_generation) {
+      Py_RETURN_NONE;
+    }
+    if (token->consumed || token->generation != self->receipt_generation ||
+        (self->namespace_state != WORKSPACE_REPLACEMENT_EXCHANGED_UNRECEIPTED &&
+         self->namespace_state != WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED) ||
+        self->file_active || self->file_failed ||
+        !self->replacement_lock_active) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      "native workspace replacement is not receipt-ready");
+      return NULL;
+    }
+    if (self->namespace_sync_pending &&
+        native_fsync_retry(self->parent_guard_fd) < 0) {
+      enter_replacement_recovery(self);
+      return PyErr_SetFromErrno(PyExc_OSError);
+    }
+    self->namespace_sync_pending = 0;
+    if (self->namespace_state == WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED) {
+      self->namespace_state = WORKSPACE_REPLACEMENT_EXCHANGED_UNRECEIPTED;
+    }
+    if (verify_replacement_binding(self) < 0) {
+      enter_replacement_recovery(self);
+      PyErr_SetString(PyExc_RuntimeError,
+                      "native workspace replacement binding changed");
+      return NULL;
+    }
+    if (release_replacement_lock(self) < 0) {
+      enter_replacement_recovery(self);
+      return PyErr_SetFromErrno(PyExc_OSError);
+    }
+    self->namespace_state = WORKSPACE_REPLACEMENT_RECEIPTED;
+    token->consumed = 1;
+    Py_RETURN_NONE;
+  }
+  if (token->kind != WORKSPACE_RECEIPT_PUBLISH) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace receipt kind is invalid");
     return NULL;
   }
   if (token->consumed && self->namespace_state == WORKSPACE_RECEIPTED &&
@@ -3384,6 +4294,145 @@ static int random_bytes(unsigned char *buffer, size_t size) {
   errno = ENOSYS;
   return -1;
 #endif
+}
+
+static int ensure_replacement_candidate_authority(WorkspaceOwner *self) {
+  enum workspace_replacement_mapping mapping;
+  const char *candidate_name;
+  dev_t opened_device;
+  ino_t opened_inode;
+
+  if (!self->namespace_created || self->replacement_slot_name == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+  if (!self->root_identity_known) {
+    /* Once mkdirat has returned, only the identity captured immediately in
+       that provisioning frame may authorize cleanup.  Adopting the current
+       slot after a later failure could bless a foreign same-name directory. */
+    errno = ESTALE;
+    return -1;
+  }
+  if (self->root_fd < 0 && self->root_guard_fd < 0) {
+    mapping = classify_replacement_mapping(self);
+    if (mapping == WORKSPACE_REPLACEMENT_MAPPING_PREEXCHANGE) {
+      candidate_name = self->replacement_slot_name;
+    } else if (mapping == WORKSPACE_REPLACEMENT_MAPPING_EXCHANGED) {
+      candidate_name = self->destination_name;
+    } else {
+      errno = ESTALE;
+      return -1;
+    }
+    self->root_fd = open_directory_at(self->parent_guard_fd, candidate_name);
+    if (self->root_fd < 0) {
+      return -1;
+    }
+    self->root_guard_fd = duplicate_cloexec(self->root_fd);
+    if (self->root_guard_fd < 0) {
+      int error_number = errno;
+      discard_uncommitted_pair(&self->root_fd, &self->root_guard_fd,
+                               error_number);
+      return -1;
+    }
+  }
+  if (record_identity(self->root_fd, &opened_device, &opened_inode, S_IFDIR) <
+          0 ||
+      opened_device != self->root_device || opened_inode != self->root_inode ||
+      opened_device != self->parent_device ||
+      verify_descriptor(self->root_fd, self->root_guard_fd, self->root_device,
+                        self->root_inode) < 0) {
+    errno = ESTALE;
+    return -1;
+  }
+  return 0;
+}
+
+static int settle_replacement_namespace_internal(WorkspaceOwner *self) {
+  enum workspace_replacement_mapping mapping;
+  int reverse_result;
+  int reverse_error;
+
+  if (!workspace_state_is_replacement(self)) {
+    return 0;
+  }
+  if (getpid() != self->owner_pid) {
+    errno = EPERM;
+    return -1;
+  }
+  if (self->namespace_state == WORKSPACE_REPLACEMENT_RECEIPTED) {
+    if (self->replacement_lock_active) {
+      errno = ESTALE;
+      return -1;
+    }
+    return 0;
+  }
+  if (self->namespace_created) {
+    if (!self->replacement_lock_active) {
+      if (native_flock_retry(self->parent_guard_fd, LOCK_EX | LOCK_NB) < 0) {
+        return -1;
+      }
+      self->replacement_lock_active = 1;
+    }
+    if (verify_parent_binding(self) < 0 ||
+        ensure_replacement_candidate_authority(self) < 0 ||
+        verify_descriptor(self->captured_destination_fd,
+                          self->captured_destination_guard_fd,
+                          self->captured_destination_device,
+                          self->captured_destination_inode) < 0) {
+      enter_replacement_recovery(self);
+      errno = ESTALE;
+      return -1;
+    }
+    mapping = classify_replacement_mapping(self);
+    if (mapping == WORKSPACE_REPLACEMENT_MAPPING_EXCHANGED) {
+      reverse_result =
+          rename_exchange(self->parent_guard_fd, self->replacement_slot_name,
+                          self->destination_name);
+      reverse_error = reverse_result < 0 ? (errno == 0 ? EIO : errno) : 0;
+      self->namespace_sync_pending = 1;
+      mapping = classify_replacement_mapping(self);
+      if (mapping != WORKSPACE_REPLACEMENT_MAPPING_PREEXCHANGE) {
+        enter_replacement_recovery(self);
+        errno = mapping == WORKSPACE_REPLACEMENT_MAPPING_EXCHANGED &&
+                        reverse_error != 0
+                    ? reverse_error
+                    : ESTALE;
+        return -1;
+      }
+    } else if (mapping != WORKSPACE_REPLACEMENT_MAPPING_PREEXCHANGE) {
+      enter_replacement_recovery(self);
+      errno = ESTALE;
+      return -1;
+    }
+  }
+  if (self->namespace_sync_pending) {
+    if (native_fsync_retry(self->parent_guard_fd) < 0) {
+      enter_replacement_recovery(self);
+      return -1;
+    }
+    self->namespace_sync_pending = 0;
+  }
+  if (self->namespace_created &&
+      (verify_parent_binding(self) < 0 ||
+       ensure_replacement_candidate_authority(self) < 0 ||
+       verify_descriptor(self->captured_destination_fd,
+                         self->captured_destination_guard_fd,
+                         self->captured_destination_device,
+                         self->captured_destination_inode) < 0 ||
+       classify_replacement_mapping(self) !=
+           WORKSPACE_REPLACEMENT_MAPPING_PREEXCHANGE)) {
+    enter_replacement_recovery(self);
+    errno = ESTALE;
+    return -1;
+  }
+  if (self->replacement_lock_active && release_replacement_lock(self) < 0) {
+    enter_replacement_recovery(self);
+    return -1;
+  }
+  if (self->namespace_created) {
+    self->namespace_state = WORKSPACE_QUARANTINED;
+  }
+  return 0;
 }
 
 static int quarantine_namespace_internal(WorkspaceOwner *self) {
@@ -3496,8 +4545,12 @@ static PyObject *WorkspaceOwner_close(WorkspaceOwner *self,
     }
     Py_RETURN_NONE;
   }
-  if (!owner_changed && self->namespace_created &&
-      self->namespace_state != WORKSPACE_RECEIPTED) {
+  if (!owner_changed && workspace_state_is_replacement(self)) {
+    if (settle_replacement_namespace_internal(self) < 0) {
+      return PyErr_SetFromErrno(PyExc_OSError);
+    }
+  } else if (!owner_changed && self->namespace_created &&
+             self->namespace_state != WORKSPACE_RECEIPTED) {
     if (quarantine_namespace_internal(self) < 0) {
       if (errno == ENOMEM) {
         PyErr_NoMemory();
@@ -3530,7 +4583,12 @@ static PyObject *WorkspaceOwner_abort(WorkspaceOwner *self,
   if (self->closed) {
     Py_RETURN_NONE;
   }
-  if (self->namespace_created && self->namespace_state != WORKSPACE_RECEIPTED) {
+  if (workspace_state_is_replacement(self)) {
+    if (settle_replacement_namespace_internal(self) < 0) {
+      return PyErr_SetFromErrno(PyExc_OSError);
+    }
+  } else if (self->namespace_created &&
+             self->namespace_state != WORKSPACE_RECEIPTED) {
     if (quarantine_namespace_internal(self) < 0) {
       if (errno == ENOMEM) {
         PyErr_NoMemory();
@@ -3555,7 +4613,10 @@ static PyObject *WorkspaceOwner_directory_descriptor(WorkspaceOwner *self,
   Py_ssize_t index;
 
   if (require_owner_pid(self) < 0 || self->closed ||
-      self->destination_capture_started || verify_owner_authority(self) < 0) {
+      (self->destination_capture_started &&
+       !workspace_state_is_provisioned(self) &&
+       !workspace_state_is_adopted(self)) ||
+      verify_owner_authority(self) < 0) {
     if (!PyErr_Occurred()) {
       PyErr_SetString(PyExc_RuntimeError, "native workspace owner is closed");
     }
@@ -3588,8 +4649,13 @@ static PyObject *WorkspaceOwner_get_parent_descriptor(WorkspaceOwner *self,
                                                       void *closure) {
   (void)closure;
   if (require_owner_pid(self) < 0 || self->closed ||
-      self->destination_capture_started || self->parent_fd < 0 ||
-      verify_parent_binding(self) < 0) {
+      (self->destination_capture_started &&
+       !workspace_state_is_provisioned(self) &&
+       !workspace_state_is_adopted(self)) ||
+      self->parent_fd < 0 ||
+      (workspace_state_is_replacement(self)
+           ? verify_owner_authority(self)
+           : verify_parent_binding(self)) < 0) {
     if (!PyErr_Occurred()) {
       PyErr_SetString(PyExc_RuntimeError,
                       "native workspace parent descriptor is unavailable");
@@ -3603,8 +4669,11 @@ static PyObject *WorkspaceOwner_get_parent_descriptor(WorkspaceOwner *self,
 static PyObject *WorkspaceOwner_get_root_descriptor(WorkspaceOwner *self,
                                                     void *closure) {
   (void)closure;
-  if (require_owner_pid(self) < 0 || self->closed || self->root_fd < 0 ||
-      verify_owner_authority(self) < 0) {
+  if (require_owner_pid(self) < 0 || self->closed ||
+      (workspace_state_is_replacement(self) &&
+       !workspace_state_is_provisioned(self) &&
+       !workspace_state_is_adopted(self)) ||
+      self->root_fd < 0 || verify_owner_authority(self) < 0) {
     if (!PyErr_Occurred()) {
       PyErr_SetString(PyExc_RuntimeError,
                       "native workspace root descriptor is unavailable");
@@ -3666,6 +4735,24 @@ static PyObject *WorkspaceOwner_get_state(WorkspaceOwner *self, void *closure) {
       break;
     case WORKSPACE_DESTINATION_CAPTURED:
       state = "destination-captured";
+      break;
+    case WORKSPACE_REPLACEMENT_PROVISIONING:
+      state = "replacement-provisioning";
+      break;
+    case WORKSPACE_REPLACEMENT_PROVISIONED:
+      state = "replacement-provisioned";
+      break;
+    case WORKSPACE_REPLACEMENT_ADOPTED:
+      state = "replacement-adopted";
+      break;
+    case WORKSPACE_REPLACEMENT_EXCHANGED_UNRECEIPTED:
+      state = "replacement-exchanged-unreceipted";
+      break;
+    case WORKSPACE_REPLACEMENT_RECEIPTED:
+      state = "replacement-receipted";
+      break;
+    case WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED:
+      state = "replacement-recovery-required";
       break;
     default:
       state = "invalid";
@@ -3769,6 +4856,90 @@ require_workspace_publish_permit_exact(PyObject *candidate) {
   return (WorkspacePublishPermit *)candidate;
 }
 
+static PyObject *WorkspaceReplacementPermit_new(PyTypeObject *type,
+                                                PyObject *args,
+                                                PyObject *keywords) {
+  (void)type;
+  (void)args;
+  (void)keywords;
+  PyErr_SetString(PyExc_TypeError,
+                  "native workspace replacement permits cannot be constructed");
+  return NULL;
+}
+
+static void
+WorkspaceReplacementPermit_dealloc(WorkspaceReplacementPermit *self) {
+  freefunc release;
+  WorkspaceOwner *owner = self->owner;
+
+  self->owner = NULL;
+  if (owner != NULL) {
+    if (!self->consumed && getpid() == self->owner_pid) {
+      owner->replacement_permit_active = 0;
+    }
+    Py_DECREF((PyObject *)owner);
+  }
+  release = (freefunc)PyType_GetSlot(Py_TYPE(self), Py_tp_free);
+  if (release != NULL) {
+    release((PyObject *)self);
+  }
+}
+
+static PyType_Slot WorkspaceReplacementPermit_slots[] = {
+    {Py_tp_new, WorkspaceReplacementPermit_new},
+    {Py_tp_dealloc, WorkspaceReplacementPermit_dealloc},
+    {Py_tp_doc,
+     "Private one-shot capability for one native workspace replacement."},
+    {0, NULL},
+};
+
+static PyType_Spec WorkspaceReplacementPermit_spec = {
+    "codenib._workspace_owner_impl._WorkspaceReplacementPermit",
+    sizeof(WorkspaceReplacementPermit),
+    0,
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE,
+    WorkspaceReplacementPermit_slots,
+};
+
+static PyObject *new_workspace_replacement_permit(WorkspaceOwner *owner) {
+  allocfunc allocate;
+  WorkspaceReplacementPermit *permit;
+
+  if (WorkspaceReplacementPermitTypeObject == NULL) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native workspace replacement permit type is unavailable");
+    return NULL;
+  }
+  allocate = (allocfunc)PyType_GetSlot(
+      (PyTypeObject *)WorkspaceReplacementPermitTypeObject, Py_tp_alloc);
+  if (allocate == NULL) {
+    return NULL;
+  }
+  permit = (WorkspaceReplacementPermit *)allocate(
+      (PyTypeObject *)WorkspaceReplacementPermitTypeObject, 0);
+  if (permit == NULL) {
+    return NULL;
+  }
+  Py_INCREF((PyObject *)owner);
+  permit->owner = owner;
+  permit->owner_pid = owner->owner_pid;
+  permit->consumed = 0;
+  return (PyObject *)permit;
+}
+
+static WorkspaceReplacementPermit *
+require_workspace_replacement_permit_exact(PyObject *candidate) {
+  if (WorkspaceReplacementPermitTypeObject == NULL ||
+      Py_TYPE(candidate) !=
+          (PyTypeObject *)WorkspaceReplacementPermitTypeObject) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        "workspace replacement capability has an invalid native type");
+    return NULL;
+  }
+  return (WorkspaceReplacementPermit *)candidate;
+}
+
 static PyObject *WorkspaceReceiptToken_new(PyTypeObject *type, PyObject *args,
                                            PyObject *keywords) {
   (void)type;
@@ -3809,7 +4980,9 @@ static PyType_Spec WorkspaceReceiptToken_spec = {
     WorkspaceReceiptToken_slots,
 };
 
-static PyObject *new_workspace_receipt_token(WorkspaceOwner *owner) {
+static PyObject *new_workspace_receipt_token(WorkspaceOwner *owner,
+                                             uint64_t generation,
+                                             enum workspace_receipt_kind kind) {
   allocfunc allocate;
   WorkspaceReceiptToken *token;
 
@@ -3831,7 +5004,8 @@ static PyObject *new_workspace_receipt_token(WorkspaceOwner *owner) {
   Py_INCREF((PyObject *)owner);
   token->owner = owner;
   token->owner_pid = owner->owner_pid;
-  token->generation = owner->receipt_generation;
+  token->generation = generation;
+  token->kind = kind;
   token->consumed = 0;
   return (PyObject *)token;
 }
@@ -3929,11 +5103,26 @@ static PyObject *module_capture_owner_destination_exact(PyObject *module,
                                       WorkspaceOwner_capture_destination);
 }
 
+static PyObject *module_provision_owner_replacement_exact(PyObject *module,
+                                                          PyObject *args) {
+  (void)module;
+  return dispatch_owner_varargs_exact(args, 6,
+                                      "provision_owner_replacement_exact",
+                                      WorkspaceOwner_provision_replacement);
+}
+
 static PyObject *module_claim_owner_publish_permit_exact(PyObject *module,
                                                          PyObject *owner) {
   (void)module;
   return dispatch_owner_noargs_exact(owner,
                                      WorkspaceOwner_claim_publish_permit);
+}
+
+static PyObject *module_claim_owner_replacement_permit_exact(PyObject *module,
+                                                             PyObject *owner) {
+  (void)module;
+  return dispatch_owner_noargs_exact(owner,
+                                     WorkspaceOwner_claim_replacement_permit);
 }
 
 static PyObject *module_verify_owner_authority_exact(PyObject *module,
@@ -3948,6 +5137,14 @@ module_verify_owner_destination_binding_exact(PyObject *module,
   (void)module;
   return dispatch_owner_noargs_exact(owner,
                                      WorkspaceOwner_verify_destination_binding);
+}
+
+static PyObject *
+module_verify_owner_replacement_binding_exact(PyObject *module,
+                                              PyObject *owner) {
+  (void)module;
+  return dispatch_owner_noargs_exact(owner,
+                                     WorkspaceOwner_verify_replacement_binding);
 }
 
 static PyObject *module_verify_owner_adoption_binding_exact(PyObject *module,
@@ -4071,6 +5268,31 @@ static PyObject *module_rename_owner_child_noreplace_exact(PyObject *module,
   return result;
 }
 
+static PyObject *module_exchange_owner_replacement_exact(PyObject *module,
+                                                         PyObject *args) {
+  WorkspaceReplacementPermit *permit;
+  PyObject *tail;
+  PyObject *result;
+  (void)module;
+  if (!PyTuple_CheckExact(args) || PyTuple_Size(args) != 4) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        "exchange_owner_replacement_exact requires exactly 4 arguments");
+    return NULL;
+  }
+  permit = require_workspace_replacement_permit_exact(PyTuple_GetItem(args, 0));
+  if (permit == NULL) {
+    return NULL;
+  }
+  tail = PyTuple_GetSlice(args, 1, 4);
+  if (tail == NULL) {
+    return NULL;
+  }
+  result = WorkspaceReplacementPermit_exchange(permit, tail);
+  Py_DECREF(tail);
+  return result;
+}
+
 static PyObject *module_commit_owner_receipt_exact(PyObject *module,
                                                    PyObject *candidate) {
   WorkspaceReceiptToken *token;
@@ -4128,6 +5350,7 @@ static PyObject *module_create_owner_exact(PyObject *module,
   (void)module;
   if (WorkspaceOwnerTypeObject == NULL ||
       WorkspacePublishPermitTypeObject == NULL ||
+      WorkspaceReplacementPermitTypeObject == NULL ||
       WorkspaceReceiptTokenTypeObject == NULL) {
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace owner type is unavailable");
@@ -4145,13 +5368,14 @@ static PyObject *module_require_owner_exact(PyObject *module, PyObject *owner) {
   return owner;
 }
 
-#define CODENIB_WORKSPACE_OWNER_PROTOCOL_VERSION 3
+#define CODENIB_WORKSPACE_OWNER_PROTOCOL_VERSION 4
 
 static PyObject *module_require_support(PyObject *module,
                                         PyObject *Py_UNUSED(ignored)) {
   (void)module;
   if (WorkspaceOwnerTypeObject == NULL ||
       WorkspacePublishPermitTypeObject == NULL ||
+      WorkspaceReplacementPermitTypeObject == NULL ||
       WorkspaceReceiptTokenTypeObject == NULL) {
     PyErr_SetString(PyExc_RuntimeError,
                     "native workspace owner ABI is incomplete");
@@ -4190,15 +5414,24 @@ static PyMethodDef workspace_module_methods[] = {
     {"capture_owner_destination_exact",
      (PyCFunction)module_capture_owner_destination_exact, METH_VARARGS,
      "Capture one existing destination through exact native-owner dispatch."},
+    {"provision_owner_replacement_exact",
+     (PyCFunction)module_provision_owner_replacement_exact, METH_VARARGS,
+     "Provision one candidate beside an exact captured destination."},
     {"claim_owner_publish_permit_exact",
      (PyCFunction)module_claim_owner_publish_permit_exact, METH_O,
      "Claim the exact owner's private one-shot publication capability."},
+    {"claim_owner_replacement_permit_exact",
+     (PyCFunction)module_claim_owner_replacement_permit_exact, METH_O,
+     "Claim the exact owner's private one-shot replacement capability."},
     {"verify_owner_authority_exact",
      (PyCFunction)module_verify_owner_authority_exact, METH_O,
      "Verify authority through exact native-owner dispatch."},
     {"verify_owner_destination_binding_exact",
      (PyCFunction)module_verify_owner_destination_binding_exact, METH_O,
      "Verify one exact captured destination binding."},
+    {"verify_owner_replacement_binding_exact",
+     (PyCFunction)module_verify_owner_replacement_binding_exact, METH_O,
+     "Verify one exact incumbent and candidate replacement binding."},
     {"verify_owner_adoption_binding_exact",
      (PyCFunction)module_verify_owner_adoption_binding_exact, METH_VARARGS,
      "Verify adoption binding through exact native-owner dispatch."},
@@ -4232,6 +5465,9 @@ static PyMethodDef workspace_module_methods[] = {
     {"rename_owner_child_noreplace_exact",
      (PyCFunction)module_rename_owner_child_noreplace_exact, METH_VARARGS,
      "Publish through one exact native publication capability."},
+    {"exchange_owner_replacement_exact",
+     (PyCFunction)module_exchange_owner_replacement_exact, METH_VARARGS,
+     "Exchange exact incumbent and candidate roots under one commit lease."},
     {"commit_owner_receipt_exact",
      (PyCFunction)module_commit_owner_receipt_exact, METH_O,
      "Commit one exact native receipt capability."},
@@ -4264,6 +5500,7 @@ PyMODINIT_FUNC PyInit__workspace_owner_impl(void) {
   PyObject *module;
   PyObject *owner_type;
   PyObject *publish_permit_type;
+  PyObject *replacement_permit_type;
   PyObject *receipt_token_type;
 
   module = PyModule_Create(&workspace_owner_module);
@@ -4286,8 +5523,16 @@ PyMODINIT_FUNC PyInit__workspace_owner_impl(void) {
     Py_DECREF(module);
     return NULL;
   }
+  replacement_permit_type = PyType_FromSpec(&WorkspaceReplacementPermit_spec);
+  if (replacement_permit_type == NULL) {
+    Py_DECREF(publish_permit_type);
+    Py_DECREF(owner_type);
+    Py_DECREF(module);
+    return NULL;
+  }
   receipt_token_type = PyType_FromSpec(&WorkspaceReceiptToken_spec);
   if (receipt_token_type == NULL) {
+    Py_DECREF(replacement_permit_type);
     Py_DECREF(publish_permit_type);
     Py_DECREF(owner_type);
     Py_DECREF(module);
@@ -4297,6 +5542,7 @@ PyMODINIT_FUNC PyInit__workspace_owner_impl(void) {
      module-level wrapper, never through mutable attribute dispatch. */
   WorkspaceOwnerTypeObject = owner_type;
   WorkspacePublishPermitTypeObject = publish_permit_type;
+  WorkspaceReplacementPermitTypeObject = replacement_permit_type;
   WorkspaceReceiptTokenTypeObject = receipt_token_type;
   return module;
 }

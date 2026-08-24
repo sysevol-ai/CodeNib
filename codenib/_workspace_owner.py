@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-_EXPECTED_WORKSPACE_OWNER_PROTOCOL_VERSION = 3
+_EXPECTED_WORKSPACE_OWNER_PROTOCOL_VERSION = 4
 _IMPORT_ERROR: BaseException | None = None
 
 try:
@@ -36,11 +36,17 @@ _create_owner_exact = _implementation_attribute("create_owner_exact")
 _claim_owner_publish_permit_exact = _implementation_attribute(
     "claim_owner_publish_permit_exact"
 )
+_claim_owner_replacement_permit_exact = _implementation_attribute(
+    "claim_owner_replacement_permit_exact"
+)
 _require_owner_exact = _implementation_attribute("require_owner_exact")
 _close_owner_exact = _implementation_attribute("close_owner_exact")
 _provision_owner_exact = _implementation_attribute("provision_owner_exact")
 _capture_owner_destination_exact = _implementation_attribute(
     "capture_owner_destination_exact"
+)
+_provision_owner_replacement_exact = _implementation_attribute(
+    "provision_owner_replacement_exact"
 )
 _verify_owner_authority_exact = _implementation_attribute(
     "verify_owner_authority_exact"
@@ -50,6 +56,9 @@ _verify_owner_adoption_binding_exact = _implementation_attribute(
 )
 _verify_owner_destination_binding_exact = _implementation_attribute(
     "verify_owner_destination_binding_exact"
+)
+_verify_owner_replacement_binding_exact = _implementation_attribute(
+    "verify_owner_replacement_binding_exact"
 )
 _borrow_owner_parent_descriptor_exact = _implementation_attribute(
     "borrow_owner_parent_descriptor_exact"
@@ -75,6 +84,9 @@ _mark_owner_adopted_exact = _implementation_attribute("mark_owner_adopted_exact"
 _rename_owner_child_noreplace_exact = _implementation_attribute(
     "rename_owner_child_noreplace_exact"
 )
+_exchange_owner_replacement_exact = _implementation_attribute(
+    "exchange_owner_replacement_exact"
+)
 _commit_owner_receipt_exact = _implementation_attribute("commit_owner_receipt_exact")
 _abort_owner_exact = _implementation_attribute("abort_owner_exact")
 _quarantine_owner_exact = _implementation_attribute("quarantine_owner_exact")
@@ -90,13 +102,16 @@ _workspace_owner_protocol_available = (
             _require_support_exact,
             _create_owner_exact,
             _claim_owner_publish_permit_exact,
+            _claim_owner_replacement_permit_exact,
             _require_owner_exact,
             _close_owner_exact,
             _provision_owner_exact,
             _capture_owner_destination_exact,
+            _provision_owner_replacement_exact,
             _verify_owner_authority_exact,
             _verify_owner_adoption_binding_exact,
             _verify_owner_destination_binding_exact,
+            _verify_owner_replacement_binding_exact,
             _borrow_owner_parent_descriptor_exact,
             _borrow_owner_root_descriptor_exact,
             _borrow_owner_destination_descriptor_exact,
@@ -109,6 +124,7 @@ _workspace_owner_protocol_available = (
             _sync_owner_parent_exact,
             _mark_owner_adopted_exact,
             _rename_owner_child_noreplace_exact,
+            _exchange_owner_replacement_exact,
             _commit_owner_receipt_exact,
             _abort_owner_exact,
             _quarantine_owner_exact,
@@ -122,13 +138,16 @@ if not _workspace_owner_protocol_available:
     _require_support_exact = None
     _create_owner_exact = None
     _claim_owner_publish_permit_exact = None
+    _claim_owner_replacement_permit_exact = None
     _require_owner_exact = None
     _close_owner_exact = None
     _provision_owner_exact = None
     _capture_owner_destination_exact = None
+    _provision_owner_replacement_exact = None
     _verify_owner_authority_exact = None
     _verify_owner_adoption_binding_exact = None
     _verify_owner_destination_binding_exact = None
+    _verify_owner_replacement_binding_exact = None
     _borrow_owner_parent_descriptor_exact = None
     _borrow_owner_root_descriptor_exact = None
     _borrow_owner_destination_descriptor_exact = None
@@ -141,6 +160,7 @@ if not _workspace_owner_protocol_available:
     _sync_owner_parent_exact = None
     _mark_owner_adopted_exact = None
     _rename_owner_child_noreplace_exact = None
+    _exchange_owner_replacement_exact = None
     _commit_owner_receipt_exact = None
     _abort_owner_exact = None
     _quarantine_owner_exact = None
@@ -183,6 +203,14 @@ def claim_owner_publish_permit(owner: object) -> object:
     return _claim_owner_publish_permit_exact(owner)
 
 
+def claim_owner_replacement_permit(owner: object) -> object:
+    """Claim the owner's private, one-shot replacement capability."""
+
+    _require_protocol()
+    assert _claim_owner_replacement_permit_exact is not None
+    return _claim_owner_replacement_permit_exact(owner)
+
+
 def _bind_owner_publish_permit(
     publication_permit: object,
 ) -> Callable[[bytes, bytes], object | None]:
@@ -196,6 +224,30 @@ def _bind_owner_publish_permit(
         return exact_rename(publication_permit, source, destination)
 
     return rename
+
+
+def _bind_owner_replacement_permit(
+    replacement_permit: object,
+) -> Callable[[bytes, bytes, int], object]:
+    """Bind one replacement permit before user callbacks run."""
+
+    _require_protocol()
+    exact_exchange = _exchange_owner_replacement_exact
+    assert exact_exchange is not None
+
+    def exchange(
+        replacement_slot: bytes,
+        destination_name: bytes,
+        deadline_ns: int,
+    ) -> object:
+        return exact_exchange(
+            replacement_permit,
+            replacement_slot,
+            destination_name,
+            deadline_ns,
+        )
+
+    return exchange
 
 
 def require_exact_owner(candidate: object) -> Any:
@@ -274,6 +326,31 @@ def capture_owner_destination(
     )
 
 
+def provision_owner_replacement(
+    owner: object,
+    replacement_slot: bytes,
+    plan_digest: bytes,
+    root_mode: int,
+    directories: tuple[tuple[bytes, int], ...],
+    deadline_ns: int,
+) -> None:
+    """Provision one candidate beside an exact captured destination."""
+
+    _require_protocol()
+    assert _provision_owner_replacement_exact is not None
+    _require_none_result(
+        _provision_owner_replacement_exact(
+            owner,
+            replacement_slot,
+            plan_digest,
+            root_mode,
+            directories,
+            deadline_ns,
+        ),
+        "replacement-provision",
+    )
+
+
 def verify_owner_authority(owner: object) -> None:
     _require_protocol()
     assert _verify_owner_authority_exact is not None
@@ -286,6 +363,15 @@ def verify_owner_destination_binding(owner: object) -> None:
     _require_none_result(
         _verify_owner_destination_binding_exact(owner),
         "destination-binding verification",
+    )
+
+
+def verify_owner_replacement_binding(owner: object) -> None:
+    _require_protocol()
+    assert _verify_owner_replacement_binding_exact is not None
+    _require_none_result(
+        _verify_owner_replacement_binding_exact(owner),
+        "replacement-binding verification",
     )
 
 
@@ -419,6 +505,22 @@ def rename_owner_child_noreplace(
     return _rename_owner_child_noreplace_exact(owner, source, destination)
 
 
+def exchange_owner_replacement(
+    replacement_permit: object,
+    replacement_slot: bytes,
+    destination_name: bytes,
+    deadline_ns: int,
+) -> object:
+    _require_protocol()
+    assert _exchange_owner_replacement_exact is not None
+    return _exchange_owner_replacement_exact(
+        replacement_permit,
+        replacement_slot,
+        destination_name,
+        deadline_ns,
+    )
+
+
 def commit_owner_receipt(receipt_token: object) -> None:
     _require_protocol()
     assert _commit_owner_receipt_exact is not None
@@ -470,15 +572,18 @@ __all__ = [
     "borrow_owner_parent_descriptor",
     "borrow_owner_root_descriptor",
     "claim_owner_publish_permit",
+    "claim_owner_replacement_permit",
     "capture_owner_destination",
     "close_owner_exact",
     "commit_owner_receipt",
     "create_owner",
+    "exchange_owner_replacement",
     "finish_owner_file",
     "mark_owner_adopted",
     "owner_closed",
     "owner_state",
     "provision_owner",
+    "provision_owner_replacement",
     "quarantine_owner",
     "rename_owner_child_noreplace",
     "require_exact_owner",
@@ -488,5 +593,6 @@ __all__ = [
     "verify_owner_adoption_binding",
     "verify_owner_authority",
     "verify_owner_destination_binding",
+    "verify_owner_replacement_binding",
     "write_owner_file",
 ]
