@@ -82,6 +82,7 @@ a queryable view. It exposes three functions that future MCP tools can wrap:
 surface as an MCP-compatible tool router with stable tool schemas and bounded
 input validation. This keeps the query surface testable before wiring it into a
 server-specific MCP registration path.
+
 ## Why evidence stays server-side
 
 Media generation may use bounded source snippets inside provider prompts. Those

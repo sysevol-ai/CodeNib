@@ -56,6 +56,19 @@ def test_multimodal_tool_schemas_are_exposed():
     }
 
 
+def test_tool_schema_copies_do_not_mutate_the_public_contract():
+    router = MultimodalKnowledgeToolRouter(_view())
+    schemas = router.tool_schemas()
+
+    assert isinstance(schemas, list)
+    schemas[0]["input_schema"]["properties"]["query"]["type"] = "integer"
+
+    assert (
+        MULTIMODAL_TOOL_SCHEMAS[0]["input_schema"]["properties"]["query"]["type"]
+        == "string"
+    )
+
+
 def test_tool_router_searches_visual_context():
     router = MultimodalKnowledgeToolRouter(_view())
 
@@ -86,10 +99,32 @@ def test_tool_router_finds_visual_code_links():
         {
             "source_path": "codenib/compiler/index_compiler.py",
             "symbol": "IndexCompiler",
+            "limit": 1,
         },
     )
 
     assert result["links"][0]["binding"]["line"] == 42
+
+
+def test_tool_router_limits_visual_code_links():
+    view = _view()
+    second = dict(view["entries"][0])
+    second["artifact"] = {
+        **second["artifact"],
+        "path": "docs/second-architecture.svg",
+    }
+    view["entries"].append(second)
+    router = MultimodalKnowledgeToolRouter(view)
+
+    result = router.call_tool(
+        "find_visual_code_links",
+        {
+            "source_path": "codenib/compiler/index_compiler.py",
+            "limit": 1,
+        },
+    )
+
+    assert len(result["links"]) == 1
 
 
 @pytest.mark.parametrize(
@@ -98,8 +133,19 @@ def test_tool_router_finds_visual_code_links():
         ("unknown", {}, "unknown"),
         ("search_visual_context", {"query": ""}, "query"),
         ("search_visual_context", {"query": "x", "limit": 100}, "limit"),
+        ("search_visual_context", {"query": 1}, "string"),
+        ("search_visual_context", {"query": "x", "limit": "1"}, "integer"),
+        (
+            "search_visual_context",
+            {"query": "x", "unexpected": True},
+            "unexpected",
+        ),
         ("get_visual_evidence", {"artifact_path": "bad\npath"}, "control"),
+        ("get_visual_evidence", {"artifact_path": "../secret.svg"}, "relative"),
+        ("get_visual_evidence", {"artifact_path": "/tmp/secret.svg"}, "relative"),
+        ("get_visual_evidence", {"artifact_path": "docs\\secret.svg"}, "relative"),
         ("find_visual_code_links", {"source_path": ""}, "source_path"),
+        ("find_visual_code_links", {"source_path": None}, "string"),
     ],
 )
 def test_tool_router_validates_inputs(name, arguments, message):
@@ -107,3 +153,10 @@ def test_tool_router_validates_inputs(name, arguments, message):
 
     with pytest.raises(ValueError, match=message):
         router.call_tool(name, arguments)
+
+
+def test_tool_router_requires_an_argument_object():
+    router = MultimodalKnowledgeToolRouter(_view())
+
+    with pytest.raises(ValueError, match="object"):
+        router.call_tool("search_visual_context", [])

@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any, Mapping
 
 from .media_knowledge import (
@@ -51,6 +53,7 @@ MULTIMODAL_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
             "properties": {
                 "source_path": {"type": "string"},
                 "symbol": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": _MAX_LIMIT},
             },
             "required": ["source_path"],
             "additionalProperties": False,
@@ -66,29 +69,33 @@ class MultimodalKnowledgeToolRouter:
     view: Mapping[str, Any]
 
     def tool_schemas(self) -> list[dict[str, Any]]:
-        return [dict(schema) for schema in MULTIMODAL_TOOL_SCHEMAS]
+        return list(copy.deepcopy(MULTIMODAL_TOOL_SCHEMAS))
 
     def call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        if not isinstance(arguments, Mapping):
-            raise ValueError("multimodal tool arguments must be an object")
+        if type(name) is not str:
+            raise ValueError("unknown multimodal knowledge tool")
         if name == "search_visual_context":
+            arguments = _arguments(arguments, allowed={"query", "limit"})
             query = _bounded_text(arguments.get("query"), label="query")
             limit = _limit(arguments.get("limit", 5))
             return {
                 "results": search_visual_context(self.view, query, limit=limit),
             }
         if name == "get_visual_evidence":
-            artifact_path = _bounded_text(
+            arguments = _arguments(arguments, allowed={"artifact_path"})
+            artifact_path = _relative_path(
                 arguments.get("artifact_path"),
                 label="artifact_path",
-                max_bytes=_MAX_PATH_BYTES,
             )
             return {"evidence": get_visual_evidence(self.view, artifact_path)}
         if name == "find_visual_code_links":
-            source_path = _bounded_text(
+            arguments = _arguments(
+                arguments,
+                allowed={"source_path", "symbol", "limit"},
+            )
+            source_path = _relative_path(
                 arguments.get("source_path"),
                 label="source_path",
-                max_bytes=_MAX_PATH_BYTES,
             )
             symbol = _bounded_text(
                 arguments.get("symbol", ""),
@@ -96,14 +103,29 @@ class MultimodalKnowledgeToolRouter:
                 max_bytes=_MAX_PATH_BYTES,
                 allow_empty=True,
             )
+            limit = _limit(arguments.get("limit", _MAX_LIMIT))
             return {
                 "links": find_visual_code_links(
                     self.view,
                     source_path,
                     symbol=symbol,
-                )
+                )[:limit]
             }
-        raise ValueError(f"unknown multimodal knowledge tool: {name}")
+        raise ValueError("unknown multimodal knowledge tool")
+
+
+def _arguments(
+    value: Any,
+    *,
+    allowed: set[str],
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("multimodal tool arguments must be an object")
+    if len(value) > len(allowed) or any(
+        type(key) is not str or key not in allowed for key in value
+    ):
+        raise ValueError("multimodal tool arguments contain unexpected properties")
+    return value
 
 
 def _bounded_text(
@@ -113,26 +135,38 @@ def _bounded_text(
     max_bytes: int = _MAX_QUERY_BYTES,
     allow_empty: bool = False,
 ) -> str:
-    text = str(value or "").strip()
+    if type(value) is not str:
+        raise ValueError(f"{label} must be a string")
+    text = value.strip()
     if not text and not allow_empty:
         raise ValueError(f"{label} is required")
     if len(text.encode("utf-8")) > max_bytes:
         raise ValueError(f"{label} exceeds the byte limit")
-    if any(ord(character) < 0x20 for character in text):
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in text):
         raise ValueError(f"{label} contains control characters")
     return text
 
 
+def _relative_path(value: Any, *, label: str) -> str:
+    text = _bounded_text(value, label=label, max_bytes=_MAX_PATH_BYTES)
+    if "\\" in text:
+        raise ValueError(f"{label} must be a repository-relative path")
+    path = PurePosixPath(text)
+    if (
+        path.is_absolute()
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or path.as_posix() != text
+    ):
+        raise ValueError(f"{label} must be a repository-relative path")
+    return path.as_posix()
+
+
 def _limit(value: Any) -> int:
-    if isinstance(value, bool):
+    if type(value) is not int:
         raise ValueError("limit must be an integer")
-    try:
-        limit = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("limit must be an integer") from exc
-    if not 1 <= limit <= _MAX_LIMIT:
+    if not 1 <= value <= _MAX_LIMIT:
         raise ValueError(f"limit must be between 1 and {_MAX_LIMIT}")
-    return limit
+    return value
 
 
 __all__ = ["MULTIMODAL_TOOL_SCHEMAS", "MultimodalKnowledgeToolRouter"]
