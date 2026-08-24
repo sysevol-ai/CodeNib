@@ -101,12 +101,21 @@ class _TestWorkspaceProvider:
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _Result],
+        _replacement_source: object | None = None,
     ) -> _Result:
         self.run_count += 1
         self.requests.append(request)
         plan = request.plan if self.workspace_plan is None else self.workspace_plan
         parent = request.destination.parent
         parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if request.destination_binding is not None and self.workspace_plan is None:
+            parent.chmod(0o700)
+            return LocalWorkspaceProvider(parent).run_workspace(
+                request,
+                receipt_owner=receipt_owner,
+                operation=operation,
+                _replacement_source=_replacement_source,  # type: ignore[arg-type]
+            )
         stage = parent / (
             f".{request.destination.name}.strict-{id(self):x}-{self.run_count}"
         )
@@ -142,6 +151,11 @@ class _TestWorkspaceProvider:
                     workspace=workspace,
                     receipt_owner=receipt_owner,
                     operation=operation,
+                    _replacement_timeout_ns=(
+                        1_000_000_000
+                        if request.destination_binding is not None
+                        else None
+                    ),
                 )
             except BaseException:
                 if receipt_owner.state == "empty":
@@ -356,6 +370,115 @@ def test_strict_bm25_plans_replays_and_serves_same_query_semantics(
         assert [doc.page_content for doc in before.retriever.invoke("VALUE")] == [
             doc.page_content for doc in after.retriever.invoke("VALUE")
         ]
+    finally:
+        output_owner.close()
+
+
+def test_strict_bm25_passes_source_owner_outside_the_immutable_request(
+    strict_generation,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = strict_generation
+    planned = plan_bm25_view_strict(
+        fixture.source_owner,
+        repository_source=fixture.repository_source,
+        view_config={},
+        environ={},
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestWorkspaceProvider()
+    calls: list[tuple[StrictWorkspaceRequest, object]] = []
+    real_run = strict_bm25_module.run_strict_workspace
+
+    def inspect_run(
+        workspace_provider,
+        request,
+        *,
+        receipt_owner,
+        operation,
+        source_owner=None,
+    ):
+        calls.append((request, source_owner))
+        return real_run(
+            workspace_provider,
+            request,
+            receipt_owner=receipt_owner,
+            operation=operation,
+            source_owner=source_owner,
+        )
+
+    monkeypatch.setattr(strict_bm25_module, "run_strict_workspace", inspect_run)
+    try:
+        publish_planned_bm25_view_strict(
+            fixture.destination,
+            planned=planned,
+            source_generation=fixture.source_owner,
+            repository_source=fixture.repository_source,
+            workspace_provider=provider,
+            output_receipt_owner=output_owner,
+            view_config={},
+            environ={},
+        )
+        assert calls == [(provider.requests[0], fixture.source_owner)]
+        assert (
+            calls[0][0].destination_binding is fixture.source_owner.destination_binding
+        )
+        assert not hasattr(calls[0][0], "source_owner")
+        assert output_owner.active
+    finally:
+        output_owner.close()
+
+
+def test_strict_bm25_provider_cannot_drop_source_gate_and_launder_binding(
+    strict_generation,
+) -> None:
+    fixture = strict_generation
+    planned = plan_bm25_view_strict(
+        fixture.source_owner,
+        repository_source=fixture.repository_source,
+        view_config={},
+        environ={},
+    )
+    original_documents = fixture.destination.joinpath("documents.json").read_bytes()
+    output_owner = PublishedWorkspaceReceiptOwner()
+    delegate = _TestWorkspaceProvider(workspace_plan=planned.plan)
+
+    class DroppingProvider:
+        def require_support(self) -> None:
+            return None
+
+        def run_workspace(
+            self,
+            request,
+            *,
+            receipt_owner,
+            operation,
+            _replacement_source,
+        ):
+            del _replacement_source
+            return delegate.run_workspace(
+                request,
+                receipt_owner=receipt_owner,
+                operation=operation,
+            )
+
+    try:
+        with pytest.raises(RuntimeError, match="was not bound to this authority"):
+            publish_planned_bm25_view_strict(
+                fixture.destination,
+                planned=planned,
+                source_generation=fixture.source_owner,
+                repository_source=fixture.repository_source,
+                workspace_provider=DroppingProvider(),
+                output_receipt_owner=output_owner,
+                view_config={},
+                environ={},
+            )
+        assert output_owner.state == "empty"
+        assert fixture.source_owner.active
+        assert fixture.destination.joinpath("documents.json").read_bytes() == (
+            original_documents
+        )
     finally:
         output_owner.close()
 
@@ -890,7 +1013,7 @@ def test_strict_bm25_recapture_rejects_forbidden_policy_postflight(
         repository_source.close()
 
 
-def test_strict_bm25_rejects_missing_only_local_provider_before_mutation(
+def test_strict_bm25_uses_local_provider_for_exact_replacement(
     strict_generation,
     tmp_path: Path,
 ) -> None:
@@ -910,11 +1033,8 @@ def test_strict_bm25_rejects_missing_only_local_provider_before_mutation(
         pytest.skip(f"native local workspace provider is unavailable: {error}")
     output_owner = PublishedWorkspaceReceiptOwner()
 
-    with pytest.raises(
-        UnsupportedWorkspaceCreation,
-        match="requires a missing destination",
-    ):
-        publish_planned_bm25_view_strict(
+    try:
+        adjustments = publish_planned_bm25_view_strict(
             fixture.destination,
             planned=planned,
             source_generation=fixture.source_owner,
@@ -924,11 +1044,17 @@ def test_strict_bm25_rejects_missing_only_local_provider_before_mutation(
             view_config=view_config,
             environ={},
         )
-
-    assert output_owner.state == "empty"
-    assert fixture.source_owner.active
-    assert not tuple(tmp_path.glob(".codenib-workspace-stage-*"))
-    assert not tuple(tmp_path.glob(".codenib-workspace-orphan-*"))
+        assert output_owner.active
+        assert fixture.source_owner.active
+        assert output_owner.receipt.path == fixture.destination
+        assert output_owner.receipt.plan == planned.plan
+        assert output_owner.receipt.orphan is not None
+        assert set(adjustments["artifact_file_fingerprints"]) == {
+            "bm25_metadata.json",
+            "documents.json",
+        }
+    finally:
+        output_owner.close()
 
 
 def test_strict_bm25_high_level_freezes_caller_mappings_once(

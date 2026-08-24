@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import os
 import signal
+import sys
 import threading
 from pathlib import Path
 from typing import Callable
@@ -38,6 +39,37 @@ def _plan() -> WorkspacePlan:
         subject_digest=hashlib.sha256(b"workspace-provider-test").hexdigest(),
         files=(WorkspaceFile(Path("payload.bin"), max_bytes=32),),
     )
+
+
+def _active_replacement_source_gate(
+    request: StrictWorkspaceRequest,
+    source_owner: PublishedWorkspaceReceiptOwner,
+) -> workspace_provider._ReplacementSourceGate:
+    lifecycle = [False, False, False, True]
+    gate = workspace_provider._ReplacementSourceGate(
+        request,
+        source_owner,
+        lifecycle=lifecycle,
+    )
+    lifecycle[3] = False
+    lifecycle[0] = True
+    lifecycle[2] = True
+    return gate
+
+
+def _active_provider_operation_gate(
+    request: StrictWorkspaceRequest,
+    operation: Callable[[StrictWorkspaceSession], object],
+) -> workspace_provider._ProviderOperationGate:
+    lifecycle = [False, False, True]
+    gate = workspace_provider._ProviderOperationGate(
+        request,
+        operation,
+        lifecycle=lifecycle,
+    )
+    lifecycle[2] = False
+    lifecycle[0] = True
+    return gate
 
 
 def _interrupt_before_store_attr(
@@ -81,6 +113,7 @@ class _TestProvider:
         self.support_checks = 0
         self.runs = 0
         self.last_workspace: OwnedWorkspaceAuthority | None = None
+        self.last_replacement_source: object | None = None
         self.adopted_destination = adopted_destination
         self.destination_binding = destination_binding
 
@@ -93,8 +126,10 @@ class _TestProvider:
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], object],
+        _replacement_source: object | None = None,
     ) -> object:
         self.runs += 1
+        self.last_replacement_source = _replacement_source
         destination = self.adopted_destination or request.destination
         parent = destination.parent
         parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -124,6 +159,9 @@ class _TestProvider:
                 workspace=workspace,
                 receipt_owner=receipt_owner,
                 operation=operation,
+                _replacement_timeout_ns=(
+                    1_000_000_000 if request.destination_binding is not None else None
+                ),
             )
         finally:
             os.close(root_descriptor)
@@ -308,6 +346,837 @@ def test_request_accepts_only_exact_binding_for_its_lexical_destination(
                 destination_binding=forged,
             )
     finally:
+        source_owner.close()
+
+
+def test_exact_request_requires_its_separate_active_source_before_provider(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination)
+    request = StrictWorkspaceRequest(
+        "replace",
+        destination,
+        _plan(),
+        destination_binding=source_owner.destination_binding,
+    )
+    provider = _TestProvider()
+    output_owner = PublishedWorkspaceReceiptOwner()
+    try:
+        with pytest.raises(TypeError, match="exact receipt owner"):
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+            )
+        assert provider.support_checks == provider.runs == 0
+        assert source_owner.active
+        assert output_owner.state == "empty"
+        assert destination.joinpath("payload.bin").read_bytes() == b"same bytes"
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
+def test_exact_request_rejects_another_active_source_by_binding_identity(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination)
+    other_owner = _publish_generation(tmp_path / "other")
+    request = StrictWorkspaceRequest(
+        "replace",
+        destination,
+        _plan(),
+        destination_binding=source_owner.destination_binding,
+    )
+    provider = _TestProvider()
+    output_owner = PublishedWorkspaceReceiptOwner()
+    try:
+        with pytest.raises(ValueError, match="differs from its request"):
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+                source_owner=other_owner,
+            )
+        assert provider.support_checks == provider.runs == 0
+        assert source_owner.active and other_owner.active
+        assert output_owner.state == "empty"
+    finally:
+        output_owner.close()
+        other_owner.close()
+        source_owner.close()
+
+
+def test_missing_request_rejects_replacement_source_before_provider(
+    tmp_path: Path,
+) -> None:
+    source_owner = _publish_generation(tmp_path / "source")
+    request = StrictWorkspaceRequest("missing", tmp_path / "output", _plan())
+    provider = _TestProvider()
+    output_owner = PublishedWorkspaceReceiptOwner()
+    try:
+        with pytest.raises(ValueError, match="missing strict workspace"):
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+                source_owner=source_owner,
+            )
+        assert provider.support_checks == provider.runs == 0
+        assert output_owner.state == "empty"
+        assert not request.destination.exists()
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
+def test_exact_source_constructor_return_interruption_retains_inactive_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination)
+    request = StrictWorkspaceRequest(
+        "replace",
+        destination,
+        _plan(),
+        destination_binding=source_owner.destination_binding,
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestProvider()
+    failure = KeyboardInterrupt("replacement constructor return interruption")
+    retained: list[workspace_provider._ReplacementSourceGate] = []
+    gate_type = workspace_provider._ReplacementSourceGate
+    initialize = gate_type.__init__
+
+    def interrupted_init(self, *args, **kwargs) -> None:
+        initialize(self, *args, **kwargs)
+        retained.append(self)
+        raise failure
+
+    monkeypatch.setattr(gate_type, "__init__", interrupted_init)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+                source_owner=source_owner,
+            )
+
+        assert caught.value is failure
+        assert len(retained) == 1
+        gate = retained[0]
+        assert gate._lifecycle == [False, False, False, False]
+        with pytest.raises(RuntimeError, match="no longer active"):
+            gate.bind(  # type: ignore[arg-type]
+                object(),
+                object(),
+                ".late-constructor-stage",
+                request.plan,
+            )
+        assert provider.support_checks == provider.runs == 0
+        assert output_owner.state == "empty"
+        assert (
+            source_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(
+                    "payload.bin",
+                    max_bytes=32,
+                )
+            )
+            == b"same bytes"
+        )
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
+@pytest.mark.parametrize("exact", [False, True], ids=["missing", "exact"])
+def test_operation_constructor_return_interruption_retains_inactive_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exact: bool,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination) if exact else None
+    request = StrictWorkspaceRequest(
+        "replace" if exact else "missing",
+        destination,
+        _plan(),
+        destination_binding=(
+            source_owner.destination_binding if source_owner is not None else None
+        ),
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestProvider()
+    failure = KeyboardInterrupt("operation constructor return interruption")
+    retained: list[workspace_provider._ProviderOperationGate] = []
+    gate_type = workspace_provider._ProviderOperationGate
+    initialize = gate_type.__init__
+
+    def interrupted_init(self, *args, **kwargs) -> None:
+        initialize(self, *args, **kwargs)
+        retained.append(self)
+        raise failure
+
+    monkeypatch.setattr(gate_type, "__init__", interrupted_init)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+                source_owner=source_owner,
+            )
+
+        assert caught.value is failure
+        assert len(retained) == 1
+        gate = retained[0]
+        assert gate._lifecycle == [False, False, False]
+        with pytest.raises(RuntimeError, match="no longer active"):
+            gate(object())  # type: ignore[arg-type]
+        if exact:
+            replacement_source = gate._replacement_source
+            assert replacement_source is not None
+            assert replacement_source._lifecycle == [False, False, False, False]
+            with pytest.raises(RuntimeError, match="no longer active"):
+                replacement_source.bind(  # type: ignore[arg-type]
+                    object(),
+                    object(),
+                    ".late-operation-constructor-stage",
+                    request.plan,
+                )
+            assert provider.support_checks == 0
+        else:
+            assert provider.support_checks == 1
+        assert provider.runs == 0
+        assert output_owner.state == "empty"
+        if source_owner is None:
+            assert not destination.exists()
+        else:
+            assert (
+                source_owner.consume(
+                    lambda _receipt, reader: reader.read_bytes(
+                        "payload.bin",
+                        max_bytes=32,
+                    )
+                )
+                == b"same bytes"
+            )
+    finally:
+        output_owner.close()
+        if source_owner is not None:
+            source_owner.close()
+
+
+@pytest.mark.parametrize("exact", [False, True], ids=["missing", "exact"])
+def test_activation_interruption_revokes_outer_owned_gate_cells(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exact: bool,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination) if exact else None
+    request = StrictWorkspaceRequest(
+        "replace" if exact else "missing",
+        destination,
+        _plan(),
+        destination_binding=(
+            source_owner.destination_binding if source_owner is not None else None
+        ),
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    provider = _TestProvider()
+    failure = KeyboardInterrupt("gate activation interruption")
+    operation_gates: list[workspace_provider._ProviderOperationGate] = []
+    source_gates: list[workspace_provider._ReplacementSourceGate] = []
+    operation_init = workspace_provider._ProviderOperationGate.__init__
+    source_init = workspace_provider._ReplacementSourceGate.__init__
+
+    def capture_operation_gate(self, *args, **kwargs) -> None:
+        operation_init(self, *args, **kwargs)
+        operation_gates.append(self)
+
+    def capture_source_gate(self, *args, **kwargs) -> None:
+        source_init(self, *args, **kwargs)
+        source_gates.append(self)
+
+    monkeypatch.setattr(
+        workspace_provider._ProviderOperationGate,
+        "__init__",
+        capture_operation_gate,
+    )
+    monkeypatch.setattr(
+        workspace_provider._ReplacementSourceGate,
+        "__init__",
+        capture_source_gate,
+    )
+    injected: list[bool] = []
+    target_code = run_strict_workspace.__code__
+    previous_trace = sys.gettrace()
+
+    def interrupt_active_cells(frame, event, _argument):
+        if not injected and event == "line" and frame.f_code is target_code:
+            operation_lifecycle = frame.f_locals.get("operation_lifecycle")
+            replacement_lifecycle = frame.f_locals.get("replacement_lifecycle")
+            operation_active = (
+                type(operation_lifecycle) is list and operation_lifecycle[0]
+            )
+            replacement_active = (
+                type(replacement_lifecycle) is list
+                and replacement_lifecycle[0]
+                and replacement_lifecycle[2]
+            )
+            if operation_active and (not exact or replacement_active):
+                injected.append(True)
+                raise failure
+        return interrupt_active_cells
+
+    try:
+        sys.settrace(interrupt_active_cells)
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+                source_owner=source_owner,
+            )
+    finally:
+        sys.settrace(previous_trace)
+
+    try:
+        assert caught.value is failure
+        assert injected == [True]
+        assert len(operation_gates) == 1
+        operation_gate = operation_gates[0]
+        assert operation_gate._lifecycle == [False, False, False]
+        with pytest.raises(RuntimeError, match="no longer active"):
+            operation_gate(object())  # type: ignore[arg-type]
+        if exact:
+            assert len(source_gates) == 1
+            source_gate = source_gates[0]
+            assert source_gate._lifecycle == [False, False, False, False]
+            with pytest.raises(RuntimeError, match="no longer active"):
+                source_gate.bind(  # type: ignore[arg-type]
+                    object(),
+                    object(),
+                    ".late-activation-stage",
+                    request.plan,
+                )
+        else:
+            assert source_gates == []
+        assert provider.support_checks == 1
+        assert provider.runs == 0
+        assert output_owner.state == "empty"
+        if source_owner is None:
+            assert not destination.exists()
+        else:
+            assert (
+                source_owner.consume(
+                    lambda _receipt, reader: reader.read_bytes(
+                        "payload.bin",
+                        max_bytes=32,
+                    )
+                )
+                == b"same bytes"
+            )
+    finally:
+        output_owner.close()
+        if source_owner is not None:
+            source_owner.close()
+
+
+@pytest.mark.parametrize("exact", [False, True], ids=["missing", "exact"])
+def test_cleanup_entry_interruption_retries_both_gate_settlements(
+    tmp_path: Path,
+    exact: bool,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination) if exact else None
+    request = StrictWorkspaceRequest(
+        "replace" if exact else "missing",
+        destination,
+        _plan(),
+        destination_binding=(
+            source_owner.destination_binding if source_owner is not None else None
+        ),
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    returned = object()
+    failure = KeyboardInterrupt("cleanup entry interruption")
+
+    class ReturningProvider:
+        def __init__(self) -> None:
+            self.support_checks = 0
+            self.runs = 0
+            self.operation_gate = None
+            self.source_gate = None
+
+        def require_support(self) -> None:
+            self.support_checks += 1
+
+        def run_workspace(
+            self,
+            _request,
+            *,
+            receipt_owner,
+            operation,
+            _replacement_source=None,
+        ) -> object:
+            del receipt_owner
+            self.runs += 1
+            self.operation_gate = operation
+            self.source_gate = _replacement_source
+            return returned
+
+    provider = ReturningProvider()
+    injected: list[int] = []
+    target_code = workspace_provider._invoke_strict_workspace_provider.__code__
+    previous_trace = sys.gettrace()
+
+    def interrupt_first_cleanup_line(frame, event, _argument):
+        if (
+            not injected
+            and event == "line"
+            and frame.f_code is target_code
+            and frame.f_locals.get("result") is returned
+        ):
+            operation_lifecycle = frame.f_locals.get("operation_lifecycle")
+            replacement_lifecycle = frame.f_locals.get("replacement_lifecycle")
+            operation_active = (
+                type(operation_lifecycle) is list and operation_lifecycle[0]
+            )
+            replacement_active = (
+                type(replacement_lifecycle) is list
+                and replacement_lifecycle[0]
+                and replacement_lifecycle[2]
+            )
+            if operation_active and (not exact or replacement_active):
+                injected.append(frame.f_lineno)
+                raise failure
+        return interrupt_first_cleanup_line
+
+    try:
+        sys.settrace(interrupt_first_cleanup_line)
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+                source_owner=source_owner,
+            )
+    finally:
+        sys.settrace(previous_trace)
+
+    try:
+        assert caught.value is failure
+        assert len(injected) == 1
+        assert provider.support_checks == provider.runs == 1
+        operation_gate = provider.operation_gate
+        assert type(operation_gate) is workspace_provider._ProviderOperationGate
+        assert operation_gate._lifecycle == [False, False, False], injected
+        with pytest.raises(RuntimeError, match="no longer active"):
+            operation_gate(object())
+        if exact:
+            source_gate = provider.source_gate
+            assert type(source_gate) is workspace_provider._ReplacementSourceGate
+            assert source_gate._lifecycle == [False, False, False, False]
+            with pytest.raises(RuntimeError, match="no longer active"):
+                source_gate.bind(  # type: ignore[arg-type]
+                    object(),
+                    object(),
+                    ".late-cleanup-stage",
+                    request.plan,
+                )
+        else:
+            assert provider.source_gate is None
+        assert output_owner.state == "empty"
+        if source_owner is None:
+            assert not destination.exists()
+        else:
+            assert (
+                source_owner.consume(
+                    lambda _receipt, reader: reader.read_bytes(
+                        "payload.bin",
+                        max_bytes=32,
+                    )
+                )
+                == b"same bytes"
+            )
+    finally:
+        output_owner.close()
+        if source_owner is not None:
+            source_owner.close()
+
+
+@pytest.mark.parametrize("exact", [False, True], ids=["missing", "exact"])
+@pytest.mark.parametrize("seam", ["commit-entry", "cleanup-entry"])
+def test_cleanup_entry_interruption_preserves_provider_primary(
+    tmp_path: Path,
+    exact: bool,
+    seam: str,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination) if exact else None
+    request = StrictWorkspaceRequest(
+        "replace" if exact else "missing",
+        destination,
+        _plan(),
+        destination_binding=(
+            source_owner.destination_binding if source_owner is not None else None
+        ),
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    primary = RuntimeError("provider-primary")
+    secondary = KeyboardInterrupt("cleanup-entry-secondary")
+
+    class FailingProvider:
+        def __init__(self) -> None:
+            self.support_checks = 0
+            self.runs = 0
+            self.operation_gate = None
+            self.source_gate = None
+
+        def require_support(self) -> None:
+            self.support_checks += 1
+
+        def run_workspace(
+            self,
+            _request,
+            *,
+            receipt_owner,
+            operation,
+            _replacement_source=None,
+        ) -> object:
+            del receipt_owner
+            self.runs += 1
+            self.operation_gate = operation
+            self.source_gate = _replacement_source
+            raise primary
+
+    provider = FailingProvider()
+    injected: list[int] = []
+    target_code = workspace_provider._invoke_strict_workspace_provider.__code__
+    previous_trace = sys.gettrace()
+
+    def interrupt_first_cleanup_line(frame, event, _argument):
+        provider_primary = frame.f_locals.get("provider_primary")
+        at_commit_entry = (
+            seam == "commit-entry"
+            and frame.f_locals.get("exc") is primary
+            and type(provider_primary) is list
+            and provider_primary[0] is None
+        )
+        at_cleanup_entry = (
+            seam == "cleanup-entry" and frame.f_locals.get("primary_error") is primary
+        )
+        if (
+            not injected
+            and event == "line"
+            and frame.f_code is target_code
+            and (at_commit_entry or at_cleanup_entry)
+        ):
+            operation_lifecycle = frame.f_locals.get("operation_lifecycle")
+            replacement_lifecycle = frame.f_locals.get("replacement_lifecycle")
+            operation_active = (
+                type(operation_lifecycle) is list and operation_lifecycle[0]
+            )
+            replacement_active = (
+                type(replacement_lifecycle) is list
+                and replacement_lifecycle[0]
+                and replacement_lifecycle[2]
+            )
+            if operation_active and (not exact or replacement_active):
+                injected.append(frame.f_lineno)
+                raise secondary
+        return interrupt_first_cleanup_line
+
+    try:
+        sys.settrace(interrupt_first_cleanup_line)
+        with pytest.raises(RuntimeError) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+                source_owner=source_owner,
+            )
+    finally:
+        sys.settrace(previous_trace)
+
+    try:
+        assert caught.value is primary
+        assert len(injected) == 1
+        trace_names: list[str] = []
+        traceback = caught.value.__traceback__
+        while traceback is not None:
+            trace_names.append(traceback.tb_frame.f_code.co_name)
+            traceback = traceback.tb_next
+        assert "run_workspace" in trace_names
+        assert any(
+            "provider cleanup boundary also failed" in note
+            and "cleanup-entry-secondary" in note
+            for note in _notes(primary)
+        )
+        assert provider.support_checks == provider.runs == 1
+        operation_gate = provider.operation_gate
+        assert type(operation_gate) is workspace_provider._ProviderOperationGate
+        assert operation_gate._lifecycle == [False, False, False]
+        with pytest.raises(RuntimeError, match="no longer active"):
+            operation_gate(object())
+        if exact:
+            source_gate = provider.source_gate
+            assert type(source_gate) is workspace_provider._ReplacementSourceGate
+            assert source_gate._lifecycle == [False, False, False, False]
+            with pytest.raises(RuntimeError, match="no longer active"):
+                source_gate.bind(  # type: ignore[arg-type]
+                    object(),
+                    object(),
+                    ".late-primary-cleanup-stage",
+                    request.plan,
+                )
+        else:
+            assert provider.source_gate is None
+        assert output_owner.state == "empty"
+        if source_owner is None:
+            assert not destination.exists()
+        else:
+            assert (
+                source_owner.consume(
+                    lambda _receipt, reader: reader.read_bytes(
+                        "payload.bin",
+                        max_bytes=32,
+                    )
+                )
+                == b"same bytes"
+            )
+    finally:
+        output_owner.close()
+        if source_owner is not None:
+            source_owner.close()
+
+
+def test_stashed_replacement_source_gate_is_revoked_without_instance_store(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination)
+    request = StrictWorkspaceRequest(
+        "replace",
+        destination,
+        _plan(),
+        destination_binding=source_owner.destination_binding,
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    stashed: list[object] = []
+    attempted_stores: list[str] = []
+    gate_type = workspace_provider._ReplacementSourceGate
+    inherited_setattr = gate_type.__setattr__
+
+    def forbid_instance_store(instance, name, value) -> None:
+        attempted_stores.append(name)
+        raise KeyboardInterrupt("permanent replacement-gate store interruption")
+
+    class StashingProvider:
+        def require_support(self) -> None:
+            return None
+
+        def run_workspace(
+            self,
+            _request,
+            *,
+            receipt_owner,
+            operation,
+            _replacement_source,
+        ) -> object:
+            del receipt_owner, operation
+            stashed.append(_replacement_source)
+            gate_type.__setattr__ = forbid_instance_store
+            return object()
+
+    try:
+        with pytest.raises(RuntimeError, match="did not invoke its operation"):
+            run_strict_workspace(
+                StashingProvider(),
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+                source_owner=source_owner,
+            )
+    finally:
+        gate_type.__setattr__ = inherited_setattr
+
+    assert attempted_stores == []
+    assert len(stashed) == 1
+    gate = stashed[0]
+    workspace = OwnedWorkspaceAuthority()
+    try:
+        with pytest.raises(RuntimeError, match="no longer active"):
+            gate.bind(  # type: ignore[attr-defined]
+                workspace,
+                object(),
+                ".late-stage",
+                request.plan,
+            )
+    finally:
+        workspace.close()
+        output_owner.close()
+        source_owner.close()
+
+
+def test_exact_support_baseexception_revokes_gate_retained_by_traceback(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination)
+    request = StrictWorkspaceRequest(
+        "replace",
+        destination,
+        _plan(),
+        destination_binding=source_owner.destination_binding,
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    failure = KeyboardInterrupt("injected exact support failure")
+    support_calls = 0
+    run_called = False
+
+    class FailingSupportProvider:
+        def require_support(self) -> None:
+            nonlocal support_calls
+            support_calls += 1
+            raise failure
+
+        def run_workspace(self, *_args: object, **_kwargs: object) -> object:
+            nonlocal run_called
+            run_called = True
+            raise AssertionError("exact support failure reached provider execution")
+
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                FailingSupportProvider(),
+                request,
+                receipt_owner=output_owner,
+                operation=lambda _session: None,
+                source_owner=source_owner,
+            )
+
+        assert caught.value is failure
+        retained_gates: list[object] = []
+        traceback = caught.value.__traceback__
+        while traceback is not None:
+            candidate = traceback.tb_frame.f_locals.get("replacement_source")
+            if type(candidate) is workspace_provider._ReplacementSourceGate:
+                retained_gates.append(candidate)
+            traceback = traceback.tb_next
+        assert retained_gates
+        gate = retained_gates[0]
+        assert all(candidate is gate for candidate in retained_gates)
+        assert gate._lifecycle == [  # type: ignore[attr-defined]
+            False,
+            False,
+            False,
+            False,
+        ]
+        workspace = OwnedWorkspaceAuthority()
+        try:
+            with pytest.raises(RuntimeError, match="no longer active"):
+                gate.bind(  # type: ignore[attr-defined]
+                    workspace,
+                    object(),
+                    ".late-support-stage",
+                    request.plan,
+                )
+        finally:
+            workspace.close()
+        assert support_calls == 1
+        assert not run_called
+        assert output_owner.state == "empty"
+        assert source_owner.active
+        assert destination.joinpath("payload.bin").read_bytes() == b"same bytes"
+        assert (
+            source_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(
+                    "payload.bin",
+                    max_bytes=32,
+                )
+            )
+            == b"same bytes"
+        )
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_replacement_source_gate_pid_boundary_precedes_argument_inspection(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination)
+    request = StrictWorkspaceRequest(
+        "replace",
+        destination,
+        _plan(),
+        destination_binding=source_owner.destination_binding,
+    )
+    gate = _active_replacement_source_gate(request, source_owner)
+    try:
+        exit_code, payload = _fork_expect_pid_boundary(
+            lambda: gate.bind(  # type: ignore[arg-type]
+                object(),
+                object(),
+                ".child-stage",
+                request.plan,
+            ),
+            expected_message=(
+                "strict workspace replacement source cannot cross a PID boundary"
+            ),
+        )
+        assert exit_code == 0, payload
+        assert payload == "expected PID boundary"
+        assert gate._lifecycle == [True, False, True, False]
+        assert source_owner.active
+    finally:
+        gate.revoke()
+        source_owner.close()
+
+
+def test_replacement_source_gate_reentrant_bind_preserves_parent_lifecycle(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination)
+    request = StrictWorkspaceRequest(
+        "replace",
+        destination,
+        _plan(),
+        destination_binding=source_owner.destination_binding,
+    )
+    gate = _active_replacement_source_gate(request, source_owner)
+    try:
+        with pytest.raises(RuntimeError, match="bind is reentrant"):
+            gate._lock.run(
+                lambda: gate.bind(  # type: ignore[arg-type]
+                    object(),
+                    object(),
+                    ".reentrant-stage",
+                    request.plan,
+                )
+            )
+        assert gate._lifecycle == [True, False, True, False]
+        assert source_owner.active
+    finally:
+        gate.revoke()
         source_owner.close()
 
 
@@ -794,6 +1663,7 @@ def test_adopted_workspace_rejects_missing_binding_for_exact_request(
                 request,
                 receipt_owner=owner,
                 operation=operation,
+                source_owner=source_owner,
             )
 
         assert called is False
@@ -826,20 +1696,17 @@ def test_provider_bound_exact_request_replaces_only_captured_destination(
         )
 
     try:
-        assert (
+        with pytest.raises(RuntimeError, match="was not bound to this authority"):
             run_strict_workspace(
                 provider,
                 request,
                 receipt_owner=owner,
                 operation=operation,
+                source_owner=source_owner,
             )
-            == b"owned"
-        )
-        assert owner.active
-        assert owner.receipt.orphan is not None
-        assert provider.last_workspace is not None
-        assert provider.last_workspace.expected_destination_binding is binding
-        assert destination.joinpath("payload.bin").read_bytes() == b"owned"
+        assert owner.state == "empty"
+        assert source_owner.active
+        assert destination.joinpath("payload.bin").read_bytes() == b"old"
     finally:
         owner.close()
         source_owner.close()
@@ -879,6 +1746,7 @@ def test_session_compares_entire_genuine_destination_binding(
                 request,
                 receipt_owner=output_owner,
                 operation=operation,
+                source_owner=first_owner,
             )
         assert called is False
         assert output_owner.state == "empty"
@@ -917,6 +1785,7 @@ def test_provider_cannot_launder_independently_captured_tree_token(
                 request,
                 receipt_owner=output_owner,
                 operation=operation,
+                source_owner=source_owner,
             )
         assert called is False
         assert output_owner.state == "empty"
@@ -1168,6 +2037,7 @@ def test_operation_primary_survives_session_revocation_failure(
 def test_provider_primary_survives_callback_revocation_failure(
     tmp_path: Path,
     primary_type: type[BaseException],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     primary = primary_type("provider-primary")
 
@@ -1187,14 +2057,21 @@ def test_provider_primary_survives_callback_revocation_failure(
         )
 
     injected: list[bool] = []
+    deactivate = workspace_provider._ProviderOperationGate._deactivate
+
+    def interrupt_deactivate(self) -> None:
+        if not injected:
+            injected.append(True)
+            raise RuntimeError("provider-revocation-secondary")
+        deactivate(self)
+
+    monkeypatch.setattr(
+        workspace_provider._ProviderOperationGate,
+        "_deactivate",
+        interrupt_deactivate,
+    )
     with pytest.raises(primary_type, match="provider-primary") as caught:
-        _interrupt_before_store_attr(
-            run,
-            target_type=workspace_provider._ProviderOperationGate,
-            attribute="_active",
-            error=RuntimeError("provider-revocation-secondary"),
-            injected=injected,
-        )
+        run()
 
     assert caught.value is primary
     assert injected == [True]
@@ -1308,7 +2185,7 @@ def test_provider_operation_pid_boundary_precedes_inherited_gate(
         worker_values: list[object] = []
         worker_errors: list[BaseException] = []
 
-        operation_gate = workspace_provider._ProviderOperationGate(
+        operation_gate = _active_provider_operation_gate(
             request,
             lambda _session: None,
         )

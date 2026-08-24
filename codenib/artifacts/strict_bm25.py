@@ -1261,6 +1261,7 @@ def _publish_planned_bm25_view_with_identity(
         request,
         receipt_owner=output_receipt_owner,
         operation=operation,
+        source_owner=source_generation,
     )
     if not output_receipt_owner.active:
         raise RuntimeError("strict BM25 publication returned without a receipt")

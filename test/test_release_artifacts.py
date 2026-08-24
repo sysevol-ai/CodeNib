@@ -958,6 +958,11 @@ def test_protocol_v5_workspace_replacement_limits_are_documented() -> None:
         "WorkspaceReceiptToken",
     ):
         assert symbol in provider
-    assert "the provider remains missing-only" in provider_prose
-    assert "Gate C and M1 remain open" in provider_prose
-    assert "Gate C remains pending and required before M1 closes" in roadmap
+    assert "This completes Gate C" in provider_prose
+    assert "Gate C is complete; M1 remains open" in provider_prose
+    assert "default route promotion" in provider_prose
+    assert (
+        "| C | Supply the `provider-bound-exact` strict BM25 native "
+        "provider. | Complete." in roadmap
+    )
+    assert "M1 remains in progress" in roadmap

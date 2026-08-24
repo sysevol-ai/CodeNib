@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Linux missing-destination provider for strict local workspaces.
+"""Linux provider for missing and receipt-bound exact local workspaces.
 
 The configured root is an authority boundary, not a sandbox.  It must be a
 private, quiescent directory controlled by the current process owner.  The
@@ -34,12 +34,14 @@ from ._captured_directory import (
     OwnedWorkspaceAuthority,
     PublishedWorkspaceReceiptOwner,
     UnsupportedWorkspaceCreation,
+    WorkspacePlan,
     _snapshot_workspace_plan,
     require_owned_workspace_publication_support,
 )
 from ._workspace_provider import (
     StrictWorkspaceRequest,
     StrictWorkspaceSession,
+    _ReplacementSourceGate,
     run_adopted_workspace_operation,
 )
 
@@ -47,6 +49,7 @@ _OperationResult = TypeVar("_OperationResult")
 _DEFAULT_PROVISION_TIMEOUT_NS = 30_000_000_000
 _MAX_PROVISION_TIMEOUT_NS = 300_000_000_000
 _STAGE_PREFIX = ".codenib-workspace-stage-"
+_PROVISION_BOUND_REPLACEMENT_EXACT = OwnedWorkspaceAuthority.provision_bound_replacement
 
 
 @dataclass(slots=True)
@@ -137,15 +140,22 @@ class LocalWorkspaceProvider:
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _OperationResult],
         _expected_parent_identity: tuple[int, ...] | None = None,
+        _replacement_source: _ReplacementSourceGate | None = None,
     ) -> _OperationResult:
         self._require_owner_pid()
         if type(request) is not StrictWorkspaceRequest:
             raise TypeError("strict workspace request has an invalid type")
         if type(receipt_owner) is not PublishedWorkspaceReceiptOwner:
             raise TypeError("strict workspace receipt owner has an invalid type")
-        if request.destination_binding is not None:
-            raise UnsupportedWorkspaceCreation(
-                "local workspace provider currently requires a missing destination"
+        replacement = request.destination_binding is not None
+        if replacement:
+            if type(_replacement_source) is not _ReplacementSourceGate:
+                raise TypeError(
+                    "exact local workspace requires replacement source provenance"
+                )
+        elif _replacement_source is not None:
+            raise ValueError(
+                "missing local workspace cannot receive replacement source provenance"
             )
         if _expected_parent_identity is not None and (
             type(_expected_parent_identity) is not tuple
@@ -158,6 +168,20 @@ class LocalWorkspaceProvider:
         self.require_support()
         stage_name = _STAGE_PREFIX + secrets.token_hex(16)
         deadline_ns = time.monotonic_ns() + self.provision_timeout_ns
+        if replacement:
+            assert _replacement_source is not None
+            return self._run_replacement_workspace(
+                request,
+                receipt_owner=receipt_owner,
+                operation=operation,
+                replacement_source=_replacement_source,
+                detached_plan=detached_plan,
+                relative_destination=relative_destination,
+                stage_name=stage_name,
+                deadline_ns=deadline_ns,
+                expected_parent_identity=_expected_parent_identity,
+            )
+
         workspace = OwnedWorkspaceAuthority()
         native_owner = _workspace_owner.create_owner()
         publication_permit = _workspace_owner.claim_owner_publish_permit(native_owner)
@@ -212,6 +236,83 @@ class LocalWorkspaceProvider:
                 workspace=workspace,
                 receipt_owner=receipt_owner,
                 operation=operation,
+            )
+
+    def _run_replacement_workspace(
+        self,
+        request: StrictWorkspaceRequest,
+        *,
+        receipt_owner: PublishedWorkspaceReceiptOwner,
+        operation: Callable[[StrictWorkspaceSession], _OperationResult],
+        replacement_source: _ReplacementSourceGate,
+        detached_plan: WorkspacePlan,
+        relative_destination: bytes,
+        stage_name: str,
+        deadline_ns: int,
+        expected_parent_identity: tuple[int, ...] | None,
+    ) -> _OperationResult:
+        """Bind before candidate mutation and delegate the handed-off owner."""
+
+        workspace = OwnedWorkspaceAuthority()
+        native_owner = _workspace_owner.create_owner()
+        cleanup_owner = _ProviderWorkspaceCleanupOwner(workspace, native_owner)
+        cleanup_actions = (
+            _OrderedAction(
+                label="local workspace replacement cleanup also failed",
+                action=cleanup_owner.close,
+                complete=lambda: cleanup_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=cleanup_owner,
+            ),
+        )
+        with _run_context_with_cleanup_actions(cleanup_actions):
+            # Capture and lease are pre-handoff native reads/coordination. The
+            # cleanup owner is already reachable if either transition becomes
+            # uncertain or retains the cooperative lease for retry.
+            self._require_private_root()
+            _workspace_owner.capture_owner_destination(
+                native_owner,
+                os.fsencode(self.allowed_root),
+                relative_destination,
+                deadline_ns,
+            )
+            _workspace_owner.acquire_owner_replacement_lease(
+                native_owner,
+                deadline_ns,
+            )
+            if expected_parent_identity is not None:
+                parent_descriptor = _workspace_owner.borrow_owner_parent_descriptor(
+                    native_owner
+                )
+                if (
+                    publication_parent_identity(parent_descriptor)
+                    != expected_parent_identity
+                ):
+                    raise RuntimeError(
+                        "native workspace parent differs from retained authority"
+                    )
+
+            # This call synchronously consumes the active source owner and is
+            # the sole native-owner handoff. Candidate mutation is impossible
+            # before it returns successfully.
+            replacement_source.bind(
+                workspace,
+                native_owner,
+                stage_name,
+                detached_plan,
+            )
+            self._require_private_root()
+            provision_deadline_ns = time.monotonic_ns() + self.provision_timeout_ns
+            _PROVISION_BOUND_REPLACEMENT_EXACT(
+                workspace,
+                deadline_ns=provision_deadline_ns,
+            )
+            return run_adopted_workspace_operation(
+                request,
+                workspace=workspace,
+                receipt_owner=receipt_owner,
+                operation=operation,
+                _replacement_timeout_ns=self.provision_timeout_ns,
             )
 
 

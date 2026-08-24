@@ -8,6 +8,7 @@ import errno
 import hashlib
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -16,6 +17,7 @@ import pytest
 import codenib
 import codenib._local_workspace_provider as local_provider_module
 import codenib._workspace_owner as workspace_owner
+import codenib._workspace_provider as workspace_provider_module
 from codenib._atomic_directory import publication_parent_identity
 from codenib._captured_directory import (
     PublishedWorkspaceDestinationBinding,
@@ -388,7 +390,7 @@ def test_local_provider_preserves_an_existing_destination(tmp_path: Path) -> Non
     assert receipt_owner.state == "empty"
 
 
-def test_local_provider_rejects_receipt_bound_exact_before_mutation(
+def test_local_provider_replaces_receipt_bound_exact_via_two_phase_seam(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -405,72 +407,553 @@ def test_local_provider_rejects_receipt_bound_exact_before_mutation(
     binding = source_owner.destination_binding
     request = _request(root, destination_binding=binding)
     receipt_owner = PublishedWorkspaceReceiptOwner()
-    before = tuple(sorted(path.name for path in root.iterdir()))
-    support_calls = 0
-    mutation_calls: list[str] = []
-    real_require_support = LocalWorkspaceProvider.require_support
+    events: list[str] = []
+    real_capture = workspace_owner.capture_owner_destination
+    real_lease = workspace_owner.acquire_owner_replacement_lease
+    real_bind = local_provider_module._ReplacementSourceGate.bind
+    real_provision = local_provider_module._PROVISION_BOUND_REPLACEMENT_EXACT
+    replay_errors: list[BaseException] = []
+    bound_gates: list[object] = []
 
-    def counted_require_support(self: LocalWorkspaceProvider) -> None:
-        nonlocal support_calls
-        support_calls += 1
-        real_require_support(self)
+    def capture(*args: object, **kwargs: object) -> None:
+        events.append("capture")
+        real_capture(*args, **kwargs)
 
-    def forbid_native_owner() -> object:
-        mutation_calls.append("create")
-        raise AssertionError("exact rejection reached native owner creation")
+    def lease(*args: object, **kwargs: object) -> None:
+        events.append("lease")
+        real_lease(*args, **kwargs)
 
-    def forbid_native_provision(*_args: object, **_kwargs: object) -> None:
-        mutation_calls.append("provision")
-        raise AssertionError("exact rejection reached native provisioning")
+    def bind(*args: object, **kwargs: object) -> None:
+        events.append("bind")
+        bound_gates.append(args[0])
+        real_bind(*args, **kwargs)
+        try:
+            real_bind(*args, **kwargs)
+        except BaseException as error:  # noqa: B036 - assert exact replay denial
+            replay_errors.append(error)
+        else:
+            raise AssertionError("replacement source gate allowed a second bind")
 
-    def forbid_replacement_seam(*_args: object, **_kwargs: object) -> None:
-        mutation_calls.append("replacement-seam")
-        raise AssertionError("Local exact rejection reached replacement authority")
+    def provision(*args: object, **kwargs: object) -> None:
+        events.append("provision")
+        real_provision(*args, **kwargs)
 
+    def forbid_missing_provision(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("exact replacement reached missing-only provisioning")
+
+    monkeypatch.setattr(workspace_owner, "capture_owner_destination", capture)
+    monkeypatch.setattr(workspace_owner, "acquire_owner_replacement_lease", lease)
+    monkeypatch.setattr(local_provider_module._ReplacementSourceGate, "bind", bind)
     monkeypatch.setattr(
-        LocalWorkspaceProvider,
-        "require_support",
-        counted_require_support,
+        local_provider_module,
+        "_PROVISION_BOUND_REPLACEMENT_EXACT",
+        provision,
     )
-    monkeypatch.setattr(workspace_owner, "create_owner", forbid_native_owner)
-    monkeypatch.setattr(
-        workspace_owner,
-        "provision_owner",
-        forbid_native_provision,
-    )
-    for method in (
-        "bind_replacement_source",
-        "provision_bound_replacement",
-        "publish_replacement_into",
-    ):
-        monkeypatch.setattr(
-            local_provider_module.OwnedWorkspaceAuthority,
-            method,
-            forbid_replacement_seam,
-        )
+    monkeypatch.setattr(workspace_owner, "provision_owner", forbid_missing_provision)
 
     try:
-        with pytest.raises(UnsupportedWorkspaceCreation, match="missing destination"):
+        record, _ownership = run_strict_workspace(
+            provider,
+            request,
+            receipt_owner=receipt_owner,
+            operation=lambda session: _write_and_publish(session, b"new"),
+            source_owner=source_owner,
+        )
+
+        assert events == ["capture", "lease", "bind", "provision"]
+        assert len(bound_gates) == 1
+        assert len(replay_errors) == 1
+        assert isinstance(replay_errors[0], RuntimeError)
+        assert "no longer active" in str(replay_errors[0])
+        assert record.sha256 == hashlib.sha256(b"new").hexdigest()
+        assert request.destination.joinpath("data/result.json").read_bytes() == b"new"
+        assert source_owner.active
+        assert receipt_owner.active
+        bound_gate = bound_gates[0]
+        bound_workspace = bound_gate._bound_workspace  # type: ignore[attr-defined]
+        assert bound_workspace is not None
+        with pytest.raises(RuntimeError, match="no longer active"):
+            bound_gate._require_bound_workspace(  # type: ignore[attr-defined]
+                request,
+                bound_workspace,
+            )
+        orphan = receipt_owner.receipt.orphan
+        assert orphan is not None
+        assert orphan.locator.backend_tag == "linux-renameat2"
+        assert (
+            orphan.reopen(
+                lambda reader: reader.read_bytes(
+                    "data/result.json",
+                    max_bytes=16,
+                )
+            )
+            == b"old"
+        )
+    finally:
+        receipt_owner.close()
+        source_owner.close()
+
+
+def test_local_exact_mints_fresh_provision_and_publication_deadlines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    source_provider = _require_native_provider(root)
+    source_owner = PublishedWorkspaceReceiptOwner()
+    source_request = _request(root)
+    run_strict_workspace(
+        source_provider,
+        source_request,
+        receipt_owner=source_owner,
+        operation=lambda session: _write_and_publish(session, b"old"),
+    )
+    timeout_ns = 10_000_000_000
+    provider = LocalWorkspaceProvider(root, provision_timeout_ns=timeout_ns)
+    request = _request(root, destination_binding=source_owner.destination_binding)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    base_ns = local_provider_module.time.monotonic_ns()
+    capture_deadlines: list[int] = []
+    provision_deadlines: list[int] = []
+    publication_deadlines: list[int] = []
+    real_capture = workspace_owner.capture_owner_destination
+    real_bind = local_provider_module._ReplacementSourceGate.bind
+    real_provision = local_provider_module._PROVISION_BOUND_REPLACEMENT_EXACT
+    real_publish = workspace_provider_module._PUBLISH_REPLACEMENT_EXACT
+
+    def capture(
+        owner: object,
+        allowed_root: bytes,
+        destination: bytes,
+        deadline_ns: int,
+    ) -> None:
+        capture_deadlines.append(deadline_ns)
+        real_capture(owner, allowed_root, destination, deadline_ns)
+
+    def bind(*args: object, **kwargs: object) -> None:
+        real_bind(*args, **kwargs)
+        monkeypatch.setattr(
+            local_provider_module.time,
+            "monotonic_ns",
+            lambda: base_ns + 2 * timeout_ns,
+        )
+
+    def provision(workspace, *, deadline_ns: int) -> None:
+        provision_deadlines.append(deadline_ns)
+        real_provision(workspace, deadline_ns=deadline_ns)
+
+    def publish(workspace, receipt_owner, *, deadline_ns: int, **kwargs) -> None:
+        publication_deadlines.append(deadline_ns)
+        real_publish(
+            workspace,
+            receipt_owner,
+            deadline_ns=deadline_ns,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(workspace_owner, "capture_owner_destination", capture)
+    monkeypatch.setattr(local_provider_module._ReplacementSourceGate, "bind", bind)
+    monkeypatch.setattr(
+        local_provider_module,
+        "_PROVISION_BOUND_REPLACEMENT_EXACT",
+        provision,
+    )
+    monkeypatch.setattr(
+        workspace_provider_module,
+        "_MONOTONIC_NS_EXACT",
+        lambda: base_ns + 4 * timeout_ns,
+    )
+    monkeypatch.setattr(
+        workspace_provider_module,
+        "_PUBLISH_REPLACEMENT_EXACT",
+        publish,
+    )
+
+    def operation(session: StrictWorkspaceSession) -> object:
+        # The operation gate already froze its clock. This later replacement
+        # must not collapse the publication deadline back to one timeout.
+        monkeypatch.setattr(
+            workspace_provider_module,
+            "_MONOTONIC_NS_EXACT",
+            lambda: 1,
+        )
+        return _write_and_publish(session, b"new")
+
+    try:
+        run_strict_workspace(
+            provider,
+            request,
+            receipt_owner=output_owner,
+            operation=operation,
+            source_owner=source_owner,
+        )
+        assert len(capture_deadlines) == 1
+        assert capture_deadlines[0] < base_ns + 2 * timeout_ns
+        assert provision_deadlines == [base_ns + 3 * timeout_ns]
+        assert publication_deadlines == [base_ns + 5 * timeout_ns]
+        assert output_owner.active
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
+def test_local_exact_never_uses_generic_workspace_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    source_owner = PublishedWorkspaceReceiptOwner()
+    source_request = _request(root)
+    run_strict_workspace(
+        provider,
+        source_request,
+        receipt_owner=source_owner,
+        operation=lambda session: _write_and_publish(session, b"old"),
+    )
+    request = _request(root, destination_binding=source_owner.destination_binding)
+    output_owner = PublishedWorkspaceReceiptOwner()
+
+    def forbid_generic(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("exact Local publication reached the generic helper")
+
+    monkeypatch.setattr(
+        local_provider_module.OwnedWorkspaceAuthority,
+        "publish_into",
+        forbid_generic,
+    )
+    try:
+        run_strict_workspace(
+            provider,
+            request,
+            receipt_owner=output_owner,
+            operation=lambda session: _write_and_publish(session, b"new"),
+            source_owner=source_owner,
+        )
+        assert output_owner.active
+        assert request.destination.joinpath("data/result.json").read_bytes() == b"new"
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
+def test_local_exact_freezes_gate_callbacks_before_provider_support(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    delegate = _require_native_provider(root)
+    source_owner = PublishedWorkspaceReceiptOwner()
+    source_request = _request(root)
+    run_strict_workspace(
+        delegate,
+        source_request,
+        receipt_owner=source_owner,
+        operation=lambda session: _write_and_publish(session, b"old"),
+    )
+    request = _request(root, destination_binding=source_owner.destination_binding)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    intercepted: list[str] = []
+
+    def forbid_frozen_callback(*_args: object, **_kwargs: object) -> None:
+        intercepted.append("intercepted")
+        raise AssertionError("provider intercepted an exact callback")
+
+    class MutatingProvider:
+        def require_support(self) -> None:
+            for name in (
+                "_BIND_REPLACEMENT_SOURCE_EXACT",
+                "_MONOTONIC_NS_EXACT",
+                "_PUBLISH_REPLACEMENT_EXACT",
+                "_SOURCE_DESTINATION_BINDING_EXACT",
+                "_commit_provider_primary",
+                "_invoke_strict_workspace_provider",
+                "_settle_provider_operation_gate",
+                "_settle_replacement_source_gate",
+                "_snapshot_workspace_plan",
+            ):
+                monkeypatch.setattr(
+                    workspace_provider_module,
+                    name,
+                    forbid_frozen_callback,
+                )
+            delegate.require_support()
+
+        def run_workspace(
+            self,
+            bound_request: StrictWorkspaceRequest,
+            *,
+            receipt_owner: PublishedWorkspaceReceiptOwner,
+            operation,
+            _replacement_source,
+        ) -> object:
+            return delegate.run_workspace(
+                bound_request,
+                receipt_owner=receipt_owner,
+                operation=operation,
+                _replacement_source=_replacement_source,
+            )
+
+    try:
+        run_strict_workspace(
+            MutatingProvider(),
+            request,
+            receipt_owner=output_owner,
+            operation=lambda session: _write_and_publish(session, b"new"),
+            source_owner=source_owner,
+        )
+        assert intercepted == []
+        assert output_owner.active
+        assert request.destination.joinpath("data/result.json").read_bytes() == b"new"
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
+def test_local_exact_posthandoff_failure_delegates_cleanup_to_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    source_owner = PublishedWorkspaceReceiptOwner()
+    source_request = _request(root)
+    run_strict_workspace(
+        provider,
+        source_request,
+        receipt_owner=source_owner,
+        operation=lambda session: _write_and_publish(session, b"old"),
+    )
+    request = _request(root, destination_binding=source_owner.destination_binding)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    failure = RuntimeError("injected posthandoff failure")
+
+    def fail_provision(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(
+        local_provider_module,
+        "_PROVISION_BOUND_REPLACEMENT_EXACT",
+        fail_provision,
+    )
+    try:
+        with pytest.raises(RuntimeError) as caught:
             run_strict_workspace(
                 provider,
                 request,
-                receipt_owner=receipt_owner,
-                operation=lambda session: _write_and_publish(
-                    session,
-                    b"forbidden",
-                ),
+                receipt_owner=output_owner,
+                operation=lambda session: _write_and_publish(session, b"new"),
+                source_owner=source_owner,
+            )
+        assert caught.value is failure
+        assert output_owner.state == "empty"
+        assert source_owner.active
+        assert request.destination.joinpath("data/result.json").read_bytes() == b"old"
+        assert not tuple(root.glob(".codenib-workspace-stage-*"))
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
+def test_local_exact_gate_bind_failure_releases_lease_before_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    source_owner = PublishedWorkspaceReceiptOwner()
+    source_request = _request(root)
+    run_strict_workspace(
+        provider,
+        source_request,
+        receipt_owner=source_owner,
+        operation=lambda session: _write_and_publish(session, b"old"),
+    )
+    request = _request(root, destination_binding=source_owner.destination_binding)
+    failed_output_owner = PublishedWorkspaceReceiptOwner()
+    successful_output_owner = PublishedWorkspaceReceiptOwner()
+    failure = KeyboardInterrupt("injected gate bind failure")
+    real_bind = local_provider_module._ReplacementSourceGate.bind
+
+    def fail_bind(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(
+        local_provider_module._ReplacementSourceGate,
+        "bind",
+        fail_bind,
+    )
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=failed_output_owner,
+                operation=lambda session: _write_and_publish(session, b"forbidden"),
+                source_owner=source_owner,
             )
 
-        assert tuple(sorted(path.name for path in root.iterdir())) == before
-        assert not tuple(root.glob(".codenib-workspace-stage-*"))
-        assert not tuple(root.glob(".codenib-workspace-orphan-*"))
-        assert request.destination.joinpath("data/result.json").read_bytes() == b"old"
+        assert caught.value is failure
+        assert failed_output_owner.state == "empty"
         assert source_owner.active
-        assert receipt_owner.state == "empty"
-        assert support_calls == 1
-        assert mutation_calls == []
+        assert (
+            source_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(
+                    "data/result.json",
+                    max_bytes=16,
+                )
+            )
+            == b"old"
+        )
+        assert not tuple(root.glob(".codenib-workspace-stage-*"))
+
+        # A second exact replacement must acquire the released native lease.
+        monkeypatch.setattr(
+            local_provider_module._ReplacementSourceGate,
+            "bind",
+            real_bind,
+        )
+        run_strict_workspace(
+            provider,
+            request,
+            receipt_owner=successful_output_owner,
+            operation=lambda session: _write_and_publish(session, b"new"),
+            source_owner=source_owner,
+        )
+        assert successful_output_owner.active
+        assert request.destination.joinpath("data/result.json").read_bytes() == b"new"
     finally:
-        receipt_owner.close()
+        failed_output_owner.close()
+        successful_output_owner.close()
+        source_owner.close()
+
+
+def test_local_exact_user_cancellation_quarantines_provisioned_candidate(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    source_owner = PublishedWorkspaceReceiptOwner()
+    source_request = _request(root)
+    run_strict_workspace(
+        provider,
+        source_request,
+        receipt_owner=source_owner,
+        operation=lambda session: _write_and_publish(session, b"old"),
+    )
+    request = _request(root, destination_binding=source_owner.destination_binding)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    cancellation = KeyboardInterrupt("injected prepublication cancellation")
+
+    def cancel_before_publication(session: StrictWorkspaceSession) -> None:
+        session.write_file("data/result.json", (b"new",))
+        raise cancellation
+
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=cancel_before_publication,
+                source_owner=source_owner,
+            )
+
+        assert caught.value is cancellation
+        trace_names: list[str] = []
+        traceback = caught.value.__traceback__
+        while traceback is not None:
+            trace_names.append(traceback.tb_frame.f_code.co_name)
+            traceback = traceback.tb_next
+        assert "cancel_before_publication" in trace_names
+        assert output_owner.state == "empty"
+        assert source_owner.active
+        assert (
+            source_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(
+                    "data/result.json",
+                    max_bytes=16,
+                )
+            )
+            == b"old"
+        )
+        quarantined = tuple(root.glob(".codenib-workspace-stage-*"))
+        assert len(quarantined) == 1
+        assert quarantined[0].joinpath("data/result.json").read_bytes() == b"new"
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
+def test_local_exact_staged_validation_expiry_restores_incumbent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    source_provider = _require_native_provider(root)
+    source_owner = PublishedWorkspaceReceiptOwner()
+    source_request = _request(root)
+    run_strict_workspace(
+        source_provider,
+        source_request,
+        receipt_owner=source_owner,
+        operation=lambda session: _write_and_publish(session, b"old"),
+    )
+    timeout_ns = 1_000_000_000
+    provider = LocalWorkspaceProvider(root, provision_timeout_ns=timeout_ns)
+    request = _request(root, destination_binding=source_owner.destination_binding)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    real_monotonic_ns = time.monotonic_ns
+    staged_calls = 0
+    monkeypatch.setattr(
+        workspace_provider_module,
+        "_MONOTONIC_NS_EXACT",
+        lambda: real_monotonic_ns() - timeout_ns + 20_000_000,
+    )
+
+    def operation(session: StrictWorkspaceSession) -> None:
+        session.write_file("data/result.json", (b"new",))
+
+        def expire_before_exchange(_reader) -> None:
+            nonlocal staged_calls
+            staged_calls += 1
+            time.sleep(0.05)
+
+        session.publish_validated(expire_before_exchange)
+
+    try:
+        with pytest.raises(TimeoutError, match="deadline expired"):
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=operation,
+                source_owner=source_owner,
+            )
+        assert staged_calls == 1
+        # Publication reserved the caller slot before validation, so the slot
+        # retains cleanup authority but never exposes an active receipt.
+        assert output_owner.state == "cleanup"
+        assert not output_owner.active
+        assert source_owner.active
+        assert request.destination.joinpath("data/result.json").read_bytes() == b"old"
+        assert (
+            source_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(
+                    "data/result.json",
+                    max_bytes=16,
+                )
+            )
+            == b"old"
+        )
+        quarantined = tuple(root.glob(".codenib-workspace-stage-*"))
+        assert len(quarantined) == 1
+        assert quarantined[0].joinpath("data/result.json").read_bytes() == b"new"
+        output_owner.close()
+        assert output_owner.closed
+        assert tuple(root.glob(".codenib-workspace-stage-*")) == quarantined
+    finally:
+        output_owner.close()
         source_owner.close()
 
 

@@ -14,6 +14,7 @@ by ``open`` is not a provider implementation.
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -38,6 +39,15 @@ _OperationResult = TypeVar("_OperationResult")
 _ValidationResult = TypeVar("_ValidationResult")
 DestinationExpectation = Literal["missing", "provider-bound-exact"]
 _PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE = PublishedWorkspaceDestinationBinding
+_PUBLISHED_WORKSPACE_RECEIPT_OWNER_TYPE = PublishedWorkspaceReceiptOwner
+_OWNED_WORKSPACE_AUTHORITY_TYPE = OwnedWorkspaceAuthority
+_BIND_REPLACEMENT_SOURCE_EXACT = OwnedWorkspaceAuthority.bind_replacement_source
+_PUBLISH_REPLACEMENT_EXACT = OwnedWorkspaceAuthority.publish_replacement_into
+_SOURCE_DESTINATION_BINDING_EXACT = (
+    PublishedWorkspaceReceiptOwner.destination_binding.fget
+)
+_MONOTONIC_NS_EXACT = time.monotonic_ns
+_MAX_REPLACEMENT_TIMEOUT_NS = 300_000_000_000
 _SESSION_RECOVERY_LIMIT = 64
 _UNSET_RESULT = object()
 _CONSUMED_SESSION_PROVENANCE = object()
@@ -93,6 +103,7 @@ def _create_session_provenance_registry() -> tuple[
         workspace: OwnedWorkspaceAuthority,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _OperationResult],
+        _replacement_timeout_ns: int | None = None,
     ) -> _OperationResult:
         """Run one bound operation against an already-adopted authority."""
 
@@ -102,6 +113,7 @@ def _create_session_provenance_registry() -> tuple[
             workspace=workspace,
             receipt_owner=receipt_owner,
             operation=operation,
+            replacement_timeout_ns=_replacement_timeout_ns,
         )
 
     return run_adopted_workspace_operation, consume, discard
@@ -201,17 +213,240 @@ class StrictWorkspaceProvider(Protocol):
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _OperationResult],
+        _replacement_source: _ReplacementSourceGate | None = None,
     ) -> _OperationResult: ...
+
+
+class _ReplacementSourceGate:
+    """One-shot active-source handoff for one exact replacement operation."""
+
+    __slots__ = (
+        "_bind_replacement_source",
+        "_binding",
+        "_bound_native_owner",
+        "_bound_workspace",
+        "_lifecycle",
+        "_lock",
+        "_owner_pid",
+        "_request",
+        "_snapshot_plan",
+        "_source_destination_binding",
+        "_source_owner",
+    )
+
+    def __init__(
+        self,
+        request: StrictWorkspaceRequest,
+        source_owner: PublishedWorkspaceReceiptOwner,
+        *,
+        lifecycle: list[bool],
+    ) -> None:
+        if type(lifecycle) is not list or lifecycle != [False, False, False, True]:
+            raise TypeError("strict workspace replacement lifecycle is invalid")
+        # The enclosing strict call owns this mutable lifecycle before invoking
+        # the constructor.  Keep it inactive here: even an interruption at the
+        # constructor return boundary can then retain no usable bind authority.
+        self._lifecycle = lifecycle
+        self._owner_pid = os.getpid()
+        self._lock = _CancellationSafeRLock()
+        self._bound_workspace: OwnedWorkspaceAuthority | None = None
+        self._bound_native_owner: object | None = None
+        try:
+            if type(request) is not StrictWorkspaceRequest:
+                raise TypeError("strict workspace request has an invalid type")
+            if type(source_owner) is not _PUBLISHED_WORKSPACE_RECEIPT_OWNER_TYPE:
+                raise TypeError(
+                    "strict workspace replacement source must be an exact "
+                    "receipt owner"
+                )
+            binding = request.destination_binding
+            if binding is None:
+                raise ValueError(
+                    "strict workspace replacement source requires an exact binding"
+                )
+            source_destination_binding = _SOURCE_DESTINATION_BINDING_EXACT
+            assert source_destination_binding is not None
+            if source_destination_binding(source_owner) is not binding:
+                raise ValueError(
+                    "strict workspace replacement source differs from its request"
+                )
+            self._request = request
+            self._source_owner = source_owner
+            self._binding = binding
+            # Freeze exact binding callbacks before provider code can run.
+            self._bind_replacement_source = _BIND_REPLACEMENT_SOURCE_EXACT
+            self._snapshot_plan = _snapshot_workspace_plan
+            self._source_destination_binding = source_destination_binding
+        except BaseException:  # noqa: B036 - partial gates stay fail-closed
+            self._lifecycle[0] = False
+            self._lifecycle[2] = False
+            self._lifecycle[3] = False
+            raise
+
+    def _require_owner_pid(self) -> None:
+        if os.getpid() != self._owner_pid:
+            raise RuntimeError(
+                "strict workspace replacement source cannot cross a PID boundary"
+            )
+
+    def bind(
+        self,
+        workspace: OwnedWorkspaceAuthority,
+        native_owner: object,
+        stage_name: str,
+        plan: WorkspacePlan,
+    ) -> None:
+        """Consume and bind the active source without returning its authority."""
+
+        self._require_owner_pid()
+        if self._lock.held_by_current_thread():
+            raise RuntimeError("strict workspace replacement source bind is reentrant")
+
+        def bind_once() -> None:
+            if not self._lifecycle[0] or not self._lifecycle[2]:
+                raise RuntimeError(
+                    "strict workspace replacement source is no longer active"
+                )
+            if self._lifecycle[1]:
+                raise RuntimeError("strict workspace replacement source is one-shot")
+            self._lifecycle[1] = True
+            if type(workspace) is not _OWNED_WORKSPACE_AUTHORITY_TYPE:
+                raise TypeError("strict workspace replacement authority is invalid")
+            if self._request.destination_binding is not self._binding:
+                raise RuntimeError(
+                    "strict workspace replacement request binding changed"
+                )
+            if self._request.plan != self._snapshot_plan(plan):
+                raise ValueError(
+                    "strict workspace replacement plan differs from request"
+                )
+            if (
+                self._source_destination_binding(self._source_owner)
+                is not self._binding
+            ):
+                raise RuntimeError(
+                    "strict workspace replacement source binding changed"
+                )
+            try:
+                result = self._bind_replacement_source(
+                    workspace,
+                    self._source_owner,
+                    destination_binding=self._binding,
+                    native_owner=native_owner,
+                    stage_name=stage_name,
+                    plan=plan,
+                )
+                if result is not None:
+                    raise RuntimeError(
+                        "strict workspace replacement source bind result changed"
+                    )
+                self._bound_workspace = workspace
+                self._bound_native_owner = native_owner
+            finally:
+                # An attempted handoff is never replayable, including when the
+                # native/workspace settlement path raises or is interrupted.
+                self._lifecycle[0] = False
+
+        self._lock.run(bind_once)
+
+    def _require_bound_workspace(
+        self,
+        request: StrictWorkspaceRequest,
+        workspace: OwnedWorkspaceAuthority,
+    ) -> None:
+        self._require_owner_pid()
+
+        def require() -> None:
+            if not self._lifecycle[2]:
+                raise RuntimeError(
+                    "strict workspace replacement source is no longer active"
+                )
+            if request is not self._request:
+                raise ValueError(
+                    "strict workspace replacement source belongs to another request"
+                )
+            if request.destination_binding is not self._binding:
+                raise RuntimeError(
+                    "strict workspace replacement request binding changed"
+                )
+            if not self._lifecycle[1] or self._bound_workspace is not workspace:
+                raise RuntimeError(
+                    "strict workspace replacement source was not bound to "
+                    "this authority"
+                )
+            if (
+                self._bound_native_owner is None
+                or workspace._native_owner is not self._bound_native_owner
+            ):
+                raise RuntimeError("strict workspace replacement native owner changed")
+
+        self._lock.run(require)
+
+    def revoke(self) -> None:
+        self._require_owner_pid()
+        deferred: BaseException | None = None
+
+        def deactivate() -> None:
+            self._lifecycle[0] = False
+            self._lifecycle[2] = False
+            self._lifecycle[3] = False
+
+        for _attempt in range(_SESSION_RECOVERY_LIMIT):
+            try:
+                self._lock.run(deactivate)
+            except BaseException as interruption:  # noqa: B036
+                if deferred is None:
+                    deferred = interruption
+                else:
+                    _annotate_secondary_error(
+                        deferred,
+                        "strict workspace replacement source revocation "
+                        "was interrupted again",
+                        interruption,
+                    )
+                continue
+            try:
+                inactive = self._lock.run(
+                    lambda: (
+                        not self._lifecycle[0]
+                        and not self._lifecycle[2]
+                        and not self._lifecycle[3]
+                    )
+                )
+            except BaseException as interruption:  # noqa: B036
+                if deferred is None:
+                    deferred = interruption
+                else:
+                    _annotate_secondary_error(
+                        deferred,
+                        "strict workspace replacement source revocation "
+                        "check also failed",
+                        interruption,
+                    )
+                continue
+            if inactive:
+                if deferred is not None:
+                    raise deferred.with_traceback(deferred.__traceback__)
+                return
+        recovery_error = RuntimeError(
+            "strict workspace replacement source revocation did not converge"
+        )
+        if deferred is not None:
+            raise recovery_error from deferred
+        raise recovery_error
 
 
 class _AdoptedWorkspaceSession:
     __slots__ = (
         "_active",
         "_gate",
+        "_monotonic_ns",
         "_operation_provenance",
         "_owner_pid",
         "_published",
+        "_publish_replacement",
         "_receipt_owner",
+        "_replacement_timeout_ns",
         "_request",
         "_workspace",
     )
@@ -223,15 +458,21 @@ class _AdoptedWorkspaceSession:
         receipt_owner: PublishedWorkspaceReceiptOwner,
         *,
         operation_provenance: object,
+        monotonic_ns: Callable[[], int] = _MONOTONIC_NS_EXACT,
+        publish_replacement: Callable[..., None] = _PUBLISH_REPLACEMENT_EXACT,
+        replacement_timeout_ns: int | None = None,
     ) -> None:
         self._request = request
         self._workspace = workspace
         self._receipt_owner = receipt_owner
         self._active = True
+        self._monotonic_ns = monotonic_ns
         self._operation_provenance = operation_provenance
+        self._replacement_timeout_ns = replacement_timeout_ns
         self._owner_pid = os.getpid()
         self._gate = _CancellationSafeRLock()
         self._published = False
+        self._publish_replacement = publish_replacement
 
     def _require_owner_pid(self) -> None:
         if os.getpid() != self._owner_pid:
@@ -347,11 +588,30 @@ class _AdoptedWorkspaceSession:
             # Sealing is a separate authority transition. Recheck again
             # immediately before entering the authority's rename operation.
             self._require_request_binding()
-            self._workspace.publish_into(
-                self._receipt_owner,
-                validate_staged_directory=validate_staged,
-                validate_published_destination=validate_published,
-            )
+            if self._request.destination_binding is None:
+                if self._replacement_timeout_ns is not None:
+                    raise RuntimeError(
+                        "missing workspace received a replacement timeout"
+                    )
+                self._workspace.publish_into(
+                    self._receipt_owner,
+                    validate_staged_directory=validate_staged,
+                    validate_published_destination=validate_published,
+                )
+            else:
+                timeout_ns = self._replacement_timeout_ns
+                if type(timeout_ns) is not int or not (
+                    0 < timeout_ns <= _MAX_REPLACEMENT_TIMEOUT_NS
+                ):
+                    raise RuntimeError("exact workspace replacement timeout is missing")
+                deadline_ns = self._monotonic_ns() + timeout_ns
+                self._publish_replacement(
+                    self._workspace,
+                    self._receipt_owner,
+                    deadline_ns=deadline_ns,
+                    validate_staged_directory=validate_staged,
+                    validate_published_destination=validate_published,
+                )
             if len(published) != 1 or not self._receipt_owner.active:
                 raise RuntimeError(
                     "strict workspace publication did not install one active receipt"
@@ -415,12 +675,14 @@ class _ProviderOperationGate:
     """One-shot callback lease revoked before a provider call can escape."""
 
     __slots__ = (
-        "_active",
-        "_called",
+        "_lifecycle",
         "_lock",
+        "_monotonic_ns",
         "_operation",
         "_operation_outcome",
         "_owner_pid",
+        "_publish_replacement",
+        "_replacement_source",
         "_request",
     )
 
@@ -428,15 +690,27 @@ class _ProviderOperationGate:
         self,
         request: StrictWorkspaceRequest,
         operation: Callable[[StrictWorkspaceSession], _OperationResult],
+        *,
+        lifecycle: list[bool],
+        replacement_source: _ReplacementSourceGate | None = None,
     ) -> None:
-        self._active = True
-        self._called = False
+        if type(lifecycle) is not list or lifecycle != [False, False, True]:
+            raise TypeError("strict workspace operation lifecycle is invalid")
+        # As for the source gate, the enclosing strict call owns this inactive
+        # cell before construction and is the only code that may activate it.
+        self._lifecycle = lifecycle
         self._lock = _CancellationSafeRLock()
+        # Exact callers construct this gate before provider support; missing
+        # callers construct it before provisioning. Freeze the publication
+        # callback and clock once for either lifecycle.
+        self._monotonic_ns = _MONOTONIC_NS_EXACT
+        self._publish_replacement = _PUBLISH_REPLACEMENT_EXACT
         self._operation = operation
         self._operation_outcome: tuple[object, BaseException | None] | object = (
             _UNSET_RESULT
         )
         self._owner_pid = os.getpid()
+        self._replacement_source = replacement_source
         self._request = request
 
     def _require_owner_pid(self) -> None:
@@ -449,13 +723,24 @@ class _ProviderOperationGate:
         self._require_owner_pid()
 
         def invoke() -> _OperationResult:
-            if not self._active:
+            if not self._lifecycle[0]:
                 raise RuntimeError("strict workspace operation is no longer active")
-            if self._called:
+            if self._lifecycle[1]:
                 raise RuntimeError("strict workspace operation is one-shot")
             if type(session) is not _AdoptedWorkspaceSession:
                 raise TypeError(
                     "strict workspace provider must supply an adopted session"
+                )
+            replacement_source = self._replacement_source
+            if replacement_source is None:
+                if self._request.destination_binding is not None:
+                    raise RuntimeError(
+                        "exact workspace operation lacks replacement source provenance"
+                    )
+            else:
+                replacement_source._require_bound_workspace(
+                    self._request,
+                    session._workspace,
                 )
             provenance = _CONSUME_SESSION_PROVENANCE(
                 self,
@@ -468,7 +753,7 @@ class _ProviderOperationGate:
                 provenance,
                 consume=True,
             )
-            self._called = True
+            self._lifecycle[1] = True
             try:
                 result = self._operation(session)
                 self._record_operation_outcome(result, None)
@@ -489,9 +774,9 @@ class _ProviderOperationGate:
         self._require_owner_pid()
 
         def bind() -> None:
-            if not self._active:
+            if not self._lifecycle[0]:
                 raise RuntimeError("strict workspace operation is no longer active")
-            if self._called:
+            if self._lifecycle[1]:
                 raise RuntimeError("strict workspace operation is one-shot")
             if request is not self._request:
                 raise ValueError("strict workspace session belongs to another request")
@@ -516,7 +801,7 @@ class _ProviderOperationGate:
     @property
     def called(self) -> bool:
         self._require_owner_pid()
-        return self._lock.run(lambda: self._called)
+        return self._lock.run(lambda: self._lifecycle[1])
 
     def _record_operation_outcome(
         self,
@@ -584,7 +869,8 @@ class _ProviderOperationGate:
 
     def _deactivate(self) -> None:
         self._require_owner_pid()
-        self._active = False
+        self._lifecycle[0] = False
+        self._lifecycle[2] = False
         _DISCARD_SESSION_PROVENANCE(self)
 
     def revoke(self) -> None:
@@ -604,7 +890,9 @@ class _ProviderOperationGate:
                     )
                 continue
             try:
-                inactive = self._lock.run(lambda: not self._active)
+                inactive = self._lock.run(
+                    lambda: not self._lifecycle[0] and not self._lifecycle[2]
+                )
             except BaseException as interruption:  # noqa: B036
                 if deferred is None:
                     deferred = interruption
@@ -627,6 +915,268 @@ class _ProviderOperationGate:
         raise recovery_error
 
 
+def _settle_replacement_source_gate(
+    gate: _ReplacementSourceGate | None,
+    lifecycle: list[bool] | None,
+) -> BaseException | None:
+    """Deactivate even when cancellation lands before the first gate call."""
+
+    deferred: BaseException | None = None
+    for _attempt in range(_SESSION_RECOVERY_LIMIT):
+        try:
+            if gate is None:
+                if lifecycle is not None:
+                    lifecycle[0] = False
+                    lifecycle[2] = False
+                    lifecycle[3] = False
+            else:
+                gate.revoke()
+        except BaseException as interruption:  # noqa: B036
+            if deferred is None:
+                deferred = interruption
+            else:
+                try:
+                    _annotate_secondary_error(
+                        deferred,
+                        "strict workspace replacement source outer settlement "
+                        "was interrupted again",
+                        interruption,
+                    )
+                except BaseException:  # noqa: B036 - diagnostic is best-effort
+                    pass
+            continue
+        try:
+            if gate is None:
+                inactive = lifecycle is None or (
+                    not lifecycle[0] and not lifecycle[2] and not lifecycle[3]
+                )
+            else:
+                inactive = gate._lock.run(
+                    lambda: (
+                        not gate._lifecycle[0]
+                        and not gate._lifecycle[2]
+                        and not gate._lifecycle[3]
+                    )
+                )
+        except BaseException as interruption:  # noqa: B036
+            if deferred is None:
+                deferred = interruption
+            else:
+                try:
+                    _annotate_secondary_error(
+                        deferred,
+                        "strict workspace replacement source outer settlement "
+                        "check also failed",
+                        interruption,
+                    )
+                except BaseException:  # noqa: B036 - diagnostic is best-effort
+                    pass
+            continue
+        if inactive:
+            return deferred
+    recovery_error = RuntimeError(
+        "strict workspace replacement source outer settlement did not converge"
+    )
+    if deferred is not None:
+        try:
+            _annotate_secondary_error(
+                recovery_error,
+                "strict workspace replacement source outer settlement failed",
+                deferred,
+            )
+        except BaseException:  # noqa: B036 - diagnostic is best-effort
+            pass
+    return recovery_error
+
+
+def _settle_provider_operation_gate(
+    gate: _ProviderOperationGate | None,
+    lifecycle: list[bool] | None,
+) -> BaseException | None:
+    """Deactivate a callback cell across constructor and call boundaries."""
+
+    deferred: BaseException | None = None
+    for _attempt in range(_SESSION_RECOVERY_LIMIT):
+        try:
+            if gate is None:
+                if lifecycle is not None:
+                    lifecycle[0] = False
+                    lifecycle[2] = False
+            else:
+                gate.revoke()
+        except BaseException as interruption:  # noqa: B036
+            if deferred is None:
+                deferred = interruption
+            else:
+                try:
+                    _annotate_secondary_error(
+                        deferred,
+                        "strict workspace provider callback outer settlement "
+                        "was interrupted again",
+                        interruption,
+                    )
+                except BaseException:  # noqa: B036 - diagnostic is best-effort
+                    pass
+            continue
+        try:
+            if gate is None:
+                inactive = lifecycle is None or (not lifecycle[0] and not lifecycle[2])
+            else:
+                inactive = gate._lock.run(
+                    lambda: not gate._lifecycle[0] and not gate._lifecycle[2]
+                )
+        except BaseException as interruption:  # noqa: B036
+            if deferred is None:
+                deferred = interruption
+            else:
+                try:
+                    _annotate_secondary_error(
+                        deferred,
+                        "strict workspace provider callback outer settlement "
+                        "check also failed",
+                        interruption,
+                    )
+                except BaseException:  # noqa: B036 - diagnostic is best-effort
+                    pass
+            continue
+        if inactive:
+            return deferred
+    recovery_error = RuntimeError(
+        "strict workspace provider callback outer settlement did not converge"
+    )
+    if deferred is not None:
+        try:
+            _annotate_secondary_error(
+                recovery_error,
+                "strict workspace provider callback outer settlement failed",
+                deferred,
+            )
+        except BaseException:  # noqa: B036 - diagnostic is best-effort
+            pass
+    return recovery_error
+
+
+def _commit_provider_primary(
+    primary_cell: list[BaseException | None],
+    primary_error: BaseException,
+) -> None:
+    """Commit the provider primary before child-frame settlement can run."""
+
+    for _attempt in range(_SESSION_RECOVERY_LIMIT):
+        try:
+            primary_cell[0] = primary_error
+            if primary_cell[0] is not primary_error:
+                raise RuntimeError("strict workspace provider primary changed")
+        except BaseException as transition_error:  # noqa: B036
+            if transition_error is not primary_error:
+                try:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "strict workspace provider primary commit also failed",
+                        transition_error,
+                    )
+                except BaseException:  # noqa: B036 - diagnostic is best-effort
+                    pass
+            continue
+        return
+    recovery_error = RuntimeError(
+        "strict workspace provider primary commit did not converge"
+    )
+    try:
+        _annotate_secondary_error(
+            primary_error,
+            "strict workspace provider primary commit recovery also failed",
+            recovery_error,
+        )
+    except BaseException:  # noqa: B036 - diagnostic is best-effort
+        pass
+    raise primary_error.with_traceback(primary_error.__traceback__)
+
+
+def _invoke_strict_workspace_provider(
+    run_workspace: Callable[..., object],
+    request: StrictWorkspaceRequest,
+    receipt_owner: PublishedWorkspaceReceiptOwner,
+    operation_gate: _ProviderOperationGate,
+    replacement_source: _ReplacementSourceGate | None,
+    replacement_lifecycle: list[bool] | None,
+    operation_lifecycle: list[bool],
+    provider_primary: list[BaseException | None],
+    provider_started: list[bool],
+    provider_returned: list[bool],
+    commit_provider_primary: Callable[
+        [list[BaseException | None], BaseException],
+        None,
+    ],
+    settle_replacement_source: Callable[
+        [_ReplacementSourceGate | None, list[bool] | None],
+        BaseException | None,
+    ],
+    settle_provider_operation: Callable[
+        [_ProviderOperationGate | None, list[bool] | None],
+        BaseException | None,
+    ],
+) -> object:
+    """Invoke once, with a first settlement pass owned by a child frame."""
+
+    primary_error: BaseException | None = None
+    result: object = _UNSET_RESULT
+    try:
+        try:
+            provider_started[0] = True
+            if replacement_source is None:
+                result = run_workspace(
+                    request,
+                    receipt_owner=receipt_owner,
+                    operation=operation_gate,
+                )
+            else:
+                result = run_workspace(
+                    request,
+                    receipt_owner=receipt_owner,
+                    operation=operation_gate,
+                    _replacement_source=replacement_source,
+                )
+            provider_returned[0] = True
+        except BaseException as exc:  # noqa: B036 - settle before propagation
+            commit_provider_primary(provider_primary, exc)
+            primary_error = exc
+    finally:
+        try:
+            replacement_cleanup_error = settle_replacement_source(
+                replacement_source,
+                replacement_lifecycle,
+            )
+            if replacement_cleanup_error is not None:
+                if primary_error is None:
+                    primary_error = replacement_cleanup_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "strict workspace replacement source revocation also failed",
+                        replacement_cleanup_error,
+                    )
+        finally:
+            operation_cleanup_error = settle_provider_operation(
+                operation_gate,
+                operation_lifecycle,
+            )
+            if operation_cleanup_error is not None:
+                if primary_error is None:
+                    primary_error = operation_cleanup_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "strict workspace provider callback revocation also failed",
+                        operation_cleanup_error,
+                    )
+    if primary_error is not None:
+        raise primary_error.with_traceback(primary_error.__traceback__)
+    if result is _UNSET_RESULT:
+        raise RuntimeError("strict workspace provider returned no result")
+    return result
+
+
 def _run_adopted_workspace_operation(
     bind_provenance: Callable[[object, object, object, object], None],
     request: StrictWorkspaceRequest,
@@ -634,6 +1184,7 @@ def _run_adopted_workspace_operation(
     workspace: OwnedWorkspaceAuthority,
     receipt_owner: PublishedWorkspaceReceiptOwner,
     operation: Callable[[StrictWorkspaceSession], _OperationResult],
+    replacement_timeout_ns: int | None,
 ) -> _OperationResult:
     """Run one operation against an already-adopted borrowed authority.
 
@@ -654,6 +1205,13 @@ def _run_adopted_workspace_operation(
         raise RuntimeError("strict workspace receipt owner must be empty")
     if workspace.state != "adopted":
         raise RuntimeError("strict workspace authority must be freshly adopted")
+    if request.destination_binding is None:
+        if replacement_timeout_ns is not None:
+            raise ValueError("missing workspace cannot use a replacement timeout")
+    elif type(replacement_timeout_ns) is not int or not (
+        0 < replacement_timeout_ns <= _MAX_REPLACEMENT_TIMEOUT_NS
+    ):
+        raise ValueError("exact workspace requires a bounded replacement timeout")
 
     operation_provenance = object()
     session = _AdoptedWorkspaceSession(
@@ -661,6 +1219,9 @@ def _run_adopted_workspace_operation(
         workspace,
         receipt_owner,
         operation_provenance=operation_provenance,
+        monotonic_ns=operation._monotonic_ns,
+        publish_replacement=operation._publish_replacement,
+        replacement_timeout_ns=replacement_timeout_ns,
     )
     session._require_operation_request(request)
     operation._bind_adopted_session(
@@ -704,6 +1265,7 @@ def run_strict_workspace(
     *,
     receipt_owner: PublishedWorkspaceReceiptOwner,
     operation: Callable[[StrictWorkspaceSession], _OperationResult],
+    source_owner: PublishedWorkspaceReceiptOwner | None = None,
 ) -> _OperationResult:
     """Preflight and invoke one trusted provider without an ambient fallback."""
 
@@ -715,38 +1277,312 @@ def run_strict_workspace(
         raise TypeError("strict workspace operation must be callable")
     if receipt_owner.state != "empty":
         raise RuntimeError("strict workspace receipt owner must be empty")
-
-    # The shared platform gate precedes even provider attribute lookup: a
-    # descriptor/property proxy is not allowed to run on an unsupported host.
-    require_owned_workspace_publication_support()
-    require_support = getattr(provider, "require_support", None)
-    run_workspace = getattr(provider, "run_workspace", None)
-    if not callable(require_support) or not callable(run_workspace):
-        raise TypeError("strict workspace provider has an invalid contract")
-    # The provider-specific gate also precedes its provisioning entry point.
-    require_support()
-    operation_gate = _ProviderOperationGate(request, operation)
+    binding = request.destination_binding
+    replacement_lifecycle: list[bool] | None = None
+    operation_lifecycle: list[bool] | None = None
+    replacement_source: _ReplacementSourceGate | None = None
+    operation_gate: _ProviderOperationGate | None = None
+    run_workspace: Callable[..., object] | None = None
     primary_error: BaseException | None = None
     result: object = _UNSET_RESULT
-    try:
-        result = run_workspace(
-            request,
-            receipt_owner=receipt_owner,
-            operation=operation_gate,
+    provider_primary: list[BaseException | None] = [None]
+    provider_started = [False]
+    provider_returned = [False]
+    invoke_strict_provider = _invoke_strict_workspace_provider
+    commit_provider_primary = _commit_provider_primary
+    settle_replacement_source = _settle_replacement_source_gate
+    settle_provider_operation = _settle_provider_operation_gate
+    if binding is None and source_owner is not None:
+        raise ValueError("missing strict workspace cannot receive a replacement source")
+    if binding is not None and source_owner is receipt_owner:
+        raise ValueError(
+            "strict workspace source and output receipt owners must differ"
         )
-    except BaseException as exc:  # noqa: B036 - revoke before propagation
-        primary_error = exc
+
     try:
-        operation_gate.revoke()
-    except BaseException as revoke_error:  # noqa: B036
-        if primary_error is None:
-            primary_error = revoke_error
-        else:
-            _annotate_secondary_error(
-                primary_error,
-                "strict workspace provider callback revocation also failed",
-                revoke_error,
+        try:
+            if binding is None:
+                # Preserve the missing-destination ordering exactly: shared
+                # support and provider support precede callback-gate construction.
+                require_owned_workspace_publication_support()
+                require_support = getattr(provider, "require_support", None)
+                provider_run_workspace = getattr(provider, "run_workspace", None)
+                if not callable(require_support) or not callable(
+                    provider_run_workspace
+                ):
+                    raise TypeError("strict workspace provider has an invalid contract")
+                require_support()
+                operation_lifecycle = [False, False, True]
+                operation_gate = _ProviderOperationGate(
+                    request,
+                    operation,
+                    lifecycle=operation_lifecycle,
+                )
+                run_workspace = provider_run_workspace
+                # Spend the outer-only activation authority before making the
+                # callback live. Both stores and provider entry remain inside
+                # the same settlement boundary.
+                operation_lifecycle[2] = False
+                operation_lifecycle[0] = True
+                result = invoke_strict_provider(
+                    run_workspace,
+                    request,
+                    receipt_owner,
+                    operation_gate,
+                    None,
+                    None,
+                    operation_lifecycle,
+                    provider_primary,
+                    provider_started,
+                    provider_returned,
+                    commit_provider_primary,
+                    settle_replacement_source,
+                    settle_provider_operation,
+                )
+            else:
+                replacement_lifecycle = [False, False, False, True]
+                replacement_source = _ReplacementSourceGate(
+                    request,
+                    source_owner,  # type: ignore[arg-type]
+                    lifecycle=replacement_lifecycle,
+                )
+                operation_lifecycle = [False, False, True]
+                operation_gate = _ProviderOperationGate(
+                    request,
+                    operation,
+                    lifecycle=operation_lifecycle,
+                    replacement_source=replacement_source,
+                )
+                # Exact gates must be revoked on every later exit, including
+                # shared support, hostile provider descriptors, and provider
+                # support. Both gates remain inactive during those callbacks.
+                require_owned_workspace_publication_support()
+                require_support = getattr(provider, "require_support", None)
+                provider_run_workspace = getattr(provider, "run_workspace", None)
+                if not callable(require_support) or not callable(
+                    provider_run_workspace
+                ):
+                    raise TypeError("strict workspace provider has an invalid contract")
+                require_support()
+                run_workspace = provider_run_workspace
+                # No activation callable is retained by either gate. Spend both
+                # outer-only activation bits before enabling either capability,
+                # then enter the provider without leaving this guarded region.
+                replacement_lifecycle[3] = False
+                operation_lifecycle[2] = False
+                replacement_lifecycle[0] = True
+                replacement_lifecycle[2] = True
+                operation_lifecycle[0] = True
+                result = invoke_strict_provider(
+                    run_workspace,
+                    request,
+                    receipt_owner,
+                    operation_gate,
+                    replacement_source,
+                    replacement_lifecycle,
+                    operation_lifecycle,
+                    provider_primary,
+                    provider_started,
+                    provider_returned,
+                    commit_provider_primary,
+                    settle_replacement_source,
+                    settle_provider_operation,
+                )
+        except BaseException as exc:  # noqa: B036 - settle before propagation
+            if (
+                provider_primary[0] is None
+                and provider_started[0]
+                and not provider_returned[0]
+                and exc.__context__ is not None
+            ):
+                commit_provider_primary(provider_primary, exc.__context__)
+            primary_error = exc
+        # Settle once while still inside the protected outer try. If
+        # cancellation lands on the first cleanup line, control transfers to
+        # the outer handler/finally and the second pass still owns every cell.
+        try:
+            replacement_cleanup_error = settle_replacement_source(
+                replacement_source,
+                replacement_lifecycle,
             )
+            if replacement_cleanup_error is not None:
+                if primary_error is None:
+                    primary_error = replacement_cleanup_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "strict workspace replacement source revocation also failed",
+                        replacement_cleanup_error,
+                    )
+        finally:
+            operation_cleanup_error = settle_provider_operation(
+                operation_gate,
+                operation_lifecycle,
+            )
+            if operation_cleanup_error is not None:
+                if primary_error is None:
+                    primary_error = operation_cleanup_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "strict workspace provider callback revocation also failed",
+                        operation_cleanup_error,
+                    )
+    except BaseException as settlement_boundary_error:  # noqa: B036
+        if primary_error is None:
+            primary_error = settlement_boundary_error
+        elif settlement_boundary_error is not primary_error:
+            try:
+                _annotate_secondary_error(
+                    primary_error,
+                    "strict workspace gate settlement boundary also failed",
+                    settlement_boundary_error,
+                )
+            except BaseException:  # noqa: B036 - diagnostic is best-effort
+                pass
+    finally:
+        try:
+            try:
+                replacement_cleanup_error = settle_replacement_source(
+                    replacement_source,
+                    replacement_lifecycle,
+                )
+            except BaseException as interruption:  # noqa: B036
+                # Cancellation can land on the helper-call boundary before its
+                # own retry loop begins. Retain that exact interruption and
+                # retry the whole settlement until inactivity is observed.
+                replacement_cleanup_error = interruption
+                for _attempt in range(_SESSION_RECOVERY_LIMIT):
+                    try:
+                        retry_error = settle_replacement_source(
+                            replacement_source,
+                            replacement_lifecycle,
+                        )
+                    except BaseException as retry_interruption:  # noqa: B036
+                        try:
+                            _annotate_secondary_error(
+                                replacement_cleanup_error,
+                                "strict workspace replacement source settlement "
+                                "boundary was interrupted again",
+                                retry_interruption,
+                            )
+                        except BaseException:  # noqa: B036 - best-effort note
+                            pass
+                        continue
+                    if retry_error is not None:
+                        try:
+                            _annotate_secondary_error(
+                                replacement_cleanup_error,
+                                "strict workspace replacement source settlement "
+                                "also failed",
+                                retry_error,
+                            )
+                        except BaseException:  # noqa: B036 - best-effort note
+                            pass
+                    break
+                else:
+                    recovery_error = RuntimeError(
+                        "strict workspace replacement source settlement boundary "
+                        "did not converge"
+                    )
+                    try:
+                        _annotate_secondary_error(
+                            replacement_cleanup_error,
+                            "strict workspace replacement source settlement "
+                            "recovery also failed",
+                            recovery_error,
+                        )
+                    except BaseException:  # noqa: B036 - best-effort note
+                        pass
+            if replacement_cleanup_error is not None:
+                if primary_error is None:
+                    primary_error = replacement_cleanup_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "strict workspace replacement source revocation also failed",
+                        replacement_cleanup_error,
+                    )
+        finally:
+            try:
+                operation_cleanup_error = settle_provider_operation(
+                    operation_gate,
+                    operation_lifecycle,
+                )
+            except BaseException as interruption:  # noqa: B036
+                operation_cleanup_error = interruption
+                for _attempt in range(_SESSION_RECOVERY_LIMIT):
+                    try:
+                        retry_error = settle_provider_operation(
+                            operation_gate,
+                            operation_lifecycle,
+                        )
+                    except BaseException as retry_interruption:  # noqa: B036
+                        try:
+                            _annotate_secondary_error(
+                                operation_cleanup_error,
+                                "strict workspace provider callback settlement "
+                                "boundary was interrupted again",
+                                retry_interruption,
+                            )
+                        except BaseException:  # noqa: B036 - best-effort note
+                            pass
+                        continue
+                    if retry_error is not None:
+                        try:
+                            _annotate_secondary_error(
+                                operation_cleanup_error,
+                                "strict workspace provider callback settlement "
+                                "also failed",
+                                retry_error,
+                            )
+                        except BaseException:  # noqa: B036 - best-effort note
+                            pass
+                    break
+                else:
+                    recovery_error = RuntimeError(
+                        "strict workspace provider callback settlement boundary "
+                        "did not converge"
+                    )
+                    try:
+                        _annotate_secondary_error(
+                            operation_cleanup_error,
+                            "strict workspace provider callback settlement "
+                            "recovery also failed",
+                            recovery_error,
+                        )
+                    except BaseException:  # noqa: B036 - best-effort note
+                        pass
+            if operation_cleanup_error is not None:
+                if primary_error is None:
+                    primary_error = operation_cleanup_error
+                else:
+                    _annotate_secondary_error(
+                        primary_error,
+                        "strict workspace provider callback revocation also failed",
+                        operation_cleanup_error,
+                    )
+
+    committed_provider_primary = provider_primary[0]
+    if (
+        committed_provider_primary is not None
+        and primary_error is not committed_provider_primary
+    ):
+        if primary_error is not None:
+            try:
+                _annotate_secondary_error(
+                    committed_provider_primary,
+                    "strict workspace provider cleanup boundary also failed",
+                    primary_error,
+                )
+            except BaseException:  # noqa: B036 - diagnostic is best-effort
+                pass
+        primary_error = committed_provider_primary
+
+    if operation_gate is None:
+        if primary_error is None:
+            raise RuntimeError("strict workspace operation gate was not constructed")
+        raise primary_error.with_traceback(primary_error.__traceback__)
     outcome_read_error: BaseException | None = None
     for _attempt in range(_SESSION_RECOVERY_LIMIT):
         try:
