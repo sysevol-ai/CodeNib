@@ -180,6 +180,11 @@ def _use_distinct_media_classes(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _parity_identity(request: Mapping[str, Any]) -> dict[str, Any]:
     subject = request["subject"]
+    queries_sha256 = (
+        _SHA_B
+        if request["cell"] == "runtime-cold" and request["arm"] == "candidate"
+        else _SHA_A
+    )
     return {
         "manifest": {
             "commit": subject["revision"],
@@ -194,10 +199,45 @@ def _parity_identity(request: Mapping[str, Any]) -> dict[str, Any]:
             "metadata_sha256": _SHA_D,
         },
         "queries": {
-            "sha256": _SHA_A,
+            "sha256": queries_sha256,
             "count": len(subject["queries"]),
             "nonempty": True,
         },
+        "authority": _authority_identity(request),
+    }
+
+
+def _authority_identity(request: Mapping[str, Any]) -> dict[str, Any]:
+    cell = request["cell"]
+    arm = request["arm"]
+    if cell in {"compiler-cold", "compiler-current"}:
+        return {
+            "context_kind": "compiler-portable-plan",
+            "artifact": None,
+            "source_verified": None,
+            "source_verification_scope": None,
+        }
+    if cell == "runtime-cold" and arm == "legacy":
+        return {
+            "context_kind": "manifest-live-source",
+            "artifact": None,
+            "source_verified": True,
+            "source_verification_scope": "content-bytes",
+        }
+
+    from codenib.artifacts.context import CONTEXT_ARTIFACT_SCHEMA
+
+    return {
+        "context_kind": "portable-artifact-query-only",
+        "artifact": {
+            "verified": True,
+            "schema": CONTEXT_ARTIFACT_SCHEMA,
+            "repository": request["subject"]["repository_key"],
+            "commit": request["subject"]["revision"],
+            "views": ["bm25"],
+        },
+        "source_verified": False,
+        "source_verification_scope": None,
     }
 
 
@@ -220,6 +260,7 @@ def _sample_receipt(request: Mapping[str, Any], *, process_id: int) -> dict[str,
             "compiler-cold": True,
             "compiler-current": False,
             "runtime-cold": None,
+            "runtime-cold-query-only": None,
         }[request["cell"]]
         result["snapshot"] = {
             "snapshot_id": _SNAPSHOT_ID,
@@ -279,15 +320,213 @@ def _fake_sample_runner(
     return run
 
 
-def test_public_contract_and_deterministic_paired_order() -> None:
+def _run_fake_cell(
+    *,
+    manifest_path: Path,
+    subject_roots: Mapping[str, Path],
+    media_roots: Mapping[str, Path],
+    cell: str,
+    sample_runner: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+) -> dict[str, Any]:
+    manifest, _receipt = profiler.load_subject_manifest(manifest_path)
+    subject = manifest["subjects"][0]
+    media_id, media_root = next(iter(media_roots.items()))
+    process_ids: list[int] = []
+    result = profiler._run_cell(
+        subject=subject,
+        subject_root=subject_roots[subject["id"]],
+        media_id=media_id,
+        media_root=media_root,
+        media_identity=profiler._media_identity(media_root),
+        view_set=manifest["view_sets"][0],
+        cell=cell,
+        iterations=1,
+        warmups=0,
+        sample_runner=sample_runner,
+        process_ids=process_ids,
+    )
+    assert len(process_ids) == 2
+    assert len(set(process_ids)) == 2
+    return result
+
+
+def test_public_v2_contract_and_deterministic_paired_order() -> None:
     assert profiler.ARMS == ("legacy", "candidate")
-    assert profiler.CELLS == ("compiler-cold", "compiler-current", "runtime-cold")
+    assert profiler.CELLS == (
+        "compiler-cold",
+        "compiler-current",
+        "runtime-cold",
+        "runtime-cold-query-only",
+    )
+    assert profiler.TRACKS == {
+        "compiler": ("compiler-cold", "compiler-current"),
+        "query-only-runtime": ("runtime-cold-query-only",),
+        "manifest-runtime-compatibility": ("runtime-cold",),
+    }
+    assert profiler.CANONICAL_SAMPLE_COUNT == 1152
     assert [profiler.paired_arm_order(index) for index in range(4)] == [
         ("legacy", "candidate"),
         ("candidate", "legacy"),
         ("legacy", "candidate"),
         ("candidate", "legacy"),
     ]
+
+
+def test_runtime_manifest_sentinel_is_negative_but_query_only_is_exact(
+    tmp_path: Path,
+) -> None:
+    manifest_path, subject_roots, media_roots = _fixture(tmp_path)
+    manifest, _receipt = profiler.load_subject_manifest(manifest_path)
+    subject = manifest["subjects"][0]
+
+    sentinel = _run_fake_cell(
+        manifest_path=manifest_path,
+        subject_roots=subject_roots,
+        media_roots=media_roots,
+        cell="runtime-cold",
+        sample_runner=_fake_sample_runner(),
+    )
+    query_only = _run_fake_cell(
+        manifest_path=manifest_path,
+        subject_roots=subject_roots,
+        media_roots=media_roots,
+        cell="runtime-cold-query-only",
+        sample_runner=_fake_sample_runner(),
+    )
+
+    sentinel_pair = sentinel["runs"]["measured"][0]
+    legacy_sentinel, candidate_sentinel = sentinel_pair["samples"]
+    assert sentinel_pair["parity"] is False
+    assert sentinel["parity"]["every_pair"] is False
+    assert sentinel["parity"]["stable_across_runs"] is False
+    assert sentinel["parity"]["passed"] is False
+    assert len(sentinel["parity"]["identity_sha256"]) == 2
+    assert (
+        legacy_sentinel["result"]["queries"]["sha256"]
+        != candidate_sentinel["result"]["queries"]["sha256"]
+    )
+    assert legacy_sentinel["result"]["authority"] == {
+        "context_kind": "manifest-live-source",
+        "artifact": None,
+        "source_verified": True,
+        "source_verification_scope": "content-bytes",
+    }
+    assert candidate_sentinel["result"]["authority"] == _authority_identity(
+        {
+            "cell": "runtime-cold",
+            "arm": "candidate",
+            "subject": subject,
+        }
+    )
+
+    query_only_pair = query_only["runs"]["measured"][0]
+    assert query_only_pair["parity"] is True
+    assert query_only["parity"]["passed"] is True
+    assert (
+        query_only_pair["samples"][0]["parity_identity"]
+        == query_only_pair["samples"][1]["parity_identity"]
+    )
+
+
+def test_runtime_manifest_authority_mismatch_blocks_equal_query_digest(
+    tmp_path: Path,
+) -> None:
+    manifest_path, subject_roots, media_roots = _fixture(tmp_path)
+
+    def align_query_digest(
+        receipt: dict[str, Any], request: Mapping[str, Any], _call: int
+    ) -> None:
+        if request["cell"] == "runtime-cold" and request["arm"] == "candidate":
+            receipt["result"]["queries"]["sha256"] = _SHA_A
+            receipt["parity_identity"]["queries"]["sha256"] = _SHA_A
+
+    sentinel = _run_fake_cell(
+        manifest_path=manifest_path,
+        subject_roots=subject_roots,
+        media_roots=media_roots,
+        cell="runtime-cold",
+        sample_runner=_fake_sample_runner(align_query_digest),
+    )
+
+    pair = sentinel["runs"]["measured"][0]
+    legacy, candidate = pair["samples"]
+    assert legacy["result"]["queries"] == candidate["result"]["queries"]
+    assert legacy["result"]["authority"] != candidate["result"]["authority"]
+    assert pair["parity"] is False
+    assert sentinel["parity"]["passed"] is False
+
+
+def test_track_aggregation_isolates_parity_and_completeness(
+    tmp_path: Path,
+) -> None:
+    manifest_path, subject_roots, media_roots = _fixture(tmp_path)
+    cells = {
+        cell: _run_fake_cell(
+            manifest_path=manifest_path,
+            subject_roots=subject_roots,
+            media_roots=media_roots,
+            cell=cell,
+            sample_runner=_fake_sample_runner(),
+        )
+        for cell in profiler.CELLS
+    }
+
+    baseline = profiler._aggregate_tracks(
+        cells,
+        expected_instances_per_cell=1,
+        iterations=1,
+        warmups=0,
+    )
+    assert {name: track["passed"] for name, track in baseline.items()} == {
+        "compiler": True,
+        "query-only-runtime": True,
+        "manifest-runtime-compatibility": False,
+    }
+    assert all(track["measurement_complete"] for track in baseline.values())
+
+    query_parity_red = deepcopy(cells)
+    query_parity_red["runtime-cold-query-only"]["parity"]["passed"] = False
+    query_tracks = profiler._aggregate_tracks(
+        query_parity_red,
+        expected_instances_per_cell=1,
+        iterations=1,
+        warmups=0,
+    )
+    assert query_tracks["compiler"] == baseline["compiler"]
+    assert query_tracks["query-only-runtime"]["measurement_complete"] is True
+    assert query_tracks["query-only-runtime"]["parity_passed"] is False
+    assert query_tracks["query-only-runtime"]["safety_passed"] is True
+    assert query_tracks["query-only-runtime"]["passed"] is False
+    assert (
+        query_tracks["manifest-runtime-compatibility"]
+        == baseline["manifest-runtime-compatibility"]
+    )
+
+    missing_query_cell = {
+        name: value
+        for name, value in cells.items()
+        if name != "runtime-cold-query-only"
+    }
+    incomplete_tracks = profiler._aggregate_tracks(
+        missing_query_cell,
+        expected_instances_per_cell=1,
+        iterations=1,
+        warmups=0,
+    )
+    assert incomplete_tracks["compiler"] == baseline["compiler"]
+    assert incomplete_tracks["query-only-runtime"] == {
+        "cells": ["runtime-cold-query-only"],
+        "measurement_complete": False,
+        "parity_passed": False,
+        "safety_passed": False,
+        "passed": False,
+        "policy_status": "unratified",
+        "promotion_eligible": False,
+    }
+    assert (
+        incomplete_tracks["manifest-runtime-compatibility"]
+        == baseline["manifest-runtime-compatibility"]
+    )
 
 
 def test_summary_uses_median_and_nearest_rank_p95() -> None:
@@ -297,9 +536,50 @@ def test_summary_uses_median_and_nearest_rank_p95() -> None:
     assert summary["p95"] == 19.0
 
 
+def test_full_public_query_payload_keeps_optional_content_in_the_digest() -> None:
+    subject = {"queries": [{"text": "package", "top_k": 5, "filter_test": False}]}
+    live_source_payload = [
+        {
+            "query": dict(subject["queries"][0]),
+            "results": [
+                {
+                    "file_path": "package.py",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "score": 1.0,
+                    "content": "def package():\n    return True\n",
+                }
+            ],
+        }
+    ]
+    source_disabled_payload = deepcopy(live_source_payload)
+    source_disabled_payload[0]["results"][0]["content"] = None
+
+    live_identity = profiler._query_identity_from_payload(  # noqa: SLF001
+        live_source_payload,
+        subject=subject,
+    )
+    source_disabled_identity = profiler._query_identity_from_payload(  # noqa: SLF001
+        source_disabled_payload,
+        subject=subject,
+    )
+
+    assert live_identity["sha256"] == _json_digest(live_source_payload)
+    assert source_disabled_identity["sha256"] == _json_digest(source_disabled_payload)
+    assert live_identity != source_disabled_identity
+    assert (
+        profiler._query_identity_from_payload(  # noqa: SLF001
+            deepcopy(source_disabled_payload),
+            subject=subject,
+        )
+        == source_disabled_identity
+    )
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
+        lambda manifest: manifest.__setitem__("schema_version", 1),
         lambda manifest: manifest.__setitem__("unexpected", True),
         lambda manifest: manifest.__setitem__("benchmark", "wrong"),
         lambda manifest: manifest["cells"].reverse(),
@@ -329,6 +609,42 @@ def test_manifest_schema_is_exact_and_bm25_only(
         profiler.load_subject_manifest(path)
 
 
+def test_v2_manifest_accepts_only_the_frozen_four_cell_order(tmp_path: Path) -> None:
+    subjects = [
+        _subject_row(
+            identifier=f"fixture-{payload_class}",
+            repository=f"https://github.com/example/fixture-{payload_class}.git",
+            revision=str(index) * 40,
+            tree=str(index + 3) * 40,
+            payload_class=payload_class,
+        )
+        for index, payload_class in enumerate(("small", "medium", "large"), start=1)
+    ]
+    path = _write_manifest(tmp_path / "manifest.json", _manifest(subjects))
+
+    manifest, receipt = profiler.load_subject_manifest(path)
+
+    assert set(manifest) == {
+        "schema_version",
+        "benchmark",
+        "policy",
+        "cells",
+        "view_sets",
+        "subjects",
+    }
+    assert manifest["schema_version"] == 2
+    assert manifest["benchmark"] == "retained_storage_explicit_route_gate_v2"
+    assert manifest["cells"] == list(profiler.CELLS)
+    metadata = path.stat()
+    assert receipt == {
+        "path": os.fspath(path.resolve()),
+        "sha256": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+        "size": len(path.read_bytes()),
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+    }
+
+
 def test_atomic_writer_emits_canonical_json_and_preserves_old_report_on_nan(
     tmp_path: Path,
 ) -> None:
@@ -351,7 +667,7 @@ def test_atomic_writer_emits_canonical_json_and_preserves_old_report_on_nan(
     assert list(tmp_path.iterdir()) == [output]
 
 
-def test_canonical_report_has_exact_schema_and_remains_report_only(
+def test_canonical_v2_report_has_exact_shape_tracks_and_process_count(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     manifest_path, subject_roots, media_roots = _fixture(tmp_path)
@@ -393,13 +709,14 @@ def test_canonical_report_has_exact_schema_and_remains_report_only(
         "subjects",
         "media",
         "cells",
+        "tracks",
         "process_isolation",
         "decision",
     }
     assert report["schema_version"] == profiler.REPORT_SCHEMA_VERSION
     assert report["benchmark"] == profiler.BENCHMARK_ID
-    assert report["status"] == "passed", report["failure"]
-    assert report["passed"] is True
+    assert report["status"] == "complete", report["failure"]
+    assert report["passed"] is False
     assert report["promotion_eligible"] is False
     assert report["failure"] is None
     assert report["policy"] == {
@@ -407,22 +724,94 @@ def test_canonical_report_has_exact_schema_and_remains_report_only(
         "performance_budgets": None,
         "promotion_eligible": False,
     }
+    assert set(report["protocol"]) == {"expected", "observed", "canonical"}
     assert report["protocol"]["canonical"] is True
     assert report["protocol"]["expected"] == report["protocol"]["observed"]
+    assert set(report["protocol"]["expected"]) == {
+        "iterations_per_arm",
+        "warmups_per_arm",
+        "cells",
+        "tracks",
+        "cell_authority_contracts",
+        "canonical_sample_count",
+        "view_set_ids",
+        "payload_classes",
+        "minimum_media_classes",
+        "fresh_inner_process_per_sample",
+        "runner",
+        "paired_arm_order",
+        "peak_rss_source",
+        "io_source",
+        "fixed_manifest_sha256",
+        "fixed_manifest_size",
+        "subject_receipts",
+    }
+    assert report["protocol"]["expected"]["cells"] == list(profiler.CELLS)
+    assert report["protocol"]["expected"]["tracks"] == {
+        name: list(cells) for name, cells in profiler.TRACKS.items()
+    }
+    assert report["protocol"]["expected"]["cell_authority_contracts"] == (
+        profiler.CELL_AUTHORITY_CONTRACTS
+    )
+    assert report["protocol"]["expected"]["canonical_sample_count"] == 1152
+    assert report["configuration"]["cell_authority_contracts"] == (
+        profiler.CELL_AUTHORITY_CONTRACTS
+    )
     assert report["decision"] == {
         "policy_status": "unratified",
         "report_only": True,
         "promotion_eligible": False,
         "recommendation": "retain-explicit-routes",
-        "reason": "performance budgets are unratified",
+        "reason": "one or more compatibility tracks are parity red",
     }
     assert report["benchmark_receipts"]["unchanged"] is True
     assert len(report["subjects"]) == 3
     assert len(report["media"]) == 2
-    assert len(report["cells"]) == 18
+    assert len(report["cells"]) == 24
+    assert {
+        cell: sum(item["cell"] == cell for item in report["cells"].values())
+        for cell in profiler.CELLS
+    } == {cell: 6 for cell in profiler.CELLS}
+    assert list(report["tracks"]) == [
+        "compiler",
+        "query-only-runtime",
+        "manifest-runtime-compatibility",
+    ]
+    assert report["tracks"] == {
+        "compiler": {
+            "cells": ["compiler-cold", "compiler-current"],
+            "measurement_complete": True,
+            "parity_passed": True,
+            "safety_passed": True,
+            "passed": True,
+            "policy_status": "unratified",
+            "promotion_eligible": False,
+        },
+        "query-only-runtime": {
+            "cells": ["runtime-cold-query-only"],
+            "measurement_complete": True,
+            "parity_passed": True,
+            "safety_passed": True,
+            "passed": True,
+            "policy_status": "unratified",
+            "promotion_eligible": False,
+        },
+        "manifest-runtime-compatibility": {
+            "cells": ["runtime-cold"],
+            "measurement_complete": True,
+            "parity_passed": False,
+            "safety_passed": True,
+            "passed": False,
+            "policy_status": "unratified",
+            "promotion_eligible": False,
+        },
+    }
     assert report["process_isolation"]["passed"] is True
-    assert report["process_isolation"]["expected_samples"] == 864
-    assert report["process_isolation"]["observed_samples"] == 864
+    assert report["process_isolation"]["expected_samples"] == 1152
+    assert report["process_isolation"]["observed_samples"] == 1152
+    assert len(report["process_isolation"]["inner_process_ids"]) == 1152
+    assert len(set(report["process_isolation"]["inner_process_ids"])) == 1152
+    assert report["process_isolation"]["duplicate_process_ids"] == []
     for cell in report["cells"].values():
         assert {"runs", "summary", "parity", "safety", "performance"} <= set(cell)
         assert len(cell["runs"]["warmups"]) == profiler.DEFAULT_WARMUPS
@@ -449,7 +838,9 @@ def test_injected_sample_runner_cannot_claim_process_isolated_protocol(
         sample_runner=_fake_sample_runner(),
     )
 
-    assert report["status"] == "passed", report["failure"]
+    assert report["status"] == "failed"
+    assert report["failure"]["stage"] == "protocol"
+    assert report["process_isolation"]["passed"] is True
     assert report["protocol"]["canonical"] is False
     assert report["protocol"]["observed"]["fresh_inner_process_per_sample"] is False
     assert report["protocol"]["observed"]["runner"] == "injected-sample-runner"
@@ -470,8 +861,9 @@ def test_custom_manifest_receipt_cannot_claim_the_canonical_protocol(
         sample_runner=_fake_sample_runner(),
     )
 
-    assert report["status"] == "passed", report["failure"]
-    assert report["passed"] is True
+    assert report["status"] == "failed"
+    assert report["passed"] is False
+    assert report["failure"]["stage"] == "protocol"
     assert report["protocol"]["canonical"] is False
     assert report["promotion_eligible"] is False
 
@@ -512,7 +904,7 @@ def test_mutating_default_manifest_bytes_cannot_move_the_canonical_anchor(
     assert protocol["canonical"] is False
 
 
-def test_override_protocol_is_noncanonical_but_still_complete(
+def test_override_protocol_is_an_operational_failure_after_measurement(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     manifest_path, subject_roots, media_roots = _fixture(tmp_path)
@@ -528,8 +920,10 @@ def test_override_protocol_is_noncanonical_but_still_complete(
         sample_runner=_fake_sample_runner(),
     )
 
-    assert report["status"] == "passed"
-    assert report["passed"] is True
+    assert report["status"] == "failed"
+    assert report["passed"] is False
+    assert report["failure"]["stage"] == "protocol"
+    assert report["process_isolation"]["observed_samples"] == 48
     assert report["protocol"]["canonical"] is False
     assert report["protocol"]["observed"]["iterations_per_arm"] == 1
     assert report["protocol"]["observed"]["warmups_per_arm"] == 0
@@ -557,7 +951,8 @@ def test_sample_requests_are_exact_and_use_ab_ba_round_order(
         sample_runner=runner,
     )
 
-    assert report["status"] == "passed"
+    assert report["status"] == "failed"
+    assert report["failure"]["stage"] == "protocol"
     assert all(
         set(request)
         == {
@@ -762,6 +1157,161 @@ def test_missing_subject_and_non_directory_media_fail_before_measurement(
     )
 
 
+def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    manifest_path, subject_roots, media_roots = _fixture(tmp_path)
+    manifest, _receipt = profiler.load_subject_manifest(manifest_path)
+    subject = manifest["subjects"][0]
+    subject_root = subject_roots[subject["id"]]
+    media_id, media_root = next(iter(media_roots.items()))
+    sample_root = media_root / f"{profiler._TEMP_PREFIX}{'7' * 32}"
+    paths = profiler._sample_paths(sample_root, "7" * 32)
+    calls: list[tuple[str, Any]] = []
+
+    monkeypatch.setattr(
+        profiler,
+        "_provision_storage",
+        lambda actual_paths: calls.append(("provision", dict(actual_paths))),
+    )
+    monkeypatch.setattr(
+        profiler,
+        "_invoke_cli",
+        lambda arguments: calls.append(("cli", list(arguments))),
+    )
+
+    def request(cell: str, arm: str) -> dict[str, Any]:
+        return {
+            "operation": "sample",
+            "arm": arm,
+            "phase": "measured",
+            "round_index": 0,
+            "cell": cell,
+            "subject": subject,
+            "subject_root": os.fspath(subject_root.resolve()),
+            "media_id": media_id,
+            "media_root": os.fspath(media_root.resolve()),
+            "media_identity": profiler._media_identity(media_root.resolve()),
+            "view_set": manifest["view_sets"][0],
+            "run_id": "7" * 32,
+        }
+
+    expected: dict[tuple[str, str], list[tuple[str, Any]]] = {
+        ("compiler-cold", "legacy"): [],
+        ("compiler-cold", "candidate"): [("provision", paths)],
+        ("compiler-current", "legacy"): [
+            (
+                "cli",
+                profiler._index_arguments(
+                    request("compiler-current", "legacy"), paths, candidate=False
+                ),
+            )
+        ],
+        ("compiler-current", "candidate"): [
+            ("provision", paths),
+            (
+                "cli",
+                profiler._index_arguments(
+                    request("compiler-current", "candidate"), paths, candidate=True
+                ),
+            ),
+        ],
+        ("runtime-cold", "legacy"): [
+            (
+                "cli",
+                profiler._index_arguments(
+                    request("runtime-cold", "legacy"), paths, candidate=False
+                ),
+            )
+        ],
+        ("runtime-cold", "candidate"): [
+            ("provision", paths),
+            (
+                "cli",
+                profiler._index_arguments(
+                    request("runtime-cold", "candidate"), paths, candidate=True
+                ),
+            ),
+        ],
+        ("runtime-cold-query-only", "legacy"): [
+            (
+                "cli",
+                profiler._index_arguments(
+                    request("runtime-cold-query-only", "legacy"),
+                    paths,
+                    candidate=False,
+                ),
+            ),
+            (
+                "cli",
+                [
+                    "artifact",
+                    "pack",
+                    os.fspath(subject_root.resolve()),
+                    "--output",
+                    paths["direct_artifact"],
+                    "--repository",
+                    subject["repository_key"],
+                    "--view",
+                    "bm25",
+                ],
+            ),
+        ],
+        ("runtime-cold-query-only", "candidate"): [
+            ("provision", paths),
+            (
+                "cli",
+                profiler._index_arguments(
+                    request("runtime-cold-query-only", "candidate"),
+                    paths,
+                    candidate=True,
+                ),
+            ),
+        ],
+    }
+
+    for cell in profiler.CELLS:
+        for arm in profiler.ARMS:
+            calls.clear()
+            sample_request = request(cell, arm)
+            profiler._prepare_sample(sample_request, paths)
+            assert calls == expected[(cell, arm)]
+
+    assert profiler._runtime_arguments(
+        request("runtime-cold", "legacy"), paths, generation=None
+    ) == ["mcp", os.fspath(profiler._cache_manifest_path(subject_root))]
+    assert profiler._runtime_arguments(
+        request("runtime-cold-query-only", "legacy"), paths, generation=None
+    ) == [
+        "mcp",
+        "--artifact",
+        paths["direct_artifact"],
+        "--repository",
+        subject["repository_key"],
+    ]
+    retained_arguments = profiler._runtime_arguments(
+        request("runtime-cold-query-only", "candidate"), paths, generation=1
+    )
+    assert retained_arguments == [
+        "mcp",
+        "--catalog",
+        paths["catalog"],
+        "--cas-root",
+        paths["cas_root"],
+        "--workspace-root",
+        paths["workspace_root"],
+        "--repository",
+        subject["repository_key"],
+        "--ref",
+        "main",
+        "--expected-generation",
+        "1",
+        "--output",
+        paths["runtime_output"],
+    ]
+    assert "--repo" not in retained_arguments
+
+
 def test_outer_sample_hides_prep_and_reports_the_inner_route_pid(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -831,6 +1381,54 @@ def test_outer_sample_hides_prep_and_reports_the_inner_route_pid(
     assert not any(media_root.iterdir())
 
 
+def test_query_only_direct_artifact_prep_cancellation_cleans_exact_sample_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    manifest_path, subject_roots, media_roots = _fixture(tmp_path)
+    manifest, _receipt = profiler.load_subject_manifest(manifest_path)
+    subject = manifest["subjects"][0]
+    media_id, media_root = next(iter(media_roots.items()))
+    request = {
+        "operation": "sample",
+        "arm": "legacy",
+        "phase": "measured",
+        "round_index": 0,
+        "cell": "runtime-cold-query-only",
+        "subject": subject,
+        "subject_root": os.fspath(subject_roots[subject["id"]].resolve()),
+        "media_id": media_id,
+        "media_root": os.fspath(media_root.resolve()),
+        "media_identity": profiler._media_identity(media_root.resolve()),
+        "view_set": manifest["view_sets"][0],
+        "run_id": "8" * 32,
+    }
+    primary = KeyboardInterrupt("synthetic direct-artifact interruption")
+    observed_direct_artifact: Path | None = None
+
+    def interrupted_prep(_request: Mapping[str, Any], paths: Mapping[str, str]) -> None:
+        nonlocal observed_direct_artifact
+        observed_direct_artifact = Path(paths["direct_artifact"])
+        observed_direct_artifact.mkdir()
+        (observed_direct_artifact / "partial").write_text(
+            "partial",
+            encoding="utf-8",
+        )
+        raise primary
+
+    monkeypatch.setattr(profiler, "_prepare_sample", interrupted_prep)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        profiler._sample_worker(request)
+
+    assert raised.value is primary
+    assert observed_direct_artifact is not None
+    assert observed_direct_artifact == (
+        profiler._owned_sample_root(request) / f"direct-artifact-{request['run_id']}"
+    )
+    assert not observed_direct_artifact.exists()
+    assert not any(media_root.iterdir())
+
+
 def test_inner_route_requires_the_exact_derived_authority_paths(
     tmp_path: Path,
 ) -> None:
@@ -862,15 +1460,19 @@ def test_inner_route_requires_the_exact_derived_authority_paths(
 
     assert normalized_request == request
     assert normalized_paths == paths
-    redirected = dict(paths)
-    redirected["catalog"] = os.fspath(sample_root / "redirected.sqlite")
-    with pytest.raises(ValueError, match="exact binding"):
-        profiler._validate_route_config(
-            {"operation": "route", "request": request, "paths": redirected}
-        )
+    for path_name, replacement in (
+        ("catalog", sample_root / "redirected.sqlite"),
+        ("direct_artifact", sample_root / "redirected-artifact"),
+    ):
+        redirected = dict(paths)
+        redirected[path_name] = os.fspath(replacement)
+        with pytest.raises(ValueError, match="exact binding"):
+            profiler._validate_route_config(
+                {"operation": "route", "request": request, "paths": redirected}
+            )
 
 
-def test_runtime_context_authority_contract_is_arm_specific() -> None:
+def test_runtime_context_authority_contract_is_cell_and_arm_specific() -> None:
     from codenib.artifacts.context import CONTEXT_ARTIFACT_SCHEMA
 
     subject = {
@@ -898,24 +1500,50 @@ def test_runtime_context_authority_contract_is_arm_specific() -> None:
         "source_verification_scope": None,
     }
 
-    profiler._validate_runtime_context_state(
+    legacy_authority = profiler._validate_runtime_context_state(
         legacy,
-        request={"arm": "legacy", "subject": subject},
+        request={"cell": "runtime-cold", "arm": "legacy", "subject": subject},
     )
-    profiler._validate_runtime_context_state(
+    candidate_authority = profiler._validate_runtime_context_state(
         candidate,
-        request={"arm": "candidate", "subject": subject},
+        request={"cell": "runtime-cold", "arm": "candidate", "subject": subject},
+    )
+    direct_authority = profiler._validate_runtime_context_state(
+        candidate,
+        request={
+            "cell": "runtime-cold-query-only",
+            "arm": "legacy",
+            "subject": subject,
+        },
     )
 
-    with pytest.raises(RuntimeError, match="source-authority"):
+    assert legacy_authority == {
+        "context_kind": "manifest-live-source",
+        "artifact": None,
+        "source_verified": True,
+        "source_verification_scope": "content-bytes",
+    }
+    assert direct_authority == candidate_authority
+    assert candidate_authority["context_kind"] == "portable-artifact-query-only"
+    assert candidate_authority["source_verified"] is False
+
+    with pytest.raises(RuntimeError, match="exact per-cell contract"):
         profiler._validate_runtime_context_state(
             {**legacy, "source_verified": False},
-            request={"arm": "legacy", "subject": subject},
+            request={
+                "cell": "runtime-cold",
+                "arm": "legacy",
+                "subject": subject,
+            },
         )
-    with pytest.raises(RuntimeError, match="source-disabled"):
+    with pytest.raises(RuntimeError, match="exact per-cell contract"):
         profiler._validate_runtime_context_state(
             {**candidate, "source_verified": True},
-            request={"arm": "candidate", "subject": subject},
+            request={
+                "cell": "runtime-cold-query-only",
+                "arm": "legacy",
+                "subject": subject,
+            },
         )
 
 
@@ -1079,14 +1707,13 @@ def test_worker_interruption_reaps_the_process_group_and_preserves_primary(
 
 
 @pytest.mark.parametrize(
-    ("passed", "expected_status", "expected_exit"),
+    ("expected_status", "expected_exit"),
     [
-        (True, "passed", 0),
-        (False, "failed", 1),
+        ("complete", 0),
+        ("failed", 1),
     ],
 )
-def test_cli_atomically_writes_success_and_negative_reports(
-    passed: bool,
+def test_cli_atomically_writes_complete_parity_red_and_operational_failure_reports(
     expected_status: str,
     expected_exit: int,
     monkeypatch: pytest.MonkeyPatch,
@@ -1104,8 +1731,8 @@ def test_cli_atomically_writes_success_and_negative_reports(
         subject_roots=subject_roots,
         media_roots=media_roots,
     )
-    if passed:
-        report.update({"status": "passed", "passed": True, "failure": None})
+    if expected_status == "complete":
+        report.update({"status": "complete", "passed": False, "failure": None})
     else:
         profiler._failure(report, "measurement", RuntimeError("synthetic failure"))
     assert report["promotion_eligible"] is False

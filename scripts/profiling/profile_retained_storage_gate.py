@@ -15,7 +15,13 @@ Every measured route runs in a fresh inner process.  A short-lived outer sample
 worker provisions an isolated storage root and performs any required warm-cache
 preparation before starting that process, keeping preparation out of Linux
 ``VmHWM`` and ``/proc/self/io`` observations.  The controller alternates AB/BA
-pairs and validates exact BM25 artifact and public-query parity.
+pairs and validates exact BM25 artifact, authority, and public-query parity.
+
+The manifest-backed ``runtime-cold`` cell is intentionally retained as a
+compatibility sentinel: its live-source legacy arm and source-disabled retained
+arm are not authority-equivalent.  ``runtime-cold-query-only`` is the comparable
+runtime cost cell; it measures a direct portable artifact without ``--repo``
+against the retained portable-artifact route.
 """
 
 from __future__ import annotations
@@ -44,21 +50,50 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_MANIFEST = Path(__file__).with_name("retained_storage_subjects.json")
 _DEFAULT_OUTPUT = Path(tempfile.gettempdir()) / "codenib-retained-storage-gate.json"
 
-BENCHMARK_ID = "retained_storage_explicit_route_gate_v1"
-MANIFEST_SCHEMA_VERSION = 1
-REPORT_SCHEMA_VERSION = 1
+BENCHMARK_ID = "retained_storage_explicit_route_gate_v2"
+MANIFEST_SCHEMA_VERSION = 2
+REPORT_SCHEMA_VERSION = 2
 DEFAULT_ITERATIONS = 20
 DEFAULT_WARMUPS = 4
 DEFAULT_WORKER_TIMEOUT_SECONDS = 1800.0
 CANONICAL_PEAK_RSS_SOURCE = "proc-self-status-vmhwm-kib-v1"
 CANONICAL_IO_SOURCE = "proc-self-io-v1"
 _CANONICAL_MANIFEST_SHA256 = (
-    "sha256:e2cc9d98ec625fc7eb7d54b5fe745e1793461957be3836fc516240251998a883"
+    "sha256:2d7f95489567ef17993bd1f87b46864931645719e172731a68d15d7e7e6913cb"
 )
-_CANONICAL_MANIFEST_SIZE = 3133
+_CANONICAL_MANIFEST_SIZE = 3164
 
 ARMS = ("legacy", "candidate")
-CELLS = ("compiler-cold", "compiler-current", "runtime-cold")
+CELLS = (
+    "compiler-cold",
+    "compiler-current",
+    "runtime-cold",
+    "runtime-cold-query-only",
+)
+TRACKS = {
+    "compiler": ("compiler-cold", "compiler-current"),
+    "query-only-runtime": ("runtime-cold-query-only",),
+    "manifest-runtime-compatibility": ("runtime-cold",),
+}
+CELL_AUTHORITY_CONTRACTS = {
+    "compiler-cold": {
+        "legacy": "compiler-cache-index",
+        "candidate": "compiler-cache-index-and-retained-publication",
+    },
+    "compiler-current": {
+        "legacy": "compiler-cache-index",
+        "candidate": "compiler-cache-index-and-retained-publication",
+    },
+    "runtime-cold": {
+        "legacy": "manifest-live-source",
+        "candidate": "retained-portable-artifact-query-only",
+    },
+    "runtime-cold-query-only": {
+        "legacy": "direct-portable-artifact-query-only-no-repo",
+        "candidate": "retained-portable-artifact-query-only",
+    },
+}
+CANONICAL_SAMPLE_COUNT = 1152
 PHASES = ("warmup", "measured")
 PAYLOAD_CLASSES = ("small", "medium", "large")
 VIEW_SET_ID = "bm25-fast"
@@ -150,7 +185,9 @@ _SAFETY_FIELDS = frozenset(
         "retained_matches_raw",
     }
 )
-_RESULT_FIELDS = frozenset({"manifest", "view", "retained_view", "queries", "snapshot"})
+_RESULT_FIELDS = frozenset(
+    {"manifest", "view", "retained_view", "queries", "snapshot", "authority"}
+)
 _MANIFEST_IDENTITY_FIELDS = frozenset(
     {
         "commit",
@@ -171,7 +208,15 @@ _VIEW_IDENTITY_FIELDS = frozenset(
 )
 _QUERY_IDENTITY_FIELDS = frozenset({"sha256", "count", "nonempty"})
 _SNAPSHOT_FIELDS = frozenset({"snapshot_id", "ref_name", "generation", "changed"})
-_PARITY_FIELDS = frozenset({"manifest", "view", "queries"})
+_PARITY_FIELDS = frozenset({"manifest", "view", "queries", "authority"})
+_AUTHORITY_IDENTITY_FIELDS = frozenset(
+    {
+        "context_kind",
+        "artifact",
+        "source_verified",
+        "source_verification_scope",
+    }
+)
 _SOURCE_SELECTION_FIELDS = frozenset(
     {"schema", "repository_filter_policy", "exclude_subtrees"}
 )
@@ -563,7 +608,7 @@ def load_subject_manifest(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         or receipt["size"] != _CANONICAL_MANIFEST_SIZE
     ):
         raise ValueError(
-            "checked-in subject manifest differs from the v1 canonical anchor"
+            "checked-in subject manifest differs from the v2 canonical anchor"
         )
     if payload_bytes.startswith(b"\xef\xbb\xbf"):
         raise ValueError("subject manifest must not use a UTF-8 BOM")
@@ -942,6 +987,21 @@ def _io_source() -> str:
     return CANONICAL_IO_SOURCE if sys.platform.startswith("linux") else "unsupported"
 
 
+def _empty_tracks() -> dict[str, dict[str, Any]]:
+    return {
+        track: {
+            "cells": list(cells),
+            "measurement_complete": False,
+            "parity_passed": False,
+            "safety_passed": False,
+            "passed": False,
+            "policy_status": "unratified",
+            "promotion_eligible": False,
+        }
+        for track, cells in TRACKS.items()
+    }
+
+
 def _base_report(
     *,
     manifest_path: Path,
@@ -1000,6 +1060,11 @@ def _base_report(
                     "fresh-inner-import-parser-handler-through-ready-callback-"
                     "fixed-queries-and-normal-cleanup-return"
                 ),
+                "runtime-cold-query-only": (
+                    "fresh-inner-import-parser-direct-or-retained-portable-"
+                    "artifact-handler-through-ready-callback-fixed-queries-and-"
+                    "normal-cleanup-return"
+                ),
             },
             "process_wall_boundary": (
                 "full-inner-subprocess-lifecycle-including-post-timing-parity"
@@ -1008,11 +1073,9 @@ def _base_report(
             "cold_definitions": {
                 "compiler-cold": "empty-codenib-cache",
                 "runtime-cold": "fresh-process-and-context",
+                "runtime-cold-query-only": "fresh-process-and-context",
             },
-            "runtime_authority_contract": {
-                "legacy": "authenticated-live-source-content-bytes",
-                "candidate": "retained-query-only-source-disabled",
-            },
+            "cell_authority_contracts": _json_snapshot(CELL_AUTHORITY_CONTRACTS),
         },
         "benchmark_receipts": {
             "before": None,
@@ -1022,6 +1085,7 @@ def _base_report(
         "subjects": {},
         "media": {},
         "cells": {},
+        "tracks": _empty_tracks(),
         "process_isolation": {
             "expected_samples": 0,
             "observed_samples": 0,
@@ -1108,6 +1172,9 @@ def _protocol(
         "iterations_per_arm": DEFAULT_ITERATIONS,
         "warmups_per_arm": DEFAULT_WARMUPS,
         "cells": list(CELLS),
+        "tracks": {track: list(cells) for track, cells in TRACKS.items()},
+        "cell_authority_contracts": _json_snapshot(CELL_AUTHORITY_CONTRACTS),
+        "canonical_sample_count": CANONICAL_SAMPLE_COUNT,
         "view_set_ids": [VIEW_SET_ID],
         "payload_classes": list(PAYLOAD_CLASSES),
         "minimum_media_classes": 2,
@@ -1116,10 +1183,6 @@ def _protocol(
         "paired_arm_order": "alternating-ab-ba",
         "peak_rss_source": CANONICAL_PEAK_RSS_SOURCE,
         "io_source": CANONICAL_IO_SOURCE,
-        "runtime_authority_contract": {
-            "legacy": "authenticated-live-source-content-bytes",
-            "candidate": "retained-query-only-source-disabled",
-        },
         "fixed_manifest_sha256": _CANONICAL_MANIFEST_SHA256,
         "fixed_manifest_size": _CANONICAL_MANIFEST_SIZE,
         "subject_receipts": fixed_subject_receipts,
@@ -1136,6 +1199,16 @@ def _protocol(
         "iterations_per_arm": iterations,
         "warmups_per_arm": warmups,
         "cells": list(manifest["cells"]),
+        "tracks": {track: list(cells) for track, cells in TRACKS.items()},
+        "cell_authority_contracts": _json_snapshot(CELL_AUTHORITY_CONTRACTS),
+        "canonical_sample_count": (
+            len(manifest["subjects"])
+            * len(media)
+            * len(manifest["view_sets"])
+            * len(manifest["cells"])
+            * (iterations + warmups)
+            * len(ARMS)
+        ),
         "view_set_ids": [item["id"] for item in manifest["view_sets"]],
         "payload_classes": [item["payload_class"] for item in manifest["subjects"]],
         "minimum_media_classes": min(len(distinct_media), 2),
@@ -1146,10 +1219,6 @@ def _protocol(
         "paired_arm_order": "alternating-ab-ba",
         "peak_rss_source": _peak_rss_source(),
         "io_source": _io_source(),
-        "runtime_authority_contract": {
-            "legacy": "authenticated-live-source-content-bytes",
-            "candidate": "retained-query-only-source-disabled",
-        },
         "fixed_manifest_sha256": manifest_receipt["sha256"],
         "fixed_manifest_size": manifest_receipt["size"],
         "subject_receipts": subject_receipts,
@@ -1249,6 +1318,56 @@ def _validate_query_identity(
     return {"sha256": digest, "count": count, "nonempty": True}
 
 
+def _portable_artifact_identity(subject: Mapping[str, Any]) -> dict[str, Any]:
+    from codenib.artifacts.context import CONTEXT_ARTIFACT_SCHEMA
+
+    return {
+        "verified": True,
+        "schema": CONTEXT_ARTIFACT_SCHEMA,
+        "repository": subject["repository_key"],
+        "commit": subject["revision"],
+        "views": ["bm25"],
+    }
+
+
+def _expected_authority_identity(request: Mapping[str, Any]) -> dict[str, Any]:
+    cell = request["cell"]
+    arm = request["arm"]
+    if cell in {"compiler-cold", "compiler-current"}:
+        return {
+            "context_kind": "compiler-portable-plan",
+            "artifact": None,
+            "source_verified": None,
+            "source_verification_scope": None,
+        }
+    if cell == "runtime-cold" and arm == "legacy":
+        return {
+            "context_kind": "manifest-live-source",
+            "artifact": None,
+            "source_verified": True,
+            "source_verification_scope": "content-bytes",
+        }
+    return {
+        "context_kind": "portable-artifact-query-only",
+        "artifact": _portable_artifact_identity(request["subject"]),
+        "source_verified": False,
+        "source_verification_scope": None,
+    }
+
+
+def _validate_authority_identity(
+    value: object,
+    *,
+    request: Mapping[str, Any],
+    label: str,
+) -> dict[str, Any]:
+    identity = _require_exact_dict(value, _AUTHORITY_IDENTITY_FIELDS, label=label)
+    expected = _expected_authority_identity(request)
+    if identity != expected:
+        raise RuntimeError(f"{label} differs from its exact per-cell contract")
+    return _json_snapshot(expected)
+
+
 def _validate_snapshot(
     value: object,
     *,
@@ -1274,6 +1393,7 @@ def _validate_snapshot(
         "compiler-cold": True,
         "compiler-current": False,
         "runtime-cold": None,
+        "runtime-cold-query-only": None,
     }[cell]
     if snapshot["changed"] is not expected_changed:
         raise RuntimeError("candidate sample changed flag violates its cell contract")
@@ -1334,6 +1454,11 @@ def _validate_sample_receipt(
     queries = _validate_query_identity(
         result["queries"], subject=subject, label="sample query identity"
     )
+    authority = _validate_authority_identity(
+        result["authority"],
+        request=request,
+        label="sample authority identity",
+    )
     retained_view = result["retained_view"]
     if retained_view is not None:
         retained_view = _validate_view_identity(
@@ -1363,6 +1488,7 @@ def _validate_sample_receipt(
             "metadata_sha256": view["metadata_sha256"],
         },
         "queries": queries,
+        "authority": authority,
     }
     if parity != expected_parity:
         raise RuntimeError("sample parity projection differs from its result")
@@ -1394,6 +1520,7 @@ def _validate_sample_receipt(
             "retained_view": retained_view,
             "queries": queries,
             "snapshot": snapshot,
+            "authority": authority,
         },
         "safety": dict(safety),
     }
@@ -1553,6 +1680,123 @@ def _run_cell(
             "promotion_eligible": False,
         },
     }
+
+
+def _cell_measurement_complete(
+    cell: object,
+    *,
+    iterations: int,
+    warmups: int,
+) -> bool:
+    if type(cell) is not dict:
+        return False
+    runs = cell.get("runs")
+    if type(runs) is not dict or set(runs) != {"warmups", "measured"}:
+        return False
+    for phase_name, expected_rounds in (
+        ("warmups", warmups),
+        ("measured", iterations),
+    ):
+        rounds = runs[phase_name]
+        if type(rounds) is not list or len(rounds) != expected_rounds:
+            return False
+        for round_index, pair in enumerate(rounds):
+            if type(pair) is not dict:
+                return False
+            order = list(paired_arm_order(round_index))
+            samples = pair.get("samples")
+            if (
+                pair.get("round_index") != round_index
+                or pair.get("arm_order") != order
+                or type(pair.get("parity")) is not bool
+                or type(samples) is not list
+                or len(samples) != len(ARMS)
+                or [sample.get("arm") for sample in samples] != order
+            ):
+                return False
+    summary = cell.get("summary")
+    if type(summary) is not dict or set(summary) != set(ARMS):
+        return False
+    for arm in ARMS:
+        metrics = summary[arm]
+        if type(metrics) is not dict or set(metrics) != _METRIC_FIELDS:
+            return False
+        for metric in _METRIC_FIELDS:
+            aggregate = metrics[metric]
+            if type(aggregate) is not dict or aggregate.get("samples") != iterations:
+                return False
+    return True
+
+
+def _aggregate_tracks(
+    cells: Mapping[str, Mapping[str, Any]],
+    *,
+    expected_instances_per_cell: int,
+    iterations: int,
+    warmups: int,
+) -> dict[str, dict[str, Any]]:
+    """Reduce exact cell instances into independent report-only tracks."""
+
+    expected_instances = _positive_int(
+        expected_instances_per_cell,
+        label="expected instances per cell",
+    )
+    measured_iterations = _positive_int(iterations, label="iterations")
+    measured_warmups = _nonnegative_int(warmups, label="warmups")
+    if not isinstance(cells, Mapping):
+        raise TypeError("cells must be a mapping")
+    by_cell: dict[str, list[Mapping[str, Any]]] = {cell: [] for cell in CELLS}
+    unknown = False
+    for value in cells.values():
+        if not isinstance(value, Mapping) or value.get("cell") not in by_cell:
+            unknown = True
+            continue
+        by_cell[str(value["cell"])].append(value)
+
+    tracks: dict[str, dict[str, Any]] = {}
+    for track, track_cells in TRACKS.items():
+        instances = [item for cell in track_cells for item in by_cell[cell]]
+        expected_count = expected_instances * len(track_cells)
+        identities = {
+            (
+                item.get("subject_id"),
+                item.get("media_id"),
+                item.get("view_set_id"),
+                item.get("cell"),
+            )
+            for item in instances
+        }
+        measurement_complete = (
+            not unknown
+            and len(instances) == expected_count
+            and len(identities) == expected_count
+            and all(
+                _cell_measurement_complete(
+                    item,
+                    iterations=measured_iterations,
+                    warmups=measured_warmups,
+                )
+                for item in instances
+            )
+        )
+        parity_passed = measurement_complete and all(
+            type(item.get("parity")) is dict and item["parity"].get("passed") is True
+            for item in instances
+        )
+        safety_passed = measurement_complete and all(
+            type(item.get("safety")) is dict and item["safety"].get("passed") is True
+            for item in instances
+        )
+        tracks[track] = {
+            "cells": list(track_cells),
+            "measurement_complete": measurement_complete,
+            "parity_passed": parity_passed,
+            "safety_passed": safety_passed,
+            "passed": measurement_complete and parity_passed and safety_passed,
+            "policy_status": "unratified",
+            "promotion_eligible": False,
+        }
+    return tracks
 
 
 def _duplicate_process_ids(process_ids: Sequence[int]) -> list[int]:
@@ -1749,6 +1993,16 @@ def profile_retained_storage_gate(
         "duplicate_process_ids": duplicates,
         "passed": isolation_passed,
     }
+    report["tracks"] = _aggregate_tracks(
+        report["cells"],
+        expected_instances_per_cell=(
+            len(manifest["subjects"])
+            * len(normalized_media_roots)
+            * len(manifest["view_sets"])
+        ),
+        iterations=iterations,
+        warmups=warmups,
+    )
     if measurement_failure is not None:
         if postflight_error is not None:
             measurement_failure["failure"][
@@ -1757,26 +2011,58 @@ def profile_retained_storage_gate(
         return measurement_failure
     if postflight_error is not None:
         return _failure(report, "postflight", postflight_error)
-
-    cells_passed = bool(report["cells"]) and all(
-        cell["passed"] for cell in report["cells"].values()
-    )
-    if not (cells_passed and isolation_passed):
-        failed_gates = []
-        if not cells_passed:
-            failed_gates.append("cell parity or safety")
-        if not isolation_passed:
-            failed_gates.append("global inner-process isolation")
+    if not isolation_passed:
         return _failure(
             report,
-            "postflight",
-            RuntimeError("gate failed: " + ", ".join(failed_gates)),
+            "isolation",
+            RuntimeError("global inner-process isolation failed"),
+        )
+    incomplete_tracks = [
+        track
+        for track, aggregate in report["tracks"].items()
+        if aggregate["measurement_complete"] is not True
+    ]
+    if incomplete_tracks:
+        return _failure(
+            report,
+            "measurement",
+            RuntimeError(
+                "track measurement incomplete: " + ", ".join(incomplete_tracks)
+            ),
+        )
+    unsafe_tracks = [
+        track
+        for track, aggregate in report["tracks"].items()
+        if aggregate["safety_passed"] is not True
+    ]
+    if unsafe_tracks:
+        return _failure(
+            report,
+            "safety",
+            RuntimeError("track safety failed: " + ", ".join(unsafe_tracks)),
+        )
+    if report["protocol"]["canonical"] is not True:
+        return _failure(
+            report,
+            "protocol",
+            RuntimeError("measurement protocol is not canonical v2"),
         )
 
-    report["status"] = "passed"
-    report["passed"] = True
+    tracks_passed = all(
+        aggregate["passed"] is True for aggregate in report["tracks"].values()
+    )
+    report["status"] = "complete"
+    report["passed"] = tracks_passed
     report["promotion_eligible"] = False
     report["failure"] = None
+    if not tracks_passed:
+        report["decision"] = {
+            "policy_status": "unratified",
+            "report_only": True,
+            "promotion_eligible": False,
+            "recommendation": "retain-explicit-routes",
+            "reason": "one or more compatibility tracks are parity red",
+        }
     return report
 
 
@@ -1990,6 +2276,7 @@ def _sample_paths(sample_root: Path, run_id: str) -> dict[str, str]:
         "catalog": os.fspath(sample_root / "catalog.sqlite"),
         "cas_root": os.fspath(sample_root / "cas"),
         "workspace_root": os.fspath(sample_root / "workspace"),
+        "direct_artifact": os.fspath(sample_root / f"direct-artifact-{run_id}"),
         "runtime_output": os.fspath(sample_root / "workspace" / f"runtime-{run_id}"),
         "materialized_output": os.fspath(
             sample_root / "workspace" / f"materialized-{run_id}"
@@ -2159,8 +2446,22 @@ def _prepare_sample(request: Mapping[str, Any], paths: Mapping[str, str]) -> Non
         _provision_storage(paths)
     if cell == "compiler-current":
         _invoke_cli(_index_arguments(request, paths, candidate=arm == "candidate"))
-    elif cell == "runtime-cold":
+    elif cell in {"runtime-cold", "runtime-cold-query-only"}:
         _invoke_cli(_index_arguments(request, paths, candidate=arm == "candidate"))
+        if cell == "runtime-cold-query-only" and arm == "legacy":
+            _invoke_cli(
+                (
+                    "artifact",
+                    "pack",
+                    request["subject_root"],
+                    "--output",
+                    paths["direct_artifact"],
+                    "--repository",
+                    request["subject"]["repository_key"],
+                    "--view",
+                    "bm25",
+                )
+            )
 
 
 def _cleanup_sample_root(sample_root: Path, media_root: Path, run_id: str) -> None:
@@ -2527,6 +2828,7 @@ def _query_identity(context: Any, subject: Mapping[str, Any]) -> dict[str, Any]:
 def _route_result_from_manifest(
     manifest_path: Path,
     *,
+    request: Mapping[str, Any],
     subject: Mapping[str, Any],
     manifest_identity: Mapping[str, Any],
     view_identity: Mapping[str, Any],
@@ -2557,6 +2859,7 @@ def _route_result_from_manifest(
         "retained_view": None,
         "queries": queries,
         "snapshot": {field: None for field in _SNAPSHOT_FIELDS},
+        "authority": _expected_authority_identity(request),
     }
     return result, closed
 
@@ -2576,7 +2879,7 @@ def _validate_runtime_context_state(
     value: object,
     *,
     request: Mapping[str, Any],
-) -> None:
+) -> dict[str, Any]:
     fields = frozenset(
         {
             "loaded_views",
@@ -2594,30 +2897,21 @@ def _validate_runtime_context_state(
         or state["vector_loaded"] is not False
     ):
         raise RuntimeError("MCP route is not an exact clean BM25 context")
-    if request["arm"] == "legacy":
-        if (
-            state["artifact"] is not None
-            or state["source_verified"] is not True
-            or state["source_verification_scope"] != "content-bytes"
-        ):
-            raise RuntimeError("legacy MCP source-authority contract changed")
-        return
-    if (
-        state["source_verified"] is not False
-        or state["source_verification_scope"] is not None
-    ):
-        raise RuntimeError("candidate MCP route did not remain source-disabled")
-    from codenib.artifacts.context import CONTEXT_ARTIFACT_SCHEMA
-
-    expected_artifact = {
-        "verified": True,
-        "schema": CONTEXT_ARTIFACT_SCHEMA,
-        "repository": request["subject"]["repository_key"],
-        "commit": request["subject"]["revision"],
-        "views": ["bm25"],
+    observed = {
+        "context_kind": (
+            "manifest-live-source"
+            if state["artifact"] is None
+            else "portable-artifact-query-only"
+        ),
+        "artifact": state["artifact"],
+        "source_verified": state["source_verified"],
+        "source_verification_scope": state["source_verification_scope"],
     }
-    if state["artifact"] != expected_artifact:
-        raise RuntimeError("candidate MCP route artifact binding changed")
+    return _validate_authority_identity(
+        observed,
+        request=request,
+        label="runtime context authority",
+    )
 
 
 def _read_proc_io() -> tuple[int, int]:
@@ -2694,6 +2988,14 @@ def _runtime_arguments(
     if request["arm"] == "legacy":
         if generation is not None:
             raise RuntimeError("legacy runtime route must not receive a retained ref")
+        if request["cell"] == "runtime-cold-query-only":
+            return [
+                "mcp",
+                "--artifact",
+                paths["direct_artifact"],
+                "--repository",
+                request["subject"]["repository_key"],
+            ]
         return ["mcp", os.fspath(_cache_manifest_path(Path(request["subject_root"])))]
     if generation is None:
         raise RuntimeError("candidate runtime route requires a retained ref")
@@ -2735,6 +3037,7 @@ def _validate_route_config(value: object) -> tuple[dict[str, Any], dict[str, str
             "catalog",
             "cas_root",
             "workspace_root",
+            "direct_artifact",
             "runtime_output",
             "materialized_output",
         }
@@ -2795,6 +3098,7 @@ def _route_worker(value: object) -> dict[str, Any]:
             )
             route_result, context_closed = _route_result_from_manifest(
                 _cache_manifest_path(Path(request["subject_root"])),
+                request=request,
                 subject=request["subject"],
                 manifest_identity=canonical_manifest,
                 view_identity=canonical_view,
@@ -2806,6 +3110,9 @@ def _route_worker(value: object) -> dict[str, Any]:
             if request["arm"] == "candidate":
                 runtime_manifest = Path(paths["runtime_output"]) / MANIFEST_FILENAME
                 expected_generation = 1
+            elif request["cell"] == "runtime-cold-query-only":
+                runtime_manifest = Path(paths["direct_artifact"]) / MANIFEST_FILENAME
+                expected_generation = None
             else:
                 runtime_manifest = _cache_manifest_path(Path(request["subject_root"]))
                 expected_generation = None
@@ -2851,12 +3158,18 @@ def _route_worker(value: object) -> dict[str, Any]:
                 or type(query_payload) is not list
             ):
                 raise RuntimeError("MCP benchmark callback did not observe a context")
-            _validate_runtime_context_state(context_state, request=request)
+            authority = _validate_runtime_context_state(
+                context_state,
+                request=request,
+            )
             canonical_manifest, canonical_view = _canonical_cache_identity(
                 request,
                 paths,
             )
-            if request["arm"] == "candidate":
+            if (
+                request["arm"] == "candidate"
+                or request["cell"] == "runtime-cold-query-only"
+            ):
                 actual_manifest, actual_view, manifest = _manifest_view_identity(
                     runtime_manifest,
                     subject=request["subject"],
@@ -2888,6 +3201,7 @@ def _route_worker(value: object) -> dict[str, Any]:
                     subject=request["subject"],
                 ),
                 "snapshot": {field: None for field in _SNAPSHOT_FIELDS},
+                "authority": authority,
             }
             if request["arm"] == "candidate":
                 route_result["retained_view"] = actual_view
@@ -3077,6 +3391,7 @@ def _sample_worker(value: object) -> dict[str, Any]:
                     "metadata_sha256": view["metadata_sha256"],
                 },
                 "queries": dict(result["queries"]),
+                "authority": _json_snapshot(result["authority"]),
             }
             receipt = {
                 "schema_version": REPORT_SCHEMA_VERSION,
@@ -3393,7 +3708,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except Exception as exc:
         _emit_cli_error(exc)
         return 2
-    return 0 if report["passed"] is True else 1
+    return 0 if report["status"] == "complete" else 1
 
 
 if __name__ == "__main__":
