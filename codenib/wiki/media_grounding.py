@@ -312,7 +312,7 @@ def _score_with_optional_scorer(
     )
     if not isinstance(raw, Mapping):
         return None
-    score = _confidence(raw.get("score"))
+    score = _positive_score(raw.get("score"))
     if score <= 0:
         return None
     return VisualCodeBinding(
@@ -456,6 +456,18 @@ def _confidence(value: Any) -> float:
     if not math.isfinite(confidence):
         return 0.0
     return min(1.0, max(0.0, confidence))
+
+
+def _positive_score(value: Any) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(score) or score <= 0:
+        return 0.0
+    return score
 
 
 def _sha256_json(payload: Mapping[str, Any]) -> str:

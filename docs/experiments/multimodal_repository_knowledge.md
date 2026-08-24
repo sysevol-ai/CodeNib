@@ -66,7 +66,8 @@ registry. Later versions can replace the scorer with BM25, embeddings,
 CodeGraph, LSP facts, or `FactQueryIndex` /
 `FactBatch`. The `ground_visual_facts_to_sources(..., scorer=...)` hook already
 accepts a custom scorer, so graph/fact-backed ranking can be added without
-changing the binding manifest schema.
+changing the binding manifest schema. Custom scorers return a positive, finite
+relevance score; values are not clipped, so backend ranking order is preserved.
 
 ### MultimodalKnowledgeView
 

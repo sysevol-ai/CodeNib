@@ -362,3 +362,42 @@ def test_grounding_rejects_invalid_or_nonfinite_custom_scores():
     )
 
     assert manifest["binding_count"] == 0
+
+
+def test_custom_scorer_preserves_ranking_above_one():
+    visual_facts = {
+        "manifest_sha256": "visual-facts-hash",
+        "facts": [
+            {
+                "artifact_path": "docs/architecture.svg",
+                "entities": [{"name": "DiagramBox"}],
+            }
+        ],
+    }
+    candidates = [
+        {
+            "path": "src/a_low.py",
+            "symbol": "LowRank",
+            "kind": "symbol",
+            "line": 1,
+        },
+        {
+            "path": "src/z_high.py",
+            "symbol": "HighRank",
+            "kind": "symbol",
+            "line": 2,
+        },
+    ]
+
+    def scorer(entity, candidate):
+        return {"score": 8.0 if candidate["symbol"] == "HighRank" else 2.0}
+
+    manifest = ground_visual_facts_to_sources(
+        visual_facts,
+        candidates,
+        max_bindings_per_entity=1,
+        scorer=scorer,
+    )
+
+    assert manifest["bindings"][0]["symbol"] == "HighRank"
+    assert manifest["bindings"][0]["score"] == 8.0
