@@ -679,34 +679,48 @@ generation, and creates the query binding through the publication receipt's
 synchronous authenticated reader rather than reopening an unbound path. The
 complete `ServerContext` is installed in a caller-precreated, PID-bound,
 one-shot runtime owner while that reader is active. Catalog, CAS, and retained
-path authorities close before stdio serving begins; the workspace receipt stays
-active for the entire `mcp.run` lifetime. Shutdown first detaches the global
-context, then closes the runtime context and only then releases the receipt.
-Receipt closure does not delete the materialized output.
+path authorities close before stdio serving begins; the workspace receipt and
+any selected repository-source binding stay active for the entire `mcp.run`
+lifetime. Shutdown first detaches the global context, then closes the runtime
+context, source authority, and receipt in that order. A forked child revokes
+source before receipt without entering an inherited context lock. Receipt
+closure does not delete the materialized output.
 
-This startup is query-only and source-disabled. A selected BM25 view loads from
-persisted canonical documents; a selected portable vector remains FAISS-parser
-inert and reports its existing authorization error, so the current cold-start
-route requires BM25 and does not advertise a vector-only runtime. It never
-mints native vector authorization from cache-ingress hashes. The selected
-receipt fixes one local generation but is not a catalog snapshot lease or CAS
-GC pin. The route does not poll or re-resolve a ref, replace a live context,
-hold storage connections while serving, provision storage, delete output, or
-add request-level pins. Those replacement and in-flight lifetime contracts
-remain M3 work, while durable retention and reclamation remain M5 work.
+Without `--repo`, this startup remains query-only and source-disabled. With an
+explicit `--repo <checkout>`, the CLI pins the checkout's lexical anchor, every
+ancestor, and root before provider or storage work. It rejects lexical,
+same-object, ancestry, and Linux mapped-physical overlap with the catalog, CAS,
+workspace, or output. Source capture then opens its independent retained read
+authority while the artifact publication reader is active and proves that the
+new anchor-to-root chain is the same still-live chain as the preflight pin
+before scanning. The preflight pin closes before serving; the independently
+captured source authority supplies authenticated BM25 content and `read_source`
+for the server lifetime.
 
-A preparatory library seam can now bind an exact checkout without reopening the
-materialized artifact path. `bind_context_artifact_reader` captures and verifies
+A selected BM25 view loads from persisted canonical documents. A selected
+portable vector remains FAISS-parser inert and reports its existing
+authorization error, and a source-bound portable context still does not gain
+native LSP authorization or commit attestation. The route therefore requires
+BM25 and does not advertise a vector-only runtime or full ordinary-manifest
+equivalence. It never mints native vector authorization from cache-ingress
+hashes. The selected receipt fixes one local generation but is not a catalog
+snapshot lease or CAS GC pin. The route does not poll or re-resolve a ref,
+replace a live context, hold storage connections while serving, provision
+storage, delete output, or add request-level pins. Those replacement and
+in-flight lifetime contracts remain M3 work, while durable retention and
+reclamation remain M5 work.
+
+The reader-native source seam is now exposed by the explicit retained
+`codenib mcp --repo` route. `bind_context_artifact_reader` captures and verifies
 source fingerprint v2 while the publication receipt's authenticated reader is
-active, and the retained ref/snapshot loaders accept an optional `repo_path`
-for callers that already own the surrounding topology. The one-shot runtime
-owner retains source authority across cancellation, closes context, source, and
-receipt in that order in the parent, and revokes source before receipt in a
-forked child without taking an inherited context lock. Portable vector payloads
-remain native-parser inert. This is not yet exposed by `codenib mcp`: the CLI
-still rejects retained storage combined with `--repo`, and the production
-source-versus-storage topology gate and route-level compatibility evidence are
-still missing. The explicit command above therefore remains source-disabled.
+active, and the retained ref/snapshot loaders accept the live preflight root
+authority in addition to its lexical path. The one-shot runtime owner retains
+source authority across cancellation, closes context, source, and receipt in
+that order in the parent, and revokes source before receipt in a forked child
+without taking an inherited context lock. Portable vector payloads remain
+native-parser inert. Route-level source-bound benchmark evidence and any
+decision about full ordinary-manifest compatibility are still missing; this
+explicit route does not change a default.
 
 The standalone materialization command and retained MCP cold start do not
 initialize or populate the control plane, import a legacy cache, build views,
@@ -726,7 +740,7 @@ that collecting a fast result cannot silently approve a production route:
 | A1 | Run the fixed, report-only retained storage harness and preserve each route's complete public and authority parity. | Implemented as a four-cell v2 evidence protocol; it cannot promote a route. |
 | A2 compiler | Record canonical compiler receipts for the approved subject/media matrix and ratify numeric compiler policy from measured results. | Pending real measurements. |
 | A2 query-only runtime | Record canonical direct-artifact versus retained receipts and ratify numeric query-only runtime policy. | Pending real measurements. |
-| A2 manifest compatibility | Preserve ordinary manifest MCP public behavior and authority when selecting retained storage. | Reader-native source binding is implemented at the library boundary; explicit CLI topology, end-to-end routing, and compatibility evidence remain pending. |
+| A2 manifest compatibility | Preserve ordinary manifest MCP public behavior and authority when selecting retained storage. | The explicit source-bound CLI route and lifecycle are implemented; source-bound benchmark evidence is pending, and portable provenance/native-LSP differences still keep full manifest replacement blocked. |
 | B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
 | B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | C | Supply the `provider-bound-exact` strict BM25 native provider. | Independent work, but required before M1 closes. |

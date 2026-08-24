@@ -286,6 +286,7 @@ codenib mcp \
   --catalog /var/lib/codenib/catalog.sqlite3 \
   --cas-root /var/lib/codenib/cas \
   --workspace-root /var/lib/codenib/workspaces \
+  --repo /srv/checkouts/repository \
   --repository owner/repository \
   --ref main \
   --expected-generation 7 \
@@ -295,10 +296,12 @@ codenib mcp \
 Omit `--ref` to resolve `main` once at startup, or use `--snapshot
 <snapshot-id>`. `--expected-generation` is ref-only. These storage arguments
 form one all-or-none mode and cannot be combined with a positional manifest,
-`--artifact`, or `--repo`. The catalog must already be initialized, the strict
-CAS preprovisioned, the workspace private and exact `0700`, and the output
-missing under that workspace; this command does not provision or replace any
-of them.
+or `--artifact`. `--repo` is optional: when supplied it must name one existing
+real checkout whose lexical hierarchy is free of links and physically disjoint
+from the catalog, CAS, workspace, and output. The catalog must already be
+initialized, the strict CAS preprovisioned, the workspace private and exact
+`0700`, and the output missing under that workspace; this command does not
+provision or replace any of them.
 
 During startup CodeNib materializes the selected immutable generation, builds
 the query binding through the active publication receipt's authenticated
@@ -310,25 +313,35 @@ the runtime context, and only after that releases the receipt. The materialized
 output persists after normal shutdown and after receipt cleanup; a failure
 after publication warns about the existing path rather than deleting it.
 
-This is a source-disabled, query-only cold start. It currently requires a BM25
-view, which loads from canonical persisted documents. A selected portable
-vector remains native-parser inert and reports its authorization error; the
-route never treats cache hashes as permission to parse FAISS, and vector-only
-snapshots are rejected for this runtime. The ref is not polled or re-resolved,
-the receipt is not a catalog/CAS GC pin, and no live context replacement occurs.
-Those in-flight request pins and atomic swaps remain M3 work; durable evidence
-retention and reclamation remain M5 work.
+Omit `--repo` for the existing source-disabled, query-only cold start. With
+`--repo`, CodeNib pins the checkout's lexical anchor, every ancestor, and root
+before provider or storage work, then requires the source capture opened inside
+the artifact-reader callback to match that same live object chain. The CLI
+rejects lexical, object-identity, ancestry, bind-mount, and mapped-physical
+source/storage aliases. The preflight pin closes before `mcp.run`; the
+independent authenticated source binding remains active through serving and
+enables BM25 result content plus `read_source` with verification scope
+`content-bytes`.
 
-The library also provides a preparatory source-bound seam for future manifest
-compatibility. `bind_context_artifact_reader` captures a source-fingerprint-v2
-checkout inside the active publication-reader callback, and the retained
-ref/snapshot loaders accept an optional `repo_path`. Their one-shot owner keeps
+Both forms require a BM25 view, which loads from canonical persisted documents.
+A selected portable vector remains native-parser inert and reports its
+authorization error; adding source does not authorize native LSP state, attest
+the mutable Git commit, or make the portable context fully equivalent to an
+ordinary manifest startup. The route never treats cache hashes as permission to
+parse FAISS, and vector-only snapshots are rejected for this runtime. The ref
+is not polled or re-resolved, the receipt is not a catalog/CAS GC pin, and no
+live context replacement occurs. Those in-flight request pins and atomic swaps
+remain M3 work; durable evidence retention and reclamation remain M5 work.
+
+The source-bound route uses `bind_context_artifact_reader` inside the active
+publication-reader callback and passes a separately owned preflight root
+authority through the retained ref/snapshot loader. Their one-shot owner keeps
 the captured source reachable through cancellation, closes context, source,
 then publication receipt in the parent, and revokes source before receipt in a
-forked child without acquiring the copied context lock. This does not change
-the command above: retained `codenib mcp` still cannot be combined with
-`--repo`. A later slice must add the source/storage topology gate, CLI wiring,
-and compatibility E2E before the manifest runtime track can advance.
+forked child without acquiring the copied context lock. The explicit CLI route
+and compatibility E2E establish this lifecycle, but a separate benchmark
+protocol update and canonical source-bound receipts are still required before
+the manifest runtime track can advance.
 
 These retained-read routes and the explicit BM25/vector ingress above do not
 complete the hybrid-storage M1 milestone. Benchmark-backed promotion of the
