@@ -135,8 +135,14 @@ commands or speculative model serving.
 
 ### S2: One repository runtime
 
-Status: pending.
+Status: in progress.
 
+- [x] Make Web graph eligibility use canonical `RepoManifest` freshness and
+      remove its weaker local implementation and the unusable legacy vector
+      sidecar discovery path.
+- Define the supported `RepositoryContextExplorer` context protocol, migrate
+  duck-typed consumers to canonical manifests, and only then remove its
+  status-only freshness compatibility fallback.
 - Extract one neutral manifest/source/view loader from MCP `ServerContext`, Web
   `RepoRegistry`, and `compiler.skill_context`.
 - Make MCP, Web, Wiki, and `RepositoryContextExplorer` adapters over that
@@ -187,6 +193,7 @@ Status: pending.
 | 2026-08-24 | Begin the cognitive-debt program with pure subtraction | This baseline and the SCIP acceleration receipts | First subtraction iteration opened |
 | 2026-08-24 | Treat failed Python chunk acceleration candidates as closed experiments | Exact revisions, parity, timings, RSS, and gate decisions remain in `scip_multilanguage_roadmap.md` | Remove POC/gate code, ABIs, commands, tests, and active instructions |
 | 2026-08-24 | Retire three unowned retrieval evaluation scripts | RFC #133 remains closed and canonical retrieval metrics remain covered in `codenib.eval.retrieval_eval` | Remove the transitional comparator, manual smoke, and duplicate metric recomputation |
+| 2026-08-24 | Start runtime convergence at manifest freshness | `RepoManifest.index_is_current` already owns commit, fingerprint, and source-selection identity; authenticated graph loading requires a `symbol_graph` entry | Delete the weaker Web-only freshness rule and the unusable vector-sidecar discovery path; add rejection regressions |
 
 ## Completion Gate
 

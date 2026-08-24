@@ -222,8 +222,8 @@ class RepoBundle:
 
     def info(self) -> RepoInfo:
         capabilities = dict(self.manifest.capabilities)
-        # The prebuilt indexes ship a symbol graph that the manifest doesn't
-        # declare; surface a "codemap" capability so the UI can offer the mode.
+        # Advertise codemap only when the manifest declares a current, readable
+        # symbol graph that this runtime can decode.
         graph_path = self._graph_path()
         graph_load_failed = getattr(self, "_code_graph_loaded", False) and (
             getattr(self, "_code_graph", None) is None
@@ -293,50 +293,26 @@ class RepoBundle:
         )
 
     def _graph_path(self) -> Optional[str]:
-        """Locate this repo's prebuilt symbol-graph pickle, if any.
-
-        The manifest only declares bm25/vector, but the prebuilt tree ships a
-        ``graph.pkl`` alongside the vector store (and, when present, via a
-        ``symbol_graph`` entry), so probe the legacy vector location only when
-        there is no explicit graph entry. Result is cached.
-        """
+        """Locate the current manifest-bound symbol-graph pickle, if any."""
         cached = getattr(self, "_graph_path_cache", "?")
         if cached != "?":
             return cached
-        candidates: List[str] = []
-        sg = self.manifest.indexes.get("symbol_graph")
-        if sg is not None:
-            if self._view_is_current(sg) and getattr(sg, "path", None):
-                candidates.append(
-                    sg.path
-                    if sg.path.endswith(".pkl")
-                    else os.path.join(sg.path, "graph.pkl")
-                )
-        else:
-            vec = self.manifest.indexes.get("vector")
-            if (
-                vec is not None
-                and self._view_is_current(vec)
-                and getattr(vec, "path", None)
-            ):
-                candidates.append(os.path.join(vec.path, "graph.pkl"))
-        found = next((p for p in candidates if p and os.path.isfile(p)), None)
+        found = None
+        entry = self.manifest.indexes.get("symbol_graph")
+        if (
+            entry is not None
+            and self.manifest.index_is_current("symbol_graph")
+            and getattr(entry, "path", None)
+        ):
+            candidate = (
+                entry.path
+                if entry.path.endswith(".pkl")
+                else os.path.join(entry.path, "graph.pkl")
+            )
+            if os.path.isfile(candidate):
+                found = candidate
         self._graph_path_cache = found
         return found
-
-    def _view_is_current(self, entry: Any) -> bool:
-        """Whether a persisted view is eligible for the manifest's snapshot."""
-
-        if getattr(entry, "status", None) != "fresh":
-            return False
-        view_commit = str(getattr(entry, "commit", "") or "")
-        manifest_commit = str(getattr(self.manifest, "commit", "") or "")
-        if view_commit and manifest_commit and view_commit != manifest_commit:
-            return False
-        manifest_source = str(getattr(self.manifest, "source_fingerprint", "") or "")
-        if not manifest_source:
-            return True
-        return str(getattr(entry, "source_fingerprint", "") or "") == manifest_source
 
     def _graph_schema_version(self) -> Optional[int]:
         """Return the persisted graph schema using a bounded, safe prefix read."""
@@ -377,7 +353,7 @@ class RepoBundle:
         if path is None:
             return None
         graph_entry = self.manifest.indexes.get("symbol_graph")
-        if graph_entry is None or not self._view_is_current(graph_entry):
+        if graph_entry is None or not self.manifest.index_is_current("symbol_graph"):
             self._code_graph_error = (
                 "symbol graph has no current manifest-bound artifact entry"
             )

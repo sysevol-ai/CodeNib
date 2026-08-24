@@ -67,6 +67,37 @@ def _repo_entry(repo, manifest_path, *, instance_id="owner__repo-1"):
     )
 
 
+def _legacy_view_manifest(
+    index_type,
+    path,
+    *,
+    status="fresh",
+    view_commit="",
+    manifest_commit="",
+    source_fingerprint="",
+    config=None,
+    metadata=None,
+):
+    entry = IndexEntry(
+        index_type=index_type,
+        path=path,
+        built_at="2026-08-24T00:00:00Z",
+        built_at_epoch=0.0,
+        status=status,
+        config=dict(config or {}),
+        metadata=dict(metadata or {}),
+        commit=view_commit,
+        source_fingerprint=source_fingerprint,
+    )
+    return RepoManifest(
+        version="1.1",
+        source_selection=None,
+        commit=manifest_commit,
+        source_fingerprint=source_fingerprint,
+        indexes={index_type: entry},
+    )
+
+
 @pytest.fixture
 def native_authorization(monkeypatch):
     token = object()
@@ -374,22 +405,16 @@ def test_bundle_rejects_graph_paths_outside_authenticated_selection(tmp_path):
     )
     bundle = RepoBundle(
         entry=SimpleNamespace(instance_id="owner__repo-1"),
-        manifest=SimpleNamespace(
-            commit="abc123",
-            source_fingerprint="",
-            indexes={
-                "symbol_graph": SimpleNamespace(
-                    status="fresh",
-                    commit="abc123",
-                    source_fingerprint="",
-                    path=str(graph_dir),
-                    config={
-                        "graph_artifact": {
-                            "relative_path": "graph.pkl",
-                            **regular_file_fingerprint(graph_path),
-                        }
-                    },
-                )
+        manifest=_legacy_view_manifest(
+            "symbol_graph",
+            str(graph_dir),
+            view_commit="abc123",
+            manifest_commit="abc123",
+            config={
+                "graph_artifact": {
+                    "relative_path": "graph.pkl",
+                    **regular_file_fingerprint(graph_path),
+                }
             },
         ),
         source_reader=binding.borrow_reader(),
@@ -568,15 +593,12 @@ def test_bundle_rejects_graphs_outside_the_manifest_snapshot(
     (graph_dir / "graph.pkl").write_bytes(b"stale graph")
     bundle = RepoBundle(
         entry=SimpleNamespace(),
-        manifest=SimpleNamespace(
-            commit="new-commit",
-            indexes={
-                "symbol_graph": SimpleNamespace(
-                    status=status,
-                    commit=view_commit,
-                    path=str(graph_dir),
-                )
-            },
+        manifest=_legacy_view_manifest(
+            "symbol_graph",
+            str(graph_dir),
+            status=status,
+            view_commit=view_commit,
+            manifest_commit="new-commit",
         ),
     )
 
@@ -590,41 +612,69 @@ def test_bundle_accepts_fresh_graph_for_manifest_snapshot(tmp_path):
     graph_path.write_bytes(b"current graph")
     bundle = RepoBundle(
         entry=SimpleNamespace(),
-        manifest=SimpleNamespace(
-            commit="new-commit",
-            indexes={
-                "symbol_graph": SimpleNamespace(
-                    status="fresh",
-                    commit="new-commit",
-                    path=str(graph_dir),
-                )
-            },
+        manifest=_legacy_view_manifest(
+            "symbol_graph",
+            str(graph_dir),
+            view_commit="new-commit",
+            manifest_commit="new-commit",
         ),
     )
 
     assert bundle._graph_path() == str(graph_path)
 
 
-def test_bundle_accepts_legacy_graph_beside_current_vector_view(tmp_path):
+def test_bundle_rejects_graph_from_a_different_source_selection(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "private").mkdir()
+    (repo / "src" / "runtime.py").write_text("def runtime():\n    return 1\n")
+    (repo / "private" / "secret.py").write_text("SECRET = True\n")
+    selection = RepositorySourceSelection(("private",))
+    source = fingerprint_repository(repo, selection=selection)
+
+    graph_dir = tmp_path / "symbol_graph"
+    graph_dir.mkdir()
+    graph_path = graph_dir / "graph.pkl"
+    graph_path.write_bytes(b"graph built for another source selection")
+    entry = IndexEntry(
+        index_type="symbol_graph",
+        path=str(graph_dir),
+        built_at="2026-08-24T00:00:00Z",
+        built_at_epoch=0.0,
+        status="fresh",
+        commit="abc123",
+        source_fingerprint=source.value,
+        source_selection_digest=RepositorySourceSelection().digest,
+    )
+    manifest = RepoManifest(
+        repo_path=str(repo),
+        commit="abc123",
+        source_fingerprint=source.value,
+        source_selection=selection,
+        indexes={"symbol_graph": entry},
+    )
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=manifest)
+
+    assert manifest.index_is_current("symbol_graph") is False
+    assert bundle._graph_path() is None
+
+
+def test_bundle_rejects_legacy_graph_without_a_symbol_graph_entry(tmp_path):
     vector_dir = tmp_path / "vector"
     vector_dir.mkdir()
     graph_path = vector_dir / "graph.pkl"
     graph_path.write_bytes(b"legacy current graph")
     bundle = RepoBundle(
         entry=SimpleNamespace(),
-        manifest=SimpleNamespace(
-            commit="new-commit",
-            indexes={
-                "vector": SimpleNamespace(
-                    status="fresh",
-                    commit="new-commit",
-                    path=str(vector_dir),
-                )
-            },
+        manifest=_legacy_view_manifest(
+            "vector",
+            str(vector_dir),
+            view_commit="new-commit",
+            manifest_commit="new-commit",
         ),
     )
 
-    assert bundle._graph_path() == str(graph_path)
+    assert bundle._graph_path() is None
 
 
 def test_bundle_explains_schema_mismatch_without_advertising_codemap(
@@ -634,6 +684,15 @@ def test_bundle_explains_schema_mismatch_without_advertising_codemap(
     graph_dir.mkdir()
     with (graph_dir / "graph.pkl").open("wb") as handle:
         pickle.dump({"schema_version": 4}, handle)
+    manifest = _legacy_view_manifest(
+        "symbol_graph",
+        str(graph_dir),
+        view_commit="abc123456789",
+        manifest_commit="abc123456789",
+    )
+    manifest.capabilities = {"symbol_navigation": True}
+    manifest.languages = ["python"]
+    manifest.file_count = 1
     bundle = RepoBundle(
         entry=SimpleNamespace(
             instance_id="org__repo",
@@ -644,21 +703,7 @@ def test_bundle_explains_schema_mismatch_without_advertising_codemap(
             problem_statement="",
             repo_dir=str(tmp_path),
         ),
-        manifest=SimpleNamespace(
-            capabilities={"symbol_navigation": True},
-            languages=["python"],
-            file_count=1,
-            source_fingerprint="",
-            indexes={
-                "symbol_graph": SimpleNamespace(
-                    status="fresh",
-                    commit="abc123456789",
-                    path=str(graph_dir),
-                    metadata={},
-                )
-            },
-            commit="abc123456789",
-        ),
+        manifest=manifest,
     )
 
     def reject_old_graph(_path):
