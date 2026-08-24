@@ -277,10 +277,26 @@ def build_visual_facts_manifest(
     return manifest.to_dict()
 
 
-def normalize_visual_fact_pack(value: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize extractor output into the canonical visual fact pack schema."""
+def normalize_visual_fact_pack(
+    value: Mapping[str, Any],
+    *,
+    artifact: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Normalize untrusted extractor output under trusted artifact provenance."""
 
-    return _fact_pack_from_mapping(value).to_dict()
+    artifact_path = _safe_relative_path(artifact.get("path"))
+    if not artifact_path:
+        raise ValueError("visual fact artifact path must be repository-relative")
+    normalized = _fact_pack_from_mapping(
+        value,
+        artifact_path=artifact_path,
+        artifact_sha256=_safe_text(artifact.get("sha256")),
+        role_hint=_safe_text(artifact.get("role_hint") or "repository_image"),
+    )
+    payload = normalized.to_dict()
+    if _json_size(payload) > _MAX_FACT_PACK_BYTES:
+        raise ValueError("visual fact pack exceeds the byte limit")
+    return payload
 
 
 def _artifact_prompt_payload(artifact: Mapping[str, Any]) -> dict[str, Any]:

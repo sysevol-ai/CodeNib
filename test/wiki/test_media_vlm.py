@@ -4,11 +4,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
 
 import codenib.wiki.media_vlm as media_vlm
+from codenib.wiki.media_facts import build_visual_facts_manifest
 from codenib.wiki.media_vlm import OpenAICompatibleVisualFactExtractor
 
 
@@ -31,7 +33,7 @@ def _artifact():
     return {
         "path": "docs/assets/architecture.png",
         "mime_type": "image/png",
-        "sha256": "abc123",
+        "sha256": hashlib.sha256(b"png-bytes").hexdigest(),
         "role_hint": "architecture_diagram",
         "caption": "IndexCompiler architecture",
         "surrounding_text": "IndexCompiler writes to VectorStore.",
@@ -52,6 +54,9 @@ def test_openai_compatible_visual_fact_extractor_posts_image_and_normalizes(tmp_
                         "message": {
                             "content": json.dumps(
                                 {
+                                    "artifact_path": "../../forged.png",
+                                    "artifact_sha256": "forged",
+                                    "role_hint": "forged",
                                     "entities": [
                                         {
                                             "name": "IndexCompiler",
@@ -91,11 +96,17 @@ def test_openai_compatible_visual_fact_extractor_posts_image_and_normalizes(tmp_
         api_key="secret",
         timeout=7,
         urlopen=fake_urlopen,
+        repo_path=tmp_path,
     )
-    facts = extractor.extract(_artifact(), repo_path=tmp_path)
+    manifest = build_visual_facts_manifest(
+        {"manifest_sha256": "media-hash", "artifacts": [_artifact()]},
+        extractor=extractor,
+    )
+    facts = manifest["facts"][0]
 
     assert facts["artifact_path"] == "docs/assets/architecture.png"
-    assert facts["artifact_sha256"] == "abc123"
+    assert facts["artifact_sha256"] == _artifact()["sha256"]
+    assert facts["role_hint"] == "architecture_diagram"
     assert facts["extractor"] == "openai-compatible"
     assert facts["entities"][0]["name"] == "IndexCompiler"
     assert facts["metadata"]["model"] == "qwen-vl"
@@ -138,6 +149,45 @@ def test_visual_fact_extractor_rejects_unsafe_artifact_path(tmp_path):
 
     with pytest.raises(ValueError, match="repository-relative"):
         extractor.extract(artifact, repo_path=tmp_path)
+
+
+def test_visual_fact_extractor_requires_repo_for_manifest_callable():
+    extractor = OpenAICompatibleVisualFactExtractor(
+        model="qwen-vl",
+        api_base="https://api.example/v1",
+        urlopen=lambda _request, timeout: _Response({"choices": []}),
+    )
+
+    with pytest.raises(ValueError, match="repo_path must be configured"):
+        extractor(_artifact())
+
+
+def test_visual_fact_extractor_rejects_content_changed_since_manifest(tmp_path):
+    (tmp_path / "docs" / "assets").mkdir(parents=True)
+    (tmp_path / "docs" / "assets" / "architecture.png").write_bytes(b"changed")
+    extractor = OpenAICompatibleVisualFactExtractor(
+        model="qwen-vl",
+        api_base="https://api.example/v1",
+        urlopen=lambda *_args, **_kwargs: pytest.fail("request must not be sent"),
+    )
+
+    with pytest.raises(ValueError, match="does not match the media manifest"):
+        extractor.extract(_artifact(), repo_path=tmp_path)
+
+
+def test_visual_fact_extractor_rejects_symlinked_artifact(tmp_path):
+    (tmp_path / "docs" / "assets").mkdir(parents=True)
+    target = tmp_path / "actual.png"
+    target.write_bytes(b"png-bytes")
+    (tmp_path / "docs" / "assets" / "architecture.png").symlink_to(target)
+    extractor = OpenAICompatibleVisualFactExtractor(
+        model="qwen-vl",
+        api_base="https://api.example/v1",
+        urlopen=lambda *_args, **_kwargs: pytest.fail("request must not be sent"),
+    )
+
+    with pytest.raises(ValueError, match="regular file"):
+        extractor.extract(_artifact(), repo_path=tmp_path)
 
 
 def test_visual_fact_extractor_rejects_unsupported_mime_type(tmp_path):

@@ -113,10 +113,11 @@ extractor = OpenAICompatibleVisualFactExtractor(
     model="qwen-vl",
     api_base="http://localhost:8000/v1",
     api_key=None,
+    repo_path=repo,
 )
 
 facts = build_visual_facts_manifest(
     media,
-    extractor=lambda artifact: extractor.extract(artifact, repo_path=repo),
+    extractor=extractor,
 )
 ```

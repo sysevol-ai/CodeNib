@@ -7,23 +7,24 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import math
-import os
+import re
+import stat
 import urllib.request
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
-from .media_facts import (
-    build_visual_fact_extraction_prompt,
-    normalize_visual_fact_pack,
-)
+from ._safe_file_reads import read_regular_bytes
+from .media_facts import build_visual_fact_extraction_prompt, normalize_visual_fact_pack
 
 _MAX_MODEL_LENGTH = 256
 _MAX_PROVIDER_LENGTH = 128
 _MAX_URL_LENGTH = 4096
 _MAX_TIMEOUT_SECONDS = 600.0
+_MAX_REQUEST_BYTES = 24 * 1024 * 1024
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _MAX_IMAGE_BYTES = 16 * 1024 * 1024
 _SUPPORTED_MIME_TYPES = frozenset(
@@ -48,12 +49,16 @@ class OpenAICompatibleVisualFactExtractor:
         timeout: float = 120.0,
         urlopen: Callable[..., Any] | None = None,
         provider: str = "openai-compatible",
+        repo_path: str | Path | None = None,
     ) -> None:
         self.model = str(model or "").strip()
         self.api_base = str(api_base or "").strip()
         self.api_key = _validated_api_key(api_key)
         self.timeout = _validated_timeout(timeout)
         self.provider = str(provider or "").strip()
+        self.repo_path = (
+            Path(repo_path).expanduser().resolve() if repo_path is not None else None
+        )
         self._urlopen = urlopen or urllib.request.urlopen
         if not self.model:
             raise ValueError("visual fact model is required")
@@ -77,12 +82,13 @@ class OpenAICompatibleVisualFactExtractor:
 
         prompt = build_visual_fact_extraction_prompt(artifact)
         content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-        if repo_path is not None:
+        source_repo = repo_path if repo_path is not None else self.repo_path
+        if source_repo is not None:
             content.append(
                 {
                     "type": "image_url",
                     "image_url": {
-                        "url": _artifact_data_url(repo_path, artifact),
+                        "url": _artifact_data_url(source_repo, artifact),
                     },
                 }
             )
@@ -103,25 +109,33 @@ class OpenAICompatibleVisualFactExtractor:
         }
         response = self._post_json(payload)
         extracted = _response_content_json(response)
-        extracted.setdefault("artifact_path", str(artifact.get("path") or ""))
-        extracted.setdefault("artifact_sha256", str(artifact.get("sha256") or ""))
-        extracted.setdefault("role_hint", str(artifact.get("role_hint") or ""))
         extracted["extractor"] = self.provider
-        metadata = dict(extracted.get("metadata") or {})
-        metadata.update({"model": self.model, "provider": self.provider})
-        extracted["metadata"] = metadata
-        return normalize_visual_fact_pack(extracted)
+        extracted["metadata"] = {"model": self.model, "provider": self.provider}
+        return normalize_visual_fact_pack(extracted, artifact=artifact)
 
     def __call__(self, artifact: Mapping[str, Any]) -> dict[str, Any]:
+        if self.repo_path is None:
+            raise ValueError(
+                "visual fact repo_path must be configured when the extractor "
+                "is used with build_visual_facts_manifest"
+            )
         return self.extract(artifact)
 
     def _post_json(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        encoded = json.dumps(
+            payload,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        if len(encoded) > _MAX_REQUEST_BYTES:
+            raise ValueError("visual fact request exceeds the byte limit")
         request = urllib.request.Request(
             self.endpoint,
-            data=json.dumps(payload).encode("utf-8"),
+            data=encoded,
             headers=headers,
             method="POST",
         )
@@ -157,18 +171,28 @@ def _response_content_json(response: Mapping[str, Any]) -> dict[str, Any]:
 def _artifact_data_url(repo_path: str | Path, artifact: Mapping[str, Any]) -> str:
     root = Path(repo_path).expanduser().resolve()
     relative = _safe_relative_path(artifact.get("path"))
-    path = (root / relative).resolve()
-    if not (path == root or root in path.parents):
-        raise ValueError("visual artifact path is outside the repository")
-    if path.is_symlink() or not path.is_file():
+    path = root.joinpath(*relative.parts)
+    if _has_symlink_parent(root, relative):
+        raise ValueError("visual artifact path must not traverse a symlink")
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise ValueError("visual artifact must be a regular file") from exc
+    if not stat.S_ISREG(metadata.st_mode):
         raise ValueError("visual artifact must be a regular file")
     mime_type = str(artifact.get("mime_type") or "").strip()
     if mime_type not in _SUPPORTED_MIME_TYPES:
         raise ValueError("visual artifact MIME type is unsupported")
-    size = path.stat().st_size
-    if size < 0 or size > _MAX_IMAGE_BYTES:
+    if metadata.st_size < 0 or metadata.st_size > _MAX_IMAGE_BYTES:
         raise ValueError("visual artifact exceeds the byte limit")
-    data = _read_bounded_file(path, max_bytes=_MAX_IMAGE_BYTES)
+    data = read_regular_bytes(path, max_bytes=_MAX_IMAGE_BYTES)
+    if data is None:
+        raise ValueError("visual artifact could not be read as a stable regular file")
+    expected_sha256 = str(artifact.get("sha256") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+        raise ValueError("visual artifact sha256 is invalid")
+    if hashlib.sha256(data).hexdigest() != expected_sha256:
+        raise ValueError("visual artifact content does not match the media manifest")
     return f"data:{mime_type};base64,{base64.b64encode(data).decode('ascii')}"
 
 
@@ -182,16 +206,16 @@ def _safe_relative_path(value: Any) -> Path:
     return Path(*path.parts)
 
 
-def _read_bounded_file(path: Path, *, max_bytes: int) -> bytes:
-    chunks = []
-    consumed = 0
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            consumed += len(chunk)
-            if consumed > max_bytes:
-                raise ValueError("visual artifact exceeds the byte limit")
-            chunks.append(chunk)
-    return b"".join(chunks)
+def _has_symlink_parent(root: Path, relative: Path) -> bool:
+    current = root
+    for part in relative.parts[:-1]:
+        current = current / part
+        try:
+            if current.is_symlink():
+                return True
+        except OSError:
+            return True
+    return False
 
 
 def _validated_timeout(value: Any) -> float:
