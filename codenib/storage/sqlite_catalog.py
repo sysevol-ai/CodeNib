@@ -15,6 +15,7 @@ can adapt it without coupling the SQLite implementation to application models.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -31,10 +32,14 @@ from typing import Any, Iterator, Mapping, Sequence
 from .models import (
     DEFAULT_NAMESPACE_ID,
     DEFAULT_NAMESPACE_NAME,
+    INDEX_JOB_PUBLICATION_CONTRACT,
+    MAX_VIEW_GENERATION_MEMBERS,
+    VIEW_GENERATION_MEMBERS_METADATA_KEY,
     IndexJobCompletion,
     IndexJobRecord,
     IndexJobRequest,
     IndexJobStatus,
+    IndexJobViewOutput,
     IndexJobViewRecord,
     NamespaceIdentity,
     ObjectRecord,
@@ -55,10 +60,11 @@ from .models import (
 )
 from .protocols import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
+    RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS,
     snapshot_retained_import_response,
 )
 
-LATEST_SCHEMA_VERSION = 4
+LATEST_SCHEMA_VERSION = 5
 
 CatalogError = StorageError
 CatalogConflictError = PublishConflict
@@ -67,6 +73,7 @@ CatalogValidationError = StorageValidationError
 
 _DB_NOW_MS_SQL = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
 _SQLITE_INT64_MAX = 9_223_372_036_854_775_807
+_MAX_JOB_PUBLICATION_OUTPUTS = 64
 _SQLITE_LEGACY_AUTOCOMMIT = getattr(
     sqlite3,
     "LEGACY_TRANSACTION_CONTROL",
@@ -379,13 +386,16 @@ def _positive_integer(value: int, field: str) -> int:
 
 def _persisted_positive_int64(value: object, field: str) -> int:
     """Reject SQLite numeric coercions when reading an identity counter."""
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < 1
-        or value > _SQLITE_INT64_MAX
-    ):
+    if type(value) is not int or value < 1 or value > _SQLITE_INT64_MAX:
         raise CatalogConflictError(f"{field} must be a positive 64-bit integer")
+    return value
+
+
+def _persisted_nonnegative_int64(value: object, field: str) -> int:
+    """Reject SQLite numeric coercions for a persisted zero-based counter."""
+
+    if type(value) is not int or value < 0 or value > _SQLITE_INT64_MAX:
+        raise CatalogConflictError(f"{field} must be a non-negative 64-bit integer")
     return value
 
 
@@ -395,6 +405,129 @@ def _persisted_utc_timestamp(value: object, field: str) -> str:
         return canonical_utc_timestamp(value, field)
     except StorageValidationError as exc:
         raise CatalogConflictError(str(exc)) from exc
+
+
+def _freeze_job_publication_outputs(
+    outputs: tuple[IndexJobViewOutput, ...],
+) -> tuple[IndexJobViewOutput, ...]:
+    """Detach one bounded, deterministic catalog publication closure."""
+
+    if type(outputs) is not tuple:
+        raise CatalogValidationError(
+            "index job publication outputs must be an exact tuple"
+        )
+    if not outputs:
+        raise CatalogValidationError("index job publication requires an output")
+    if len(outputs) > _MAX_JOB_PUBLICATION_OUTPUTS:
+        raise CatalogValidationError(
+            f"index job publication cannot exceed {_MAX_JOB_PUBLICATION_OUTPUTS} outputs"
+        )
+    detached: list[IndexJobViewOutput] = []
+    total_members = 0
+    for output in outputs:
+        if type(output) is not IndexJobViewOutput:
+            raise CatalogValidationError(
+                "index job publication outputs must be exact IndexJobViewOutput values"
+            )
+        frozen = IndexJobViewOutput(
+            view_type=output.view_type,
+            profile_id=output.profile_id,
+            object_record=output.object_record,
+            schema_version=output.schema_version,
+            metadata_json=output.metadata_json,
+            member_object_records=output.member_object_records,
+        )
+        total_members += len(frozen.member_object_records)
+        if total_members > MAX_VIEW_GENERATION_MEMBERS:
+            raise CatalogValidationError(
+                "index job publication has too many aggregate member objects"
+            )
+        detached.append(frozen)
+    ordered = tuple(sorted(detached, key=lambda output: output.view_type))
+    view_types = tuple(output.view_type for output in ordered)
+    if len(view_types) != len(set(view_types)):
+        raise CatalogValidationError("index job publication has duplicate view type")
+    bounded = snapshot_retained_import_response(
+        {"outputs": [output.identity for output in ordered]},
+        label="index job publication closure",
+    )
+    if len(canonical_json(bounded)) > RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS:
+        raise CatalogValidationError("index job publication closure is too large")
+    return ordered
+
+
+def _job_publication_output_identity(
+    job: IndexJobRecord,
+    output: IndexJobViewOutput,
+) -> dict[str, Any]:
+    identity = output.identity
+    identity["view_generation_id"] = content_id(
+        "view",
+        {
+            "repository_id": job.repository_id,
+            "source_revision_id": job.source_revision_id,
+            "profile_id": output.profile_id,
+            "view_type": output.view_type,
+            "object_digest": output.object_record.digest,
+            "schema_version": output.schema_version,
+            "metadata": output.generation_metadata,
+        },
+    )
+    return identity
+
+
+def _job_publication_snapshot_id(
+    job: IndexJobRecord,
+    output_identities: Sequence[Mapping[str, Any]],
+) -> str:
+    return content_id(
+        "snapshot",
+        {
+            "repository_id": job.repository_id,
+            "source_revision_id": job.source_revision_id,
+            "views": [
+                [identity["view_type"], identity["view_generation_id"]]
+                for identity in output_identities
+            ],
+        },
+    )
+
+
+def _canonical_job_publication_closure(
+    job: IndexJobRecord,
+    *,
+    owner_id: str,
+    fencing_token: int,
+    snapshot_id: str,
+    ref_generation: int,
+    ref_changed: bool,
+    ref_updated_at: str,
+    output_identities: Sequence[Mapping[str, Any]],
+) -> tuple[str, str]:
+    closure = {
+        "contract": INDEX_JOB_PUBLICATION_CONTRACT,
+        "job_id": job.job_id,
+        "repository_id": job.repository_id,
+        "source_revision_id": job.source_revision_id,
+        "ref_name": job.ref_name,
+        "request_digest": job.request_digest,
+        "expected_ref_generation": job.expected_ref_generation,
+        "owner_id": owner_id,
+        "fencing_token": fencing_token,
+        "snapshot_id": snapshot_id,
+        "ref_generation": ref_generation,
+        "ref_changed": ref_changed,
+        "ref_updated_at": ref_updated_at,
+        "outputs": list(output_identities),
+    }
+    bounded = snapshot_retained_import_response(
+        closure,
+        label="index job publication closure",
+    )
+    closure_json = canonical_json(bounded)
+    if len(closure_json) > RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS:
+        raise CatalogValidationError("index job publication closure is too large")
+    return closure_json, hashlib.sha256(closure_json.encode("utf-8")).hexdigest()
 
 
 _SCHEMA_V1 = (
@@ -1299,11 +1432,481 @@ _SCHEMA_V4 = (
     """,
 )
 
+_SCHEMA_V5 = (
+    "DROP TRIGGER m1_index_jobs_cannot_update_succeeded",
+    f"""
+    CREATE TABLE index_job_publications (
+        job_id TEXT PRIMARY KEY CHECK (typeof(job_id) = 'text'),
+        repository_id TEXT NOT NULL CHECK (typeof(repository_id) = 'text'),
+        source_revision_id TEXT NOT NULL CHECK (
+            typeof(source_revision_id) = 'text'
+        ),
+        ref_name TEXT NOT NULL CHECK (
+            typeof(ref_name) = 'text'
+            AND
+            length(ref_name) BETWEEN 1 AND 512 AND instr(ref_name, char(0)) = 0
+        ),
+        request_digest TEXT NOT NULL CHECK (typeof(request_digest) = 'text'),
+        owner_id TEXT NOT NULL CHECK (
+            typeof(owner_id) = 'text'
+            AND
+            length(owner_id) BETWEEN 1 AND 256 AND instr(owner_id, char(0)) = 0
+        ),
+        fencing_token INTEGER NOT NULL CHECK (
+            typeof(fencing_token) = 'integer'
+            AND fencing_token BETWEEN 1 AND 9223372036854775807
+        ),
+        expected_ref_generation INTEGER NOT NULL CHECK (
+            typeof(expected_ref_generation) = 'integer'
+            AND expected_ref_generation BETWEEN 0 AND 9223372036854775807
+        ),
+        snapshot_id TEXT NOT NULL CHECK (typeof(snapshot_id) = 'text'),
+        ref_generation INTEGER NOT NULL CHECK (
+            typeof(ref_generation) = 'integer'
+            AND ref_generation BETWEEN 1 AND 9223372036854775807
+        ),
+        ref_changed INTEGER NOT NULL CHECK (
+            typeof(ref_changed) = 'integer' AND ref_changed IN (0, 1)
+        ),
+        ref_updated_at TEXT NOT NULL CHECK (typeof(ref_updated_at) = 'text'),
+        closure_digest TEXT NOT NULL UNIQUE CHECK (
+            typeof(closure_digest) = 'text'
+            AND length(closure_digest) = 64
+            AND closure_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        closure_json TEXT NOT NULL CHECK (
+            typeof(closure_json) = 'text'
+            AND length(closure_json) BETWEEN 1 AND {RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS}
+            AND instr(closure_json, char(0)) = 0
+            AND json_valid(closure_json)
+            AND json_type(closure_json) IS 'object'
+        ),
+        completed_at_ms INTEGER NOT NULL CHECK (
+            typeof(completed_at_ms) = 'integer' AND completed_at_ms >= 0
+        ),
+        FOREIGN KEY (job_id, repository_id, ref_name)
+            REFERENCES index_jobs(job_id, repository_id, ref_name)
+            ON DELETE RESTRICT,
+        FOREIGN KEY (snapshot_id, source_revision_id, repository_id)
+            REFERENCES snapshots(snapshot_id, source_revision_id, repository_id)
+            ON DELETE RESTRICT
+    )
+    """,
+    """
+    CREATE INDEX index_job_publications_snapshot_idx
+        ON index_job_publications(snapshot_id)
+    """,
+    """
+    CREATE TRIGGER index_job_publications_reject_duplicate_inserts
+    BEFORE INSERT ON index_job_publications
+    WHEN EXISTS (
+        SELECT 1 FROM index_job_publications AS existing
+        WHERE existing.job_id = NEW.job_id
+            OR existing.closure_digest = NEW.closure_digest
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate index job publication is forbidden');
+    END
+    """,
+    f"""
+    CREATE TRIGGER index_job_publications_validate_insert
+    BEFORE INSERT ON index_job_publications
+    WHEN NOT (
+        EXISTS (
+            SELECT 1
+            FROM index_jobs AS job
+            JOIN ref_job_leases AS lease
+                ON lease.repository_id = job.repository_id
+                AND lease.ref_name = job.ref_name
+                AND lease.job_id = job.job_id
+            JOIN refs AS ref
+                ON ref.repository_id = job.repository_id
+                AND ref.ref_name = job.ref_name
+            JOIN snapshots AS snapshot
+                ON snapshot.snapshot_id = NEW.snapshot_id
+                AND snapshot.repository_id = job.repository_id
+                AND snapshot.source_revision_id = job.source_revision_id
+            WHERE job.job_id = NEW.job_id
+                AND job.repository_id = NEW.repository_id
+                AND job.source_revision_id = NEW.source_revision_id
+                AND job.ref_name = NEW.ref_name
+                AND job.request_digest = NEW.request_digest
+                AND job.expected_ref_generation = NEW.expected_ref_generation
+                AND job.status = 'running'
+                AND job.cancel_requested = 0
+                AND NEW.completed_at_ms >= job.updated_at_ms
+                AND NEW.completed_at_ms >= lease.heartbeat_at_ms
+                AND NEW.completed_at_ms <= {_DB_NOW_MS_SQL}
+                AND lease.owner_id = NEW.owner_id
+                AND lease.fencing_token = NEW.fencing_token
+                AND lease.lease_expires_at_ms > {_DB_NOW_MS_SQL}
+                AND snapshot.status = 'ready'
+                AND ref.snapshot_id = NEW.snapshot_id
+                AND ref.generation = NEW.ref_generation
+                AND ref.updated_at = NEW.ref_updated_at
+                AND (
+                    (NEW.ref_changed = 1
+                        AND NEW.expected_ref_generation < 9223372036854775807
+                        AND NEW.ref_generation = NEW.expected_ref_generation + 1)
+                    OR
+                    (NEW.ref_changed = 0
+                        AND NEW.expected_ref_generation > 0
+                        AND NEW.ref_generation = NEW.expected_ref_generation)
+                )
+        )
+        AND (SELECT COUNT(*) FROM json_each(NEW.closure_json)) = 14
+        AND json_type(NEW.closure_json, '$.contract') IS 'text'
+        AND json_extract(
+            NEW.closure_json, '$.contract'
+        ) = {INDEX_JOB_PUBLICATION_CONTRACT!r}
+        AND json_type(NEW.closure_json, '$.job_id') IS 'text'
+        AND json_extract(NEW.closure_json, '$.job_id') = NEW.job_id
+        AND json_type(NEW.closure_json, '$.repository_id') IS 'text'
+        AND json_extract(
+            NEW.closure_json, '$.repository_id'
+        ) = NEW.repository_id
+        AND json_type(NEW.closure_json, '$.source_revision_id') IS 'text'
+        AND json_extract(
+            NEW.closure_json, '$.source_revision_id'
+        ) = NEW.source_revision_id
+        AND json_type(NEW.closure_json, '$.ref_name') IS 'text'
+        AND json_extract(NEW.closure_json, '$.ref_name') = NEW.ref_name
+        AND json_type(NEW.closure_json, '$.request_digest') IS 'text'
+        AND json_extract(
+            NEW.closure_json, '$.request_digest'
+        ) = NEW.request_digest
+        AND json_type(
+            NEW.closure_json, '$.expected_ref_generation'
+        ) IS 'integer'
+        AND json_extract(
+            NEW.closure_json, '$.expected_ref_generation'
+        ) = NEW.expected_ref_generation
+        AND json_type(NEW.closure_json, '$.owner_id') IS 'text'
+        AND json_extract(NEW.closure_json, '$.owner_id') = NEW.owner_id
+        AND json_type(NEW.closure_json, '$.fencing_token') IS 'integer'
+        AND json_extract(
+            NEW.closure_json, '$.fencing_token'
+        ) = NEW.fencing_token
+        AND json_type(NEW.closure_json, '$.snapshot_id') IS 'text'
+        AND json_extract(NEW.closure_json, '$.snapshot_id') = NEW.snapshot_id
+        AND json_type(NEW.closure_json, '$.ref_generation') IS 'integer'
+        AND json_extract(
+            NEW.closure_json, '$.ref_generation'
+        ) = NEW.ref_generation
+        AND json_type(NEW.closure_json, '$.ref_changed') IS CASE NEW.ref_changed
+            WHEN 1 THEN 'true' ELSE 'false'
+        END
+        AND json_extract(
+            NEW.closure_json, '$.ref_changed'
+        ) = NEW.ref_changed
+        AND json_type(NEW.closure_json, '$.ref_updated_at') IS 'text'
+        AND json_extract(
+            NEW.closure_json, '$.ref_updated_at'
+        ) = NEW.ref_updated_at
+        AND json_type(NEW.closure_json, '$.outputs') IS 'array'
+        AND json_array_length(NEW.closure_json, '$.outputs') BETWEEN 1 AND 64
+        AND json_array_length(NEW.closure_json, '$.outputs') = (
+            SELECT COUNT(*) FROM snapshot_views
+            WHERE snapshot_id = NEW.snapshot_id
+        )
+        AND json_array_length(NEW.closure_json, '$.outputs') = (
+            SELECT COUNT(DISTINCT json_extract(output.value, '$.view_type'))
+            FROM json_each(NEW.closure_json, '$.outputs') AS output
+        )
+        AND (
+            SELECT COALESCE(SUM(json_array_length(
+                output.value, '$.member_objects'
+            )), 0)
+            FROM json_each(NEW.closure_json, '$.outputs') AS output
+        ) <= {MAX_VIEW_GENERATION_MEMBERS}
+        AND NOT EXISTS (
+            SELECT 1
+            FROM (
+                SELECT
+                    json_extract(output.value, '$.view_type') AS view_type,
+                    LAG(json_extract(
+                        output.value, '$.view_type'
+                    )) OVER (
+                        ORDER BY CAST(output.key AS INTEGER)
+                    ) AS previous_view_type
+                FROM json_each(
+                    NEW.closure_json, '$.outputs'
+                ) AS output
+            ) AS ordered_outputs
+            WHERE previous_view_type IS NOT NULL
+                AND previous_view_type >= view_type
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM index_job_views AS requested
+            WHERE requested.job_id = NEW.job_id
+                AND requested.required = 1
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM json_each(
+                        NEW.closure_json, '$.outputs'
+                    ) AS offered
+                    WHERE json_extract(
+                        offered.value, '$.view_type'
+                    ) = requested.view_type
+                )
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM json_each(NEW.closure_json, '$.outputs') AS output
+            LEFT JOIN index_job_views AS requested
+                ON requested.job_id = NEW.job_id
+                AND requested.view_type = json_extract(
+                    output.value, '$.view_type'
+                )
+            LEFT JOIN snapshot_views AS selected
+                ON selected.snapshot_id = NEW.snapshot_id
+                AND selected.view_type = json_extract(
+                    output.value, '$.view_type'
+                )
+                AND selected.view_generation_id = json_extract(
+                    output.value, '$.view_generation_id'
+                )
+            LEFT JOIN view_generations AS generation
+                ON generation.view_generation_id = selected.view_generation_id
+            LEFT JOIN objects AS primary_object
+                ON primary_object.digest = generation.object_digest
+            WHERE json_type(output.value) IS NOT 'object'
+                OR (SELECT COUNT(*) FROM json_each(output.value)) != 7
+                OR json_type(output.value, '$.view_type') IS NOT 'text'
+                OR json_type(output.value, '$.profile_id') IS NOT 'text'
+                OR json_type(
+                    output.value, '$.view_generation_id'
+                ) IS NOT 'text'
+                OR json_type(output.value, '$.schema_version') IS NOT 'text'
+                OR json_type(output.value, '$.metadata') IS NOT 'object'
+                OR json_type(output.value, '$.object') IS NOT 'object'
+                OR json_type(output.value, '$.member_objects') IS NOT 'array'
+                OR requested.job_id IS NULL
+                OR requested.profile_id != json_extract(
+                    output.value, '$.profile_id'
+                )
+                OR selected.snapshot_id IS NULL
+                OR generation.view_generation_id IS NULL
+                OR generation.repository_id != NEW.repository_id
+                OR generation.source_revision_id != NEW.source_revision_id
+                OR generation.profile_id != json_extract(
+                    output.value, '$.profile_id'
+                )
+                OR generation.view_type != json_extract(
+                    output.value, '$.view_type'
+                )
+                OR generation.schema_version != json_extract(
+                    output.value, '$.schema_version'
+                )
+                OR generation.metadata_json != json_extract(
+                    output.value, '$.metadata'
+                )
+                OR generation.status != 'ready'
+                OR primary_object.digest IS NULL
+                OR (SELECT COUNT(*) FROM json_each(
+                    output.value, '$.object'
+                )) != 4
+                OR json_type(output.value, '$.object.digest') IS NOT 'text'
+                OR json_type(
+                    output.value, '$.object.storage_key'
+                ) IS NOT 'text'
+                OR json_type(
+                    output.value, '$.object.byte_size'
+                ) IS NOT 'integer'
+                OR json_type(
+                    output.value, '$.object.media_type'
+                ) IS NOT 'text'
+                OR primary_object.digest != json_extract(
+                    output.value, '$.object.digest'
+                )
+                OR primary_object.storage_key != json_extract(
+                    output.value, '$.object.storage_key'
+                )
+                OR primary_object.byte_size != json_extract(
+                    output.value, '$.object.byte_size'
+                )
+                OR primary_object.media_type != json_extract(
+                    output.value, '$.object.media_type'
+                )
+                OR json_array_length(
+                    output.value, '$.member_objects'
+                ) > {MAX_VIEW_GENERATION_MEMBERS}
+                OR json_array_length(output.value, '$.member_objects') != (
+                    SELECT COUNT(*) FROM view_generation_objects AS member
+                    WHERE member.view_generation_id = generation.view_generation_id
+                )
+                OR json_array_length(output.value, '$.member_objects') != (
+                    SELECT COUNT(DISTINCT json_extract(
+                        member.value, '$.digest'
+                    ))
+                    FROM json_each(
+                        output.value, '$.member_objects'
+                    ) AS member
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM json_each(
+                        output.value, '$.member_objects'
+                    ) AS member
+                    LEFT JOIN view_generation_objects AS membership
+                        ON membership.view_generation_id = generation.view_generation_id
+                        AND membership.object_digest = json_extract(
+                            member.value, '$.digest'
+                        )
+                    LEFT JOIN objects AS member_object
+                        ON member_object.digest = membership.object_digest
+                    WHERE json_type(member.value) IS NOT 'object'
+                        OR (SELECT COUNT(*) FROM json_each(member.value)) != 4
+                        OR json_type(member.value, '$.digest') IS NOT 'text'
+                        OR json_type(
+                            member.value, '$.storage_key'
+                        ) IS NOT 'text'
+                        OR json_type(
+                            member.value, '$.byte_size'
+                        ) IS NOT 'integer'
+                        OR json_type(
+                            member.value, '$.media_type'
+                        ) IS NOT 'text'
+                        OR membership.object_digest IS NULL
+                        OR member_object.storage_key != json_extract(
+                            member.value, '$.storage_key'
+                        )
+                        OR member_object.byte_size != json_extract(
+                            member.value, '$.byte_size'
+                        )
+                        OR member_object.media_type != json_extract(
+                            member.value, '$.media_type'
+                        )
+                        OR member_object.digest = primary_object.digest
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM (
+                        SELECT
+                            CAST(member.key AS INTEGER) AS member_index,
+                            json_extract(
+                                member.value, '$.digest'
+                            ) AS member_digest,
+                            LAG(CAST(member.key AS INTEGER)) OVER (
+                                ORDER BY CAST(member.key AS INTEGER)
+                            ) AS previous_index,
+                            LAG(json_extract(
+                                member.value, '$.digest'
+                            )) OVER (
+                                ORDER BY CAST(member.key AS INTEGER)
+                            ) AS previous_digest
+                        FROM json_each(
+                            output.value, '$.member_objects'
+                        ) AS member
+                    ) AS ordered_members
+                    WHERE previous_index IS NOT NULL
+                        AND (
+                            member_index != previous_index + 1
+                            OR previous_digest >= member_digest
+                        )
+                )
+        )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job publication closure is invalid');
+    END
+    """,
+    """
+    CREATE TRIGGER m1_index_jobs_cannot_update_succeeded
+    BEFORE UPDATE ON index_jobs
+    WHEN NEW.status = 'succeeded' AND NOT EXISTS (
+        SELECT 1 FROM index_job_publications AS publication
+        WHERE publication.job_id = NEW.job_id
+            AND publication.repository_id = NEW.repository_id
+            AND publication.source_revision_id = NEW.source_revision_id
+            AND publication.ref_name = NEW.ref_name
+            AND publication.request_digest = NEW.request_digest
+            AND publication.expected_ref_generation = NEW.expected_ref_generation
+            AND publication.snapshot_id = NEW.result_snapshot_id
+            AND publication.completed_at_ms = NEW.finished_at_ms
+    )
+    BEGIN
+        SELECT RAISE(
+            ABORT,
+            'M1 cannot persist successful index jobs without publication closure'
+        );
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_publication_completes_job
+    AFTER INSERT ON index_job_publications
+    BEGIN
+        UPDATE index_jobs
+        SET status = 'succeeded', result_snapshot_id = NEW.snapshot_id,
+            error_code = NULL, error_message = NULL,
+            finished_at_ms = NEW.completed_at_ms,
+            updated_at_ms = NEW.completed_at_ms
+        WHERE job_id = NEW.job_id AND status = 'running'
+            AND cancel_requested = 0;
+        SELECT CASE changes()
+            WHEN 1 THEN 1
+            ELSE RAISE(ABORT, 'index job publication did not complete its job')
+        END;
+        UPDATE ref_job_leases
+        SET job_id = NULL, owner_id = NULL,
+            acquired_at_ms = NULL, heartbeat_at_ms = NULL,
+            lease_expires_at_ms = NULL, updated_at_ms = NEW.completed_at_ms
+        WHERE repository_id = NEW.repository_id
+            AND ref_name = NEW.ref_name
+            AND job_id = NEW.job_id
+            AND owner_id = NEW.owner_id
+            AND fencing_token = NEW.fencing_token;
+        SELECT CASE changes()
+            WHEN 1 THEN 1
+            ELSE RAISE(ABORT, 'index job publication did not release its lease')
+        END;
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_publications_are_immutable
+    BEFORE UPDATE ON index_job_publications
+    BEGIN
+        SELECT RAISE(ABORT, 'index job publications are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_publications_cannot_be_deleted
+    BEFORE DELETE ON index_job_publications
+    BEGIN
+        SELECT RAISE(ABORT, 'index job publications are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER published_index_jobs_cannot_be_deleted
+    BEFORE DELETE ON index_jobs
+    WHEN EXISTS (
+        SELECT 1 FROM index_job_publications
+        WHERE job_id = OLD.job_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'published index jobs are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER published_snapshots_cannot_be_deleted
+    BEFORE DELETE ON snapshots
+    WHEN EXISTS (
+        SELECT 1 FROM index_job_publications
+        WHERE snapshot_id = OLD.snapshot_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'published job snapshots are immutable');
+    END
+    """,
+)
+
 _MIGRATIONS: dict[int, tuple[str, ...]] = {
     1: _SCHEMA_V1,
     2: _SCHEMA_V2,
     3: _SCHEMA_V3,
     4: _SCHEMA_V4,
+    5: _SCHEMA_V5,
 }
 
 _CatalogSchemaObject = tuple[str, str, str, str | None]
@@ -2165,6 +2768,8 @@ class SQLiteCatalog:
                     (version, _now()),
                 )
                 self._connection.execute(f"PRAGMA user_version = {version:d}")
+            if self.schema_version >= 5:
+                self._validate_publication_aggregates()
 
     def _require_record(self, table: str, key: str, value: str) -> sqlite3.Row:
         allowed = {
@@ -2193,61 +2798,268 @@ class SQLiteCatalog:
 
     @staticmethod
     def _job_from_row(row: sqlite3.Row) -> IndexJobRecord:
+        required_text_fields = (
+            "job_id",
+            "repository_id",
+            "source_revision_id",
+            "ref_name",
+            "idempotency_key",
+            "request_contract",
+            "request_json",
+            "request_digest",
+            "status",
+        )
+        optional_text_fields = (
+            "result_snapshot_id",
+            "error_code",
+            "error_message",
+        )
+        integer_fields = (
+            "expected_ref_generation",
+            "max_attempts",
+            "cancel_requested",
+            "attempt_count",
+            "created_at_ms",
+            "updated_at_ms",
+        )
+        optional_integer_fields = ("started_at_ms", "finished_at_ms")
+        if (
+            any(type(row[field]) is not str for field in required_text_fields)
+            or any(
+                row[field] is not None and type(row[field]) is not str
+                for field in optional_text_fields
+            )
+            or any(type(row[field]) is not int for field in integer_fields)
+            or any(
+                row[field] is not None and type(row[field]) is not int
+                for field in optional_integer_fields
+            )
+            or row["cancel_requested"] not in (0, 1)
+        ):
+            raise StorageIntegrityError(
+                "persisted index job contains non-exact scalar values"
+            )
         record = IndexJobRecord(
             job_id=row["job_id"],
             repository_id=row["repository_id"],
             source_revision_id=row["source_revision_id"],
             ref_name=row["ref_name"],
             idempotency_key=row["idempotency_key"],
-            expected_ref_generation=int(row["expected_ref_generation"]),
-            max_attempts=int(row["max_attempts"]),
+            expected_ref_generation=row["expected_ref_generation"],
+            max_attempts=row["max_attempts"],
             request_json=row["request_json"],
             request_digest=row["request_digest"],
             status=IndexJobStatus(row["status"]),
             cancel_requested=bool(row["cancel_requested"]),
-            attempt_count=int(row["attempt_count"]),
+            attempt_count=row["attempt_count"],
             result_snapshot_id=row["result_snapshot_id"],
             error_code=row["error_code"],
             error_message=row["error_message"],
-            created_at_ms=int(row["created_at_ms"]),
-            updated_at_ms=int(row["updated_at_ms"]),
-            started_at_ms=(
-                int(row["started_at_ms"]) if row["started_at_ms"] is not None else None
-            ),
-            finished_at_ms=(
-                int(row["finished_at_ms"])
-                if row["finished_at_ms"] is not None
-                else None
-            ),
+            created_at_ms=row["created_at_ms"],
+            updated_at_ms=row["updated_at_ms"],
+            started_at_ms=row["started_at_ms"],
+            finished_at_ms=row["finished_at_ms"],
+        )
+        raw_values = (
+            tuple(row[field] for field in required_text_fields)
+            + tuple(row[field] for field in optional_text_fields + integer_fields)
+            + tuple(row[field] for field in optional_integer_fields)
+        )
+        normalized_values = (
+            record.job_id,
+            record.repository_id,
+            record.source_revision_id,
+            record.ref_name,
+            record.idempotency_key,
+            record.request["contract"],
+            record.request_json,
+            record.request_digest,
+            record.status.value,
+            record.result_snapshot_id,
+            record.error_code,
+            record.error_message,
+            record.expected_ref_generation,
+            record.max_attempts,
+            int(record.cancel_requested),
+            record.attempt_count,
+            record.created_at_ms,
+            record.updated_at_ms,
+            record.started_at_ms,
+            record.finished_at_ms,
         )
         if row["request_contract"] != record.request["contract"]:
             raise StorageIntegrityError(
                 f"job request contract column is inconsistent: {record.job_id}"
             )
+        if raw_values != normalized_values:
+            raise StorageIntegrityError(
+                f"persisted index job is not canonical: {record.job_id}"
+            )
         return record
 
     @staticmethod
     def _job_view_from_row(row: sqlite3.Row) -> IndexJobViewRecord:
-        return IndexJobViewRecord(
+        if (
+            any(
+                type(row[field]) is not str
+                for field in ("job_id", "view_type", "profile_id", "requested_mode")
+            )
+            or type(row["required"]) is not int
+            or row["required"] not in (0, 1)
+        ):
+            raise StorageIntegrityError(
+                "persisted index job view contains non-exact scalar values"
+            )
+        record = IndexJobViewRecord(
             job_id=row["job_id"],
             view_type=row["view_type"],
             profile_id=row["profile_id"],
             requested_mode=row["requested_mode"],
             required=bool(row["required"]),
         )
+        if (
+            record.job_id,
+            record.view_type,
+            record.profile_id,
+            record.requested_mode.value,
+            int(record.required),
+        ) != (
+            row["job_id"],
+            row["view_type"],
+            row["profile_id"],
+            row["requested_mode"],
+            row["required"],
+        ):
+            raise StorageIntegrityError(
+                "persisted index job view is not canonical: "
+                f"{row['job_id']}/{row['view_type']}"
+            )
+        return record
 
     @staticmethod
     def _lease_from_row(row: sqlite3.Row) -> RefJobLease:
-        return RefJobLease(
+        text_fields = ("repository_id", "ref_name", "job_id", "owner_id")
+        integer_fields = (
+            "fencing_token",
+            "acquired_at_ms",
+            "heartbeat_at_ms",
+            "lease_expires_at_ms",
+            "updated_at_ms",
+        )
+        if any(type(row[field]) is not str for field in text_fields) or any(
+            type(row[field]) is not int for field in integer_fields
+        ):
+            raise StorageIntegrityError(
+                "persisted active job lease contains non-exact scalar values"
+            )
+        record = RefJobLease(
             repository_id=row["repository_id"],
             ref_name=row["ref_name"],
             job_id=row["job_id"],
             owner_id=row["owner_id"],
-            fencing_token=int(row["fencing_token"]),
-            acquired_at_ms=int(row["acquired_at_ms"]),
-            heartbeat_at_ms=int(row["heartbeat_at_ms"]),
-            lease_expires_at_ms=int(row["lease_expires_at_ms"]),
+            fencing_token=row["fencing_token"],
+            acquired_at_ms=row["acquired_at_ms"],
+            heartbeat_at_ms=row["heartbeat_at_ms"],
+            lease_expires_at_ms=row["lease_expires_at_ms"],
         )
+        if (
+            record.repository_id,
+            record.ref_name,
+            record.job_id,
+            record.owner_id,
+            record.fencing_token,
+            record.acquired_at_ms,
+            record.heartbeat_at_ms,
+            record.lease_expires_at_ms,
+        ) != tuple(row[field] for field in text_fields + integer_fields[:-1]):
+            raise StorageIntegrityError("persisted active job lease is not canonical")
+        if row["updated_at_ms"] < 0:
+            raise StorageIntegrityError(
+                "persisted active job lease update time is not canonical"
+            )
+        return record
+
+    def _validate_persisted_lease_slot(
+        self,
+        row: sqlite3.Row,
+    ) -> RefJobLease | None:
+        """Validate one exact released or active durable lease aggregate."""
+
+        repository_id = row["repository_id"]
+        ref_name = row["ref_name"]
+        if type(repository_id) is not str or type(ref_name) is not str:
+            raise CatalogConflictError(
+                "persisted job lease slot identity is not canonical text"
+            )
+        try:
+            canonical_repository = _bounded_text(
+                repository_id,
+                "job lease repository ID",
+                max_length=96,
+            )
+            canonical_ref = _bounded_text(
+                ref_name,
+                "job lease ref name",
+                max_length=512,
+            )
+        except CatalogValidationError as exc:
+            raise CatalogConflictError(
+                "persisted job lease slot identity is not canonical text"
+            ) from exc
+        if canonical_repository != repository_id or canonical_ref != ref_name:
+            raise CatalogConflictError(
+                "persisted job lease slot identity is not canonical text"
+            )
+        _persisted_nonnegative_int64(
+            row["fencing_token"],
+            "job lease fencing token",
+        )
+        _persisted_nonnegative_int64(
+            row["updated_at_ms"],
+            "job lease updated time",
+        )
+
+        active_values = tuple(
+            row[field]
+            for field in (
+                "job_id",
+                "owner_id",
+                "acquired_at_ms",
+                "heartbeat_at_ms",
+                "lease_expires_at_ms",
+            )
+        )
+        if row["job_id"] is None:
+            if active_values != (None, None, None, None, None):
+                raise CatalogConflictError(
+                    "released job lease slot retains active authority"
+                )
+            return None
+        if any(value is None for value in active_values):
+            raise CatalogConflictError("active job lease slot is incomplete")
+
+        lease = self._lease_from_row(row)
+        try:
+            leased_job = self._job_from_row(
+                self._require_record("index_jobs", "job_id", lease.job_id)
+            )
+        except CatalogNotFoundError as exc:
+            raise CatalogConflictError(
+                "active job lease slot points to a missing job identity"
+            ) from exc
+        if (
+            leased_job.job_id != lease.job_id
+            or leased_job.repository_id != lease.repository_id
+            or leased_job.ref_name != lease.ref_name
+            or leased_job.attempt_count < 1
+            or leased_job.started_at_ms is None
+            or row["updated_at_ms"] < lease.heartbeat_at_ms
+            or row["updated_at_ms"] >= lease.lease_expires_at_ms
+        ):
+            raise CatalogConflictError(
+                "active job lease slot points to a different job identity"
+            )
+        return lease
 
     def _job_views(self, job: IndexJobRecord) -> tuple[IndexJobViewRecord, ...]:
         rows = self._connection.execute(
@@ -2272,6 +3084,750 @@ class SQLiteCatalog:
                 f"job view rows do not match canonical request: {job.job_id}"
             )
         return actual
+
+    def _job_publication_output_identities(
+        self,
+        job: IndexJobRecord,
+        requested_views: Sequence[IndexJobViewRecord],
+        outputs: tuple[IndexJobViewOutput, ...],
+    ) -> tuple[dict[str, Any], ...]:
+        requested = {view.view_type: view for view in requested_views}
+        offered = {output.view_type: output for output in outputs}
+        extras = sorted(set(offered) - set(requested))
+        missing = sorted(
+            view_type
+            for view_type, view in requested.items()
+            if view.required and view_type not in offered
+        )
+        mismatched = sorted(
+            view_type
+            for view_type, output in offered.items()
+            if view_type in requested
+            and output.profile_id != requested[view_type].profile_id
+        )
+        if extras:
+            raise CatalogValidationError(
+                "index job outputs include unrequested views: " + ", ".join(extras)
+            )
+        if missing:
+            raise CatalogValidationError(
+                "index job outputs are missing required views: " + ", ".join(missing)
+            )
+        if mismatched:
+            raise CatalogValidationError(
+                "index job output profile does not match its request: "
+                + ", ".join(mismatched)
+            )
+        return tuple(
+            _job_publication_output_identity(job, output) for output in outputs
+        )
+
+    def _register_job_publication_object(self, record: ObjectRecord) -> None:
+        candidate = ObjectRecord(
+            digest=record.digest,
+            storage_key=record.storage_key,
+            byte_size=record.byte_size,
+            media_type=record.media_type,
+        )
+        if candidate != record:
+            raise CatalogValidationError(
+                "index job publication object metadata is not canonical"
+            )
+        by_digest = self._connection.execute(
+            "SELECT * FROM objects WHERE digest = ?",
+            (candidate.digest,),
+        ).fetchone()
+        by_key = self._connection.execute(
+            "SELECT * FROM objects WHERE storage_key = ?",
+            (candidate.storage_key,),
+        ).fetchone()
+        if by_digest is None and by_key is None:
+            self._connection.execute(
+                """
+                INSERT INTO objects(
+                    digest, storage_key, byte_size, media_type, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    candidate.digest,
+                    candidate.storage_key,
+                    candidate.byte_size,
+                    candidate.media_type,
+                    _now(),
+                ),
+            )
+            by_digest = self._require_record("objects", "digest", candidate.digest)
+        if (
+            by_digest is None
+            or by_key is not None
+            and (by_key["digest"] != candidate.digest)
+        ):
+            raise CatalogConflictError(
+                f"object storage key is already registered: {candidate.storage_key}"
+            )
+        actual = (
+            by_digest["digest"],
+            by_digest["storage_key"],
+            by_digest["byte_size"],
+            by_digest["media_type"],
+        )
+        expected = (
+            candidate.digest,
+            candidate.storage_key,
+            candidate.byte_size,
+            candidate.media_type,
+        )
+        if actual != expected:
+            raise CatalogConflictError(
+                f"object metadata is immutable: {candidate.digest}"
+            )
+
+    def _stage_job_publication_generation(
+        self,
+        job: IndexJobRecord,
+        output: IndexJobViewOutput,
+        identity: Mapping[str, Any],
+    ) -> sqlite3.Row:
+        profile = self._require_record("view_profiles", "profile_id", output.profile_id)
+        if profile["view_type"] != output.view_type:
+            raise CatalogValidationError(
+                "index job output view type does not match its profile"
+            )
+        self._register_job_publication_object(output.object_record)
+        for member in output.member_object_records:
+            self._register_job_publication_object(member)
+
+        generation_id = str(identity["view_generation_id"])
+        metadata_json = canonical_json(output.generation_metadata)
+        row = self._connection.execute(
+            "SELECT * FROM view_generations WHERE view_generation_id = ?",
+            (generation_id,),
+        ).fetchone()
+        if row is None:
+            self._connection.execute(
+                """
+                INSERT INTO view_generations(
+                    view_generation_id, repository_id, source_revision_id,
+                    profile_id, view_type, object_digest, schema_version,
+                    metadata_json, status, created_at, ready_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'staged', ?, NULL)
+                """,
+                (
+                    generation_id,
+                    job.repository_id,
+                    job.source_revision_id,
+                    output.profile_id,
+                    output.view_type,
+                    output.object_record.digest,
+                    output.schema_version,
+                    metadata_json,
+                    _now(),
+                ),
+            )
+            row = self._require_record(
+                "view_generations", "view_generation_id", generation_id
+            )
+        expected = (
+            job.repository_id,
+            job.source_revision_id,
+            output.profile_id,
+            output.view_type,
+            output.object_record.digest,
+            output.schema_version,
+            metadata_json,
+        )
+        actual = tuple(
+            row[key]
+            for key in (
+                "repository_id",
+                "source_revision_id",
+                "profile_id",
+                "view_type",
+                "object_digest",
+                "schema_version",
+                "metadata_json",
+            )
+        )
+        if actual != expected:
+            raise CatalogConflictError("view generation identity conflict")
+        member_digests = [member.digest for member in output.member_object_records]
+        persisted_members = [
+            member["object_digest"]
+            for member in self._connection.execute(
+                """
+                SELECT object_digest FROM view_generation_objects
+                WHERE view_generation_id = ? ORDER BY object_digest
+                """,
+                (generation_id,),
+            ).fetchall()
+        ]
+        if not persisted_members and member_digests:
+            if row["status"] != "staged":
+                raise CatalogConflictError(
+                    "ready view generation member objects are missing"
+                )
+            self._connection.executemany(
+                """
+                INSERT INTO view_generation_objects(
+                    view_generation_id, object_digest
+                ) VALUES (?, ?)
+                """,
+                ((generation_id, digest) for digest in member_digests),
+            )
+        elif persisted_members != member_digests:
+            raise CatalogConflictError(
+                "view generation member object identity conflict"
+            )
+        row = self._require_record(
+            "view_generations", "view_generation_id", generation_id
+        )
+        self._validate_view_generation_input(row)
+        return row
+
+    def _validate_persisted_job_publication_outputs(
+        self,
+        job: IndexJobRecord,
+        outputs: tuple[IndexJobViewOutput, ...],
+        output_identities: Sequence[Mapping[str, Any]],
+        snapshot_id: str,
+    ) -> tuple[list[tuple[str, str]], list[sqlite3.Row]]:
+        members: list[tuple[str, str]] = []
+        rows: list[sqlite3.Row] = []
+        for output, identity in zip(outputs, output_identities, strict=True):
+            generation_id = str(identity["view_generation_id"])
+            row = self._require_record(
+                "view_generations", "view_generation_id", generation_id
+            )
+            expected = (
+                job.repository_id,
+                job.source_revision_id,
+                output.profile_id,
+                output.view_type,
+                output.object_record.digest,
+                output.schema_version,
+                canonical_json(output.generation_metadata),
+            )
+            actual = tuple(
+                row[key]
+                for key in (
+                    "repository_id",
+                    "source_revision_id",
+                    "profile_id",
+                    "view_type",
+                    "object_digest",
+                    "schema_version",
+                    "metadata_json",
+                )
+            )
+            if actual != expected:
+                raise CatalogConflictError(
+                    "persisted job publication generation conflicts"
+                )
+            self._validate_view_generation_input(row)
+            primary = self._require_record(
+                "objects", "digest", output.object_record.digest
+            )
+            if (
+                primary["digest"],
+                primary["storage_key"],
+                primary["byte_size"],
+                primary["media_type"],
+            ) != (
+                output.object_record.digest,
+                output.object_record.storage_key,
+                output.object_record.byte_size,
+                output.object_record.media_type,
+            ):
+                raise CatalogConflictError("persisted job publication object conflicts")
+            persisted_members = self._generation_member_objects(generation_id)
+            if persisted_members != output.member_object_records:
+                raise CatalogConflictError(
+                    "persisted job publication member objects conflict"
+                )
+            members.append((output.view_type, generation_id))
+            rows.append(row)
+
+        snapshot = self._connection.execute(
+            "SELECT * FROM snapshots WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchone()
+        self._validate_ready_snapshot(
+            snapshot,
+            repository_id=job.repository_id,
+            source_revision_id=job.source_revision_id,
+            content_digest=snapshot_id.removeprefix("snapshot_"),
+            members=members,
+            view_rows=rows,
+        )
+        return members, rows
+
+    def _validate_job_publication_replay(
+        self,
+        job: IndexJobRecord,
+        *,
+        owner_id: str,
+        fencing_token: int,
+        outputs: tuple[IndexJobViewOutput, ...],
+        output_identities: Sequence[Mapping[str, Any]],
+        snapshot_id: str,
+    ) -> IndexJobRecord:
+        publication = self._connection.execute(
+            "SELECT * FROM index_job_publications WHERE job_id = ?",
+            (job.job_id,),
+        ).fetchone()
+        if publication is None:
+            raise StorageIntegrityError(
+                "successful index job has no publication closure"
+            )
+        text_fields = (
+            "job_id",
+            "repository_id",
+            "source_revision_id",
+            "ref_name",
+            "request_digest",
+            "snapshot_id",
+            "ref_updated_at",
+            "closure_digest",
+            "closure_json",
+        )
+        if any(type(publication[field]) is not str for field in text_fields):
+            raise CatalogConflictError(
+                "job publication stored core contains non-text identity data"
+            )
+        persisted_expected_generation = _persisted_nonnegative_int64(
+            publication["expected_ref_generation"],
+            "job publication expected ref generation",
+        )
+        persisted_owner = publication["owner_id"]
+        if type(persisted_owner) is not str:
+            raise CatalogConflictError(
+                "job publication stored owner is not canonical text"
+            )
+        try:
+            canonical_owner = _bounded_text(
+                persisted_owner,
+                "job publication stored owner",
+                max_length=256,
+            )
+        except CatalogValidationError as exc:
+            raise CatalogConflictError(
+                "job publication stored owner is not canonical text"
+            ) from exc
+        if canonical_owner != persisted_owner:
+            raise CatalogConflictError(
+                "job publication stored owner is not canonical text"
+            )
+        persisted_fencing_token = _persisted_positive_int64(
+            publication["fencing_token"],
+            "job publication fencing token",
+        )
+        if persisted_owner != owner_id or persisted_fencing_token != fencing_token:
+            raise CatalogConflictError(
+                "successful index job replay uses different fenced authority"
+            )
+        try:
+            ref_generation = _persisted_positive_int64(
+                publication["ref_generation"],
+                "job publication ref generation",
+            )
+            ref_updated_at = _persisted_utc_timestamp(
+                publication["ref_updated_at"],
+                "job publication ref_updated_at",
+            )
+        except CatalogConflictError as exc:
+            raise CatalogConflictError(
+                "job publication historical ref outcome conflicts"
+            ) from exc
+        if type(publication["ref_changed"]) is not int or publication[
+            "ref_changed"
+        ] not in (0, 1):
+            raise CatalogConflictError(
+                "job publication historical ref outcome conflicts"
+            )
+        ref_changed = bool(publication["ref_changed"])
+        expected_result_generation = job.expected_ref_generation + int(ref_changed)
+        if (
+            expected_result_generation > _SQLITE_INT64_MAX
+            or ref_generation != expected_result_generation
+            or not ref_changed
+            and job.expected_ref_generation == 0
+        ):
+            raise CatalogConflictError(
+                "job publication historical ref outcome conflicts"
+            )
+        closure_json, closure_digest = _canonical_job_publication_closure(
+            job,
+            owner_id=owner_id,
+            fencing_token=fencing_token,
+            snapshot_id=snapshot_id,
+            ref_generation=ref_generation,
+            ref_changed=ref_changed,
+            ref_updated_at=ref_updated_at,
+            output_identities=output_identities,
+        )
+        expected_core = (
+            job.job_id,
+            job.repository_id,
+            job.source_revision_id,
+            job.ref_name,
+            job.request_digest,
+            job.expected_ref_generation,
+            snapshot_id,
+            closure_digest,
+            closure_json,
+        )
+        actual_core = tuple(
+            publication[key]
+            for key in (
+                "job_id",
+                "repository_id",
+                "source_revision_id",
+                "ref_name",
+                "request_digest",
+                "expected_ref_generation",
+                "snapshot_id",
+                "closure_digest",
+                "closure_json",
+            )
+        )
+        if (
+            persisted_expected_generation != job.expected_ref_generation
+            or actual_core != expected_core
+        ):
+            raise CatalogConflictError(
+                "successful index job replay differs from its publication closure"
+            )
+        completed_at = publication["completed_at_ms"]
+        if (
+            type(completed_at) is not int
+            or completed_at < 0
+            or job.status is not IndexJobStatus.SUCCEEDED
+            or job.result_snapshot_id != snapshot_id
+            or job.finished_at_ms != completed_at
+            or job.updated_at_ms != completed_at
+            or job.cancel_requested
+            or job.attempt_count < 1
+            or job.started_at_ms is None
+        ):
+            raise CatalogConflictError(
+                "successful index job and publication closure conflict"
+            )
+
+        self._validate_persisted_job_publication_outputs(
+            job,
+            outputs,
+            output_identities,
+            snapshot_id,
+        )
+        manifest = self._manifest_summary(snapshot_id)
+        self._validate_retained_ref_response_bounds(
+            repository_id=job.repository_id,
+            ref_name=job.ref_name,
+            snapshot_id=snapshot_id,
+            generation=ref_generation,
+            updated_at=ref_updated_at,
+            manifest=manifest,
+        )
+        current_ref = self._connection.execute(
+            """
+            SELECT snapshot_id, generation, updated_at FROM refs
+            WHERE repository_id = ? AND ref_name = ?
+            """,
+            (job.repository_id, job.ref_name),
+        ).fetchone()
+        if current_ref is None:
+            raise CatalogConflictError(
+                "job publication historical ref outcome is missing"
+            )
+        current_generation = _persisted_positive_int64(
+            current_ref["generation"],
+            "ref generation",
+        )
+        _persisted_utc_timestamp(current_ref["updated_at"], "ref updated_at")
+        if current_generation < ref_generation or (
+            current_generation == ref_generation
+            and (
+                current_ref["snapshot_id"] != snapshot_id
+                or current_ref["updated_at"] != ref_updated_at
+            )
+        ):
+            raise CatalogConflictError(
+                "job publication historical ref outcome conflicts"
+            )
+        lease = self._connection.execute(
+            """
+            SELECT * FROM ref_job_leases
+            WHERE repository_id = ? AND ref_name = ?
+            """,
+            (job.repository_id, job.ref_name),
+        ).fetchone()
+        if lease is None:
+            raise CatalogConflictError("job publication lease history conflicts")
+        active_lease = self._validate_persisted_lease_slot(lease)
+        lease_fencing_token = lease["fencing_token"]
+        lease_updated_at = lease["updated_at_ms"]
+        if lease_fencing_token < fencing_token or lease_updated_at < completed_at:
+            raise CatalogConflictError("job publication lease history conflicts")
+        if active_lease is None:
+            if (
+                lease_fencing_token == fencing_token
+                and lease_updated_at != completed_at
+            ):
+                raise CatalogConflictError(
+                    "released job lease history conflicts with publication"
+                )
+        elif (
+            active_lease.job_id == job.job_id
+            or active_lease.fencing_token <= fencing_token
+            or active_lease.acquired_at_ms < completed_at
+        ):
+            raise CatalogConflictError(
+                "active job lease history conflicts with publication"
+            )
+        return job
+
+    @staticmethod
+    def _publication_object_from_json(
+        value: object,
+        *,
+        label: str,
+    ) -> ObjectRecord:
+        if type(value) is not dict or set(value) != {
+            "digest",
+            "storage_key",
+            "byte_size",
+            "media_type",
+        }:
+            raise CatalogConflictError(f"{label} has an invalid object closure")
+        if tuple(
+            type(value[key])
+            for key in ("digest", "storage_key", "byte_size", "media_type")
+        ) != (str, str, int, str):
+            raise CatalogConflictError(f"{label} has an invalid object closure")
+        try:
+            return ObjectRecord(
+                digest=value["digest"],
+                storage_key=value["storage_key"],
+                byte_size=value["byte_size"],
+                media_type=value["media_type"],
+            )
+        except StorageValidationError as exc:
+            raise CatalogConflictError(
+                f"{label} has an invalid object closure"
+            ) from exc
+
+    def _outputs_from_publication_row(
+        self,
+        job: IndexJobRecord,
+        publication: sqlite3.Row,
+    ) -> tuple[tuple[IndexJobViewOutput, ...], tuple[dict[str, Any], ...]]:
+        raw_closure = publication["closure_json"]
+        if type(raw_closure) is not str:
+            raise CatalogConflictError("job publication closure is not canonical")
+        try:
+            closure = json.loads(raw_closure)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise CatalogConflictError(
+                "job publication closure is not canonical"
+            ) from exc
+        if type(closure) is not dict or set(closure) != {
+            "contract",
+            "job_id",
+            "repository_id",
+            "source_revision_id",
+            "ref_name",
+            "request_digest",
+            "expected_ref_generation",
+            "owner_id",
+            "fencing_token",
+            "snapshot_id",
+            "ref_generation",
+            "ref_changed",
+            "ref_updated_at",
+            "outputs",
+        }:
+            raise CatalogConflictError("job publication closure is not canonical")
+        try:
+            bounded = snapshot_retained_import_response(
+                closure,
+                label="index job publication closure",
+            )
+            canonical_closure = canonical_json(bounded)
+        except (StorageIntegrityError, StorageValidationError) as exc:
+            raise CatalogConflictError(
+                "job publication closure is not canonical"
+            ) from exc
+        digest = hashlib.sha256(canonical_closure.encode("utf-8")).hexdigest()
+        if (
+            canonical_closure != raw_closure
+            or publication["closure_digest"] != digest
+            or closure["contract"] != INDEX_JOB_PUBLICATION_CONTRACT
+        ):
+            raise CatalogConflictError("job publication closure is not canonical")
+        outputs_value = closure["outputs"]
+        if (
+            type(outputs_value) is not list
+            or not outputs_value
+            or len(outputs_value) > _MAX_JOB_PUBLICATION_OUTPUTS
+        ):
+            raise CatalogConflictError("job publication output closure is invalid")
+
+        outputs: list[IndexJobViewOutput] = []
+        output_identities: list[dict[str, Any]] = []
+        total_members = 0
+        for value in outputs_value:
+            if type(value) is not dict or set(value) != {
+                "view_type",
+                "profile_id",
+                "view_generation_id",
+                "schema_version",
+                "metadata",
+                "object",
+                "member_objects",
+            }:
+                raise CatalogConflictError("job publication output closure is invalid")
+            if tuple(
+                type(value[key])
+                for key in (
+                    "view_type",
+                    "profile_id",
+                    "view_generation_id",
+                    "schema_version",
+                )
+            ) != (str, str, str, str):
+                raise CatalogConflictError("job publication output closure is invalid")
+            metadata = value["metadata"]
+            members_value = value["member_objects"]
+            if type(metadata) is not dict or type(members_value) is not list:
+                raise CatalogConflictError("job publication output closure is invalid")
+            if len(members_value) > MAX_VIEW_GENERATION_MEMBERS:
+                raise CatalogConflictError(
+                    "job publication output closure has too many members"
+                )
+            total_members += len(members_value)
+            if total_members > MAX_VIEW_GENERATION_MEMBERS:
+                raise CatalogConflictError(
+                    "job publication closure has too many aggregate members"
+                )
+            primary = self._publication_object_from_json(
+                value["object"],
+                label="job publication primary",
+            )
+            members = tuple(
+                self._publication_object_from_json(
+                    member,
+                    label="job publication member",
+                )
+                for member in members_value
+            )
+            base_metadata = dict(metadata)
+            reserved_members = base_metadata.pop(
+                VIEW_GENERATION_MEMBERS_METADATA_KEY,
+                None,
+            )
+            expected_member_digests = [member.digest for member in members]
+            if (members and reserved_members != expected_member_digests) or (
+                not members and reserved_members is not None
+            ):
+                raise CatalogConflictError(
+                    "job publication member metadata closure is invalid"
+                )
+            try:
+                output = IndexJobViewOutput.create(
+                    value["view_type"],
+                    value["profile_id"],
+                    primary,
+                    schema_version=value["schema_version"],
+                    metadata=base_metadata,
+                    member_object_records=members,
+                )
+            except StorageValidationError as exc:
+                raise CatalogConflictError(
+                    "job publication output closure is invalid"
+                ) from exc
+            expected_identity = _job_publication_output_identity(job, output)
+            if expected_identity != value:
+                raise CatalogConflictError("job publication output identity conflicts")
+            outputs.append(output)
+            output_identities.append(expected_identity)
+        frozen_outputs = _freeze_job_publication_outputs(tuple(outputs))
+        if tuple(output.identity for output in frozen_outputs) != tuple(
+            {
+                key: identity[key]
+                for key in (
+                    "view_type",
+                    "profile_id",
+                    "schema_version",
+                    "metadata",
+                    "object",
+                    "member_objects",
+                )
+            }
+            for identity in output_identities
+        ):
+            raise CatalogConflictError(
+                "job publication output ordering is not canonical"
+            )
+        return frozen_outputs, tuple(output_identities)
+
+    def _validate_publication_aggregates(self) -> None:
+        lease_slots = self._connection.execute(
+            """
+            SELECT * FROM ref_job_leases
+            ORDER BY repository_id, ref_name
+            """
+        ).fetchall()
+        for lease_slot in lease_slots:
+            self._validate_persisted_lease_slot(lease_slot)
+
+        missing = self._connection.execute(
+            """
+            SELECT job.job_id FROM index_jobs AS job
+            LEFT JOIN index_job_publications AS publication
+                ON publication.job_id = job.job_id
+            WHERE job.status = 'succeeded' AND publication.job_id IS NULL
+            LIMIT 1
+            """
+        ).fetchone()
+        if missing is not None:
+            raise CatalogConflictError(
+                "successful index job is missing its publication closure: "
+                f"{missing['job_id']}"
+            )
+        publications = self._connection.execute(
+            "SELECT * FROM index_job_publications ORDER BY job_id"
+        ).fetchall()
+        for publication in publications:
+            job = self._job_from_row(
+                self._require_record(
+                    "index_jobs",
+                    "job_id",
+                    publication["job_id"],
+                )
+            )
+            requested = self._job_views(job)
+            outputs, output_identities = self._outputs_from_publication_row(
+                job,
+                publication,
+            )
+            if (
+                self._job_publication_output_identities(
+                    job,
+                    requested,
+                    outputs,
+                )
+                != output_identities
+            ):
+                raise CatalogConflictError("job publication request closure conflicts")
+            snapshot_id = _job_publication_snapshot_id(job, output_identities)
+            self._validate_job_publication_replay(
+                job,
+                owner_id=publication["owner_id"],
+                fencing_token=publication["fencing_token"],
+                outputs=outputs,
+                output_identities=output_identities,
+                snapshot_id=snapshot_id,
+            )
 
     def create_job(
         self,
@@ -2900,6 +4456,339 @@ class SQLiteCatalog:
             return self._job_from_row(
                 self._require_record("index_jobs", "job_id", job.job_id)
             )
+
+    def publish_job_outputs(
+        self,
+        job_id: str,
+        *,
+        owner_id: str,
+        fencing_token: int,
+        outputs: tuple[IndexJobViewOutput, ...],
+    ) -> IndexJobRecord:
+        """Atomically close one fenced job publication over immutable outputs."""
+
+        if type(job_id) is not str or type(owner_id) is not str:
+            raise CatalogValidationError(
+                "job publication authority must use exact text values"
+            )
+        if type(fencing_token) is not int:
+            raise CatalogValidationError(
+                "job publication fencing token must be an exact integer"
+            )
+        normalized_job = _bounded_text(job_id, "job ID", max_length=80)
+        owner = _bounded_text(owner_id, "owner ID", max_length=256)
+        token = _positive_integer(fencing_token, "fencing token")
+        if token > _SQLITE_INT64_MAX:
+            raise CatalogValidationError("fencing token exceeds catalog int64 range")
+        frozen_outputs = _freeze_job_publication_outputs(outputs)
+
+        completed: IndexJobRecord | None = None
+        with self._transaction():
+            job_row = self._require_record("index_jobs", "job_id", normalized_job)
+            job = self._job_from_row(job_row)
+            requested_views = self._job_views(job)
+            output_identities = self._job_publication_output_identities(
+                job,
+                requested_views,
+                frozen_outputs,
+            )
+            snapshot_id = _job_publication_snapshot_id(job, output_identities)
+
+            # A successful retry has no live lease: authenticate the immutable
+            # historical closure before consulting the current lease slot.
+            if job.status is IndexJobStatus.SUCCEEDED:
+                completed = self._validate_job_publication_replay(
+                    job,
+                    owner_id=owner,
+                    fencing_token=token,
+                    outputs=frozen_outputs,
+                    output_identities=output_identities,
+                    snapshot_id=snapshot_id,
+                )
+            else:
+                if job.status is not IndexJobStatus.RUNNING or job.cancel_requested:
+                    raise CatalogConflictError(
+                        "index job publication requires a running uncancelled job"
+                    )
+                repository = self._require_record(
+                    "repositories", "repository_id", job.repository_id
+                )
+                source = self._require_record(
+                    "source_revisions", "source_revision_id", job.source_revision_id
+                )
+                if source["repository_id"] != job.repository_id:
+                    raise CatalogConflictError(
+                        "index job source revision belongs to another repository"
+                    )
+                self._validate_repository_source_identity(repository, source)
+
+                now_ms = self._db_now_ms()
+                lease_row = self._connection.execute(
+                    """
+                    SELECT * FROM ref_job_leases
+                    WHERE repository_id = ? AND ref_name = ?
+                    """,
+                    (job.repository_id, job.ref_name),
+                ).fetchone()
+                if (
+                    lease_row is None
+                    or lease_row["job_id"] != job.job_id
+                    or lease_row["owner_id"] != owner
+                    or lease_row["fencing_token"] != token
+                    or type(lease_row["lease_expires_at_ms"]) is not int
+                    or lease_row["lease_expires_at_ms"] <= now_ms
+                ):
+                    raise CatalogConflictError(
+                        "index job publication requires its current unexpired fenced lease"
+                    )
+                current_lease = self._lease_from_row(lease_row)
+                if (
+                    current_lease.repository_id != job.repository_id
+                    or current_lease.ref_name != job.ref_name
+                    or current_lease.job_id != job.job_id
+                    or current_lease.owner_id != owner
+                    or current_lease.fencing_token != token
+                ):
+                    raise CatalogConflictError(
+                        "index job publication lease identity conflicts"
+                    )
+
+                current_ref = self._connection.execute(
+                    """
+                    SELECT snapshot_id, generation, updated_at FROM refs
+                    WHERE repository_id = ? AND ref_name = ?
+                    """,
+                    (job.repository_id, job.ref_name),
+                ).fetchone()
+                if current_ref is None:
+                    current_generation = 0
+                else:
+                    current_generation = _persisted_positive_int64(
+                        current_ref["generation"], "ref generation"
+                    )
+                    _persisted_utc_timestamp(
+                        current_ref["updated_at"], "ref updated_at"
+                    )
+                if current_generation != job.expected_ref_generation:
+                    raise CatalogConflictError(
+                        f"ref {job.ref_name!r} generation is {current_generation}; "
+                        f"expected {job.expected_ref_generation}"
+                    )
+
+                generation_rows = [
+                    self._stage_job_publication_generation(job, output, identity)
+                    for output, identity in zip(
+                        frozen_outputs,
+                        output_identities,
+                        strict=True,
+                    )
+                ]
+                snapshot_members = [
+                    (str(identity["view_type"]), str(identity["view_generation_id"]))
+                    for identity in output_identities
+                ]
+                snapshot = self._connection.execute(
+                    "SELECT * FROM snapshots WHERE snapshot_id = ?",
+                    (snapshot_id,),
+                ).fetchone()
+                snapshot_published_at = _now()
+                if snapshot is None:
+                    self._connection.execute(
+                        """
+                        INSERT INTO snapshots(
+                            snapshot_id, repository_id, source_revision_id,
+                            content_digest, status, published_at
+                        ) VALUES (?, ?, ?, ?, 'building', NULL)
+                        """,
+                        (
+                            snapshot_id,
+                            job.repository_id,
+                            job.source_revision_id,
+                            snapshot_id.removeprefix("snapshot_"),
+                        ),
+                    )
+                    for view_type, generation_id in snapshot_members:
+                        self._connection.execute(
+                            """
+                            INSERT INTO snapshot_views(
+                                snapshot_id, view_type, view_generation_id
+                            ) VALUES (?, ?, ?)
+                            """,
+                            (snapshot_id, view_type, generation_id),
+                        )
+                        self._connection.execute(
+                            """
+                            UPDATE view_generations
+                            SET status = 'ready', ready_at = ?
+                            WHERE view_generation_id = ? AND status = 'staged'
+                            """,
+                            (snapshot_published_at, generation_id),
+                        )
+                    seal = self._connection.execute(
+                        """
+                        UPDATE snapshots SET status = 'ready', published_at = ?
+                        WHERE snapshot_id = ? AND status = 'building'
+                        """,
+                        (snapshot_published_at, snapshot_id),
+                    )
+                    if seal.rowcount != 1:
+                        raise CatalogConflictError(
+                            "job publication snapshot could not be sealed"
+                        )
+                    snapshot = self._connection.execute(
+                        "SELECT * FROM snapshots WHERE snapshot_id = ?",
+                        (snapshot_id,),
+                    ).fetchone()
+                    generation_rows = [
+                        self._require_record(
+                            "view_generations",
+                            "view_generation_id",
+                            generation_id,
+                        )
+                        for _view_type, generation_id in snapshot_members
+                    ]
+                self._validate_ready_snapshot(
+                    snapshot,
+                    repository_id=job.repository_id,
+                    source_revision_id=job.source_revision_id,
+                    content_digest=snapshot_id.removeprefix("snapshot_"),
+                    members=snapshot_members,
+                    view_rows=generation_rows,
+                )
+                self._validate_persisted_job_publication_outputs(
+                    job,
+                    frozen_outputs,
+                    output_identities,
+                    snapshot_id,
+                )
+
+                ref_changed = not (
+                    current_ref is not None
+                    and current_ref["snapshot_id"] == snapshot_id
+                )
+                if ref_changed:
+                    if current_generation == _SQLITE_INT64_MAX:
+                        raise CatalogConflictError(
+                            "ref generation cannot be incremented"
+                        )
+                    result_generation = current_generation + 1
+                    ref_updated_at = _now()
+                else:
+                    if current_generation < 1 or current_ref is None:
+                        raise CatalogConflictError(
+                            "an unchanged job publication requires an existing ref"
+                        )
+                    result_generation = current_generation
+                    ref_updated_at = str(current_ref["updated_at"])
+
+                manifest = self._manifest_summary(snapshot_id)
+                self._validate_retained_ref_response_bounds(
+                    repository_id=job.repository_id,
+                    ref_name=job.ref_name,
+                    snapshot_id=snapshot_id,
+                    generation=result_generation,
+                    updated_at=ref_updated_at,
+                    manifest=manifest,
+                )
+                closure_json, closure_digest = _canonical_job_publication_closure(
+                    job,
+                    owner_id=owner,
+                    fencing_token=token,
+                    snapshot_id=snapshot_id,
+                    ref_generation=result_generation,
+                    ref_changed=ref_changed,
+                    ref_updated_at=ref_updated_at,
+                    output_identities=output_identities,
+                )
+
+                if ref_changed and current_ref is None:
+                    self._connection.execute(
+                        """
+                        INSERT INTO refs(
+                            repository_id, ref_name, snapshot_id,
+                            generation, updated_at
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            job.repository_id,
+                            job.ref_name,
+                            snapshot_id,
+                            result_generation,
+                            ref_updated_at,
+                        ),
+                    )
+                elif ref_changed:
+                    moved = self._connection.execute(
+                        """
+                        UPDATE refs
+                        SET snapshot_id = ?, generation = ?, updated_at = ?
+                        WHERE repository_id = ? AND ref_name = ? AND generation = ?
+                        """,
+                        (
+                            snapshot_id,
+                            result_generation,
+                            ref_updated_at,
+                            job.repository_id,
+                            job.ref_name,
+                            current_generation,
+                        ),
+                    )
+                    if moved.rowcount != 1:
+                        raise CatalogConflictError(
+                            f"ref {job.ref_name!r} changed during job publication"
+                        )
+
+                completed_at_ms = self._db_now_ms()
+                if completed_at_ms < max(
+                    job.updated_at_ms,
+                    current_lease.heartbeat_at_ms,
+                ):
+                    raise CatalogConflictError(
+                        "database clock moved backwards during job publication"
+                    )
+                self._connection.execute(
+                    """
+                    INSERT INTO index_job_publications(
+                        job_id, repository_id, source_revision_id, ref_name,
+                        request_digest, owner_id, fencing_token,
+                        expected_ref_generation, snapshot_id, ref_generation,
+                        ref_changed, ref_updated_at, closure_digest, closure_json,
+                        completed_at_ms
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        job.job_id,
+                        job.repository_id,
+                        job.source_revision_id,
+                        job.ref_name,
+                        job.request_digest,
+                        owner,
+                        token,
+                        job.expected_ref_generation,
+                        snapshot_id,
+                        result_generation,
+                        int(ref_changed),
+                        ref_updated_at,
+                        closure_digest,
+                        closure_json,
+                        completed_at_ms,
+                    ),
+                )
+                succeeded = self._job_from_row(
+                    self._require_record("index_jobs", "job_id", job.job_id)
+                )
+                completed = self._validate_job_publication_replay(
+                    succeeded,
+                    owner_id=owner,
+                    fencing_token=token,
+                    outputs=frozen_outputs,
+                    output_identities=output_identities,
+                    snapshot_id=snapshot_id,
+                )
+
+        if completed is None:
+            raise AssertionError("job publication produced no completed job")
+        return completed
 
     def create_namespace(self, name: str) -> str:
         """Create an idempotent logical namespace and return its stable ID."""
