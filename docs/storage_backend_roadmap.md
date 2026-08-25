@@ -1016,23 +1016,23 @@ native capability policy, and required view coverage in compatibility
 evidence. Landing either the route or the harness does not approve a default.
 This leaves M1 in progress.
 
-These gates do not move the existing milestone boundaries. Generic generation
-publication and fenced jobs remain M2, live bundle replacement and in-flight
-request pins remain M3, and evidence retention and reclamation remain M5. Gate
-C may proceed in parallel, but the report-only harness neither implements nor
-waives it.
+These gates do not move the existing milestone boundaries. The generic fenced
+publication primitive is now part of M2, while builder/profile adapters and
+worker wiring remain; live bundle replacement and in-flight request pins remain
+M3, and evidence retention and reclamation remain M5. Gate C may proceed in
+parallel, but the report-only harness neither implements nor waives it.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable
 per-view request mappings, bounded retry state, and database-clock fenced
 per-ref leases.  Catalog reads revalidate the normalized view rows against the
-canonical request; the M2 publication transaction must repeat that gate before
+canonical request; the M2 publication transaction now repeats that gate before
 associating outputs.  An explicit acquire may atomically retire an expired
 holder while taking over its slot; this slice adds no background reaper and is
 not wired to the compiler or Web workers. Catalog-selected cold-start runtime
 is now available only through the explicit local route above, while
 benchmark-backed default compiler/runtime promotion remains an outstanding M1
-deliverable; fenced job publication remains M2 work.
+deliverable; fenced publication is not yet wired into builders or workers.
 
 The shared compiler-cache lock is a cooperative serialization boundary for
 compiler and importer processes using a cache namespace private to one OS
@@ -1060,9 +1060,9 @@ setting is disabled.  Catalog connections additionally enable recursive
 triggers; direct deletion of requested view rows and cascading deletion of
 their parent job remain blocked.  A future retention/GC milestone must add an
 explicit aggregate-deletion migration and policy rather than bypassing these
-audit guards.  Schema v2 also rejects successful job rows; M2 must remove that
-temporary gate only inside the migration which introduces atomic
-`publish_job_snapshot` completion.
+audit guards. Schema v5 replaces the temporary update-to-success gate with the
+publication-closure gate described below; inserting a job directly in the
+successful state remains forbidden.
 
 Schema v3 closes the equivalent replacement gap across the published aggregate
 even when a raw SQLite client disables foreign keys and recursive triggers.
@@ -1084,18 +1084,50 @@ immutable, and member objects remain protected even for raw SQLite clients
 with foreign keys and recursive triggers disabled. Existing v3 generations
 migrate to an exact empty member set.
 
+Schema v5 adds the versioned `codenib.index-job-publication.v1` audit closure
+and an atomic `publish_job_outputs` primitive. One `BEGIN IMMEDIATE`
+transaction revalidates the canonical job request, requested view/profile
+bindings, live lease owner and fencing token, cancellation state, expected ref
+generation, exact primary/member object metadata, staged generations, complete
+snapshot, and retained-response bounds before changing the ref. It then records
+the immutable closure, succeeds the job, and releases the lease in the same
+commit. Exact replay authenticates the stored owner, fence, canonical closure,
+snapshot, and historical ref outcome before consulting the now-released lease;
+it returns the committed result without advancing the ref, including after a
+later publication has advanced that ref.
+
+The receipt-retaining coordinator freezes exact artifact receipts and keeps
+them retained across the complete catalog transaction and returned-result
+attestation. Required views must be present, optional views may be omitted, and
+extra, duplicate, or profile-mismatched outputs fail closed. Publication is
+bounded to 64 output views and 32,768 aggregate compound members, with the full
+closure also subject to the retained response node/text budget. Per-view
+semantic compatibility remains the responsibility of the outstanding adapters;
+an explicit profile label alone does not establish byte-level semantics.
+
+Declarative triggers make publication rows and their published job/snapshot
+closure immutable and reject invalid partial publication states where SQLite
+can express the invariant. Arbitrary same-user writes through a raw SQLite
+connection are not a security boundary: a client capable of reproducing a
+fully valid transaction is outside this contract. Catalog replay and
+existing-only reopen nevertheless revalidate the complete durable aggregate
+and fail closed when publication dependencies or canonical closure data have
+been corrupted.
+
 ### M2: Immutable generation publication
 
-Status: pending.
+Status: in progress. The receipt-retained, fenced SQLite publication primitive
+is implemented; builder adapters and production job/runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility
   inputs and prove every semantic axis participates in the profile identity.
 - Publish whole-view BM25, FAISS, and graph artifacts through the catalog and
   object store without changing their ranking/query semantics.
-- Add the publication coordinator that verifies each object-store receipt and
-  matches digest, size, and storage key before catalog registration; catalog
-  metadata alone must never make missing bytes publishable.
+- Use the implemented receipt-retaining coordinator for each adapter so exact
+  digest, size, storage key, and media type remain retained through atomic
+  catalog publication; catalog metadata alone must never make missing bytes
+  publishable.
 - Move refs only after object and compatibility validation.
 - Prove interrupted and failed builds leave the previous snapshot usable.
 
