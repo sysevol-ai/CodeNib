@@ -10,7 +10,6 @@ import math
 import subprocess
 import sys
 import textwrap
-import time
 from pathlib import Path
 
 import pytest
@@ -313,24 +312,72 @@ def test_bounded_array_rejects_malformed_framing(payload: bytes) -> None:
         list(iter_bounded_json_array(io.BytesIO(payload), label="documents"))
 
 
-def test_escape_dense_string_scanning_scales_linearly() -> None:
-    def elapsed(pairs: int) -> float:
-        payload = b'["' + (b"\\\\" * pairs) + b'"]'
-        started = time.perf_counter()
-        assert list(
-            iter_bounded_json_array(
-                io.BytesIO(payload),
+def test_escape_dense_string_scanning_scales_linearly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib._bounded_json as bounded_json
+
+    real_pattern = bounded_json._STRING_SPECIAL
+
+    class _TrackingStringSpecial:
+        def __init__(self) -> None:
+            self.search_calls = 0
+            self.scanned_bytes = 0
+
+        def search(self, block: bytes, offset: int):
+            self.search_calls += 1
+            match = real_pattern.search(block, offset)
+            end = match.start() + 1 if match is not None else len(block)
+            self.scanned_bytes += end - offset
+            return match
+
+    tracker = _TrackingStringSpecial()
+    monkeypatch.setattr(bounded_json, "_STRING_SPECIAL", tracker)
+
+    bytes_method_calls: list[str] = []
+    previous_profile = sys.getprofile()
+    previous_profile_disable = getattr(previous_profile, "disable", None)
+    previous_profile_enable = getattr(previous_profile, "enable", None)
+    if previous_profile is not None and not callable(previous_profile):
+        if not callable(previous_profile_disable) or not callable(
+            previous_profile_enable
+        ):
+            raise AssertionError("active profiler cannot be restored safely")
+        previous_profile_disable()
+
+    def track_bytes_methods(frame, event: str, argument: object) -> None:
+        if event == "c_call" and type(getattr(argument, "__self__", None)) is bytes:
+            method_name = getattr(argument, "__name__", None)
+            if isinstance(method_name, str):
+                bytes_method_calls.append(method_name)
+        if callable(previous_profile):
+            previous_profile(frame, event, argument)
+
+    pairs = 10_000
+    payload = b'["' + (b"\\\\" * pairs) + b'"]'
+    sys.setprofile(track_bytes_methods)
+    try:
+        observed = list(
+            bounded_json.iter_bounded_json_array(
+                _ChunkReader(payload, 257),
                 label="escape-dense documents",
                 max_element_bytes=len(payload),
             )
-        ) == ["\\" * pairs]
-        return time.perf_counter() - started
+        )
+    finally:
+        sys.setprofile(None)
+        if callable(previous_profile):
+            sys.setprofile(previous_profile)
+        elif previous_profile is not None:
+            assert callable(previous_profile_enable)
+            previous_profile_enable()
 
-    # Use the best of two runs to reduce scheduler noise. The larger input is
-    # four times the size; the old repeated-find loop grew quadratically.
-    small = min(elapsed(100_000) for _ in range(2))
-    large = min(elapsed(400_000) for _ in range(2))
-    assert large < max(0.25, small * 8)
+    # The regex accounts for the complete scan. No independent bytes method may
+    # rescan a block on every escape; odd blocks also exercise split pairs.
+    assert observed == ["\\" * pairs]
+    assert tracker.search_calls == pairs + 1
+    assert tracker.scanned_bytes == pairs + 1
+    assert bytes_method_calls == []
 
 
 def test_canonical_array_chunks_match_the_existing_json_contract() -> None:
