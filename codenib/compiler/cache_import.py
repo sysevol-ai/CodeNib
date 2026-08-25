@@ -62,15 +62,23 @@ from ..source_fingerprint import (
 )
 from ..storage.models import (
     DEFAULT_NAMESPACE_NAME,
+    IndexJobRecord,
+    IndexJobRequest,
+    IndexJobRequestedMode,
+    IndexJobStatus,
+    IndexJobViewRecord,
     RepositoryIdentity,
+    SourceRevision,
     StorageIntegrityError,
     StorageValidationError,
 )
 from ..storage.protocols import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
+    JobPublicationCatalog,
     RetainedImportCatalog,
     RetainedImportObjectStore,
 )
+from ..storage.publication import publish_job_artifacts
 from ..storage.view_bundle import (
     DEFAULT_MAX_BUNDLE_BYTES,
     DEFAULT_MAX_BUNDLE_FILES,
@@ -91,6 +99,7 @@ from .manifest_import import (
     _expected_generation,
     _expected_namespace_id,
     _positive_limit,
+    _prepare_job_view_artifacts_inside_authority,
     _require_static_methods,
     _snapshot_environment,
     _snapshot_forbidden_paths,
@@ -109,6 +118,7 @@ from .snapshot_store import normalize_repo
 
 _COMMIT_RE = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
 _SUPPORTED_CACHE_VIEWS = ("bm25", "vector")
+_CATALOG_INT64_MAX = 9_223_372_036_854_775_807
 
 
 class CompilerCacheTopologyGuard(Protocol):
@@ -262,6 +272,64 @@ class CompilerCacheImportResult:
 
 
 @dataclass(frozen=True, slots=True)
+class CompilerCacheJobPublicationResult:
+    """Exact data returned after one fenced BM25 job publication."""
+
+    manifest: RepoManifest
+    import_plan: RepoManifestImportPlan
+    recapture: CompilerCacheBm25RecaptureResult
+    job: IndexJobRecord
+
+    def __post_init__(self) -> None:
+        if type(self) is not CompilerCacheJobPublicationResult:
+            raise TypeError(
+                "compiler cache job publication must use the exact result type"
+            )
+        if type(self.manifest) is not RepoManifest:
+            raise TypeError("compiler cache job manifest is invalid")
+        if type(self.import_plan) is not RepoManifestImportPlan:
+            raise TypeError("compiler cache job import plan is invalid")
+        if type(self.recapture) is not CompilerCacheBm25RecaptureResult:
+            raise TypeError("compiler cache job recapture is invalid")
+        if type(self.job) is not IndexJobRecord:
+            raise TypeError("compiler cache job record is invalid")
+        try:
+            manifest = RepoManifest.from_dict(copy.deepcopy(self.manifest.to_dict()))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise StorageIntegrityError(
+                "compiler cache job manifest cannot be detached"
+            ) from exc
+        plan_views = self.import_plan.views
+        request_views = _index_job_request(self.job).view_requests
+        expected_source = SourceRevision.dirty(
+            self.job.repository_id,
+            source_fingerprint=self.import_plan.source.fingerprint,
+            commit_sha=None,
+        )
+        if (
+            self.import_plan.selection.selected_views != ("bm25",)
+            or len(plan_views) != 1
+            or plan_views[0].view_type != "bm25"
+            or len(request_views) != 1
+            or request_views[0].view_type != "bm25"
+            or request_views[0].profile_id != plan_views[0].profile_id
+            or request_views[0].requested_mode is not IndexJobRequestedMode.FULL
+            or request_views[0].required is not True
+            or self.job.source_revision_id != expected_source.source_revision_id
+            or self.job.status is not IndexJobStatus.SUCCEEDED
+            or self.job.cancel_requested
+            or self.job.result_snapshot_id is None
+            or manifest.to_dict() != self.import_plan.manifest.to_dict()
+            or self.recapture.canonical_manifest_bytes
+            != _pretty_manifest_bytes(manifest)
+        ):
+            raise StorageIntegrityError(
+                "compiler cache job publication result identities are inconsistent"
+            )
+        object.__setattr__(self, "manifest", manifest)
+
+
+@dataclass(frozen=True, slots=True)
 class CompilerCacheMultiViewImportResult:
     """Pure-data result of one atomic compiler-cache view-set import."""
 
@@ -392,6 +460,14 @@ class _PreparedCompilerCacheImport:
     canonical_manifest_bytes: bytes
     import_plan: RepoManifestImportPlan
     context_artifact: ContextArtifactResult
+
+
+@dataclass(frozen=True, slots=True)
+class _CompilerCacheJobBinding:
+    job: IndexJobRecord
+    view: IndexJobViewRecord
+    source_snapshot: RepositorySourceIdentitySnapshot
+    source_identity: SourceRevision
 
 
 def _path_relation(path: Path, boundary: Path) -> str:
@@ -612,6 +688,323 @@ def _preflight_catalog_contract(catalog: RetainedImportCatalog) -> None:
     contract = catalog.retained_import_contract()
     if type(contract) is not str or contract != RETAINED_IMPORT_CATALOG_CONTRACT:
         raise TypeError("compiler cache import catalog contract is incompatible")
+
+
+def _index_job_request(job: IndexJobRecord) -> IndexJobRequest:
+    return IndexJobRequest(
+        repository_id=job.repository_id,
+        source_revision_id=job.source_revision_id,
+        ref_name=job.ref_name,
+        idempotency_key=job.idempotency_key,
+        expected_ref_generation=job.expected_ref_generation,
+        max_attempts=job.max_attempts,
+        request_json=job.request_json,
+    )
+
+
+def _detach_index_job_record(value: object) -> IndexJobRecord:
+    if type(value) is not IndexJobRecord:
+        raise StorageIntegrityError("catalog returned an invalid index job record")
+    text_fields = (
+        "job_id",
+        "repository_id",
+        "source_revision_id",
+        "ref_name",
+        "idempotency_key",
+        "request_json",
+        "request_digest",
+    )
+    optional_text_fields = (
+        "result_snapshot_id",
+        "error_code",
+        "error_message",
+    )
+    integer_fields = (
+        "expected_ref_generation",
+        "max_attempts",
+        "attempt_count",
+        "created_at_ms",
+        "updated_at_ms",
+    )
+    optional_integer_fields = ("started_at_ms", "finished_at_ms")
+    if (
+        any(type(getattr(value, field)) is not str for field in text_fields)
+        or any(
+            getattr(value, field) is not None and type(getattr(value, field)) is not str
+            for field in optional_text_fields
+        )
+        or any(type(getattr(value, field)) is not int for field in integer_fields)
+        or any(
+            getattr(value, field) is not None and type(getattr(value, field)) is not int
+            for field in optional_integer_fields
+        )
+        or type(value.status) is not IndexJobStatus
+        or type(value.cancel_requested) is not bool
+    ):
+        raise StorageIntegrityError("catalog index job fields are not exact")
+    detached = IndexJobRecord(
+        job_id=value.job_id,
+        repository_id=value.repository_id,
+        source_revision_id=value.source_revision_id,
+        ref_name=value.ref_name,
+        idempotency_key=value.idempotency_key,
+        expected_ref_generation=value.expected_ref_generation,
+        max_attempts=value.max_attempts,
+        request_json=value.request_json,
+        request_digest=value.request_digest,
+        status=value.status,
+        cancel_requested=value.cancel_requested,
+        attempt_count=value.attempt_count,
+        result_snapshot_id=value.result_snapshot_id,
+        error_code=value.error_code,
+        error_message=value.error_message,
+        created_at_ms=value.created_at_ms,
+        updated_at_ms=value.updated_at_ms,
+        started_at_ms=value.started_at_ms,
+        finished_at_ms=value.finished_at_ms,
+    )
+    if detached != value:
+        raise StorageIntegrityError("catalog index job record is not canonical")
+    return detached
+
+
+def _detach_index_job_views(value: object) -> tuple[IndexJobViewRecord, ...]:
+    if type(value) is not tuple or any(
+        type(item) is not IndexJobViewRecord for item in value
+    ):
+        raise StorageIntegrityError("catalog returned invalid index job view rows")
+    if any(
+        type(item.job_id) is not str
+        or type(item.view_type) is not str
+        or type(item.profile_id) is not str
+        or type(item.requested_mode) is not IndexJobRequestedMode
+        or type(item.required) is not bool
+        for item in value
+    ):
+        raise StorageIntegrityError("catalog index job view fields are not exact")
+    detached = tuple(
+        IndexJobViewRecord(
+            job_id=item.job_id,
+            view_type=item.view_type,
+            profile_id=item.profile_id,
+            requested_mode=item.requested_mode,
+            required=item.required,
+        )
+        for item in value
+    )
+    if detached != value:
+        raise StorageIntegrityError("catalog index job view rows are not canonical")
+    return detached
+
+
+def _read_compiler_cache_bm25_job_binding(
+    job_id: str,
+    *,
+    catalog: JobPublicationCatalog,
+    repository_source: RepositorySourceBinding,
+    repository_key: str,
+    namespace_name: str,
+) -> _CompilerCacheJobBinding:
+    source_snapshot = repository_source.authenticated_identity_snapshot()
+    if type(source_snapshot) is not RepositorySourceIdentitySnapshot:
+        raise TypeError("compiler cache repository identity has an invalid type")
+    repository_identity = RepositoryIdentity(
+        namespace_id=_expected_namespace_id(namespace_name),
+        repository_key=repository_key,
+    )
+    source_identity = SourceRevision.dirty(
+        repository_identity.repository_id,
+        source_fingerprint=source_snapshot.fingerprint,
+        commit_sha=None,
+    )
+    job = _detach_index_job_record(catalog.get_job(job_id))
+    if job.job_id != job_id:
+        raise StorageIntegrityError("catalog returned a different index job")
+    views = _detach_index_job_views(catalog.get_job_views(job_id))
+    expected_views = _index_job_request(job).view_requests
+    if views != expected_views:
+        raise StorageIntegrityError(
+            "catalog job view rows differ from the canonical request"
+        )
+    if (
+        job.repository_id != repository_identity.repository_id
+        or job.source_revision_id != source_identity.source_revision_id
+    ):
+        raise StorageValidationError(
+            "compiler cache job repository or source identity does not match"
+        )
+    if (
+        len(views) != 1
+        or views[0].job_id != job.job_id
+        or views[0].view_type != "bm25"
+        or views[0].requested_mode is not IndexJobRequestedMode.FULL
+        or views[0].required is not True
+    ):
+        raise StorageValidationError(
+            "compiler cache job must request exactly required FULL BM25"
+        )
+    if job.cancel_requested:
+        raise StorageValidationError("compiler cache job is cancelled")
+    if job.status not in {IndexJobStatus.RUNNING, IndexJobStatus.SUCCEEDED}:
+        raise StorageValidationError(
+            "compiler cache job must be active or an exact successful replay"
+        )
+    if job.attempt_count < 1 or job.started_at_ms is None:
+        raise StorageValidationError(
+            "compiler cache job has no acquired publication attempt"
+        )
+    return _CompilerCacheJobBinding(
+        job=job,
+        view=views[0],
+        source_snapshot=source_snapshot,
+        source_identity=source_identity,
+    )
+
+
+def _require_compiler_cache_bm25_job_profile(
+    binding: _CompilerCacheJobBinding,
+    plan: RepoManifestImportPlan,
+) -> None:
+    if (
+        type(plan) is not RepoManifestImportPlan
+        or plan.selection.selected_views != ("bm25",)
+        or len(plan.views) != 1
+        or plan.views[0].view_type != "bm25"
+    ):
+        raise StorageIntegrityError("compiler cache BM25 import plan is inconsistent")
+    if binding.view.profile_id != plan.views[0].profile_id:
+        raise StorageValidationError(
+            "compiler cache BM25 profile does not match the job request"
+        )
+
+
+def _preflight_cache_job_operation(
+    cache_dir: str | Path,
+    *,
+    job_id: str,
+    owner_id: str,
+    fencing_token: int,
+    repository_source: RepositorySourceBinding,
+    bm25_output_owner: PublishedWorkspaceReceiptOwner,
+    context_output_owner: PublishedWorkspaceReceiptOwner,
+    bm25_destination: Path,
+    context_destination: Path,
+    workspace_provider: StrictWorkspaceProvider,
+    repository_key: str,
+    catalog: JobPublicationCatalog,
+    object_store: RetainedImportObjectStore,
+    namespace_name: str,
+    max_manifest_bytes: int,
+    max_context_files: int,
+    max_context_bytes: int,
+    max_bundle_files: int,
+    max_bundle_bytes: int,
+    max_bundle_metadata_bytes: int,
+    forbidden_paths: Iterable[Path],
+    environ: Mapping[str, str] | None,
+) -> tuple[_ImportOperation, _CompilerCacheJobBinding, str, str, int]:
+    normalized_job_id = _exact_text(job_id, "job ID", max_length=80)
+    normalized_owner_id = _exact_text(owner_id, "lease owner ID", max_length=256)
+    if (
+        type(fencing_token) is not int
+        or fencing_token < 1
+        or fencing_token > _CATALOG_INT64_MAX
+    ):
+        raise StorageValidationError("fencing token must be a positive catalog int64")
+    _preflight_authorities(
+        views=("bm25",),
+        repository_source=repository_source,
+        view_output_owners={"bm25": bm25_output_owner},
+        view_destinations={"bm25": bm25_destination},
+        context_output_owner=context_output_owner,
+        context_destination=context_destination,
+    )
+    repository = _exact_text(repository_key, "repository key")
+    try:
+        normalized_repository = normalize_repo(repository)
+    except ValueError as exc:
+        raise StorageValidationError("repository key is not canonical") from exc
+    if normalized_repository != repository:
+        raise StorageValidationError("repository key is not canonical")
+    namespace = _exact_text(namespace_name, "namespace name")
+    manifest_limit = _manifest_limit(max_manifest_bytes)
+    context_files = _positive_limit(max_context_files, "context file limit")
+    context_bytes = _positive_limit(max_context_bytes, "context byte limit")
+    bundle_files = _positive_limit(max_bundle_files, "bundle file limit")
+    bundle_bytes = _positive_limit(max_bundle_bytes, "bundle byte limit")
+    bundle_metadata_bytes = _positive_limit(
+        max_bundle_metadata_bytes,
+        "bundle metadata byte limit",
+    )
+    environment = _snapshot_environment(environ)
+    forbidden = _snapshot_forbidden_paths(forbidden_paths)
+    if not isinstance(catalog, JobPublicationCatalog):
+        raise TypeError("compiler cache job catalog lacks publication capabilities")
+    _require_static_methods(
+        catalog,
+        label="compiler cache job catalog",
+        names=("get_job", "get_job_views", "publish_job_outputs"),
+    )
+    if not isinstance(object_store, RetainedImportObjectStore):
+        raise TypeError(
+            "compiler cache job object store lacks retained streaming capabilities"
+        )
+    _require_static_methods(
+        object_store,
+        label="compiler cache job object store",
+        names=_OBJECT_STORE_METHODS,
+    )
+    _preflight_workspace_provider(workspace_provider)
+    binding = _read_compiler_cache_bm25_job_binding(
+        normalized_job_id,
+        catalog=catalog,
+        repository_source=repository_source,
+        repository_key=repository,
+        namespace_name=namespace,
+    )
+    inputs = _ImportPreflight(
+        repository_key=repository,
+        namespace_name=namespace,
+        ref_name=binding.job.ref_name,
+        expected_generation=binding.job.expected_ref_generation,
+        max_manifest_bytes=manifest_limit,
+        max_context_files=context_files,
+        max_context_bytes=context_bytes,
+        max_bundle_files=bundle_files,
+        max_bundle_bytes=bundle_bytes,
+        max_bundle_metadata_bytes=bundle_metadata_bytes,
+        max_projection_bytes=DEFAULT_MAX_PROJECTION_BYTES,
+        forbidden_paths=forbidden,
+        environment=environment,
+    )
+    cache = lexical_directory_path(Path(cache_dir))
+    bm25_output = lexical_directory_path(bm25_destination)
+    context_output = lexical_directory_path(context_destination)
+    fixed_source_views = {"bm25": lexical_directory_path(cache / "bm25")}
+    policy_forbidden = _snapshot_forbidden_paths(
+        (
+            *inputs.forbidden_paths,
+            cache,
+            *fixed_source_views.values(),
+            bm25_output,
+            context_output,
+        )
+    )
+    return (
+        _ImportOperation(
+            cache=cache,
+            view_owners={"bm25": bm25_output_owner},
+            view_outputs={"bm25": bm25_output},
+            context_output=context_output,
+            inputs=inputs,
+            fixed_source_views=fixed_source_views,
+            policy_forbidden=policy_forbidden,
+        ),
+        binding,
+        normalized_job_id,
+        normalized_owner_id,
+        fencing_token,
+    )
 
 
 def _cache_topology(
@@ -1117,6 +1510,7 @@ def _prepare_compiler_cache_import_locked(
     context_output_owner: PublishedWorkspaceReceiptOwner,
     workspace_provider: StrictWorkspaceProvider,
     expected_manifest: RepoManifest | None = None,
+    job_binding: _CompilerCacheJobBinding | None = None,
 ) -> _PreparedCompilerCacheImport:
     """Recapture selected views while the caller holds the cache lease."""
 
@@ -1198,6 +1592,10 @@ def _prepare_compiler_cache_import_locked(
         raise StorageIntegrityError(
             "compiler cache portable manifest changed during import planning"
         )
+    if job_binding is not None:
+        if type(job_binding) is not _CompilerCacheJobBinding or views != ("bm25",):
+            raise TypeError("compiler cache job binding is invalid")
+        _require_compiler_cache_bm25_job_profile(job_binding, import_plan)
 
     recaptures: list[CompilerCacheViewRecaptureResult] = []
     for view in views:
@@ -1399,6 +1797,165 @@ def import_compiler_cache(
         context_output_owner=context_output_owner,
         catalog=catalog,
         object_store=object_store,
+    )
+
+
+def publish_compiler_cache_bm25_job(
+    cache_dir: str | Path,
+    *,
+    job_id: str,
+    owner_id: str,
+    fencing_token: int,
+    repository_source: RepositorySourceBinding,
+    bm25_output_owner: PublishedWorkspaceReceiptOwner,
+    context_output_owner: PublishedWorkspaceReceiptOwner,
+    bm25_destination: Path,
+    context_destination: Path,
+    workspace_provider: StrictWorkspaceProvider,
+    repository_key: str,
+    catalog: JobPublicationCatalog,
+    object_store: RetainedImportObjectStore,
+    namespace_name: str = DEFAULT_NAMESPACE_NAME,
+    max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
+    max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
+    max_context_bytes: int = DEFAULT_MAX_CONTEXT_BYTES,
+    max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+) -> CompilerCacheJobPublicationResult:
+    """Publish one exact current BM25 cache into a caller-owned fenced job.
+
+    The caller must already have registered the repository, source, and exact
+    BM25 profile, created the job, and acquired its active ref lease. This
+    adapter never creates, acquires, renews, or finishes a job independently.
+    Mutable cache reads and strict recapture share one existing-only compiler
+    cache lease. Only the retained context receipt crosses that boundary into
+    bundle/member CAS ingestion, and ``publish_job_artifacts`` is the sole
+    catalog mutation path.
+    """
+
+    operation, binding, normalized_job_id, normalized_owner_id, token = (
+        _preflight_cache_job_operation(
+            cache_dir,
+            job_id=job_id,
+            owner_id=owner_id,
+            fencing_token=fencing_token,
+            repository_source=repository_source,
+            bm25_output_owner=bm25_output_owner,
+            context_output_owner=context_output_owner,
+            bm25_destination=bm25_destination,
+            context_destination=context_destination,
+            workspace_provider=workspace_provider,
+            repository_key=repository_key,
+            catalog=catalog,
+            object_store=object_store,
+            namespace_name=namespace_name,
+            max_manifest_bytes=max_manifest_bytes,
+            max_context_files=max_context_files,
+            max_context_bytes=max_context_bytes,
+            max_bundle_files=max_bundle_files,
+            max_bundle_bytes=max_bundle_bytes,
+            max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+            forbidden_paths=forbidden_paths,
+            environ=environ,
+        )
+    )
+    with compiler_cache_lock(operation.cache, create=False):
+        preparation = _prepare_compiler_cache_import_locked(
+            operation,
+            views=("bm25",),
+            repository_source=repository_source,
+            context_output_owner=context_output_owner,
+            workspace_provider=workspace_provider,
+            job_binding=binding,
+        )
+
+    # Job reads are advisory fail-fast gates. The final publication transaction
+    # remains authoritative for the owner, fence, expiry, cancellation, and ref
+    # generation; a previously committed exact success remains replayable.
+    current = _read_compiler_cache_bm25_job_binding(
+        normalized_job_id,
+        catalog=catalog,
+        repository_source=repository_source,
+        repository_key=operation.inputs.repository_key,
+        namespace_name=operation.inputs.namespace_name,
+    )
+    _require_compiler_cache_bm25_job_profile(current, preparation.import_plan)
+    if (
+        current.source_snapshot != binding.source_snapshot
+        or current.source_identity != binding.source_identity
+        or current.job.request_digest != binding.job.request_digest
+    ):
+        raise StorageIntegrityError(
+            "compiler cache job or repository source changed before CAS ingestion"
+        )
+
+    artifacts = context_output_owner.consume(
+        lambda receipt, publication: _prepare_job_view_artifacts_inside_authority(
+            receipt,
+            publication,
+            plan=preparation.import_plan,
+            repository_source=repository_source,
+            repository_key=operation.inputs.repository_key,
+            source_identity=binding.source_identity,
+            object_store=object_store,
+            environment=operation.inputs.environment,
+            forbidden_paths=operation.policy_forbidden,
+            max_context_files=operation.inputs.max_context_files,
+            max_context_bytes=operation.inputs.max_context_bytes,
+            max_bundle_files=operation.inputs.max_bundle_files,
+            max_bundle_bytes=operation.inputs.max_bundle_bytes,
+            max_bundle_metadata_bytes=operation.inputs.max_bundle_metadata_bytes,
+        )
+    )
+    if type(artifacts) is not tuple or len(artifacts) != 1:
+        raise StorageIntegrityError(
+            "compiler cache BM25 ingestion returned invalid job artifacts"
+        )
+    if repository_source.authenticated_identity_snapshot() != binding.source_snapshot:
+        raise StorageIntegrityError(
+            "compiler cache repository source changed during CAS ingestion"
+        )
+    current = _read_compiler_cache_bm25_job_binding(
+        normalized_job_id,
+        catalog=catalog,
+        repository_source=repository_source,
+        repository_key=operation.inputs.repository_key,
+        namespace_name=operation.inputs.namespace_name,
+    )
+    _require_compiler_cache_bm25_job_profile(current, preparation.import_plan)
+    if (
+        current.source_snapshot != binding.source_snapshot
+        or current.source_identity != binding.source_identity
+        or current.job.request_digest != binding.job.request_digest
+    ):
+        raise StorageIntegrityError(
+            "compiler cache job or repository source changed before publication"
+        )
+    completed = publish_job_artifacts(
+        normalized_job_id,
+        catalog=catalog,
+        object_store=object_store,
+        owner_id=normalized_owner_id,
+        fencing_token=token,
+        outputs=artifacts,
+    )
+    recapture = preparation.recaptures[0]
+    if recapture.view_type != "bm25":  # pragma: no cover - adapter invariant
+        raise AssertionError("compiler cache BM25 job selected another view")
+    return CompilerCacheJobPublicationResult(
+        manifest=preparation.import_plan.manifest,
+        import_plan=preparation.import_plan,
+        recapture=CompilerCacheBm25RecaptureResult(
+            source_view=recapture.source_view,
+            output_view=recapture.output_view,
+            source_records=recapture.source_records,
+            output_records=recapture.output_records,
+            canonical_manifest_bytes=preparation.canonical_manifest_bytes,
+        ),
+        job=completed,
     )
 
 
@@ -1625,6 +2182,7 @@ def _fingerprints_adjustment(
 __all__ = [
     "CompilerCacheBm25RecaptureResult",
     "CompilerCacheImportResult",
+    "CompilerCacheJobPublicationResult",
     "CompilerCacheMultiViewImportResult",
     "CompilerCacheTopologyGuard",
     "CompilerCacheViewRecaptureResult",
@@ -1632,4 +2190,5 @@ __all__ = [
     "compile_and_import_repo",
     "import_compiler_cache",
     "import_compiler_cache_bm25",
+    "publish_compiler_cache_bm25_job",
 ]

@@ -1114,16 +1114,37 @@ existing-only reopen nevertheless revalidate the complete durable aggregate
 and fail closed when publication dependencies or canonical closure data have
 been corrupted.
 
+The first M2 builder-profile adapter now publishes one exact current BM25
+compiler-cache view into a caller-created, caller-acquired fenced job. It
+requires a single required `full` BM25 request whose repository, retained
+source revision, and complete portable builder profile match the strict
+recapture/import plan. The mutable cache lease encloses raw BM25 recapture and
+whole-context evidence publication, then releases before the retained context
+is converted to one canonical view-bundle receipt plus every independently
+reachable member receipt. `publish_job_artifacts` remains the sole catalog
+mutation: it retains that complete receipt set through the atomic job/snapshot/
+ref transaction and returned-result attestation. The job path publishes only
+the BM25 generation, not the direct M1 importer's internal manifest projection.
+The caller still owns repository/source/profile registration, job creation,
+lease acquisition, and all receipt owners; the adapter adds no worker, CLI,
+runtime, vector, graph, or default-route wiring. Exact retry remains historical:
+a committed BM25 job returns its original snapshot without moving a ref that a
+later valid publication has already advanced.
+
 ### M2: Immutable generation publication
 
 Status: in progress. The receipt-retained, fenced SQLite publication primitive
-is implemented; builder adapters and production job/runtime wiring remain.
+and the explicit BM25 compiler-cache adapter are implemented; vector, graph,
+generic builder, and production job/runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility
   inputs and prove every semantic axis participates in the profile identity.
+  The exact BM25 compiler-cache profile path is implemented; vector, graph, and
+  generic builder adapters remain.
 - Publish whole-view BM25, FAISS, and graph artifacts through the catalog and
-  object store without changing their ranking/query semantics.
+  object store without changing their ranking/query semantics. BM25 now has an
+  explicit fenced compiler-cache ingress; FAISS and graph ingress remain.
 - Use the implemented receipt-retaining coordinator for each adapter so exact
   digest, size, storage key, and media type remain retained through atomic
   catalog publication; catalog metadata alone must never make missing bytes

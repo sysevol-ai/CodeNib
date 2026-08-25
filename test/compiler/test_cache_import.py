@@ -36,6 +36,7 @@ from codenib.artifacts import query_context_artifact
 from codenib.compiler.cache_import import (
     CompilerCacheBm25RecaptureResult,
     CompilerCacheImportResult,
+    CompilerCacheJobPublicationResult,
     CompilerCacheMultiViewImportResult,
     CompilerCacheTopologyGuard,
     CompilerCacheViewRecaptureResult,
@@ -44,6 +45,7 @@ from codenib.compiler.cache_import import (
     compiler_cache_source_selection,
     import_compiler_cache,
     import_compiler_cache_bm25,
+    publish_compiler_cache_bm25_job,
 )
 from codenib.compiler.index_builders import (
     BM25IndexBuilder,
@@ -56,6 +58,10 @@ from codenib.compiler.manifest_import import RepoManifestImportResult
 from codenib.compiler.manifest_materialization import (
     materialize_retained_repo_manifest_ref,
 )
+from codenib.compiler.manifest_storage import (
+    RepoManifestImportPlan,
+    plan_repo_manifest_import_bytes,
+)
 from codenib.compiler.retained_manifest_contract import REPO_MANIFEST_PROJECTION_VIEW
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
@@ -67,8 +73,14 @@ from codenib.source_fingerprint import (
     fingerprint_repository,
 )
 from codenib.storage import (
+    INDEX_JOB_REQUEST_CONTRACT,
     RETAINED_IMPORT_CATALOG_CONTRACT,
+    VIEW_BUNDLE_MEDIA_TYPE,
+    VIEW_BUNDLE_SCHEMA,
+    BlobInfo,
+    IndexJobStatus,
     LocalCAS,
+    PublishConflict,
     SQLiteCatalog,
     StorageIntegrityError,
     StorageValidationError,
@@ -247,6 +259,74 @@ class _LockAwareCAS(LocalCAS):
             ("cas.put_chunks", self._test_state["phase"])
         )
         return super().put_chunks(chunks, expected_digest, expected_size)
+
+
+class _JobTrackingCAS(LocalCAS):
+    def __init__(self, root: Path) -> None:
+        self.put_chunk_receipts: list[BlobInfo] = []
+        self.retained_receipt_sets: list[tuple[BlobInfo, ...]] = []
+        self.retention_active = False
+        self.after_put: Callable[[int], None] | None = None
+        super().__init__(root)
+
+    def put_chunks(
+        self,
+        chunks,
+        expected_digest: str,
+        expected_size: int,
+    ) -> BlobInfo:
+        receipt = super().put_chunks(chunks, expected_digest, expected_size)
+        self.put_chunk_receipts.append(receipt)
+        if self.after_put is not None:
+            self.after_put(len(self.put_chunk_receipts))
+        return receipt
+
+    def retain_receipts(self, expected, callback):
+        receipts = tuple(expected)
+        self.retained_receipt_sets.append(receipts)
+        assert not self.retention_active
+        self.retention_active = True
+        try:
+            return super().retain_receipts(receipts, callback)
+        finally:
+            self.retention_active = False
+
+
+class _ForgedPutReceiptCAS(_JobTrackingCAS):
+    def put_chunks(
+        self,
+        chunks,
+        expected_digest: str,
+        expected_size: int,
+    ) -> BlobInfo:
+        receipt = super().put_chunks(chunks, expected_digest, expected_size)
+        if len(self.put_chunk_receipts) == 1:
+            return BlobInfo(
+                digest=receipt.digest,
+                byte_size=receipt.byte_size,
+                storage_key="sha256/00/" + receipt.digest,
+            )
+        return receipt
+
+
+class _SkippingRetentionCAS(_JobTrackingCAS):
+    def retain_receipts(self, expected, callback):
+        del callback
+        receipts = tuple(expected)
+        self.retained_receipt_sets.append(receipts)
+        return object()
+
+
+class _RetentionAwareJobCatalog(SQLiteCatalog):
+    def __init__(self, path: Path, cas: _JobTrackingCAS) -> None:
+        self._tracking_cas = cas
+        self.job_publication_calls = 0
+        super().__init__(path)
+
+    def publish_job_outputs(self, *args, **kwargs):
+        assert self._tracking_cas.retention_active
+        self.job_publication_calls += 1
+        return super().publish_job_outputs(*args, **kwargs)
 
 
 class _LockAwareCatalog(SQLiteCatalog):
@@ -540,6 +620,10 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         is CompilerRetainedPublicationResult
     )
     assert compiler_module.CompilerCacheTopologyGuard is CompilerCacheTopologyGuard
+    assert (
+        compiler_module.CompilerCacheJobPublicationResult
+        is CompilerCacheJobPublicationResult
+    )
     assert compiler_module.compile_and_import_repo is compile_and_import_repo
     assert compiler_module.CompilerCacheImportResult is CompilerCacheImportResult
     assert (
@@ -556,6 +640,10 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
     )
     assert compiler_module.import_compiler_cache is import_compiler_cache
     assert compiler_module.import_compiler_cache_bm25 is import_compiler_cache_bm25
+    assert (
+        compiler_module.publish_compiler_cache_bm25_job
+        is publish_compiler_cache_bm25_job
+    )
     assert list(inspect.signature(import_compiler_cache).parameters)[:11] == [
         "cache_dir",
         "views",
@@ -581,6 +669,22 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         "catalog",
         "object_store",
     ]
+    assert list(inspect.signature(publish_compiler_cache_bm25_job).parameters)[:14] == [
+        "cache_dir",
+        "job_id",
+        "owner_id",
+        "fencing_token",
+        "repository_source",
+        "bm25_output_owner",
+        "context_output_owner",
+        "bm25_destination",
+        "context_destination",
+        "workspace_provider",
+        "repository_key",
+        "catalog",
+        "object_store",
+        "namespace_name",
+    ]
     compile_signature = inspect.signature(compile_and_import_repo)
     assert list(compile_signature.parameters)[:4] == [
         "compiler",
@@ -593,6 +697,572 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
     )
     assert compile_signature.parameters["cache_dir"].default is inspect.Parameter.empty
     assert "rebuild" not in compile_signature.parameters
+
+
+def _expected_bm25_job_plan(fixture: _CacheFixture) -> RepoManifestImportPlan:
+    manifest = RepoManifest.load(fixture.cache / "repo_manifest.json")
+    entry = manifest.indexes["bm25"]
+    planned = cache_import_module._plan_cache_view(
+        "bm25",
+        fixture.cache / "bm25",
+        fixture.bm25_destination,
+        repository_source=fixture.source,
+        view_config=entry.config,
+        forbidden_paths=(),
+        environ={},
+    )
+    _portable, payload = cache_import_module._portable_manifest(
+        manifest,
+        views=("bm25",),
+        planned_views={"bm25": planned},
+    )
+    return plan_repo_manifest_import_bytes(payload, views=("bm25",))
+
+
+def _register_bm25_job_subject(
+    catalog: SQLiteCatalog,
+    fixture: _CacheFixture,
+    plan: RepoManifestImportPlan,
+) -> tuple[str, str, str]:
+    repository_id = catalog.create_repository(_REPOSITORY_KEY)
+    source_revision_id = catalog.create_source_revision(
+        repository_id,
+        commit_sha=None,
+        dirty=True,
+        source_fingerprint=fixture.source.fingerprint,
+    )
+    intent = plan.views[0]
+    profile_id = catalog.create_view_profile(
+        "bm25",
+        intent.profile.config,
+        name=intent.profile.name,
+    )
+    assert profile_id == intent.profile_id
+    return repository_id, source_revision_id, profile_id
+
+
+def _create_bm25_job(
+    catalog: SQLiteCatalog,
+    *,
+    repository_id: str,
+    source_revision_id: str,
+    profile_id: str,
+    idempotency_key: str = "compiler-cache-bm25",
+    requested_mode: str = "full",
+    required: bool = True,
+    expected_ref_generation: int = 0,
+    extra_views: dict[str, dict[str, object]] | None = None,
+):
+    views: dict[str, dict[str, object]] = {
+        "bm25": {
+            "profile_id": profile_id,
+            "requested_mode": requested_mode,
+            "required": required,
+        }
+    }
+    if extra_views:
+        views.update(copy.deepcopy(extra_views))
+    return catalog.create_job(
+        repository_id,
+        source_revision_id,
+        idempotency_key,
+        {"contract": INDEX_JOB_REQUEST_CONTRACT, "views": views},
+        expected_ref_generation=expected_ref_generation,
+    )
+
+
+def _publish_bm25_job(
+    fixture: _CacheFixture,
+    *,
+    job_id: str,
+    owner_id: str,
+    fencing_token: int,
+    catalog: SQLiteCatalog,
+    cas: LocalCAS,
+    bm25_owner: PublishedWorkspaceReceiptOwner | None = None,
+    context_owner: PublishedWorkspaceReceiptOwner | None = None,
+    bm25_destination: Path | None = None,
+    context_destination: Path | None = None,
+) -> CompilerCacheJobPublicationResult:
+    return publish_compiler_cache_bm25_job(
+        fixture.cache,
+        job_id=job_id,
+        owner_id=owner_id,
+        fencing_token=fencing_token,
+        repository_source=fixture.source,
+        bm25_output_owner=bm25_owner or fixture.bm25_owner,
+        context_output_owner=context_owner or fixture.context_owner,
+        bm25_destination=bm25_destination or fixture.bm25_destination,
+        context_destination=context_destination or fixture.context_destination,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        catalog=catalog,
+        object_store=cas,
+        environ={},
+    )
+
+
+def _seed_bm25_snapshot(
+    catalog: SQLiteCatalog,
+    cas: LocalCAS,
+    *,
+    repository_id: str,
+    source_revision_id: str,
+    profile_id: str,
+    payload: bytes,
+    expected_generation: int,
+) -> tuple[dict[str, object], str]:
+    receipt = cas.put_bytes(payload)
+    catalog.register_object(
+        receipt.digest,
+        storage_key=receipt.storage_key,
+        byte_size=receipt.byte_size,
+        media_type="application/x-test-old-bm25",
+    )
+    generation_id = catalog.stage_view_generation(
+        repository_id,
+        source_revision_id,
+        profile_id,
+        "bm25",
+        receipt.digest,
+        schema_version=f"old-bm25-{expected_generation + 1}",
+        metadata={"seed_generation": expected_generation + 1},
+    )
+    publication = catalog.publish_snapshot(
+        repository_id,
+        source_revision_id,
+        (generation_id,),
+        expected_generation=expected_generation,
+    )
+    return publication, receipt.digest
+
+
+def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    retry_bm25_owner = PublishedWorkspaceReceiptOwner()
+    retry_context_owner = PublishedWorkspaceReceiptOwner()
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            _RetentionAwareJobCatalog(
+                tmp_path / "catalog.sqlite",
+                cas,
+            ) as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            job = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            lease = catalog.acquire_job_lease(
+                job.job_id,
+                owner_id="worker-1",
+                lease_duration_ms=60_000,
+            )
+
+            result = _publish_bm25_job(
+                fixture,
+                job_id=job.job_id,
+                owner_id=lease.owner_id,
+                fencing_token=lease.fencing_token,
+                catalog=catalog,
+                cas=cas,
+            )
+
+            assert type(result) is CompilerCacheJobPublicationResult
+            assert result.job.status is IndexJobStatus.SUCCEEDED
+            assert result.job.job_id == job.job_id
+            assert result.job.result_snapshot_id is not None
+            assert result.manifest.to_dict() == result.import_plan.manifest.to_dict()
+            assert result.manifest.repo_path == "source"
+            assert tuple(result.manifest.indexes) == ("bm25",)
+            assert result.import_plan.plan_digest == plan.plan_digest
+            assert result.recapture.output_view == fixture.bm25_destination
+            assert result.recapture.canonical_manifest_bytes == (
+                cache_import_module._pretty_manifest_bytes(result.import_plan.manifest)
+            )
+            assert len(cas.put_chunk_receipts) == 3
+            assert len({receipt.digest for receipt in cas.put_chunk_receipts}) == 3
+            expected_receipts = tuple(
+                sorted(cas.put_chunk_receipts, key=lambda receipt: receipt.digest)
+            )
+            assert cas.retained_receipt_sets == [expected_receipts]
+            assert catalog.job_publication_calls == 1
+            summary = catalog.get_manifest_summary(result.job.result_snapshot_id)
+            assert tuple(summary["views"]) == ("bm25",)
+            assert REPO_MANIFEST_PROJECTION_VIEW not in summary["views"]
+            bm25 = summary["views"]["bm25"]
+            assert bm25["profile"]["profile_id"] == profile_id
+            assert bm25["schema_version"] == VIEW_BUNDLE_SCHEMA
+            assert bm25["object"]["media_type"] == VIEW_BUNDLE_MEDIA_TYPE
+            assert len(bm25["member_objects"]) == 2
+            assert all(
+                member["media_type"] == "application/octet-stream"
+                for member in bm25["member_objects"]
+            )
+            for persisted in (bm25["object"], *bm25["member_objects"]):
+                receipt = cas.verify(persisted["digest"])
+                assert receipt.byte_size == persisted["byte_size"]
+                assert receipt.storage_key == persisted["storage_key"]
+            first_ref = catalog.resolve_ref(repository_id)
+            _seed_bm25_snapshot(
+                catalog,
+                cas,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                payload=b"newer BM25 snapshot after completed job",
+                expected_generation=1,
+            )
+            advanced_ref = catalog.resolve_ref(repository_id)
+            assert advanced_ref["generation"] == first_ref["generation"] + 1
+            assert advanced_ref["snapshot_id"] != first_ref["snapshot_id"]
+
+            retry = _publish_bm25_job(
+                fixture,
+                job_id=job.job_id,
+                owner_id=lease.owner_id,
+                fencing_token=lease.fencing_token,
+                catalog=catalog,
+                cas=cas,
+                bm25_owner=retry_bm25_owner,
+                context_owner=retry_context_owner,
+                bm25_destination=fixture.workspace / "retry-bm25",
+                context_destination=fixture.workspace / "retry-context",
+            )
+            assert retry.job == result.job
+            assert retry.import_plan.plan_digest == result.import_plan.plan_digest
+            assert retry.job.result_snapshot_id == first_ref["snapshot_id"]
+            assert catalog.resolve_ref(repository_id) == advanced_ref
+            assert tuple(cas.put_chunk_receipts[:3]) == tuple(
+                cas.put_chunk_receipts[3:]
+            )
+            assert cas.retained_receipt_sets == [
+                expected_receipts,
+                expected_receipts,
+            ]
+            assert catalog.job_publication_calls == 2
+            assert fixture.bm25_owner.active
+            assert fixture.context_owner.active
+            assert retry_bm25_owner.active
+            assert retry_context_owner.active
+    finally:
+        retry_context_owner.close()
+        retry_bm25_owner.close()
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    ("case", "error"),
+    [
+        ("wrong_owner", PublishConflict),
+        ("wrong_fence", PublishConflict),
+        ("expired_lease", PublishConflict),
+        ("cancelled", StorageValidationError),
+        ("ref_drift", PublishConflict),
+    ],
+)
+def test_compiler_cache_bm25_job_failure_preserves_current_ref(
+    tmp_path: Path,
+    case: str,
+    error: type[Exception],
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            clock = {"ms": 1_000}
+            catalog._connection.create_function(
+                "julianday",
+                1,
+                lambda _value: 2440587.5 + clock["ms"] / 86_400_000,
+            )
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            _seed_bm25_snapshot(
+                catalog,
+                cas,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                payload=b"usable old BM25 snapshot",
+                expected_generation=0,
+            )
+            job = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                expected_ref_generation=1,
+            )
+            lease = catalog.acquire_job_lease(
+                job.job_id,
+                owner_id="worker-1",
+                lease_duration_ms=1 if case == "expired_lease" else 60_000,
+            )
+            token = lease.fencing_token
+            owner_id = lease.owner_id
+            if case == "wrong_owner":
+                owner_id = "other-worker"
+            elif case == "wrong_fence":
+                token += 1
+            elif case == "expired_lease":
+                clock["ms"] = lease.lease_expires_at_ms + 1_000
+            elif case == "cancelled":
+                catalog.request_job_cancel(job.job_id)
+            elif case == "ref_drift":
+                _seed_bm25_snapshot(
+                    catalog,
+                    cas,
+                    repository_id=repository_id,
+                    source_revision_id=source_revision_id,
+                    profile_id=profile_id,
+                    payload=b"newer still-usable BM25 snapshot",
+                    expected_generation=1,
+                )
+            preserved = catalog.resolve_ref(repository_id)
+            preserved_view = preserved["manifest"]["views"]["bm25"]
+            preserved_payload = cas.read_bytes(preserved_view["object"]["digest"])
+
+            with pytest.raises(error):
+                _publish_bm25_job(
+                    fixture,
+                    job_id=job.job_id,
+                    owner_id=owner_id,
+                    fencing_token=token,
+                    catalog=catalog,
+                    cas=cas,
+                )
+
+            assert catalog.resolve_ref(repository_id) == preserved
+            assert cas.read_bytes(preserved_view["object"]["digest"]) == (
+                preserved_payload
+            )
+            assert catalog.get_job(job.job_id).status is not IndexJobStatus.SUCCEEDED
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "not_full",
+        "optional",
+        "extra_view",
+        "profile_mismatch",
+        "source_mismatch",
+        "repository_mismatch",
+        "not_acquired",
+    ),
+)
+def test_compiler_cache_bm25_job_rejects_incompatible_request_before_cas(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            requested_mode = "incremental" if case == "not_full" else "full"
+            required = case != "optional"
+            extra_views = None
+            if case == "extra_view":
+                vector_profile = catalog.create_view_profile(
+                    "vector",
+                    {"test_profile": "extra"},
+                )
+                extra_views = {
+                    "vector": {
+                        "profile_id": vector_profile,
+                        "requested_mode": "full",
+                        "required": False,
+                    }
+                }
+            if case == "profile_mismatch":
+                profile_id = catalog.create_view_profile(
+                    "bm25",
+                    {"test_profile": "wrong"},
+                )
+            if case == "source_mismatch":
+                source_revision_id = catalog.create_source_revision(
+                    repository_id,
+                    commit_sha=None,
+                    dirty=True,
+                    source_fingerprint="other-source-fingerprint",
+                )
+            if case == "repository_mismatch":
+                repository_id = catalog.create_repository("owner/other")
+                source_revision_id = catalog.create_source_revision(
+                    repository_id,
+                    commit_sha=None,
+                    dirty=True,
+                    source_fingerprint=fixture.source.fingerprint,
+                )
+            job = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                requested_mode=requested_mode,
+                required=required,
+                extra_views=extra_views,
+            )
+            if case == "not_acquired":
+                owner_id = "worker-1"
+                token = 1
+            else:
+                lease = catalog.acquire_job_lease(
+                    job.job_id,
+                    owner_id="worker-1",
+                    lease_duration_ms=60_000,
+                )
+                owner_id = lease.owner_id
+                token = lease.fencing_token
+            before_files = tuple(
+                sorted(
+                    path.relative_to(tmp_path / "cas").as_posix()
+                    for path in (tmp_path / "cas").rglob("*")
+                    if path.is_file()
+                )
+            )
+
+            with pytest.raises(StorageValidationError):
+                _publish_bm25_job(
+                    fixture,
+                    job_id=job.job_id,
+                    owner_id=owner_id,
+                    fencing_token=token,
+                    catalog=catalog,
+                    cas=cas,
+                )
+
+            after_files = tuple(
+                sorted(
+                    path.relative_to(tmp_path / "cas").as_posix()
+                    for path in (tmp_path / "cas").rglob("*")
+                    if path.is_file()
+                )
+            )
+            assert after_files == before_files
+            assert fixture.provider.run_count == 0
+            assert fixture.bm25_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
+            assert not fixture.bm25_destination.exists()
+            assert not fixture.context_destination.exists()
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    ("case", "cas_type", "error"),
+    (
+        ("source_drift", _JobTrackingCAS, RepositoryChangedError),
+        ("job_drift", _JobTrackingCAS, StorageValidationError),
+        ("receipt_substitution", _ForgedPutReceiptCAS, StorageValidationError),
+        ("callback_skipped", _SkippingRetentionCAS, StorageIntegrityError),
+    ),
+)
+def test_compiler_cache_bm25_job_rejects_post_ingest_drift_or_substitution(
+    tmp_path: Path,
+    case: str,
+    cas_type: type[_JobTrackingCAS],
+    error: type[Exception],
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with (
+            cas_type(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            _publication, preserved_digest = _seed_bm25_snapshot(
+                catalog,
+                cas,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                payload=b"retained old snapshot before adversarial drift",
+                expected_generation=0,
+            )
+            job = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                expected_ref_generation=1,
+            )
+            lease = catalog.acquire_job_lease(
+                job.job_id,
+                owner_id="worker-1",
+                lease_duration_ms=60_000,
+            )
+            preserved_ref = catalog.resolve_ref(repository_id)
+
+            if case == "source_drift":
+
+                def drift_source(put_count: int) -> None:
+                    if put_count == 3:
+                        (fixture.repository / "sample.py").write_text(
+                            "VALUE = 2\n",
+                            encoding="utf-8",
+                        )
+
+                cas.after_put = drift_source
+            elif case == "job_drift":
+
+                def drift_job(put_count: int) -> None:
+                    if put_count == 3:
+                        catalog.request_job_cancel(job.job_id)
+
+                cas.after_put = drift_job
+
+            with pytest.raises(error):
+                _publish_bm25_job(
+                    fixture,
+                    job_id=job.job_id,
+                    owner_id=lease.owner_id,
+                    fencing_token=lease.fencing_token,
+                    catalog=catalog,
+                    cas=cas,
+                )
+
+            assert len(cas.put_chunk_receipts) == 3
+            assert catalog.resolve_ref(repository_id) == preserved_ref
+            assert cas.read_bytes(preserved_digest) == (
+                b"retained old snapshot before adversarial drift"
+            )
+            assert catalog.get_job(job.job_id).status is IndexJobStatus.RUNNING
+            publication_count = catalog._connection.execute(
+                "SELECT COUNT(*) FROM index_job_publications WHERE job_id = ?",
+                (job.job_id,),
+            ).fetchone()[0]
+            assert publication_count == 0
+            if case in {"source_drift", "job_drift"}:
+                assert cas.retained_receipt_sets == []
+            else:
+                assert len(cas.retained_receipt_sets) == 1
+    finally:
+        fixture.close()
 
 
 def test_compile_and_import_fresh_cache_uses_one_lease_and_storage_after_release(

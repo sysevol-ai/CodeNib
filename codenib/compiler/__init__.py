@@ -29,6 +29,7 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     from codenib.compiler.cache_import import (
         CompilerCacheBm25RecaptureResult,
         CompilerCacheImportResult,
+        CompilerCacheJobPublicationResult,
         CompilerCacheMultiViewImportResult,
         CompilerCacheTopologyGuard,
         CompilerCacheViewRecaptureResult,
@@ -36,6 +37,7 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         compile_and_import_repo,
         import_compiler_cache,
         import_compiler_cache_bm25,
+        publish_compiler_cache_bm25_job,
     )
     from codenib.compiler.index_builders import IndexBuilderRegistry
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
@@ -87,6 +89,10 @@ _EXPORTS = {
         "codenib.compiler.cache_import",
         "CompilerCacheImportResult",
     ),
+    "CompilerCacheJobPublicationResult": (
+        "codenib.compiler.cache_import",
+        "CompilerCacheJobPublicationResult",
+    ),
     "CompilerCacheMultiViewImportResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheMultiViewImportResult",
@@ -114,6 +120,10 @@ _EXPORTS = {
     "import_compiler_cache_bm25": (
         "codenib.compiler.cache_import",
         "import_compiler_cache_bm25",
+    ),
+    "publish_compiler_cache_bm25_job": (
+        "codenib.compiler.cache_import",
+        "publish_compiler_cache_bm25_job",
     ),
     "IndexCompiler": ("codenib.compiler.index_compiler", "IndexCompiler"),
     "IndexCompilerConfig": (
@@ -216,6 +226,7 @@ __all__ = [
     # Index compilation
     "CompilerCacheBm25RecaptureResult",
     "CompilerCacheImportResult",
+    "CompilerCacheJobPublicationResult",
     "CompilerCacheMultiViewImportResult",
     "CompilerCacheTopologyGuard",
     "CompilerCacheViewRecaptureResult",
@@ -223,6 +234,7 @@ __all__ = [
     "compile_and_import_repo",
     "import_compiler_cache",
     "import_compiler_cache_bm25",
+    "publish_compiler_cache_bm25_job",
     "IndexCompiler",
     "IndexCompilerConfig",
     "IndexBuilderRegistry",

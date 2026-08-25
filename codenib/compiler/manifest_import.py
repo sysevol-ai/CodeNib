@@ -66,6 +66,7 @@ from ..storage.protocols import (
     RetainedImportObjectStore,
     snapshot_retained_import_response,
 )
+from ..storage.publication import IndexJobObjectArtifact, IndexJobViewArtifact
 from ..storage.view_bundle import (
     DEFAULT_MAX_BUNDLE_BYTES,
     DEFAULT_MAX_BUNDLE_FILES,
@@ -193,6 +194,12 @@ class _PreparedView:
     bundle: _StoredObject
     members: tuple[tuple[str, int, int, _StoredObject], ...]
     generation: ViewGeneration
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedManifestViews:
+    artifact_plan_digest: str
+    views: tuple[_PreparedView, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -712,7 +719,7 @@ def _drain(chunks: Iterable[bytes]) -> None:
         pass
 
 
-def _prepare_import_inside_authority(
+def _prepare_manifest_views_inside_authority(
     receipt: PublishedWorkspaceReceipt,
     publication: PublicationDirectoryReader,
     *,
@@ -728,8 +735,7 @@ def _prepare_import_inside_authority(
     max_bundle_files: int,
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
-    max_projection_bytes: int,
-) -> _PreparedImport:
+) -> _PreparedManifestViews:
     if type(receipt) is not PublishedWorkspaceReceipt:
         raise TypeError("retained context receipt has an invalid type")
     if type(publication) is not PublicationDirectoryReader:
@@ -854,13 +860,123 @@ def _prepare_import_inside_authority(
             )
         )
 
+    return _PreparedManifestViews(
+        artifact_plan_digest=artifact_plan_digest,
+        views=tuple(prepared_views),
+    )
+
+
+def _prepare_job_view_artifacts_inside_authority(
+    receipt: PublishedWorkspaceReceipt,
+    publication: PublicationDirectoryReader,
+    *,
+    plan: RepoManifestImportPlan,
+    repository_source: RepositorySourceBinding,
+    repository_key: str,
+    source_identity: SourceRevision,
+    object_store: RetainedImportObjectStore,
+    environment: Mapping[str, str],
+    forbidden_paths: tuple[Path, ...],
+    max_context_files: int,
+    max_context_bytes: int,
+    max_bundle_files: int,
+    max_bundle_bytes: int,
+    max_bundle_metadata_bytes: int,
+) -> tuple[IndexJobViewArtifact, ...]:
+    """Ingest exact selected-view receipts without a manifest projection."""
+
+    prepared = _prepare_manifest_views_inside_authority(
+        receipt,
+        publication,
+        plan=plan,
+        repository_source=repository_source,
+        repository_key=repository_key,
+        source_identity=source_identity,
+        object_store=object_store,
+        environment=environment,
+        forbidden_paths=forbidden_paths,
+        max_context_files=max_context_files,
+        max_context_bytes=max_context_bytes,
+        max_bundle_files=max_bundle_files,
+        max_bundle_bytes=max_bundle_bytes,
+        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+    )
+    artifacts: list[IndexJobViewArtifact] = []
+    for view in prepared.views:
+        members = _unique_stored_objects(member[3] for member in view.members)
+        artifact = IndexJobViewArtifact.create(
+            view.intent.view_type,
+            view.intent.profile_id,
+            view.bundle.receipt,
+            schema_version=VIEW_BUNDLE_SCHEMA,
+            media_type=view.bundle.record.media_type,
+            metadata=_intent_generation_metadata(view.intent),
+            member_artifacts=tuple(
+                IndexJobObjectArtifact(member.receipt, member.record.media_type)
+                for member in members
+            ),
+        )
+        output = artifact._output()
+        if (
+            output.view_type != view.generation.view_type
+            or output.profile_id != view.generation.profile_id
+            or output.object_record != view.bundle.record
+            or output.schema_version != view.generation.schema_version
+            or canonical_json(output.generation_metadata)
+            != view.generation.metadata_json
+            or output.member_object_records
+            != tuple(member.record for member in members)
+        ):
+            raise StorageIntegrityError(
+                "retained job artifact differs from its prepared view generation"
+            )
+        artifacts.append(artifact)
+    repository_source.verify_snapshot()
+    return tuple(artifacts)
+
+
+def _prepare_import_inside_authority(
+    receipt: PublishedWorkspaceReceipt,
+    publication: PublicationDirectoryReader,
+    *,
+    plan: RepoManifestImportPlan,
+    repository_source: RepositorySourceBinding,
+    repository_key: str,
+    source_identity: SourceRevision,
+    object_store: RetainedImportObjectStore,
+    environment: Mapping[str, str],
+    forbidden_paths: tuple[Path, ...],
+    max_context_files: int,
+    max_context_bytes: int,
+    max_bundle_files: int,
+    max_bundle_bytes: int,
+    max_bundle_metadata_bytes: int,
+    max_projection_bytes: int,
+) -> _PreparedImport:
+    prepared = _prepare_manifest_views_inside_authority(
+        receipt,
+        publication,
+        plan=plan,
+        repository_source=repository_source,
+        repository_key=repository_key,
+        source_identity=source_identity,
+        object_store=object_store,
+        environment=environment,
+        forbidden_paths=forbidden_paths,
+        max_context_files=max_context_files,
+        max_context_bytes=max_context_bytes,
+        max_bundle_files=max_bundle_files,
+        max_bundle_bytes=max_bundle_bytes,
+        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+    )
+
     projection_profile = _projection_profile()
     projection_value = _projection_value(
         plan,
-        artifact_plan_digest=artifact_plan_digest,
+        artifact_plan_digest=prepared.artifact_plan_digest,
         repository_id=source_identity.repository_id,
         source=source_identity,
-        views=prepared_views,
+        views=prepared.views,
     )
     projection_digest, projection_size = _measure_canonical_json(
         projection_value,
@@ -885,7 +1001,7 @@ def _prepare_import_inside_authority(
         sorted(
             {
                 dependency.record.digest
-                for view in prepared_views
+                for view in prepared.views
                 for dependency in (view.bundle, *(member[3] for member in view.members))
             }
         )
@@ -895,7 +1011,7 @@ def _prepare_import_inside_authority(
         "manifest_version": plan.manifest.version,
         "manifest_digest": plan.manifest_digest,
         "plan_digest": plan.plan_digest,
-        "projected_views": [view.intent.view_type for view in prepared_views],
+        "projected_views": [view.intent.view_type for view in prepared.views],
     }
     projection_generation = ViewGeneration.create(
         source_identity,
@@ -907,8 +1023,8 @@ def _prepare_import_inside_authority(
     )
     repository_source.verify_snapshot()
     return _PreparedImport(
-        artifact_plan_digest=artifact_plan_digest,
-        views=tuple(prepared_views),
+        artifact_plan_digest=prepared.artifact_plan_digest,
+        views=prepared.views,
         projection=projection_object,
         projection_profile=projection_profile,
         projection_generation=projection_generation,
