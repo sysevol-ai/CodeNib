@@ -1096,6 +1096,81 @@ snapshot, and historical ref outcome before consulting the now-released lease;
 it returns the committed result without advancing the ref, including after a
 later publication has advanced that ref.
 
+Schema v6 adds the local durable execution-control slice without selecting a
+builder or wiring a worker. Lease acquisition now records an immutable attempt
+start before the job becomes running. Requeue, failure, and cancellation write
+one immutable non-success closure; success still has no generic finish API and
+can only come from the schema-v5 publication transaction. Existing v5 history
+is preserved behind an immutable per-job legacy attempt baseline. In addition
+to the hidden attempt count, that baseline attests the initial creation time,
+the legacy content high-water mark, and any legacy start time. Only a currently
+active v5 attempt is backfilled, while later v6 starts must form a complete
+contiguous history. Exact, unambiguous v5 non-running lease half-states are
+closed during migration; ambiguous state fails migration and reopen closed.
+
+Schema v6 also maintains one private durable execution-content clock. Its
+singleton value must equal the exact maximum of the immutable baseline,
+attempt-start, cancellation, event, completion, and publication witnesses.
+Fresh creation, acquisition (including expired-holder retirement),
+cancellation, event, completion, and publication paths authenticate exact or
+terminal replay first. A genuinely new mutation then advances the singleton to
+one database-clock tick at or above its causal floor and binds every related
+execution-content time in that transaction to the frozen value. A backward or
+moving clock
+therefore produces a stable catalog conflict and rolls back both the clock and
+domain rows; exact replay returns committed history without consulting or
+advancing the clock.
+
+The v6 runnable scan is deterministic and advisory, using the database clock
+and `(created_at_ms, job_id)` keyset pages; lease acquisition remains the only
+claim. Newly inserted jobs are exact queued, zero-attempt records at one
+content-clock tick. The scan hides jobs whose durable times are ahead of the
+current wall clock. Existing-only reopen does not compare history with the
+current wall clock: it checks the exact immutable-witness maximum and every
+derived-time ceiling against the durable singleton. Canonical history thus
+reopens during clock rollback, while a bypassed future value without matching
+immutable evidence fails closed. New active lease slots bind acquisition,
+heartbeat, update time, and bounded duration to the same content-clock claim;
+released slots can arise only through fenced release, retain a positive fence,
+and remain below the durable content ceiling without becoming a separate fresh
+mutation floor. Heartbeat atomically renews exact owner/fence/attempt authority
+and observes cooperative cancellation. It remains an independent lease-clock
+domain and may advance beyond the content singleton; the next related fresh
+content mutation must wait until the database clock reaches that heartbeat.
+An immutable internal cancellation marker records whether v6 cancellation
+terminalized a queued job or observed exact running
+attempt/owner/fence/heartbeat authority. A cancelled modeled attempt can close
+only as cancelled; requeue and failure require an uncancelled attempt. The
+marker prevents a raw flag rewrite from erasing already-recorded cancellation
+while the canonical schema and marker remain present. Migrated v5 cancellation
+is explicitly legacy-unattested rather than inventing earlier heartbeat
+evidence. This is corruption detection, not a security boundary against a
+same-user writer who can remove both guards and evidence and reconstruct the
+schema.
+
+Attempt events are immutable `progress` or per-view `view_result` records with
+attempt-local idempotency keys, database-assigned sequence/time, and at most
+one result per attempt/view. Each attempt is limited to 256 events. Canonical
+payload JSON is limited to 16 KiB, depth 16, 1,024 nodes, and 128-character
+keys, and uses the shared secret-field classifier. Root mappings are detached
+with bounded iteration without trusting reported length; nested containers and
+scalars must be exact JSON values. Event sequence numbers are allocator-only;
+attempt capacity and signed-int64 allocator exhaustion conflict before any
+insert. Every non-success completion and successful publication atomically
+records an immutable closure frontier containing the exact event count,
+maximum sequence, and maximum event time. Exact replay and reopen recompute
+that frontier, so even an equal-millisecond post-closure event fails closed.
+Within an attempt, event, cancellation, and closure times obey a nondecreasing
+database-clock causal order. Heartbeat remains a separate nondecreasing
+lease-clock domain: after database-clock rollback it may lag an already
+committed content/cancellation high-water mark, but cannot authorize a later
+event, completion, or publication below that content floor. Reopen also
+revalidates legacy baselines, contiguous starts, exactly one closure per closed
+v6 attempt, active-lease/open-attempt equivalence, terminal lease absence,
+event bounds, and canonical payloads. New attempt, sequence, page, cursor,
+duration, and fencing boundaries require exact integers; persisted identities
+reject values outside signed SQLite int64 before SQL execution.
+
 The receipt-retaining coordinator freezes exact artifact receipts and keeps
 them retained across the complete catalog transaction and returned-result
 attestation. Required views must be present, optional views may be omitted, and
@@ -1169,11 +1244,13 @@ implemented; graph, generic builder, and production job/runtime wiring remain.
 
 ### M3: Jobs and runtime hot switching
 
-Status: pending.
+Status: in progress. Schema-v6 durable execution control is implemented for the
+local SQLite catalog; the backend-neutral worker and runtime wiring remain.
 
-- Wire the M1 idempotent jobs, heartbeats, cancellation, and fenced per-ref
-  leases into workers; add progress/events without weakening the catalog state
-  machine.
+- Wire the durable job/attempt, heartbeat, cancellation, event, and fenced
+  publication contracts into a backend-neutral worker. The catalog state
+  machine is implemented; builder resolution, CLI, web/MCP, runtime, and
+  default-route wiring remain deliberately absent.
 - Expose the #266 status and update APIs with accurate incremental versus
   rebuild behavior.
 - Load a complete new bundle and swap it RCU-style; pin old bundles for in-flight

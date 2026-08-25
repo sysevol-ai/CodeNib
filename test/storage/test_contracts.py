@@ -8,6 +8,7 @@ import hashlib
 
 import pytest
 
+import codenib.storage as storage_module
 from codenib.storage import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
     RETAINED_IMPORT_RESPONSE_MAX_DEPTH,
@@ -34,6 +35,8 @@ from codenib.storage.models import (
 from codenib.storage.protocols import (
     IndexCatalog,
     JobCatalog,
+    JobExecutionCatalog,
+    JobPublicationCatalog,
     ObjectStore,
     ReceiptVerifyingObjectStore,
 )
@@ -53,8 +56,65 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
         assert isinstance(catalog, RetainedImportCatalog)
         assert catalog.retained_import_contract() == RETAINED_IMPORT_CATALOG_CONTRACT
         assert isinstance(catalog, JobCatalog)
+        assert isinstance(catalog, JobExecutionCatalog)
     finally:
         catalog.close()
+
+
+def test_execution_contract_models_are_public_storage_exports() -> None:
+    names = {
+        "INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH",
+        "INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS",
+        "INDEX_JOB_EVENT_PAYLOAD_MAX_NODES",
+        "INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS",
+        "MAX_INDEX_JOB_EVENTS_PER_ATTEMPT",
+        "IndexJobAttemptCompletionRecord",
+        "IndexJobAttemptHeartbeat",
+        "IndexJobAttemptRecord",
+        "IndexJobEffectiveMode",
+        "IndexJobEventKind",
+        "IndexJobEventRecord",
+        "IndexJobRunnableCursor",
+        "IndexJobRunnablePage",
+        "IndexJobViewOutcome",
+        "JobExecutionCatalog",
+    }
+
+    assert names <= set(storage_module.__all__)
+    assert all(hasattr(storage_module, name) for name in names)
+
+
+def test_execution_catalog_is_additive_to_publication_only_adapters() -> None:
+    class PublicationOnlyCatalog:
+        def create_job(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def get_job(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def get_job_views(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def acquire_job_lease(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def renew_job_lease(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def request_job_cancel(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def finish_job_attempt(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def publish_job_outputs(self, *args, **kwargs):
+            raise NotImplementedError
+
+    adapter = PublicationOnlyCatalog()
+
+    assert isinstance(adapter, JobCatalog)
+    assert isinstance(adapter, JobPublicationCatalog)
+    assert not isinstance(adapter, JobExecutionCatalog)
 
 
 def test_retained_import_response_budgets_are_public_capability_contracts() -> None:

@@ -213,6 +213,45 @@ def _create_running_job(
     return _JobFixture(job, owner_id, lease.fencing_token, profiles)
 
 
+def _install_clock(catalog: SQLiteCatalog, clock: dict[str, int]) -> None:
+    catalog._connection.create_function(
+        "julianday",
+        1,
+        lambda _value: 2440587.5 + clock["ms"] / 86_400_000,
+    )
+
+
+def _install_stepping_clock(catalog: SQLiteCatalog, *samples_ms: int) -> None:
+    assert samples_ms
+    calls = 0
+
+    def julianday(_value: str) -> float:
+        nonlocal calls
+        sample = samples_ms[min(calls, len(samples_ms) - 1)]
+        calls += 1
+        return 2440587.5 + sample / 86_400_000
+
+    catalog._connection.create_function("julianday", 1, julianday)
+
+
+def _patch_connection_clock(
+    monkeypatch: pytest.MonkeyPatch,
+    clock: dict[str, int],
+) -> None:
+    connect = sqlite_catalog_module.sqlite3.connect
+
+    def connect_with_clock(*args, **kwargs):
+        connection = connect(*args, **kwargs)
+        connection.create_function(
+            "julianday",
+            1,
+            lambda _value: 2440587.5 + clock["ms"] / 86_400_000,
+        )
+        return connection
+
+    monkeypatch.setattr(sqlite_catalog_module.sqlite3, "connect", connect_with_clock)
+
+
 def _direct_publish_output(
     catalog: SQLiteCatalog,
     job: IndexJobRecord,
@@ -256,6 +295,8 @@ _PUBLICATION_TABLES = (
     "snapshot_views",
     "refs",
     "index_job_publications",
+    "index_job_attempt_closure_frontiers",
+    "index_job_execution_clock",
     "index_jobs",
     "ref_job_leases",
 )
@@ -273,6 +314,22 @@ def _publication_state(
         )
         for table in _PUBLICATION_TABLES
     }
+
+
+def _remove_execution_clock_row(catalog: SQLiteCatalog) -> None:
+    row = catalog._connection.execute(
+        """
+        SELECT sql FROM sqlite_master
+        WHERE type = 'trigger'
+            AND name = 'index_job_execution_clock_cannot_be_deleted'
+        """
+    ).fetchone()
+    assert row is not None and type(row["sql"]) is str
+    catalog._connection.execute(
+        "DROP TRIGGER index_job_execution_clock_cannot_be_deleted"
+    )
+    catalog._connection.execute("DELETE FROM index_job_execution_clock")
+    catalog._connection.execute(row["sql"])
 
 
 def _publication_row(catalog: SQLiteCatalog, job_id: str) -> sqlite3.Row:
@@ -340,7 +397,6 @@ def test_required_output_publishes_one_atomic_identity_closed_snapshot(
             "byte_size": output.object_record.byte_size,
             "media_type": output.object_record.media_type,
         }
-
         publication = _publication_row(catalog, fixture.job.job_id)
         closure = json.loads(publication["closure_json"])
         assert canonical_json(closure) == publication["closure_json"]
@@ -363,6 +419,266 @@ def test_required_output_publishes_one_atomic_identity_closed_snapshot(
         ).fetchone()
         assert lease["job_id"] is None
         assert lease["fencing_token"] == fixture.fencing_token
+
+
+def test_publication_clock_rollback_preserves_the_open_attempt_and_outputs(
+    tmp_path,
+) -> None:
+    path = tmp_path / "publication-clock.sqlite3"
+    clock = {"ms": 1_000}
+    with SQLiteCatalog(path) as catalog:
+        _install_clock(catalog, clock)
+        fixture = _create_running_job(catalog)
+        output = _output("bm25", fixture.profiles["bm25"], 100)
+        clock["ms"] = 3_000
+        event = catalog.append_job_event(
+            fixture.job.job_id,
+            attempt_count=1,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            event_key="ready",
+        )
+        before = _publication_state(catalog)
+
+        _install_stepping_clock(catalog, 4_000, 2_500)
+        with pytest.raises(CatalogConflictError, match="clock moved backwards"):
+            catalog.publish_job_outputs(
+                fixture.job.job_id,
+                owner_id=fixture.owner_id,
+                fencing_token=fixture.fencing_token,
+                outputs=(output,),
+            )
+        assert _publication_state(catalog) == before
+        assert (
+            catalog._connection.execute(
+                "SELECT COUNT(*) FROM index_job_attempt_closure_frontiers"
+            ).fetchone()[0]
+            == 0
+        )
+        assert catalog.get_job(fixture.job.job_id).status is IndexJobStatus.RUNNING
+
+        clock["ms"] = 4_000
+        _install_clock(catalog, clock)
+        completed = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(output,),
+        )
+        frontier = catalog._connection.execute(
+            """
+            SELECT event_count, max_event_sequence, max_event_created_at_ms
+            FROM index_job_attempt_closure_frontiers
+            WHERE job_id = ? AND attempt_count = 1
+            """,
+            (fixture.job.job_id,),
+        ).fetchone()
+        assert tuple(frontier) == (1, event.sequence, event.created_at_ms)
+        assert completed.status is IndexJobStatus.SUCCEEDED
+
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert catalog.get_job(fixture.job.job_id).status is IndexJobStatus.SUCCEEDED
+
+
+def test_publication_reopens_and_replays_during_wall_clock_rollback(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "publication-restart-clock.sqlite3"
+    clock = {"ms": 1_000}
+    with SQLiteCatalog(path) as catalog:
+        _install_clock(catalog, clock)
+        fixture = _create_running_job(catalog)
+        output = _output("bm25", fixture.profiles["bm25"], 100)
+        clock["ms"] = 3_000
+        completed = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(output,),
+        )
+        high_water_ms = catalog._connection.execute(
+            "SELECT high_water_ms FROM index_job_execution_clock"
+        ).fetchone()[0]
+
+    clock["ms"] = 2_500
+    _patch_connection_clock(monkeypatch, clock)
+    with SQLiteCatalog(path, create=False) as catalog:
+        before = _publication_state(catalog)
+        assert (
+            catalog.publish_job_outputs(
+                fixture.job.job_id,
+                owner_id=fixture.owner_id,
+                fencing_token=fixture.fencing_token,
+                outputs=(output,),
+            )
+            == completed
+        )
+        assert _publication_state(catalog) == before
+        assert (
+            catalog._connection.execute(
+                "SELECT high_water_ms FROM index_job_execution_clock"
+            ).fetchone()[0]
+            == high_water_ms
+        )
+
+
+def test_equal_time_event_after_publication_is_detected_by_frontier(tmp_path) -> None:
+    path = tmp_path / "post-publication-event.sqlite3"
+    clock = {"ms": 1_000}
+    with SQLiteCatalog(path) as catalog:
+        _install_clock(catalog, clock)
+        fixture = _create_running_job(catalog)
+        output = _output("bm25", fixture.profiles["bm25"], 100)
+        first = catalog.append_job_event(
+            fixture.job.job_id,
+            attempt_count=1,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            event_key="before-close",
+        )
+        completed = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(output,),
+        )
+        assert completed.finished_at_ms == first.created_at_ms
+        with _raw_table_corruption(catalog, "index_job_events") as connection:
+            connection.execute(
+                """
+                INSERT INTO index_job_events(
+                    job_id, attempt_count, event_key, kind, owner_id,
+                    fencing_token, view_type, effective_mode, outcome,
+                    payload_json, created_at_ms
+                ) VALUES (?, 1, 'after-close', 'progress', ?, ?, NULL,
+                    NULL, NULL, '{}', ?)
+                """,
+                (
+                    fixture.job.job_id,
+                    fixture.owner_id,
+                    fixture.fencing_token,
+                    completed.finished_at_ms,
+                ),
+            )
+
+    with pytest.raises(CatalogConflictError, match="frontier"):
+        SQLiteCatalog(path, create=False)
+
+
+def test_success_replay_authenticates_the_exact_event_frontier(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        fixture = _create_running_job(catalog)
+        output = _output("bm25", fixture.profiles["bm25"], 100)
+        catalog.append_job_event(
+            fixture.job.job_id,
+            attempt_count=1,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            event_key="ready",
+        )
+        catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(output,),
+        )
+        with _raw_table_corruption(
+            catalog,
+            "index_job_attempt_closure_frontiers",
+        ) as connection:
+            connection.execute(
+                """
+                UPDATE index_job_attempt_closure_frontiers
+                SET event_count = 0, max_event_sequence = 0,
+                    max_event_created_at_ms = 0
+                WHERE job_id = ? AND attempt_count = 1
+                """,
+                (fixture.job.job_id,),
+            )
+        with pytest.raises(CatalogConflictError, match="frontier"):
+            catalog.publish_job_outputs(
+                fixture.job.job_id,
+                owner_id=fixture.owner_id,
+                fencing_token=fixture.fencing_token,
+                outputs=(output,),
+            )
+
+
+def test_v5_publications_migrate_as_legacy_history_after_ref_advances(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "catalog.sqlite3"
+    monkeypatch.setattr(sqlite_catalog_module, "LATEST_SCHEMA_VERSION", 5)
+    with SQLiteCatalog(path) as catalog:
+        first = _create_running_job(catalog, idempotency_key="first")
+        first_output = _output("bm25", first.profiles["bm25"], 100)
+        first_completed = catalog.publish_job_outputs(
+            first.job.job_id,
+            owner_id=first.owner_id,
+            fencing_token=first.fencing_token,
+            outputs=(first_output,),
+        )
+        second = _create_running_job(
+            catalog,
+            repository_id=first.job.repository_id,
+            source_revision_id=first.job.source_revision_id,
+            profiles=first.profiles,
+            expected_ref_generation=1,
+            idempotency_key="second",
+            owner_id="worker-2",
+        )
+        second_output = _output("bm25", second.profiles["bm25"], 101)
+        second_completed = catalog.publish_job_outputs(
+            second.job.job_id,
+            owner_id=second.owner_id,
+            fencing_token=second.fencing_token,
+            outputs=(second_output,),
+        )
+        assert catalog.resolve_ref(first.job.repository_id)["generation"] == 2
+
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "LATEST_SCHEMA_VERSION",
+        LATEST_SCHEMA_VERSION,
+    )
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert (
+            catalog._connection.execute(
+                "SELECT COUNT(*) FROM index_job_attempts"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            {
+                tuple(row)
+                for row in catalog._connection.execute(
+                    """
+                SELECT job_id, legacy_attempt_count
+                FROM index_job_attempt_baselines
+                WHERE job_id IN (?, ?)
+                """,
+                    (first.job.job_id, second.job.job_id),
+                ).fetchall()
+            }
+            == {
+                (first.job.job_id, 1),
+                (second.job.job_id, 1),
+            }
+        )
+        replay = catalog.publish_job_outputs(
+            first.job.job_id,
+            owner_id=first.owner_id,
+            fencing_token=first.fencing_token,
+            outputs=(first_output,),
+        )
+        assert replay == first_completed
+        assert catalog.get_job(second.job.job_id) == second_completed
+        assert catalog.resolve_ref(first.job.repository_id)["generation"] == 2
+
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert catalog.get_job(first.job.job_id) == first_completed
 
 
 def test_optional_requested_views_may_be_omitted_or_published_as_a_subset(
@@ -527,7 +843,10 @@ def test_lease_expiring_after_manifest_validation_rolls_back_every_mutation(
             staticmethod(validate_then_expire),
         )
 
-        with pytest.raises(sqlite3.IntegrityError, match="publication closure"):
+        with pytest.raises(
+            CatalogConflictError,
+            match="current unexpired fenced lease",
+        ):
             catalog.publish_job_outputs(
                 fixture.job.job_id,
                 owner_id=fixture.owner_id,
@@ -981,6 +1300,7 @@ def test_manifest_response_budget_failure_rolls_back_the_full_publication(
         ("snapshots", "UPDATE", "NEW.status = 'ready'"),
         ("refs", "INSERT", "1"),
         ("index_job_publications", "INSERT", "1"),
+        ("index_job_attempt_closure_frontiers", "INSERT", "1"),
         ("index_jobs", "UPDATE", "NEW.status = 'succeeded'"),
         ("ref_job_leases", "UPDATE", "NEW.job_id IS NULL"),
     ],
@@ -1022,6 +1342,12 @@ def test_failure_at_each_mutation_stage_rolls_back_the_whole_publication(
             )
 
         assert _publication_state(catalog) == before
+        assert (
+            catalog._connection.execute(
+                "SELECT COUNT(*) FROM index_job_attempt_closure_frontiers"
+            ).fetchone()[0]
+            == 0
+        )
 
 
 def test_response_construction_failure_before_commit_rolls_back_publication(
@@ -1057,7 +1383,7 @@ def test_response_construction_failure_before_commit_rolls_back_publication(
 
 
 @pytest.mark.parametrize("initial_version", (1, 2, 3, 4))
-def test_every_prior_catalog_version_forward_migrates_to_v5(
+def test_every_prior_catalog_version_forward_migrates_to_latest(
     tmp_path,
     monkeypatch,
     initial_version: int,
@@ -1121,7 +1447,7 @@ def test_every_prior_catalog_version_forward_migrates_to_v5(
         LATEST_SCHEMA_VERSION,
     )
     with SQLiteCatalog(path, create=False) as catalog:
-        assert catalog.schema_version == 5 == LATEST_SCHEMA_VERSION
+        assert catalog.schema_version == LATEST_SCHEMA_VERSION
         assert catalog.create_repository("owner/job-publication") == repository_id
         if job_id is not None:
             assert catalog.get_job(job_id).status is IndexJobStatus.QUEUED
@@ -1342,6 +1668,43 @@ def test_raw_sql_cannot_replace_mutate_or_erase_a_publication_closure(
             outputs=(output,),
         )
         assert replay == completed
+
+
+def test_reopen_rejects_success_and_non_success_double_attempt_closure(
+    tmp_path,
+) -> None:
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        fixture = _create_running_job(catalog)
+        output = _output("bm25", fixture.profiles["bm25"], 100)
+        completed = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(output,),
+        )
+        assert completed.finished_at_ms is not None
+        with _raw_table_corruption(
+            catalog,
+            table="index_job_attempt_completions",
+        ) as connection:
+            connection.execute(
+                """
+                INSERT INTO index_job_attempt_completions(
+                    job_id, attempt_count, owner_id, fencing_token, outcome,
+                    error_code, error_message, completed_at_ms
+                ) VALUES (?, 1, ?, ?, 'failed', 'raw_double', NULL, ?)
+                """,
+                (
+                    fixture.job.job_id,
+                    fixture.owner_id,
+                    fixture.fencing_token,
+                    completed.finished_at_ms,
+                ),
+            )
+
+    with pytest.raises(CatalogConflictError, match="both success and non-success"):
+        SQLiteCatalog(path, create=False)
 
 
 @pytest.mark.parametrize(
@@ -1565,6 +1928,81 @@ def test_insert_trigger_rejects_output_missing_member_objects_key(tmp_path) -> N
                     ref["updated_at"],
                     hashlib.sha256(forged_json.encode()).hexdigest(),
                     forged_json,
+                    completed_at_ms,
+                ),
+            )
+
+        assert _publication_state(catalog) == before
+
+
+def test_publication_trigger_fails_closed_when_execution_clock_is_missing(
+    tmp_path,
+) -> None:
+    with SQLiteCatalog(tmp_path / "missing-publication-clock.sqlite3") as catalog:
+        fixture = _create_running_job(catalog)
+        output = _output("bm25", fixture.profiles["bm25"], 100)
+        published = _direct_publish_output(
+            catalog,
+            fixture.job,
+            output,
+            expected_generation=0,
+        )
+        job = catalog.get_job(fixture.job.job_id)
+        identities = catalog._job_publication_output_identities(
+            job,
+            catalog._job_views(job),
+            (output,),
+        )
+        ref = catalog._connection.execute(
+            """
+            SELECT generation, updated_at FROM refs
+            WHERE repository_id = ? AND ref_name = ?
+            """,
+            (job.repository_id, job.ref_name),
+        ).fetchone()
+        closure_json, closure_digest = (
+            sqlite_catalog_module._canonical_job_publication_closure(
+                job,
+                owner_id=fixture.owner_id,
+                fencing_token=fixture.fencing_token,
+                snapshot_id=published["snapshot_id"],
+                ref_generation=ref["generation"],
+                ref_changed=True,
+                ref_updated_at=ref["updated_at"],
+                output_identities=identities,
+            )
+        )
+        completed_at_ms = job.updated_at_ms
+        _remove_execution_clock_row(catalog)
+        before = _publication_state(catalog)
+        catalog._connection.execute("PRAGMA recursive_triggers = OFF")
+
+        with pytest.raises(sqlite3.IntegrityError, match="publication closure"):
+            catalog._connection.execute(
+                """
+                INSERT INTO index_job_publications(
+                    job_id, repository_id, source_revision_id, ref_name,
+                    request_digest, owner_id, fencing_token,
+                    expected_ref_generation, snapshot_id, ref_generation,
+                    ref_changed, ref_updated_at, closure_digest, closure_json,
+                    completed_at_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    job.job_id,
+                    job.repository_id,
+                    job.source_revision_id,
+                    job.ref_name,
+                    job.request_digest,
+                    fixture.owner_id,
+                    fixture.fencing_token,
+                    job.expected_ref_generation,
+                    published["snapshot_id"],
+                    ref["generation"],
+                    1,
+                    ref["updated_at"],
+                    closure_digest,
+                    closure_json,
                     completed_at_ms,
                 ),
             )
@@ -1807,7 +2245,10 @@ def test_partial_raw_publication_insert_is_rejected_declaratively(tmp_path) -> N
         fixture = _create_running_job(catalog)
         before = _publication_state(catalog)
 
-        with pytest.raises(sqlite3.IntegrityError, match="closure|NOT NULL"):
+        with pytest.raises(
+            sqlite3.IntegrityError,
+            match="closure|attempt start|NOT NULL",
+        ):
             catalog._connection.execute(
                 "INSERT INTO index_job_publications(job_id) VALUES (?)",
                 (fixture.job.job_id,),

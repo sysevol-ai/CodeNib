@@ -24,6 +24,7 @@ import sys
 import tempfile
 from collections import deque
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
@@ -32,13 +33,24 @@ from typing import Any, Iterator, Mapping, Sequence
 from .models import (
     DEFAULT_NAMESPACE_ID,
     DEFAULT_NAMESPACE_NAME,
+    INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS,
     INDEX_JOB_PUBLICATION_CONTRACT,
+    MAX_INDEX_JOB_EVENTS_PER_ATTEMPT,
     MAX_VIEW_GENERATION_MEMBERS,
     VIEW_GENERATION_MEMBERS_METADATA_KEY,
+    IndexJobAttemptCompletionRecord,
+    IndexJobAttemptHeartbeat,
+    IndexJobAttemptRecord,
     IndexJobCompletion,
+    IndexJobEffectiveMode,
+    IndexJobEventKind,
+    IndexJobEventRecord,
     IndexJobRecord,
     IndexJobRequest,
+    IndexJobRunnableCursor,
+    IndexJobRunnablePage,
     IndexJobStatus,
+    IndexJobViewOutcome,
     IndexJobViewOutput,
     IndexJobViewRecord,
     NamespaceIdentity,
@@ -56,6 +68,7 @@ from .models import (
     content_id,
     normalize_digest,
     normalize_view_generation_metadata,
+    snapshot_index_job_event_payload,
     view_generation_member_digests,
 )
 from .protocols import (
@@ -64,7 +77,7 @@ from .protocols import (
     snapshot_retained_import_response,
 )
 
-LATEST_SCHEMA_VERSION = 5
+LATEST_SCHEMA_VERSION = 6
 
 CatalogError = StorageError
 CatalogConflictError = PublishConflict
@@ -72,8 +85,29 @@ CatalogNotFoundError = StorageNotFound
 CatalogValidationError = StorageValidationError
 
 _DB_NOW_MS_SQL = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
+_INDEX_JOB_EXECUTION_WITNESS_SQL = """
+SELECT initial_created_at_ms AS evidence_at_ms
+FROM index_job_attempt_baselines
+UNION ALL
+SELECT legacy_content_high_water_ms FROM index_job_attempt_baselines
+UNION ALL
+SELECT legacy_started_at_ms FROM index_job_attempt_baselines
+WHERE legacy_started_at_ms IS NOT NULL
+UNION ALL
+SELECT started_at_ms FROM index_job_attempts
+UNION ALL
+SELECT requested_at_ms FROM index_job_cancellation_requests
+UNION ALL
+SELECT created_at_ms FROM index_job_events
+UNION ALL
+SELECT completed_at_ms FROM index_job_attempt_completions
+UNION ALL
+SELECT completed_at_ms FROM index_job_publications
+"""
 _SQLITE_INT64_MAX = 9_223_372_036_854_775_807
 _MAX_JOB_PUBLICATION_OUTPUTS = 64
+_MAX_RUNNABLE_JOB_SCAN_LIMIT = 256
+_MAX_JOB_EVENT_PAGE_LIMIT = 256
 _SQLITE_LEGACY_AUTOCOMMIT = getattr(
     sqlite3,
     "LEGACY_TRANSACTION_CONTROL",
@@ -382,6 +416,34 @@ def _positive_integer(value: int, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise CatalogValidationError(f"{field} must be a positive integer")
     return value
+
+
+def _exact_positive_integer(value: int, field: str) -> int:
+    if type(value) is not int or value < 1:
+        raise CatalogValidationError(f"{field} must be an exact positive integer")
+    return value
+
+
+def _positive_int64(value: int, field: str) -> int:
+    normalized = _exact_positive_integer(value, field)
+    if normalized > _SQLITE_INT64_MAX:
+        raise CatalogValidationError(f"{field} exceeds catalog int64 range")
+    return normalized
+
+
+def _nonnegative_integer(value: int, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise CatalogValidationError(f"{field} must be a non-negative integer")
+    return value
+
+
+def _nonnegative_int64(value: int, field: str) -> int:
+    if type(value) is not int or value < 0:
+        raise CatalogValidationError(f"{field} must be an exact non-negative integer")
+    normalized = value
+    if normalized > _SQLITE_INT64_MAX:
+        raise CatalogValidationError(f"{field} exceeds catalog int64 range")
+    return normalized
 
 
 def _persisted_positive_int64(value: object, field: str) -> int:
@@ -1901,12 +1963,1520 @@ _SCHEMA_V5 = (
     """,
 )
 
+
+_V6_INDEX_JOB_PUBLICATIONS_VALIDATE_INSERT = (
+    next(
+        statement
+        for statement in _SCHEMA_V5
+        if "CREATE TRIGGER index_job_publications_validate_insert" in statement
+    )
+    .replace(
+        f"AND NEW.completed_at_ms <= {_DB_NOW_MS_SQL}",
+        """AND NEW.completed_at_ms = (
+                    SELECT high_water_ms FROM index_job_execution_clock
+                    WHERE singleton_id = 1
+                )
+                AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1""",
+    )
+    .replace(
+        f"AND lease.lease_expires_at_ms > {_DB_NOW_MS_SQL}",
+        "AND lease.lease_expires_at_ms > NEW.completed_at_ms",
+    )
+)
+
+
+_SCHEMA_V6 = (
+    """
+    CREATE TABLE index_job_attempt_baselines (
+        job_id TEXT PRIMARY KEY CHECK (
+            typeof(job_id) = 'text'
+            AND length(job_id) BETWEEN 1 AND 80
+            AND instr(job_id, char(0)) = 0
+        ),
+        legacy_attempt_count INTEGER NOT NULL CHECK (
+            typeof(legacy_attempt_count) = 'integer'
+            AND legacy_attempt_count BETWEEN 0 AND 1000
+        ),
+        initial_created_at_ms INTEGER NOT NULL CHECK (
+            typeof(initial_created_at_ms) = 'integer'
+            AND initial_created_at_ms BETWEEN 0 AND 9223372036854775807
+        ),
+        legacy_content_high_water_ms INTEGER NOT NULL CHECK (
+            typeof(legacy_content_high_water_ms) = 'integer'
+            AND legacy_content_high_water_ms BETWEEN 0 AND 9223372036854775807
+        ),
+        legacy_started_at_ms INTEGER CHECK (
+            legacy_started_at_ms IS NULL OR (
+                typeof(legacy_started_at_ms) = 'integer'
+                AND legacy_started_at_ms BETWEEN 0 AND 9223372036854775807
+            )
+        ),
+        CHECK (legacy_content_high_water_ms >= initial_created_at_ms),
+        CHECK (
+            legacy_started_at_ms IS NULL
+            OR legacy_content_high_water_ms >= legacy_started_at_ms
+        ),
+        FOREIGN KEY (job_id) REFERENCES index_jobs(job_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    INSERT INTO index_job_attempt_baselines(
+        job_id, legacy_attempt_count, initial_created_at_ms,
+        legacy_content_high_water_ms, legacy_started_at_ms
+    )
+    SELECT
+        job.job_id,
+        CASE
+            WHEN job.attempt_count >= 1 AND EXISTS (
+                SELECT 1 FROM ref_job_leases AS lease
+                WHERE lease.repository_id = job.repository_id
+                    AND lease.ref_name = job.ref_name
+                    AND lease.job_id = job.job_id
+            ) THEN job.attempt_count - 1
+            ELSE job.attempt_count
+        END,
+        job.created_at_ms,
+        job.updated_at_ms,
+        job.started_at_ms
+    FROM index_jobs AS job
+    """,
+    """
+    CREATE TABLE index_job_execution_clock (
+        singleton_id INTEGER PRIMARY KEY CHECK (
+            typeof(singleton_id) = 'integer' AND singleton_id = 1
+        ),
+        high_water_ms INTEGER NOT NULL CHECK (
+            typeof(high_water_ms) = 'integer'
+            AND high_water_ms BETWEEN 0 AND 9223372036854775807
+        )
+    )
+    """,
+    """
+    CREATE TABLE index_job_cancellation_requests (
+        job_id TEXT PRIMARY KEY CHECK (
+            typeof(job_id) = 'text'
+            AND length(job_id) BETWEEN 1 AND 80
+            AND instr(job_id, char(0)) = 0
+        ),
+        requested_at_ms INTEGER NOT NULL CHECK (
+            typeof(requested_at_ms) = 'integer' AND requested_at_ms >= 0
+        ),
+        request_kind TEXT NOT NULL CHECK (
+            typeof(request_kind) = 'text'
+            AND request_kind IN ('legacy_v5', 'queued_v6', 'running_v6')
+        ),
+        attempt_count INTEGER CHECK (
+            attempt_count IS NULL OR (
+                typeof(attempt_count) = 'integer'
+                AND attempt_count BETWEEN 1 AND 1000
+            )
+        ),
+        owner_id TEXT CHECK (
+            owner_id IS NULL OR (
+                typeof(owner_id) = 'text'
+                AND length(owner_id) BETWEEN 1 AND 256
+                AND instr(owner_id, char(0)) = 0
+            )
+        ),
+        fencing_token INTEGER CHECK (
+            fencing_token IS NULL OR (
+                typeof(fencing_token) = 'integer'
+                AND fencing_token BETWEEN 1 AND 9223372036854775807
+            )
+        ),
+        observed_heartbeat_at_ms INTEGER CHECK (
+            observed_heartbeat_at_ms IS NULL OR (
+                typeof(observed_heartbeat_at_ms) = 'integer'
+                AND observed_heartbeat_at_ms >= 0
+            )
+        ),
+        FOREIGN KEY (job_id) REFERENCES index_jobs(job_id) ON DELETE CASCADE,
+        FOREIGN KEY (job_id, attempt_count)
+            REFERENCES index_job_attempts(job_id, attempt_count)
+            ON DELETE RESTRICT,
+        CHECK (
+            (request_kind IN ('legacy_v5', 'queued_v6')
+                AND attempt_count IS NULL AND owner_id IS NULL
+                AND fencing_token IS NULL
+                AND observed_heartbeat_at_ms IS NULL)
+            OR
+            (request_kind = 'running_v6'
+                AND attempt_count IS NOT NULL AND owner_id IS NOT NULL
+                AND fencing_token IS NOT NULL
+                AND observed_heartbeat_at_ms IS NOT NULL)
+        )
+    )
+    """,
+    """
+    CREATE TABLE index_job_attempts (
+        job_id TEXT NOT NULL CHECK (
+            typeof(job_id) = 'text'
+            AND length(job_id) BETWEEN 1 AND 80
+            AND instr(job_id, char(0)) = 0
+        ),
+        attempt_count INTEGER NOT NULL CHECK (
+            typeof(attempt_count) = 'integer'
+            AND attempt_count BETWEEN 1 AND 1000
+        ),
+        repository_id TEXT NOT NULL CHECK (
+            typeof(repository_id) = 'text'
+            AND length(repository_id) BETWEEN 1 AND 96
+            AND instr(repository_id, char(0)) = 0
+        ),
+        ref_name TEXT NOT NULL CHECK (
+            typeof(ref_name) = 'text'
+            AND length(ref_name) BETWEEN 1 AND 512
+            AND instr(ref_name, char(0)) = 0
+        ),
+        request_digest TEXT NOT NULL CHECK (
+            typeof(request_digest) = 'text'
+            AND length(request_digest) BETWEEN 1 AND 96
+            AND instr(request_digest, char(0)) = 0
+        ),
+        owner_id TEXT NOT NULL CHECK (
+            typeof(owner_id) = 'text'
+            AND length(owner_id) BETWEEN 1 AND 256
+            AND instr(owner_id, char(0)) = 0
+        ),
+        fencing_token INTEGER NOT NULL CHECK (
+            typeof(fencing_token) = 'integer'
+            AND fencing_token BETWEEN 1 AND 9223372036854775807
+        ),
+        started_at_ms INTEGER NOT NULL CHECK (
+            typeof(started_at_ms) = 'integer' AND started_at_ms >= 0
+        ),
+        PRIMARY KEY (job_id, attempt_count),
+        UNIQUE (repository_id, ref_name, fencing_token),
+        FOREIGN KEY (job_id, repository_id, ref_name)
+            REFERENCES index_jobs(job_id, repository_id, ref_name)
+            ON DELETE RESTRICT
+    )
+    """,
+    """
+    INSERT INTO index_job_attempts(
+        job_id, attempt_count, repository_id, ref_name, request_digest,
+        owner_id, fencing_token, started_at_ms
+    )
+    SELECT
+        job.job_id, job.attempt_count, job.repository_id, job.ref_name,
+        job.request_digest, lease.owner_id, lease.fencing_token,
+        lease.acquired_at_ms
+    FROM index_jobs AS job
+    JOIN ref_job_leases AS lease
+        ON lease.repository_id = job.repository_id
+        AND lease.ref_name = job.ref_name
+        AND lease.job_id = job.job_id
+    WHERE job.attempt_count BETWEEN 1 AND job.max_attempts
+        AND lease.owner_id IS NOT NULL
+        AND lease.acquired_at_ms IS NOT NULL
+    """,
+    """
+    INSERT INTO index_job_cancellation_requests(
+        job_id, requested_at_ms, request_kind, attempt_count, owner_id,
+        fencing_token, observed_heartbeat_at_ms
+    )
+    SELECT job.job_id, job.updated_at_ms, 'legacy_v5', NULL, NULL, NULL, NULL
+    FROM index_jobs AS job
+    WHERE job.cancel_requested = 1
+    """,
+    """
+    CREATE TABLE index_job_attempt_completions (
+        job_id TEXT NOT NULL CHECK (
+            typeof(job_id) = 'text'
+            AND length(job_id) BETWEEN 1 AND 80
+            AND instr(job_id, char(0)) = 0
+        ),
+        attempt_count INTEGER NOT NULL CHECK (
+            typeof(attempt_count) = 'integer'
+            AND attempt_count BETWEEN 1 AND 1000
+        ),
+        owner_id TEXT NOT NULL CHECK (
+            typeof(owner_id) = 'text'
+            AND length(owner_id) BETWEEN 1 AND 256
+            AND instr(owner_id, char(0)) = 0
+        ),
+        fencing_token INTEGER NOT NULL CHECK (
+            typeof(fencing_token) = 'integer'
+            AND fencing_token BETWEEN 1 AND 9223372036854775807
+        ),
+        outcome TEXT NOT NULL CHECK (
+            typeof(outcome) = 'text'
+            AND outcome IN ('requeue', 'failed', 'cancelled')
+        ),
+        error_code TEXT NOT NULL CHECK (
+            typeof(error_code) = 'text'
+            AND length(error_code) BETWEEN 1 AND 128
+            AND instr(error_code, char(0)) = 0
+        ),
+        error_message TEXT CHECK (
+            error_message IS NULL OR (
+                typeof(error_message) = 'text'
+                AND length(error_message) BETWEEN 1 AND 4096
+                AND instr(error_message, char(0)) = 0
+            )
+        ),
+        completed_at_ms INTEGER NOT NULL CHECK (
+            typeof(completed_at_ms) = 'integer' AND completed_at_ms >= 0
+        ),
+        PRIMARY KEY (job_id, attempt_count),
+        FOREIGN KEY (job_id, attempt_count)
+            REFERENCES index_job_attempts(job_id, attempt_count)
+            ON DELETE RESTRICT
+    )
+    """,
+    """
+    INSERT INTO index_job_attempt_completions(
+        job_id, attempt_count, owner_id, fencing_token, outcome,
+        error_code, error_message, completed_at_ms
+    )
+    SELECT
+        job.job_id,
+        job.attempt_count,
+        lease.owner_id,
+        lease.fencing_token,
+        CASE job.status
+            WHEN 'queued' THEN 'requeue'
+            WHEN 'failed' THEN 'failed'
+            ELSE 'cancelled'
+        END,
+        job.error_code,
+        job.error_message,
+        job.updated_at_ms
+    FROM index_jobs AS job
+    JOIN ref_job_leases AS lease
+        ON lease.repository_id = job.repository_id
+        AND lease.ref_name = job.ref_name
+        AND lease.job_id = job.job_id
+    WHERE job.status IN ('queued', 'failed', 'cancelled')
+        AND job.attempt_count BETWEEN 1 AND job.max_attempts
+        AND job.error_code IS NOT NULL
+        AND job.result_snapshot_id IS NULL
+        AND job.started_at_ms IS NOT NULL
+        AND job.updated_at_ms >= lease.updated_at_ms
+        AND job.updated_at_ms >= lease.heartbeat_at_ms
+        AND (
+            (job.status = 'queued'
+                AND job.cancel_requested = 0
+                AND job.finished_at_ms IS NULL
+                AND job.attempt_count < job.max_attempts)
+            OR
+            (job.status = 'failed'
+                AND job.cancel_requested = 0
+                AND job.finished_at_ms = job.updated_at_ms)
+            OR
+            (job.status = 'cancelled'
+                AND job.cancel_requested = 1
+                AND job.finished_at_ms = job.updated_at_ms)
+        )
+    """,
+    """
+    UPDATE ref_job_leases
+    SET job_id = NULL,
+        owner_id = NULL,
+        acquired_at_ms = NULL,
+        heartbeat_at_ms = NULL,
+        lease_expires_at_ms = NULL,
+        updated_at_ms = (
+            SELECT completion.completed_at_ms
+            FROM index_job_attempt_completions AS completion
+            WHERE completion.job_id = ref_job_leases.job_id
+        )
+    WHERE job_id IN (
+        SELECT completion.job_id
+        FROM index_job_attempt_completions AS completion
+    )
+    """,
+    """
+    UPDATE ref_job_leases
+    SET job_id = NULL,
+        owner_id = NULL,
+        acquired_at_ms = NULL,
+        heartbeat_at_ms = NULL,
+        lease_expires_at_ms = NULL,
+        updated_at_ms = (
+            SELECT publication.completed_at_ms
+            FROM index_job_publications AS publication
+            WHERE publication.job_id = ref_job_leases.job_id
+        )
+    WHERE EXISTS (
+        SELECT 1
+        FROM index_job_publications AS publication
+        WHERE publication.job_id = ref_job_leases.job_id
+            AND publication.owner_id = ref_job_leases.owner_id
+            AND publication.fencing_token = ref_job_leases.fencing_token
+            AND publication.completed_at_ms >= ref_job_leases.updated_at_ms
+    )
+    """,
+    f"""
+    CREATE TABLE index_job_events (
+        event_sequence INTEGER PRIMARY KEY AUTOINCREMENT CHECK (
+            typeof(event_sequence) = 'integer'
+            AND event_sequence BETWEEN 1 AND 9223372036854775807
+        ),
+        job_id TEXT NOT NULL CHECK (
+            typeof(job_id) = 'text'
+            AND length(job_id) BETWEEN 1 AND 80
+            AND instr(job_id, char(0)) = 0
+        ),
+        attempt_count INTEGER NOT NULL CHECK (
+            typeof(attempt_count) = 'integer'
+            AND attempt_count BETWEEN 1 AND 1000
+        ),
+        event_key TEXT NOT NULL CHECK (
+            typeof(event_key) = 'text'
+            AND length(event_key) BETWEEN 1 AND 128
+            AND instr(event_key, char(0)) = 0
+        ),
+        kind TEXT NOT NULL CHECK (
+            typeof(kind) = 'text' AND kind IN ('progress', 'view_result')
+        ),
+        owner_id TEXT NOT NULL CHECK (
+            typeof(owner_id) = 'text'
+            AND length(owner_id) BETWEEN 1 AND 256
+            AND instr(owner_id, char(0)) = 0
+        ),
+        fencing_token INTEGER NOT NULL CHECK (
+            typeof(fencing_token) = 'integer'
+            AND fencing_token BETWEEN 1 AND 9223372036854775807
+        ),
+        view_type TEXT CHECK (
+            view_type IS NULL OR (
+                typeof(view_type) = 'text'
+                AND length(view_type) BETWEEN 1 AND 128
+                AND instr(view_type, char(0)) = 0
+            )
+        ),
+        effective_mode TEXT CHECK (
+            effective_mode IS NULL OR (
+                typeof(effective_mode) = 'text'
+                AND effective_mode IN (
+                    'full', 'incremental', 'rebuild_fallback', 'unavailable'
+                )
+            )
+        ),
+        outcome TEXT CHECK (
+            outcome IS NULL OR (
+                typeof(outcome) = 'text'
+                AND outcome IN ('succeeded', 'failed', 'skipped')
+            )
+        ),
+        payload_json TEXT NOT NULL CHECK (
+            typeof(payload_json) = 'text'
+            AND length(payload_json) BETWEEN 2 AND {INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS}
+            AND instr(payload_json, char(0)) = 0
+            AND json_valid(payload_json)
+            AND json_type(payload_json) = 'object'
+        ),
+        created_at_ms INTEGER NOT NULL CHECK (
+            typeof(created_at_ms) = 'integer' AND created_at_ms >= 0
+        ),
+        UNIQUE (job_id, attempt_count, event_key),
+        FOREIGN KEY (job_id, attempt_count)
+            REFERENCES index_job_attempts(job_id, attempt_count)
+            ON DELETE RESTRICT,
+        CHECK (
+            (kind = 'progress' AND effective_mode IS NULL AND outcome IS NULL)
+            OR
+            (kind = 'view_result' AND view_type IS NOT NULL
+                AND effective_mode IS NOT NULL AND outcome IS NOT NULL)
+        )
+    )
+    """,
+    f"""
+    CREATE TABLE index_job_attempt_closure_frontiers (
+        job_id TEXT NOT NULL CHECK (
+            typeof(job_id) = 'text'
+            AND length(job_id) BETWEEN 1 AND 80
+            AND instr(job_id, char(0)) = 0
+        ),
+        attempt_count INTEGER NOT NULL CHECK (
+            typeof(attempt_count) = 'integer'
+            AND attempt_count BETWEEN 1 AND 1000
+        ),
+        owner_id TEXT NOT NULL CHECK (
+            typeof(owner_id) = 'text'
+            AND length(owner_id) BETWEEN 1 AND 256
+            AND instr(owner_id, char(0)) = 0
+        ),
+        fencing_token INTEGER NOT NULL CHECK (
+            typeof(fencing_token) = 'integer'
+            AND fencing_token BETWEEN 1 AND 9223372036854775807
+        ),
+        event_count INTEGER NOT NULL CHECK (
+            typeof(event_count) = 'integer'
+            AND event_count BETWEEN 0 AND {MAX_INDEX_JOB_EVENTS_PER_ATTEMPT}
+        ),
+        max_event_sequence INTEGER NOT NULL CHECK (
+            typeof(max_event_sequence) = 'integer'
+            AND max_event_sequence BETWEEN 0 AND 9223372036854775807
+        ),
+        max_event_created_at_ms INTEGER NOT NULL CHECK (
+            typeof(max_event_created_at_ms) = 'integer'
+            AND max_event_created_at_ms >= 0
+        ),
+        PRIMARY KEY (job_id, attempt_count),
+        FOREIGN KEY (job_id, attempt_count)
+            REFERENCES index_job_attempts(job_id, attempt_count)
+            ON DELETE RESTRICT,
+        CHECK (
+            (event_count = 0 AND max_event_sequence = 0
+                AND max_event_created_at_ms = 0)
+            OR
+            (event_count BETWEEN 1 AND {MAX_INDEX_JOB_EVENTS_PER_ATTEMPT}
+                AND max_event_sequence >= 1)
+        )
+    )
+    """,
+    """
+    INSERT INTO index_job_attempt_closure_frontiers(
+        job_id, attempt_count, owner_id, fencing_token, event_count,
+        max_event_sequence, max_event_created_at_ms
+    )
+    SELECT
+        attempt.job_id, attempt.attempt_count, attempt.owner_id,
+        attempt.fencing_token, 0, 0, 0
+    FROM index_job_attempts AS attempt
+    WHERE EXISTS (
+        SELECT 1 FROM index_job_attempt_completions AS completion
+        WHERE completion.job_id = attempt.job_id
+            AND completion.attempt_count = attempt.attempt_count
+            AND completion.owner_id = attempt.owner_id
+            AND completion.fencing_token = attempt.fencing_token
+    ) OR EXISTS (
+        SELECT 1 FROM index_job_publications AS publication
+        WHERE publication.job_id = attempt.job_id
+            AND publication.owner_id = attempt.owner_id
+            AND publication.fencing_token = attempt.fencing_token
+    )
+    """,
+    f"""
+    INSERT INTO index_job_execution_clock(singleton_id, high_water_ms)
+    SELECT 1, COALESCE(MAX(evidence_at_ms), 0)
+    FROM ({_INDEX_JOB_EXECUTION_WITNESS_SQL})
+    """,
+    """
+    CREATE INDEX index_jobs_runnable_idx
+        ON index_jobs(status, created_at_ms, job_id)
+        WHERE status IN ('queued', 'running')
+    """,
+    """
+    CREATE INDEX index_job_events_job_sequence_idx
+        ON index_job_events(job_id, event_sequence)
+    """,
+    """
+    CREATE UNIQUE INDEX index_job_events_view_result_idx
+        ON index_job_events(job_id, attempt_count, view_type)
+        WHERE kind = 'view_result'
+    """,
+    f"""
+    CREATE TRIGGER index_jobs_v6_initial_state_is_canonical
+    BEFORE INSERT ON index_jobs
+    WHEN NOT (
+        NEW.status = 'queued'
+        AND NEW.cancel_requested = 0
+        AND NEW.attempt_count = 0
+        AND NEW.result_snapshot_id IS NULL
+        AND NEW.error_code IS NULL
+        AND NEW.error_message IS NULL
+        AND NEW.started_at_ms IS NULL
+        AND NEW.finished_at_ms IS NULL
+        AND NEW.created_at_ms = NEW.updated_at_ms
+        AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+        AND NEW.created_at_ms = (
+            SELECT high_water_ms FROM index_job_execution_clock
+            WHERE singleton_id = 1
+        )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'initial v6 index job state is invalid');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_execution_clock_rejects_inserts
+    BEFORE INSERT ON index_job_execution_clock
+    BEGIN
+        SELECT RAISE(ABORT, 'index job execution clock is a singleton');
+    END
+    """,
+    f"""
+    CREATE TRIGGER index_job_execution_clock_advances_canonically
+    BEFORE UPDATE ON index_job_execution_clock
+    WHEN NOT (
+        typeof(OLD.singleton_id) = 'integer'
+        AND typeof(NEW.singleton_id) = 'integer'
+        AND typeof(OLD.high_water_ms) = 'integer'
+        AND typeof(NEW.high_water_ms) = 'integer'
+        AND OLD.singleton_id = 1
+        AND NEW.singleton_id = OLD.singleton_id
+        AND NEW.high_water_ms >= OLD.high_water_ms
+        AND NEW.high_water_ms = {_DB_NOW_MS_SQL}
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job execution clock update is invalid');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_execution_clock_cannot_be_deleted
+    BEFORE DELETE ON index_job_execution_clock
+    BEGIN
+        SELECT RAISE(ABORT, 'index job execution clock is a singleton');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_baselines_reject_duplicate_inserts
+    BEFORE INSERT ON index_job_attempt_baselines
+    WHEN EXISTS (
+        SELECT 1 FROM index_job_attempt_baselines AS existing
+        WHERE existing.job_id = NEW.job_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate index job attempt baseline is forbidden');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_baselines_validate_insert
+    BEFORE INSERT ON index_job_attempt_baselines
+    WHEN NOT EXISTS (
+        SELECT 1 FROM index_jobs AS job
+        WHERE job.job_id = NEW.job_id
+            AND job.status = 'queued'
+            AND job.attempt_count = 0
+            AND NEW.legacy_attempt_count = 0
+            AND NEW.initial_created_at_ms = job.created_at_ms
+            AND NEW.legacy_content_high_water_ms = job.created_at_ms
+            AND NEW.legacy_started_at_ms IS NULL
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt baseline is invalid');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_baselines_are_immutable
+    BEFORE UPDATE ON index_job_attempt_baselines
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt baselines are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_baselines_cannot_be_deleted
+    BEFORE DELETE ON index_job_attempt_baselines
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt baselines are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_jobs_with_execution_history_cannot_be_deleted
+    BEFORE DELETE ON index_jobs
+    WHEN NOT EXISTS (
+        SELECT 1 FROM index_job_publications AS publication
+        WHERE publication.job_id = OLD.job_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job view requests are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_jobs_create_attempt_baseline
+    AFTER INSERT ON index_jobs
+    BEGIN
+        INSERT INTO index_job_attempt_baselines(
+            job_id, legacy_attempt_count, initial_created_at_ms,
+            legacy_content_high_water_ms, legacy_started_at_ms
+        ) VALUES (
+            NEW.job_id, 0, NEW.created_at_ms, NEW.created_at_ms, NULL
+        );
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_frontiers_reject_duplicate_inserts
+    BEFORE INSERT ON index_job_attempt_closure_frontiers
+    WHEN EXISTS (
+        SELECT 1 FROM index_job_attempt_closure_frontiers AS existing
+        WHERE existing.job_id = NEW.job_id
+            AND existing.attempt_count = NEW.attempt_count
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate job attempt closure frontier is forbidden');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_frontiers_validate_insert
+    BEFORE INSERT ON index_job_attempt_closure_frontiers
+    WHEN NOT EXISTS (
+        SELECT 1
+        FROM index_job_attempts AS attempt
+        WHERE attempt.job_id = NEW.job_id
+            AND attempt.attempt_count = NEW.attempt_count
+            AND attempt.owner_id = NEW.owner_id
+            AND attempt.fencing_token = NEW.fencing_token
+            AND NEW.event_count = (
+                SELECT COUNT(*) FROM index_job_events AS event
+                WHERE event.job_id = attempt.job_id
+                    AND event.attempt_count = attempt.attempt_count
+            )
+            AND NEW.max_event_sequence = COALESCE((
+                SELECT MAX(event.event_sequence) FROM index_job_events AS event
+                WHERE event.job_id = attempt.job_id
+                    AND event.attempt_count = attempt.attempt_count
+            ), 0)
+            AND NEW.max_event_created_at_ms = COALESCE((
+                SELECT MAX(event.created_at_ms) FROM index_job_events AS event
+                WHERE event.job_id = attempt.job_id
+                    AND event.attempt_count = attempt.attempt_count
+            ), 0)
+            AND (
+                EXISTS (
+                    SELECT 1 FROM index_job_attempt_completions AS completion
+                    WHERE completion.job_id = attempt.job_id
+                        AND completion.attempt_count = attempt.attempt_count
+                        AND completion.owner_id = attempt.owner_id
+                        AND completion.fencing_token = attempt.fencing_token
+                )
+                OR EXISTS (
+                    SELECT 1 FROM index_job_publications AS publication
+                    WHERE publication.job_id = attempt.job_id
+                        AND publication.owner_id = attempt.owner_id
+                        AND publication.fencing_token = attempt.fencing_token
+                )
+            )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt closure frontier is invalid');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_frontiers_are_immutable
+    BEFORE UPDATE ON index_job_attempt_closure_frontiers
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt closure frontiers are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_frontiers_cannot_be_deleted
+    BEFORE DELETE ON index_job_attempt_closure_frontiers
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt closure frontiers are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_cancellation_requests_reject_duplicate_inserts
+    BEFORE INSERT ON index_job_cancellation_requests
+    WHEN EXISTS (
+        SELECT 1 FROM index_job_cancellation_requests AS existing
+        WHERE existing.job_id = NEW.job_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate index job cancellation request is forbidden');
+    END
+    """,
+    f"""
+    CREATE TRIGGER index_job_cancellation_requests_validate_insert
+    BEFORE INSERT ON index_job_cancellation_requests
+    WHEN NOT EXISTS (
+        SELECT 1 FROM index_jobs AS job
+        WHERE job.job_id = NEW.job_id
+            AND job.cancel_requested = 1
+            AND NEW.requested_at_ms = job.updated_at_ms
+            AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+            AND NEW.requested_at_ms = (
+                SELECT high_water_ms FROM index_job_execution_clock
+                WHERE singleton_id = 1
+            )
+            AND (
+                (
+                    NEW.request_kind = 'queued_v6'
+                    AND job.status = 'cancelled'
+                    AND NEW.attempt_count IS NULL
+                    AND NEW.owner_id IS NULL
+                    AND NEW.fencing_token IS NULL
+                    AND NEW.observed_heartbeat_at_ms IS NULL
+                    AND NOT EXISTS (
+                        SELECT 1 FROM ref_job_leases AS lease
+                        WHERE lease.job_id = job.job_id
+                    )
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM index_job_attempts AS attempt
+                    JOIN ref_job_leases AS lease
+                        ON lease.repository_id = attempt.repository_id
+                        AND lease.ref_name = attempt.ref_name
+                        AND lease.job_id = attempt.job_id
+                    WHERE NEW.request_kind = 'running_v6'
+                        AND job.status = 'running'
+                        AND attempt.job_id = job.job_id
+                        AND attempt.attempt_count = job.attempt_count
+                        AND NEW.attempt_count = attempt.attempt_count
+                        AND NEW.owner_id = attempt.owner_id
+                        AND NEW.fencing_token = attempt.fencing_token
+                        AND lease.owner_id = attempt.owner_id
+                        AND lease.fencing_token = attempt.fencing_token
+                        AND NEW.observed_heartbeat_at_ms = lease.heartbeat_at_ms
+                        AND NEW.requested_at_ms >= lease.heartbeat_at_ms
+                        AND NEW.requested_at_ms >= COALESCE((
+                            SELECT MAX(event.created_at_ms)
+                            FROM index_job_events AS event
+                            WHERE event.job_id = attempt.job_id
+                                AND event.attempt_count = attempt.attempt_count
+                        ), attempt.started_at_ms)
+                )
+            )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job cancellation request is invalid');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_cancellation_requests_are_immutable
+    BEFORE UPDATE ON index_job_cancellation_requests
+    BEGIN
+        SELECT RAISE(ABORT, 'index job cancellation requests are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_cancellation_requests_cannot_be_deleted
+    BEFORE DELETE ON index_job_cancellation_requests
+    BEGIN
+        SELECT RAISE(ABORT, 'index job cancellation requests are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_cancellation_is_recorded
+    AFTER UPDATE OF cancel_requested ON index_jobs
+    WHEN OLD.cancel_requested = 0 AND NEW.cancel_requested = 1
+    BEGIN
+        INSERT INTO index_job_cancellation_requests(
+            job_id, requested_at_ms, request_kind, attempt_count, owner_id,
+            fencing_token, observed_heartbeat_at_ms
+        ) VALUES (
+            NEW.job_id,
+            NEW.updated_at_ms,
+            CASE
+                WHEN NEW.status = 'running' THEN 'running_v6'
+                ELSE 'queued_v6'
+            END,
+            CASE WHEN NEW.status = 'running' THEN NEW.attempt_count END,
+            CASE WHEN NEW.status = 'running' THEN (
+                SELECT attempt.owner_id FROM index_job_attempts AS attempt
+                WHERE attempt.job_id = NEW.job_id
+                    AND attempt.attempt_count = NEW.attempt_count
+            ) END,
+            CASE WHEN NEW.status = 'running' THEN (
+                SELECT attempt.fencing_token FROM index_job_attempts AS attempt
+                WHERE attempt.job_id = NEW.job_id
+                    AND attempt.attempt_count = NEW.attempt_count
+            ) END,
+            CASE WHEN NEW.status = 'running' THEN (
+                SELECT lease.heartbeat_at_ms
+                FROM index_job_attempts AS attempt
+                JOIN ref_job_leases AS lease
+                    ON lease.repository_id = attempt.repository_id
+                    AND lease.ref_name = attempt.ref_name
+                    AND lease.job_id = attempt.job_id
+                    AND lease.owner_id = attempt.owner_id
+                    AND lease.fencing_token = attempt.fencing_token
+                WHERE attempt.job_id = NEW.job_id
+                    AND attempt.attempt_count = NEW.attempt_count
+            ) END
+        );
+    END
+    """,
+    """
+    DROP TRIGGER ref_job_lease_insert_fencing
+    """,
+    f"""
+    CREATE TRIGGER ref_job_lease_insert_fencing
+    BEFORE INSERT ON ref_job_leases
+    WHEN NOT (
+        NEW.job_id IS NOT NULL
+        AND NEW.owner_id IS NOT NULL
+        AND NEW.fencing_token = 1
+        AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+        AND NEW.acquired_at_ms = (
+            SELECT high_water_ms FROM index_job_execution_clock
+            WHERE singleton_id = 1
+        )
+        AND NEW.heartbeat_at_ms = NEW.acquired_at_ms
+        AND NEW.updated_at_ms = NEW.acquired_at_ms
+        AND NEW.lease_expires_at_ms > NEW.heartbeat_at_ms
+        AND NEW.lease_expires_at_ms <= CASE
+            WHEN NEW.acquired_at_ms > 9223372034707292160
+                THEN 9223372036854775807
+            ELSE NEW.acquired_at_ms + 2147483647
+        END
+        AND EXISTS (
+            SELECT 1 FROM index_jobs AS job
+            WHERE job.job_id = NEW.job_id
+                AND job.repository_id = NEW.repository_id
+                AND job.ref_name = NEW.ref_name
+                AND job.status = 'queued'
+                AND job.cancel_requested = 0
+                AND NEW.acquired_at_ms >= job.updated_at_ms
+        )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'initial ref job lease state is invalid');
+    END
+    """,
+    """
+    DROP TRIGGER ref_job_lease_updates_are_fenced
+    """,
+    f"""
+    CREATE TRIGGER ref_job_lease_updates_are_fenced
+    BEFORE UPDATE ON ref_job_leases
+    WHEN NOT (
+        NEW.repository_id IS OLD.repository_id
+        AND NEW.ref_name IS OLD.ref_name
+        AND NEW.updated_at_ms >= OLD.updated_at_ms
+        AND (
+            (
+                OLD.job_id IS NOT NULL AND NEW.job_id IS NOT NULL
+                AND NEW.fencing_token = OLD.fencing_token
+                AND NEW.job_id IS OLD.job_id
+                AND NEW.owner_id IS OLD.owner_id
+                AND NEW.acquired_at_ms IS OLD.acquired_at_ms
+                AND OLD.updated_at_ms = OLD.heartbeat_at_ms
+                AND OLD.lease_expires_at_ms < 9223372036854775807
+                AND OLD.lease_expires_at_ms > {_DB_NOW_MS_SQL}
+                AND NEW.heartbeat_at_ms = MAX(
+                    OLD.heartbeat_at_ms, {_DB_NOW_MS_SQL}
+                )
+                AND NEW.updated_at_ms = MAX(
+                    OLD.updated_at_ms, {_DB_NOW_MS_SQL}
+                )
+                AND NEW.updated_at_ms = NEW.heartbeat_at_ms
+                AND NEW.lease_expires_at_ms > OLD.lease_expires_at_ms
+                AND NEW.lease_expires_at_ms > NEW.heartbeat_at_ms
+                AND NEW.lease_expires_at_ms <= CASE
+                    WHEN {_DB_NOW_MS_SQL} > 9223372034707292160
+                        THEN 9223372036854775807
+                    ELSE MAX(
+                        OLD.lease_expires_at_ms + 1,
+                        {_DB_NOW_MS_SQL} + 2147483647
+                    )
+                END
+                AND (
+                    SELECT status FROM index_jobs WHERE job_id = NEW.job_id
+                ) = 'running'
+            )
+            OR
+            (
+                OLD.job_id IS NOT NULL AND NEW.job_id IS NULL
+                AND NEW.fencing_token = OLD.fencing_token
+                AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+                AND NEW.updated_at_ms = (
+                    SELECT high_water_ms FROM index_job_execution_clock
+                    WHERE singleton_id = 1
+                )
+                AND (
+                    SELECT status FROM index_jobs WHERE job_id = OLD.job_id
+                ) != 'running'
+            )
+            OR
+            (
+                OLD.job_id IS NULL AND NEW.job_id IS NOT NULL
+                AND NEW.fencing_token = OLD.fencing_token + 1
+                AND OLD.fencing_token >= 1
+                AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+                AND OLD.updated_at_ms <= (
+                    SELECT high_water_ms FROM index_job_execution_clock
+                    WHERE singleton_id = 1
+                )
+                AND NEW.acquired_at_ms = (
+                    SELECT high_water_ms FROM index_job_execution_clock
+                    WHERE singleton_id = 1
+                )
+                AND NEW.heartbeat_at_ms = NEW.acquired_at_ms
+                AND NEW.updated_at_ms = NEW.acquired_at_ms
+                AND NEW.lease_expires_at_ms > NEW.heartbeat_at_ms
+                AND NEW.lease_expires_at_ms <= CASE
+                    WHEN NEW.acquired_at_ms > 9223372034707292160
+                        THEN 9223372036854775807
+                    ELSE NEW.acquired_at_ms + 2147483647
+                END
+                AND (
+                    SELECT status FROM index_jobs WHERE job_id = NEW.job_id
+                ) = 'queued'
+                AND (
+                    SELECT cancel_requested FROM index_jobs
+                    WHERE job_id = NEW.job_id
+                ) = 0
+                AND NEW.acquired_at_ms >= (
+                    SELECT updated_at_ms FROM index_jobs
+                    WHERE job_id = NEW.job_id
+                )
+            )
+            OR
+            (
+                OLD.job_id IS NOT NULL AND NEW.job_id IS NOT NULL
+                AND NEW.fencing_token = OLD.fencing_token + 1
+                AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+                AND OLD.lease_expires_at_ms <= (
+                    SELECT high_water_ms FROM index_job_execution_clock
+                    WHERE singleton_id = 1
+                )
+                AND NEW.acquired_at_ms = (
+                    SELECT high_water_ms FROM index_job_execution_clock
+                    WHERE singleton_id = 1
+                )
+                AND NEW.heartbeat_at_ms = NEW.acquired_at_ms
+                AND NEW.updated_at_ms = NEW.acquired_at_ms
+                AND NEW.lease_expires_at_ms > NEW.heartbeat_at_ms
+                AND NEW.lease_expires_at_ms <= CASE
+                    WHEN NEW.acquired_at_ms > 9223372034707292160
+                        THEN 9223372036854775807
+                    ELSE NEW.acquired_at_ms + 2147483647
+                END
+                AND (
+                    SELECT status FROM index_jobs WHERE job_id = OLD.job_id
+                ) != 'running'
+                AND (
+                    SELECT status FROM index_jobs WHERE job_id = NEW.job_id
+                ) = 'queued'
+                AND (
+                    SELECT cancel_requested FROM index_jobs
+                    WHERE job_id = NEW.job_id
+                ) = 0
+                AND NEW.acquired_at_ms >= (
+                    SELECT updated_at_ms FROM index_jobs
+                    WHERE job_id = NEW.job_id
+                )
+            )
+        )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'ref job lease fencing transition is invalid');
+    END
+    """,
+    """
+    DROP TRIGGER index_job_status_transitions_are_valid
+    """,
+    f"""
+    CREATE TRIGGER index_job_status_transitions_are_valid
+    BEFORE UPDATE ON index_jobs
+    WHEN NOT (
+        (
+            OLD.status = NEW.status
+            AND NEW.attempt_count = OLD.attempt_count
+            AND (
+                (
+                    NEW.cancel_requested = OLD.cancel_requested
+                    AND NEW.updated_at_ms = OLD.updated_at_ms
+                )
+                OR (
+                    OLD.status = 'running'
+                    AND OLD.cancel_requested = 0
+                    AND NEW.cancel_requested = 1
+                    AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+                    AND NEW.updated_at_ms = (
+                        SELECT high_water_ms FROM index_job_execution_clock
+                        WHERE singleton_id = 1
+                    )
+                )
+            )
+            AND NEW.result_snapshot_id IS OLD.result_snapshot_id
+            AND NEW.error_code IS OLD.error_code
+            AND NEW.error_message IS OLD.error_message
+            AND NEW.started_at_ms IS OLD.started_at_ms
+            AND NEW.finished_at_ms IS OLD.finished_at_ms
+        )
+        OR
+        (
+            OLD.status = 'queued'
+            AND NEW.status = 'running'
+            AND OLD.cancel_requested = 0
+            AND NEW.cancel_requested = 0
+            AND NEW.attempt_count = OLD.attempt_count + 1
+            AND NEW.result_snapshot_id IS NULL
+            AND NEW.error_code IS NULL
+            AND NEW.error_message IS NULL
+            AND NEW.finished_at_ms IS NULL
+            AND NEW.updated_at_ms >= OLD.updated_at_ms
+            AND EXISTS (
+                SELECT 1
+                FROM index_job_attempts AS attempt
+                JOIN ref_job_leases AS lease
+                    ON lease.repository_id = attempt.repository_id
+                    AND lease.ref_name = attempt.ref_name
+                    AND lease.job_id = attempt.job_id
+                    AND lease.owner_id = attempt.owner_id
+                    AND lease.fencing_token = attempt.fencing_token
+                WHERE attempt.job_id = NEW.job_id
+                    AND attempt.attempt_count = NEW.attempt_count
+                    AND attempt.repository_id = NEW.repository_id
+                    AND attempt.ref_name = NEW.ref_name
+                    AND attempt.request_digest = NEW.request_digest
+                    AND attempt.started_at_ms = lease.acquired_at_ms
+                    AND NEW.started_at_ms = COALESCE(
+                        OLD.started_at_ms, attempt.started_at_ms
+                    )
+                    AND NEW.updated_at_ms = attempt.started_at_ms
+                    AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+                    AND attempt.started_at_ms = (
+                        SELECT high_water_ms FROM index_job_execution_clock
+                        WHERE singleton_id = 1
+                    )
+            )
+        )
+        OR
+        (
+            OLD.status = 'queued'
+            AND NEW.status = 'cancelled'
+            AND NEW.attempt_count = OLD.attempt_count
+            AND NEW.cancel_requested = 1
+            AND NEW.result_snapshot_id IS NULL
+            AND NEW.error_code = 'cancelled'
+            AND NEW.error_message IS NULL
+            AND NEW.started_at_ms IS OLD.started_at_ms
+            AND NEW.finished_at_ms = NEW.updated_at_ms
+            AND NEW.updated_at_ms >= OLD.updated_at_ms
+            AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+            AND NEW.updated_at_ms = (
+                SELECT high_water_ms FROM index_job_execution_clock
+                WHERE singleton_id = 1
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM ref_job_leases AS lease
+                WHERE lease.job_id = NEW.job_id
+            )
+        )
+        OR
+        (
+            OLD.status = 'running'
+            AND NEW.status IN ('queued', 'failed', 'cancelled')
+            AND NEW.attempt_count = OLD.attempt_count
+            AND NEW.cancel_requested = OLD.cancel_requested
+            AND NEW.result_snapshot_id IS NULL
+            AND NEW.started_at_ms IS OLD.started_at_ms
+            AND EXISTS (
+                SELECT 1
+                FROM index_job_attempt_completions AS completion
+                WHERE completion.job_id = NEW.job_id
+                    AND completion.attempt_count = NEW.attempt_count
+                    AND completion.outcome = CASE NEW.status
+                        WHEN 'queued' THEN 'requeue'
+                        WHEN 'failed' THEN 'failed'
+                        ELSE 'cancelled'
+                    END
+                    AND completion.error_code = NEW.error_code
+                    AND completion.error_message IS NEW.error_message
+                    AND completion.completed_at_ms = NEW.updated_at_ms
+                    AND NEW.finished_at_ms IS CASE NEW.status
+                        WHEN 'queued' THEN NULL
+                        ELSE completion.completed_at_ms
+                    END
+            )
+        )
+        OR
+        (
+            OLD.status = 'running'
+            AND NEW.status = 'succeeded'
+            AND OLD.cancel_requested = 0
+            AND NEW.cancel_requested = 0
+            AND NEW.attempt_count = OLD.attempt_count
+            AND NEW.error_code IS NULL
+            AND NEW.error_message IS NULL
+            AND NEW.started_at_ms IS OLD.started_at_ms
+            AND NEW.finished_at_ms = NEW.updated_at_ms
+            AND EXISTS (
+                SELECT 1 FROM index_job_publications AS publication
+                WHERE publication.job_id = NEW.job_id
+                    AND publication.snapshot_id = NEW.result_snapshot_id
+                    AND publication.completed_at_ms = NEW.finished_at_ms
+            )
+        )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'invalid index job status transition');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_cancellation_is_monotonic
+    BEFORE UPDATE ON index_jobs
+    WHEN OLD.cancel_requested = 1 AND NEW.cancel_requested = 0
+    BEGIN
+        SELECT RAISE(ABORT, 'index job cancellation cannot be cleared');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempts_reject_duplicate_inserts
+    BEFORE INSERT ON index_job_attempts
+    WHEN EXISTS (
+        SELECT 1 FROM index_job_attempts AS existing
+        WHERE (existing.job_id = NEW.job_id
+                AND existing.attempt_count = NEW.attempt_count)
+            OR (
+                existing.repository_id = NEW.repository_id
+                AND existing.ref_name = NEW.ref_name
+                AND existing.fencing_token = NEW.fencing_token
+            )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate index job attempt insert is forbidden');
+    END
+    """,
+    f"""
+    CREATE TRIGGER index_job_attempts_validate_insert
+    BEFORE INSERT ON index_job_attempts
+    WHEN NOT EXISTS (
+        SELECT 1
+        FROM index_jobs AS job
+        JOIN ref_job_leases AS lease
+            ON lease.repository_id = job.repository_id
+            AND lease.ref_name = job.ref_name
+            AND lease.job_id = job.job_id
+        WHERE job.job_id = NEW.job_id
+            AND job.repository_id = NEW.repository_id
+            AND job.ref_name = NEW.ref_name
+            AND job.request_digest = NEW.request_digest
+            AND job.status = 'queued'
+            AND job.cancel_requested = 0
+            AND job.attempt_count + 1 = NEW.attempt_count
+            AND NEW.attempt_count BETWEEN 1 AND job.max_attempts
+            AND lease.owner_id = NEW.owner_id
+            AND lease.fencing_token = NEW.fencing_token
+            AND NEW.fencing_token >= NEW.attempt_count
+            AND lease.acquired_at_ms = NEW.started_at_ms
+            AND lease.heartbeat_at_ms >= NEW.started_at_ms
+            AND lease.lease_expires_at_ms > lease.heartbeat_at_ms
+            AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+            AND NEW.started_at_ms = (
+                SELECT high_water_ms FROM index_job_execution_clock
+                WHERE singleton_id = 1
+            )
+            AND EXISTS (
+                SELECT 1 FROM index_job_attempt_baselines AS baseline
+                WHERE baseline.job_id = job.job_id
+                    AND baseline.legacy_attempt_count <= job.attempt_count
+            )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt start is invalid');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempts_are_immutable
+    BEFORE UPDATE ON index_job_attempts
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempts are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempts_cannot_be_deleted
+    BEFORE DELETE ON index_job_attempts
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempts are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_completions_reject_duplicate_inserts
+    BEFORE INSERT ON index_job_attempt_completions
+    WHEN EXISTS (
+        SELECT 1 FROM index_job_attempt_completions AS existing
+        WHERE existing.job_id = NEW.job_id
+            AND existing.attempt_count = NEW.attempt_count
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate job attempt completion is forbidden');
+    END
+    """,
+    f"""
+    CREATE TRIGGER index_job_attempt_completions_validate_insert
+    BEFORE INSERT ON index_job_attempt_completions
+    WHEN NOT EXISTS (
+        SELECT 1
+        FROM index_job_attempts AS attempt
+        JOIN index_jobs AS job ON job.job_id = attempt.job_id
+        JOIN ref_job_leases AS lease
+            ON lease.repository_id = attempt.repository_id
+            AND lease.ref_name = attempt.ref_name
+            AND lease.job_id = attempt.job_id
+        WHERE attempt.job_id = NEW.job_id
+            AND attempt.attempt_count = NEW.attempt_count
+            AND attempt.owner_id = NEW.owner_id
+            AND attempt.fencing_token = NEW.fencing_token
+            AND job.status = 'running'
+            AND job.attempt_count = NEW.attempt_count
+            AND lease.owner_id = NEW.owner_id
+            AND lease.fencing_token = NEW.fencing_token
+            AND NEW.completed_at_ms >= attempt.started_at_ms
+            AND NEW.completed_at_ms >= job.updated_at_ms
+            AND NEW.completed_at_ms >= lease.heartbeat_at_ms
+            AND NEW.completed_at_ms >= COALESCE((
+                SELECT MAX(event.created_at_ms)
+                FROM index_job_events AS event
+                WHERE event.job_id = attempt.job_id
+                    AND event.attempt_count = attempt.attempt_count
+            ), attempt.started_at_ms)
+            AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+            AND NEW.completed_at_ms = (
+                SELECT high_water_ms FROM index_job_execution_clock
+                WHERE singleton_id = 1
+            )
+            AND (
+                (job.cancel_requested = 0 AND (
+                    (NEW.outcome = 'requeue'
+                        AND NEW.attempt_count < job.max_attempts)
+                    OR NEW.outcome = 'failed'
+                ))
+                OR (NEW.outcome = 'cancelled' AND job.cancel_requested = 1)
+            )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt completion is invalid');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_completion_closes_job
+    AFTER INSERT ON index_job_attempt_completions
+    BEGIN
+        INSERT INTO index_job_attempt_closure_frontiers(
+            job_id, attempt_count, owner_id, fencing_token, event_count,
+            max_event_sequence, max_event_created_at_ms
+        ) SELECT
+            NEW.job_id,
+            NEW.attempt_count,
+            NEW.owner_id,
+            NEW.fencing_token,
+            COUNT(event.event_sequence),
+            COALESCE(MAX(event.event_sequence), 0),
+            COALESCE(MAX(event.created_at_ms), 0)
+        FROM index_job_events AS event
+        WHERE event.job_id = NEW.job_id
+            AND event.attempt_count = NEW.attempt_count;
+        UPDATE index_jobs
+        SET status = CASE NEW.outcome
+                WHEN 'requeue' THEN 'queued'
+                WHEN 'failed' THEN 'failed'
+                ELSE 'cancelled'
+            END,
+            error_code = NEW.error_code,
+            error_message = NEW.error_message,
+            finished_at_ms = CASE NEW.outcome
+                WHEN 'requeue' THEN NULL
+                ELSE NEW.completed_at_ms
+            END,
+            updated_at_ms = NEW.completed_at_ms
+        WHERE job_id = NEW.job_id
+            AND status = 'running'
+            AND attempt_count = NEW.attempt_count;
+        SELECT CASE changes()
+            WHEN 1 THEN 1
+            ELSE RAISE(ABORT, 'attempt completion did not close its job')
+        END;
+        UPDATE ref_job_leases
+        SET job_id = NULL, owner_id = NULL,
+            acquired_at_ms = NULL, heartbeat_at_ms = NULL,
+            lease_expires_at_ms = NULL, updated_at_ms = NEW.completed_at_ms
+        WHERE job_id = NEW.job_id
+            AND owner_id = NEW.owner_id
+            AND fencing_token = NEW.fencing_token;
+        SELECT CASE changes()
+            WHEN 1 THEN 1
+            ELSE RAISE(ABORT, 'attempt completion did not release its lease')
+        END;
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_completions_are_immutable
+    BEFORE UPDATE ON index_job_attempt_completions
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt completions are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_attempt_completions_cannot_be_deleted
+    BEFORE DELETE ON index_job_attempt_completions
+    BEGIN
+        SELECT RAISE(ABORT, 'index job attempt completions are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_events_reject_duplicate_inserts
+    BEFORE INSERT ON index_job_events
+    WHEN EXISTS (
+        SELECT 1 FROM index_job_events AS existing
+        WHERE existing.event_sequence = NEW.event_sequence
+            OR (
+                existing.job_id = NEW.job_id
+                AND existing.attempt_count = NEW.attempt_count
+                AND (
+                    existing.event_key = NEW.event_key
+                    OR (
+                        NEW.kind = 'view_result'
+                        AND existing.kind = 'view_result'
+                        AND existing.view_type = NEW.view_type
+                    )
+                )
+            )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'duplicate index job event is forbidden');
+    END
+    """,
+    f"""
+    CREATE TRIGGER index_job_events_validate_insert
+    BEFORE INSERT ON index_job_events
+    WHEN NOT (
+        NEW.event_sequence = -1
+        AND (SELECT COUNT(*) FROM index_job_events
+            WHERE job_id = NEW.job_id
+                AND attempt_count = NEW.attempt_count
+        ) < {MAX_INDEX_JOB_EVENTS_PER_ATTEMPT}
+        AND NOT EXISTS (
+            SELECT 1 FROM index_job_attempt_closure_frontiers AS frontier
+            WHERE frontier.job_id = NEW.job_id
+                AND frontier.attempt_count = NEW.attempt_count
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM index_job_attempts AS attempt
+            JOIN index_jobs AS job ON job.job_id = attempt.job_id
+            JOIN ref_job_leases AS lease
+                ON lease.repository_id = attempt.repository_id
+                AND lease.ref_name = attempt.ref_name
+                AND lease.job_id = attempt.job_id
+            WHERE attempt.job_id = NEW.job_id
+                AND attempt.attempt_count = NEW.attempt_count
+                AND attempt.owner_id = NEW.owner_id
+                AND attempt.fencing_token = NEW.fencing_token
+                AND job.status = 'running'
+                AND job.attempt_count = NEW.attempt_count
+                AND lease.owner_id = NEW.owner_id
+                AND lease.fencing_token = NEW.fencing_token
+                AND lease.lease_expires_at_ms > NEW.created_at_ms
+                AND NEW.created_at_ms >= attempt.started_at_ms
+                AND NEW.created_at_ms >= job.updated_at_ms
+                AND NEW.created_at_ms >= lease.heartbeat_at_ms
+                AND NEW.created_at_ms >= COALESCE((
+                    SELECT MAX(existing.created_at_ms)
+                    FROM index_job_events AS existing
+                    WHERE existing.job_id = attempt.job_id
+                        AND existing.attempt_count = attempt.attempt_count
+                ), attempt.started_at_ms)
+                AND (SELECT COUNT(*) FROM index_job_execution_clock) = 1
+                AND NEW.created_at_ms = (
+                    SELECT high_water_ms FROM index_job_execution_clock
+                    WHERE singleton_id = 1
+                )
+        )
+        AND (
+            NEW.view_type IS NULL
+            OR EXISTS (
+                SELECT 1 FROM index_job_views AS requested
+                WHERE requested.job_id = NEW.job_id
+                    AND requested.view_type = NEW.view_type
+            )
+        )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job event is invalid');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_events_are_immutable
+    BEFORE UPDATE ON index_job_events
+    BEGIN
+        SELECT RAISE(ABORT, 'index job events are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_events_cannot_be_deleted
+    BEFORE DELETE ON index_job_events
+    BEGIN
+        SELECT RAISE(ABORT, 'index job events are immutable');
+    END
+    """,
+    """
+    DROP TRIGGER index_job_publications_validate_insert
+    """,
+    _V6_INDEX_JOB_PUBLICATIONS_VALIDATE_INSERT,
+    """
+    DROP TRIGGER index_job_publication_completes_job
+    """,
+    """
+    CREATE TRIGGER index_job_publication_completes_job
+    AFTER INSERT ON index_job_publications
+    BEGIN
+        INSERT INTO index_job_attempt_closure_frontiers(
+            job_id, attempt_count, owner_id, fencing_token, event_count,
+            max_event_sequence, max_event_created_at_ms
+        ) SELECT
+            NEW.job_id,
+            job.attempt_count,
+            NEW.owner_id,
+            NEW.fencing_token,
+            COUNT(event.event_sequence),
+            COALESCE(MAX(event.event_sequence), 0),
+            COALESCE(MAX(event.created_at_ms), 0)
+        FROM index_jobs AS job
+        LEFT JOIN index_job_events AS event
+            ON event.job_id = job.job_id
+            AND event.attempt_count = job.attempt_count
+        WHERE job.job_id = NEW.job_id;
+        UPDATE index_jobs
+        SET status = 'succeeded', result_snapshot_id = NEW.snapshot_id,
+            error_code = NULL, error_message = NULL,
+            finished_at_ms = NEW.completed_at_ms,
+            updated_at_ms = NEW.completed_at_ms
+        WHERE job_id = NEW.job_id AND status = 'running'
+            AND cancel_requested = 0;
+        SELECT CASE changes()
+            WHEN 1 THEN 1
+            ELSE RAISE(ABORT, 'index job publication did not complete its job')
+        END;
+        UPDATE ref_job_leases
+        SET job_id = NULL, owner_id = NULL,
+            acquired_at_ms = NULL, heartbeat_at_ms = NULL,
+            lease_expires_at_ms = NULL, updated_at_ms = NEW.completed_at_ms
+        WHERE repository_id = NEW.repository_id
+            AND ref_name = NEW.ref_name
+            AND job_id = NEW.job_id
+            AND owner_id = NEW.owner_id
+            AND fencing_token = NEW.fencing_token;
+        SELECT CASE changes()
+            WHEN 1 THEN 1
+            ELSE RAISE(ABORT, 'index job publication did not release its lease')
+        END;
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_publications_require_attempt_start
+    BEFORE INSERT ON index_job_publications
+    WHEN NOT EXISTS (
+        SELECT 1
+        FROM index_jobs AS job
+        JOIN index_job_attempts AS attempt
+            ON attempt.job_id = job.job_id
+            AND attempt.attempt_count = job.attempt_count
+        WHERE job.job_id = NEW.job_id
+            AND attempt.repository_id = NEW.repository_id
+            AND attempt.ref_name = NEW.ref_name
+            AND attempt.request_digest = NEW.request_digest
+            AND attempt.owner_id = NEW.owner_id
+            AND attempt.fencing_token = NEW.fencing_token
+            AND attempt.started_at_ms <= NEW.completed_at_ms
+            AND NEW.completed_at_ms >= job.updated_at_ms
+            AND NEW.completed_at_ms >= COALESCE((
+                SELECT MAX(event.created_at_ms)
+                FROM index_job_events AS event
+                WHERE event.job_id = attempt.job_id
+                    AND event.attempt_count = attempt.attempt_count
+            ), attempt.started_at_ms)
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'index job publication lacks its attempt start');
+    END
+    """,
+)
+
 _MIGRATIONS: dict[int, tuple[str, ...]] = {
     1: _SCHEMA_V1,
     2: _SCHEMA_V2,
     3: _SCHEMA_V3,
     4: _SCHEMA_V4,
     5: _SCHEMA_V5,
+    6: _SCHEMA_V6,
 }
 
 _CatalogSchemaObject = tuple[str, str, str, str | None]
@@ -1954,13 +3524,11 @@ def _catalog_schema_signature(
     """Return every application schema object in a formatting-stable form."""
 
     signature: list[_CatalogSchemaObject] = []
-    for row in connection.execute(
-        """
-        SELECT type, name, tbl_name, sql
-        FROM sqlite_schema
-        ORDER BY type, name, tbl_name
-        """
-    ):
+    schema_rows = connection.execute(
+        "SELECT type, name, tbl_name, sql "
+        "FROM sqlite_schema ORDER BY type, name, tbl_name"
+    )
+    for row in schema_rows:
         schema_object = (
             row[0],
             row[1],
@@ -2770,6 +4338,8 @@ class SQLiteCatalog:
                 self._connection.execute(f"PRAGMA user_version = {version:d}")
             if self.schema_version >= 5:
                 self._validate_publication_aggregates()
+            if self.schema_version >= 6:
+                self._validate_job_execution_aggregates()
 
     def _require_record(self, table: str, key: str, value: str) -> sqlite3.Row:
         allowed = {
@@ -2794,7 +4364,70 @@ class SQLiteCatalog:
 
     def _db_now_ms(self) -> int:
         row = self._connection.execute(f"SELECT {_DB_NOW_MS_SQL} AS now_ms").fetchone()
-        return int(row["now_ms"])
+        return _persisted_nonnegative_int64(row["now_ms"], "SQLite clock")
+
+    def _job_execution_high_water_ms(self) -> int:
+        """Return the exact durable content-clock singleton."""
+
+        rows = self._connection.execute(
+            """
+            SELECT singleton_id, high_water_ms
+            FROM index_job_execution_clock
+            """
+        ).fetchall()
+        if (
+            len(rows) != 1
+            or type(rows[0]["singleton_id"]) is not int
+            or rows[0]["singleton_id"] != 1
+        ):
+            raise CatalogConflictError(
+                "persisted index job execution clock is not a singleton"
+            )
+        return _persisted_nonnegative_int64(
+            rows[0]["high_water_ms"],
+            "index job execution clock high-water",
+        )
+
+    def _advance_job_execution_clock(
+        self,
+        *,
+        causal_floor_ms: int,
+        action: str,
+    ) -> int:
+        """Atomically freeze SQLite time for one fresh content mutation."""
+
+        floor = _persisted_nonnegative_int64(
+            causal_floor_ms,
+            "index job execution causal floor",
+        )
+        previous = self._job_execution_high_water_ms()
+        try:
+            cursor = self._connection.execute(
+                f"""
+                UPDATE index_job_execution_clock
+                SET high_water_ms = {_DB_NOW_MS_SQL}
+                WHERE singleton_id = 1
+                    AND high_water_ms <= {_DB_NOW_MS_SQL}
+                    AND ? <= {_DB_NOW_MS_SQL}
+                """,
+                (floor,),
+            )
+        except sqlite3.IntegrityError as exc:
+            if str(exc) != "index job execution clock update is invalid":
+                raise
+            raise CatalogConflictError(
+                f"database clock moved backwards before {action}"
+            ) from exc
+        if cursor.rowcount != 1:
+            raise CatalogConflictError(
+                f"database clock moved backwards before {action}"
+            )
+        frozen = self._job_execution_high_water_ms()
+        if frozen < max(floor, previous):
+            raise CatalogConflictError(
+                f"database clock moved backwards before {action}"
+            )
+        return frozen
 
     @staticmethod
     def _job_from_row(row: sqlite3.Row) -> IndexJobRecord:
@@ -2937,6 +4570,169 @@ class SQLiteCatalog:
         return record
 
     @staticmethod
+    def _job_attempt_from_row(row: sqlite3.Row) -> IndexJobAttemptRecord:
+        text_fields = (
+            "job_id",
+            "repository_id",
+            "ref_name",
+            "request_digest",
+            "owner_id",
+        )
+        integer_fields = ("attempt_count", "fencing_token", "started_at_ms")
+        if any(type(row[field]) is not str for field in text_fields) or any(
+            type(row[field]) is not int for field in integer_fields
+        ):
+            raise StorageIntegrityError(
+                "persisted job attempt contains non-exact scalar values"
+            )
+        record = IndexJobAttemptRecord(
+            job_id=row["job_id"],
+            attempt_count=row["attempt_count"],
+            repository_id=row["repository_id"],
+            ref_name=row["ref_name"],
+            request_digest=row["request_digest"],
+            owner_id=row["owner_id"],
+            fencing_token=row["fencing_token"],
+            started_at_ms=row["started_at_ms"],
+        )
+        if (
+            record.job_id,
+            record.repository_id,
+            record.ref_name,
+            record.request_digest,
+            record.owner_id,
+            record.attempt_count,
+            record.fencing_token,
+            record.started_at_ms,
+        ) != tuple(row[field] for field in text_fields + integer_fields):
+            raise StorageIntegrityError(
+                f"persisted job attempt is not canonical: {record.job_id}/"
+                f"{record.attempt_count}"
+            )
+        return record
+
+    @staticmethod
+    def _job_attempt_completion_from_row(
+        row: sqlite3.Row,
+    ) -> IndexJobAttemptCompletionRecord:
+        text_fields = ("job_id", "owner_id", "outcome", "error_code")
+        integer_fields = ("attempt_count", "fencing_token", "completed_at_ms")
+        if (
+            any(type(row[field]) is not str for field in text_fields)
+            or any(type(row[field]) is not int for field in integer_fields)
+            or (
+                row["error_message"] is not None
+                and type(row["error_message"]) is not str
+            )
+        ):
+            raise StorageIntegrityError(
+                "persisted job attempt completion contains non-exact scalar values"
+            )
+        record = IndexJobAttemptCompletionRecord(
+            job_id=row["job_id"],
+            attempt_count=row["attempt_count"],
+            owner_id=row["owner_id"],
+            fencing_token=row["fencing_token"],
+            outcome=row["outcome"],
+            error_code=row["error_code"],
+            error_message=row["error_message"],
+            completed_at_ms=row["completed_at_ms"],
+        )
+        if (
+            record.job_id,
+            record.owner_id,
+            record.outcome.value,
+            record.error_code,
+            record.attempt_count,
+            record.fencing_token,
+            record.completed_at_ms,
+            record.error_message,
+        ) != tuple(row[field] for field in text_fields + integer_fields) + (
+            row["error_message"],
+        ):
+            raise StorageIntegrityError(
+                "persisted job attempt completion is not canonical: "
+                f"{record.job_id}/{record.attempt_count}"
+            )
+        return record
+
+    @staticmethod
+    def _job_event_from_row(row: sqlite3.Row) -> IndexJobEventRecord:
+        required_text = (
+            "job_id",
+            "event_key",
+            "kind",
+            "owner_id",
+            "payload_json",
+        )
+        optional_text = ("view_type", "effective_mode", "outcome")
+        integer_fields = (
+            "event_sequence",
+            "attempt_count",
+            "fencing_token",
+            "created_at_ms",
+        )
+        if (
+            any(type(row[field]) is not str for field in required_text)
+            or any(
+                row[field] is not None and type(row[field]) is not str
+                for field in optional_text
+            )
+            or any(type(row[field]) is not int for field in integer_fields)
+        ):
+            raise StorageIntegrityError(
+                "persisted index job event contains non-exact scalar values"
+            )
+        record = IndexJobEventRecord(
+            sequence=row["event_sequence"],
+            job_id=row["job_id"],
+            attempt_count=row["attempt_count"],
+            event_key=row["event_key"],
+            kind=row["kind"],
+            owner_id=row["owner_id"],
+            fencing_token=row["fencing_token"],
+            view_type=row["view_type"],
+            effective_mode=row["effective_mode"],
+            outcome=row["outcome"],
+            payload_json=row["payload_json"],
+            created_at_ms=row["created_at_ms"],
+        )
+        if (
+            record.job_id,
+            record.event_key,
+            record.kind.value,
+            record.owner_id,
+            record.payload_json,
+            record.view_type,
+            None if record.effective_mode is None else record.effective_mode.value,
+            None if record.outcome is None else record.outcome.value,
+            record.sequence,
+            record.attempt_count,
+            record.fencing_token,
+            record.created_at_ms,
+        ) != tuple(
+            row[field] for field in required_text + optional_text + integer_fields
+        ):
+            raise StorageIntegrityError(
+                f"persisted index job event is not canonical: {record.sequence}"
+            )
+        return record
+
+    def _job_attempt(self, job_id: str, attempt_count: int) -> IndexJobAttemptRecord:
+        row = self._connection.execute(
+            """
+            SELECT * FROM index_job_attempts
+            WHERE job_id = ? AND attempt_count = ?
+            """,
+            (job_id, attempt_count),
+        ).fetchone()
+        if row is None:
+            raise CatalogNotFoundError(
+                f"index job attempt not found: {job_id}/{attempt_count}"
+            )
+        return self._job_attempt_from_row(row)
+
+    @staticmethod
     def _lease_from_row(row: sqlite3.Row) -> RefJobLease:
         text_fields = ("repository_id", "ref_name", "job_id", "owner_id")
         integer_fields = (
@@ -3010,11 +4806,11 @@ class SQLiteCatalog:
             raise CatalogConflictError(
                 "persisted job lease slot identity is not canonical text"
             )
-        _persisted_nonnegative_int64(
+        fencing_token = _persisted_nonnegative_int64(
             row["fencing_token"],
             "job lease fencing token",
         )
-        _persisted_nonnegative_int64(
+        updated_at_ms = _persisted_nonnegative_int64(
             row["updated_at_ms"],
             "job lease updated time",
         )
@@ -3034,6 +4830,17 @@ class SQLiteCatalog:
                 raise CatalogConflictError(
                     "released job lease slot retains active authority"
                 )
+            if fencing_token < 1:
+                raise CatalogConflictError(
+                    "released job lease slot has impossible causal history"
+                )
+            if (
+                self.schema_version >= 6
+                and updated_at_ms > self._job_execution_high_water_ms()
+            ):
+                raise CatalogConflictError(
+                    "released job lease slot exceeds its durable content clock"
+                )
             return None
         if any(value is None for value in active_values):
             raise CatalogConflictError("active job lease slot is incomplete")
@@ -3051,14 +4858,24 @@ class SQLiteCatalog:
             leased_job.job_id != lease.job_id
             or leased_job.repository_id != lease.repository_id
             or leased_job.ref_name != lease.ref_name
+            or (
+                self.schema_version >= 6
+                and leased_job.status is not IndexJobStatus.RUNNING
+            )
             or leased_job.attempt_count < 1
             or leased_job.started_at_ms is None
-            or row["updated_at_ms"] < lease.heartbeat_at_ms
+            or row["updated_at_ms"] != lease.heartbeat_at_ms
             or row["updated_at_ms"] >= lease.lease_expires_at_ms
+            or (
+                self.schema_version >= 6
+                and lease.acquired_at_ms > self._job_execution_high_water_ms()
+            )
         ):
             raise CatalogConflictError(
                 "active job lease slot points to a different job identity"
             )
+        if self.schema_version >= 6:
+            self._validate_current_job_attempt(leased_job, lease)
         return lease
 
     def _job_views(self, job: IndexJobRecord) -> tuple[IndexJobViewRecord, ...]:
@@ -3084,6 +4901,147 @@ class SQLiteCatalog:
                 f"job view rows do not match canonical request: {job.job_id}"
             )
         return actual
+
+    def _validate_current_job_attempt(
+        self,
+        job: IndexJobRecord,
+        lease: RefJobLease,
+        *,
+        attempt_count: int | None = None,
+    ) -> IndexJobAttemptRecord:
+        expected_attempt = job.attempt_count if attempt_count is None else attempt_count
+        try:
+            attempt = self._job_attempt(job.job_id, expected_attempt)
+        except CatalogNotFoundError as exc:
+            raise CatalogConflictError(
+                "current index job lease is missing its attempt start"
+            ) from exc
+        if (
+            attempt.job_id != job.job_id
+            or attempt.attempt_count != job.attempt_count
+            or attempt.repository_id != job.repository_id
+            or attempt.ref_name != job.ref_name
+            or attempt.request_digest != job.request_digest
+            or attempt.owner_id != lease.owner_id
+            or attempt.fencing_token != lease.fencing_token
+            or attempt.started_at_ms != lease.acquired_at_ms
+        ):
+            raise CatalogConflictError(
+                "current index job attempt authority is inconsistent"
+            )
+        return attempt
+
+    def _validate_job_attempt_closure_frontier(
+        self,
+        attempt: IndexJobAttemptRecord,
+    ) -> tuple[int, int, int]:
+        """Authenticate the exact immutable event prefix at attempt closure."""
+
+        row = self._connection.execute(
+            """
+            SELECT * FROM index_job_attempt_closure_frontiers
+            WHERE job_id = ? AND attempt_count = ?
+            """,
+            (attempt.job_id, attempt.attempt_count),
+        ).fetchone()
+        if row is None:
+            raise CatalogConflictError(
+                "index job attempt closure is missing its event frontier"
+            )
+        integer_fields = (
+            "attempt_count",
+            "fencing_token",
+            "event_count",
+            "max_event_sequence",
+            "max_event_created_at_ms",
+        )
+        if (
+            type(row["job_id"]) is not str
+            or type(row["owner_id"]) is not str
+            or any(type(row[field]) is not int for field in integer_fields)
+            or row["job_id"] != attempt.job_id
+            or row["attempt_count"] != attempt.attempt_count
+            or row["owner_id"] != attempt.owner_id
+            or row["fencing_token"] != attempt.fencing_token
+        ):
+            raise CatalogConflictError(
+                "index job attempt closure frontier authority conflicts"
+            )
+        aggregate = self._connection.execute(
+            """
+            SELECT COUNT(*), COALESCE(MAX(event_sequence), 0),
+                COALESCE(MAX(created_at_ms), 0)
+            FROM index_job_events
+            WHERE job_id = ? AND attempt_count = ?
+            """,
+            (attempt.job_id, attempt.attempt_count),
+        ).fetchone()
+        observed = tuple(aggregate)
+        if any(type(value) is not int for value in observed) or observed != (
+            row["event_count"],
+            row["max_event_sequence"],
+            row["max_event_created_at_ms"],
+        ):
+            raise CatalogConflictError(
+                "index job attempt closure frontier conflicts with its events"
+            )
+        closure_rows = self._connection.execute(
+            """
+            SELECT completed_at_ms FROM index_job_attempt_completions
+            WHERE job_id = ? AND attempt_count = ?
+                AND owner_id = ? AND fencing_token = ?
+            UNION ALL
+            SELECT completed_at_ms FROM index_job_publications
+            WHERE job_id = ? AND owner_id = ? AND fencing_token = ?
+            """,
+            (
+                attempt.job_id,
+                attempt.attempt_count,
+                attempt.owner_id,
+                attempt.fencing_token,
+                attempt.job_id,
+                attempt.owner_id,
+                attempt.fencing_token,
+            ),
+        ).fetchall()
+        if (
+            len(closure_rows) != 1
+            or type(closure_rows[0]["completed_at_ms"]) is not int
+            or closure_rows[0]["completed_at_ms"] < observed[2]
+        ):
+            raise CatalogConflictError(
+                "index job attempt has both success and non-success closures "
+                "or its frontier conflicts with its exact closure"
+            )
+        return observed
+
+    @staticmethod
+    def _job_attempt_completion_response(
+        job: IndexJobRecord,
+        completion: IndexJobAttemptCompletionRecord,
+    ) -> IndexJobRecord:
+        """Reconstruct the exact job response committed with one closure."""
+
+        status = {
+            IndexJobCompletion.REQUEUE: IndexJobStatus.QUEUED,
+            IndexJobCompletion.FAILED: IndexJobStatus.FAILED,
+            IndexJobCompletion.CANCELLED: IndexJobStatus.CANCELLED,
+        }[completion.outcome]
+        return replace(
+            job,
+            status=status,
+            cancel_requested=completion.outcome is IndexJobCompletion.CANCELLED,
+            attempt_count=completion.attempt_count,
+            result_snapshot_id=None,
+            error_code=completion.error_code,
+            error_message=completion.error_message,
+            updated_at_ms=completion.completed_at_ms,
+            finished_at_ms=(
+                None
+                if completion.outcome is IndexJobCompletion.REQUEUE
+                else completion.completed_at_ms
+            ),
+        )
 
     def _job_publication_output_identities(
         self,
@@ -3513,6 +5471,22 @@ class SQLiteCatalog:
                 "successful index job and publication closure conflict"
             )
 
+        if self.schema_version >= 6:
+            attempt_row = self._connection.execute(
+                """
+                SELECT * FROM index_job_attempts
+                WHERE job_id = ? AND attempt_count = ?
+                """,
+                (job.job_id, job.attempt_count),
+            ).fetchone()
+            if attempt_row is not None:
+                attempt = self._job_attempt_from_row(attempt_row)
+                frontier = self._validate_job_attempt_closure_frontier(attempt)
+                if completed_at < frontier[2]:
+                    raise CatalogConflictError(
+                        "job publication precedes its exact event frontier"
+                    )
+
         self._validate_persisted_job_publication_outputs(
             job,
             outputs,
@@ -3829,6 +5803,680 @@ class SQLiteCatalog:
                 snapshot_id=snapshot_id,
             )
 
+    def _validate_job_execution_aggregates(self) -> None:
+        execution_high_water_ms = self._job_execution_high_water_ms()
+        jobs: dict[str, IndexJobRecord] = {}
+        requested_views: dict[str, frozenset[str]] = {}
+        for row in self._connection.execute(
+            "SELECT * FROM index_jobs ORDER BY job_id"
+        ).fetchall():
+            job = self._job_from_row(row)
+            jobs[job.job_id] = job
+            requested_views[job.job_id] = frozenset(
+                view.view_type for view in self._job_views(job)
+            )
+
+        baselines: dict[str, int] = {}
+        baseline_content_high_water: dict[str, int] = {}
+        baseline_started_at: dict[str, int | None] = {}
+        baseline_rows = self._connection.execute(
+            """
+            SELECT job_id, legacy_attempt_count, initial_created_at_ms,
+                legacy_content_high_water_ms, legacy_started_at_ms
+            FROM index_job_attempt_baselines ORDER BY job_id
+            """
+        ).fetchall()
+        for row in baseline_rows:
+            job_id = row["job_id"]
+            baseline = row["legacy_attempt_count"]
+            initial_created_at_ms = row["initial_created_at_ms"]
+            legacy_content_high_water_ms = row["legacy_content_high_water_ms"]
+            legacy_started_at_ms = row["legacy_started_at_ms"]
+            if (
+                type(job_id) is not str
+                or type(baseline) is not int
+                or type(initial_created_at_ms) is not int
+                or type(legacy_content_high_water_ms) is not int
+                or (
+                    legacy_started_at_ms is not None
+                    and type(legacy_started_at_ms) is not int
+                )
+                or job_id not in jobs
+                or baseline < 0
+                or baseline > jobs[job_id].attempt_count
+                or initial_created_at_ms != jobs[job_id].created_at_ms
+                or legacy_content_high_water_ms < initial_created_at_ms
+                or legacy_content_high_water_ms > jobs[job_id].updated_at_ms
+                or (
+                    legacy_started_at_ms is not None
+                    and (
+                        legacy_started_at_ms > legacy_content_high_water_ms
+                        or legacy_started_at_ms != jobs[job_id].started_at_ms
+                    )
+                )
+            ):
+                raise CatalogConflictError(
+                    "persisted index job attempt baseline conflicts with its job"
+                )
+            baselines[job_id] = baseline
+            baseline_content_high_water[job_id] = legacy_content_high_water_ms
+            baseline_started_at[job_id] = legacy_started_at_ms
+        if set(baselines) != set(jobs):
+            raise CatalogConflictError(
+                "persisted index jobs do not have exact attempt baselines"
+            )
+
+        cancellation_requests: dict[
+            str, tuple[str, int, int | None, str | None, int | None, int | None]
+        ] = {}
+        cancellation_rows = self._connection.execute(
+            """
+            SELECT job_id, requested_at_ms, request_kind, attempt_count,
+                owner_id, fencing_token, observed_heartbeat_at_ms
+            FROM index_job_cancellation_requests ORDER BY job_id
+            """
+        ).fetchall()
+        for row in cancellation_rows:
+            job_id = row["job_id"]
+            requested_at_ms = row["requested_at_ms"]
+            request_kind = row["request_kind"]
+            attempt_count = row["attempt_count"]
+            owner_id = row["owner_id"]
+            fencing_token = row["fencing_token"]
+            observed_heartbeat_at_ms = row["observed_heartbeat_at_ms"]
+            job = jobs.get(job_id) if type(job_id) is str else None
+            null_authority = (
+                attempt_count is None
+                and owner_id is None
+                and fencing_token is None
+                and observed_heartbeat_at_ms is None
+            )
+            exact_running_authority = (
+                type(attempt_count) is int
+                and 1 <= attempt_count <= 1_000
+                and type(owner_id) is str
+                and 1 <= len(owner_id) <= 256
+                and "\x00" not in owner_id
+                and type(fencing_token) is int
+                and 1 <= fencing_token <= _SQLITE_INT64_MAX
+                and type(observed_heartbeat_at_ms) is int
+                and observed_heartbeat_at_ms >= 0
+            )
+            if (
+                job is None
+                or type(requested_at_ms) is not int
+                or request_kind not in {"legacy_v5", "queued_v6", "running_v6"}
+                or not job.cancel_requested
+                or requested_at_ms < job.created_at_ms
+                or requested_at_ms > job.updated_at_ms
+                or (request_kind in {"legacy_v5", "queued_v6"} and not null_authority)
+                or (request_kind == "running_v6" and not exact_running_authority)
+                or (
+                    request_kind == "queued_v6"
+                    and (
+                        job.status is not IndexJobStatus.CANCELLED
+                        or job.finished_at_ms != requested_at_ms
+                    )
+                )
+                or (
+                    request_kind == "running_v6"
+                    and (
+                        job.status
+                        not in {IndexJobStatus.RUNNING, IndexJobStatus.CANCELLED}
+                        or requested_at_ms < observed_heartbeat_at_ms
+                    )
+                )
+            ):
+                raise CatalogConflictError(
+                    "persisted index job cancellation request conflicts"
+                )
+            cancellation_requests[job_id] = (
+                request_kind,
+                requested_at_ms,
+                attempt_count,
+                owner_id,
+                fencing_token,
+                observed_heartbeat_at_ms,
+            )
+        expected_cancellations = {
+            job_id for job_id, job in jobs.items() if job.cancel_requested
+        }
+        if set(cancellation_requests) != expected_cancellations:
+            raise CatalogConflictError(
+                "persisted index job cancellation history is incomplete"
+            )
+
+        attempts: dict[tuple[str, int], IndexJobAttemptRecord] = {}
+        attempts_by_job: dict[str, list[IndexJobAttemptRecord]] = {
+            job_id: [] for job_id in jobs
+        }
+        attempt_rows = self._connection.execute(
+            """
+            SELECT * FROM index_job_attempts
+            ORDER BY job_id, attempt_count
+            """
+        ).fetchall()
+        for row in attempt_rows:
+            attempt = self._job_attempt_from_row(row)
+            job = jobs.get(attempt.job_id)
+            if job is None or (
+                attempt.repository_id != job.repository_id
+                or attempt.ref_name != job.ref_name
+                or attempt.request_digest != job.request_digest
+                or attempt.attempt_count > job.max_attempts
+                or attempt.fencing_token < attempt.attempt_count
+                or attempt.started_at_ms < job.created_at_ms
+            ):
+                raise CatalogConflictError(
+                    "persisted index job attempt conflicts with its job"
+                )
+            key = (attempt.job_id, attempt.attempt_count)
+            if key in attempts:
+                raise CatalogConflictError("persisted index job attempt is duplicated")
+            attempts[key] = attempt
+            attempts_by_job[attempt.job_id].append(attempt)
+
+        completions: dict[tuple[str, int], IndexJobAttemptCompletionRecord] = {}
+        completion_rows = self._connection.execute(
+            """
+            SELECT * FROM index_job_attempt_completions
+            ORDER BY job_id, attempt_count
+            """
+        ).fetchall()
+        for row in completion_rows:
+            completion = self._job_attempt_completion_from_row(row)
+            key = (completion.job_id, completion.attempt_count)
+            attempt = attempts.get(key)
+            if attempt is None or (
+                completion.owner_id != attempt.owner_id
+                or completion.fencing_token != attempt.fencing_token
+                or completion.completed_at_ms < attempt.started_at_ms
+            ):
+                raise CatalogConflictError(
+                    "persisted index job attempt completion conflicts"
+                )
+            if key in completions:
+                raise CatalogConflictError(
+                    "persisted index job attempt completion is duplicated"
+                )
+            completions[key] = completion
+
+        publications = {
+            row["job_id"]: row
+            for row in self._connection.execute(
+                "SELECT * FROM index_job_publications ORDER BY job_id"
+            ).fetchall()
+        }
+        frontiers: dict[tuple[str, int], tuple[str, int, int, int, int]] = {}
+        frontier_rows = self._connection.execute(
+            """
+            SELECT job_id, attempt_count, owner_id, fencing_token, event_count,
+                max_event_sequence, max_event_created_at_ms
+            FROM index_job_attempt_closure_frontiers
+            ORDER BY job_id, attempt_count
+            """
+        ).fetchall()
+        for row in frontier_rows:
+            key = (row["job_id"], row["attempt_count"])
+            attempt = attempts.get(key)
+            owner_id = row["owner_id"]
+            fencing_token = row["fencing_token"]
+            event_count = row["event_count"]
+            max_event_sequence = row["max_event_sequence"]
+            max_event_created_at_ms = row["max_event_created_at_ms"]
+            if (
+                type(key[0]) is not str
+                or type(key[1]) is not int
+                or attempt is None
+                or type(owner_id) is not str
+                or owner_id != attempt.owner_id
+                or type(fencing_token) is not int
+                or fencing_token != attempt.fencing_token
+                or type(event_count) is not int
+                or not 0 <= event_count <= MAX_INDEX_JOB_EVENTS_PER_ATTEMPT
+                or type(max_event_sequence) is not int
+                or not 0 <= max_event_sequence <= _SQLITE_INT64_MAX
+                or type(max_event_created_at_ms) is not int
+                or max_event_created_at_ms < 0
+                or (event_count == 0)
+                != (max_event_sequence == 0 and max_event_created_at_ms == 0)
+                or (event_count > 0 and max_event_sequence < 1)
+                or key in frontiers
+            ):
+                raise CatalogConflictError(
+                    "persisted index job attempt closure frontier conflicts"
+                )
+            frontiers[key] = (
+                owner_id,
+                fencing_token,
+                event_count,
+                max_event_sequence,
+                max_event_created_at_ms,
+            )
+
+        active_leases: dict[str, RefJobLease] = {}
+        active_lease_rows = self._connection.execute(
+            """
+            SELECT * FROM ref_job_leases
+            WHERE job_id IS NOT NULL
+            ORDER BY repository_id, ref_name
+            """
+        ).fetchall()
+        for row in active_lease_rows:
+            lease = self._validate_persisted_lease_slot(row)
+            if lease is None or lease.job_id in active_leases:
+                raise CatalogConflictError(
+                    "persisted index job has non-unique active lease authority"
+                )
+            active_leases[lease.job_id] = lease
+
+        for job_id, marker in cancellation_requests.items():
+            (
+                request_kind,
+                requested_at_ms,
+                marker_attempt_count,
+                marker_owner_id,
+                marker_fencing_token,
+                observed_heartbeat_at_ms,
+            ) = marker
+            if request_kind == "legacy_v5":
+                job = jobs[job_id]
+                attempt = attempts.get((job_id, job.attempt_count))
+                if (
+                    job.status is IndexJobStatus.RUNNING
+                    and attempt is not None
+                    and requested_at_ms < attempt.started_at_ms
+                ):
+                    raise CatalogConflictError(
+                        "persisted legacy cancellation predates its current attempt"
+                    )
+                continue
+            if request_kind != "running_v6":
+                continue
+            assert marker_attempt_count is not None
+            assert marker_owner_id is not None
+            assert marker_fencing_token is not None
+            assert observed_heartbeat_at_ms is not None
+            attempt = attempts.get((job_id, marker_attempt_count))
+            job = jobs[job_id]
+            lease = active_leases.get(job_id)
+            if (
+                attempt is None
+                or marker_attempt_count != job.attempt_count
+                or marker_owner_id != attempt.owner_id
+                or marker_fencing_token != attempt.fencing_token
+                or observed_heartbeat_at_ms < attempt.started_at_ms
+                or requested_at_ms < observed_heartbeat_at_ms
+                or (
+                    lease is not None
+                    and (
+                        lease.owner_id != marker_owner_id
+                        or lease.fencing_token != marker_fencing_token
+                        or lease.heartbeat_at_ms < observed_heartbeat_at_ms
+                    )
+                )
+            ):
+                raise CatalogConflictError(
+                    "persisted running cancellation authority conflicts"
+                )
+
+        for job_id, job in jobs.items():
+            baseline = baselines[job_id]
+            marker = cancellation_requests.get(job_id)
+            if (job.attempt_count == 0) != (job.started_at_ms is None):
+                raise CatalogConflictError(
+                    "persisted index job start time conflicts with its attempt count"
+                )
+            if job.attempt_count == 0 and job.status is IndexJobStatus.QUEUED:
+                if (
+                    job.cancel_requested
+                    or job.result_snapshot_id is not None
+                    or job.error_code is not None
+                    or job.error_message is not None
+                    or job.started_at_ms is not None
+                    or job.finished_at_ms is not None
+                    or job.updated_at_ms != job.created_at_ms
+                    or baseline_content_high_water[job_id] != job.created_at_ms
+                    or baseline_started_at[job_id] is not None
+                    or marker is not None
+                ):
+                    raise CatalogConflictError(
+                        "persisted initial index job state is not canonical"
+                    )
+            if job.attempt_count == 0 and job.status is IndexJobStatus.CANCELLED:
+                marker_kind = None if marker is None else marker[0]
+                expected_legacy_high_water = (
+                    job.created_at_ms
+                    if marker_kind == "queued_v6"
+                    else job.updated_at_ms
+                )
+                if (
+                    not job.cancel_requested
+                    or job.result_snapshot_id is not None
+                    or job.error_code != "cancelled"
+                    or job.error_message is not None
+                    or job.started_at_ms is not None
+                    or job.finished_at_ms != job.updated_at_ms
+                    or marker is None
+                    or marker_kind not in {"legacy_v5", "queued_v6"}
+                    or marker[1] != job.updated_at_ms
+                    or baseline_content_high_water[job_id] != expected_legacy_high_water
+                    or baseline_started_at[job_id] is not None
+                ):
+                    raise CatalogConflictError(
+                        "persisted zero-attempt cancellation is not canonical"
+                    )
+            if job.status is IndexJobStatus.FAILED and job.attempt_count == 0:
+                raise CatalogConflictError(
+                    "failed index job has no durable attempt history"
+                )
+            expected_numbers = list(range(baseline + 1, job.attempt_count + 1))
+            job_attempts = attempts_by_job[job_id]
+            if [attempt.attempt_count for attempt in job_attempts] != expected_numbers:
+                raise CatalogConflictError(
+                    "persisted index job attempts do not cover post-v5 history"
+                )
+            legacy_started_at_ms = baseline_started_at[job_id]
+            if baseline == 0 and job_attempts:
+                first_attempt_started_at_ms = job_attempts[0].started_at_ms
+                if (
+                    job.started_at_ms != first_attempt_started_at_ms
+                    or legacy_started_at_ms not in {None, first_attempt_started_at_ms}
+                ):
+                    raise CatalogConflictError(
+                        "first index job attempt conflicts with its start witness"
+                    )
+            elif job_attempts and (
+                job.started_at_ms is None
+                or job.started_at_ms > job_attempts[0].started_at_ms
+            ):
+                raise CatalogConflictError(
+                    "legacy index job start follows its modeled attempt"
+                )
+            if legacy_started_at_ms is None:
+                expected_started_at_ms = (
+                    None if not job_attempts else job_attempts[0].started_at_ms
+                )
+                if job.started_at_ms != expected_started_at_ms:
+                    raise CatalogConflictError(
+                        "persisted index job start time lacks exact authority"
+                    )
+            if baseline == job.attempt_count:
+                expected_updated_at_ms = baseline_content_high_water[job_id]
+                if marker is not None and marker[0] == "queued_v6":
+                    expected_updated_at_ms = marker[1]
+                if job.updated_at_ms != expected_updated_at_ms:
+                    raise CatalogConflictError(
+                        "legacy index job update time conflicts with its witness"
+                    )
+                if (
+                    job.status
+                    in {
+                        IndexJobStatus.FAILED,
+                        IndexJobStatus.CANCELLED,
+                    }
+                    and job.finished_at_ms != expected_updated_at_ms
+                ):
+                    raise CatalogConflictError(
+                        "legacy terminal job time conflicts with its witness"
+                    )
+            lease = active_leases.get(job_id)
+            if job.status is IndexJobStatus.RUNNING:
+                if lease is None or not job_attempts:
+                    raise CatalogConflictError(
+                        "running index job is missing its active attempt authority"
+                    )
+                expected_updated_at_ms = (
+                    marker[1]
+                    if job.cancel_requested and marker is not None
+                    else job_attempts[-1].started_at_ms
+                )
+                if job.updated_at_ms != expected_updated_at_ms:
+                    raise CatalogConflictError(
+                        "running index job update time conflicts with its authority"
+                    )
+            elif lease is not None:
+                raise CatalogConflictError(
+                    "non-running index job retains active lease authority"
+                )
+
+            previous_attempt: IndexJobAttemptRecord | None = None
+            previous_completion: IndexJobAttemptCompletionRecord | None = None
+            matched_publication = False
+            for attempt in job_attempts:
+                key = (job_id, attempt.attempt_count)
+                completion = completions.get(key)
+                frontier = frontiers.get(key)
+                publication = publications.get(job_id)
+                successful = publication is not None and (
+                    publication["owner_id"] == attempt.owner_id
+                    and publication["fencing_token"] == attempt.fencing_token
+                )
+                if completion is not None and successful:
+                    raise CatalogConflictError(
+                        "index job attempt has both success and non-success closures"
+                    )
+                if (frontier is not None) != (completion is not None or successful):
+                    raise CatalogConflictError(
+                        "index job attempt closure lacks its exact event frontier"
+                    )
+                if (
+                    previous_attempt is not None
+                    and previous_completion is not None
+                    and (
+                        attempt.started_at_ms < previous_completion.completed_at_ms
+                        or attempt.fencing_token <= previous_attempt.fencing_token
+                    )
+                ):
+                    raise CatalogConflictError(
+                        "persisted index job attempt history is out of order"
+                    )
+
+                current = attempt.attempt_count == job.attempt_count
+                if not current:
+                    if (
+                        completion is None
+                        or completion.outcome is not IndexJobCompletion.REQUEUE
+                        or successful
+                    ):
+                        raise CatalogConflictError(
+                            "historical index job attempt lacks a requeue closure"
+                        )
+                elif job.status is IndexJobStatus.RUNNING:
+                    if completion is not None or successful or lease is None:
+                        raise CatalogConflictError(
+                            "running index job attempt must remain open"
+                        )
+                    if (
+                        lease.owner_id != attempt.owner_id
+                        or lease.fencing_token != attempt.fencing_token
+                        or lease.acquired_at_ms != attempt.started_at_ms
+                    ):
+                        raise CatalogConflictError(
+                            "open index job attempt conflicts with its active lease"
+                        )
+                elif successful:
+                    matched_publication = True
+                    if (
+                        job.status is not IndexJobStatus.SUCCEEDED
+                        or publication["completed_at_ms"] < attempt.started_at_ms
+                        or publication["completed_at_ms"] != job.finished_at_ms
+                        or job.updated_at_ms != job.finished_at_ms
+                    ):
+                        raise CatalogConflictError(
+                            "successful index job attempt closure conflicts"
+                        )
+                elif completion is None:
+                    raise CatalogConflictError(
+                        "closed index job attempt is missing its durable closure"
+                    )
+                else:
+                    marker = cancellation_requests.get(job_id)
+                    if (
+                        completion.outcome is IndexJobCompletion.FAILED
+                        and job.cancel_requested
+                    ):
+                        raise CatalogConflictError(
+                            "cancelled index job attempt cannot fail"
+                        )
+                    expected_status = {
+                        IndexJobCompletion.REQUEUE: IndexJobStatus.QUEUED,
+                        IndexJobCompletion.FAILED: IndexJobStatus.FAILED,
+                        IndexJobCompletion.CANCELLED: IndexJobStatus.CANCELLED,
+                    }[completion.outcome]
+                    cancelled_after_requeue = (
+                        completion.outcome is IndexJobCompletion.REQUEUE
+                        and job.status is IndexJobStatus.CANCELLED
+                        and job.cancel_requested
+                        and marker is not None
+                        and marker[0] == "queued_v6"
+                        and marker[1] >= completion.completed_at_ms
+                        and job.error_code == "cancelled"
+                        and job.error_message is None
+                        and job.finished_at_ms is not None
+                        and job.finished_at_ms == job.updated_at_ms
+                        and job.finished_at_ms >= completion.completed_at_ms
+                    )
+                    exact_completion = (
+                        job.status is expected_status
+                        and job.error_code == completion.error_code
+                        and job.error_message == completion.error_message
+                        and job.updated_at_ms == completion.completed_at_ms
+                        and job.finished_at_ms
+                        == (
+                            None
+                            if completion.outcome is IndexJobCompletion.REQUEUE
+                            else completion.completed_at_ms
+                        )
+                    )
+                    if not exact_completion and not cancelled_after_requeue:
+                        raise CatalogConflictError(
+                            "latest job attempt completion conflicts with job state"
+                        )
+                    if (
+                        completion.outcome is IndexJobCompletion.REQUEUE
+                        and completion.attempt_count >= job.max_attempts
+                    ):
+                        raise CatalogConflictError(
+                            "final index job attempt cannot have a requeue closure"
+                        )
+
+                previous_attempt = attempt
+                previous_completion = completion
+
+            publication = publications.get(job_id)
+            if publication is not None and baseline < job.attempt_count:
+                if not matched_publication:
+                    raise CatalogConflictError(
+                        "index job publication lacks its exact attempt authority"
+                    )
+            if job.status is IndexJobStatus.RUNNING and baseline == job.attempt_count:
+                raise CatalogConflictError(
+                    "running index job is hidden behind its legacy baseline"
+                )
+
+        events = self._connection.execute(
+            "SELECT * FROM index_job_events ORDER BY event_sequence"
+        ).fetchall()
+        per_attempt: dict[tuple[str, int], int] = {}
+        max_event_sequence: dict[tuple[str, int], int] = {}
+        max_event_created_at_ms: dict[tuple[str, int], int] = {}
+        for row in events:
+            event = self._job_event_from_row(row)
+            key = (event.job_id, event.attempt_count)
+            attempt = attempts.get(key)
+            if (
+                attempt is None
+                or event.owner_id != attempt.owner_id
+                or event.fencing_token != attempt.fencing_token
+                or event.created_at_ms < attempt.started_at_ms
+                or event.created_at_ms < max_event_created_at_ms.get(key, 0)
+            ):
+                raise CatalogConflictError(
+                    "persisted index job event conflicts with its attempt"
+                )
+            completion = completions.get(key)
+            publication = publications.get(event.job_id)
+            if (
+                completion is not None
+                and event.created_at_ms > completion.completed_at_ms
+            ):
+                raise CatalogConflictError(
+                    "persisted index job event follows its attempt closure"
+                )
+            if (
+                publication is not None
+                and publication["owner_id"] == attempt.owner_id
+                and publication["fencing_token"] == attempt.fencing_token
+                and event.created_at_ms > publication["completed_at_ms"]
+            ):
+                raise CatalogConflictError(
+                    "persisted index job event follows its publication closure"
+                )
+            if event.view_type is not None:
+                if event.view_type not in requested_views[event.job_id]:
+                    raise CatalogConflictError(
+                        "persisted index job event names an unrequested view"
+                    )
+            per_attempt[key] = per_attempt.get(key, 0) + 1
+            max_event_sequence[key] = event.sequence
+            max_event_created_at_ms[key] = event.created_at_ms
+            if per_attempt[key] > MAX_INDEX_JOB_EVENTS_PER_ATTEMPT:
+                raise CatalogConflictError(
+                    "persisted index job attempt has too many events"
+                )
+
+        for key, frontier in frontiers.items():
+            if frontier[2:] != (
+                per_attempt.get(key, 0),
+                max_event_sequence.get(key, 0),
+                max_event_created_at_ms.get(key, 0),
+            ):
+                raise CatalogConflictError(
+                    "persisted closure frontier conflicts with its exact events"
+                )
+
+        evidence_rows = self._connection.execute(
+            _INDEX_JOB_EXECUTION_WITNESS_SQL
+        ).fetchall()
+        modeled_high_water_ms = 0
+        for row in evidence_rows:
+            evidence_at_ms = _persisted_nonnegative_int64(
+                row["evidence_at_ms"],
+                "index job execution clock evidence",
+            )
+            modeled_high_water_ms = max(modeled_high_water_ms, evidence_at_ms)
+        if execution_high_water_ms != modeled_high_water_ms:
+            raise CatalogConflictError(
+                "persisted index job execution clock conflicts with its content"
+            )
+
+        derived_time_rows = self._connection.execute(
+            """
+            SELECT created_at_ms AS derived_at_ms FROM index_jobs
+            UNION ALL
+            SELECT updated_at_ms FROM index_jobs
+            UNION ALL
+            SELECT started_at_ms FROM index_jobs WHERE started_at_ms IS NOT NULL
+            UNION ALL
+            SELECT finished_at_ms FROM index_jobs WHERE finished_at_ms IS NOT NULL
+            UNION ALL
+            SELECT max_event_created_at_ms
+            FROM index_job_attempt_closure_frontiers
+            UNION ALL
+            SELECT updated_at_ms FROM ref_job_leases WHERE job_id IS NULL
+            """
+        ).fetchall()
+        for row in derived_time_rows:
+            derived_at_ms = _persisted_nonnegative_int64(
+                row["derived_at_ms"],
+                "derived index job execution time",
+            )
+            if derived_at_ms > execution_high_water_ms:
+                raise CatalogConflictError(
+                    "persisted index job time exceeds its durable content clock"
+                )
+
     def create_job(
         self,
         repository_id: str,
@@ -3892,7 +6540,14 @@ class SQLiteCatalog:
                         f"job view does not match its profile: {view.view_type}"
                     )
 
-            now_ms = self._db_now_ms()
+            now_ms = (
+                self._advance_job_execution_clock(
+                    causal_floor_ms=0,
+                    action="index job creation",
+                )
+                if self.schema_version >= 6
+                else self._db_now_ms()
+            )
             self._connection.execute(
                 """
                     INSERT INTO index_jobs(
@@ -3963,45 +6618,316 @@ class SQLiteCatalog:
             )
             return self._job_views(job)
 
+    def get_job_attempt(
+        self,
+        job_id: str,
+        attempt_count: int,
+    ) -> IndexJobAttemptRecord:
+        """Return one immutable post-v5 attempt start."""
+
+        normalized_job = _bounded_text(job_id, "job ID", max_length=80)
+        attempt_number = _exact_positive_integer(attempt_count, "job attempt count")
+        if attempt_number > 1_000:
+            raise CatalogValidationError("job attempt count is too large")
+        with self._transaction(immediate=False):
+            job = self._job_from_row(
+                self._require_record("index_jobs", "job_id", normalized_job)
+            )
+            self._job_views(job)
+            return self._job_attempt(job.job_id, attempt_number)
+
+    def list_job_attempts(
+        self,
+        job_id: str,
+    ) -> tuple[IndexJobAttemptRecord, ...]:
+        """Return immutable post-v5 attempt starts in attempt order."""
+
+        normalized_job = _bounded_text(job_id, "job ID", max_length=80)
+        with self._transaction(immediate=False):
+            job = self._job_from_row(
+                self._require_record("index_jobs", "job_id", normalized_job)
+            )
+            self._job_views(job)
+            rows = self._connection.execute(
+                """
+                SELECT * FROM index_job_attempts
+                WHERE job_id = ? ORDER BY attempt_count
+                """,
+                (job.job_id,),
+            ).fetchall()
+            return tuple(self._job_attempt_from_row(row) for row in rows)
+
+    def get_job_attempt_completion(
+        self,
+        job_id: str,
+        attempt_count: int,
+    ) -> IndexJobAttemptCompletionRecord:
+        """Return one immutable post-v5 non-success attempt closure."""
+
+        normalized_job = _bounded_text(job_id, "job ID", max_length=80)
+        attempt_number = _exact_positive_integer(attempt_count, "job attempt count")
+        if attempt_number > 1_000:
+            raise CatalogValidationError("job attempt count is too large")
+        with self._transaction(immediate=False):
+            job = self._job_from_row(
+                self._require_record("index_jobs", "job_id", normalized_job)
+            )
+            self._job_views(job)
+            self._job_attempt(job.job_id, attempt_number)
+            row = self._connection.execute(
+                """
+                SELECT * FROM index_job_attempt_completions
+                WHERE job_id = ? AND attempt_count = ?
+                """,
+                (job.job_id, attempt_number),
+            ).fetchone()
+            if row is None:
+                raise CatalogNotFoundError(
+                    "index job attempt completion not found: "
+                    f"{job.job_id}/{attempt_number}"
+                )
+            return self._job_attempt_completion_from_row(row)
+
+    def list_job_attempt_completions(
+        self,
+        job_id: str,
+    ) -> tuple[IndexJobAttemptCompletionRecord, ...]:
+        """Return immutable non-success closures in attempt order."""
+
+        normalized_job = _bounded_text(job_id, "job ID", max_length=80)
+        with self._transaction(immediate=False):
+            job = self._job_from_row(
+                self._require_record("index_jobs", "job_id", normalized_job)
+            )
+            self._job_views(job)
+            rows = self._connection.execute(
+                """
+                SELECT * FROM index_job_attempt_completions
+                WHERE job_id = ? ORDER BY attempt_count
+                """,
+                (job.job_id,),
+            ).fetchall()
+            return tuple(self._job_attempt_completion_from_row(row) for row in rows)
+
+    def scan_runnable_jobs(
+        self,
+        *,
+        cursor: IndexJobRunnableCursor | None = None,
+        limit: int = 64,
+    ) -> IndexJobRunnablePage:
+        """Return a deterministic advisory page using only SQLite's clock."""
+
+        if cursor is not None and type(cursor) is not IndexJobRunnableCursor:
+            raise CatalogValidationError("runnable job cursor must be exact")
+        page_limit = _exact_positive_integer(limit, "runnable job page limit")
+        if page_limit > _MAX_RUNNABLE_JOB_SCAN_LIMIT:
+            raise CatalogValidationError(
+                f"runnable job page limit cannot exceed {_MAX_RUNNABLE_JOB_SCAN_LIMIT}"
+            )
+        cursor_time = -1 if cursor is None else cursor.created_at_ms
+        cursor_job = "" if cursor is None else cursor.job_id
+        with self._transaction(immediate=False):
+            rows = self._connection.execute(
+                f"""
+                SELECT job.*
+                FROM index_jobs AS job
+                WHERE (job.created_at_ms > ? OR (
+                        job.created_at_ms = ? AND job.job_id > ?
+                    ))
+                    AND job.created_at_ms <= {_DB_NOW_MS_SQL}
+                    AND job.updated_at_ms <= {_DB_NOW_MS_SQL}
+                    AND (
+                        (
+                            job.status = 'queued'
+                            AND job.cancel_requested = 0
+                            AND job.attempt_count < job.max_attempts
+                            AND NOT EXISTS (
+                                SELECT 1 FROM ref_job_leases AS lease
+                                WHERE lease.repository_id = job.repository_id
+                                    AND lease.ref_name = job.ref_name
+                                    AND lease.job_id IS NOT NULL
+                                    AND lease.lease_expires_at_ms > {_DB_NOW_MS_SQL}
+                            )
+                        )
+                        OR
+                        (
+                            job.status = 'running'
+                            AND EXISTS (
+                                SELECT 1 FROM ref_job_leases AS lease
+                                WHERE lease.repository_id = job.repository_id
+                                    AND lease.ref_name = job.ref_name
+                                    AND lease.job_id = job.job_id
+                                    AND lease.owner_id IS NOT NULL
+                                    AND lease.fencing_token > 0
+                                    AND lease.acquired_at_ms IS NOT NULL
+                                    AND lease.heartbeat_at_ms IS NOT NULL
+                                    AND lease.lease_expires_at_ms IS NOT NULL
+                                    AND lease.lease_expires_at_ms <= {_DB_NOW_MS_SQL}
+                            )
+                        )
+                    )
+                ORDER BY job.created_at_ms, job.job_id
+                LIMIT ?
+                """,
+                (
+                    cursor_time,
+                    cursor_time,
+                    cursor_job,
+                    page_limit + 1,
+                ),
+            ).fetchall()
+            jobs: list[IndexJobRecord] = []
+            for row in rows[:page_limit]:
+                job = self._job_from_row(row)
+                self._job_views(job)
+                if job.status is IndexJobStatus.RUNNING:
+                    lease_row = self._connection.execute(
+                        "SELECT * FROM ref_job_leases WHERE job_id = ?",
+                        (job.job_id,),
+                    ).fetchone()
+                    if lease_row is None:
+                        raise CatalogConflictError(
+                            "runnable running job is missing its expired lease"
+                        )
+                    lease = self._validate_persisted_lease_slot(lease_row)
+                    if lease is None:
+                        raise CatalogConflictError(
+                            "runnable running job lease is unexpectedly released"
+                        )
+                    self._validate_current_job_attempt(job, lease)
+                jobs.append(job)
+            next_cursor = None
+            if len(rows) > page_limit:
+                last = jobs[-1]
+                next_cursor = IndexJobRunnableCursor(
+                    created_at_ms=last.created_at_ms,
+                    job_id=last.job_id,
+                )
+            return IndexJobRunnablePage(tuple(jobs), next_cursor)
+
     def _retire_expired_holder(self, job_id: str, now_ms: int) -> IndexJobStatus:
         job = self._job_from_row(self._require_record("index_jobs", "job_id", job_id))
         self._job_views(job)
         if job.status is not IndexJobStatus.RUNNING:
+            if self.schema_version >= 6:
+                raise CatalogConflictError(
+                    "active execution lease belongs to a non-running job"
+                )
             return job.status
+        if now_ms < job.updated_at_ms:
+            raise CatalogConflictError(
+                "database clock moved backwards before expired lease retirement"
+            )
+        if self.schema_version < 6:
+            if job.cancel_requested:
+                status = IndexJobStatus.CANCELLED
+                error_code = "cancelled"
+                error_message = "lease expired after cancellation was requested"
+                finished_at_ms: int | None = now_ms
+            elif job.attempt_count >= job.max_attempts:
+                status = IndexJobStatus.FAILED
+                error_code = "attempts_exhausted"
+                error_message = "lease expired on the final permitted attempt"
+                finished_at_ms = now_ms
+            else:
+                status = IndexJobStatus.QUEUED
+                error_code = "lease_expired"
+                error_message = "previous worker lease expired; job was requeued"
+                finished_at_ms = None
+            cursor = self._connection.execute(
+                """
+                UPDATE index_jobs
+                SET status = ?, error_code = ?, error_message = ?,
+                    finished_at_ms = ?, updated_at_ms = ?
+                WHERE job_id = ? AND status = 'running'
+                """,
+                (
+                    status.value,
+                    error_code,
+                    error_message,
+                    finished_at_ms,
+                    now_ms,
+                    job.job_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise CatalogConflictError("expired index job changed during takeover")
+            return status
+        lease_row = self._connection.execute(
+            "SELECT * FROM ref_job_leases WHERE job_id = ?",
+            (job.job_id,),
+        ).fetchone()
+        if lease_row is None:
+            raise CatalogConflictError("expired index job is missing its lease")
+        lease = self._lease_from_row(lease_row)
+        attempt = self._validate_current_job_attempt(job, lease)
+        latest_event_at_ms = self._connection.execute(
+            """
+            SELECT MAX(created_at_ms) FROM index_job_events
+            WHERE job_id = ? AND attempt_count = ?
+            """,
+            (job.job_id, attempt.attempt_count),
+        ).fetchone()[0]
+        if latest_event_at_ms is not None:
+            latest_event_at_ms = _persisted_nonnegative_int64(
+                latest_event_at_ms,
+                "latest index job event time",
+            )
+        causal_floor = max(
+            job.updated_at_ms,
+            attempt.started_at_ms,
+            lease.heartbeat_at_ms,
+            0 if latest_event_at_ms is None else latest_event_at_ms,
+        )
+        if now_ms < causal_floor:
+            raise CatalogConflictError(
+                "database clock moved backwards before expired lease retirement"
+            )
         if job.cancel_requested:
-            status = IndexJobStatus.CANCELLED
+            outcome = IndexJobCompletion.CANCELLED
             error_code = "cancelled"
             error_message = "lease expired after cancellation was requested"
-            finished_at_ms: int | None = now_ms
         elif job.attempt_count >= job.max_attempts:
-            status = IndexJobStatus.FAILED
+            outcome = IndexJobCompletion.FAILED
             error_code = "attempts_exhausted"
             error_message = "lease expired on the final permitted attempt"
-            finished_at_ms = now_ms
         else:
-            status = IndexJobStatus.QUEUED
+            outcome = IndexJobCompletion.REQUEUE
             error_code = "lease_expired"
             error_message = "previous worker lease expired; job was requeued"
-            finished_at_ms = None
-        cursor = self._connection.execute(
+        completion = IndexJobAttemptCompletionRecord(
+            job_id=job.job_id,
+            attempt_count=attempt.attempt_count,
+            owner_id=lease.owner_id,
+            fencing_token=lease.fencing_token,
+            outcome=outcome,
+            error_code=error_code,
+            error_message=error_message,
+            completed_at_ms=now_ms,
+        )
+        self._connection.execute(
             """
-            UPDATE index_jobs
-            SET status = ?, error_code = ?, error_message = ?,
-                finished_at_ms = ?, updated_at_ms = ?
-            WHERE job_id = ? AND status = 'running'
+            INSERT INTO index_job_attempt_completions(
+                job_id, attempt_count, owner_id, fencing_token, outcome,
+                error_code, error_message, completed_at_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                status.value,
-                error_code,
-                error_message,
-                finished_at_ms,
-                now_ms,
-                job.job_id,
+                completion.job_id,
+                completion.attempt_count,
+                completion.owner_id,
+                completion.fencing_token,
+                completion.outcome.value,
+                completion.error_code,
+                completion.error_message,
+                completion.completed_at_ms,
             ),
         )
-        if cursor.rowcount != 1:
-            raise CatalogConflictError("expired index job changed during takeover")
-        return status
+        return {
+            IndexJobCompletion.REQUEUE: IndexJobStatus.QUEUED,
+            IndexJobCompletion.FAILED: IndexJobStatus.FAILED,
+            IndexJobCompletion.CANCELLED: IndexJobStatus.CANCELLED,
+        }[outcome]
 
     def _release_job_slot(
         self,
@@ -4040,7 +6966,7 @@ class SQLiteCatalog:
         """Acquire or take over the single fenced publisher slot for a ref."""
         normalized_job = _bounded_text(job_id, "job ID", max_length=80)
         owner = _bounded_text(owner_id, "owner ID", max_length=256)
-        duration = _positive_integer(lease_duration_ms, "lease duration")
+        duration = _exact_positive_integer(lease_duration_ms, "lease duration")
         if duration > 2_147_483_647:
             raise CatalogValidationError("lease duration is too large")
 
@@ -4062,8 +6988,7 @@ class SQLiteCatalog:
             ):
                 raise CatalogConflictError("index job has exhausted its attempts")
 
-            now_ms = self._db_now_ms()
-            expires_at_ms = now_ms + duration
+            observed_now_ms = self._db_now_ms()
             slot = self._connection.execute(
                 """
                 SELECT * FROM ref_job_leases
@@ -4071,90 +6996,127 @@ class SQLiteCatalog:
                 """,
                 (job.repository_id, job.ref_name),
             ).fetchone()
+            slot_token = 0
+            active_slot: RefJobLease | None = None
+            if slot is not None:
+                slot_token = _persisted_nonnegative_int64(
+                    slot["fencing_token"], "job lease fencing token"
+                )
+                active_slot = self._validate_persisted_lease_slot(slot)
             if (
-                slot is not None
-                and slot["job_id"] is not None
-                and int(slot["lease_expires_at_ms"]) > now_ms
+                active_slot is not None
+                and active_slot.lease_expires_at_ms > observed_now_ms
             ):
                 if (
-                    slot["job_id"] == job.job_id
-                    and slot["owner_id"] == owner
+                    active_slot.job_id == job.job_id
+                    and active_slot.owner_id == owner
                     and job.status is IndexJobStatus.RUNNING
                 ):
-                    return self._lease_from_row(slot)
+                    if self.schema_version >= 6:
+                        self._validate_current_job_attempt(job, active_slot)
+                    return active_slot
                 raise CatalogConflictError(
                     "repository ref already has an active index-job lease"
                 )
 
+            if slot is not None and slot_token >= _SQLITE_INT64_MAX:
+                raise CatalogConflictError("ref job fencing token is exhausted")
+
+            acquisition_floor = job.updated_at_ms
+            if active_slot is not None:
+                acquisition_floor = max(
+                    acquisition_floor,
+                    active_slot.heartbeat_at_ms,
+                )
+            if self.schema_version >= 6:
+                latest_completion_at_ms = self._connection.execute(
+                    """
+                    SELECT MAX(completed_at_ms)
+                    FROM index_job_attempt_completions
+                    WHERE job_id = ?
+                    """,
+                    (job.job_id,),
+                ).fetchone()[0]
+                if latest_completion_at_ms is not None:
+                    acquisition_floor = max(
+                        acquisition_floor,
+                        _persisted_nonnegative_int64(
+                            latest_completion_at_ms,
+                            "latest index job completion time",
+                        ),
+                    )
+            if self.schema_version >= 6:
+                now_ms = self._advance_job_execution_clock(
+                    causal_floor_ms=acquisition_floor,
+                    action="job acquisition",
+                )
+                if active_slot is not None and active_slot.lease_expires_at_ms > now_ms:
+                    raise CatalogConflictError(
+                        "repository ref already has an active index-job lease"
+                    )
+            else:
+                now_ms = observed_now_ms
+                if now_ms < acquisition_floor:
+                    raise CatalogConflictError(
+                        "database clock moved backwards before job acquisition"
+                    )
+            if now_ms > _SQLITE_INT64_MAX - duration:
+                raise CatalogConflictError(
+                    "SQLite clock cannot represent the requested lease expiry"
+                )
+
             if slot is None:
                 token = 1
-                cursor = self._connection.execute(
-                    """
-                    INSERT INTO ref_job_leases(
-                        repository_id, ref_name, job_id, owner_id, fencing_token,
-                        acquired_at_ms, heartbeat_at_ms, lease_expires_at_ms,
-                        updated_at_ms
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        job.repository_id,
-                        job.ref_name,
-                        job.job_id,
-                        owner,
-                        token,
-                        now_ms,
-                        now_ms,
-                        expires_at_ms,
-                        now_ms,
-                    ),
-                )
+                if self.schema_version >= 6:
+                    cursor = self._connection.execute(
+                        """
+                        INSERT INTO ref_job_leases(
+                            repository_id, ref_name, job_id, owner_id,
+                            fencing_token, acquired_at_ms, heartbeat_at_ms,
+                            lease_expires_at_ms, updated_at_ms
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            job.repository_id,
+                            job.ref_name,
+                            job.job_id,
+                            owner,
+                            token,
+                            now_ms,
+                            now_ms,
+                            now_ms + duration,
+                            now_ms,
+                        ),
+                    )
+                else:
+                    cursor = self._connection.execute(
+                        f"""
+                        INSERT INTO ref_job_leases(
+                            repository_id, ref_name, job_id, owner_id,
+                            fencing_token, acquired_at_ms, heartbeat_at_ms,
+                            lease_expires_at_ms, updated_at_ms
+                        )
+                        SELECT ?, ?, ?, ?, ?, {_DB_NOW_MS_SQL},
+                            {_DB_NOW_MS_SQL}, {_DB_NOW_MS_SQL} + ?,
+                            {_DB_NOW_MS_SQL}
+                        WHERE {_DB_NOW_MS_SQL}
+                            <= 9223372036854775807 - ?
+                        """,
+                        (
+                            job.repository_id,
+                            job.ref_name,
+                            job.job_id,
+                            owner,
+                            token,
+                            duration,
+                            duration,
+                        ),
+                    )
                 if cursor.rowcount != 1:
                     raise CatalogConflictError("ref job lease slot was not created")
             elif slot["job_id"] is None:
-                token = int(slot["fencing_token"]) + 1
-                cursor = self._connection.execute(
-                    """
-                    UPDATE ref_job_leases
-                    SET job_id = ?, owner_id = ?, fencing_token = ?,
-                        acquired_at_ms = ?, heartbeat_at_ms = ?,
-                        lease_expires_at_ms = ?, updated_at_ms = ?
-                    WHERE repository_id = ? AND ref_name = ? AND job_id IS NULL
-                    """,
-                    (
-                        job.job_id,
-                        owner,
-                        token,
-                        now_ms,
-                        now_ms,
-                        expires_at_ms,
-                        now_ms,
-                        job.repository_id,
-                        job.ref_name,
-                    ),
-                )
-                if cursor.rowcount != 1:
-                    raise CatalogConflictError("empty ref job slot changed")
-            else:
-                old_job_id = str(slot["job_id"])
-                retired_status = self._retire_expired_holder(old_job_id, now_ms)
-                token = int(slot["fencing_token"]) + 1
-                if old_job_id == job.job_id and retired_status in {
-                    IndexJobStatus.FAILED,
-                    IndexJobStatus.CANCELLED,
-                }:
-                    current = self._job_from_row(
-                        self._require_record("index_jobs", "job_id", job.job_id)
-                    )
-                    self._release_job_slot(
-                        current,
-                        fencing_token=int(slot["fencing_token"]),
-                        now_ms=now_ms,
-                    )
-                    blocked_reason = (
-                        "expired lease made the index job terminal: "
-                        f"{retired_status.value}"
-                    )
-                else:
+                token = slot_token + 1
+                if self.schema_version >= 6:
                     cursor = self._connection.execute(
                         """
                         UPDATE ref_job_leases
@@ -4162,8 +7124,7 @@ class SQLiteCatalog:
                             acquired_at_ms = ?, heartbeat_at_ms = ?,
                             lease_expires_at_ms = ?, updated_at_ms = ?
                         WHERE repository_id = ? AND ref_name = ?
-                            AND job_id = ? AND fencing_token = ?
-                            AND lease_expires_at_ms <= ?
+                            AND job_id IS NULL AND fencing_token = ?
                         """,
                         (
                             job.job_id,
@@ -4171,15 +7132,178 @@ class SQLiteCatalog:
                             token,
                             now_ms,
                             now_ms,
-                            expires_at_ms,
+                            now_ms + duration,
                             now_ms,
                             job.repository_id,
                             job.ref_name,
-                            old_job_id,
-                            int(slot["fencing_token"]),
-                            now_ms,
+                            slot_token,
                         ),
                     )
+                else:
+                    cursor = self._connection.execute(
+                        f"""
+                        UPDATE ref_job_leases
+                        SET job_id = ?, owner_id = ?, fencing_token = ?,
+                            acquired_at_ms = {_DB_NOW_MS_SQL},
+                            heartbeat_at_ms = {_DB_NOW_MS_SQL},
+                            lease_expires_at_ms = {_DB_NOW_MS_SQL} + ?,
+                            updated_at_ms = {_DB_NOW_MS_SQL}
+                        WHERE repository_id = ? AND ref_name = ?
+                            AND job_id IS NULL AND fencing_token = ?
+                            AND updated_at_ms <= {_DB_NOW_MS_SQL}
+                            AND {_DB_NOW_MS_SQL}
+                                <= 9223372036854775807 - ?
+                        """,
+                        (
+                            job.job_id,
+                            owner,
+                            token,
+                            duration,
+                            job.repository_id,
+                            job.ref_name,
+                            slot_token,
+                            duration,
+                        ),
+                    )
+                if cursor.rowcount != 1:
+                    raise CatalogConflictError("empty ref job slot changed")
+            else:
+                old_job_id = slot["job_id"]
+                retired_status = self._retire_expired_holder(old_job_id, now_ms)
+                token = slot_token + 1
+                current_slot = self._connection.execute(
+                    """
+                    SELECT * FROM ref_job_leases
+                    WHERE repository_id = ? AND ref_name = ?
+                    """,
+                    (job.repository_id, job.ref_name),
+                ).fetchone()
+                if current_slot is None:
+                    raise StorageIntegrityError(
+                        "expired ref job lease slot disappeared during retirement"
+                    )
+                if old_job_id == job.job_id and retired_status in {
+                    IndexJobStatus.FAILED,
+                    IndexJobStatus.CANCELLED,
+                }:
+                    if current_slot["job_id"] is not None:
+                        current = self._job_from_row(
+                            self._require_record("index_jobs", "job_id", job.job_id)
+                        )
+                        self._release_job_slot(
+                            current,
+                            fencing_token=slot_token,
+                            now_ms=now_ms,
+                        )
+                    blocked_reason = (
+                        "expired lease made the index job terminal: "
+                        f"{retired_status.value}"
+                    )
+                else:
+                    if current_slot["job_id"] is None:
+                        if self.schema_version >= 6:
+                            cursor = self._connection.execute(
+                                """
+                                UPDATE ref_job_leases
+                                SET job_id = ?, owner_id = ?, fencing_token = ?,
+                                    acquired_at_ms = ?, heartbeat_at_ms = ?,
+                                    lease_expires_at_ms = ?, updated_at_ms = ?
+                                WHERE repository_id = ? AND ref_name = ?
+                                    AND job_id IS NULL AND fencing_token = ?
+                                """,
+                                (
+                                    job.job_id,
+                                    owner,
+                                    token,
+                                    now_ms,
+                                    now_ms,
+                                    now_ms + duration,
+                                    now_ms,
+                                    job.repository_id,
+                                    job.ref_name,
+                                    slot_token,
+                                ),
+                            )
+                        else:
+                            cursor = self._connection.execute(
+                                f"""
+                                UPDATE ref_job_leases
+                                SET job_id = ?, owner_id = ?, fencing_token = ?,
+                                    acquired_at_ms = {_DB_NOW_MS_SQL},
+                                    heartbeat_at_ms = {_DB_NOW_MS_SQL},
+                                    lease_expires_at_ms = {_DB_NOW_MS_SQL} + ?,
+                                    updated_at_ms = {_DB_NOW_MS_SQL}
+                                WHERE repository_id = ? AND ref_name = ?
+                                    AND job_id IS NULL AND fencing_token = ?
+                                    AND updated_at_ms <= {_DB_NOW_MS_SQL}
+                                    AND {_DB_NOW_MS_SQL}
+                                        <= 9223372036854775807 - ?
+                                """,
+                                (
+                                    job.job_id,
+                                    owner,
+                                    token,
+                                    duration,
+                                    job.repository_id,
+                                    job.ref_name,
+                                    slot_token,
+                                    duration,
+                                ),
+                            )
+                    else:
+                        if self.schema_version >= 6:
+                            cursor = self._connection.execute(
+                                """
+                                UPDATE ref_job_leases
+                                SET job_id = ?, owner_id = ?, fencing_token = ?,
+                                    acquired_at_ms = ?, heartbeat_at_ms = ?,
+                                    lease_expires_at_ms = ?, updated_at_ms = ?
+                                WHERE repository_id = ? AND ref_name = ?
+                                    AND job_id = ? AND fencing_token = ?
+                                    AND lease_expires_at_ms <= ?
+                                """,
+                                (
+                                    job.job_id,
+                                    owner,
+                                    token,
+                                    now_ms,
+                                    now_ms,
+                                    now_ms + duration,
+                                    now_ms,
+                                    job.repository_id,
+                                    job.ref_name,
+                                    old_job_id,
+                                    slot_token,
+                                    now_ms,
+                                ),
+                            )
+                        else:
+                            cursor = self._connection.execute(
+                                f"""
+                                UPDATE ref_job_leases
+                                SET job_id = ?, owner_id = ?, fencing_token = ?,
+                                    acquired_at_ms = {_DB_NOW_MS_SQL},
+                                    heartbeat_at_ms = {_DB_NOW_MS_SQL},
+                                    lease_expires_at_ms = {_DB_NOW_MS_SQL} + ?,
+                                    updated_at_ms = {_DB_NOW_MS_SQL}
+                                WHERE repository_id = ? AND ref_name = ?
+                                    AND job_id = ? AND fencing_token = ?
+                                    AND lease_expires_at_ms <= {_DB_NOW_MS_SQL}
+                                    AND {_DB_NOW_MS_SQL}
+                                        <= 9223372036854775807 - ?
+                                """,
+                                (
+                                    job.job_id,
+                                    owner,
+                                    token,
+                                    duration,
+                                    job.repository_id,
+                                    job.ref_name,
+                                    old_job_id,
+                                    slot_token,
+                                    duration,
+                                ),
+                            )
                     if cursor.rowcount != 1:
                         raise CatalogConflictError(
                             "expired ref job slot changed during takeover"
@@ -4193,21 +7317,6 @@ class SQLiteCatalog:
                     raise StorageIntegrityError(
                         "an acquirable index job must be queued before its attempt"
                     )
-                cursor = self._connection.execute(
-                    """
-                    UPDATE index_jobs
-                    SET status = 'running', attempt_count = attempt_count + 1,
-                        started_at_ms = COALESCE(started_at_ms, ?),
-                        updated_at_ms = ?, error_code = NULL, error_message = NULL
-                    WHERE job_id = ? AND status = 'queued'
-                        AND attempt_count < max_attempts
-                    """,
-                    (now_ms, now_ms, job.job_id),
-                )
-                if cursor.rowcount != 1:
-                    raise CatalogConflictError(
-                        "index job could not start a new attempt"
-                    )
                 lease_row = self._connection.execute(
                     """
                     SELECT * FROM ref_job_leases
@@ -4218,6 +7327,55 @@ class SQLiteCatalog:
                 if lease_row is None:
                     raise StorageIntegrityError("acquired index job lease disappeared")
                 lease = self._lease_from_row(lease_row)
+                if self.schema_version >= 6:
+                    attempt = IndexJobAttemptRecord(
+                        job_id=job.job_id,
+                        attempt_count=job.attempt_count + 1,
+                        repository_id=job.repository_id,
+                        ref_name=job.ref_name,
+                        request_digest=job.request_digest,
+                        owner_id=lease.owner_id,
+                        fencing_token=lease.fencing_token,
+                        started_at_ms=lease.acquired_at_ms,
+                    )
+                    self._connection.execute(
+                        """
+                        INSERT INTO index_job_attempts(
+                            job_id, attempt_count, repository_id, ref_name,
+                            request_digest, owner_id, fencing_token, started_at_ms
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            attempt.job_id,
+                            attempt.attempt_count,
+                            attempt.repository_id,
+                            attempt.ref_name,
+                            attempt.request_digest,
+                            attempt.owner_id,
+                            attempt.fencing_token,
+                            attempt.started_at_ms,
+                        ),
+                    )
+                cursor = self._connection.execute(
+                    """
+                    UPDATE index_jobs
+                    SET status = 'running', attempt_count = attempt_count + 1,
+                        started_at_ms = COALESCE(started_at_ms, ?),
+                        updated_at_ms = ?, error_code = NULL, error_message = NULL
+                    WHERE job_id = ? AND status = 'queued'
+                        AND attempt_count < max_attempts
+                    """,
+                    (lease.acquired_at_ms, lease.acquired_at_ms, job.job_id),
+                )
+                if cursor.rowcount != 1:
+                    raise CatalogConflictError(
+                        "index job could not start a new attempt"
+                    )
+                if self.schema_version >= 6:
+                    running = self._job_from_row(
+                        self._require_record("index_jobs", "job_id", job.job_id)
+                    )
+                    self._validate_current_job_attempt(running, lease)
 
         if blocked_reason is not None:
             raise CatalogConflictError(blocked_reason)
@@ -4236,8 +7394,8 @@ class SQLiteCatalog:
         """Extend an unexpired lease without changing its fencing token."""
         normalized_job = _bounded_text(job_id, "job ID", max_length=80)
         owner = _bounded_text(owner_id, "owner ID", max_length=256)
-        token = _positive_integer(fencing_token, "fencing token")
-        duration = _positive_integer(lease_duration_ms, "lease duration")
+        token = _positive_int64(fencing_token, "fencing token")
+        duration = _exact_positive_integer(lease_duration_ms, "lease duration")
         if duration > 2_147_483_647:
             raise CatalogValidationError("lease duration is too large")
 
@@ -4250,17 +7408,29 @@ class SQLiteCatalog:
                 raise CatalogConflictError(
                     "index job lease can only be renewed while running"
                 )
+            now_ms = self._db_now_ms()
+            if now_ms > _SQLITE_INT64_MAX - duration:
+                raise CatalogConflictError(
+                    "SQLite clock cannot represent the requested lease expiry"
+                )
             cursor = self._connection.execute(
                 f"""
                 UPDATE ref_job_leases
                 SET heartbeat_at_ms = MAX(heartbeat_at_ms, {_DB_NOW_MS_SQL}),
-                    lease_expires_at_ms = MAX(
-                        lease_expires_at_ms + 1, {_DB_NOW_MS_SQL} + ?
-                    ),
+                    lease_expires_at_ms = CASE
+                        WHEN lease_expires_at_ms = 9223372036854775807
+                            THEN 9223372036854775807
+                        ELSE MAX(
+                            lease_expires_at_ms + 1,
+                            {_DB_NOW_MS_SQL} + ?
+                        )
+                    END,
                     updated_at_ms = MAX(updated_at_ms, {_DB_NOW_MS_SQL})
                 WHERE repository_id = ? AND ref_name = ? AND job_id = ?
                     AND owner_id = ? AND fencing_token = ?
+                    AND lease_expires_at_ms < 9223372036854775807
                     AND lease_expires_at_ms > {_DB_NOW_MS_SQL}
+                    AND {_DB_NOW_MS_SQL} <= 9223372036854775807 - ?
                 """,
                 (
                     duration,
@@ -4269,6 +7439,7 @@ class SQLiteCatalog:
                     job.job_id,
                     owner,
                     token,
+                    duration,
                 ),
             )
             if cursor.rowcount != 1:
@@ -4283,7 +7454,103 @@ class SQLiteCatalog:
             ).fetchone()
             if renewed is None:
                 raise StorageIntegrityError("renewed index job lease disappeared")
-            return self._lease_from_row(renewed)
+            lease = self._lease_from_row(renewed)
+            if self.schema_version >= 6:
+                self._validate_current_job_attempt(job, lease)
+            return lease
+
+    def heartbeat_job_attempt(
+        self,
+        job_id: str,
+        *,
+        attempt_count: int,
+        owner_id: str,
+        fencing_token: int,
+        lease_duration_ms: int,
+    ) -> IndexJobAttemptHeartbeat:
+        """Renew one exact attempt and read its cancellation flag atomically."""
+
+        normalized_job = _bounded_text(job_id, "job ID", max_length=80)
+        attempt_number = _exact_positive_integer(attempt_count, "job attempt count")
+        owner = _bounded_text(owner_id, "owner ID", max_length=256)
+        token = _positive_int64(fencing_token, "fencing token")
+        duration = _exact_positive_integer(lease_duration_ms, "lease duration")
+        if attempt_number > 1_000:
+            raise CatalogValidationError("job attempt count is too large")
+        if duration > 2_147_483_647:
+            raise CatalogValidationError("lease duration is too large")
+
+        with self._transaction():
+            job = self._job_from_row(
+                self._require_record("index_jobs", "job_id", normalized_job)
+            )
+            self._job_views(job)
+            if (
+                job.status is not IndexJobStatus.RUNNING
+                or job.attempt_count != attempt_number
+            ):
+                raise CatalogConflictError(
+                    "job heartbeat requires the current running attempt"
+                )
+            now_ms = self._db_now_ms()
+            if now_ms > _SQLITE_INT64_MAX - duration:
+                raise CatalogConflictError(
+                    "SQLite clock cannot represent the requested lease expiry"
+                )
+            cursor = self._connection.execute(
+                f"""
+                UPDATE ref_job_leases
+                SET heartbeat_at_ms = MAX(heartbeat_at_ms, {_DB_NOW_MS_SQL}),
+                    lease_expires_at_ms = CASE
+                        WHEN lease_expires_at_ms = 9223372036854775807
+                            THEN 9223372036854775807
+                        ELSE MAX(
+                            lease_expires_at_ms + 1,
+                            {_DB_NOW_MS_SQL} + ?
+                        )
+                    END,
+                    updated_at_ms = MAX(updated_at_ms, {_DB_NOW_MS_SQL})
+                WHERE repository_id = ? AND ref_name = ? AND job_id = ?
+                    AND owner_id = ? AND fencing_token = ?
+                    AND lease_expires_at_ms < 9223372036854775807
+                    AND lease_expires_at_ms > {_DB_NOW_MS_SQL}
+                    AND {_DB_NOW_MS_SQL} <= 9223372036854775807 - ?
+                """,
+                (
+                    duration,
+                    job.repository_id,
+                    job.ref_name,
+                    job.job_id,
+                    owner,
+                    token,
+                    duration,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise CatalogConflictError(
+                    "job heartbeat lost its current unexpired fenced lease"
+                )
+            lease_row = self._connection.execute(
+                """
+                SELECT * FROM ref_job_leases
+                WHERE job_id = ? AND owner_id = ? AND fencing_token = ?
+                """,
+                (job.job_id, owner, token),
+            ).fetchone()
+            if lease_row is None:
+                raise StorageIntegrityError("heartbeat job lease disappeared")
+            lease = self._lease_from_row(lease_row)
+            self._validate_current_job_attempt(
+                job,
+                lease,
+                attempt_count=attempt_number,
+            )
+            return IndexJobAttemptHeartbeat(
+                job_id=job.job_id,
+                attempt_count=attempt_number,
+                cancel_requested=job.cancel_requested,
+                lease=lease,
+            )
 
     def request_job_cancel(self, job_id: str) -> IndexJobRecord:
         """Cancel a queued job or request cooperative cancellation while running."""
@@ -4301,17 +7568,42 @@ class SQLiteCatalog:
                 return job
             if job.cancel_requested:
                 return job
-            now_ms = self._db_now_ms()
             if job.status is IndexJobStatus.QUEUED:
-                active_slot = self._connection.execute(
-                    "SELECT 1 FROM ref_job_leases WHERE job_id = ?",
-                    (job.job_id,),
+                slot_row = self._connection.execute(
+                    """
+                    SELECT * FROM ref_job_leases
+                    WHERE repository_id = ? AND ref_name = ?
+                    """,
+                    (job.repository_id, job.ref_name),
                 ).fetchone()
-                if active_slot is not None:
-                    raise StorageIntegrityError(
-                        "queued index job holds an active lease"
+                cancellation_floor = job.updated_at_ms
+                if slot_row is not None:
+                    active_slot = self._validate_persisted_lease_slot(slot_row)
+                    if active_slot is not None and active_slot.job_id == job.job_id:
+                        raise StorageIntegrityError(
+                            "queued index job holds an active lease"
+                        )
+                    if self.schema_version < 6:
+                        cancellation_floor = max(
+                            cancellation_floor,
+                            _persisted_nonnegative_int64(
+                                slot_row["updated_at_ms"],
+                                "job lease updated time",
+                            ),
+                        )
+                now_ms = (
+                    self._advance_job_execution_clock(
+                        causal_floor_ms=cancellation_floor,
+                        action="cancellation",
                     )
-                self._connection.execute(
+                    if self.schema_version >= 6
+                    else self._db_now_ms()
+                )
+                if self.schema_version < 6 and now_ms < cancellation_floor:
+                    raise CatalogConflictError(
+                        "database clock moved backwards before cancellation"
+                    )
+                cursor = self._connection.execute(
                     """
                     UPDATE index_jobs
                     SET status = 'cancelled', cancel_requested = 1,
@@ -4322,7 +7614,53 @@ class SQLiteCatalog:
                     (now_ms, now_ms, job.job_id),
                 )
             else:
-                self._connection.execute(
+                lease_row = self._connection.execute(
+                    "SELECT * FROM ref_job_leases WHERE job_id = ?",
+                    (job.job_id,),
+                ).fetchone()
+                if lease_row is None:
+                    raise StorageIntegrityError(
+                        "running index job cancellation is missing its lease"
+                    )
+                lease = self._lease_from_row(lease_row)
+                attempt_started_at_ms = lease.acquired_at_ms
+                latest_event_at_ms = None
+                if self.schema_version >= 6:
+                    attempt = self._validate_current_job_attempt(job, lease)
+                    attempt_started_at_ms = attempt.started_at_ms
+                    latest_event_at_ms = self._connection.execute(
+                        """
+                        SELECT MAX(created_at_ms) FROM index_job_events
+                        WHERE job_id = ? AND attempt_count = ?
+                        """,
+                        (job.job_id, job.attempt_count),
+                    ).fetchone()[0]
+                if (
+                    latest_event_at_ms is not None
+                    and type(latest_event_at_ms) is not int
+                ):
+                    raise StorageIntegrityError(
+                        "latest index job event time is not canonical"
+                    )
+                causal_floor = max(
+                    job.updated_at_ms,
+                    attempt_started_at_ms,
+                    lease.heartbeat_at_ms,
+                    0 if latest_event_at_ms is None else latest_event_at_ms,
+                )
+                now_ms = (
+                    self._advance_job_execution_clock(
+                        causal_floor_ms=causal_floor,
+                        action="cancellation",
+                    )
+                    if self.schema_version >= 6
+                    else self._db_now_ms()
+                )
+                if self.schema_version < 6 and now_ms < causal_floor:
+                    raise CatalogConflictError(
+                        "database clock moved backwards before cancellation"
+                    )
+                cursor = self._connection.execute(
                     """
                     UPDATE index_jobs
                     SET cancel_requested = 1, updated_at_ms = ?
@@ -4330,24 +7668,371 @@ class SQLiteCatalog:
                     """,
                     (now_ms, job.job_id),
                 )
+            if cursor.rowcount != 1:
+                raise CatalogConflictError("index job cancellation state changed")
             return self._job_from_row(
                 self._require_record("index_jobs", "job_id", job.job_id)
             )
 
-    def finish_job_attempt(
+    def _write_job_event(
         self,
         job_id: str,
         *,
+        attempt_count: int,
+        owner_id: str,
+        fencing_token: int,
+        event_key: str,
+        kind: IndexJobEventKind,
+        payload: Mapping[str, Any] | None,
+        view_type: str | None,
+        effective_mode: IndexJobEffectiveMode | None,
+        outcome: IndexJobViewOutcome | None,
+    ) -> IndexJobEventRecord:
+        normalized_job = _bounded_text(job_id, "job ID", max_length=80)
+        attempt_number = _exact_positive_integer(attempt_count, "job attempt count")
+        owner = _bounded_text(owner_id, "owner ID", max_length=256)
+        token = _positive_int64(fencing_token, "fencing token")
+        key = _bounded_text(event_key, "job event key", max_length=128)
+        if attempt_number > 1_000:
+            raise CatalogValidationError("job attempt count is too large")
+        try:
+            event_kind = IndexJobEventKind(kind)
+        except ValueError as exc:
+            raise CatalogValidationError(f"invalid job event kind: {kind}") from exc
+        try:
+            mode = (
+                None
+                if effective_mode is None
+                else IndexJobEffectiveMode(effective_mode)
+            )
+        except ValueError as exc:
+            raise CatalogValidationError(
+                f"invalid effective index mode: {effective_mode}"
+            ) from exc
+        try:
+            view_outcome = None if outcome is None else IndexJobViewOutcome(outcome)
+        except ValueError as exc:
+            raise CatalogValidationError(
+                f"invalid index job view outcome: {outcome}"
+            ) from exc
+        normalized_view = _optional_bounded_text(
+            view_type,
+            "job event view type",
+            max_length=128,
+        )
+        if payload is not None and not isinstance(payload, Mapping):
+            raise CatalogValidationError("index job event payload must be a mapping")
+        payload_json = canonical_json(
+            snapshot_index_job_event_payload({} if payload is None else payload)
+        )
+        # Validate the complete shape before any catalog lookup or mutation.
+        normalized = IndexJobEventRecord(
+            sequence=1,
+            job_id=normalized_job,
+            attempt_count=attempt_number,
+            event_key=key,
+            kind=event_kind,
+            owner_id=owner,
+            fencing_token=token,
+            view_type=normalized_view,
+            effective_mode=mode,
+            outcome=view_outcome,
+            payload_json=payload_json,
+            created_at_ms=0,
+        )
+
+        with self._transaction():
+            job = self._job_from_row(
+                self._require_record("index_jobs", "job_id", normalized_job)
+            )
+            requested_views = self._job_views(job)
+            existing_row = self._connection.execute(
+                """
+                SELECT * FROM index_job_events
+                WHERE job_id = ? AND attempt_count = ? AND event_key = ?
+                """,
+                (normalized_job, attempt_number, key),
+            ).fetchone()
+            if existing_row is not None:
+                existing = self._job_event_from_row(existing_row)
+                if (
+                    existing.kind is not normalized.kind
+                    or existing.owner_id != owner
+                    or existing.fencing_token != token
+                    or existing.view_type != normalized.view_type
+                    or existing.effective_mode is not normalized.effective_mode
+                    or existing.outcome is not normalized.outcome
+                    or existing.payload_json != payload_json
+                ):
+                    raise CatalogConflictError(
+                        "index job event replay conflicts with its closure"
+                    )
+                return existing
+            event_prefix = self._connection.execute(
+                """
+                SELECT COUNT(*) AS event_count,
+                    COALESCE(MAX(event_sequence), 0) AS max_event_sequence
+                FROM index_job_events
+                WHERE job_id = ? AND attempt_count = ?
+                """,
+                (normalized_job, attempt_number),
+            ).fetchone()
+            event_count = _persisted_nonnegative_int64(
+                event_prefix["event_count"],
+                "index job attempt event count",
+            )
+            attempt_max_sequence = _persisted_nonnegative_int64(
+                event_prefix["max_event_sequence"],
+                "index job attempt event sequence",
+            )
+            if event_count >= MAX_INDEX_JOB_EVENTS_PER_ATTEMPT:
+                raise CatalogConflictError(
+                    "index job attempt event capacity is exhausted"
+                )
+            table_max_sequence = self._connection.execute(
+                """
+                SELECT COALESCE(MAX(event_sequence), 0)
+                FROM index_job_events
+                """
+            ).fetchone()[0]
+            table_max_sequence = _persisted_nonnegative_int64(
+                table_max_sequence,
+                "index job event sequence high-water",
+            )
+            sequence_row = self._connection.execute(
+                "SELECT seq FROM sqlite_sequence WHERE name = 'index_job_events'"
+            ).fetchone()
+            allocated_sequence = 0
+            if sequence_row is not None:
+                allocated_sequence = _persisted_nonnegative_int64(
+                    sequence_row["seq"],
+                    "index job event allocator high-water",
+                )
+            if (
+                max(
+                    attempt_max_sequence,
+                    table_max_sequence,
+                    allocated_sequence,
+                )
+                >= _SQLITE_INT64_MAX
+            ):
+                raise CatalogConflictError("index job event sequence is exhausted")
+            if (
+                job.status is not IndexJobStatus.RUNNING
+                or job.attempt_count != attempt_number
+            ):
+                raise CatalogConflictError(
+                    "index job events require the current running attempt"
+                )
+            if normalized.view_type is not None and normalized.view_type not in {
+                view.view_type for view in requested_views
+            }:
+                raise CatalogValidationError(
+                    "index job event view was not requested by the job"
+                )
+            duplicate_view = None
+            if normalized.kind is IndexJobEventKind.VIEW_RESULT:
+                duplicate_view = self._connection.execute(
+                    """
+                    SELECT * FROM index_job_events
+                    WHERE job_id = ? AND attempt_count = ?
+                        AND kind = 'view_result' AND view_type = ?
+                    """,
+                    (normalized_job, attempt_number, normalized.view_type),
+                ).fetchone()
+            if duplicate_view is not None:
+                raise CatalogConflictError(
+                    "index job attempt already has a result for this view"
+                )
+            lease_row = self._connection.execute(
+                """
+                SELECT * FROM ref_job_leases
+                WHERE repository_id = ? AND ref_name = ? AND job_id = ?
+                    AND owner_id = ? AND fencing_token = ?
+                """,
+                (
+                    job.repository_id,
+                    job.ref_name,
+                    job.job_id,
+                    owner,
+                    token,
+                ),
+            ).fetchone()
+            if lease_row is None:
+                raise CatalogConflictError(
+                    "index job event lost its current unexpired fenced lease"
+                )
+            lease = self._lease_from_row(lease_row)
+            attempt = self._validate_current_job_attempt(
+                job,
+                lease,
+                attempt_count=attempt_number,
+            )
+            latest_event_at_ms = self._connection.execute(
+                """
+                SELECT MAX(created_at_ms) FROM index_job_events
+                WHERE job_id = ? AND attempt_count = ?
+                """,
+                (job.job_id, attempt_number),
+            ).fetchone()[0]
+            if latest_event_at_ms is not None and type(latest_event_at_ms) is not int:
+                raise StorageIntegrityError(
+                    "latest index job event time is not canonical"
+                )
+            causal_floor = max(
+                job.updated_at_ms,
+                attempt.started_at_ms,
+                lease.heartbeat_at_ms,
+                0 if latest_event_at_ms is None else latest_event_at_ms,
+            )
+            now_ms = self._advance_job_execution_clock(
+                causal_floor_ms=causal_floor,
+                action="the index job event",
+            )
+            if lease.lease_expires_at_ms <= now_ms:
+                raise CatalogConflictError(
+                    "index job event lost its current unexpired fenced lease"
+                )
+            insert = self._connection.execute(
+                """
+                INSERT INTO index_job_events(
+                    job_id, attempt_count, event_key, kind, owner_id,
+                    fencing_token, view_type, effective_mode, outcome,
+                    payload_json, created_at_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    normalized.job_id,
+                    normalized.attempt_count,
+                    normalized.event_key,
+                    normalized.kind.value,
+                    normalized.owner_id,
+                    normalized.fencing_token,
+                    normalized.view_type,
+                    (
+                        None
+                        if normalized.effective_mode is None
+                        else normalized.effective_mode.value
+                    ),
+                    None if normalized.outcome is None else normalized.outcome.value,
+                    normalized.payload_json,
+                    now_ms,
+                ),
+            )
+            row = self._connection.execute(
+                "SELECT * FROM index_job_events WHERE event_sequence = ?",
+                (insert.lastrowid,),
+            ).fetchone()
+            if row is None:
+                raise StorageIntegrityError("inserted index job event disappeared")
+            return self._job_event_from_row(row)
+
+    def append_job_event(
+        self,
+        job_id: str,
+        *,
+        attempt_count: int,
+        owner_id: str,
+        fencing_token: int,
+        event_key: str,
+        payload: Mapping[str, Any] | None = None,
+        view_type: str | None = None,
+    ) -> IndexJobEventRecord:
+        """Append or exactly replay one bounded progress event."""
+
+        return self._write_job_event(
+            job_id,
+            attempt_count=attempt_count,
+            owner_id=owner_id,
+            fencing_token=fencing_token,
+            event_key=event_key,
+            kind=IndexJobEventKind.PROGRESS,
+            payload=payload,
+            view_type=view_type,
+            effective_mode=None,
+            outcome=None,
+        )
+
+    def record_job_view_result(
+        self,
+        job_id: str,
+        *,
+        attempt_count: int,
+        owner_id: str,
+        fencing_token: int,
+        event_key: str,
+        view_type: str,
+        effective_mode: IndexJobEffectiveMode,
+        outcome: IndexJobViewOutcome,
+        payload: Mapping[str, Any] | None = None,
+    ) -> IndexJobEventRecord:
+        """Append or exactly replay one terminal attempt-local view result."""
+
+        return self._write_job_event(
+            job_id,
+            attempt_count=attempt_count,
+            owner_id=owner_id,
+            fencing_token=fencing_token,
+            event_key=event_key,
+            kind=IndexJobEventKind.VIEW_RESULT,
+            payload=payload,
+            view_type=view_type,
+            effective_mode=effective_mode,
+            outcome=outcome,
+        )
+
+    def list_job_events(
+        self,
+        job_id: str,
+        *,
+        after_sequence: int = 0,
+        limit: int = 128,
+    ) -> tuple[IndexJobEventRecord, ...]:
+        """Return one bounded, stable sequence page for a canonical job."""
+
+        normalized_job = _bounded_text(job_id, "job ID", max_length=80)
+        after = _nonnegative_int64(after_sequence, "job event sequence cursor")
+        page_limit = _exact_positive_integer(limit, "job event page limit")
+        if after > _SQLITE_INT64_MAX:
+            raise CatalogValidationError("job event sequence cursor is too large")
+        if page_limit > _MAX_JOB_EVENT_PAGE_LIMIT:
+            raise CatalogValidationError(
+                f"job event page limit cannot exceed {_MAX_JOB_EVENT_PAGE_LIMIT}"
+            )
+        with self._transaction(immediate=False):
+            job = self._job_from_row(
+                self._require_record("index_jobs", "job_id", normalized_job)
+            )
+            self._job_views(job)
+            rows = self._connection.execute(
+                """
+                SELECT * FROM index_job_events
+                WHERE job_id = ? AND event_sequence > ?
+                ORDER BY event_sequence
+                LIMIT ?
+                """,
+                (normalized_job, after, page_limit),
+            ).fetchall()
+            return tuple(self._job_event_from_row(row) for row in rows)
+
+    def complete_job_attempt(
+        self,
+        job_id: str,
+        *,
+        attempt_count: int,
         owner_id: str,
         fencing_token: int,
         outcome: IndexJobCompletion,
         error_code: str | None = None,
         error_message: str | None = None,
     ) -> IndexJobRecord:
-        """Finish a fenced M1 attempt as failed, cancelled, or requeued."""
+        """Persist or exactly replay one immutable non-success closure."""
         normalized_job = _bounded_text(job_id, "job ID", max_length=80)
+        attempt_number = _exact_positive_integer(attempt_count, "job attempt count")
         owner = _bounded_text(owner_id, "owner ID", max_length=256)
-        token = _positive_integer(fencing_token, "fencing token")
+        token = _positive_int64(fencing_token, "fencing token")
+        if attempt_number > 1_000:
+            raise CatalogValidationError("job attempt count is too large")
         try:
             normalized_outcome = IndexJobCompletion(outcome)
         except ValueError as exc:
@@ -4373,29 +8058,64 @@ class SQLiteCatalog:
             )
         if normalized_outcome is IndexJobCompletion.CANCELLED and code is None:
             code = "cancelled"
+        assert code is not None
 
         with self._transaction():
             job = self._job_from_row(
                 self._require_record("index_jobs", "job_id", normalized_job)
             )
             self._job_views(job)
-            if job.status is not IndexJobStatus.RUNNING:
+            existing_row = self._connection.execute(
+                """
+                SELECT * FROM index_job_attempt_completions
+                WHERE job_id = ? AND attempt_count = ?
+                """,
+                (job.job_id, attempt_number),
+            ).fetchone()
+            if existing_row is not None:
+                existing = self._job_attempt_completion_from_row(existing_row)
+                if (
+                    existing.owner_id != owner
+                    or existing.fencing_token != token
+                    or existing.outcome is not normalized_outcome
+                    or existing.error_code != code
+                    or existing.error_message != message
+                ):
+                    raise CatalogConflictError(
+                        "job attempt completion replay conflicts with its closure"
+                    )
+                attempt = self._job_attempt(job.job_id, attempt_number)
+                frontier = self._validate_job_attempt_closure_frontier(attempt)
+                if existing.completed_at_ms < frontier[2]:
+                    raise CatalogConflictError(
+                        "job attempt completion precedes its event frontier"
+                    )
+                return self._job_attempt_completion_response(job, existing)
+            if (
+                job.status is not IndexJobStatus.RUNNING
+                or job.attempt_count != attempt_number
+            ):
                 raise CatalogConflictError(
                     "index job mutation requires its current unexpired fenced lease"
                 )
-            if (
-                normalized_outcome is IndexJobCompletion.CANCELLED
-                and not job.cancel_requested
+            if normalized_outcome is IndexJobCompletion.CANCELLED and not (
+                job.cancel_requested
             ):
                 raise CatalogConflictError(
                     "running index job must receive cancellation before acknowledging it"
                 )
             if (
-                normalized_outcome is IndexJobCompletion.REQUEUE
+                normalized_outcome
+                in {IndexJobCompletion.REQUEUE, IndexJobCompletion.FAILED}
                 and job.cancel_requested
             ):
                 raise CatalogConflictError(
-                    "cancelled index job attempt cannot be requeued"
+                    "cancelled index job attempt cannot be "
+                    + (
+                        "requeued"
+                        if normalized_outcome is IndexJobCompletion.REQUEUE
+                        else "failed"
+                    )
                 )
             if (
                 normalized_outcome is IndexJobCompletion.REQUEUE
@@ -4404,58 +8124,108 @@ class SQLiteCatalog:
                 raise CatalogConflictError(
                     "final index job attempt must fail instead of requeueing"
                 )
-
-            if normalized_outcome is IndexJobCompletion.REQUEUE:
-                status = IndexJobStatus.QUEUED
-                is_terminal = 0
-            elif normalized_outcome is IndexJobCompletion.FAILED:
-                status = IndexJobStatus.FAILED
-                is_terminal = 1
-            else:
-                status = IndexJobStatus.CANCELLED
-                is_terminal = 1
-            cursor = self._connection.execute(
-                f"""
-                UPDATE index_jobs
-                SET status = ?, error_code = ?, error_message = ?,
-                    finished_at_ms = CASE ?
-                        WHEN 1 THEN {_DB_NOW_MS_SQL}
-                        ELSE NULL
-                    END,
-                    updated_at_ms = MAX(updated_at_ms, {_DB_NOW_MS_SQL})
-                WHERE job_id = ? AND status = 'running'
-                    AND EXISTS (
-                        SELECT 1 FROM ref_job_leases AS lease
-                        WHERE lease.repository_id = index_jobs.repository_id
-                            AND lease.ref_name = index_jobs.ref_name
-                            AND lease.job_id = index_jobs.job_id
-                            AND lease.owner_id = ?
-                            AND lease.fencing_token = ?
-                            AND lease.lease_expires_at_ms > {_DB_NOW_MS_SQL}
-                    )
+            lease_row = self._connection.execute(
+                """
+                SELECT * FROM ref_job_leases
+                WHERE repository_id = ? AND ref_name = ? AND job_id = ?
+                    AND owner_id = ? AND fencing_token = ?
                 """,
                 (
-                    status.value,
-                    code,
-                    message,
-                    is_terminal,
+                    job.repository_id,
+                    job.ref_name,
                     job.job_id,
                     owner,
                     token,
                 ),
-            )
-            if cursor.rowcount != 1:
+            ).fetchone()
+            if lease_row is None:
                 raise CatalogConflictError(
                     "index job mutation requires its current unexpired fenced lease"
                 )
-            self._release_job_slot(
+            lease = self._lease_from_row(lease_row)
+            attempt = self._validate_current_job_attempt(
                 job,
+                lease,
+                attempt_count=attempt_number,
+            )
+            latest_event_at_ms = self._connection.execute(
+                """
+                SELECT MAX(created_at_ms) FROM index_job_events
+                WHERE job_id = ? AND attempt_count = ?
+                """,
+                (job.job_id, attempt_number),
+            ).fetchone()[0]
+            if latest_event_at_ms is not None and type(latest_event_at_ms) is not int:
+                raise StorageIntegrityError(
+                    "latest index job event time is not canonical"
+                )
+            causal_floor = max(
+                job.updated_at_ms,
+                attempt.started_at_ms,
+                lease.heartbeat_at_ms,
+                0 if latest_event_at_ms is None else latest_event_at_ms,
+            )
+            completed_at_ms = self._advance_job_execution_clock(
+                causal_floor_ms=causal_floor,
+                action="job completion",
+            )
+            if lease.lease_expires_at_ms <= completed_at_ms:
+                raise CatalogConflictError(
+                    "index job mutation requires its current unexpired fenced lease"
+                )
+            completion = IndexJobAttemptCompletionRecord(
+                job_id=job.job_id,
+                attempt_count=attempt_number,
+                owner_id=owner,
                 fencing_token=token,
-                now_ms=self._db_now_ms(),
+                outcome=normalized_outcome,
+                error_code=code,
+                error_message=message,
+                completed_at_ms=completed_at_ms,
             )
-            return self._job_from_row(
-                self._require_record("index_jobs", "job_id", job.job_id)
+            self._connection.execute(
+                """
+                INSERT INTO index_job_attempt_completions(
+                    job_id, attempt_count, owner_id, fencing_token, outcome,
+                    error_code, error_message, completed_at_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    completion.job_id,
+                    completion.attempt_count,
+                    completion.owner_id,
+                    completion.fencing_token,
+                    completion.outcome.value,
+                    completion.error_code,
+                    completion.error_message,
+                    completion.completed_at_ms,
+                ),
             )
+            self._validate_job_attempt_closure_frontier(attempt)
+            return self._job_attempt_completion_response(job, completion)
+
+    def finish_job_attempt(
+        self,
+        job_id: str,
+        *,
+        owner_id: str,
+        fencing_token: int,
+        outcome: IndexJobCompletion,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> IndexJobRecord:
+        """Compatibility wrapper for the pre-v6 non-success API."""
+
+        job = self.get_job(job_id)
+        return self.complete_job_attempt(
+            job.job_id,
+            attempt_count=job.attempt_count,
+            owner_id=owner_id,
+            fencing_token=fencing_token,
+            outcome=outcome,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     def publish_job_outputs(
         self,
@@ -4477,7 +8247,7 @@ class SQLiteCatalog:
             )
         normalized_job = _bounded_text(job_id, "job ID", max_length=80)
         owner = _bounded_text(owner_id, "owner ID", max_length=256)
-        token = _positive_integer(fencing_token, "fencing token")
+        token = _positive_int64(fencing_token, "fencing token")
         if token > _SQLITE_INT64_MAX:
             raise CatalogValidationError("fencing token exceeds catalog int64 range")
         frozen_outputs = _freeze_job_publication_outputs(outputs)
@@ -4522,7 +8292,6 @@ class SQLiteCatalog:
                     )
                 self._validate_repository_source_identity(repository, source)
 
-                now_ms = self._db_now_ms()
                 lease_row = self._connection.execute(
                     """
                     SELECT * FROM ref_job_leases
@@ -4536,7 +8305,6 @@ class SQLiteCatalog:
                     or lease_row["owner_id"] != owner
                     or lease_row["fencing_token"] != token
                     or type(lease_row["lease_expires_at_ms"]) is not int
-                    or lease_row["lease_expires_at_ms"] <= now_ms
                 ):
                     raise CatalogConflictError(
                         "index job publication requires its current unexpired fenced lease"
@@ -4738,13 +8506,42 @@ class SQLiteCatalog:
                             f"ref {job.ref_name!r} changed during job publication"
                         )
 
-                completed_at_ms = self._db_now_ms()
-                if completed_at_ms < max(
+                latest_event_at_ms = None
+                if self.schema_version >= 6:
+                    latest_event_at_ms = self._connection.execute(
+                        """
+                        SELECT MAX(created_at_ms) FROM index_job_events
+                        WHERE job_id = ? AND attempt_count = ?
+                        """,
+                        (job.job_id, job.attempt_count),
+                    ).fetchone()[0]
+                if (
+                    latest_event_at_ms is not None
+                    and type(latest_event_at_ms) is not int
+                ):
+                    raise StorageIntegrityError(
+                        "latest index job event time is not canonical"
+                    )
+                causal_floor = max(
                     job.updated_at_ms,
                     current_lease.heartbeat_at_ms,
-                ):
+                    0 if latest_event_at_ms is None else latest_event_at_ms,
+                )
+                completed_at_ms = (
+                    self._advance_job_execution_clock(
+                        causal_floor_ms=causal_floor,
+                        action="job publication",
+                    )
+                    if self.schema_version >= 6
+                    else self._db_now_ms()
+                )
+                if self.schema_version < 6 and completed_at_ms < causal_floor:
                     raise CatalogConflictError(
                         "database clock moved backwards during job publication"
+                    )
+                if current_lease.lease_expires_at_ms <= completed_at_ms:
+                    raise CatalogConflictError(
+                        "index job publication requires its current unexpired fenced lease"
                     )
                 self._connection.execute(
                     """

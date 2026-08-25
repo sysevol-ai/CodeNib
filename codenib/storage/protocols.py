@@ -22,8 +22,21 @@ from typing import (
 
 from .cas import BlobInfo
 from .models import (
+    INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH,
+    INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS,
+    INDEX_JOB_EVENT_PAYLOAD_MAX_NODES,
+    INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS,
+    MAX_INDEX_JOB_EVENTS_PER_ATTEMPT,
+    IndexJobAttemptCompletionRecord,
+    IndexJobAttemptHeartbeat,
+    IndexJobAttemptRecord,
     IndexJobCompletion,
+    IndexJobEffectiveMode,
+    IndexJobEventRecord,
     IndexJobRecord,
+    IndexJobRunnableCursor,
+    IndexJobRunnablePage,
+    IndexJobViewOutcome,
     IndexJobViewOutput,
     IndexJobViewRecord,
     RefJobLease,
@@ -459,6 +472,148 @@ class JobCatalog(Protocol):
 
 
 @runtime_checkable
+class JobExecutionCatalog(JobCatalog, Protocol):
+    """Additive, backend-neutral execution control for durable index jobs.
+
+    Acquisition remains the authoritative claim and atomically records one
+    immutable attempt start. The runnable scan is advisory and ordered by
+    ``(created_at_ms, job_id)``; callers must still acquire. Attempt and
+    completion history is returned in ascending attempt order and includes
+    only schema-v6 starts after the immutable legacy baseline. New jobs start
+    queued at one canonical database time. New active lease authority also
+    starts at one database time with a bounded exact duration; released slots
+    arise only by fenced release, never by direct insertion.
+
+    Event keys are attempt-local idempotency keys. Exact replay returns the
+    original row, while a different closure conflicts. One ``view_result`` is
+    allowed per attempt/view. Closing an attempt atomically records the exact
+    event count, maximum sequence, and maximum event time; later events and
+    replay against a different event prefix fail closed. Within one modeled
+    attempt, event, cancellation, completion, and publication times follow one
+    nondecreasing database-clock causal order. Heartbeat has its own
+    nondecreasing lease-clock domain: after database-clock rollback it may lag
+    an already committed content/cancellation high-water mark, but it cannot
+    authorize a later event or closure below that content floor. Each attempt is limited to
+    ``MAX_INDEX_JOB_EVENTS_PER_ATTEMPT`` events; canonical payload JSON is
+    limited by the exported text, depth, node, and key bounds and rejects
+    shared-classifier secret fields. A root ``Mapping`` is detached through a
+    bounded key iterator without trusting its reported length; nested values
+    require exact JSON containers and scalars. ``None`` means an empty payload.
+    Event sequences are allocator-assigned; capacity or signed-int64 allocator
+    exhaustion conflicts before mutation. Sequence, cursor, page-limit,
+    attempt, lease-duration, and fencing values use exact integers, with
+    persisted identities restricted to signed SQLite int64. Missing records,
+    stale authority, replay mismatches, expired leases, and corrupt history
+    fail closed using the backend's not-found, conflict, or validation errors.
+
+    Queued cancellation commits a terminal cancelled job atomically. Running
+    cancellation records the exact attempt/owner/fence and observed heartbeat
+    for cooperative stop. Once cancellation is requested, only a
+    ``cancelled`` non-success closure is valid; ``requeue`` and ``failed``
+    require an uncancelled attempt. Success has no completion-row API and is
+    durable only through ``publish_job_outputs``.
+    """
+
+    def scan_runnable_jobs(
+        self,
+        *,
+        cursor: IndexJobRunnableCursor | None = None,
+        limit: int = 64,
+    ) -> IndexJobRunnablePage: ...
+
+    def get_job_attempt(
+        self,
+        job_id: str,
+        attempt_count: int,
+    ) -> IndexJobAttemptRecord: ...
+
+    def list_job_attempts(self, job_id: str) -> tuple[IndexJobAttemptRecord, ...]: ...
+
+    def get_job_attempt_completion(
+        self,
+        job_id: str,
+        attempt_count: int,
+    ) -> IndexJobAttemptCompletionRecord: ...
+
+    def list_job_attempt_completions(
+        self,
+        job_id: str,
+    ) -> tuple[IndexJobAttemptCompletionRecord, ...]: ...
+
+    def heartbeat_job_attempt(
+        self,
+        job_id: str,
+        *,
+        attempt_count: int,
+        owner_id: str,
+        fencing_token: int,
+        lease_duration_ms: int,
+    ) -> IndexJobAttemptHeartbeat:
+        """Renew exact live authority and atomically observe cancellation."""
+
+        ...
+
+    def append_job_event(
+        self,
+        job_id: str,
+        *,
+        attempt_count: int,
+        owner_id: str,
+        fencing_token: int,
+        event_key: str,
+        payload: Mapping[str, Any] | None = None,
+        view_type: str | None = None,
+    ) -> IndexJobEventRecord: ...
+
+    def record_job_view_result(
+        self,
+        job_id: str,
+        *,
+        attempt_count: int,
+        owner_id: str,
+        fencing_token: int,
+        event_key: str,
+        view_type: str,
+        effective_mode: IndexJobEffectiveMode,
+        outcome: IndexJobViewOutcome,
+        payload: Mapping[str, Any] | None = None,
+    ) -> IndexJobEventRecord: ...
+
+    def list_job_events(
+        self,
+        job_id: str,
+        *,
+        after_sequence: int = 0,
+        limit: int = 128,
+    ) -> tuple[IndexJobEventRecord, ...]: ...
+
+    def complete_job_attempt(
+        self,
+        job_id: str,
+        *,
+        attempt_count: int,
+        owner_id: str,
+        fencing_token: int,
+        outcome: IndexJobCompletion,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> IndexJobRecord:
+        """Persist or replay an authority- and frontier-exact non-success."""
+
+        ...
+
+
+# Keep these names live in generated protocol documentation.
+_JOB_EVENT_CONTRACT_BOUNDS = (
+    MAX_INDEX_JOB_EVENTS_PER_ATTEMPT,
+    INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS,
+    INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH,
+    INDEX_JOB_EVENT_PAYLOAD_MAX_NODES,
+    INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS,
+)
+
+
+@runtime_checkable
 class JobPublicationCatalog(JobCatalog, Protocol):
     """Job catalog supporting one atomic object-to-ref publication."""
 
@@ -485,6 +640,7 @@ class JobPublicationCatalog(JobCatalog, Protocol):
 __all__ = [
     "IndexCatalog",
     "JobCatalog",
+    "JobExecutionCatalog",
     "JobPublicationCatalog",
     "ObjectStore",
     "ReceiptRetainingObjectStore",
