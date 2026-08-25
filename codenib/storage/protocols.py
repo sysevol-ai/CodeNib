@@ -24,6 +24,7 @@ from .cas import BlobInfo
 from .models import (
     IndexJobCompletion,
     IndexJobRecord,
+    IndexJobViewOutput,
     IndexJobViewRecord,
     RefJobLease,
     StorageIntegrityError,
@@ -451,9 +452,34 @@ class JobCatalog(Protocol):
     ) -> IndexJobRecord: ...
 
 
+@runtime_checkable
+class JobPublicationCatalog(JobCatalog, Protocol):
+    """Job catalog supporting one atomic object-to-ref publication."""
+
+    def publish_job_outputs(
+        self,
+        job_id: str,
+        *,
+        owner_id: str,
+        fencing_token: int,
+        outputs: tuple[IndexJobViewOutput, ...],
+    ) -> IndexJobRecord:
+        """Publish one exact receipt-retained output closure.
+
+        Object registration, compound generation membership, snapshot/ref CAS,
+        the immutable publication receipt, job success, and lease release must
+        commit or roll back together. A committed-response-loss retry with the
+        same authority and closure returns the existing success without moving
+        the ref; a different authority or closure conflicts without mutation.
+        """
+
+        ...
+
+
 __all__ = [
     "IndexCatalog",
     "JobCatalog",
+    "JobPublicationCatalog",
     "ObjectStore",
     "ReceiptRetainingObjectStore",
     "ReceiptVerifyingObjectStore",

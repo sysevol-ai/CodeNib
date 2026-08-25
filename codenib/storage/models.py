@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from itertools import islice
 from pathlib import PurePosixPath
 from typing import Any, Mapping, Sequence
 
@@ -24,6 +25,7 @@ _CATALOG_INT64_MAX = 9_223_372_036_854_775_807
 DEFAULT_NAMESPACE_ID = "ns_default"
 DEFAULT_NAMESPACE_NAME = "default"
 INDEX_JOB_REQUEST_CONTRACT = "codenib.index-job-request.v1"
+INDEX_JOB_PUBLICATION_CONTRACT = "codenib.index-job-publication.v1"
 VIEW_GENERATION_MEMBERS_METADATA_KEY = "_codenib_member_object_digests"
 # One retained-import summary represents every member twice: once in canonical
 # generation metadata and once as its identity-closed object envelope. Keep
@@ -535,6 +537,182 @@ class ObjectRecord:
         object.__setattr__(
             self, "media_type", _required_text(self.media_type, "media type")
         )
+
+
+def _exact_job_output_object(record: object, *, label: str) -> ObjectRecord:
+    """Detach one exact catalog object record for a job output."""
+
+    if type(record) is not ObjectRecord:
+        raise StorageValidationError(f"{label} must be an exact ObjectRecord")
+    values = (record.digest, record.byte_size, record.storage_key, record.media_type)
+    if tuple(type(value) for value in values) != (str, int, str, str):
+        raise StorageValidationError(f"{label} fields must use exact str/int types")
+    detached = ObjectRecord(
+        digest=values[0],
+        byte_size=values[1],
+        storage_key=values[2],
+        media_type=values[3],
+    )
+    if detached.byte_size > _CATALOG_INT64_MAX:
+        raise StorageValidationError(f"{label} byte size exceeds catalog int64 range")
+    _bounded_text(detached.storage_key, f"{label} storage key", max_length=4_096)
+    _bounded_text(detached.media_type, f"{label} media type", max_length=256)
+    if detached != record:
+        raise StorageValidationError(f"{label} is not canonical")
+    return detached
+
+
+@dataclass(frozen=True, slots=True)
+class IndexJobViewOutput:
+    """One exact, receipt-verified output offered for a requested job view.
+
+    The explicit profile binding lets the catalog reject a mismatch with the
+    persisted job request. ``metadata_json`` contains caller metadata only;
+    :attr:`generation_metadata` injects the canonical, identity-bearing
+    compound-member digest list.
+    """
+
+    view_type: str
+    profile_id: str
+    object_record: ObjectRecord
+    schema_version: str
+    metadata_json: str = "{}"
+    member_object_records: tuple[ObjectRecord, ...] = ()
+
+    def __post_init__(self) -> None:
+        if tuple(
+            type(value)
+            for value in (
+                self.view_type,
+                self.profile_id,
+                self.schema_version,
+                self.metadata_json,
+            )
+        ) != (str, str, str, str):
+            raise StorageValidationError(
+                "index job output text fields must use exact str values"
+            )
+        view_type = _bounded_text(self.view_type, "view type", max_length=128)
+        profile_id = _bounded_text(self.profile_id, "profile ID", max_length=96)
+        schema_version = _bounded_text(
+            self.schema_version, "view schema version", max_length=128
+        )
+        primary = _exact_job_output_object(
+            self.object_record,
+            label="index job output object",
+        )
+        metadata_json, metadata = _canonical_json_object(
+            self.metadata_json,
+            "index job output metadata",
+        )
+        if len(metadata_json) > 65_536:
+            raise StorageValidationError(
+                "index job output metadata must not exceed 65536 characters"
+            )
+        assert_no_secret_fields(metadata, source="index job output metadata")
+
+        if type(self.member_object_records) is not tuple:
+            raise StorageValidationError(
+                "index job output member objects must be an exact tuple"
+            )
+        if len(self.member_object_records) > MAX_VIEW_GENERATION_MEMBERS:
+            raise StorageValidationError("view generation has too many member objects")
+        members = tuple(
+            _exact_job_output_object(
+                member,
+                label="index job output member object",
+            )
+            for member in self.member_object_records
+        )
+        ordered = tuple(sorted(members, key=lambda member: member.digest))
+        member_digests = tuple(member.digest for member in ordered)
+        # This shared normalizer rejects the reserved metadata key, duplicate
+        # members, and a primary digest repeated as a member.
+        normalize_view_generation_metadata(
+            primary.digest,
+            metadata,
+            member_object_digests=member_digests,
+        )
+
+        object.__setattr__(self, "view_type", view_type)
+        object.__setattr__(self, "profile_id", profile_id)
+        object.__setattr__(self, "object_record", primary)
+        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "metadata_json", metadata_json)
+        object.__setattr__(self, "member_object_records", ordered)
+
+    @classmethod
+    def create(
+        cls,
+        view_type: str,
+        profile_id: str,
+        object_record: ObjectRecord,
+        *,
+        schema_version: str,
+        metadata: Mapping[str, Any] | None = None,
+        member_object_records: Sequence[ObjectRecord] = (),
+    ) -> IndexJobViewOutput:
+        if isinstance(member_object_records, (str, bytes, bytearray)):
+            raise StorageValidationError(
+                "index job output member objects must be a sequence"
+            )
+        try:
+            members = tuple(
+                islice(
+                    iter(member_object_records),
+                    MAX_VIEW_GENERATION_MEMBERS + 1,
+                )
+            )
+        except TypeError as exc:
+            raise StorageValidationError(
+                "index job output member objects must be a sequence"
+            ) from exc
+        if len(members) > MAX_VIEW_GENERATION_MEMBERS:
+            raise StorageValidationError("view generation has too many member objects")
+        return cls(
+            view_type=view_type,
+            profile_id=profile_id,
+            object_record=object_record,
+            schema_version=schema_version,
+            metadata_json=canonical_json({} if metadata is None else metadata),
+            member_object_records=members,
+        )
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        return json.loads(self.metadata_json)
+
+    @property
+    def generation_metadata(self) -> dict[str, Any]:
+        normalized, _members = normalize_view_generation_metadata(
+            self.object_record.digest,
+            self.metadata,
+            member_object_digests=tuple(
+                member.digest for member in self.member_object_records
+            ),
+        )
+        return normalized
+
+    @property
+    def identity(self) -> dict[str, Any]:
+        def object_identity(record: ObjectRecord) -> dict[str, Any]:
+            return {
+                "digest": record.digest,
+                "storage_key": record.storage_key,
+                "byte_size": record.byte_size,
+                "media_type": record.media_type,
+            }
+
+        return {
+            "view_type": self.view_type,
+            "profile_id": self.profile_id,
+            "schema_version": self.schema_version,
+            "metadata": self.generation_metadata,
+            "object": object_identity(self.object_record),
+            "member_objects": [
+                object_identity(record) for record in self.member_object_records
+            ],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -1131,12 +1309,14 @@ __all__ = [
     "DEFAULT_NAMESPACE_ID",
     "DEFAULT_NAMESPACE_NAME",
     "INDEX_JOB_REQUEST_CONTRACT",
+    "INDEX_JOB_PUBLICATION_CONTRACT",
     "MAX_VIEW_GENERATION_MEMBERS",
     "IndexJobCompletion",
     "IndexJobRecord",
     "IndexJobRequest",
     "IndexJobRequestedMode",
     "IndexJobStatus",
+    "IndexJobViewOutput",
     "IndexJobViewRecord",
     "NamespaceIdentity",
     "ObjectRecord",
