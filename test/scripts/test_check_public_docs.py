@@ -60,6 +60,14 @@ def test_mkdocs_navigation_tabs_contract():
         "guides/reference-deployments/index.md",
         {"NVIDIA DGX Spark": "guides/reference-deployments/dgx-spark.md"},
     ]
+    reference_source = (
+        REPO_ROOT / "docs" / "guides" / "reference-deployments" / "index.md"
+    ).read_text(encoding="utf-8")
+    reference_metadata = yaml.safe_load(reference_source.split("---", 2)[1])
+    assert reference_metadata == {
+        "title": "Reference Deployments",
+        "hide": ["toc"],
+    }
 
     retrieval_planning = next(
         item["Retrieval Planning"]

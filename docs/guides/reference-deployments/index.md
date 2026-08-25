@@ -1,3 +1,9 @@
+---
+title: Reference Deployments
+hide:
+  - toc
+---
+
 <!--
 SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 
