@@ -21,8 +21,10 @@ import sqlite3
 import stat
 import sys
 import tempfile
+from collections import deque
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -65,6 +67,16 @@ CatalogValidationError = StorageValidationError
 
 _DB_NOW_MS_SQL = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
 _SQLITE_INT64_MAX = 9_223_372_036_854_775_807
+_SQLITE_LEGACY_AUTOCOMMIT = getattr(
+    sqlite3,
+    "LEGACY_TRANSACTION_CONTROL",
+    None,
+)
+_SQLITE_CONNECT_OPTIONS = (
+    {"autocommit": _SQLITE_LEGACY_AUTOCOMMIT}
+    if _SQLITE_LEGACY_AUTOCOMMIT is not None
+    else {}
+)
 _MAX_VALIDATION_NAMESPACE_BYTES = 1_073_741_824
 _MAX_VALIDATION_SHM_BYTES = 16_777_216
 _VALIDATION_COPY_CHUNK_BYTES = 1_048_576
@@ -77,6 +89,259 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TEXT NOT NULL
 )
 """
+
+
+_TRANSACTION_NEW = "new"
+_TRANSACTION_BEGINNING = "beginning"
+_TRANSACTION_ACTIVE = "active"
+_TRANSACTION_COMMIT_PENDING = "commit-pending"
+_TRANSACTION_COMMITTING = "committing"
+_TRANSACTION_ROLLING_BACK = "rolling-back"
+_TRANSACTION_CLOSING = "closing"
+_TRANSACTION_COMMITTED = "committed"
+_TRANSACTION_ROLLED_BACK = "rolled-back"
+_TRANSACTION_CLOSED = "closed"
+
+
+class _SQLiteTransactionOwner:
+    """Drive one explicit transaction until completion is observable.
+
+    Cancellation may arrive immediately after any C-level BEGIN, COMMIT,
+    ROLLBACK, or close call. The owner therefore records intent separately and
+    repeatedly observes ``in_transaction`` until the transaction is absent or
+    the connection has been closed.
+    """
+
+    __slots__ = (
+        "ambient_error",
+        "body_succeeded",
+        "commit_attempted",
+        "connection",
+        "connection_closed",
+        "force_close",
+        "outcome",
+        "owner_pid",
+        "phase",
+        "primary_error",
+        "rollback_attempted",
+        "settled",
+        "settlement_runner",
+    )
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.owner_pid = os.getpid()
+        self.connection = connection
+        self.ambient_error = sys.exc_info()[1]
+        self.phase = _TRANSACTION_NEW
+        self.body_succeeded = False
+        self.commit_attempted = False
+        self.rollback_attempted = False
+        self.force_close = False
+        self.connection_closed = False
+        self.settled = False
+        self.outcome: str | None = None
+        self.primary_error: BaseException | None = None
+        # Construct the constant-stack C iterator before BEGIN can acquire a
+        # database lock.
+        self.settlement_runner = partial(_sqlite_transaction_outer_pass, self)
+
+    def require_owner_pid(self) -> None:
+        if os.getpid() != self.owner_pid:
+            raise CatalogError("SQLite transaction owner crossed a PID boundary")
+
+    def begin(self, *, immediate: bool) -> None:
+        self.require_owner_pid()
+        if not _sqlite_uses_legacy_autocommit(self.connection):
+            raise CatalogError(
+                "SQLite connection autocommit mode changed before transaction BEGIN"
+            )
+        self.phase = _TRANSACTION_BEGINNING
+        self.connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
+        self.phase = _TRANSACTION_ACTIVE
+
+    def mark_body_succeeded(self) -> None:
+        self.require_owner_pid()
+        self.body_succeeded = True
+        self.phase = _TRANSACTION_COMMIT_PENDING
+
+    def retain(self, error: BaseException, *, label: str) -> None:
+        self.require_owner_pid()
+        candidate = _first_transaction_error(
+            error,
+            ambient_error=self.ambient_error,
+        )
+        if self.primary_error is None:
+            self.primary_error = candidate
+            if candidate is not error:
+                _annotate_transaction_error(candidate, label, error)
+            return
+        _annotate_transaction_error(self.primary_error, label, error)
+
+
+def _first_transaction_error(
+    error: BaseException,
+    *,
+    ambient_error: BaseException | None,
+) -> BaseException:
+    """Recover an earlier ordinary error replaced by cleanup cancellation."""
+
+    candidate = error
+    seen: set[int] = set()
+    while not isinstance(candidate, Exception):
+        marker = id(candidate)
+        if marker in seen:
+            break
+        seen.add(marker)
+        try:
+            if BaseException.__getattribute__(candidate, "__suppress_context__"):
+                break
+            context = BaseException.__getattribute__(candidate, "__context__")
+        except BaseException:  # noqa: B036 - retaining the top error is safe
+            break
+        if not isinstance(context, BaseException):
+            break
+        # A transaction may be entered while an unrelated exception is being
+        # handled.  That ambient context is not part of this transaction's
+        # failure chain and must never replace its own KeyboardInterrupt or
+        # SystemExit primary.
+        if context is ambient_error:
+            break
+        candidate = context
+    return candidate
+
+
+def _annotate_transaction_error(
+    primary: BaseException,
+    label: str,
+    secondary: BaseException,
+) -> None:
+    if primary is secondary:
+        return
+    try:
+        add_note = getattr(BaseException, "add_note", None)
+        if add_note is not None:
+            add_note(primary, f"{label}: {secondary!r}")
+    except BaseException:  # noqa: B036 - diagnostics are secondary
+        return
+
+
+def _sqlite_transaction_pass(owner: _SQLiteTransactionOwner) -> bool:
+    """Advance one restartable commit, rollback, or close transition."""
+
+    owner.require_owner_pid()
+    if owner.connection_closed:
+        owner.phase = _TRANSACTION_CLOSED
+        owner.outcome = _TRANSACTION_CLOSED
+        owner.settled = True
+        return True
+
+    if owner.force_close:
+        owner.phase = _TRANSACTION_CLOSING
+        owner.connection.close()
+        owner.connection_closed = True
+        # Observe the completion marker on a new pass, including when
+        # cancellation lands immediately after close returns.
+        return False
+
+    try:
+        legacy_autocommit = _sqlite_uses_legacy_autocommit(owner.connection)
+    except sqlite3.ProgrammingError:
+        owner.connection_closed = True
+        raise
+    except BaseException as error:  # noqa: B036 - retry cancellation, close errors
+        if isinstance(error, Exception):
+            owner.force_close = True
+        raise
+    if not legacy_autocommit:
+        owner.force_close = True
+        raise CatalogError(
+            "SQLite connection autocommit mode changed during transaction"
+        )
+
+    try:
+        active = owner.connection.in_transaction
+    except sqlite3.ProgrammingError as error:
+        if owner.phase == _TRANSACTION_CLOSING:
+            owner.connection_closed = True
+            return False
+        owner.force_close = True
+        raise error
+    except BaseException as error:  # noqa: B036 - close unusable connections
+        if isinstance(error, Exception):
+            owner.force_close = True
+        raise
+
+    if not active:
+        if owner.commit_attempted and not owner.rollback_attempted:
+            owner.phase = _TRANSACTION_COMMITTED
+            owner.outcome = _TRANSACTION_COMMITTED
+        else:
+            owner.phase = _TRANSACTION_ROLLED_BACK
+            owner.outcome = _TRANSACTION_ROLLED_BACK
+        owner.settled = True
+        return True
+
+    if owner.body_succeeded and owner.primary_error is None:
+        owner.phase = _TRANSACTION_COMMITTING
+        owner.commit_attempted = True
+        owner.connection.commit()
+        # A return value is not proof of completion; the next pass observes it.
+        return False
+
+    owner.phase = _TRANSACTION_ROLLING_BACK
+    owner.rollback_attempted = True
+    try:
+        owner.connection.rollback()
+    except BaseException as error:  # noqa: B036 - retry cancellation
+        if isinstance(error, Exception):
+            owner.force_close = True
+        raise
+    return False
+
+
+def _sqlite_transaction_inner_pass(owner: _SQLiteTransactionOwner) -> bool:
+    try:
+        return _sqlite_transaction_pass(owner)
+    except BaseException as error:  # noqa: B036 - settle before propagation
+        owner.retain(error, label="SQLite transaction settlement also failed")
+        return owner.settled
+
+
+def _sqlite_transaction_outer_pass(owner: _SQLiteTransactionOwner) -> bool:
+    """Contain cancellation at the inner runner's Python call boundary."""
+
+    owner.require_owner_pid()
+    try:
+        active_error = sys.exc_info()[1]
+        if active_error is not None and active_error is not owner.ambient_error:
+            owner.retain(
+                active_error,
+                label="SQLite transaction exception dispatch was interrupted",
+            )
+        return _sqlite_transaction_inner_pass(owner)
+    except BaseException as error:  # noqa: B036 - C iterator retries
+        try:
+            owner.retain(
+                error,
+                label="SQLite transaction settlement boundary also failed",
+            )
+        except BaseException:  # noqa: B036 - retain again on the next pass
+            pass
+        return owner.settled
+
+
+def _settle_sqlite_transaction(owner: _SQLiteTransactionOwner) -> None:
+    """Drive an owner to a no-active-transaction state in constant stack."""
+
+    owner.require_owner_pid()
+    deque(iter(owner.settlement_runner, True), maxlen=0)
+
+
+def _sqlite_uses_legacy_autocommit(connection: sqlite3.Connection) -> bool:
+    legacy = _SQLITE_LEGACY_AUTOCOMMIT
+    if legacy is None:
+        return True
+    return connection.autocommit == legacy
 
 
 def _now() -> str:
@@ -1112,7 +1377,11 @@ def _catalog_schema_signature(
 def _canonical_catalog_schemas() -> dict[int, _CatalogSchemaSignature]:
     """Materialize the exact schema produced after each supported migration."""
 
-    connection = sqlite3.connect(":memory:", isolation_level=None)
+    connection = sqlite3.connect(
+        ":memory:",
+        isolation_level=None,
+        **_SQLITE_CONNECT_OPTIONS,
+    )
     try:
         connection.execute(_SCHEMA_MIGRATIONS_SQL)
         schemas: dict[int, _CatalogSchemaSignature] = {}
@@ -1557,6 +1826,8 @@ class SQLiteCatalog:
         single-linked regular inode across ``sqlite3.connect``.
         """
 
+        self._owner_pid = os.getpid()
+        self._transaction_owner: _SQLiteTransactionOwner | None = None
         if (
             isinstance(busy_timeout_ms, bool)
             or not isinstance(busy_timeout_ms, int)
@@ -1614,6 +1885,7 @@ class SQLiteCatalog:
                         timeout=busy_timeout_ms / 1_000,
                         isolation_level=None,
                         uri=True,
+                        **_SQLITE_CONNECT_OPTIONS,
                     )
                 except sqlite3.Error as exc:
                     raise CatalogError(
@@ -1654,6 +1926,7 @@ class SQLiteCatalog:
                 timeout=busy_timeout_ms / 1_000,
                 isolation_level=None,
                 uri=use_uri,
+                **_SQLITE_CONNECT_OPTIONS,
             )
         except sqlite3.Error as exc:
             if not create:
@@ -1731,7 +2004,15 @@ class SQLiteCatalog:
 
     def close(self) -> None:
         """Close the underlying database connection."""
+        self._require_owner_pid()
+        owner = self._transaction_owner
+        if owner is not None and not owner.settled:
+            raise CatalogError("cannot close a catalog with an active transaction")
         self._connection.close()
+
+    def _require_owner_pid(self) -> None:
+        if os.getpid() != self._owner_pid:
+            raise CatalogError("SQLite catalog connection crossed a PID boundary")
 
     def _require_existing_catalog_identity(self) -> None:
         observed_schema = _catalog_schema_signature(self._connection)
@@ -1781,6 +2062,7 @@ class SQLiteCatalog:
             )
 
     def __enter__(self) -> SQLiteCatalog:
+        self._require_owner_pid()
         return self
 
     def __exit__(self, *_exc: object) -> None:
@@ -1789,6 +2071,7 @@ class SQLiteCatalog:
     @property
     def schema_version(self) -> int:
         """Return the latest successfully applied schema migration."""
+        self._require_owner_pid()
         row = self._connection.execute(
             "SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations"
         ).fetchone()
@@ -1796,16 +2079,40 @@ class SQLiteCatalog:
 
     @contextmanager
     def _transaction(self, *, immediate: bool = True) -> Iterator[None]:
-        if self._connection.in_transaction:
+        self._require_owner_pid()
+        existing_owner = self._transaction_owner
+        if existing_owner is not None and existing_owner.settled:
+            self._transaction_owner = None
+            existing_owner = None
+        if existing_owner is not None or self._connection.in_transaction:
             raise CatalogError("nested catalog transactions are not supported")
-        self._connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
+        owner = _SQLiteTransactionOwner(self._connection)
         try:
-            yield
-            self._connection.commit()
-        except BaseException:
-            if self._connection.in_transaction:
-                self._connection.rollback()
-            raise
+            try:
+                self._transaction_owner = owner
+                owner.begin(immediate=immediate)
+                yield
+                self._require_owner_pid()
+                owner.mark_body_succeeded()
+            except BaseException as error:  # noqa: B036 - preserve first failure
+                self._require_owner_pid()
+                owner.retain(error, label="SQLite transaction body also failed")
+            _settle_sqlite_transaction(owner)
+            # Keep cleanup in the protected path: cancellation can arrive on
+            # the first Python opcode after the C settlement runner returns.
+            if self._transaction_owner is owner:
+                self._transaction_owner = None
+        except BaseException as error:  # noqa: B036 - contain cleanup interruption
+            self._require_owner_pid()
+            owner.retain(
+                error,
+                label="SQLite transaction exception capture also failed",
+            )
+            _settle_sqlite_transaction(owner)
+            if self._transaction_owner is owner:
+                self._transaction_owner = None
+        if owner.primary_error is not None:
+            raise owner.primary_error
 
     def _migrate(self) -> None:
         with self._transaction():
