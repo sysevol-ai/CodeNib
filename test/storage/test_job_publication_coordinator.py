@@ -688,10 +688,6 @@ def test_trace_injected_callback_failure_remains_exact(
 ) -> None:
     outputs = (_artifact("bm25", "1", b"primary"),)
     completed = _completed_job(outputs)
-    store = _ExceptionSwallowingStore([])
-    catalog = _CatalogSpy(completed, store, [])
-    failure = KeyboardInterrupt(f"trace injection at {trace_point}")
-    injected = False
     inner_code = next(
         constant
         for constant in publish_job_artifacts.__code__.co_consts
@@ -701,6 +697,34 @@ def test_trace_injected_callback_failure_remains_exact(
         instruction.offset: instruction
         for instruction in dis.get_instructions(inner_code)
     }
+
+    def warm_inner_opcode_tracing(frame, event: str, arg):
+        if event == "call" and frame.f_code is inner_code:
+            frame.f_trace_opcodes = True
+        return warm_inner_opcode_tracing
+
+    warm_store = _RetainingOnlyStore([])
+    warm_catalog = _CatalogSpy(completed, warm_store, [])
+    previous_trace = sys.gettrace()
+    sys.settrace(warm_inner_opcode_tracing)
+    try:
+        warm_result = publish_job_artifacts(
+            completed.job_id,
+            catalog=warm_catalog,  # type: ignore[arg-type]
+            object_store=warm_store,
+            owner_id="warm-worker",
+            fencing_token=1,
+            outputs=outputs,
+        )
+    finally:
+        sys.settrace(previous_trace)
+    assert warm_result is completed
+    assert warm_catalog.calls == 1
+
+    store = _ExceptionSwallowingStore([])
+    catalog = _CatalogSpy(completed, store, [])
+    failure = KeyboardInterrupt(f"trace injection at {trace_point}")
+    injected = False
 
     def inject_at_inner_boundary(frame, event: str, arg):
         nonlocal injected
