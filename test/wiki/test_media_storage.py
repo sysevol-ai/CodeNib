@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 
 import pytest
 
@@ -135,6 +136,16 @@ def test_save_and_load_multimodal_knowledge_bundle_round_trips(tmp_path):
     assert json.loads(path.read_text(encoding="utf-8"))["schema"] == (
         MULTIMODAL_KNOWLEDGE_BUNDLE_SCHEMA
     )
+
+
+def test_save_multimodal_knowledge_bundle_preserves_existing_permissions(tmp_path):
+    path = tmp_path / "bundle.json"
+    path.write_text("old generation", encoding="utf-8")
+    path.chmod(0o640)
+
+    save_multimodal_knowledge_bundle(_bundle(), path)
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
 
 
 def test_validate_multimodal_knowledge_bundle_rejects_tampering():

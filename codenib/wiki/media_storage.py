@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+import stat
 import tempfile
 from hashlib import sha256
 from pathlib import Path
@@ -92,6 +93,14 @@ def save_multimodal_knowledge_bundle(
     )
     if len(payload) > _MAX_BUNDLE_BYTES:
         raise ValueError("multimodal knowledge bundle exceeds the byte limit")
+    try:
+        existing = os.stat(destination, follow_symlinks=False)
+    except FileNotFoundError:
+        existing_mode = None
+    else:
+        existing_mode = (
+            stat.S_IMODE(existing.st_mode) if stat.S_ISREG(existing.st_mode) else None
+        )
     fd, temp_name = tempfile.mkstemp(
         prefix=f".{destination.name}.",
         suffix=".tmp",
@@ -101,6 +110,8 @@ def save_multimodal_knowledge_bundle(
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
             handle.flush()
+            if existing_mode is not None:
+                os.fchmod(handle.fileno(), existing_mode)
             os.fsync(handle.fileno())
         os.replace(temp_name, destination)
     finally:
