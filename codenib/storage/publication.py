@@ -248,17 +248,35 @@ def publish_job_artifacts(
     if not isinstance(object_store, ReceiptRetainingObjectStore):
         raise TypeError("index job publication requires ReceiptRetainingObjectStore")
 
-    callback_called = False
+    callback_invocations = 0
+    callback_phase_open = True
+    callback_violation: StorageIntegrityError | None = None
+    primary_callback_failure: BaseException | None = None
     unset = object()
     attested_result: object = unset
 
-    def publish_retained() -> IndexJobRecord:
-        nonlocal attested_result, callback_called
-        if callback_called:
-            raise StorageIntegrityError(
+    # Keep the complete publication state machine in an inner call so the
+    # callback wrapper can retain the exact BaseException from every inner
+    # opcode, including its return boundary.
+    def publish_retained_inner() -> IndexJobRecord:
+        nonlocal attested_result, callback_invocations
+        nonlocal callback_violation
+        callback_invocations += 1
+        if not callback_phase_open:
+            violation = StorageIntegrityError(
+                "object store invoked the publication callback outside its "
+                "retention scope"
+            )
+            if callback_violation is None:
+                callback_violation = violation
+            raise violation
+        if callback_invocations != 1:
+            violation = StorageIntegrityError(
                 "object store invoked the publication callback more than once"
             )
-        callback_called = True
+            if callback_violation is None:
+                callback_violation = violation
+            raise violation
         completed = catalog.publish_job_outputs(
             normalized_job_id,
             owner_id=normalized_owner,
@@ -273,17 +291,106 @@ def publish_job_artifacts(
         attested_result = completed
         return completed
 
-    completed = object_store.retain_receipts(retained_receipts, publish_retained)
-    if not callback_called or attested_result is unset:
+    def publish_retained() -> IndexJobRecord:
+        nonlocal callback_invocations, callback_violation
+        nonlocal primary_callback_failure
+        previous_invocations = callback_invocations
+        try:
+            return publish_retained_inner()
+        except BaseException as exc:
+            invocation_number = previous_invocations + 1
+            if callback_invocations < invocation_number:
+                callback_invocations = invocation_number
+            if callback_phase_open and invocation_number == 1:
+                primary_callback_failure = exc
+            else:
+                if callback_violation is None:
+                    callback_violation = StorageIntegrityError(
+                        "object store invoked the publication callback more than once"
+                        if callback_phase_open
+                        else "object store invoked the publication callback outside "
+                        "its retention scope"
+                    )
+                if exc is not callback_violation:
+                    _add_secondary_exception_note(
+                        callback_violation,
+                        exc,
+                        "callback invocation failure",
+                    )
+            raise
+
+    retained_result: object = unset
+    retention_failure: BaseException | None = None
+    try:
+        retained_result = object_store.retain_receipts(
+            retained_receipts,
+            publish_retained,
+        )
+    except BaseException as exc:  # noqa: B036 - re-raised after retention cleanup
+        retention_failure = exc
+    finally:
+        callback_phase_open = False
+
+    if primary_callback_failure is not None:
+        if callback_violation is not None:
+            _add_secondary_exception_note(
+                primary_callback_failure,
+                callback_violation,
+                "object-store callback contract violation",
+            )
+        if (
+            retention_failure is not None
+            and retention_failure is not primary_callback_failure
+            and retention_failure is not callback_violation
+        ):
+            _add_secondary_exception_note(
+                primary_callback_failure,
+                retention_failure,
+                "object-store retention failure",
+            )
+        raise primary_callback_failure
+    if callback_violation is not None:
+        if (
+            retention_failure is not None
+            and retention_failure is not callback_violation
+        ):
+            _add_secondary_exception_note(
+                callback_violation,
+                retention_failure,
+                "object-store retention failure",
+            )
+        raise callback_violation
+    if retention_failure is not None:
+        raise retention_failure
+    if callback_invocations == 0:
         raise StorageIntegrityError(
             "object store did not invoke the retained publication callback"
         )
-    if completed is not attested_result:
+    if attested_result is unset:
+        raise StorageIntegrityError(
+            "object store did not complete the retained publication callback"
+        )
+    if retained_result is not attested_result:
         raise StorageIntegrityError(
             "object store replaced the retained publication callback result"
         )
     # This exact object was authenticated inside the retention callback.
     return attested_result  # type: ignore[return-value]
+
+
+def _add_secondary_exception_note(
+    primary: BaseException,
+    secondary: BaseException,
+    label: str,
+) -> None:
+    """Best-effort note a secondary failure without replacing the primary one."""
+
+    try:
+        add_note = getattr(primary, "add_note", None)
+        if callable(add_note):
+            add_note(f"{label}: {type(secondary).__name__}")
+    except BaseException:  # noqa: B036 - notes must never replace the primary failure
+        pass
 
 
 def _freeze_outputs(

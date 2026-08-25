@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import dis
 import hashlib
+import sys
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -186,10 +188,13 @@ class _CatalogSpy:
         completed: IndexJobRecord,
         store: _RetainingOnlyStore | None,
         events: list[object],
+        *,
+        failure: BaseException | None = None,
     ) -> None:
         self.completed = completed
         self.store = store
         self.events = events
+        self.failure = failure
         self.calls = 0
         self.outputs = None
 
@@ -200,6 +205,8 @@ class _CatalogSpy:
         self.events.append("catalog-enter")
         self.outputs = kwargs["outputs"]
         assert job_id == self.completed.job_id
+        if self.failure is not None:
+            raise self.failure
         self.events.append("catalog-return")
         return self.completed
 
@@ -220,6 +227,8 @@ class _ReturnSubstitutingStore(_RetainingOnlyStore):
 
 
 class _ExceptionSwallowingStore(_RetainingOnlyStore):
+    callback_failure: BaseException | None = None
+
     def retain_receipts(
         self,
         expected: tuple[BlobInfo, ...],
@@ -230,11 +239,108 @@ class _ExceptionSwallowingStore(_RetainingOnlyStore):
         try:
             try:
                 callback()
-            except BaseException:  # noqa: B036 - deliberately models a hostile store
+            except BaseException as exc:  # noqa: B036 - hostile store fixture
+                self.callback_failure = exc
                 return object()
             raise AssertionError("the publication callback was expected to fail")
         finally:
             self.active = False
+
+
+class _CleanupFailingStore(_ExceptionSwallowingStore):
+    def __init__(
+        self,
+        events: list[object],
+        cleanup_failure: BaseException,
+        *,
+        invoke_callback: bool = True,
+    ) -> None:
+        super().__init__(events)
+        self.cleanup_failure = cleanup_failure
+        self.invoke_callback = invoke_callback
+
+    def retain_receipts(
+        self,
+        expected: tuple[BlobInfo, ...],
+        callback: Callable[[], Any],
+    ) -> object:
+        self.expected = expected
+        self.active = True
+        try:
+            if self.invoke_callback:
+                try:
+                    callback()
+                except BaseException as exc:  # noqa: B036 - hostile store fixture
+                    self.callback_failure = exc
+            if self.callback_failure is not None:
+                raise self.cleanup_failure from self.callback_failure
+            raise self.cleanup_failure
+        finally:
+            self.active = False
+
+
+class _DoubleInvokingExceptionSwallowingStore(_RetainingOnlyStore):
+    second_failure: BaseException | None = None
+
+    def retain_receipts(
+        self,
+        expected: tuple[BlobInfo, ...],
+        callback: Callable[[], Any],
+    ) -> object:
+        self.expected = expected
+        self.active = True
+        try:
+            first_result = callback()
+            try:
+                callback()
+            except BaseException as exc:  # noqa: B036 - hostile store fixture
+                self.second_failure = exc
+            else:
+                raise AssertionError("the second callback invocation should fail")
+            return first_result
+        finally:
+            self.active = False
+
+
+class _CallbackFailureThenSecondInvokingStore(_ExceptionSwallowingStore):
+    second_failure: BaseException | None = None
+
+    def retain_receipts(
+        self,
+        expected: tuple[BlobInfo, ...],
+        callback: Callable[[], Any],
+    ) -> object:
+        self.expected = expected
+        self.active = True
+        try:
+            try:
+                callback()
+            except BaseException as exc:  # noqa: B036 - hostile store fixture
+                self.callback_failure = exc
+            else:
+                raise AssertionError("the first callback invocation should fail")
+            try:
+                callback()
+            except BaseException as exc:  # noqa: B036 - hostile store fixture
+                self.second_failure = exc
+            else:
+                raise AssertionError("the second callback invocation should fail")
+            return object()
+        finally:
+            self.active = False
+
+
+class _DeferredCallbackStore(_RetainingOnlyStore):
+    callback: Callable[[], Any] | None = None
+
+    def retain_receipts(
+        self,
+        expected: tuple[BlobInfo, ...],
+        callback: Callable[[], Any],
+    ) -> object:
+        self.expected = expected
+        self.callback = callback
+        return object()
 
 
 def test_retention_encloses_catalog_transaction_and_return_attestation() -> None:
@@ -468,7 +574,7 @@ def test_retaining_store_cannot_swallow_a_callback_failure() -> None:
     store = _ExceptionSwallowingStore([])
     catalog = _CatalogSpy(wrong, store, [])
 
-    with pytest.raises(StorageIntegrityError):
+    with pytest.raises(StorageIntegrityError) as raised:
         publish_job_artifacts(
             completed.job_id,
             catalog=catalog,  # type: ignore[arg-type]
@@ -479,6 +585,195 @@ def test_retaining_store_cannot_swallow_a_callback_failure() -> None:
         )
 
     assert catalog.calls == 1
+    assert raised.value is store.callback_failure
+
+
+def test_retaining_store_cannot_swallow_a_second_callback_invocation() -> None:
+    outputs = (_artifact("bm25", "1", b"primary"),)
+    completed = _completed_job(outputs)
+    store = _DoubleInvokingExceptionSwallowingStore([])
+    catalog = _CatalogSpy(completed, store, [])
+
+    with pytest.raises(StorageIntegrityError, match="more than once") as raised:
+        publish_job_artifacts(
+            completed.job_id,
+            catalog=catalog,  # type: ignore[arg-type]
+            object_store=store,
+            owner_id="worker",
+            fencing_token=1,
+            outputs=outputs,
+        )
+
+    assert catalog.calls == 1
+    assert raised.value is store.second_failure
+
+
+def test_retaining_store_cannot_defer_the_callback_past_retention() -> None:
+    outputs = (_artifact("bm25", "1", b"primary"),)
+    completed = _completed_job(outputs)
+    store = _DeferredCallbackStore([])
+    catalog = _CatalogSpy(completed, store, [])
+
+    with pytest.raises(StorageIntegrityError, match="did not invoke"):
+        publish_job_artifacts(
+            completed.job_id,
+            catalog=catalog,  # type: ignore[arg-type]
+            object_store=store,
+            owner_id="worker",
+            fencing_token=1,
+            outputs=outputs,
+        )
+
+    assert store.callback is not None
+    with pytest.raises(StorageIntegrityError, match="outside its retention scope"):
+        store.callback()
+    assert catalog.calls == 0
+
+
+@pytest.mark.parametrize("failure_type", (KeyboardInterrupt, SystemExit))
+@pytest.mark.parametrize(
+    "retention_outcome",
+    ("return", "cleanup_failure", "second_attempt"),
+)
+def test_callback_base_exception_remains_the_exact_primary_failure(
+    failure_type: type[BaseException],
+    retention_outcome: str,
+) -> None:
+    outputs = (_artifact("bm25", "1", b"primary"),)
+    completed = _completed_job(outputs)
+    failure = failure_type("catalog callback failure")
+    if retention_outcome == "return":
+        store: _ExceptionSwallowingStore = _ExceptionSwallowingStore([])
+    elif retention_outcome == "cleanup_failure":
+        store = _CleanupFailingStore(
+            [],
+            RuntimeError("retention cleanup failure"),
+        )
+    else:
+        store = _CallbackFailureThenSecondInvokingStore([])
+    catalog = _CatalogSpy(completed, store, [], failure=failure)
+
+    with pytest.raises(failure_type) as raised:
+        publish_job_artifacts(
+            completed.job_id,
+            catalog=catalog,  # type: ignore[arg-type]
+            object_store=store,
+            owner_id="worker",
+            fencing_token=1,
+            outputs=outputs,
+        )
+
+    assert raised.value is failure
+    assert store.callback_failure is failure
+    assert catalog.calls == 1
+    if retention_outcome == "second_attempt":
+        assert isinstance(
+            getattr(store, "second_failure", None),
+            StorageIntegrityError,
+        )
+
+
+@pytest.mark.parametrize(
+    ("trace_point", "expected_catalog_calls"),
+    (
+        ("first_opcode", 0),
+        ("attested_assignment", 1),
+        ("return_opcode", 1),
+        ("return_event", 1),
+    ),
+)
+def test_trace_injected_callback_failure_remains_exact(
+    trace_point: str,
+    expected_catalog_calls: int,
+) -> None:
+    outputs = (_artifact("bm25", "1", b"primary"),)
+    completed = _completed_job(outputs)
+    store = _ExceptionSwallowingStore([])
+    catalog = _CatalogSpy(completed, store, [])
+    failure = KeyboardInterrupt(f"trace injection at {trace_point}")
+    injected = False
+    inner_code = next(
+        constant
+        for constant in publish_job_artifacts.__code__.co_consts
+        if getattr(constant, "co_name", None) == "publish_retained_inner"
+    )
+    instructions = {
+        instruction.offset: instruction
+        for instruction in dis.get_instructions(inner_code)
+    }
+
+    def inject_at_inner_boundary(frame, event: str, arg):
+        nonlocal injected
+        if frame.f_code is not inner_code:
+            return None
+        frame.f_trace_opcodes = True
+        should_inject = trace_point == "return_event" and event == "return"
+        if event == "opcode":
+            instruction = instructions[frame.f_lasti]
+            should_inject = (
+                trace_point == "first_opcode"
+                or (
+                    trace_point == "attested_assignment"
+                    and instruction.opname == "STORE_DEREF"
+                    and instruction.argval == "attested_result"
+                )
+                or (
+                    trace_point == "return_opcode"
+                    and instruction.opname == "RETURN_VALUE"
+                )
+            )
+        if should_inject and not injected:
+            injected = True
+            raise failure
+        return inject_at_inner_boundary
+
+    previous_trace = sys.gettrace()
+    try:
+        sys.settrace(inject_at_inner_boundary)
+        with pytest.raises(KeyboardInterrupt) as raised:
+            publish_job_artifacts(
+                completed.job_id,
+                catalog=catalog,  # type: ignore[arg-type]
+                object_store=store,
+                owner_id="worker",
+                fencing_token=1,
+                outputs=outputs,
+            )
+    finally:
+        sys.settrace(previous_trace)
+
+    assert injected
+    assert raised.value is failure
+    assert store.callback_failure is failure
+    assert catalog.calls == expected_catalog_calls
+
+
+@pytest.mark.parametrize("invoke_callback", (False, True))
+def test_retention_failure_keeps_exact_identity_without_callback_failure(
+    invoke_callback: bool,
+) -> None:
+    outputs = (_artifact("bm25", "1", b"primary"),)
+    completed = _completed_job(outputs)
+    failure = RuntimeError("retention failure")
+    store = _CleanupFailingStore(
+        [],
+        failure,
+        invoke_callback=invoke_callback,
+    )
+    catalog = _CatalogSpy(completed, store, [])
+
+    with pytest.raises(RuntimeError) as raised:
+        publish_job_artifacts(
+            completed.job_id,
+            catalog=catalog,  # type: ignore[arg-type]
+            object_store=store,
+            owner_id="worker",
+            fencing_token=1,
+            outputs=outputs,
+        )
+
+    assert raised.value is failure
+    assert catalog.calls == int(invoke_callback)
 
 
 @pytest.mark.parametrize("changed", ("job_id", "owner_id"))

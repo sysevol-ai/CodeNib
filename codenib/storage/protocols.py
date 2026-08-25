@@ -173,6 +173,12 @@ class ReceiptRetainingObjectStore(ReceiptVerifyingObjectStore, Protocol):
         starts, and its canonical storage key remains resolvable until the
         callback returns or raises.  This callback-shaped lease prevents a
         caller from accidentally escaping a backend-specific pin token.
+
+        Implementations must invoke ``callback`` synchronously and exactly
+        once, and must not return while that invocation is still running.  The
+        method returns the exact object returned by ``callback`` or propagates
+        the exact exception it raises; retention cleanup must not replace a
+        callback failure.
         """
 
         ...
