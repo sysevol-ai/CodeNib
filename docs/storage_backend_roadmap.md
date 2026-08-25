@@ -1131,20 +1131,35 @@ runtime, vector, graph, or default-route wiring. Exact retry remains historical:
 a committed BM25 job returns its original snapshot without moving a ref that a
 later valid publication has already advanced.
 
+The matching vector adapter now publishes one exact current schema-8 compiler
+cache into the same caller-created, caller-acquired fenced job boundary. It
+requires exactly one required `full` vector request and derives the complete
+provider/model/route/revision/load-policy compatibility profile from the
+canonical cache import plan rather than accepting those identities as caller
+options. Strict recapture copies the canonical root config and each non-empty
+level's config, ordered JSON documents, and FAISS bytes; the resulting bundle
+and every per-file member receipt remain retained through atomic publication.
+FAISS bytes stay parser-inert, legacy pickle state is excluded, and this path
+neither loads an embedding model or client nor grants native vector runtime
+authorization. Exact replay returns the job's historical snapshot after later
+ref advancement. This remains an explicit ingress adapter only: it adds no
+builder, worker, CLI, runtime, graph, or default-route wiring.
+
 ### M2: Immutable generation publication
 
 Status: in progress. The receipt-retained, fenced SQLite publication primitive
-and the explicit BM25 compiler-cache adapter are implemented; vector, graph,
-generic builder, and production job/runtime wiring remain.
+and the explicit BM25 and schema-8 vector compiler-cache adapters are
+implemented; graph, generic builder, and production job/runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility
   inputs and prove every semantic axis participates in the profile identity.
-  The exact BM25 compiler-cache profile path is implemented; vector, graph, and
-  generic builder adapters remain.
+  The exact BM25 and schema-8 vector compiler-cache profile paths are
+  implemented; graph and generic builder adapters remain.
 - Publish whole-view BM25, FAISS, and graph artifacts through the catalog and
-  object store without changing their ranking/query semantics. BM25 now has an
-  explicit fenced compiler-cache ingress; FAISS and graph ingress remain.
+  object store without changing their ranking/query semantics. BM25 and
+  parser-inert FAISS now have explicit fenced compiler-cache ingress; graph
+  ingress remains.
 - Use the implemented receipt-retaining coordinator for each adapter so exact
   digest, size, storage key, and media type remain retained through atomic
   catalog publication; catalog metadata alone must never make missing bytes

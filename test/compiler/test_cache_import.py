@@ -20,6 +20,7 @@ import pytest
 
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
+import codenib.index.embedding.vector_store as vector_store_module
 from codenib import LocalWorkspaceProvider
 from codenib import cli as cli_module
 from codenib._captured_directory import (
@@ -39,6 +40,7 @@ from codenib.compiler.cache_import import (
     CompilerCacheJobPublicationResult,
     CompilerCacheMultiViewImportResult,
     CompilerCacheTopologyGuard,
+    CompilerCacheVectorJobPublicationResult,
     CompilerCacheViewRecaptureResult,
     CompilerRetainedPublicationResult,
     compile_and_import_repo,
@@ -46,6 +48,7 @@ from codenib.compiler.cache_import import (
     import_compiler_cache,
     import_compiler_cache_bm25,
     publish_compiler_cache_bm25_job,
+    publish_compiler_cache_vector_job,
 )
 from codenib.compiler.index_builders import (
     BM25IndexBuilder,
@@ -59,6 +62,7 @@ from codenib.compiler.manifest_materialization import (
     materialize_retained_repo_manifest_ref,
 )
 from codenib.compiler.manifest_storage import (
+    VECTOR_PROFILE_AXES,
     RepoManifestImportPlan,
     plan_repo_manifest_import_bytes,
 )
@@ -624,6 +628,10 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         compiler_module.CompilerCacheJobPublicationResult
         is CompilerCacheJobPublicationResult
     )
+    assert (
+        compiler_module.CompilerCacheVectorJobPublicationResult
+        is CompilerCacheVectorJobPublicationResult
+    )
     assert compiler_module.compile_and_import_repo is compile_and_import_repo
     assert compiler_module.CompilerCacheImportResult is CompilerCacheImportResult
     assert (
@@ -643,6 +651,10 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
     assert (
         compiler_module.publish_compiler_cache_bm25_job
         is publish_compiler_cache_bm25_job
+    )
+    assert (
+        compiler_module.publish_compiler_cache_vector_job
+        is publish_compiler_cache_vector_job
     )
     assert list(inspect.signature(import_compiler_cache).parameters)[:11] == [
         "cache_dir",
@@ -685,6 +697,32 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         "object_store",
         "namespace_name",
     ]
+    vector_job_signature = inspect.signature(publish_compiler_cache_vector_job)
+    assert list(vector_job_signature.parameters)[:14] == [
+        "cache_dir",
+        "job_id",
+        "owner_id",
+        "fencing_token",
+        "repository_source",
+        "vector_output_owner",
+        "context_output_owner",
+        "vector_destination",
+        "context_destination",
+        "workspace_provider",
+        "repository_key",
+        "catalog",
+        "object_store",
+        "namespace_name",
+    ]
+    assert not {
+        "ref_name",
+        "expected_generation",
+        "embedding_provider",
+        "embedding_model",
+        "embedding_revision",
+        "embedding_load_policy",
+        "native_index_authorization",
+    } & set(vector_job_signature.parameters)
     compile_signature = inspect.signature(compile_and_import_repo)
     assert list(compile_signature.parameters)[:4] == [
         "compiler",
@@ -2483,6 +2521,795 @@ def _multiview_compiler_fixture(
         compiler=compiler,
         commit=commit,
     )
+
+
+@dataclass
+class _VectorJobFixture:
+    compiled: _MultiViewCompilerFixture
+    source: RepositorySourceBinding
+    workspace: Path
+    provider: _TestWorkspaceProvider
+    vector_owner: PublishedWorkspaceReceiptOwner
+    context_owner: PublishedWorkspaceReceiptOwner
+
+    @property
+    def cache(self) -> Path:
+        return self.compiled.cache
+
+    @property
+    def repository(self) -> Path:
+        return self.compiled.repository
+
+    @property
+    def vector_destination(self) -> Path:
+        return self.workspace / "published-vector"
+
+    @property
+    def context_destination(self) -> Path:
+        return self.workspace / "published-vector-context"
+
+    def close(self) -> None:
+        self.context_owner.close()
+        self.vector_owner.close()
+        self.source.close()
+
+
+def _vector_job_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    marker: str,
+) -> _VectorJobFixture:
+    compiled = _multiview_compiler_fixture(
+        tmp_path,
+        monkeypatch,
+        marker=marker,
+    )
+    source = capture_repository_source(
+        compiled.repository,
+        exclude_roots=(compiled.cache,),
+    )
+    workspace = tmp_path / "vector-job-workspace"
+    workspace.mkdir(mode=0o700)
+    return _VectorJobFixture(
+        compiled=compiled,
+        source=source,
+        workspace=workspace,
+        provider=_TestWorkspaceProvider(),
+        vector_owner=PublishedWorkspaceReceiptOwner(),
+        context_owner=PublishedWorkspaceReceiptOwner(),
+    )
+
+
+def _expected_vector_job_plan(
+    fixture: _VectorJobFixture,
+) -> RepoManifestImportPlan:
+    manifest = RepoManifest.load(fixture.cache / "repo_manifest.json")
+    entry = manifest.indexes["vector"]
+    planned = cache_import_module._plan_cache_view(
+        "vector",
+        fixture.cache / "vector",
+        fixture.vector_destination,
+        repository_source=fixture.source,
+        view_config=entry.config,
+        forbidden_paths=(),
+        environ={},
+    )
+    _portable, payload = cache_import_module._portable_manifest(
+        manifest,
+        views=("vector",),
+        planned_views={"vector": planned},
+    )
+    return plan_repo_manifest_import_bytes(payload, views=("vector",))
+
+
+def _register_vector_job_subject(
+    catalog: SQLiteCatalog,
+    fixture: _VectorJobFixture,
+    plan: RepoManifestImportPlan,
+) -> tuple[str, str, str]:
+    repository_id = catalog.create_repository(_REPOSITORY_KEY)
+    source_revision_id = catalog.create_source_revision(
+        repository_id,
+        commit_sha=None,
+        dirty=True,
+        source_fingerprint=fixture.source.fingerprint,
+    )
+    intent = plan.views[0]
+    profile_id = catalog.create_view_profile(
+        "vector",
+        intent.profile.config,
+        name=intent.profile.name,
+    )
+    assert profile_id == intent.profile_id
+    return repository_id, source_revision_id, profile_id
+
+
+def _create_vector_job(
+    catalog: SQLiteCatalog,
+    *,
+    repository_id: str,
+    source_revision_id: str,
+    profile_id: str,
+    idempotency_key: str = "compiler-cache-vector",
+    view_type: str = "vector",
+    requested_mode: str = "full",
+    required: bool = True,
+    expected_ref_generation: int = 0,
+    extra_views: dict[str, dict[str, object]] | None = None,
+):
+    views: dict[str, dict[str, object]] = {
+        view_type: {
+            "profile_id": profile_id,
+            "requested_mode": requested_mode,
+            "required": required,
+        }
+    }
+    if extra_views:
+        views.update(copy.deepcopy(extra_views))
+    return catalog.create_job(
+        repository_id,
+        source_revision_id,
+        idempotency_key,
+        {"contract": INDEX_JOB_REQUEST_CONTRACT, "views": views},
+        expected_ref_generation=expected_ref_generation,
+    )
+
+
+def _publish_vector_job(
+    fixture: _VectorJobFixture,
+    *,
+    job_id: str,
+    owner_id: str,
+    fencing_token: int,
+    catalog: SQLiteCatalog,
+    cas: LocalCAS,
+    vector_owner: PublishedWorkspaceReceiptOwner | None = None,
+    context_owner: PublishedWorkspaceReceiptOwner | None = None,
+    vector_destination: Path | None = None,
+    context_destination: Path | None = None,
+) -> CompilerCacheVectorJobPublicationResult:
+    return publish_compiler_cache_vector_job(
+        fixture.cache,
+        job_id=job_id,
+        owner_id=owner_id,
+        fencing_token=fencing_token,
+        repository_source=fixture.source,
+        vector_output_owner=vector_owner or fixture.vector_owner,
+        context_output_owner=context_owner or fixture.context_owner,
+        vector_destination=vector_destination or fixture.vector_destination,
+        context_destination=context_destination or fixture.context_destination,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        catalog=catalog,
+        object_store=cas,
+        environ={},
+    )
+
+
+def _seed_vector_snapshot(
+    catalog: SQLiteCatalog,
+    cas: LocalCAS,
+    *,
+    repository_id: str,
+    source_revision_id: str,
+    profile_id: str,
+    payload: bytes,
+    expected_generation: int,
+) -> tuple[dict[str, object], str]:
+    receipt = cas.put_bytes(payload)
+    catalog.register_object(
+        receipt.digest,
+        storage_key=receipt.storage_key,
+        byte_size=receipt.byte_size,
+        media_type="application/x-test-old-vector",
+    )
+    generation_id = catalog.stage_view_generation(
+        repository_id,
+        source_revision_id,
+        profile_id,
+        "vector",
+        receipt.digest,
+        schema_version=f"old-vector-{expected_generation + 1}",
+        metadata={"seed_generation": expected_generation + 1},
+    )
+    publication = catalog.publish_snapshot(
+        repository_id,
+        source_revision_id,
+        (generation_id,),
+        expected_generation=expected_generation,
+    )
+    return publication, receipt.digest
+
+
+def test_compiler_cache_vector_job_publishes_schema8_closure_and_replays(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker="VECTOR_JOB")
+    retry_vector_owner = PublishedWorkspaceReceiptOwner()
+    retry_context_owner = PublishedWorkspaceReceiptOwner()
+    plan = _expected_vector_job_plan(fixture)
+
+    def native_or_builder_must_not_run(*_args, **_kwargs):
+        raise AssertionError("vector job adapter invoked a native parser or builder")
+
+    monkeypatch.setattr(
+        vector_store_module.faiss,
+        "read_index",
+        native_or_builder_must_not_run,
+    )
+    monkeypatch.setattr(
+        vector_store_module.compat_pickle,
+        "load",
+        native_or_builder_must_not_run,
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.builders.build_hierarchical_vector_store",
+        native_or_builder_must_not_run,
+    )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            _RetentionAwareJobCatalog(
+                tmp_path / "catalog.sqlite",
+                cas,
+            ) as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            job = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            lease = catalog.acquire_job_lease(
+                job.job_id,
+                owner_id="vector-worker-1",
+                lease_duration_ms=60_000,
+            )
+
+            result = _publish_vector_job(
+                fixture,
+                job_id=job.job_id,
+                owner_id=lease.owner_id,
+                fencing_token=lease.fencing_token,
+                catalog=catalog,
+                cas=cas,
+            )
+
+            assert type(result) is CompilerCacheVectorJobPublicationResult
+            assert result.job.status is IndexJobStatus.SUCCEEDED
+            assert result.job.job_id == job.job_id
+            assert result.job.result_snapshot_id is not None
+            assert result.manifest.to_dict() == result.import_plan.manifest.to_dict()
+            assert result.manifest.repo_path == "source"
+            assert tuple(result.manifest.indexes) == ("vector",)
+            assert result.import_plan.plan_digest == plan.plan_digest
+            assert result.import_plan.views[0].profile.config["builder_schema"] == 8
+            compatibility = result.import_plan.views[0].profile.config["compatibility"]
+            assert set(VECTOR_PROFILE_AXES) - {"builder_schema"} <= set(compatibility)
+            assert compatibility["embedding_load_policy"] == {
+                "revision": None,
+                "trust_remote_code": False,
+            }
+            assert result.recapture.output_view == fixture.vector_destination
+            expected_paths = (
+                "config_test__model.json",
+                "l2/config_test__model.json",
+                "l2/documents_test__model.json",
+                "l2/index_test__model.faiss",
+            )
+            assert tuple(record.path for record in result.recapture.output_records) == (
+                expected_paths
+            )
+            assert not any(
+                record.path.endswith(".pkl")
+                or "cache" in record.path
+                or "incremental_state" in record.path
+                for record in result.recapture.output_records
+            )
+            assert len(cas.put_chunk_receipts) == len(expected_paths) + 1
+            assert len({receipt.digest for receipt in cas.put_chunk_receipts}) == 5
+            expected_receipts = tuple(
+                sorted(cas.put_chunk_receipts, key=lambda receipt: receipt.digest)
+            )
+            assert cas.retained_receipt_sets == [expected_receipts]
+            assert catalog.job_publication_calls == 1
+            summary = catalog.get_manifest_summary(result.job.result_snapshot_id)
+            assert tuple(summary["views"]) == ("vector",)
+            assert REPO_MANIFEST_PROJECTION_VIEW not in summary["views"]
+            vector = summary["views"]["vector"]
+            assert vector["profile"]["profile_id"] == profile_id
+            assert vector["schema_version"] == VIEW_BUNDLE_SCHEMA
+            assert vector["object"]["media_type"] == VIEW_BUNDLE_MEDIA_TYPE
+            assert len(vector["member_objects"]) == len(expected_paths)
+            for persisted in (vector["object"], *vector["member_objects"]):
+                receipt = cas.verify(persisted["digest"])
+                assert receipt.byte_size == persisted["byte_size"]
+                assert receipt.storage_key == persisted["storage_key"]
+
+            first_ref = catalog.resolve_ref(repository_id)
+            _seed_vector_snapshot(
+                catalog,
+                cas,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                payload=b"newer vector snapshot after completed job",
+                expected_generation=1,
+            )
+            advanced_ref = catalog.resolve_ref(repository_id)
+            assert advanced_ref["generation"] == first_ref["generation"] + 1
+            assert advanced_ref["snapshot_id"] != first_ref["snapshot_id"]
+
+            retry = _publish_vector_job(
+                fixture,
+                job_id=job.job_id,
+                owner_id=lease.owner_id,
+                fencing_token=lease.fencing_token,
+                catalog=catalog,
+                cas=cas,
+                vector_owner=retry_vector_owner,
+                context_owner=retry_context_owner,
+                vector_destination=fixture.workspace / "retry-vector",
+                context_destination=fixture.workspace / "retry-vector-context",
+            )
+            assert retry.job == result.job
+            assert retry.import_plan.plan_digest == result.import_plan.plan_digest
+            assert retry.job.result_snapshot_id == first_ref["snapshot_id"]
+            assert catalog.resolve_ref(repository_id) == advanced_ref
+            assert tuple(cas.put_chunk_receipts[:5]) == tuple(
+                cas.put_chunk_receipts[5:]
+            )
+            assert cas.retained_receipt_sets == [
+                expected_receipts,
+                expected_receipts,
+            ]
+            assert catalog.job_publication_calls == 2
+            assert fixture.vector_owner.active
+            assert fixture.context_owner.active
+            assert retry_vector_owner.active
+            assert retry_context_owner.active
+    finally:
+        retry_context_owner.close()
+        retry_vector_owner.close()
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "wrong_view",
+        "not_full",
+        "optional",
+        "extra_view",
+        "profile_mismatch",
+        "source_mismatch",
+        "repository_mismatch",
+        "not_acquired",
+    ),
+)
+def test_compiler_cache_vector_job_rejects_incompatible_request_before_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker=f"REQUEST_{case}")
+    plan = _expected_vector_job_plan(fixture)
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            view_type = "vector"
+            requested_mode = "incremental" if case == "not_full" else "full"
+            required = case != "optional"
+            extra_views = None
+            if case == "wrong_view":
+                view_type = "bm25"
+                profile_id = catalog.create_view_profile(
+                    "bm25",
+                    {"test_profile": "wrong-view"},
+                )
+            elif case == "extra_view":
+                bm25_profile = catalog.create_view_profile(
+                    "bm25",
+                    {"test_profile": "extra"},
+                )
+                extra_views = {
+                    "bm25": {
+                        "profile_id": bm25_profile,
+                        "requested_mode": "full",
+                        "required": False,
+                    }
+                }
+            elif case == "profile_mismatch":
+                profile_id = catalog.create_view_profile(
+                    "vector",
+                    {"test_profile": "wrong"},
+                )
+            elif case == "source_mismatch":
+                source_revision_id = catalog.create_source_revision(
+                    repository_id,
+                    commit_sha=None,
+                    dirty=True,
+                    source_fingerprint="other-source-fingerprint",
+                )
+            elif case == "repository_mismatch":
+                repository_id = catalog.create_repository("owner/other")
+                source_revision_id = catalog.create_source_revision(
+                    repository_id,
+                    commit_sha=None,
+                    dirty=True,
+                    source_fingerprint=fixture.source.fingerprint,
+                )
+            job = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                view_type=view_type,
+                requested_mode=requested_mode,
+                required=required,
+                extra_views=extra_views,
+            )
+            if case == "not_acquired":
+                owner_id = "vector-worker-1"
+                token = 1
+            else:
+                lease = catalog.acquire_job_lease(
+                    job.job_id,
+                    owner_id="vector-worker-1",
+                    lease_duration_ms=60_000,
+                )
+                owner_id = lease.owner_id
+                token = lease.fencing_token
+
+            with pytest.raises(StorageValidationError):
+                _publish_vector_job(
+                    fixture,
+                    job_id=job.job_id,
+                    owner_id=owner_id,
+                    fencing_token=token,
+                    catalog=catalog,
+                    cas=cas,
+                )
+
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 0
+            assert fixture.vector_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
+            assert not fixture.vector_destination.exists()
+            assert not fixture.context_destination.exists()
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    ("case", "error"),
+    [
+        ("wrong_owner", PublishConflict),
+        ("wrong_fence", PublishConflict),
+        ("expired_lease", PublishConflict),
+        ("cancelled", StorageValidationError),
+        ("ref_drift", PublishConflict),
+    ],
+)
+def test_compiler_cache_vector_job_failure_preserves_current_ref(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    error: type[Exception],
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker=f"LEASE_{case}")
+    plan = _expected_vector_job_plan(fixture)
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            clock = {"ms": 1_000}
+            catalog._connection.create_function(
+                "julianday",
+                1,
+                lambda _value: 2440587.5 + clock["ms"] / 86_400_000,
+            )
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            _seed_vector_snapshot(
+                catalog,
+                cas,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                payload=b"usable old vector snapshot",
+                expected_generation=0,
+            )
+            job = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                expected_ref_generation=1,
+            )
+            lease = catalog.acquire_job_lease(
+                job.job_id,
+                owner_id="vector-worker-1",
+                lease_duration_ms=1 if case == "expired_lease" else 60_000,
+            )
+            token = lease.fencing_token
+            owner_id = lease.owner_id
+            if case == "wrong_owner":
+                owner_id = "other-vector-worker"
+            elif case == "wrong_fence":
+                token += 1
+            elif case == "expired_lease":
+                clock["ms"] = lease.lease_expires_at_ms + 1_000
+            elif case == "cancelled":
+                catalog.request_job_cancel(job.job_id)
+            elif case == "ref_drift":
+                _seed_vector_snapshot(
+                    catalog,
+                    cas,
+                    repository_id=repository_id,
+                    source_revision_id=source_revision_id,
+                    profile_id=profile_id,
+                    payload=b"newer still-usable vector snapshot",
+                    expected_generation=1,
+                )
+            preserved = catalog.resolve_ref(repository_id)
+            preserved_view = preserved["manifest"]["views"]["vector"]
+            preserved_payload = cas.read_bytes(preserved_view["object"]["digest"])
+
+            with pytest.raises(error):
+                _publish_vector_job(
+                    fixture,
+                    job_id=job.job_id,
+                    owner_id=owner_id,
+                    fencing_token=token,
+                    catalog=catalog,
+                    cas=cas,
+                )
+
+            assert catalog.resolve_ref(repository_id) == preserved
+            assert cas.read_bytes(preserved_view["object"]["digest"]) == (
+                preserved_payload
+            )
+            assert catalog.get_job(job.job_id).status is not IndexJobStatus.SUCCEEDED
+    finally:
+        fixture.close()
+
+
+def test_compiler_cache_vector_job_profile_binds_every_semantic_axis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker="PROFILE_AXES")
+    plan = _expected_vector_job_plan(fixture)
+    intent = plan.views[0]
+    axes = (*VECTOR_PROFILE_AXES, "embedding_load_policy")
+    try:
+        for index, axis in enumerate(axes):
+            vector_owner = PublishedWorkspaceReceiptOwner()
+            context_owner = PublishedWorkspaceReceiptOwner()
+            try:
+                with (
+                    _JobTrackingCAS(tmp_path / f"cas-{index}") as cas,
+                    SQLiteCatalog(tmp_path / f"catalog-{index}.sqlite") as catalog,
+                ):
+                    repository_id, source_revision_id, _profile_id = (
+                        _register_vector_job_subject(catalog, fixture, plan)
+                    )
+                    wrong_config = copy.deepcopy(intent.profile.config)
+                    if axis == "builder_schema":
+                        wrong_config[axis] = 9
+                    else:
+                        wrong_config["compatibility"][axis] = {"mismatched_axis": axis}
+                    wrong_profile_id = catalog.create_view_profile(
+                        "vector",
+                        wrong_config,
+                        name=intent.profile.name,
+                    )
+                    assert wrong_profile_id != intent.profile_id
+                    job = _create_vector_job(
+                        catalog,
+                        repository_id=repository_id,
+                        source_revision_id=source_revision_id,
+                        profile_id=wrong_profile_id,
+                        idempotency_key=f"wrong-vector-profile-{index}",
+                    )
+                    lease = catalog.acquire_job_lease(
+                        job.job_id,
+                        owner_id=f"vector-profile-worker-{index}",
+                        lease_duration_ms=60_000,
+                    )
+
+                    with pytest.raises(
+                        StorageValidationError,
+                        match="vector profile does not match",
+                    ):
+                        _publish_vector_job(
+                            fixture,
+                            job_id=job.job_id,
+                            owner_id=lease.owner_id,
+                            fencing_token=lease.fencing_token,
+                            catalog=catalog,
+                            cas=cas,
+                            vector_owner=vector_owner,
+                            context_owner=context_owner,
+                            vector_destination=fixture.workspace
+                            / f"wrong-profile-vector-{index}",
+                            context_destination=fixture.workspace
+                            / f"wrong-profile-context-{index}",
+                        )
+
+                    assert cas.put_chunk_receipts == []
+                    assert cas.retained_receipt_sets == []
+                    assert vector_owner.state == "empty"
+                    assert context_owner.state == "empty"
+            finally:
+                context_owner.close()
+                vector_owner.close()
+        assert fixture.provider.run_count == 0
+    finally:
+        fixture.close()
+
+
+def test_compiler_cache_vector_job_rejects_schema7_before_workspace_or_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker="SCHEMA7")
+    plan = _expected_vector_job_plan(fixture)
+    manifest_path = fixture.cache / "repo_manifest.json"
+    manifest = RepoManifest.load(manifest_path)
+    manifest.indexes["vector"].config["builder_schema"] = 7
+    manifest.indexes["vector"].metadata["builder_schema"] = 7
+    manifest.save(manifest_path)
+    manifest_path.chmod(0o600)
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            job = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            lease = catalog.acquire_job_lease(
+                job.job_id,
+                owner_id="vector-worker-1",
+                lease_duration_ms=60_000,
+            )
+
+            with pytest.raises(ValueError, match="no exact current vector"):
+                _publish_vector_job(
+                    fixture,
+                    job_id=job.job_id,
+                    owner_id=lease.owner_id,
+                    fencing_token=lease.fencing_token,
+                    catalog=catalog,
+                    cas=cas,
+                )
+
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 0
+            assert fixture.vector_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
+            assert not fixture.vector_destination.exists()
+            assert not fixture.context_destination.exists()
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    ("case", "cas_type", "error"),
+    (
+        ("source_drift", _JobTrackingCAS, RepositoryChangedError),
+        ("job_drift", _JobTrackingCAS, StorageValidationError),
+        ("receipt_substitution", _ForgedPutReceiptCAS, StorageValidationError),
+        ("callback_skipped", _SkippingRetentionCAS, StorageIntegrityError),
+    ),
+)
+def test_compiler_cache_vector_job_rejects_post_ingest_drift_or_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    cas_type: type[_JobTrackingCAS],
+    error: type[Exception],
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker=f"DRIFT_{case}")
+    plan = _expected_vector_job_plan(fixture)
+    try:
+        with (
+            cas_type(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            _publication, preserved_digest = _seed_vector_snapshot(
+                catalog,
+                cas,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                payload=b"retained old vector snapshot before adversarial drift",
+                expected_generation=0,
+            )
+            job = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                expected_ref_generation=1,
+            )
+            lease = catalog.acquire_job_lease(
+                job.job_id,
+                owner_id="vector-worker-1",
+                lease_duration_ms=60_000,
+            )
+            preserved_ref = catalog.resolve_ref(repository_id)
+
+            if case == "source_drift":
+
+                def drift_source(put_count: int) -> None:
+                    if put_count == 5:
+                        fixture.compiled.source_file.write_text(
+                            "VECTOR_JOB_SOURCE_DRIFT = True\n",
+                            encoding="utf-8",
+                        )
+
+                cas.after_put = drift_source
+            elif case == "job_drift":
+
+                def drift_job(put_count: int) -> None:
+                    if put_count == 5:
+                        catalog.request_job_cancel(job.job_id)
+
+                cas.after_put = drift_job
+
+            with pytest.raises(error):
+                _publish_vector_job(
+                    fixture,
+                    job_id=job.job_id,
+                    owner_id=lease.owner_id,
+                    fencing_token=lease.fencing_token,
+                    catalog=catalog,
+                    cas=cas,
+                )
+
+            assert len(cas.put_chunk_receipts) == 5
+            assert catalog.resolve_ref(repository_id) == preserved_ref
+            assert cas.read_bytes(preserved_digest) == (
+                b"retained old vector snapshot before adversarial drift"
+            )
+            assert catalog.get_job(job.job_id).status is IndexJobStatus.RUNNING
+            publication_count = catalog._connection.execute(
+                "SELECT COUNT(*) FROM index_job_publications WHERE job_id = ?",
+                (job.job_id,),
+            ).fetchone()[0]
+            assert publication_count == 0
+            if case in {"source_drift", "job_drift"}:
+                assert cas.retained_receipt_sets == []
+            else:
+                assert len(cas.retained_receipt_sets) == 1
+    finally:
+        fixture.close()
 
 
 def test_real_compiler_cache_import_retry_update_and_latest_query(

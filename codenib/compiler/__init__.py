@@ -32,12 +32,14 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         CompilerCacheJobPublicationResult,
         CompilerCacheMultiViewImportResult,
         CompilerCacheTopologyGuard,
+        CompilerCacheVectorJobPublicationResult,
         CompilerCacheViewRecaptureResult,
         CompilerRetainedPublicationResult,
         compile_and_import_repo,
         import_compiler_cache,
         import_compiler_cache_bm25,
         publish_compiler_cache_bm25_job,
+        publish_compiler_cache_vector_job,
     )
     from codenib.compiler.index_builders import IndexBuilderRegistry
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
@@ -101,6 +103,10 @@ _EXPORTS = {
         "codenib.compiler.cache_import",
         "CompilerCacheTopologyGuard",
     ),
+    "CompilerCacheVectorJobPublicationResult": (
+        "codenib.compiler.cache_import",
+        "CompilerCacheVectorJobPublicationResult",
+    ),
     "CompilerCacheViewRecaptureResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheViewRecaptureResult",
@@ -124,6 +130,10 @@ _EXPORTS = {
     "publish_compiler_cache_bm25_job": (
         "codenib.compiler.cache_import",
         "publish_compiler_cache_bm25_job",
+    ),
+    "publish_compiler_cache_vector_job": (
+        "codenib.compiler.cache_import",
+        "publish_compiler_cache_vector_job",
     ),
     "IndexCompiler": ("codenib.compiler.index_compiler", "IndexCompiler"),
     "IndexCompilerConfig": (
@@ -229,12 +239,14 @@ __all__ = [
     "CompilerCacheJobPublicationResult",
     "CompilerCacheMultiViewImportResult",
     "CompilerCacheTopologyGuard",
+    "CompilerCacheVectorJobPublicationResult",
     "CompilerCacheViewRecaptureResult",
     "CompilerRetainedPublicationResult",
     "compile_and_import_repo",
     "import_compiler_cache",
     "import_compiler_cache_bm25",
     "publish_compiler_cache_bm25_job",
+    "publish_compiler_cache_vector_job",
     "IndexCompiler",
     "IndexCompilerConfig",
     "IndexBuilderRegistry",
