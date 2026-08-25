@@ -1072,6 +1072,17 @@ def test_expired_nonrunning_half_state_is_reclaimed_without_fencing_aba(
 ) -> None:
     path = tmp_path / "catalog.sqlite3"
     with SQLiteCatalog(path) as catalog:
+        # Keep the pre-expiry assertion deterministic while still exercising
+        # SQLite's clock.  Under xdist this test can otherwise be descheduled
+        # past its short lease between acquisition and the active-slot check.
+        clock = {"raw_ms": 0}
+        catalog._connection.create_function(
+            "julianday",
+            1,
+            lambda _value: 2440587.5 + clock["raw_ms"] / 86_400_000,
+        )
+        assert catalog._db_now_ms() == 0
+
         first = _job_setup(catalog, idempotency_key="first")
         second = catalog.create_job(
             first.repository_id,
@@ -1117,8 +1128,10 @@ def test_expired_nonrunning_half_state_is_reclaimed_without_fencing_aba(
                 lease_duration_ms=30_000,
             )
 
-    time.sleep(0.12)
     with SQLiteCatalog(path) as catalog:
+        # The test clock is connection-local.  Reopening restores the real DB
+        # clock, which is beyond the synthetic lease and permits takeover.
+        assert catalog._db_now_ms() > stale.lease_expires_at_ms
         current = catalog.acquire_job_lease(
             second.job_id, owner_id="worker-2", lease_duration_ms=30_000
         )
