@@ -890,15 +890,27 @@ the authenticated `documents.json` record size. After #682 merged on main at
 `4c907bf3588b40cbf67d3dd98c3db389ab093e62` with tree
 `50e7455cac76e224df46c8a6b603c54645d43b89`, a fresh 1x0 readiness run
 completed all 30 cells, observed 60/60 expected inner route processes with all
-60 unique, and recorded 720/720 true safety checks. Twenty-four cells passed;
-the six parity-red `runtime-cold` cells were the protocol's designed
-compatibility sentinel. Its return code 1 was solely the expected `measurement
-protocol is not canonical v3` sentinel because the 1x0 iterations, warmups,
-and resulting sample count are noncanonical; it was not an operational,
-isolation, or safety failure. The report SHA-256 is
+60 unique, and recorded 480/480 true per-sample safety values. The 30 cells'
+240/240 aggregate safety summaries were also true; those summaries fold the
+same per-sample values and are not additional checks. Of the 30 primary cell
+projections, 24 passed. The six `runtime-cold` source-disabled compatibility
+sentinel cells, whose candidate arm is query-only, were red on their primary
+full-runtime projection. Separately, all six `runtime-cold-source-bound` cells
+passed their primary content-authority projection while their full-runtime
+projection remained red because manifest provenance differs. Consequently both
+`manifest-runtime-compatibility` and `source-bound-manifest-compatibility`
+remain blocked.
+
+The sanitized, path- and PID-free
+[aggregate readiness receipt](experiments/artifacts/retained_storage_a2_readiness_v3_1x0.json)
+is checked in with the roadmap. It retains the source report SHA-256
 `b4b2246982a29de0860dcaeaee5d1e1363e30f2002aa7576f6c8dcdc8c02a29a`
-and the sidecar SHA-256 is
+and sidecar SHA-256
 `33575263b8dd37324b4c8ec2f9a87f49a64c6c9ca3ad007dad384d69f3432aa9`.
+The controller return code 1 was solely the expected `measurement protocol is
+not canonical v3` sentinel because the 1x0 iterations, warmups, and resulting
+sample count are noncanonical; it was not an operational, isolation, or safety
+failure.
 The prepass correction keeps the whole-file byte, depth, key, string, and atom
 limits and the per-document complexity caps unchanged. This readiness receipt
 is not A2 numeric evidence, ratifies no budget, and promotes no compiler or
