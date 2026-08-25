@@ -96,7 +96,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"repository root does not exist: {repo}")
     if not repo.is_dir():
         parser.error(f"repository root is not a directory: {repo}")
-    extractor = _build_visual_fact_extractor(args, repo_path=repo)
+    try:
+        extractor = _build_visual_fact_extractor(args, repo_path=repo)
+    except ValueError as exc:
+        parser.error(str(exc))
     bundle = build_multimodal_repository_knowledge(
         repo,
         commit=args.commit,

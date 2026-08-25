@@ -274,7 +274,7 @@ def test_visual_fact_extractor_from_config_returns_none_when_disabled():
     assert visual_fact_extractor_from_config(config) is None
 
 
-def test_visual_fact_extractor_from_config_builds_provider():
+def test_visual_fact_extractor_from_config_builds_provider(tmp_path):
     config = SimpleNamespace(
         wiki_visual_fact_extraction_enabled=True,
         wiki_visual_facts_model="qwen-vl",
@@ -286,10 +286,23 @@ def test_visual_fact_extractor_from_config_builds_provider():
         },
     )
 
-    extractor = visual_fact_extractor_from_config(config)
+    extractor = visual_fact_extractor_from_config(config, repo_path=tmp_path)
 
     assert isinstance(extractor, OpenAICompatibleVisualFactExtractor)
     assert extractor.model == "qwen-vl"
     assert extractor.endpoint == "https://vlm.example/v1/chat/completions"
     assert extractor.provider == "qwen"
     assert extractor.timeout == 9
+    assert extractor.repo_path == tmp_path.resolve()
+
+
+def test_visual_fact_extractor_from_config_rejects_non_mapping_options():
+    config = SimpleNamespace(
+        wiki_visual_fact_extraction_enabled=True,
+        wiki_visual_facts_model="qwen-vl",
+        wiki_visual_facts_api_base="https://vlm.example/v1",
+        wiki_visual_facts_options=["timeout", 9],
+    )
+
+    with pytest.raises(ValueError, match="options must be a mapping"):
+        visual_fact_extractor_from_config(config)

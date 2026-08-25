@@ -151,6 +151,8 @@ class OpenAICompatibleVisualFactExtractor:
 
 def visual_fact_extractor_from_config(
     config: Any,
+    *,
+    repo_path: str | Path | None = None,
 ) -> OpenAICompatibleVisualFactExtractor | None:
     """Build a visual-fact extractor from ``QAConfig``-shaped settings."""
 
@@ -158,7 +160,10 @@ def visual_fact_extractor_from_config(
         return None
     model = str(getattr(config, "wiki_visual_facts_model", None) or "").strip()
     api_base = str(getattr(config, "wiki_visual_facts_api_base", None) or "").strip()
-    options = dict(getattr(config, "wiki_visual_facts_options", {}) or {})
+    raw_options = getattr(config, "wiki_visual_facts_options", {}) or {}
+    if not isinstance(raw_options, Mapping):
+        raise ValueError("wiki visual fact options must be a mapping")
+    options = dict(raw_options)
     timeout = options.get("timeout", 120.0)
     provider = str(options.get("provider") or "openai-compatible")
     return OpenAICompatibleVisualFactExtractor(
@@ -167,6 +172,7 @@ def visual_fact_extractor_from_config(
         api_key=getattr(config, "wiki_visual_facts_api_key", None),
         timeout=timeout,
         provider=provider,
+        repo_path=repo_path,
     )
 
 

@@ -82,6 +82,22 @@ CODENIB_WIKI_VISUAL_FACTS_OPTIONS='{"provider":"qwen","timeout":120}'
 Offline and CI runs keep using deterministic local extraction unless the VLM is
 explicitly enabled and both model and endpoint are provided.
 
+Callers can bind the validated configuration to the repository root and pass
+the resulting extractor directly into the one-step pipeline:
+
+```python
+from codenib.web.config import load_config
+from codenib.wiki import (
+    build_multimodal_repository_knowledge,
+    visual_fact_extractor_from_config,
+)
+
+repo = "/path/to/repository"
+config = load_config()
+extractor = visual_fact_extractor_from_config(config, repo_path=repo)
+bundle = build_multimodal_repository_knowledge(repo, extractor=extractor)
+```
+
 ### VisualGroundingManifest
 
 `codenib.wiki.media_grounding` grounds extracted visual entities to repository
@@ -123,9 +139,11 @@ component_sha256
 bundle_sha256
 ```
 
-The storage helper writes bundle JSON atomically and validates loaded bundles,
-including schema version, required object fields, byte limits, and bundle hash.
-This gives downstream consumers a stable artifact boundary instead of an ad hoc
+The storage helper writes bundle JSON atomically and validates loaded bundles.
+Validation recomputes every component digest, checks the cross-component digest
+bindings and outer bundle hash, bounds JSON bytes and structure, and rejects
+duplicate keys, non-finite numbers, and unstable or symlinked input files. This
+gives downstream consumers a stable artifact boundary instead of an ad hoc
 script JSON dump.
 
 ### Incremental updates

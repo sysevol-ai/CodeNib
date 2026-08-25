@@ -34,6 +34,23 @@ DEFAULT_CONFIG_PATH = "qa_config.yaml"
 CACHE_DIR_NAME = REPO_INDEX_DIRNAME
 REGISTRY_FILENAME = "qa_registry.json"
 CONFIG_EXTENDS_KEY = "extends"
+_TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_ENV_VALUES = frozenset({"", "0", "false", "no", "off"})
+
+
+def _validated_bool(value: Any, *, source: str) -> bool:
+    if type(value) is not bool:
+        raise ValueError(f"{source} must be a boolean")
+    return value
+
+
+def _parse_env_bool(value: str, *, source: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in _TRUE_ENV_VALUES:
+        return True
+    if normalized in _FALSE_ENV_VALUES:
+        return False
+    raise ValueError(f"{source} must be a boolean")
 
 
 def _model_provider(model: str) -> Optional[str]:
@@ -221,6 +238,10 @@ class QAConfig:
     per_language: int = 1
 
     def __post_init__(self) -> None:
+        self.wiki_visual_facts_enabled = _validated_bool(
+            self.wiki_visual_facts_enabled,
+            source="wiki_visual_facts_enabled",
+        )
         self.model_options = validate_model_options(
             self.model_options,
             source="model_options",
@@ -339,11 +360,12 @@ def load_config(path: Optional[str] = None) -> QAConfig:
             data.get("wiki_media_options"),
             source="wiki_media_options",
         ),
-        wiki_visual_facts_enabled=bool(
+        wiki_visual_facts_enabled=_validated_bool(
             data.get(
                 "wiki_visual_facts_enabled",
                 defaults.wiki_visual_facts_enabled,
-            )
+            ),
+            source="wiki_visual_facts_enabled",
         ),
         wiki_visual_facts_model=data.get("wiki_visual_facts_model"),
         wiki_visual_facts_api_base=data.get("wiki_visual_facts_api_base"),
@@ -411,9 +433,10 @@ def load_config(path: Optional[str] = None) -> QAConfig:
     if os.environ.get("CODENIB_WIKI_MEDIA_API_KEY"):
         cfg.wiki_media_api_key = os.environ["CODENIB_WIKI_MEDIA_API_KEY"]
     if os.environ.get("CODENIB_WIKI_VISUAL_FACTS_ENABLED") is not None:
-        cfg.wiki_visual_facts_enabled = os.environ[
-            "CODENIB_WIKI_VISUAL_FACTS_ENABLED"
-        ].strip().lower() in ("1", "true", "yes", "on")
+        cfg.wiki_visual_facts_enabled = _parse_env_bool(
+            os.environ["CODENIB_WIKI_VISUAL_FACTS_ENABLED"],
+            source="CODENIB_WIKI_VISUAL_FACTS_ENABLED",
+        )
     if os.environ.get("CODENIB_WIKI_VISUAL_FACTS_MODEL"):
         cfg.wiki_visual_facts_model = os.environ["CODENIB_WIKI_VISUAL_FACTS_MODEL"]
     if os.environ.get("CODENIB_WIKI_VISUAL_FACTS_API_BASE"):

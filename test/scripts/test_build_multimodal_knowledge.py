@@ -110,3 +110,31 @@ def test_build_multimodal_knowledge_parser_accepts_vlm_options(tmp_path):
     assert args.visual_facts_api_key_env == "TEST_VLM_KEY"
     assert args.visual_facts_provider == "qwen"
     assert args.visual_facts_timeout == 15
+
+
+def test_build_multimodal_knowledge_script_rejects_partial_vlm_config(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    output = tmp_path / "bundle.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "scripts/build_multimodal_knowledge.py",
+            str(repo),
+            "--output",
+            str(output),
+            "--visual-facts-model",
+            "qwen-vl",
+        ],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "visual fact api_base is invalid" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert not output.exists()

@@ -86,6 +86,26 @@ def test_wiki_visual_facts_config_is_disabled_by_default(tmp_path: Path) -> None
     assert config.wiki_visual_facts_options == {}
 
 
+def test_wiki_visual_facts_config_rejects_truthy_string(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text('wiki_visual_facts_enabled: "false"\n')
+
+    with pytest.raises(ValueError, match="must be a boolean"):
+        load_config(str(config_path))
+
+
+def test_wiki_visual_facts_environment_rejects_invalid_boolean(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("wiki_agent: false\n")
+    monkeypatch.setenv("CODENIB_WIKI_VISUAL_FACTS_ENABLED", "ture")
+
+    with pytest.raises(ValueError, match="CODENIB_WIKI_VISUAL_FACTS_ENABLED"):
+        load_config(str(config_path))
+
+
 def test_wiki_visual_facts_environment_overrides_file_config(
     tmp_path: Path,
     monkeypatch,
