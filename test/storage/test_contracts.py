@@ -37,6 +37,7 @@ from codenib.storage.protocols import (
     JobCatalog,
     JobExecutionCatalog,
     JobPublicationCatalog,
+    JobWorkerCatalog,
     ObjectStore,
     ReceiptVerifyingObjectStore,
 )
@@ -57,6 +58,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
         assert catalog.retained_import_contract() == RETAINED_IMPORT_CATALOG_CONTRACT
         assert isinstance(catalog, JobCatalog)
         assert isinstance(catalog, JobExecutionCatalog)
+        assert isinstance(catalog, JobWorkerCatalog)
     finally:
         catalog.close()
 
@@ -71,13 +73,26 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "IndexJobAttemptCompletionRecord",
         "IndexJobAttemptHeartbeat",
         "IndexJobAttemptRecord",
+        "IndexJobCatalogSessionFactory",
         "IndexJobEffectiveMode",
+        "IndexJobExecutionContext",
+        "IndexJobExecutionControl",
+        "IndexJobExecutionResult",
+        "IndexJobExecutor",
+        "IndexJobExecutorResolver",
         "IndexJobEventKind",
         "IndexJobEventRecord",
         "IndexJobRunnableCursor",
         "IndexJobRunnablePage",
+        "IndexJobStopReason",
+        "IndexJobStopToken",
+        "IndexJobViewExecutionResult",
         "IndexJobViewOutcome",
+        "IndexJobWorker",
+        "IndexJobWorkerDisposition",
+        "IndexJobWorkerRunResult",
         "JobExecutionCatalog",
+        "JobWorkerCatalog",
     }
 
     assert names <= set(storage_module.__all__)
@@ -115,6 +130,7 @@ def test_execution_catalog_is_additive_to_publication_only_adapters() -> None:
     assert isinstance(adapter, JobCatalog)
     assert isinstance(adapter, JobPublicationCatalog)
     assert not isinstance(adapter, JobExecutionCatalog)
+    assert not isinstance(adapter, JobWorkerCatalog)
 
 
 def test_retained_import_response_budgets_are_public_capability_contracts() -> None:

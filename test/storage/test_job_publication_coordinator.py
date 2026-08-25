@@ -567,6 +567,78 @@ def test_retaining_store_cannot_substitute_the_callback_result() -> None:
     assert catalog.calls == 1
 
 
+def test_retention_cleanup_failure_after_callback_success_is_integrity() -> None:
+    outputs = (_artifact("bm25", "1", b"primary"),)
+    completed = _completed_job(outputs)
+    cleanup_failure = RuntimeError("retention cleanup failed")
+    store = _CleanupFailingStore([], cleanup_failure)
+    catalog = _CatalogSpy(completed, store, [])
+
+    with pytest.raises(StorageIntegrityError, match="retention failed") as raised:
+        publish_job_artifacts(
+            completed.job_id,
+            catalog=catalog,  # type: ignore[arg-type]
+            object_store=store,
+            owner_id="worker",
+            fencing_token=1,
+            outputs=outputs,
+            _retention_cleanup_as_integrity=True,
+        )
+
+    assert raised.value.__cause__ is cleanup_failure
+    assert store.callback_failure is None
+    assert catalog.calls == 1
+
+
+@pytest.mark.parametrize("failure_type", (KeyboardInterrupt, SystemExit))
+def test_retention_cleanup_base_exception_after_success_remains_exact(
+    failure_type: type[BaseException],
+) -> None:
+    outputs = (_artifact("bm25", "1", b"primary"),)
+    completed = _completed_job(outputs)
+    cleanup_failure = failure_type("retention cleanup interrupted")
+    store = _CleanupFailingStore([], cleanup_failure)
+    catalog = _CatalogSpy(completed, store, [])
+
+    with pytest.raises(failure_type) as raised:
+        publish_job_artifacts(
+            completed.job_id,
+            catalog=catalog,  # type: ignore[arg-type]
+            object_store=store,
+            owner_id="worker",
+            fencing_token=1,
+            outputs=outputs,
+            _retention_cleanup_as_integrity=True,
+        )
+
+    assert raised.value is cleanup_failure
+    assert store.callback_failure is None
+    assert catalog.calls == 1
+
+
+def test_retention_cleanup_integrity_alarm_after_success_remains_exact() -> None:
+    outputs = (_artifact("bm25", "1", b"primary"),)
+    completed = _completed_job(outputs)
+    cleanup_failure = StorageIntegrityError("retention integrity alarm")
+    store = _CleanupFailingStore([], cleanup_failure)
+    catalog = _CatalogSpy(completed, store, [])
+
+    with pytest.raises(StorageIntegrityError) as raised:
+        publish_job_artifacts(
+            completed.job_id,
+            catalog=catalog,  # type: ignore[arg-type]
+            object_store=store,
+            owner_id="worker",
+            fencing_token=1,
+            outputs=outputs,
+            _retention_cleanup_as_integrity=True,
+        )
+
+    assert raised.value is cleanup_failure
+    assert store.callback_failure is None
+    assert catalog.calls == 1
+
+
 def test_retaining_store_cannot_swallow_a_callback_failure() -> None:
     outputs = (_artifact("bm25", "1", b"primary"),)
     completed = _completed_job(outputs)

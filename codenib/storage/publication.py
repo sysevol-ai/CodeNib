@@ -191,26 +191,15 @@ class IndexJobViewArtifact:
         )
 
 
-def publish_job_artifacts(
-    job_id: str,
-    *,
-    catalog: JobPublicationCatalog,
-    object_store: ReceiptRetainingObjectStore,
-    owner_id: str,
-    fencing_token: int,
+def _preflight_job_artifacts(
     outputs: Sequence[IndexJobViewArtifact],
-) -> IndexJobRecord:
-    """Retain exact receipts while the catalog atomically publishes them.
+) -> tuple[
+    tuple[IndexJobViewArtifact, ...],
+    tuple[IndexJobViewOutput, ...],
+    tuple[BlobInfo, ...],
+]:
+    """Freeze and bound the complete retained publication closure."""
 
-    No catalog read occurs before the object store has revalidated and retained
-    the complete receipt set. The retention callback encloses the catalog's
-    ``BEGIN IMMEDIATE`` through commit/rollback and validates the returned
-    successful job before allowing the retention scope to end.
-    """
-
-    normalized_job_id = _bounded_exact_text(job_id, "job ID", 80)
-    normalized_owner = _bounded_exact_text(owner_id, "lease owner ID", 256)
-    token = _positive_catalog_integer(fencing_token, "fencing token")
     artifacts = _freeze_outputs(outputs)
     frozen_outputs = tuple(artifact._output() for artifact in artifacts)
 
@@ -244,6 +233,36 @@ def publish_job_artifacts(
     retained_receipts = tuple(
         receipt_by_digest[digest][0] for digest in sorted(receipt_by_digest)
     )
+    return artifacts, frozen_outputs, retained_receipts
+
+
+def publish_job_artifacts(
+    job_id: str,
+    *,
+    catalog: JobPublicationCatalog,
+    object_store: ReceiptRetainingObjectStore,
+    owner_id: str,
+    fencing_token: int,
+    outputs: Sequence[IndexJobViewArtifact],
+    _retention_cleanup_as_integrity: bool = False,
+) -> IndexJobRecord:
+    """Retain exact receipts while the catalog atomically publishes them.
+
+    No catalog read occurs before the object store has revalidated and retained
+    the complete receipt set. The retention callback encloses the catalog's
+    ``BEGIN IMMEDIATE`` through commit/rollback and validates the returned
+    successful job before allowing the retention scope to end.
+    """
+
+    normalized_job_id = _bounded_exact_text(job_id, "job ID", 80)
+    normalized_owner = _bounded_exact_text(owner_id, "lease owner ID", 256)
+    token = _positive_catalog_integer(fencing_token, "fencing token")
+    # Direct publication callers retain the historical exact cleanup exception.
+    # The worker opts into an integrity signal so it cannot mistake a failure
+    # after an attested callback for catalog commit-response loss.
+    if type(_retention_cleanup_as_integrity) is not bool:
+        raise TypeError("retention cleanup policy must be an exact boolean")
+    _artifacts, frozen_outputs, retained_receipts = _preflight_job_artifacts(outputs)
 
     if not isinstance(object_store, ReceiptRetainingObjectStore):
         raise TypeError("index job publication requires ReceiptRetainingObjectStore")
@@ -361,6 +380,17 @@ def publish_job_artifacts(
             )
         raise callback_violation
     if retention_failure is not None:
+        if (
+            attested_result is not unset
+            and callback_invocations == 1
+            and _retention_cleanup_as_integrity
+            and isinstance(retention_failure, Exception)
+            and not isinstance(retention_failure, StorageIntegrityError)
+        ):
+            raise StorageIntegrityError(
+                "object store retention failed after the publication callback "
+                "completed"
+            ) from retention_failure
         raise retention_failure
     if callback_invocations == 0:
         raise StorageIntegrityError(

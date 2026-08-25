@@ -1017,10 +1017,11 @@ evidence. Landing either the route or the harness does not approve a default.
 This leaves M1 in progress.
 
 These gates do not move the existing milestone boundaries. The generic fenced
-publication primitive is now part of M2, while builder/profile adapters and
-worker wiring remain; live bundle replacement and in-flight request pins remain
-M3, and evidence retention and reclamation remain M5. Gate C may proceed in
-parallel, but the report-only harness neither implements nor waives it.
+publication primitive is now part of M2, while generic prepare-only
+builder/profile adapters and production entry-point wiring remain; live bundle
+replacement and in-flight request pins remain M3, and evidence retention and
+reclamation remain M5. Gate C may proceed in parallel, but the report-only
+harness neither implements nor waives it.
 
 Schema v2 now adds
 canonical idempotent job requests, immutable
@@ -1029,10 +1030,11 @@ per-ref leases.  Catalog reads revalidate the normalized view rows against the
 canonical request; the M2 publication transaction now repeats that gate before
 associating outputs.  An explicit acquire may atomically retire an expired
 holder while taking over its slot; this slice adds no background reaper and is
-not wired to the compiler or Web workers. Catalog-selected cold-start runtime
-is now available only through the explicit local route above, while
+not wired to the compiler or Web entry points. Catalog-selected cold-start
+runtime is now available only through the explicit local route above, while
 benchmark-backed default compiler/runtime promotion remains an outstanding M1
-deliverable; fenced publication is not yet wired into builders or workers.
+deliverable; fenced publication is not yet wired into production builders or
+entry points.
 
 The shared compiler-cache lock is a cooperative serialization boundary for
 compiler and importer processes using a cache namespace private to one OS
@@ -1097,16 +1099,18 @@ it returns the committed result without advancing the ref, including after a
 later publication has advanced that ref.
 
 Schema v6 adds the local durable execution-control slice without selecting a
-builder or wiring a worker. Lease acquisition now records an immutable attempt
-start before the job becomes running. Requeue, failure, and cancellation write
-one immutable non-success closure; success still has no generic finish API and
-can only come from the schema-v5 publication transaction. Existing v5 history
-is preserved behind an immutable per-job legacy attempt baseline. In addition
-to the hidden attempt count, that baseline attests the initial creation time,
-the legacy content high-water mark, and any legacy start time. Only a currently
-active v5 attempt is backfilled, while later v6 starts must form a complete
-contiguous history. Exact, unambiguous v5 non-running lease half-states are
-closed during migration; ambiguous state fails migration and reopen closed.
+production builder. The backend-neutral prepare-only worker described in M3
+consumes that contract without granting executors catalog publication
+authority. Lease acquisition now records an immutable attempt start before the
+job becomes running. Requeue, failure, and cancellation write one immutable
+non-success closure; success still has no generic finish API and can only come
+from the schema-v5 publication transaction. Existing v5 history is preserved
+behind an immutable per-job legacy attempt baseline. In addition to the hidden
+attempt count, that baseline attests the initial creation time, the legacy
+content high-water mark, and any legacy start time. Only a currently active v5
+attempt is backfilled, while later v6 starts must form a complete contiguous
+history. Exact, unambiguous v5 non-running lease half-states are closed during
+migration; ambiguous state fails migration and reopen closed.
 
 Schema v6 also maintains one private durable execution-content clock. Its
 singleton value must equal the exact maximum of the immutable baseline,
@@ -1245,12 +1249,34 @@ implemented; graph, generic builder, and production job/runtime wiring remain.
 ### M3: Jobs and runtime hot switching
 
 Status: in progress. Schema-v6 durable execution control is implemented for the
-local SQLite catalog; the backend-neutral worker and runtime wiring remain.
+local SQLite catalog. The backend-neutral prepare-only whole-job worker is
+implemented and verified with file-backed SQLite integration coverage;
+production resolver/builder adapters and CLI, runtime, Web, MCP, and default
+wiring remain absent.
 
-- Wire the durable job/attempt, heartbeat, cancellation, event, and fenced
-  publication contracts into a backend-neutral worker. The catalog state
-  machine is implemented; builder resolution, CLI, web/MCP, runtime, and
-  default-route wiring remain deliberately absent.
+- The backend-neutral worker now owns advisory scan/claim, per-attempt task
+  authority, independent heartbeat sessions, cancellation precedence, bounded
+  progress and per-view events, non-success closure, and exactly one
+  receipt-retained whole-job publication. Resolvers and executors prepare
+  artifacts only and receive no supported catalog publication capability. This
+  API boundary is not a sandbox for deliberately introspective in-process
+  Python code.
+- One `run_once` pass examines one bounded advisory page and tries its candidates
+  in canonical order. Cross-page fairness, cursor scheduling, and continuous
+  draining remain responsibilities of the future runtime scheduler rather than
+  silently making one worker call unbounded.
+- Ordinary response loss is reconciled against the immutable attempt closure
+  before the worker reports a disposition. Explicit storage-integrity alarms
+  remain infrastructure failures even when the catalog mutation committed;
+  they are never downgraded to an ordinary success or builder failure. A
+  retaining-store cleanup failure after an attested publication callback is
+  surfaced as an integrity alarm rather than mistaken for catalog response
+  loss, while direct publication callers retain their established exception
+  identity contract.
+- Add production resolver and prepare-only builder adapters, then wire the
+  worker into CLI, runtime, Web, MCP, and default routes. The existing BM25 and
+  vector compiler-cache ingress adapters intentionally remain explicit
+  self-publishing paths and are not composed under this worker.
 - Expose the #266 status and update APIs with accurate incremental versus
   rebuild behavior.
 - Load a complete new bundle and swap it RCU-style; pin old bundles for in-flight

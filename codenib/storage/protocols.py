@@ -483,6 +483,12 @@ class JobExecutionCatalog(JobCatalog, Protocol):
     queued at one canonical database time. New active lease authority also
     starts at one database time with a bounded exact duration; released slots
     arise only by fenced release, never by direct insertion.
+    Within the visible modeled suffix, each successor starts no earlier than
+    the preceding requeue closure and carries a strictly greater fencing token.
+    An initial claim response has acquisition and heartbeat equal to its attempt
+    start and expiry exactly one requested duration later. Renewals preserve the
+    acquisition time, keep heartbeat nondecreasing, strictly advance expiry,
+    and keep expiry at least one requested duration beyond heartbeat.
 
     Event keys are attempt-local idempotency keys. Exact replay returns the
     original row, while a different closure conflicts. One ``view_result`` is
@@ -637,11 +643,25 @@ class JobPublicationCatalog(JobCatalog, Protocol):
         ...
 
 
+@runtime_checkable
+class JobWorkerCatalog(JobExecutionCatalog, JobPublicationCatalog, Protocol):
+    """Additive catalog capabilities required by an index-job worker.
+
+    Keeping this intersection separate preserves the structural compatibility
+    of publication-only adapters while letting a worker require durable
+    execution control and fenced publication from each thread-local catalog
+    session it opens.
+    """
+
+    pass
+
+
 __all__ = [
     "IndexCatalog",
     "JobCatalog",
     "JobExecutionCatalog",
     "JobPublicationCatalog",
+    "JobWorkerCatalog",
     "ObjectStore",
     "ReceiptRetainingObjectStore",
     "ReceiptVerifyingObjectStore",
