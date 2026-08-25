@@ -997,3 +997,32 @@ def test_embedded_storage_backend_policy_is_documented() -> None:
     assert "Storage-backend defaults are separate from route defaults." in provider
     assert "not temporary bridges" in provider_prose
     assert "A2, B1, and B2 remain separate gates" in provider_prose
+
+
+def test_a2_readiness_receipt_is_documented_without_promotion() -> None:
+    root = Path(__file__).resolve().parents[1]
+    roadmap = (root / "docs/storage_backend_roadmap.md").read_text(encoding="utf-8")
+    roadmap_prose = " ".join(roadmap.split())
+
+    assert "4c907bf3588b40cbf67d3dd98c3db389ab093e62" in roadmap
+    assert "50e7455cac76e224df46c8a6b603c54645d43b89" in roadmap
+    assert (
+        "completed all 30 cells, observed 60/60 expected inner route processes "
+        "with all 60 unique, and recorded 720/720 true safety checks"
+    ) in roadmap_prose
+    assert (
+        "Twenty-four cells passed; the six parity-red `runtime-cold` cells were "
+        "the protocol's designed compatibility sentinel"
+    ) in roadmap_prose
+    assert (
+        "return code 1 was solely the expected `measurement protocol is not "
+        "canonical v3` sentinel"
+    ) in roadmap_prose
+    assert (
+        "the 1x0 iterations, warmups, and resulting sample count are noncanonical"
+    ) in roadmap_prose
+    assert "b4b2246982a29de0860dcaeaee5d1e1363e30f2002aa7576f6c8dcdc8c02a29a" in roadmap
+    assert "33575263b8dd37324b4c8ec2f9a87f49a64c6c9ca3ad007dad384d69f3432aa9" in roadmap
+    assert "is not A2 numeric evidence, ratifies no budget" in roadmap_prose
+    assert "promotes no compiler or runtime route or default" in roadmap_prose
+    assert "remains pending a quiet-host window" in roadmap_prose
