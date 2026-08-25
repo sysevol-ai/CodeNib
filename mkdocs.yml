@@ -165,9 +165,6 @@ markdown_extensions:
 nav:
   - Home: index.md
   - News: news.md
-  - Blog:
-      - blog/index.md
-      - One Repository Index for Humans and Agents: blog/local-code-intelligence-dgx-spark.md
   - Get Started:
       - get-started/index.md
       - Quickstart: quickstart.md
@@ -186,9 +183,13 @@ nav:
       - Agent Skills: agent_skills.md
       - Agent Integrations: agent_integrations.md
       - Isolated Agent Execution: sandbox.md
-      - RAG Ops And Planner: rag_ops.md
+      - Reference Deployments:
+          - guides/reference-deployments/index.md
+          - NVIDIA DGX Spark: guides/reference-deployments/dgx-spark.md
   - Concepts:
       - concepts/index.md
+      - Retrieval Planning:
+          - RAG Ops And Planner: rag_ops.md
       - Indexes:
           - SCIP Index: scip_index.md
           - Regex Index: regex_index.md

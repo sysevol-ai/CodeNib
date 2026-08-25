@@ -57,14 +57,14 @@ retrieval and planning surface that answers the task.
 
     [Design an isolated worker →](../sandbox.md)
 
--   <span class="codenib-card-eyebrow">Plan a query</span>
+-   <span class="codenib-card-eyebrow">Reproduce a deployment</span>
 
-    **RAG ops and planner**
+    **Reference deployments**
 
-    Understand retrieval operators, query-aware path selection, fusion,
-    expansion, and reranking boundaries.
+    Reproduce a tested local stack while keeping repository loading,
+    retrieval, and generation measurements distinct.
 
-    [Inspect the retrieval policy →](../rag_ops.md)
+    [Choose a reference deployment →](reference-deployments/index.md)
 
 </div>
 
@@ -73,5 +73,7 @@ retrieval and planning surface that answers the task.
 Use the [MCP Server](../mcp.md) for the standard agent-facing workflow. Reach
 for [Agent Skills](../agent_skills.md) when you need to compose a custom runtime,
 use [Isolated Agent Execution](../sandbox.md) before running repository code,
-and use the [RAG Ops And Planner](../rag_ops.md) reference when changing query
-policy rather than wiring.
+and start from a [Reference Deployment](reference-deployments/index.md) when
+reproducing a complete local stack. The conceptual
+[RAG Ops And Planner](../rag_ops.md) reference defines retrieval policy and
+planning boundaries.

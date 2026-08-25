@@ -41,6 +41,8 @@ FORBIDDEN_PUBLIC_PREFIXES = {
 }
 
 ALLOWED_PUBLIC_STATIC_FILES = {
+    "blog/index.html",
+    "blog/local-code-intelligence-dgx-spark/index.html",
     "favicon.ico",
     "assets/fonts/LICENSE-inter.txt",
     "assets/fonts/LICENSE-newsreader.txt",

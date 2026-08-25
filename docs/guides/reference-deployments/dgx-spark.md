@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# One Repository Index for Humans and Agents
+# Local Code Intelligence on NVIDIA DGX Spark
 
 _Running a source-linked Wiki, CodeGraph, and MCP context locally on NVIDIA
 DGX Spark._
@@ -412,8 +412,8 @@ The product principle remains simple:
 > Index a codebase once. Explore it as a Wiki, search it as context, and serve
 > it to any coding agent.
 
-Start with the [CodeGraph guide](../codegraph.md), connect an agent through the
-[MCP guide](../mcp.md), or inspect the
-[local and hosted deployment profiles](../running-locally.md). CodeNib is
+Start with the [CodeGraph guide](../../codegraph.md), connect an agent through
+the [MCP guide](../../mcp.md), or inspect the
+[local and hosted deployment profiles](../../running-locally.md). CodeNib is
 Apache-2.0 licensed at
 [github.com/sysevol-ai/CodeNib](https://github.com/sysevol-ai/CodeNib).

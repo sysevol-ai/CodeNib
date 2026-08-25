@@ -33,7 +33,6 @@ def test_mkdocs_navigation_tabs_contract():
     assert titles == [
         "Home",
         "News",
-        "Blog",
         "Get Started",
         "Guides",
         "Concepts",
@@ -47,11 +46,27 @@ def test_mkdocs_navigation_tabs_contract():
         if isinstance(item, dict)
     }
     assert sections["News"] == "news.md"
-    assert sections["Blog"][0] == "blog/index.md"
     assert sections["Get Started"][0] == "get-started/index.md"
     assert sections["Guides"][0] == "guides/index.md"
     assert sections["Concepts"][0] == "concepts/index.md"
     assert sections["Development"][0] == "development/index.md"
+
+    reference_deployments = next(
+        item["Reference Deployments"]
+        for item in sections["Guides"]
+        if isinstance(item, dict) and "Reference Deployments" in item
+    )
+    assert reference_deployments == [
+        "guides/reference-deployments/index.md",
+        {"NVIDIA DGX Spark": "guides/reference-deployments/dgx-spark.md"},
+    ]
+
+    retrieval_planning = next(
+        item["Retrieval Planning"]
+        for item in sections["Concepts"]
+        if isinstance(item, dict) and "Retrieval Planning" in item
+    )
+    assert retrieval_planning == [{"RAG Ops And Planner": "rag_ops.md"}]
 
     evaluation = next(
         item["Benchmarks & Evaluation"]
@@ -64,6 +79,21 @@ def test_mkdocs_navigation_tabs_contract():
     home_source = (REPO_ROOT / "docs" / "index.md").read_text(encoding="utf-8")
     home_metadata = yaml.safe_load(home_source.split("---", 2)[1])
     assert home_metadata["hide"] == ["navigation"]
+
+
+def test_legacy_blog_routes_redirect_to_reference_deployments():
+    redirects = {
+        "blog/index.html": "/guides/reference-deployments/",
+        "blog/local-code-intelligence-dgx-spark/index.html": (
+            "/guides/reference-deployments/dgx-spark/"
+        ),
+    }
+
+    for source, target in redirects.items():
+        assert source in check_public_docs.ALLOWED_PUBLIC_STATIC_FILES
+        html = (REPO_ROOT / "docs" / source).read_text(encoding="utf-8")
+        assert f'content="0; url={target}"' in html
+        assert f'href="{target}"' in html
 
 
 def _write_api_site(site_dir, routes=None):

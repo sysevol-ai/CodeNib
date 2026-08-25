@@ -49,6 +49,15 @@ boundaries differ.
 
     [Explore incremental updates →](../incremental_graph/index.md)
 
+-   <span class="codenib-card-eyebrow">Retrieval planning</span>
+
+    **RAG ops and planner**
+
+    Understand retrieval operators, query-aware path selection, fusion,
+    expansion, reranking, and the boundary between policy and execution.
+
+    [Inspect the retrieval model →](../rag_ops.md)
+
 -   <span class="codenib-card-eyebrow">Native acceleration</span>
 
     **Core C++ backend**
