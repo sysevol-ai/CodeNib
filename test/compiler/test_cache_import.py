@@ -102,10 +102,13 @@ from codenib.storage import (
     VIEW_BUNDLE_MEDIA_TYPE,
     VIEW_BUNDLE_SCHEMA,
     BlobInfo,
+    IndexJobExecutionContext,
     IndexJobStatus,
     IndexJobStopReason,
     IndexJobWorker,
     IndexJobWorkerDisposition,
+    InterruptibleReceiptVerifyingObjectStore,
+    InterruptibleStreamingObjectStore,
     LocalCAS,
     PublishConflict,
     ReceiptRetainingObjectStore,
@@ -201,8 +204,14 @@ class _BackendTripwire:
     def put_chunks(self, *args, **kwargs):
         return self._unexpected("put_chunks")
 
+    def put_chunks_interruptibly(self, *args, **kwargs):
+        return self._unexpected("put_chunks_interruptibly")
+
     def verify_receipt(self, *args, **kwargs):
         return self._unexpected("verify_receipt")
+
+    def verify_receipt_interruptibly(self, *args, **kwargs):
+        return self._unexpected("verify_receipt_interruptibly")
 
     def retain_receipts(self, *args, **kwargs):
         return self._unexpected("retain_receipts")
@@ -323,6 +332,25 @@ class _LockAwareCAS(LocalCAS):
         )
         return super().put_chunks(chunks, expected_digest, expected_size)
 
+    def put_chunks_interruptibly(
+        self,
+        chunks,
+        expected_digest: str,
+        expected_size: int,
+        *,
+        check_cancelled,
+    ):
+        assert self._test_state["phase"] == "released"
+        self._test_state["events"].append(  # type: ignore[union-attr]
+            ("cas.put_chunks", self._test_state["phase"])
+        )
+        return super().put_chunks_interruptibly(
+            chunks,
+            expected_digest,
+            expected_size,
+            check_cancelled=check_cancelled,
+        )
+
 
 class _JobTrackingCAS(LocalCAS):
     def __init__(self, root: Path) -> None:
@@ -339,6 +367,25 @@ class _JobTrackingCAS(LocalCAS):
         expected_size: int,
     ) -> BlobInfo:
         receipt = super().put_chunks(chunks, expected_digest, expected_size)
+        self.put_chunk_receipts.append(receipt)
+        if self.after_put is not None:
+            self.after_put(len(self.put_chunk_receipts))
+        return receipt
+
+    def put_chunks_interruptibly(
+        self,
+        chunks,
+        expected_digest: str,
+        expected_size: int,
+        *,
+        check_cancelled,
+    ) -> BlobInfo:
+        receipt = super().put_chunks_interruptibly(
+            chunks,
+            expected_digest,
+            expected_size,
+            check_cancelled=check_cancelled,
+        )
         self.put_chunk_receipts.append(receipt)
         if self.after_put is not None:
             self.after_put(len(self.put_chunk_receipts))
@@ -363,6 +410,28 @@ class _ForgedPutReceiptCAS(_JobTrackingCAS):
         expected_size: int,
     ) -> BlobInfo:
         receipt = super().put_chunks(chunks, expected_digest, expected_size)
+        if len(self.put_chunk_receipts) == 1:
+            return BlobInfo(
+                digest=receipt.digest,
+                byte_size=receipt.byte_size,
+                storage_key="sha256/00/" + receipt.digest,
+            )
+        return receipt
+
+    def put_chunks_interruptibly(
+        self,
+        chunks,
+        expected_digest: str,
+        expected_size: int,
+        *,
+        check_cancelled,
+    ) -> BlobInfo:
+        receipt = super().put_chunks_interruptibly(
+            chunks,
+            expected_digest,
+            expected_size,
+            check_cancelled=check_cancelled,
+        )
         if len(self.put_chunk_receipts) == 1:
             return BlobInfo(
                 digest=receipt.digest,
@@ -489,6 +558,45 @@ class _ReceiptRetainingOnlyStore:
 
     def retain_receipts(self, expected, callback):
         raise NotImplementedError(expected, callback)
+
+
+class _LegacyRetainedImportStore(_ReceiptRetainingOnlyStore):
+    """Old retained-import shape without either interruptible capability."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def put_chunks(self, chunks, expected_digest, expected_size):
+        self.calls.append("put_chunks")
+        raise AssertionError(chunks, expected_digest, expected_size)
+
+
+class _NoncallableInterruptibleReceiptStore(_LegacyRetainedImportStore):
+    verify_receipt_interruptibly = object()
+
+    def put_chunks_interruptibly(
+        self,
+        chunks,
+        expected_digest,
+        expected_size,
+        *,
+        check_cancelled,
+    ):
+        raise AssertionError(
+            chunks,
+            expected_digest,
+            expected_size,
+            check_cancelled,
+        )
+
+
+class _ReceiptInterruptibleOnlyStore(_LegacyRetainedImportStore):
+    def verify_receipt_interruptibly(self, expected, *, check_cancelled):
+        raise AssertionError(expected, check_cancelled)
+
+
+class _NoncallableInterruptibleStreamingStore(_ReceiptInterruptibleOnlyStore):
+    put_chunks_interruptibly = object()
 
 
 class _RetryableCleanupOwner:
@@ -1808,6 +1916,168 @@ def test_compiler_cache_resolver_requires_streaming_import_capability() -> None:
             resource_factory=_UnusedCompilerCacheResources(),
             object_store=object_store,  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.parametrize(
+    ("object_store_factory", "message"),
+    [
+        (_LegacyRetainedImportStore, "interruptible receipt verification"),
+        (_ReceiptInterruptibleOnlyStore, "interruptible streaming ingestion"),
+    ],
+)
+def test_prepare_compiler_cache_job_requires_interruptible_capabilities_first(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    object_store_factory,
+    message: str,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    object_store = object_store_factory()
+    token = _TestStopToken()
+    try:
+        with SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog:
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="legacy-receipt-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+        def forbidden_source_read(*_args, **_kwargs):
+            raise AssertionError("source authority was read before capability gate")
+
+        monkeypatch.setattr(
+            RepositorySourceBinding,
+            "authenticated_identity_snapshot",
+            forbidden_source_read,
+        )
+
+        assert isinstance(object_store, RetainedImportObjectStore)
+        with pytest.raises(TypeError, match=message):
+            prepare_compiler_cache_job_view(
+                fixture.cache,
+                view_type="bm25",
+                job=running,
+                views=views,
+                repository_source=fixture.source,
+                view_output_owner=fixture.bm25_owner,
+                context_output_owner=fixture.context_owner,
+                view_destination=fixture.bm25_destination,
+                context_destination=fixture.context_destination,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                object_store=object_store,  # type: ignore[arg-type]
+                stop_token=token,
+                environ={},
+            )
+
+        assert object_store.calls == []
+        assert fixture.provider.run_count == 0
+        assert fixture.source.usable
+        assert fixture.bm25_owner.state == "empty"
+        assert fixture.context_owner.state == "empty"
+        assert not fixture.bm25_destination.exists()
+        assert not fixture.context_destination.exists()
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    ("object_store_factory", "missing_method"),
+    [
+        (
+            _NoncallableInterruptibleReceiptStore,
+            "verify_receipt_interruptibly",
+        ),
+        (
+            _NoncallableInterruptibleStreamingStore,
+            "put_chunks_interruptibly",
+        ),
+    ],
+)
+def test_local_job_resource_factory_requires_callable_interruptible_capabilities(
+    tmp_path: Path,
+    object_store_factory,
+    missing_method: str,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    object_store = object_store_factory()
+    try:
+        with SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog:
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            lease = catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="legacy-resource-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+            attempt = catalog.get_job_attempt(
+                queued.job_id,
+                running.attempt_count,
+            )
+
+        class ValidationControl:
+            @property
+            def stop_token(self):
+                return _TestStopToken()
+
+            def append_progress(self, *_args, **_kwargs):
+                raise AssertionError("resource capability gate appended progress")
+
+        context = IndexJobExecutionContext(
+            job=running,
+            views=views,
+            attempt=attempt,
+            lease=lease,
+            control=ValidationControl(),
+        )
+        target = LocalCompilerCacheJobTarget(
+            repository_root=fixture.repository,
+            cache_dir=fixture.cache,
+            workspace_provider=LocalWorkspaceProvider(fixture.workspace),
+            repository_key=_REPOSITORY_KEY,
+            environ={},
+        )
+        resources = LocalCompilerCacheJobResourceFactory((target,))
+
+        assert isinstance(
+            object_store,
+            InterruptibleReceiptVerifyingObjectStore,
+        )
+        assert isinstance(object_store, InterruptibleStreamingObjectStore)
+        with pytest.raises(TypeError, match=f"provide {missing_method}"):
+            resources.create_scope(
+                context,
+                object_store=object_store,  # type: ignore[arg-type]
+            )
+
+        assert object_store.calls == []
+        assert fixture.source.usable
+        assert fixture.bm25_owner.state == "empty"
+        assert fixture.context_owner.state == "empty"
+    finally:
+        fixture.close()
 
 
 def test_worker_rejects_a_different_compiler_resolver_store(tmp_path: Path) -> None:

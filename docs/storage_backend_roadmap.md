@@ -542,11 +542,22 @@ gates. `BlobInfo` is an exact point-in-time CAS receipt, and
 the additive `ReceiptVerifyingObjectStore.verify_receipt` capability
 revalidates its digest, byte size, and canonical storage key before a metadata
 boundary without pretending that the receipt itself is a pin. The additive
-`ReceiptRetainingObjectStore.retain_receipts` callback verifies an exact receipt
-set and serializes compliant reclamation until the guarded operation and
-attestation finish; retained import adds streaming ingestion to that narrower
-read capability. LocalCAS uses its cancellation-safe lifecycle lock as that
-fence, which any future local GC must share. A public
+`InterruptibleReceiptVerifyingObjectStore.verify_receipt_interruptibly`
+capability preserves that legacy one-argument contract while polling before
+future object reads. The separate additive
+`InterruptibleStreamingObjectStore.put_chunks_interruptibly` capability also
+polls across reusable-object authentication and future producer items without
+changing the legacy three-argument streaming method. Cancellable retained
+compiler preparation fails closed on both capabilities before source or
+workspace authority is read; the local worker resource boundary repeats the
+gate. Legacy non-cancellable callers continue to use the original exact receipt
+and streaming call shapes.
+
+The additive `ReceiptRetainingObjectStore.retain_receipts` callback verifies an
+exact receipt set and serializes compliant reclamation until the guarded
+operation and attestation finish; retained import adds streaming ingestion to
+that narrower read capability. LocalCAS uses its cancellation-safe lifecycle
+lock as that fence, which any future local GC must share. A public
 physical archive-size gate lets import coordinators reject impossible view
 bundles before object-store byte access. Published snapshot summaries also
 close namespace and repository identity alongside source, profile, generation,

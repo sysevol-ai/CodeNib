@@ -29,9 +29,12 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any
+from typing import Any, NoReturn
 
-from .._atomic_directory import PublicationDirectoryReader
+from .._atomic_directory import (
+    PublicationDirectoryReader,
+    _attach_publication_cleanup_owner,
+)
 from .._captured_directory import (
     PublishedWorkspaceReceipt,
     PublishedWorkspaceReceiptOwner,
@@ -64,6 +67,8 @@ from ..storage.models import (
 )
 from ..storage.protocols import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
+    InterruptibleReceiptVerifyingObjectStore,
+    InterruptibleStreamingObjectStore,
     RetainedImportCatalog,
     RetainedImportObjectStore,
     snapshot_retained_import_response,
@@ -129,6 +134,17 @@ _OBJECT_STORE_METHODS = (
     "verify_receipt",
     "retain_receipts",
 )
+
+
+class _ManifestChunkStop(BaseException):
+    """Carry an exact callback ``StopIteration`` across generator boundaries."""
+
+    __slots__ = ("error",)
+
+    def __init__(self, error: StopIteration) -> None:
+        self.error = error
+
+
 _CATALOG_METHODS = (
     "retained_import_contract",
     "create_namespace",
@@ -547,8 +563,26 @@ def _unique_stored_objects(
 def _verify_exact_receipt(
     object_store: RetainedImportObjectStore,
     stored: _StoredObject,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    observed = object_store.verify_receipt(stored.receipt)  # type: ignore[attr-defined]
+    if check_cancelled is None:
+        observed = object_store.verify_receipt(stored.receipt)
+    else:
+        if not isinstance(object_store, InterruptibleReceiptVerifyingObjectStore):
+            raise TypeError(
+                "cancellable manifest import requires interruptible receipt "
+                "verification"
+            )
+        _require_static_methods(
+            object_store,
+            label="cancellable manifest import object store",
+            names=("verify_receipt_interruptibly",),
+        )
+        observed = object_store.verify_receipt_interruptibly(
+            stored.receipt,
+            check_cancelled=check_cancelled,
+        )
     verified = _exact_blob_object(
         observed,
         expected_digest=stored.record.digest,
@@ -558,6 +592,40 @@ def _verify_exact_receipt(
     )
     if verified.receipt.storage_key != stored.receipt.storage_key:
         raise StorageIntegrityError("object-store receipt storage key changed")
+
+
+def _put_exact_chunks(
+    object_store: RetainedImportObjectStore,
+    chunks: Iterable[bytes],
+    expected_digest: str,
+    expected_size: int,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> BlobInfo:
+    if check_cancelled is None:
+        return object_store.put_chunks(
+            chunks,
+            expected_digest,
+            expected_size,
+        )
+    if not isinstance(object_store, InterruptibleStreamingObjectStore):
+        raise TypeError(
+            "cancellable manifest import requires interruptible streaming ingestion"
+        )
+    _require_static_methods(
+        object_store,
+        label="cancellable manifest import object store",
+        names=("put_chunks_interruptibly",),
+    )
+    try:
+        return object_store.put_chunks_interruptibly(
+            chunks,
+            expected_digest,
+            expected_size,
+            check_cancelled=check_cancelled,
+        )
+    except _ManifestChunkStop as signal:
+        _raise_exact_chunk_stop(signal)
 
 
 def _semantic_object(record: ObjectRecord) -> dict[str, Any]:
@@ -720,14 +788,54 @@ def _interruptible_chunks(
     chunks: Iterable[bytes],
     check_cancelled: Callable[[], None] | None,
 ) -> Iterator[bytes]:
+    if check_cancelled is not None:
+        _poll_chunk_cancellation(check_cancelled)
     iterator = iter(chunks)
     while True:
         if check_cancelled is not None:
-            check_cancelled()
+            _poll_chunk_cancellation(check_cancelled)
         try:
             chunk = next(iterator)
         except StopIteration:
             return
+        yield chunk
+
+
+def _interruptible_expected_chunks(
+    chunks: Iterable[bytes],
+    expected_size: int,
+    check_cancelled: Callable[[], None] | None,
+) -> Iterator[bytes]:
+    """Poll before future bytes and after an empty terminal guard item."""
+
+    if check_cancelled is not None and expected_size:
+        _poll_chunk_cancellation(check_cancelled)
+    iterator = iter(chunks)
+    observed_size = 0
+    terminal_probe_observed = False
+    while True:
+        if check_cancelled is not None and (
+            observed_size < expected_size or terminal_probe_observed
+        ):
+            _poll_chunk_cancellation(check_cancelled)
+        try:
+            chunk = next(iterator)
+        except StopIteration:
+            return
+        if type(chunk) is not bytes:
+            raise TypeError("manifest source chunk producer must yield exact bytes")
+        at_expected_size = observed_size == expected_size
+        if at_expected_size and chunk:
+            raise StorageIntegrityError(
+                "manifest source chunk producer exceeds its expected size"
+            )
+        observed_size += len(chunk)
+        if observed_size > expected_size:
+            raise StorageIntegrityError(
+                "manifest source chunk producer exceeds its expected size"
+            )
+        if at_expected_size:
+            terminal_probe_observed = True
         yield chunk
 
 
@@ -736,8 +844,102 @@ def _drain(
     *,
     check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    for _chunk in _interruptible_chunks(chunks, check_cancelled):
-        pass
+    try:
+        for _chunk in _interruptible_chunks(chunks, check_cancelled):
+            pass
+    except _ManifestChunkStop as signal:
+        _raise_exact_chunk_stop(signal)
+
+
+def _poll_chunk_cancellation(check_cancelled: Callable[[], None]) -> None:
+    try:
+        check_cancelled()
+    except StopIteration as error:
+        raise _ManifestChunkStop(error) from error
+
+
+def _raise_exact_chunk_stop(signal: _ManifestChunkStop) -> NoReturn:
+    error = signal.error
+    _inherit_manifest_chunk_stop_settlement(signal, error)
+    raise error
+
+
+def _inherit_manifest_chunk_stop_settlement(
+    source: BaseException,
+    target: BaseException,
+) -> None:
+    for attribute in ("__notes__", "_codenib_cleanup_notes"):
+        try:
+            values = BaseException.__getattribute__(source, attribute)
+        except BaseException:  # noqa: B036 - best-effort diagnostics only
+            continue
+        if type(values) not in (list, tuple):
+            continue
+        for note in values:
+            if type(note) is not str:
+                continue
+            try:
+                add_note = getattr(BaseException, "add_note", None)
+                if add_note is not None:
+                    add_note(target, note)
+                    continue
+                try:
+                    retained = BaseException.__getattribute__(
+                        target,
+                        "_codenib_cleanup_notes",
+                    )
+                except AttributeError:
+                    retained = ()
+                if type(retained) is not tuple:
+                    retained = ()
+                BaseException.__setattr__(
+                    target,
+                    "_codenib_cleanup_notes",
+                    (*retained, note),
+                )
+            except BaseException:  # noqa: B036 - never mask the exact stop
+                pass
+
+    try:
+        publication_owners = BaseException.__getattribute__(
+            source,
+            "publication_cleanup_owners",
+        )
+    except BaseException:  # noqa: B036 - no retained publication cleanup
+        publication_owners = ()
+    if type(publication_owners) is tuple:
+        for owner in publication_owners:
+            _attach_publication_cleanup_owner(target, owner)
+
+    try:
+        bundle_owners = BaseException.__getattribute__(
+            source,
+            "_codenib_bundle_stream_cleanup_owners",
+        )
+    except BaseException:  # noqa: B036 - no retained bundle cleanup
+        bundle_owners = ()
+    if type(bundle_owners) is tuple:
+        try:
+            try:
+                retained_bundle_owners = BaseException.__getattribute__(
+                    target,
+                    "_codenib_bundle_stream_cleanup_owners",
+                )
+            except AttributeError:
+                retained_bundle_owners = ()
+            if type(retained_bundle_owners) is not tuple:
+                retained_bundle_owners = ()
+            merged = list(retained_bundle_owners)
+            for owner in bundle_owners:
+                if not any(candidate is owner for candidate in merged):
+                    merged.append(owner)
+            BaseException.__setattr__(
+                target,
+                "_codenib_bundle_stream_cleanup_owners",
+                tuple(merged),
+            )
+        except BaseException:  # noqa: B036 - exact stop remains primary
+            pass
 
 
 def _prepare_manifest_views_inside_authority(
@@ -758,6 +960,28 @@ def _prepare_manifest_views_inside_authority(
     max_bundle_metadata_bytes: int,
     check_cancelled: Callable[[], None] | None = None,
 ) -> _PreparedManifestViews:
+    if check_cancelled is not None:
+        if not isinstance(
+            object_store,
+            InterruptibleReceiptVerifyingObjectStore,
+        ):
+            raise TypeError(
+                "cancellable manifest import requires interruptible receipt "
+                "verification"
+            )
+        if not isinstance(object_store, InterruptibleStreamingObjectStore):
+            raise TypeError(
+                "cancellable manifest import requires interruptible streaming "
+                "ingestion"
+            )
+        _require_static_methods(
+            object_store,
+            label="cancellable manifest import object store",
+            names=(
+                "put_chunks_interruptibly",
+                "verify_receipt_interruptibly",
+            ),
+        )
     if type(receipt) is not PublishedWorkspaceReceipt:
         raise TypeError("retained context receipt has an invalid type")
     if type(publication) is not PublicationDirectoryReader:
@@ -838,10 +1062,21 @@ def _prepare_manifest_views_inside_authority(
             expected_bundle: PlannedViewBundle = bundle,
             expected_view_type: str = intent.view_type,
         ) -> _StoredObject:
-            raw = object_store.put_chunks(  # type: ignore[attr-defined]
-                _interruptible_chunks(chunks, check_cancelled),
+            streamed_chunks = (
+                chunks
+                if check_cancelled is None
+                else _interruptible_expected_chunks(
+                    chunks,
+                    expected_bundle.byte_size,
+                    check_cancelled,
+                )
+            )
+            raw = _put_exact_chunks(
+                object_store,
+                streamed_chunks,
                 expected_bundle.digest,
                 expected_bundle.byte_size,
+                check_cancelled=check_cancelled,
             )
             stored = _exact_blob_object(
                 raw,
@@ -850,7 +1085,11 @@ def _prepare_manifest_views_inside_authority(
                 media_type=VIEW_BUNDLE_MEDIA_TYPE,
                 label=f"portable {expected_view_type} bundle ingestion",
             )
-            _verify_exact_receipt(object_store, stored)
+            _verify_exact_receipt(
+                object_store,
+                stored,
+                check_cancelled=check_cancelled,
+            )
             existing = stored_by_digest.get(stored.record.digest)
             if existing is not None and not _same_object(
                 existing.record,
@@ -886,10 +1125,17 @@ def _prepare_manifest_views_inside_authority(
                 max_bytes=member.byte_size,
             ) as chunks:
                 if existing is None:
-                    raw_member = object_store.put_chunks(  # type: ignore[attr-defined]
-                        _interruptible_chunks(chunks, check_cancelled),
+                    interruptible_chunks = _interruptible_expected_chunks(
+                        chunks,
+                        member.byte_size,
+                        check_cancelled,
+                    )
+                    raw_member = _put_exact_chunks(
+                        object_store,
+                        interruptible_chunks,
                         member.digest,
                         member.byte_size,
+                        check_cancelled=check_cancelled,
                     )
                     stored = _exact_blob_object(
                         raw_member,
@@ -898,11 +1144,27 @@ def _prepare_manifest_views_inside_authority(
                         media_type=_MEMBER_MEDIA_TYPE,
                         label=f"portable {intent.view_type} member ingestion",
                     )
-                    _verify_exact_receipt(object_store, stored)
-                    stored_by_digest[stored.record.digest] = stored
+                    # A conforming store may return a reused receipt without
+                    # touching its producer.  Finish source authentication
+                    # through the same cancellation-aware iterator before
+                    # fully revalidating the already-attested receipt.
+                    _drain(interruptible_chunks)
                 else:
-                    _drain(chunks, check_cancelled=check_cancelled)
+                    _drain(
+                        _interruptible_expected_chunks(
+                            chunks,
+                            member.byte_size,
+                            check_cancelled,
+                        )
+                    )
                     stored = existing
+            if existing is None:
+                _verify_exact_receipt(
+                    object_store,
+                    stored,
+                    check_cancelled=check_cancelled,
+                )
+                stored_by_digest[stored.record.digest] = stored
             members.append((member.path, member.byte_size, member.mode, stored))
             if check_cancelled is not None:
                 check_cancelled()

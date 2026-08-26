@@ -38,14 +38,18 @@ from ..storage.models import (
     StorageIntegrityError,
     StorageValidationError,
 )
-from ..storage.protocols import RetainedImportObjectStore
+from ..storage.protocols import (
+    InterruptibleReceiptVerifyingObjectStore,
+    InterruptibleStreamingObjectStore,
+    RetainedImportObjectStore,
+)
 from .cache_import import (
     CompilerCacheJobExecutor,
     _compiler_cache_job_stop_check,
     compiler_cache_source_selection,
 )
 from .job_resolver import CompilerCacheJobResourceScope
-from .manifest_import import _snapshot_environment
+from .manifest_import import _require_static_methods, _snapshot_environment
 from .snapshot_store import normalize_repo
 
 logger = logging.getLogger(__name__)
@@ -339,6 +343,24 @@ class LocalCompilerCacheJobResourceFactory:
             raise TypeError(
                 "local compiler cache resource factory requires a retained import store"
             )
+        if not isinstance(object_store, InterruptibleReceiptVerifyingObjectStore):
+            raise TypeError(
+                "local compiler cache resource factory requires interruptible "
+                "receipt verification"
+            )
+        if not isinstance(object_store, InterruptibleStreamingObjectStore):
+            raise TypeError(
+                "local compiler cache resource factory requires interruptible "
+                "streaming ingestion"
+            )
+        _require_static_methods(
+            object_store,
+            label="local compiler cache object store",
+            names=(
+                "put_chunks_interruptibly",
+                "verify_receipt_interruptibly",
+            ),
+        )
         target = self._targets_by_repository_id.get(context.job.repository_id)
         if target is None:
             raise StorageValidationError(

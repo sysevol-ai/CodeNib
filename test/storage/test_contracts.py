@@ -15,6 +15,8 @@ from codenib.storage import (
     RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS,
     RETAINED_IMPORT_RESPONSE_MAX_NODES,
     RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS,
+    InterruptibleReceiptVerifyingObjectStore,
+    InterruptibleStreamingObjectStore,
     ReceiptRetainingObjectStore,
     RetainedImportCatalog,
     RetainedImportObjectStore,
@@ -51,6 +53,8 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
     try:
         assert isinstance(object_store, ObjectStore)
         assert isinstance(object_store, ReceiptVerifyingObjectStore)
+        assert isinstance(object_store, InterruptibleReceiptVerifyingObjectStore)
+        assert isinstance(object_store, InterruptibleStreamingObjectStore)
         assert isinstance(object_store, ReceiptRetainingObjectStore)
         assert isinstance(object_store, StreamingObjectStore)
         assert isinstance(object_store, RetainedImportObjectStore)
@@ -95,6 +99,8 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "IndexJobWorker",
         "IndexJobWorkerDisposition",
         "IndexJobWorkerRunResult",
+        "InterruptibleReceiptVerifyingObjectStore",
+        "InterruptibleStreamingObjectStore",
         "JobCycleWorkerCatalog",
         "JobExecutionCatalog",
         "JobWorkerCatalog",
@@ -208,6 +214,8 @@ def test_receipt_verification_is_an_additive_object_store_capability() -> None:
 
     assert isinstance(legacy, ObjectStore)
     assert not isinstance(legacy, ReceiptVerifyingObjectStore)
+    assert not isinstance(legacy, InterruptibleReceiptVerifyingObjectStore)
+    assert not isinstance(legacy, InterruptibleStreamingObjectStore)
     assert not isinstance(legacy, StreamingObjectStore)
 
 
@@ -241,6 +249,8 @@ def test_receipt_retention_is_narrower_than_retained_import_capability() -> None
 
     assert isinstance(receipt_only, ObjectStore)
     assert isinstance(receipt_only, ReceiptVerifyingObjectStore)
+    assert not isinstance(receipt_only, InterruptibleReceiptVerifyingObjectStore)
+    assert not isinstance(receipt_only, InterruptibleStreamingObjectStore)
     assert not isinstance(receipt_only, ReceiptRetainingObjectStore)
     assert not isinstance(receipt_only, StreamingObjectStore)
     assert not isinstance(receipt_only, RetainedImportObjectStore)
@@ -253,6 +263,8 @@ def test_receipt_retention_is_narrower_than_retained_import_capability() -> None
 
     assert isinstance(retaining, ObjectStore)
     assert isinstance(retaining, ReceiptVerifyingObjectStore)
+    assert not isinstance(retaining, InterruptibleReceiptVerifyingObjectStore)
+    assert not isinstance(retaining, InterruptibleStreamingObjectStore)
     assert isinstance(retaining, ReceiptRetainingObjectStore)
     assert not isinstance(retaining, StreamingObjectStore)
     assert not isinstance(retaining, RetainedImportObjectStore)
@@ -265,6 +277,11 @@ def test_receipt_retention_is_narrower_than_retained_import_capability() -> None
 
     assert isinstance(streaming_verifying, StreamingObjectStore)
     assert isinstance(streaming_verifying, ReceiptVerifyingObjectStore)
+    assert not isinstance(
+        streaming_verifying,
+        InterruptibleReceiptVerifyingObjectStore,
+    )
+    assert not isinstance(streaming_verifying, InterruptibleStreamingObjectStore)
     assert not isinstance(streaming_verifying, ReceiptRetainingObjectStore)
     assert not isinstance(streaming_verifying, RetainedImportObjectStore)
 
@@ -277,6 +294,44 @@ def test_receipt_retention_is_narrower_than_retained_import_capability() -> None
     assert isinstance(retained_import, ReceiptRetainingObjectStore)
     assert isinstance(retained_import, StreamingObjectStore)
     assert isinstance(retained_import, RetainedImportObjectStore)
+    assert not isinstance(
+        retained_import,
+        InterruptibleReceiptVerifyingObjectStore,
+    )
+    assert not isinstance(retained_import, InterruptibleStreamingObjectStore)
+
+    class InterruptibleImportObjectStore(ImportObjectStore):
+        def verify_receipt_interruptibly(
+            self,
+            expected,
+            *,
+            check_cancelled,
+        ):
+            raise NotImplementedError(expected, check_cancelled)
+
+        def put_chunks_interruptibly(
+            self,
+            chunks,
+            expected_digest,
+            expected_size,
+            *,
+            check_cancelled,
+        ):
+            raise NotImplementedError(
+                chunks,
+                expected_digest,
+                expected_size,
+                check_cancelled,
+            )
+
+    interruptible_import = InterruptibleImportObjectStore()
+
+    assert isinstance(interruptible_import, RetainedImportObjectStore)
+    assert isinstance(
+        interruptible_import,
+        InterruptibleReceiptVerifyingObjectStore,
+    )
+    assert isinstance(interruptible_import, InterruptibleStreamingObjectStore)
 
 
 def test_retained_import_capability_requires_streaming_and_receipt_checks() -> None:
@@ -309,6 +364,7 @@ def test_retained_import_capability_requires_streaming_and_receipt_checks() -> N
 
     assert isinstance(streaming_only, ObjectStore)
     assert isinstance(streaming_only, StreamingObjectStore)
+    assert not isinstance(streaming_only, InterruptibleStreamingObjectStore)
     assert not isinstance(streaming_only, ReceiptVerifyingObjectStore)
     assert not isinstance(streaming_only, ReceiptRetainingObjectStore)
     assert not isinstance(streaming_only, RetainedImportObjectStore)

@@ -515,6 +515,40 @@ class LocalCAS:
         can be installed.
         """
 
+        return self._put_chunks(
+            chunks,
+            expected_digest,
+            expected_size,
+            check_cancelled=None,
+        )
+
+    def put_chunks_interruptibly(
+        self,
+        chunks: Iterable[bytes],
+        expected_digest: str,
+        expected_size: int,
+        *,
+        check_cancelled: Callable[[], None],
+    ) -> BlobInfo:
+        """Stream or reuse an expected object with cancellation between reads."""
+
+        if not callable(check_cancelled):
+            raise TypeError("CAS chunk cancellation check must be callable")
+        return self._put_chunks(
+            chunks,
+            expected_digest,
+            expected_size,
+            check_cancelled=check_cancelled,
+        )
+
+    def _put_chunks(
+        self,
+        chunks: Iterable[bytes],
+        expected_digest: str,
+        expected_size: int,
+        *,
+        check_cancelled: Callable[[], None] | None,
+    ) -> BlobInfo:
         if type(expected_digest) is not str:
             raise StorageValidationError(
                 "digest must be 64 lowercase hexadecimal characters"
@@ -522,15 +556,37 @@ class LocalCAS:
         digest = _validate_digest(expected_digest)
         byte_size = _validate_expected_object_size(expected_size)
         _require_local_cas_support()
-        reused = self._reuse_expected_object(digest, byte_size)
+        reused = (
+            self._reuse_expected_object(digest, byte_size)
+            if check_cancelled is None
+            else self._reuse_expected_object(
+                digest,
+                byte_size,
+                check_cancelled=check_cancelled,
+            )
+        )
         if reused is not None:
             return reused
-        validated_chunks = _ValidatedObjectChunks(
-            chunks,
-            expected_digest=digest,
-            expected_size=byte_size,
+        validated_chunks = (
+            _ValidatedObjectChunks(
+                chunks,
+                expected_digest=digest,
+                expected_size=byte_size,
+            )
+            if check_cancelled is None
+            else _ValidatedObjectChunks(
+                chunks,
+                expected_digest=digest,
+                expected_size=byte_size,
+                check_cancelled=check_cancelled,
+            )
         )
-        return self._publish_object(digest, byte_size, validated_chunks)
+        try:
+            return self._publish_object(digest, byte_size, validated_chunks)
+        except _InterruptibleChunkStop as signal:
+            error = signal.error
+            _inherit_interruptible_exception_settlement(signal, error)
+            raise error  # noqa: B904 - preserve exact callback exception
 
     def has(self, digest: str) -> bool:
         """Return whether a regular object exists for *digest*.
@@ -603,6 +659,26 @@ class LocalCAS:
         guarantee.
         """
 
+        return self._verify_receipt(expected, check_cancelled=None)
+
+    def verify_receipt_interruptibly(
+        self,
+        expected: BlobInfo,
+        *,
+        check_cancelled: Callable[[], None],
+    ) -> BlobInfo:
+        """Revalidate an exact receipt with cancellation between future reads."""
+
+        if not callable(check_cancelled):
+            raise TypeError("object receipt cancellation check must be callable")
+        return self._verify_receipt(expected, check_cancelled=check_cancelled)
+
+    def _verify_receipt(
+        self,
+        expected: BlobInfo,
+        *,
+        check_cancelled: Callable[[], None] | None,
+    ) -> BlobInfo:
         if (
             type(expected) is not BlobInfo
             or type(expected.digest) is not str
@@ -624,7 +700,25 @@ class LocalCAS:
         canonical = self._blob_info(digest, expected.byte_size)
         if expected != canonical:
             raise StorageValidationError("object receipt is not canonical")
-        observed = self.verify(digest)
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("object receipt cancellation check must be callable")
+        if check_cancelled is None:
+            observed = self.verify(digest)
+        else:
+
+            def verify_expected_object() -> BlobInfo:
+                observed_digest, byte_size = self._consume_object(
+                    digest,
+                    expected_size=expected.byte_size,
+                    check_cancelled=check_cancelled,
+                )
+                if observed_digest != digest:
+                    raise StorageIntegrityError(
+                        f"CAS object digest mismatch for {digest}"
+                    )
+                return self._blob_info(digest, byte_size)
+
+            observed = self._run_strict_operation(verify_expected_object)
         if observed != expected:
             raise StorageIntegrityError(
                 f"verified CAS object receipt does not match expected receipt: {digest}"
@@ -1022,6 +1116,8 @@ class LocalCAS:
         self,
         digest: str,
         byte_size: int,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> BlobInfo | None:
         """Authenticate and durably rebind an existing canonical object."""
 
@@ -1064,6 +1160,33 @@ class LocalCAS:
                     observed = hashlib.sha256()
                     remaining = byte_size
                     while remaining:
+                        if check_cancelled is not None:
+                            try:
+                                check_cancelled()
+                            except BaseException as cancellation_error:  # noqa: B036
+                                try:
+                                    open_signature = _canonical_object_signature(
+                                        os.fstat(handle.fileno())
+                                    )
+                                    rebound_signature = _canonical_object_signature(
+                                        os.stat(
+                                            name,
+                                            dir_fd=shard_descriptor,
+                                            follow_symlinks=False,
+                                        )
+                                    )
+                                except OSError:
+                                    raise _existing_object_conflict(
+                                        destination
+                                    ) from cancellation_error
+                                if (
+                                    open_signature != signature
+                                    or rebound_signature != signature
+                                ):
+                                    raise _existing_object_conflict(
+                                        destination
+                                    ) from cancellation_error
+                                raise
                         block = handle.read(min(_COPY_BUFFER_SIZE, remaining))
                         if not block or len(block) > remaining:
                             raise _existing_object_conflict(destination)
@@ -1119,18 +1242,79 @@ class LocalCAS:
         digest: str,
         *,
         chunks: list[bytes] | None = None,
+        expected_size: int | None = None,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> tuple[str, int]:
         digest = _validate_digest(digest)
         observed = hashlib.sha256()
         byte_size = 0
-        with self.open(digest) as handle:
-            signature = _object_signature(os.fstat(handle.fileno()))
-            while block := handle.read(_COPY_BUFFER_SIZE):
+        handle = self.open(digest)
+        with _close_binary_handle(handle):
+            opened = os.fstat(handle.fileno())
+            interruptible_expected = (
+                check_cancelled is not None and expected_size is not None
+            )
+            signature_function = (
+                _canonical_object_signature
+                if interruptible_expected
+                else _object_signature
+            )
+            signature = signature_function(opened)
+            if expected_size is not None and (
+                opened.st_size != expected_size
+                or (
+                    interruptible_expected
+                    and not _is_canonical_object(
+                        opened,
+                        expected_size=expected_size,
+                    )
+                )
+            ):
+                raise StorageIntegrityError(
+                    f"verified CAS object receipt does not match expected receipt: "
+                    f"{digest}"
+                )
+            while True:
+                if check_cancelled is not None and (
+                    expected_size is None or byte_size < expected_size
+                ):
+                    try:
+                        check_cancelled()
+                    except BaseException as cancellation_error:  # noqa: B036
+                        integrity_error = StorageIntegrityError(
+                            f"CAS object changed while reading {digest}"
+                        )
+                        try:
+                            current_signature = signature_function(
+                                os.fstat(handle.fileno())
+                            )
+                        except OSError as attestation_error:
+                            _atomic._annotate_secondary_error(
+                                integrity_error,
+                                "CAS object cancellation reconciliation also failed",
+                                attestation_error,
+                            )
+                            raise integrity_error from cancellation_error
+                        if current_signature != signature:
+                            raise integrity_error from cancellation_error
+                        raise
+                read_size = _COPY_BUFFER_SIZE
+                if expected_size is not None:
+                    remaining = expected_size - byte_size
+                    read_size = min(_COPY_BUFFER_SIZE, remaining) if remaining else 1
+                block = handle.read(read_size)
+                if not block:
+                    break
                 observed.update(block)
                 byte_size += len(block)
                 if chunks is not None:
                     chunks.append(block)
-            if _object_signature(os.fstat(handle.fileno())) != signature:
+                if expected_size is not None and byte_size > expected_size:
+                    raise StorageIntegrityError(
+                        "verified CAS object receipt does not match expected receipt: "
+                        f"{digest}"
+                    )
+            if signature_function(os.fstat(handle.fileno())) != signature:
                 raise StorageIntegrityError(
                     f"CAS object changed while reading {digest}"
                 )
@@ -1468,17 +1652,108 @@ def _unlink_portable(directory_path: Path, name: str) -> None:
         pass
 
 
+class _InterruptibleChunkStop(BaseException):
+    """Carry an exact StopIteration through an iterator protocol boundary."""
+
+    __slots__ = ("error",)
+
+    def __init__(self, error: StopIteration) -> None:
+        self.error = error
+
+
+def _inherit_interruptible_exception_settlement(
+    source: BaseException,
+    target: BaseException,
+) -> None:
+    """Transfer cleanup diagnostics and retry owners before exact unwrapping."""
+
+    for attribute in ("__notes__", "_codenib_cleanup_notes"):
+        try:
+            values = BaseException.__getattribute__(source, attribute)
+        except BaseException:  # noqa: B036 - best-effort diagnostics only
+            continue
+        if type(values) not in (list, tuple):
+            continue
+        for note in values:
+            if type(note) is not str:
+                continue
+            try:
+                add_note = getattr(BaseException, "add_note", None)
+                if add_note is not None:
+                    add_note(target, note)
+                    continue
+                try:
+                    retained = BaseException.__getattribute__(
+                        target,
+                        "_codenib_cleanup_notes",
+                    )
+                except AttributeError:
+                    retained = ()
+                if type(retained) is not tuple:
+                    retained = ()
+                BaseException.__setattr__(
+                    target,
+                    "_codenib_cleanup_notes",
+                    (*retained, note),
+                )
+            except BaseException:  # noqa: B036 - never mask the exact stop
+                pass
+
+    try:
+        publication_owners = BaseException.__getattribute__(
+            source,
+            "publication_cleanup_owners",
+        )
+    except BaseException:  # noqa: B036 - no retained publication cleanup
+        publication_owners = ()
+    if type(publication_owners) is tuple:
+        for owner in publication_owners:
+            _atomic._attach_publication_cleanup_owner(target, owner)
+
+    try:
+        bundle_owners = BaseException.__getattribute__(
+            source,
+            "_codenib_bundle_stream_cleanup_owners",
+        )
+    except BaseException:  # noqa: B036 - no retained bundle cleanup
+        bundle_owners = ()
+    if type(bundle_owners) is tuple:
+        try:
+            try:
+                retained_bundle_owners = BaseException.__getattribute__(
+                    target,
+                    "_codenib_bundle_stream_cleanup_owners",
+                )
+            except AttributeError:
+                retained_bundle_owners = ()
+            if type(retained_bundle_owners) is not tuple:
+                retained_bundle_owners = ()
+            merged = list(retained_bundle_owners)
+            for owner in bundle_owners:
+                if not any(candidate is owner for candidate in merged):
+                    merged.append(owner)
+            BaseException.__setattr__(
+                target,
+                "_codenib_bundle_stream_cleanup_owners",
+                tuple(merged),
+            )
+        except BaseException:  # noqa: B036 - exact stop remains primary
+            pass
+
+
 class _ValidatedObjectChunks(Iterator[bytes]):
     """One-shot producer adapter with exact terminal identity validation."""
 
     __slots__ = (
         "_byte_size",
+        "_check_cancelled",
         "_chunks",
         "_closed",
         "_expected_digest",
         "_expected_size",
         "_iterator",
         "_observed",
+        "_terminal_probe_observed",
     )
 
     def __init__(
@@ -1487,13 +1762,16 @@ class _ValidatedObjectChunks(Iterator[bytes]):
         *,
         expected_digest: str,
         expected_size: int,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         self._chunks: Iterable[bytes] | None = chunks
         self._iterator: Iterator[bytes] | None = None
         self._expected_digest = expected_digest
         self._expected_size = expected_size
+        self._check_cancelled = check_cancelled
         self._observed = hashlib.sha256()
         self._byte_size = 0
+        self._terminal_probe_observed = False
         self._closed = False
 
     def __iter__(self) -> _ValidatedObjectChunks:
@@ -1502,6 +1780,11 @@ class _ValidatedObjectChunks(Iterator[bytes]):
     def __next__(self) -> bytes:
         if self._closed:
             raise StopIteration
+        if self._check_cancelled is not None and (
+            self._byte_size < self._expected_size or self._terminal_probe_observed
+        ):
+            self._poll_cancelled()
+        iterator_was_missing = self._iterator is None
         try:
             iterator = self._start()
         except BaseException as primary_error:  # noqa: B036 - acquisition failed
@@ -1511,6 +1794,12 @@ class _ValidatedObjectChunks(Iterator[bytes]):
                     "CAS chunk iterator acquisition raised StopIteration"
                 ) from primary_error
             raise
+        if (
+            iterator_was_missing
+            and self._check_cancelled is not None
+            and self._byte_size < self._expected_size
+        ):
+            self._poll_cancelled()
         try:
             block = next(iterator)
         except StopIteration:
@@ -1527,16 +1816,36 @@ class _ValidatedObjectChunks(Iterator[bytes]):
         try:
             if type(block) is not bytes:
                 raise TypeError("CAS chunk producer must yield bytes")
+            at_expected_size = self._byte_size == self._expected_size
+            # The first post-size item is the unpolled current EOF/trailing
+            # guard.  A legacy-compatible empty item advances the boundary so
+            # later unknown items become cancellable future work.
+            if at_expected_size and block:
+                raise StorageIntegrityError(
+                    "CAS chunk producer exceeds its expected object size"
+                )
             if len(block) > self._expected_size - self._byte_size:
                 raise StorageIntegrityError(
                     "CAS chunk producer exceeds its expected object size"
                 )
             self._observed.update(block)
             self._byte_size += len(block)
+            if at_expected_size:
+                self._terminal_probe_observed = True
         except BaseException as primary_error:  # noqa: B036 - close producer
             self._close_preserving(primary_error)
             raise
         return block
+
+    def _poll_cancelled(self) -> None:
+        assert self._check_cancelled is not None
+        try:
+            self._check_cancelled()
+        except BaseException as primary_error:  # noqa: B036 - exact stop
+            self._close_preserving(primary_error)
+            if isinstance(primary_error, StopIteration):
+                raise _InterruptibleChunkStop(primary_error) from primary_error
+            raise
 
     def close(self) -> None:
         """Terminally stop iteration and close its producer at most once.

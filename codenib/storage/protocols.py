@@ -172,6 +172,35 @@ class ReceiptVerifyingObjectStore(ObjectStore, Protocol):
 
 
 @runtime_checkable
+class InterruptibleReceiptVerifyingObjectStore(
+    ReceiptVerifyingObjectStore,
+    Protocol,
+):
+    """Additive capability for cancellable exact receipt revalidation.
+
+    The separate method keeps the legacy one-argument ``verify_receipt``
+    contract structurally compatible while allowing cancellation-aware callers
+    to fail closed unless a backend explicitly implements this stronger seam.
+    The callback is polled only before future content reads.  If it raises, the
+    implementation propagates that exact exception object unless integrity
+    already observable on the opened object is primary.  Once the expected
+    receipt size has been read, bounded EOF/trailing-byte detection plus final
+    digest, size, and open-object attestation complete without another poll so
+    a current result cannot be masked by a newly observed stop.
+    """
+
+    def verify_receipt_interruptibly(
+        self,
+        expected: BlobInfo,
+        *,
+        check_cancelled: Callable[[], None],
+    ) -> BlobInfo:
+        """Revalidate one receipt; ``check_cancelled`` must be callable."""
+
+        ...
+
+
+@runtime_checkable
 class ReceiptRetainingObjectStore(ReceiptVerifyingObjectStore, Protocol):
     """Additive capability for callback-scoped exact receipt retention."""
 
@@ -215,6 +244,32 @@ class StreamingObjectStore(ObjectStore, Protocol):
         expected_size: int,
     ) -> BlobInfo:
         """Stream bytes that must match the exact expected identity."""
+
+        ...
+
+
+@runtime_checkable
+class InterruptibleStreamingObjectStore(StreamingObjectStore, Protocol):
+    """Additive capability for cancellable expected-identity ingestion.
+
+    Implementations poll only before future existing-object reads or producer
+    items.  A callback failure propagates as the exact exception object unless
+    already-observable object or producer integrity is primary.  After the
+    expected byte count is reached, the first producer EOF/trailing-item guard
+    runs without another cancellation poll.  A zero-length guard item remains
+    valid, after which polling resumes before each later future item; digest,
+    size, durability, and receipt attestation remain current-result postflight.
+    """
+
+    def put_chunks_interruptibly(
+        self,
+        chunks: Iterable[bytes],
+        expected_digest: str,
+        expected_size: int,
+        *,
+        check_cancelled: Callable[[], None],
+    ) -> BlobInfo:
+        """Ingest or reuse one expected object with a callable stop check."""
 
         ...
 
@@ -682,6 +737,8 @@ class JobCycleWorkerCatalog(JobWorkerCatalog, Protocol):
 
 __all__ = [
     "IndexCatalog",
+    "InterruptibleReceiptVerifyingObjectStore",
+    "InterruptibleStreamingObjectStore",
     "JobCatalog",
     "JobCycleWorkerCatalog",
     "JobExecutionCatalog",

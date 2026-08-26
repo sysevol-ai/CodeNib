@@ -82,6 +82,8 @@ from ..storage.models import (
 )
 from ..storage.protocols import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
+    InterruptibleReceiptVerifyingObjectStore,
+    InterruptibleStreamingObjectStore,
     JobPublicationCatalog,
     RetainedImportCatalog,
     RetainedImportObjectStore,
@@ -1274,6 +1276,30 @@ def _preflight_cache_job_preparation_operation(
 ) -> tuple[_ImportOperation, _CompilerCacheJobBinding]:
     """Validate a worker preparation without accepting catalog authority."""
 
+    if check_cancelled is not None:
+        if not callable(check_cancelled):
+            raise TypeError("compiler cache cancellation check must be callable")
+        if not isinstance(
+            object_store,
+            InterruptibleReceiptVerifyingObjectStore,
+        ):
+            raise TypeError(
+                "cancellable compiler cache job requires interruptible receipt "
+                "verification"
+            )
+        if not isinstance(object_store, InterruptibleStreamingObjectStore):
+            raise TypeError(
+                "cancellable compiler cache job requires interruptible streaming "
+                "ingestion"
+            )
+        _require_static_methods(
+            object_store,
+            label="compiler cache job object store",
+            names=(
+                "put_chunks_interruptibly",
+                "verify_receipt_interruptibly",
+            ),
+        )
     if type(view_type) is not str or view_type not in _SUPPORTED_CACHE_VIEWS:
         raise TypeError("compiler cache job view type is invalid")
     _preflight_authorities(
