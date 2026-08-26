@@ -173,6 +173,34 @@ def _public_event_payload(event: IndexJobEventRecord) -> dict[str, object]:
     return result
 
 
+def _public_event_key(event: IndexJobEventRecord) -> str:
+    """Return a stable key without exposing executor-controlled text."""
+
+    return f"{event.kind.value.replace('_', '-')}-{event.sequence}"
+
+
+def _advance_job_projection(
+    earlier: IndexJobRecord,
+    later: IndexJobRecord,
+) -> IndexJobRecord:
+    """Attest a post-event job read as the same monotonically advancing record."""
+
+    if type(later) is not IndexJobRecord:
+        raise IndexJobReadError("catalog returned an invalid refreshed index job")
+    if (
+        later.job_id != earlier.job_id
+        or later.request_digest != earlier.request_digest
+        or later.created_at_ms != earlier.created_at_ms
+    ):
+        raise IndexJobReadError("catalog changed immutable index job identity")
+    if (
+        later.attempt_count < earlier.attempt_count
+        or later.updated_at_ms < earlier.updated_at_ms
+    ):
+        raise IndexJobReadError("catalog returned regressing index job state")
+    return later
+
+
 def _surface(view: IndexJobViewRecord) -> IndexJobSurface:
     if type(view) is not IndexJobViewRecord:
         raise IndexJobReadError("catalog returned an invalid index job view")
@@ -203,7 +231,7 @@ def _event(
     return IndexJobEvent(
         sequence=event.sequence,
         attempt_count=event.attempt_count,
-        event_key=event.event_key,
+        event_key=_public_event_key(event),
         kind=event.kind.value,
         index_type=event.view_type,
         effective_mode=(
@@ -254,6 +282,8 @@ def _project_job(
         raise IndexJobReadError("catalog returned an invalid index job event page")
     if len(raw_events) > event_limit:
         raise IndexJobReadError("catalog event page exceeds the requested limit")
+    if event_limit:
+        job = _advance_job_projection(job, catalog.get_job(job.job_id))
     events = [
         _event(
             event,

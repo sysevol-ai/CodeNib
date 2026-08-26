@@ -251,6 +251,10 @@ def test_catalog_reader_projects_bounded_events_without_worker_authority() -> No
     assert status.status == "running"
     assert status.next_event_sequence == 2
     assert [event.kind for event in status.events] == ["progress", "view_result"]
+    assert [event.event_key for event in status.events] == [
+        "progress-1",
+        "view-result-2",
+    ]
     assert status.events[0].index_type == "bm25"
     assert status.events[0].payload == {"changed_files": 2}
     assert status.events[1].effective_mode == "full"
@@ -260,6 +264,38 @@ def test_catalog_reader_projects_bounded_events_without_worker_authority() -> No
     assert "private-worker" not in serialized
     assert "fencing" not in serialized
     assert "credential-bearing" not in serialized
+    assert "capture-started" not in serialized
+    assert "bm25-result" not in serialized
+
+
+def test_catalog_reader_rereads_job_after_events_that_advance_attempt() -> None:
+    first = _job()
+    second = replace(first, attempt_count=2, updated_at_ms=13)
+    event = replace(
+        _events(first)[0],
+        attempt_count=2,
+        event_key="private-attempt-two-phase",
+        created_at_ms=13,
+    )
+
+    class AdvancingCatalog(_Catalog):
+        def list_job_events(
+            self,
+            job_id: str,
+            *,
+            after_sequence: int = 0,
+            limit: int = 128,
+        ):
+            self.event_calls.append((job_id, after_sequence, limit))
+            self.jobs[job_id] = second
+            return (event,)
+
+    status = _reader(AdvancingCatalog((first,))).get(first.job_id)
+
+    assert status.attempt_count == 2
+    assert status.events[0].attempt_count == 2
+    assert status.events[0].event_key == "progress-1"
+    assert "private-attempt-two-phase" not in status.model_dump_json()
 
 
 def test_catalog_reader_rejects_events_outside_the_attested_job() -> None:

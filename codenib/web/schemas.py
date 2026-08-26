@@ -141,7 +141,7 @@ class IndexJobSurface(BaseModel):
 
 
 class IndexJobEvent(BaseModel):
-    """Bounded job progress without worker ownership or fencing authority."""
+    """Bounded progress with a Web-owned key and no worker/fencing authority."""
 
     sequence: int = Field(ge=1)
     attempt_count: int = Field(ge=1, le=1_000)
