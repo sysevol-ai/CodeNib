@@ -1260,16 +1260,18 @@ factory rechecks cooperative stop state around cache selection and source
 capture and fails before workspace/CAS work when the current source revision no
 longer matches the job.
 
-The first production CLI binding now exposes that target as `codenib jobs
-run-once`. It freezes the same existing-only repository/cache/catalog/CAS/
-workspace topology used by retained cache import, opens independent exact
-SQLite sessions for the main pass and heartbeat, and retains the strict local
+The production CLI binding exposes that target as `codenib jobs run-once` and
+`codenib jobs run`. Both freeze the same existing-only repository/cache/catalog/
+CAS/workspace topology used by retained cache import, open independent exact
+SQLite sessions for each main pass and heartbeat, and retain the strict local
 CAS for the whole invocation. A trusted candidate filter runs on a detached
 canonical job before owner allocation or lease acquisition, so foreign
-repositories and unsupported view requests remain untouched. One invocation
-still examines only one bounded advisory page and executes at most one eligible
-job; continuous scheduling, cache-building adapters, runtime registration, and
-default routing remain absent.
+repositories and unsupported view requests remain untouched. `run-once`
+examines one bounded advisory page and executes at most one eligible job. The
+continuous scheduler carries an attested keyset cursor across pages, wraps only
+after the runnable keyspace is exhausted, backs off after complete idle cycles,
+and supports cooperative shutdown. Cache-building adapters, runtime
+registration, and default routing remain absent.
 
 ### M2: Immutable generation publication
 
@@ -1303,8 +1305,9 @@ explicit one-view compiler-cache executor now supplies parser-inert BM25 or
 schema-8 vector artifacts without catalog authority. Its resource-scoped
 resolver and trusted local target factory guarantee attempt-local cleanup,
 same-store binding, and exact configured repository/source identity, while
-the explicit CLI can run one bounded current-cache pass. Source builders,
-continuous scheduling, runtime, Web, MCP, and default wiring remain absent.
+the explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
+over the current cache. Source builders, runtime, Web, MCP, and default wiring
+remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1317,9 +1320,13 @@ continuous scheduling, runtime, Web, MCP, and default wiring remain absent.
   in canonical order. An optional trusted filter now attests a detached
   candidate before owner allocation or claim, rejects non-boolean, failing, or
   mutating filters as integrity alarms, and lets a scoped worker leave foreign
-  or unsupported jobs untouched. Cross-page fairness, cursor scheduling, and
-  continuous draining remain responsibilities of the future runtime scheduler
-  rather than silently making one worker call unbounded.
+  or unsupported jobs untouched. The separate `run_page` surface returns the
+  selected candidate cursor after work or the attested final-page continuation
+  after a fully examined page; either continuation must advance beyond its
+  input. The local scheduler uses it to traverse the complete runnable keyspace,
+  wraps requeues into the next fair cycle, exponentially backs off only after
+  complete idle cycles, and stops cooperatively without making the legacy
+  one-page call unbounded.
 - File-backed SQLite sessions in one interpreter coordinate existing-only
   validation, transactions, and connection close by resolved catalog path, so
   a heartbeat cannot invalidate a concurrent cancellation or worker-session
@@ -1343,12 +1350,11 @@ continuous scheduling, runtime, Web, MCP, and default wiring remain absent.
   final fenced heartbeat, and then publishes before releasing receipt
   retention. Slow object hashing therefore cannot expire an otherwise healthy
   worker and force a duplicate attempt.
-- Extend the explicit one-target CLI binding into continuous scheduling and add
-  prepare-only source-builder adapters, then wire the worker into runtime, Web,
-  MCP, and default routes. The trusted local factory can recapture an
-  already-current single BM25 or vector cache view under the worker, while the
-  older self-publishing ingress APIs remain compatibility paths and are never
-  nested inside the worker.
+- Add prepare-only source-builder adapters, then wire the worker into runtime,
+  Web, MCP, and default routes. The trusted local factory and continuous CLI can
+  recapture an already-current single BM25 or vector cache view under the
+  worker, while the older self-publishing ingress APIs remain compatibility
+  paths and are never nested inside the worker.
 - Expose the #266 status and update APIs with accurate incremental versus
   rebuild behavior.
 - Load a complete new bundle and swap it RCU-style; pin old bundles for in-flight
