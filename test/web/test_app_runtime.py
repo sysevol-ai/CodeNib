@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -186,6 +187,90 @@ def test_chat_maps_citations_off_loop_from_the_served_checkout(monkeypatch):
     assert calls == [bundle.ensure_runtime, bundle.runner.run, fake_mapping]
 
 
+def test_chat_pins_one_bundle_generation_through_response_mapping(monkeypatch):
+    events = []
+    result = object()
+
+    class Runner:
+        def run(self, _query, *, chat_history):
+            assert chat_history == []
+            assert events == ["pin-enter", "runtime"]
+            events.append("run")
+            return result
+
+    def ensure_runtime():
+        assert events == ["pin-enter"]
+        events.append("runtime")
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir="/served/checkout"),
+        runner=Runner(),
+        ensure_runtime=ensure_runtime,
+        source_reader=object(),
+    )
+
+    class Registry:
+        @contextmanager
+        def pin(self, repo_id):
+            assert repo_id == "repo"
+            events.append("pin-enter")
+            try:
+                yield bundle
+            finally:
+                events.append("pin-exit")
+
+    def map_response(observed, **_kwargs):
+        assert observed is result
+        assert events == ["pin-enter", "runtime", "run"]
+        events.append("map")
+        return ChatResponse(answer="answer")
+
+    async def inline(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    monkeypatch.setattr(web_app, "agent_result_to_response", map_response)
+    monkeypatch.setattr(web_app.asyncio, "to_thread", inline)
+
+    response = asyncio.run(
+        web_app.chat(
+            ChatRequest(
+                repo_id="repo",
+                messages=[{"role": "user", "content": "Where is runtime?"}],
+            )
+        )
+    )
+
+    assert response.answer == "answer"
+    assert events == ["pin-enter", "runtime", "run", "map", "pin-exit"]
+
+
+def test_wiki_cache_rebuilds_when_bundle_generation_changes(monkeypatch):
+    created = []
+    config = SimpleNamespace(wiki_agent=False)
+
+    def build(bundle, narrator=None):
+        builder = SimpleNamespace(bundle=bundle, narrator=narrator)
+        created.append(builder)
+        return builder
+
+    old = object()
+    new = object()
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "WikiBuilder", build)
+    monkeypatch.setattr(web_app.app.state, "wiki_builders", {}, raising=False)
+    monkeypatch.setattr(web_app.app.state, "narrator", object(), raising=False)
+
+    first = web_app._wiki("repo", old)
+    repeated = web_app._wiki("repo", old)
+    refreshed = web_app._wiki("repo", new)
+
+    assert repeated is first
+    assert refreshed is not first
+    assert [builder.bundle for builder in created] == [old, new]
+    assert web_app.app.state.wiki_builders["repo"] == (new, refreshed)
+
+
 def test_chat_fails_closed_without_authenticated_source_reader(monkeypatch):
     class Runner:
         def run(self, _query, *, chat_history):
@@ -239,7 +324,7 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
         return func(*args, **kwargs)
 
     builder = Builder()
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: builder)
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: builder)
     monkeypatch.setattr(
         web_app,
         "_bundle",
@@ -281,7 +366,7 @@ def test_cached_wiki_tree_does_not_generate_a_missing_outline(monkeypatch):
         def page_tree(self):
             raise AssertionError("cached-only Wiki lookup must not generate")
 
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
     monkeypatch.setattr(
         web_app,
         "_bundle",
@@ -325,7 +410,7 @@ def test_wiki_page_materializes_local_svg_media(tmp_path, monkeypatch):
         wiki_media_api_key=None,
         wiki_media_options={},
     )
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
     monkeypatch.setattr(web_app, "load_config", lambda: config)
     monkeypatch.setattr(
         web_app,
@@ -451,7 +536,12 @@ def test_wiki_page_can_skip_media_materialization_for_preload(monkeypatch):
                 "media_slots": [slot],
             }
 
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
+    monkeypatch.setattr(
+        web_app,
+        "_bundle",
+        lambda _repo_id: SimpleNamespace(entry=SimpleNamespace(repo="org/repo")),
+    )
     monkeypatch.setattr(
         web_app,
         "_materialize_wiki_media",
@@ -590,7 +680,7 @@ def test_wiki_page_graph_reports_why_the_graph_is_unavailable(monkeypatch):
             "Dependency graph uses schema 4, but this server requires schema 5."
         ),
     )
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
 
     result = asyncio.run(web_app.wiki_page_graph("repo", "overview"))
@@ -677,7 +767,11 @@ def test_unavailable_codemap_returns_repository_setup_report(monkeypatch):
         graph_setup=lambda: Setup(),
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
 
     result = asyncio.run(web_app.codemap("repo"))
 
@@ -700,7 +794,11 @@ def test_unavailable_modulemap_returns_repository_setup_report(monkeypatch):
         graph_setup=lambda: Setup(),
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
 
     result = asyncio.run(web_app.modulemap("repo"))
 
@@ -746,7 +844,11 @@ def test_modulemap_endpoint_projects_the_graph_and_stamps_the_commit(monkeypatch
         graph_setup=lambda: None,
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
 
     result = asyncio.run(web_app.modulemap("repo", granularity="file"))
 
@@ -804,7 +906,11 @@ def test_commit_window_maps_use_only_selected_snapshot_metadata(monkeypatch):
         }
 
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(codemap_builder, "build_codemap", fake_codemap)
     monkeypatch.setattr(modulemap_builder, "build_modulemap", fake_modulemap)
 
@@ -848,7 +954,11 @@ def test_current_codemap_uses_the_authenticated_source_reader(monkeypatch):
         return {"available": True, "nodes": [], "edges": []}
 
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(codemap_builder, "build_codemap", fake_codemap)
 
     result = asyncio.run(web_app.codemap("repo"))
@@ -884,7 +994,11 @@ def test_source_endpoint_reads_the_requested_window_commit(monkeypatch):
         ),
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(
         web_app,
         "_wiki",
@@ -920,7 +1034,11 @@ def test_source_endpoint_rejects_excluded_historical_source(monkeypatch):
         ),
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
 
     with pytest.raises(web_app.HTTPException) as error:
         asyncio.run(
@@ -944,7 +1062,7 @@ def test_edge_label_uses_the_graph_payload_commit(monkeypatch):
         def label(self, *args):
             return "calls", False
 
-    def labeler(repo_id, commit):
+    def labeler(repo_id, commit, _bundle=None):
         calls.append((repo_id, commit))
         return Labeler()
 
@@ -1003,7 +1121,11 @@ def test_historical_edge_labeler_gates_source_with_manifest_selection(monkeypatc
         wiki_generation_api_key=None,
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(web_app, "load_config", lambda: config)
     monkeypatch.setattr(web_app, "_wiki_llm", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(edge_label_module, "EdgeLabeler", Labeler)
@@ -1033,7 +1155,11 @@ def test_source_endpoint_reads_the_live_checkout_without_building_the_wiki(
     binding = capture_repository_source(tmp_path)
     bundle.source_reader = binding.borrow_reader()
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(
         web_app,
         "_wiki",

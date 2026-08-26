@@ -22,7 +22,7 @@ import asyncio
 import hashlib
 import os
 from collections.abc import Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from functools import partial
 from pathlib import Path, PurePosixPath
 from time import perf_counter
@@ -224,28 +224,57 @@ def _bundle(repo_id: str):
     return bundle
 
 
-def _wiki(repo_id: str):
+@contextmanager
+def _pinned_bundle(repo_id: str):
+    """Keep one repository generation alive for a complete Web operation."""
+
+    registry = getattr(app.state, "registry", None)
+    pin = getattr(registry, "pin", None)
+    if not callable(pin):
+        # Preserve the small injected registry contract used by offline tools;
+        # the production RepoRegistry always supplies generation pinning.
+        yield _bundle(repo_id)
+        return
+    with pin(repo_id) as bundle:
+        if bundle is None:
+            raise HTTPException(status_code=404, detail=f"Unknown repo: {repo_id!r}")
+        yield bundle
+
+
+def _generation_cached(cache: dict, key: str, bundle, factory):
+    """Reuse a helper only while it is bound to the active bundle generation."""
+
+    cached = cache.get(key)
+    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] is bundle:
+        return cached[1]
+    value = factory()
+    cache[key] = (bundle, value)
+    return value
+
+
+def _wiki(repo_id: str, bundle=None):
     """Lazily build + cache a wiki per repo (conceptual agent wiki by default)."""
+    if bundle is None:
+        bundle = _bundle(repo_id)
     cache = app.state.wiki_builders
-    if repo_id not in cache:
+
+    def build():
         config = load_config()
         if getattr(config, "wiki_agent", True):
             from ..wiki.agent_wiki import AgentWiki
 
             wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
-            cache[repo_id] = AgentWiki(
-                _bundle(repo_id),
+            return AgentWiki(
+                bundle,
                 config.wiki_generation_model,
                 cache_dir=wiki_cache,
                 llm=_wiki_llm(config),
                 api_base=config.wiki_generation_api_base,
                 api_key=config.wiki_generation_api_key,
             )
-        else:
-            cache[repo_id] = WikiBuilder(
-                _bundle(repo_id), narrator=getattr(app.state, "narrator", None)
-            )
-    return cache[repo_id]
+        return WikiBuilder(bundle, narrator=getattr(app.state, "narrator", None))
+
+    return _generation_cached(cache, repo_id, bundle, build)
 
 
 def _wiki_media_dir(config, repo_id: str, page_id: str) -> Path:
@@ -287,7 +316,12 @@ def _wiki_media_evidence_builder(bundle, page: Mapping):
     )
 
 
-def _materialize_wiki_media(repo_id: str, page_id: str, page: dict) -> dict:
+def _materialize_wiki_media(
+    repo_id: str,
+    page_id: str,
+    page: dict,
+    bundle=None,
+) -> dict:
     """Attach generated media assets when a wiki media provider is configured."""
 
     public_page = redact_media_evidence_packs(page)
@@ -305,7 +339,10 @@ def _materialize_wiki_media(repo_id: str, page_id: str, page: dict) -> dict:
             generator=generator,
             output_dir=_wiki_media_dir(config, repo_id, page_id),
             asset_base_path=asset_base,
-            evidence_builder=_wiki_media_evidence_builder(_bundle(repo_id), page),
+            evidence_builder=_wiki_media_evidence_builder(
+                bundle if bundle is not None else _bundle(repo_id),
+                page,
+            ),
         )
     except MemoryError:
         raise
@@ -339,15 +376,16 @@ def _safe_media_filename(value: str) -> str:
     return filename
 
 
-def _edge_labeler(repo_id: str, commit: str | None = None):
+def _edge_labeler(repo_id: str, commit: str | None = None, bundle=None):
     """Build a labeler whose source reader matches the requested graph commit."""
     cache = app.state.edge_labelers
-    bundle = _bundle(repo_id)
+    if bundle is None:
+        bundle = _bundle(repo_id)
     base_commit = str(bundle.entry.base_commit or "")
     source_fn = None
     source_commit = base_commit
     if commit:
-        window = _commit_window(repo_id)
+        window = _commit_window(repo_id, bundle)
         entry = window.resolve(commit) if window.available else None
         if entry is not None:
             source_commit = str(entry.get("sha") or "")
@@ -371,14 +409,15 @@ def _edge_labeler(repo_id: str, commit: str | None = None):
         )
 
     cache_key = f"{repo_id}@{source_commit}"
-    if cache_key not in cache:
+
+    def build():
         from .edge_label import EdgeLabeler
 
         config = load_config()
         wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
         namespace = f"{bundle.entry.instance_id}@{source_commit}"
         model = config.edge_label_model or config.wiki_generation_model
-        cache[cache_key] = EdgeLabeler(
+        return EdgeLabeler(
             source_fn=source_fn,
             model=model,
             cache_dir=wiki_cache,
@@ -387,28 +426,34 @@ def _edge_labeler(repo_id: str, commit: str | None = None):
             api_base=config.wiki_generation_api_base,
             api_key=config.wiki_generation_api_key,
         )
-    return cache[cache_key]
+
+    return _generation_cached(cache, cache_key, bundle, build)
 
 
-def _commit_window(repo_id: str):
+def _commit_window(repo_id: str, bundle=None):
     """Lazily build + cache this repo's per-commit graph window."""
+    if bundle is None:
+        bundle = _bundle(repo_id)
     cache = app.state.commit_windows
-    if repo_id not in cache:
+
+    def build():
         from .commit_window import CommitWindow
 
-        cache[repo_id] = CommitWindow(_bundle(repo_id).entry.repo_dir)
-    return cache[repo_id]
+        return CommitWindow(bundle.entry.repo_dir)
+
+    return _generation_cached(cache, repo_id, bundle, build)
 
 
 def _window_stats_for(repo_id: str):
     """Commit-window cost figures for *repo_id*, or None when it has no window."""
     from .schemas import WindowStats
 
-    window = _commit_window(repo_id)
-    if not window.available:
-        return None
-    stats = window.summary().get("stats")
-    return WindowStats(**stats) if stats else None
+    with _pinned_bundle(repo_id) as bundle:
+        window = _commit_window(repo_id, bundle)
+        if not window.available:
+            return None
+        stats = window.summary().get("stats")
+        return WindowStats(**stats) if stats else None
 
 
 @app.get("/api/health")
@@ -443,18 +488,19 @@ async def list_repos() -> list[RepoInfo]:
 
 @app.get("/api/repos/{repo_id}/wiki")
 async def wiki_tree(repo_id: str, cached_only: bool = False) -> dict:
-    builder = _wiki(repo_id)
-    if cached_only:
-        cached_page_tree = getattr(builder, "cached_page_tree", None)
-        pages = (
-            await asyncio.to_thread(cached_page_tree)
-            if callable(cached_page_tree)
-            else None
-        )
-        pages = pages or []
-    else:
-        pages = await asyncio.to_thread(builder.page_tree)
-    return {"repo": _bundle(repo_id).entry.repo, "pages": pages}
+    with _pinned_bundle(repo_id) as bundle:
+        builder = _wiki(repo_id, bundle)
+        if cached_only:
+            cached_page_tree = getattr(builder, "cached_page_tree", None)
+            pages = (
+                await asyncio.to_thread(cached_page_tree)
+                if callable(cached_page_tree)
+                else None
+            )
+            pages = pages or []
+        else:
+            pages = await asyncio.to_thread(builder.page_tree)
+        return {"repo": bundle.entry.repo, "pages": pages}
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}")
@@ -463,51 +509,63 @@ async def wiki_page(
     page_id: str,
     materialize_media: bool = True,
 ) -> dict:
-    page = await asyncio.to_thread(_wiki(repo_id).page, page_id)
-    if page is None:
-        raise HTTPException(status_code=404, detail=f"Unknown wiki page: {page_id!r}")
-    if "media_slots" not in page:
-        page = {**page, "media_slots": []}
-    if materialize_media and page.get("media_slots"):
-        page = await asyncio.to_thread(_materialize_wiki_media, repo_id, page_id, page)
-    if "generation" not in page:
-        page = {
-            **page,
-            "generation": {
-                "mode": "offline",
-                "model": None,
-                "repaired": False,
-            },
-            "grounding": {
-                "valid": True,
-                "citation_coverage": 1.0,
-                "cited_evidence": len(page.get("citations") or []),
-                "evidence_count": len(page.get("citations") or []),
-                "relation_count": 0,
-            },
-        }
-    return redact_media_evidence_packs(page)
+    with _pinned_bundle(repo_id) as bundle:
+        page = await asyncio.to_thread(_wiki(repo_id, bundle).page, page_id)
+        if page is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Unknown wiki page: {page_id!r}",
+            )
+        if "media_slots" not in page:
+            page = {**page, "media_slots": []}
+        if materialize_media and page.get("media_slots"):
+            page = await asyncio.to_thread(
+                _materialize_wiki_media,
+                repo_id,
+                page_id,
+                page,
+                bundle,
+            )
+        if "generation" not in page:
+            page = {
+                **page,
+                "generation": {
+                    "mode": "offline",
+                    "model": None,
+                    "repaired": False,
+                },
+                "grounding": {
+                    "valid": True,
+                    "citation_coverage": 1.0,
+                    "cited_evidence": len(page.get("citations") or []),
+                    "evidence_count": len(page.get("citations") or []),
+                    "relation_count": 0,
+                },
+            }
+        return redact_media_evidence_packs(page)
 
 
 @app.get("/api/repos/{repo_id}/wiki-media/{page_id}/{filename:path}")
 async def wiki_media_asset(repo_id: str, page_id: str, filename: str):
-    _bundle(repo_id)  # 404 on unknown repo
-    safe_filename = _safe_media_filename(filename)
-    payload = read_generated_media_asset(
-        _wiki_media_dir(load_config(), repo_id, page_id), safe_filename
-    )
-    if payload is None:
-        raise HTTPException(status_code=404, detail="media asset not found")
-    suffix = Path(safe_filename).suffix.lower()
-    headers = {
-        "Cache-Control": "private, no-store",
-        "X-Content-Type-Options": "nosniff",
-    }
-    if suffix == ".svg":
-        headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
-    return Response(
-        content=payload, media_type=_WIKI_MEDIA_TYPES[suffix], headers=headers
-    )
+    with _pinned_bundle(repo_id):
+        safe_filename = _safe_media_filename(filename)
+        payload = read_generated_media_asset(
+            _wiki_media_dir(load_config(), repo_id, page_id), safe_filename
+        )
+        if payload is None:
+            raise HTTPException(status_code=404, detail="media asset not found")
+        suffix = Path(safe_filename).suffix.lower()
+        headers = {
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if suffix == ".svg":
+            headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+        return Response(
+            content=payload,
+            media_type=_WIKI_MEDIA_TYPES[suffix],
+            headers=headers,
+        )
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}/graph")
@@ -517,46 +575,46 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
     Lets a wiki page render as a *view over the graph* (subsystem symbols + how
     they connect), using the same ``{nodes, edges}`` payload as ``/codemap``.
     """
-    builder = _wiki(repo_id)
-    page_citations = getattr(builder, "page_citations", None)
-    if callable(page_citations):
-        citations = await asyncio.to_thread(page_citations, page_id)
-        if citations is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Unknown wiki page: {page_id!r}",
-            )
-    else:
-        # The deterministic WikiBuilder does not make a model call, so its
-        # existing page contract remains a safe compatibility fallback.
-        page = await asyncio.to_thread(builder.page, page_id)
-        if page is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Unknown wiki page: {page_id!r}",
-            )
-        citations = page.get("citations", []) if isinstance(page, dict) else []
-    bundle = _bundle(repo_id)
-    graph = await asyncio.to_thread(bundle.code_graph)
-    if graph is None:
-        return {
-            "available": False,
-            "nodes": [],
-            "edges": [],
-            "mermaid": "",
-            "note": bundle.graph_unavailable_note(),
-        }
-    from .codemap import build_page_subgraph
+    with _pinned_bundle(repo_id) as bundle:
+        builder = _wiki(repo_id, bundle)
+        page_citations = getattr(builder, "page_citations", None)
+        if callable(page_citations):
+            citations = await asyncio.to_thread(page_citations, page_id)
+            if citations is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Unknown wiki page: {page_id!r}",
+                )
+        else:
+            # The deterministic WikiBuilder does not make a model call, so its
+            # existing page contract remains a safe compatibility fallback.
+            page = await asyncio.to_thread(builder.page, page_id)
+            if page is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Unknown wiki page: {page_id!r}",
+                )
+            citations = page.get("citations", []) if isinstance(page, dict) else []
+        graph = await asyncio.to_thread(bundle.code_graph)
+        if graph is None:
+            return {
+                "available": False,
+                "nodes": [],
+                "edges": [],
+                "mermaid": "",
+                "note": bundle.graph_unavailable_note(),
+            }
+        from .codemap import build_page_subgraph
 
-    hierarchy_graph = await asyncio.to_thread(bundle.hierarchical_graph)
-    return await asyncio.to_thread(
-        build_page_subgraph,
-        graph,
-        citations,
-        repo_dir=bundle.entry.repo_dir,
-        hierarchy_graph=hierarchy_graph,
-        source_reader=bundle.source_reader,
-    )
+        hierarchy_graph = await asyncio.to_thread(bundle.hierarchical_graph)
+        return await asyncio.to_thread(
+            build_page_subgraph,
+            graph,
+            citations,
+            repo_dir=bundle.entry.repo_dir,
+            hierarchy_graph=hierarchy_graph,
+            source_reader=bundle.source_reader,
+        )
 
 
 @app.get("/api/repos/{repo_id}/source")
@@ -568,43 +626,51 @@ async def source(
     commit: str | None = None,
 ) -> dict:
     """Read source from the commit that produced the active graph payload."""
-    bundle = _bundle(repo_id)
-    result = None
-    if commit:
-        window = _commit_window(repo_id)
-        entry = window.resolve(commit) if window.available else None
-        if entry is not None:
-            result = await asyncio.to_thread(
-                _historical_source_slice,
-                bundle,
-                window.source_for,
-                commit,
-                file,
-                start,
-                end,
-            )
-        else:
-            base = str(bundle.entry.base_commit or "")
-            requested = commit.strip().lower()
-            if requested not in {base.lower(), base[:8].lower()}:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Unknown commit for this repo: {commit!r}",
+    with _pinned_bundle(repo_id) as bundle:
+        result = None
+        if commit:
+            window = _commit_window(repo_id, bundle)
+            entry = window.resolve(commit) if window.available else None
+            if entry is not None:
+                result = await asyncio.to_thread(
+                    _historical_source_slice,
+                    bundle,
+                    window.source_for,
+                    commit,
+                    file,
+                    start,
+                    end,
                 )
+            else:
+                base = str(bundle.entry.base_commit or "")
+                requested = commit.strip().lower()
+                if requested not in {base.lower(), base[:8].lower()}:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Unknown commit for this repo: {commit!r}",
+                    )
+                source_reader = getattr(bundle, "source_reader", None)
+                if source_reader is not None:
+                    result = await asyncio.to_thread(
+                        bound_source_slice,
+                        source_reader,
+                        file,
+                        start,
+                        end,
+                    )
+        else:
             source_reader = getattr(bundle, "source_reader", None)
             if source_reader is not None:
                 result = await asyncio.to_thread(
-                    bound_source_slice, source_reader, file, start, end
+                    bound_source_slice,
+                    source_reader,
+                    file,
+                    start,
+                    end,
                 )
-    else:
-        source_reader = getattr(bundle, "source_reader", None)
-        if source_reader is not None:
-            result = await asyncio.to_thread(
-                bound_source_slice, source_reader, file, start, end
-            )
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"File not found: {file!r}")
-    return result
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"File not found: {file!r}")
+        return result
 
 
 @app.get("/api/repos/{repo_id}/commits")
@@ -614,9 +680,9 @@ async def commits(repo_id: str) -> dict:
     Backed by ``scripts/build_commit_window.py``. Repos without a prebuilt
     window return ``available=False`` and the UI keeps its single-commit label.
     """
-    _bundle(repo_id)  # 404 on unknown repo
-    window = _commit_window(repo_id)
-    return await asyncio.to_thread(window.summary)
+    with _pinned_bundle(repo_id) as bundle:
+        window = _commit_window(repo_id, bundle)
+        return await asyncio.to_thread(window.summary)
 
 
 @app.get("/api/repos/{repo_id}/codemap")
@@ -633,75 +699,80 @@ async def codemap(
     Returns ``{available, root, nodes, edges, mermaid, ...}``; the ``mermaid``
     field renders directly in the frontend's existing diagram component.
     """
-    bundle = _bundle(repo_id)
-    # Prefer a commit-window snapshot when one exists: an explicit ``commit``
-    # selects that point in history, and an absent one still defaults to the
-    # window's newest commit so the graph matches the selector's default.
-    window = _commit_window(repo_id)
-    graph = None
-    selected_commit = None
-    loaded_from_window = False
-    fell_back = False
-    if window.available:
-        entry = window.resolve(commit)
-        if entry is None and commit:
-            raise HTTPException(
-                status_code=404, detail=f"Unknown commit for this repo: {commit!r}"
-            )
-        graph = await asyncio.to_thread(window.graph_for, commit)
-        if entry is not None and graph is not None:
-            selected_commit = entry.get("sha")
-            loaded_from_window = True
-    if graph is None:
-        # The snapshot was absent or unloadable (e.g. a graph.pkl written under
-        # an older schema_version). Serving the repo's default graph is fine;
-        # reporting it as the requested commit is not -- the client would render
-        # one commit's graph under another commit's label.
-        graph = await asyncio.to_thread(bundle.code_graph)
-        selected_commit = bundle.entry.base_commit
-        fell_back = window.available
-    if graph is None:
-        return {
-            "available": False,
-            "nodes": [],
-            "edges": [],
-            "hierarchy": {"root": "hier::root", "nodes": [], "open_files": []},
-            "mermaid": "",
-            "note": bundle.graph_unavailable_note(),
-            "setup": bundle.graph_setup().to_dict(),
-        }
-    from .codemap import build_codemap
+    with _pinned_bundle(repo_id) as bundle:
+        # Prefer a commit-window snapshot when one exists: an explicit ``commit``
+        # selects that point in history, and an absent one still defaults to the
+        # window's newest commit so the graph matches the selector's default.
+        window = _commit_window(repo_id, bundle)
+        graph = None
+        selected_commit = None
+        loaded_from_window = False
+        fell_back = False
+        if window.available:
+            entry = window.resolve(commit)
+            if entry is None and commit:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Unknown commit for this repo: {commit!r}",
+                )
+            graph = await asyncio.to_thread(window.graph_for, commit)
+            if entry is not None and graph is not None:
+                selected_commit = entry.get("sha")
+                loaded_from_window = True
+        if graph is None:
+            # The snapshot was absent or unloadable (e.g. a graph.pkl written under
+            # an older schema_version). Serving the repo's default graph is fine;
+            # reporting it as the requested commit is not -- the client would render
+            # one commit's graph under another commit's label.
+            graph = await asyncio.to_thread(bundle.code_graph)
+            selected_commit = bundle.entry.base_commit
+            fell_back = window.available
+        if graph is None:
+            return {
+                "available": False,
+                "nodes": [],
+                "edges": [],
+                "hierarchy": {
+                    "root": "hier::root",
+                    "nodes": [],
+                    "open_files": [],
+                },
+                "mermaid": "",
+                "note": bundle.graph_unavailable_note(),
+                "setup": bundle.graph_setup().to_dict(),
+            }
+        from .codemap import build_codemap
 
-    hierarchy_graph = (
-        None
-        if loaded_from_window
-        else await asyncio.to_thread(bundle.hierarchical_graph)
-    )
-    result = await asyncio.to_thread(
-        build_codemap,
-        graph,
-        symbol,
-        direction,
-        depth,
-        max_nodes,
-        repo_dir=bundle.entry.repo_dir,
-        repo_commit=selected_commit if loaded_from_window else None,
-        hierarchy_graph=hierarchy_graph,
-        source_reader=(
-            None if loaded_from_window else getattr(bundle, "source_reader", None)
-        ),
-        source_selection=(
-            _manifest_source_selection(bundle) if loaded_from_window else None
-        ),
-    )
-    # Let the client confirm which snapshot it is looking at. ``fell_back``
-    # marks the case where a window exists but its snapshot could not be served,
-    # so the UI can say so instead of implying the selection took effect.
-    if isinstance(result, dict):
-        result["commit"] = selected_commit
-        if fell_back:
-            result["fell_back"] = True
-    return result
+        hierarchy_graph = (
+            None
+            if loaded_from_window
+            else await asyncio.to_thread(bundle.hierarchical_graph)
+        )
+        result = await asyncio.to_thread(
+            build_codemap,
+            graph,
+            symbol,
+            direction,
+            depth,
+            max_nodes,
+            repo_dir=bundle.entry.repo_dir,
+            repo_commit=selected_commit if loaded_from_window else None,
+            hierarchy_graph=hierarchy_graph,
+            source_reader=(
+                None if loaded_from_window else getattr(bundle, "source_reader", None)
+            ),
+            source_selection=(
+                _manifest_source_selection(bundle) if loaded_from_window else None
+            ),
+        )
+        # Let the client confirm which snapshot it is looking at. ``fell_back``
+        # marks the case where a window exists but its snapshot could not be served,
+        # so the UI can say so instead of implying the selection took effect.
+        if isinstance(result, dict):
+            result["commit"] = selected_commit
+            if fell_back:
+                result["fell_back"] = True
+        return result
 
 
 @app.get("/api/repos/{repo_id}/modulemap")
@@ -720,63 +791,68 @@ async def modulemap(
     symbol references — so this aggregates reference edges through each symbol's
     file. Same ``{nodes, edges, hierarchy, mermaid}`` shape as ``/codemap``.
     """
-    bundle = _bundle(repo_id)
-    window = _commit_window(repo_id)
-    graph = None
-    selected_commit = None
-    loaded_from_window = False
-    fell_back = False
-    if window.available:
-        entry = window.resolve(commit)
-        if entry is None and commit:
-            raise HTTPException(
-                status_code=404, detail=f"Unknown commit for this repo: {commit!r}"
-            )
-        graph = await asyncio.to_thread(window.graph_for, commit)
-        if entry is not None and graph is not None:
-            selected_commit = entry.get("sha")
-            loaded_from_window = True
-    if graph is None:
-        graph = await asyncio.to_thread(bundle.code_graph)
-        selected_commit = bundle.entry.base_commit
-        fell_back = window.available
-    if graph is None:
-        return {
-            "available": False,
-            "granularity": (
-                granularity if granularity in ("file", "directory") else "file"
-            ),
-            "nodes": [],
-            "edges": [],
-            "hierarchy": {"root": "hier::root", "nodes": [], "open_files": []},
-            "mermaid": "",
-            "note": bundle.graph_unavailable_note(),
-            "setup": bundle.graph_setup().to_dict(),
-        }
-    from .modulemap import build_modulemap
+    with _pinned_bundle(repo_id) as bundle:
+        window = _commit_window(repo_id, bundle)
+        graph = None
+        selected_commit = None
+        loaded_from_window = False
+        fell_back = False
+        if window.available:
+            entry = window.resolve(commit)
+            if entry is None and commit:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Unknown commit for this repo: {commit!r}",
+                )
+            graph = await asyncio.to_thread(window.graph_for, commit)
+            if entry is not None and graph is not None:
+                selected_commit = entry.get("sha")
+                loaded_from_window = True
+        if graph is None:
+            graph = await asyncio.to_thread(bundle.code_graph)
+            selected_commit = bundle.entry.base_commit
+            fell_back = window.available
+        if graph is None:
+            return {
+                "available": False,
+                "granularity": (
+                    granularity if granularity in ("file", "directory") else "file"
+                ),
+                "nodes": [],
+                "edges": [],
+                "hierarchy": {
+                    "root": "hier::root",
+                    "nodes": [],
+                    "open_files": [],
+                },
+                "mermaid": "",
+                "note": bundle.graph_unavailable_note(),
+                "setup": bundle.graph_setup().to_dict(),
+            }
+        from .modulemap import build_modulemap
 
-    result = await asyncio.to_thread(
-        build_modulemap,
-        graph,
-        focus,
-        granularity,
-        depth,
-        max_nodes,
-        repo_dir=bundle.entry.repo_dir,
-        include_tests=include_tests,
-        repo_commit=selected_commit if loaded_from_window else None,
-        source_reader=(
-            None if loaded_from_window else getattr(bundle, "source_reader", None)
-        ),
-        source_selection=(
-            _manifest_source_selection(bundle) if loaded_from_window else None
-        ),
-    )
-    if isinstance(result, dict):
-        result["commit"] = selected_commit
-        if fell_back:
-            result["fell_back"] = True
-    return result
+        result = await asyncio.to_thread(
+            build_modulemap,
+            graph,
+            focus,
+            granularity,
+            depth,
+            max_nodes,
+            repo_dir=bundle.entry.repo_dir,
+            include_tests=include_tests,
+            repo_commit=selected_commit if loaded_from_window else None,
+            source_reader=(
+                None if loaded_from_window else getattr(bundle, "source_reader", None)
+            ),
+            source_selection=(
+                _manifest_source_selection(bundle) if loaded_from_window else None
+            ),
+        )
+        if isinstance(result, dict):
+            result["commit"] = selected_commit
+            if fell_back:
+                result["fell_back"] = True
+        return result
 
 
 @app.post("/api/repos/{repo_id}/edge-label", response_model=EdgeLabelResponse)
@@ -789,25 +865,25 @@ async def edge_label(repo_id: str, req: EdgeLabelRequest) -> EdgeLabelResponse:
     """
     if not bool(getattr(load_config(), "edge_labels", False)):
         return EdgeLabelResponse(label="", disabled=True)
-    _bundle(repo_id)  # 404 on unknown repo
-    try:
-        labeler = _edge_labeler(repo_id, req.commit)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    anchors = [a.model_dump() for a in req.anchors]
-    label, cached = await asyncio.to_thread(
-        labeler.label,
-        req.source.file,
-        req.source.line,
-        req.source.end_line,
-        req.source.label,
-        req.target.file,
-        req.target.line,
-        req.target.end_line,
-        req.target.label,
-        anchors,
-    )
-    return EdgeLabelResponse(label=label, cached=cached)
+    with _pinned_bundle(repo_id) as bundle:
+        try:
+            labeler = _edge_labeler(repo_id, req.commit, bundle)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        anchors = [a.model_dump() for a in req.anchors]
+        label, cached = await asyncio.to_thread(
+            labeler.label,
+            req.source.file,
+            req.source.line,
+            req.source.end_line,
+            req.source.label,
+            req.target.file,
+            req.target.line,
+            req.target.end_line,
+            req.target.label,
+            anchors,
+        )
+        return EdgeLabelResponse(label=label, cached=cached)
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -820,37 +896,45 @@ async def chat(req: ChatRequest) -> ChatResponse:
     if not query:
         raise HTTPException(status_code=400, detail="query must not be empty")
 
-    bundle = _registry().get(req.repo_id)
-    if bundle is None:
-        raise HTTPException(status_code=404, detail=f"Unknown repo: {req.repo_id!r}")
-    await asyncio.to_thread(bundle.ensure_runtime)
-    if bundle.runner is None:
-        raise HTTPException(status_code=503, detail="repo runtime is unavailable")
+    with _pinned_bundle(req.repo_id) as bundle:
+        await asyncio.to_thread(bundle.ensure_runtime)
+        if bundle.runner is None:
+            raise HTTPException(status_code=503, detail="repo runtime is unavailable")
 
-    # Earlier messages give the agent context so it can resolve follow-ups
-    # like "what calls it?".
-    chat_history = [{"role": m.role, "content": m.content} for m in req.messages[:-1]]
+        # Earlier messages give the agent context so it can resolve follow-ups
+        # like "what calls it?".
+        chat_history = [
+            {"role": message.role, "content": message.content}
+            for message in req.messages[:-1]
+        ]
 
-    try:
-        result = await asyncio.to_thread(
-            bundle.runner.run, query, chat_history=chat_history
+        try:
+            result = await asyncio.to_thread(
+                bundle.runner.run,
+                query,
+                chat_history=chat_history,
+            )
+        except Exception as exc:  # noqa: BLE001 - clean 500 without query content
+            logger.error(
+                "agent run failed for %r: %s",
+                req.repo_id,
+                exc,
+                exc_info=True,
+            )
+            raise HTTPException(status_code=500, detail="agent run failed") from exc
+
+        source_reader = getattr(bundle, "source_reader", None)
+        if source_reader is None:
+            raise HTTPException(
+                status_code=503,
+                detail="authenticated repository source is unavailable",
+            )
+        return await asyncio.to_thread(
+            agent_result_to_response,
+            result,
+            repo_path=getattr(bundle.entry, "repo_dir", ""),
+            source_reader=source_reader,
         )
-    except Exception as exc:  # noqa: BLE001 - surface a clean 500 to the client
-        logger.error("agent run failed for %r: %s", req.repo_id, exc, exc_info=True)
-        raise HTTPException(status_code=500, detail="agent run failed") from exc
-
-    source_reader = getattr(bundle, "source_reader", None)
-    if source_reader is None:
-        raise HTTPException(
-            status_code=503,
-            detail="authenticated repository source is unavailable",
-        )
-    return await asyncio.to_thread(
-        agent_result_to_response,
-        result,
-        repo_path=getattr(bundle.entry, "repo_dir", ""),
-        source_reader=source_reader,
-    )
 
 
 def _parse_args(
