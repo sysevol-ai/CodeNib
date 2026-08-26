@@ -436,6 +436,27 @@ class TestBM25IndexBuilder:
 
         assert marker.read_text(encoding="utf-8") == "keep"
 
+    def test_build_from_repository_source_rejects_output_symlinked_into_repository(
+        self,
+        tmp_path,
+    ):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "app.py").write_text("def app():\n    return 1\n", encoding="utf-8")
+        alias = tmp_path / "repository-alias"
+        alias.symlink_to(repo, target_is_directory=True)
+        output = alias / "bm25"
+
+        with capture_repository_source(repo) as source:
+            with pytest.raises(ValueError, match="inside the repository"):
+                BM25IndexBuilder().build_from_repository_source(
+                    "current_repo",
+                    repository_source=source,
+                    output_dir=str(output),
+                )
+
+        assert not output.exists()
+
     def test_build_from_repository_source_stops_before_output_mutation(
         self,
         tmp_path,

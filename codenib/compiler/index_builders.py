@@ -389,9 +389,19 @@ class BM25IndexBuilder:
             )
         output = Path(os.path.abspath(os.path.expanduser(output_dir)))
         repository_root = identity.root
-        if output == repository_root or output in repository_root.parents:
+        resolved_output = output.resolve(strict=False)
+        resolved_repository_root = repository_root.resolve(strict=True)
+        if (
+            output == repository_root
+            or output in repository_root.parents
+            or resolved_output == resolved_repository_root
+            or resolved_output in resolved_repository_root.parents
+        ):
             raise ValueError("BM25 source build output cannot contain the repository")
-        if repository_root in output.parents:
+        if (
+            repository_root in output.parents
+            or resolved_repository_root in resolved_output.parents
+        ):
             raise ValueError("BM25 source build output cannot be inside the repository")
         if os.path.lexists(output):
             raise FileExistsError(
