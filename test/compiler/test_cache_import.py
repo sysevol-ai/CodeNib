@@ -37,6 +37,8 @@ from codenib.artifacts import query_context_artifact
 from codenib.compiler.cache_import import (
     CompilerCacheBm25RecaptureResult,
     CompilerCacheImportResult,
+    CompilerCacheJobExecutor,
+    CompilerCacheJobPreparationResult,
     CompilerCacheJobPublicationResult,
     CompilerCacheMultiViewImportResult,
     CompilerCacheTopologyGuard,
@@ -47,6 +49,7 @@ from codenib.compiler.cache_import import (
     compiler_cache_source_selection,
     import_compiler_cache,
     import_compiler_cache_bm25,
+    prepare_compiler_cache_job_view,
     publish_compiler_cache_bm25_job,
     publish_compiler_cache_vector_job,
 )
@@ -83,6 +86,8 @@ from codenib.storage import (
     VIEW_BUNDLE_SCHEMA,
     BlobInfo,
     IndexJobStatus,
+    IndexJobWorker,
+    IndexJobWorkerDisposition,
     LocalCAS,
     PublishConflict,
     SQLiteCatalog,
@@ -331,6 +336,36 @@ class _RetentionAwareJobCatalog(SQLiteCatalog):
         assert self._tracking_cas.retention_active
         self.job_publication_calls += 1
         return super().publish_job_outputs(*args, **kwargs)
+
+
+class _CompilerCacheWorkerCatalog(SQLiteCatalog):
+    def __init__(self, path: Path, publication_calls: list[str]) -> None:
+        self._publication_calls = publication_calls
+        super().__init__(path, create=False)
+
+    def publish_job_outputs(self, job_id: str, **kwargs):
+        self._publication_calls.append(job_id)
+        return super().publish_job_outputs(job_id, **kwargs)
+
+
+class _CompilerCacheWorkerFactory:
+    def __init__(self, path: Path, publication_calls: list[str]) -> None:
+        self.path = path
+        self.publication_calls = publication_calls
+
+    def __call__(self) -> _CompilerCacheWorkerCatalog:
+        return _CompilerCacheWorkerCatalog(self.path, self.publication_calls)
+
+
+class _StaticCompilerCacheResolver:
+    def __init__(self, executor: CompilerCacheJobExecutor) -> None:
+        self.executor = executor
+        self.calls = 0
+
+    def resolve(self, job, views):
+        assert tuple(view.job_id for view in views) == (job.job_id,) * len(views)
+        self.calls += 1
+        return self.executor
 
 
 class _LockAwareCatalog(SQLiteCatalog):
@@ -628,6 +663,11 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         compiler_module.CompilerCacheJobPublicationResult
         is CompilerCacheJobPublicationResult
     )
+    assert compiler_module.CompilerCacheJobExecutor is CompilerCacheJobExecutor
+    assert (
+        compiler_module.CompilerCacheJobPreparationResult
+        is CompilerCacheJobPreparationResult
+    )
     assert (
         compiler_module.CompilerCacheVectorJobPublicationResult
         is CompilerCacheVectorJobPublicationResult
@@ -655,6 +695,10 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
     assert (
         compiler_module.publish_compiler_cache_vector_job
         is publish_compiler_cache_vector_job
+    )
+    assert (
+        compiler_module.prepare_compiler_cache_job_view
+        is prepare_compiler_cache_job_view
     )
     assert list(inspect.signature(import_compiler_cache).parameters)[:11] == [
         "cache_dir",
@@ -723,6 +767,40 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         "embedding_load_policy",
         "native_index_authorization",
     } & set(vector_job_signature.parameters)
+    preparation_signature = inspect.signature(prepare_compiler_cache_job_view)
+    assert list(preparation_signature.parameters)[:13] == [
+        "cache_dir",
+        "view_type",
+        "job",
+        "views",
+        "repository_source",
+        "view_output_owner",
+        "context_output_owner",
+        "view_destination",
+        "context_destination",
+        "workspace_provider",
+        "repository_key",
+        "object_store",
+        "namespace_name",
+    ]
+    assert not {
+        "catalog",
+        "owner_id",
+        "fencing_token",
+        "ref_name",
+        "expected_generation",
+        "embedding_provider",
+        "embedding_model",
+        "native_index_authorization",
+    } & set(preparation_signature.parameters)
+    executor_signature = inspect.signature(CompilerCacheJobExecutor)
+    assert not {
+        "catalog",
+        "owner_id",
+        "fencing_token",
+        "ref_name",
+        "expected_generation",
+    } & set(executor_signature.parameters)
     compile_signature = inspect.signature(compile_and_import_repo)
     assert list(compile_signature.parameters)[:4] == [
         "compiler",
@@ -838,6 +916,212 @@ def _publish_bm25_job(
         object_store=cas,
         environ={},
     )
+
+
+def _prepare_bm25_job(
+    fixture: _CacheFixture,
+    *,
+    job,
+    views,
+    cas: LocalCAS,
+) -> CompilerCacheJobPreparationResult:
+    return prepare_compiler_cache_job_view(
+        fixture.cache,
+        view_type="bm25",
+        job=job,
+        views=views,
+        repository_source=fixture.source,
+        view_output_owner=fixture.bm25_owner,
+        context_output_owner=fixture.context_owner,
+        view_destination=fixture.bm25_destination,
+        context_destination=fixture.context_destination,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        object_store=cas,
+        environ={},
+    )
+
+
+def test_prepare_compiler_cache_job_view_leaves_catalog_running(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="prepare-only-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            result = _prepare_bm25_job(
+                fixture,
+                job=running,
+                views=views,
+                cas=cas,
+            )
+
+            assert type(result) is CompilerCacheJobPreparationResult
+            assert result.job == running
+            assert result.view == views[0]
+            assert result.manifest.to_dict() == result.import_plan.manifest.to_dict()
+            assert result.recapture.view_type == "bm25"
+            assert result.context_artifact.views == ("bm25",)
+            assert result.artifact.view_type == "bm25"
+            assert result.artifact.profile_id == profile_id
+            assert result.artifact.schema_version == VIEW_BUNDLE_SCHEMA
+            assert len(result.artifact.member_artifacts) == 2
+            assert catalog.get_job(queued.job_id) == running
+            assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
+            assert len(cas.put_chunk_receipts) == 3
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 2
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize("case", ("profile", "source", "request"))
+def test_prepare_compiler_cache_job_rejects_mismatch_before_workspace_or_cas(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            requested_mode = "full"
+            if case == "profile":
+                profile_id = catalog.create_view_profile(
+                    "bm25",
+                    {"builder": "incompatible"},
+                )
+            elif case == "source":
+                source_revision_id = catalog.create_source_revision(
+                    repository_id,
+                    commit_sha=None,
+                    dirty=True,
+                    source_fingerprint="other-source-fingerprint",
+                )
+            else:
+                requested_mode = "incremental"
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                requested_mode=requested_mode,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="prepare-only-worker",
+                lease_duration_ms=60_000,
+            )
+
+            with pytest.raises(StorageValidationError):
+                _prepare_bm25_job(
+                    fixture,
+                    job=catalog.get_job(queued.job_id),
+                    views=catalog.get_job_views(queued.job_id),
+                    cas=cas,
+                )
+
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 0
+            assert fixture.bm25_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
+            assert not fixture.bm25_destination.exists()
+            assert not fixture.context_destination.exists()
+    finally:
+        fixture.close()
+
+
+def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    catalog_path = tmp_path / "worker.sqlite"
+    publication_calls: list[str] = []
+    try:
+        with _JobTrackingCAS(tmp_path / "cas") as cas:
+            with SQLiteCatalog(catalog_path) as catalog:
+                (
+                    repository_id,
+                    source_revision_id,
+                    profile_id,
+                ) = _register_bm25_job_subject(catalog, fixture, plan)
+                queued = _create_bm25_job(
+                    catalog,
+                    repository_id=repository_id,
+                    source_revision_id=source_revision_id,
+                    profile_id=profile_id,
+                )
+
+            executor = CompilerCacheJobExecutor(
+                cache_dir=fixture.cache,
+                view_type="bm25",
+                repository_source=fixture.source,
+                view_output_owner=fixture.bm25_owner,
+                context_output_owner=fixture.context_owner,
+                view_destination=fixture.bm25_destination,
+                context_destination=fixture.context_destination,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                object_store=cas,
+                environ={},
+            )
+            resolver = _StaticCompilerCacheResolver(executor)
+            worker = IndexJobWorker(
+                catalog_factory=_CompilerCacheWorkerFactory(
+                    catalog_path,
+                    publication_calls,
+                ),
+                object_store=cas,
+                resolver=resolver,
+                lease_duration_ms=60_000,
+                heartbeat_interval_ms=5,
+                owner_id_factory=lambda: "compiler-cache-worker",
+            )
+
+            outcome = worker.run_once()
+
+            assert outcome.disposition is IndexJobWorkerDisposition.SUCCEEDED
+            assert outcome.job_id == queued.job_id
+            assert resolver.calls == 1
+            assert publication_calls == [queued.job_id]
+            assert len(cas.put_chunk_receipts) == 3
+            assert len(cas.retained_receipt_sets) == 1
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                completed = catalog.get_job(queued.job_id)
+                assert completed.status is IndexJobStatus.SUCCEEDED
+                assert completed.result_snapshot_id is not None
+                summary = catalog.get_manifest_summary(completed.result_snapshot_id)
+                assert tuple(summary["views"]) == ("bm25",)
+                assert summary["views"]["bm25"]["profile"]["profile_id"] == (profile_id)
+    finally:
+        fixture.close()
 
 
 def _seed_bm25_snapshot(
@@ -2685,6 +2969,83 @@ def _publish_vector_job(
         object_store=cas,
         environ={},
     )
+
+
+def test_prepare_compiler_cache_vector_job_uses_only_portable_schema8(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker="PREPARE_VECTOR")
+    plan = _expected_vector_job_plan(fixture)
+
+    def native_or_builder_must_not_run(*_args, **_kwargs):
+        raise AssertionError("vector preparation invoked a native parser or builder")
+
+    monkeypatch.setattr(
+        vector_store_module.faiss,
+        "read_index",
+        native_or_builder_must_not_run,
+    )
+    monkeypatch.setattr(
+        vector_store_module.compat_pickle,
+        "load",
+        native_or_builder_must_not_run,
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.builders.build_hierarchical_vector_store",
+        native_or_builder_must_not_run,
+    )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            queued = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="prepare-vector-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            result = prepare_compiler_cache_job_view(
+                fixture.cache,
+                view_type="vector",
+                job=running,
+                views=views,
+                repository_source=fixture.source,
+                view_output_owner=fixture.vector_owner,
+                context_output_owner=fixture.context_owner,
+                view_destination=fixture.vector_destination,
+                context_destination=fixture.context_destination,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                object_store=cas,
+                environ={},
+            )
+
+            assert type(result) is CompilerCacheJobPreparationResult
+            assert result.job == running
+            assert result.view == views[0]
+            assert result.recapture.view_type == "vector"
+            assert result.import_plan.views[0].profile.config["builder_schema"] == 8
+            assert result.artifact.schema_version == VIEW_BUNDLE_SCHEMA
+            assert len(result.artifact.member_artifacts) == 4
+            assert len(cas.put_chunk_receipts) == 5
+            assert cas.retained_receipt_sets == []
+            assert catalog.get_job(queued.job_id) == running
+            assert fixture.provider.run_count == 2
+    finally:
+        fixture.close()
 
 
 def _seed_vector_snapshot(

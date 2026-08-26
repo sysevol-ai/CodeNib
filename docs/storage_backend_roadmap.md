@@ -1224,11 +1224,24 @@ authorization. Exact replay returns the job's historical snapshot after later
 ref advancement. This remains an explicit ingress adapter only: it adds no
 builder, worker, CLI, runtime, graph, or default-route wiring.
 
+The same BM25 and schema-8 vector recapture paths now also expose an explicit
+prepare-only worker bridge. It authenticates the complete running job request,
+requires exactly one required `full` view, recaptures and ingests the immutable
+bundle closure into the worker's retained object store, and returns an
+`IndexJobExecutionResult` without accepting a catalog, lease owner, fencing
+token, ref, or generation authority. The durable worker therefore remains the
+only final publisher. This bridge consumes an already-current compiler cache;
+it is not a source builder or production resolver, and every attempt still
+requires fresh caller-owned source, workspace receipt, and destination
+authorities. The existing self-publishing adapters remain compatibility entry
+points rather than being called from the worker.
+
 ### M2: Immutable generation publication
 
 Status: in progress. The receipt-retained, fenced SQLite publication primitive
-and the explicit BM25 and schema-8 vector compiler-cache adapters are
-implemented; graph, generic builder, and production job/runtime wiring remain.
+and the explicit BM25 and schema-8 vector compiler-cache adapters, including
+their prepare-only worker bridge, are implemented; graph, generic source
+builders, production resolution, and job/runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility
@@ -1250,9 +1263,10 @@ implemented; graph, generic builder, and production job/runtime wiring remain.
 
 Status: in progress. Schema-v6 durable execution control is implemented for the
 local SQLite catalog. The backend-neutral prepare-only whole-job worker is
-implemented and verified with file-backed SQLite integration coverage;
-production resolver/builder adapters and CLI, runtime, Web, MCP, and default
-wiring remain absent.
+implemented and verified with file-backed SQLite integration coverage. An
+explicit one-view compiler-cache executor now supplies parser-inert BM25 or
+schema-8 vector artifacts without catalog authority; production source
+builders/resolvers and CLI, runtime, Web, MCP, and default wiring remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1288,10 +1302,11 @@ wiring remain absent.
   final fenced heartbeat, and then publishes before releasing receipt
   retention. Slow object hashing therefore cannot expire an otherwise healthy
   worker and force a duplicate attempt.
-- Add production resolver and prepare-only builder adapters, then wire the
-  worker into CLI, runtime, Web, MCP, and default routes. The existing BM25 and
-  vector compiler-cache ingress adapters intentionally remain explicit
-  self-publishing paths and are not composed under this worker.
+- Add production resolver and prepare-only source-builder adapters, then wire
+  the worker into CLI, runtime, Web, MCP, and default routes. The explicit
+  compiler-cache executor may recapture an already-current single BM25 or
+  vector cache view under the worker, while the older self-publishing ingress
+  APIs remain compatibility paths and are never nested inside the worker.
 - Expose the #266 status and update APIs with accurate incremental versus
   rebuild behavior.
 - Load a complete new bundle and swap it RCU-style; pin old bundles for in-flight

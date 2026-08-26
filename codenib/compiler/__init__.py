@@ -29,6 +29,8 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     from codenib.compiler.cache_import import (
         CompilerCacheBm25RecaptureResult,
         CompilerCacheImportResult,
+        CompilerCacheJobExecutor,
+        CompilerCacheJobPreparationResult,
         CompilerCacheJobPublicationResult,
         CompilerCacheMultiViewImportResult,
         CompilerCacheTopologyGuard,
@@ -38,6 +40,7 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         compile_and_import_repo,
         import_compiler_cache,
         import_compiler_cache_bm25,
+        prepare_compiler_cache_job_view,
         publish_compiler_cache_bm25_job,
         publish_compiler_cache_vector_job,
     )
@@ -91,6 +94,14 @@ _EXPORTS = {
         "codenib.compiler.cache_import",
         "CompilerCacheImportResult",
     ),
+    "CompilerCacheJobExecutor": (
+        "codenib.compiler.cache_import",
+        "CompilerCacheJobExecutor",
+    ),
+    "CompilerCacheJobPreparationResult": (
+        "codenib.compiler.cache_import",
+        "CompilerCacheJobPreparationResult",
+    ),
     "CompilerCacheJobPublicationResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheJobPublicationResult",
@@ -126,6 +137,10 @@ _EXPORTS = {
     "import_compiler_cache_bm25": (
         "codenib.compiler.cache_import",
         "import_compiler_cache_bm25",
+    ),
+    "prepare_compiler_cache_job_view": (
+        "codenib.compiler.cache_import",
+        "prepare_compiler_cache_job_view",
     ),
     "publish_compiler_cache_bm25_job": (
         "codenib.compiler.cache_import",
@@ -236,6 +251,8 @@ __all__ = [
     # Index compilation
     "CompilerCacheBm25RecaptureResult",
     "CompilerCacheImportResult",
+    "CompilerCacheJobExecutor",
+    "CompilerCacheJobPreparationResult",
     "CompilerCacheJobPublicationResult",
     "CompilerCacheMultiViewImportResult",
     "CompilerCacheTopologyGuard",
@@ -245,6 +262,7 @@ __all__ = [
     "compile_and_import_repo",
     "import_compiler_cache",
     "import_compiler_cache_bm25",
+    "prepare_compiler_cache_job_view",
     "publish_compiler_cache_bm25_job",
     "publish_compiler_cache_vector_job",
     "IndexCompiler",
