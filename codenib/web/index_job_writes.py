@@ -16,7 +16,7 @@ from ..storage import (
     IndexJobRecord,
     IndexJobRequest,
     IndexJobStatus,
-    JobCreationCatalog,
+    JobCreationReplayCatalog,
     PublishConflict,
     StorageError,
 )
@@ -196,6 +196,53 @@ def _created_job_response(
         ) from exc
 
 
+def _replayed_job_response(
+    binding: IndexJobRepoBinding,
+    value: object,
+    *,
+    index_type: str,
+) -> IndexJobStatusResponse:
+    """Project only an exact replay of the caller's public request shape."""
+
+    if type(value) is not IndexJobRecord:
+        raise IndexJobWriteError("catalog returned an invalid replayed index job")
+    job = value
+    try:
+        expected = IndexJobRequest(
+            repository_id=job.repository_id,
+            source_revision_id=job.source_revision_id,
+            ref_name=job.ref_name,
+            idempotency_key=job.idempotency_key,
+            expected_ref_generation=job.expected_ref_generation,
+            max_attempts=job.max_attempts,
+            request_json=job.request_json,
+        )
+        views = expected.view_requests
+        if (
+            expected.repository_id != binding.repository_id
+            or expected.ref_name != binding.ref_name
+            or len(views) != 1
+            or views[0].view_type != index_type
+            or views[0].requested_mode.value != "full"
+            or views[0].required is not True
+        ):
+            raise IndexJobConflictError(
+                "idempotency key is bound to another index-job request"
+            )
+        return _created_job_response(
+            binding,
+            expected,
+            job,
+            index_type=index_type,
+        )
+    except (IndexJobConflictError, IndexJobWriteError):
+        raise
+    except (StorageError, TypeError, ValueError) as exc:
+        raise IndexJobWriteError(
+            "catalog replayed index job could not be safely projected"
+        ) from exc
+
+
 class CatalogIndexJobWriter:
     """Create one honest FULL cache job through an atomic catalog slot.
 
@@ -207,7 +254,7 @@ class CatalogIndexJobWriter:
 
     def __init__(
         self,
-        catalog_factory: Callable[[], AbstractContextManager[JobCreationCatalog]],
+        catalog_factory: Callable[[], AbstractContextManager[JobCreationReplayCatalog]],
         bindings: tuple[IndexJobRepoBinding, ...],
         planner: IndexJobCreatePlanner,
     ) -> None:
@@ -232,10 +279,10 @@ class CatalogIndexJobWriter:
         self._planner = planner
 
     @staticmethod
-    def _require_catalog(value: object) -> JobCreationCatalog:
-        if not isinstance(value, JobCreationCatalog):
+    def _require_catalog(value: object) -> JobCreationReplayCatalog:
+        if not isinstance(value, JobCreationReplayCatalog):
             raise IndexJobWriteError(
-                "catalog does not implement atomic index job creation"
+                "catalog does not implement replay-safe index job creation"
             )
         return value
 
@@ -294,26 +341,36 @@ class CatalogIndexJobWriter:
             raise IndexJobRequestError("index job idempotency key is invalid") from exc
 
         try:
-            plan = self._planner.plan(
-                binding,
-                index_type,
-                idempotency_key=normalized_key,
-            )
-            if type(plan) is not IndexJobCreatePlan:
-                raise IndexJobWriteError(
-                    "index job planner returned an invalid creation plan"
-                )
-            expected = IndexJobRequest.create(
-                binding.repository_id,
-                plan.source_revision_id,
-                normalized_key,
-                _request_view(index_type, plan.profile_id),
-                ref_name=binding.ref_name,
-                expected_ref_generation=plan.expected_ref_generation,
-                max_attempts=plan.max_attempts,
-            )
             with self._catalog_factory() as value:
                 catalog = self._require_catalog(value)
+                existing = catalog.find_job_by_idempotency(
+                    binding.repository_id,
+                    normalized_key,
+                )
+                if existing is not None:
+                    return _replayed_job_response(
+                        binding,
+                        existing,
+                        index_type=index_type,
+                    )
+                plan = self._planner.plan(
+                    binding,
+                    index_type,
+                    idempotency_key=normalized_key,
+                )
+                if type(plan) is not IndexJobCreatePlan:
+                    raise IndexJobWriteError(
+                        "index job planner returned an invalid creation plan"
+                    )
+                expected = IndexJobRequest.create(
+                    binding.repository_id,
+                    plan.source_revision_id,
+                    normalized_key,
+                    _request_view(index_type, plan.profile_id),
+                    ref_name=binding.ref_name,
+                    expected_ref_generation=plan.expected_ref_generation,
+                    max_attempts=plan.max_attempts,
+                )
                 job = catalog.create_job_if_idle(
                     expected.repository_id,
                     expected.source_revision_id,

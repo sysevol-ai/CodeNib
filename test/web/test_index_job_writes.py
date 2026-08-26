@@ -16,6 +16,7 @@ from codenib.storage import (
     IndexJobStatus,
     JobCatalog,
     JobCreationCatalog,
+    JobCreationReplayCatalog,
     SQLiteCatalog,
 )
 from codenib.web.index_job_writes import (
@@ -149,6 +150,12 @@ def test_catalog_writer_creates_and_attests_one_full_job(
         force=False,
         idempotency_key="browser-request-1",
     )
+    initial_plan = planner.result
+    planner.result = IndexJobCreatePlan(
+        source_revision_id="src_" + "d" * 64,
+        profile_id="profile_" + "e" * 64,
+        expected_ref_generation=99,
+    )
     replayed = writer.create(
         "demo",
         indexes=(index_type,),
@@ -163,12 +170,9 @@ def test_catalog_writer_creates_and_attests_one_full_job(
     assert created.indexes[0].index_type == index_type
     assert created.indexes[0].requested_mode == "full"
     serialized = created.model_dump_json()
-    assert planner.result.source_revision_id not in serialized
-    assert planner.result.profile_id not in serialized
-    assert planner.calls == [
-        (binding, index_type, "browser-request-1"),
-        (binding, index_type, "browser-request-1"),
-    ]
+    assert initial_plan.source_revision_id not in serialized
+    assert initial_plan.profile_id not in serialized
+    assert planner.calls == [(binding, index_type, "browser-request-1")]
     with SQLiteCatalog(path, create=False) as catalog:
         job = catalog.get_job(created.job_id)
         views = catalog.get_job_views(created.job_id)
@@ -188,7 +192,7 @@ def test_catalog_writer_creates_and_attests_one_full_job(
         )
 
 
-def test_catalog_writer_requires_only_atomic_creation_authority() -> None:
+def test_catalog_writer_requires_only_creation_and_exact_replay_authority() -> None:
     binding = IndexJobRepoBinding("demo", "repo_" + "a" * 64)
     plan = IndexJobCreatePlan(
         source_revision_id="src_" + "b" * 64,
@@ -197,6 +201,9 @@ def test_catalog_writer_requires_only_atomic_creation_authority() -> None:
     )
 
     class CreationOnlyCatalog:
+        def find_job_by_idempotency(self, repository_id, idempotency_key):
+            return None
+
         def create_job_if_idle(
             self,
             repository_id,
@@ -220,6 +227,7 @@ def test_catalog_writer_requires_only_atomic_creation_authority() -> None:
 
     catalog = CreationOnlyCatalog()
     assert isinstance(catalog, JobCreationCatalog)
+    assert isinstance(catalog, JobCreationReplayCatalog)
     assert not isinstance(catalog, JobCatalog)
 
     @contextmanager
@@ -238,6 +246,30 @@ def test_catalog_writer_requires_only_atomic_creation_authority() -> None:
         ).status
         == "queued"
     )
+
+
+def test_catalog_writer_rejects_changed_public_request_without_replanning(
+    tmp_path,
+) -> None:
+    writer, _path, planner, _binding = _sqlite_writer(tmp_path, "bm25")
+    writer.create(
+        "demo",
+        indexes=("bm25",),
+        mode="full",
+        force=False,
+        idempotency_key="browser-request",
+    )
+
+    with pytest.raises(IndexJobConflictError, match="another index-job request"):
+        writer.create(
+            "demo",
+            indexes=("vector",),
+            mode="full",
+            force=False,
+            idempotency_key="browser-request",
+        )
+
+    assert len(planner.calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -311,7 +343,18 @@ def test_catalog_writer_hides_unknown_bindings_and_invalid_plans() -> None:
         def plan(self, binding, index_type, *, idempotency_key):
             return object()
 
-    writer = CatalogIndexJobWriter(unused_factory, (binding,), InvalidPlanner())
+    class ReplayOnlyCatalog:
+        def find_job_by_idempotency(self, repository_id, idempotency_key):
+            return None
+
+        def create_job_if_idle(self, *args, **kwargs):
+            raise AssertionError("invalid plans must not create a job")
+
+    @contextmanager
+    def replay_factory():
+        yield ReplayOnlyCatalog()
+
+    writer = CatalogIndexJobWriter(replay_factory, (binding,), InvalidPlanner())
     with pytest.raises(IndexJobWriteError, match="invalid creation plan"):
         writer.create(
             "demo",

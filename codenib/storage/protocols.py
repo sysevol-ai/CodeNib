@@ -500,6 +500,23 @@ class JobCreationCatalog(Protocol):
 
 
 @runtime_checkable
+class JobCreationReplayCatalog(JobCreationCatalog, Protocol):
+    """Atomic job creation plus one exact idempotency replay lookup.
+
+    The lookup is deliberately narrower than :class:`JobQueryCatalog`: callers
+    cannot enumerate active work or read events, leases, attempts, or
+    publication state.  It lets a control plane recover the immutable request
+    after a committed response is lost without consulting a mutable planner.
+    """
+
+    def find_job_by_idempotency(
+        self,
+        repository_id: str,
+        idempotency_key: str,
+    ) -> IndexJobRecord | None: ...
+
+
+@runtime_checkable
 class JobCatalog(Protocol):
     """Durable index-job coordination, separate from snapshot publication."""
 
@@ -793,6 +810,7 @@ __all__ = [
     "InterruptibleStreamingObjectStore",
     "JobCatalog",
     "JobCreationCatalog",
+    "JobCreationReplayCatalog",
     "JobCycleWorkerCatalog",
     "JobExecutionCatalog",
     "JobPublicationCatalog",

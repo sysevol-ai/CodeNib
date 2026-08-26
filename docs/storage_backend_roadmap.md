@@ -1453,8 +1453,11 @@ default routing remain absent.
   matching the current production worker; multi-view, incremental, symbol-graph,
   and forced requests fail before planning or catalog access. Planner identities
   and storage failures stay private, conflicts map to one public response, and
-  the default server continues to return unavailable because no writer or
-  source/profile planner is wired by default.
+  an exact repository/key replay lookup returns the persisted request before
+  consulting the mutable planner. This recovers a committed job after HTTP
+  response loss without granting active-job, event, lease, execution, or
+  publication discovery. The default server continues to return unavailable
+  because no writer or source/profile planner is wired by default.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization

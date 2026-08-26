@@ -6963,6 +6963,39 @@ class SQLiteCatalog:
             )
 
     @_coordinated_catalog_method
+    def find_job_by_idempotency(
+        self,
+        repository_id: str,
+        idempotency_key: str,
+    ) -> IndexJobRecord | None:
+        """Return one exact replay candidate without broader job discovery."""
+
+        repository = _bounded_text(
+            repository_id,
+            "repository ID",
+            max_length=96,
+        )
+        key = _bounded_text(
+            idempotency_key,
+            "idempotency key",
+            max_length=256,
+        )
+        with self._transaction(immediate=False):
+            self._require_record("repositories", "repository_id", repository)
+            row = self._connection.execute(
+                """
+                SELECT * FROM index_jobs
+                WHERE repository_id = ? AND idempotency_key = ?
+                """,
+                (repository, key),
+            ).fetchone()
+            if row is None:
+                return None
+            job = self._job_from_row(row)
+            self._job_views(job)
+            return job
+
+    @_coordinated_catalog_method
     def get_job(self, job_id: str) -> IndexJobRecord:
         """Return one persisted index job after validating its canonical request."""
         normalized = _bounded_text(job_id, "job ID", max_length=80)

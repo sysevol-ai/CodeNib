@@ -556,6 +556,31 @@ def test_create_job_if_idle_is_idempotent_and_scoped_per_ref(tmp_path) -> None:
         assert replacement.job_id != first.job_id
 
 
+def test_find_job_by_idempotency_returns_only_exact_repository_job(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id = _repository(catalog)
+        other_repository, _ = _repository(catalog, "owner/other")
+        profile_id = catalog.create_view_profile("bm25", {})
+        job = catalog.create_job_if_idle(
+            repository_id,
+            source_revision_id,
+            "browser-request",
+            _request(profile_id, mode="full"),
+        )
+
+        assert (
+            catalog.find_job_by_idempotency(
+                repository_id,
+                "browser-request",
+            )
+            == job
+        )
+        assert catalog.find_job_by_idempotency(repository_id, "missing") is None
+        assert (
+            catalog.find_job_by_idempotency(other_repository, "browser-request") is None
+        )
+
+
 def test_two_connections_atomically_create_only_one_idle_ref_job(tmp_path) -> None:
     path = tmp_path / "catalog.sqlite3"
     with SQLiteCatalog(path) as catalog:
