@@ -626,7 +626,7 @@ async def index_status(repo_id: str) -> RepoIndexStatus:
         head_resolver = getattr(app.state, "index_head_resolver", None)
         if callable(head_resolver):
             kwargs["current_head_resolver"] = head_resolver
-        return await asyncio.to_thread(
+        return await _run_pinned_thread(
             build_repo_index_status,
             bundle,
             **kwargs,

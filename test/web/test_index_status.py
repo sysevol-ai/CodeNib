@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import asyncio
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -220,9 +221,58 @@ def test_index_status_endpoint_pins_generation_through_projection(monkeypatch) -
 
     monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
     monkeypatch.setattr(web_app.app.state, "index_head_resolver", head, raising=False)
-    monkeypatch.setattr(web_app.asyncio, "to_thread", inline)
+    monkeypatch.setattr(web_app, "_run_pinned_thread", inline)
 
     status = asyncio.run(web_app.index_status("repo"))
 
     assert status.indexes[0].state == "built"
     assert events == ["pin-enter", "thread", "head", "pin-exit"]
+
+
+def test_index_status_endpoint_retains_pin_until_cancelled_projection_settles(
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    worker_started = threading.Event()
+    release_worker = threading.Event()
+    worker_finished = threading.Event()
+    bundle = _bundle({"bm25": _entry("bm25")})
+
+    class Registry:
+        @contextmanager
+        def pin(self, repo_id: str):
+            assert repo_id == "repo"
+            events.append("pin-enter")
+            try:
+                yield bundle
+            finally:
+                assert worker_finished.is_set()
+                events.append("pin-exit")
+
+    def head(path: Path) -> str:
+        assert path == Path("/repo")
+        events.append("head-start")
+        worker_started.set()
+        assert release_worker.wait(5)
+        events.append("head-finish")
+        worker_finished.set()
+        return _INDEXED
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    monkeypatch.setattr(web_app.app.state, "index_head_resolver", head, raising=False)
+
+    async def cancel_projection() -> None:
+        request = asyncio.create_task(web_app.index_status("repo"))
+        try:
+            assert await asyncio.to_thread(worker_started.wait, 5)
+            request.cancel()
+            await asyncio.sleep(0)
+            assert not request.done()
+        finally:
+            release_worker.set()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+
+    asyncio.run(cancel_projection())
+
+    assert events == ["pin-enter", "head-start", "head-finish", "pin-exit"]
