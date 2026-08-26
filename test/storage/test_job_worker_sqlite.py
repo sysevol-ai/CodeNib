@@ -237,7 +237,7 @@ class _CancellationExecutor:
 
     def execute(self, context: IndexJobExecutionContext) -> IndexJobExecutionResult:
         self.entered.set()
-        assert context.control.stop_token.wait(timeout=5)
+        assert context.control.stop_token.wait(timeout=30)
         assert context.control.stop_token.reason is IndexJobStopReason.CANCEL_REQUESTED
         self.observed.set()
         # Return otherwise publishable bytes to prove the worker gives the
@@ -447,6 +447,8 @@ def test_running_cancel_is_observed_and_closes_only_cancelled(
     with _TrackingCAS(tmp_path / "cas") as object_store:
         executor = _CancellationExecutor(object_store)
         copy_started = threading.Event()
+        heartbeat_ready_to_acquire = threading.Event()
+        allow_heartbeat_acquire = threading.Event()
         heartbeat_attempted = threading.Event()
         coordination = sqlite_catalog_module._catalog_path_coordination(path.resolve())
         original_copy = sqlite_catalog_module._copy_validation_source
@@ -457,8 +459,10 @@ def test_running_cancel_is_observed_and_closes_only_cancelled(
                 lock is coordination.lock
                 and threading.current_thread().name.startswith("codenib-job-heartbeat-")
                 and executor.entered.is_set()
+                and not heartbeat_attempted.is_set()
             ):
-                assert copy_started.wait(timeout=5)
+                heartbeat_ready_to_acquire.set()
+                assert allow_heartbeat_acquire.wait(timeout=30)
                 heartbeat_attempted.set()
             original_lock_acquire(lock)
 
@@ -475,8 +479,10 @@ def test_running_cancel_is_observed_and_closes_only_cancelled(
                 and executor.entered.is_set()
                 and not copy_started.is_set()
             ):
+                assert coordination.lock.held_by_current_thread()
                 copy_started.set()
-                assert heartbeat_attempted.wait(timeout=5)
+                allow_heartbeat_acquire.set()
+                assert heartbeat_attempted.wait(timeout=30)
             return original_copy(
                 descriptor,
                 expected,
@@ -502,13 +508,18 @@ def test_running_cancel_is_observed_and_closes_only_cancelled(
         )
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(worker.run_once)
-            assert executor.entered.wait(timeout=5)
-            with SQLiteCatalog(path, create=False) as catalog:
-                requested = catalog.request_job_cancel(job.job_id)
-                assert requested.cancel_requested
-            result = future.result(timeout=10)
+            try:
+                assert executor.entered.wait(timeout=30)
+                assert heartbeat_ready_to_acquire.wait(timeout=30)
+                with SQLiteCatalog(path, create=False) as catalog:
+                    requested = catalog.request_job_cancel(job.job_id)
+                    assert requested.cancel_requested
+            finally:
+                allow_heartbeat_acquire.set()
+            result = future.result(timeout=30)
 
         assert copy_started.is_set()
+        assert heartbeat_ready_to_acquire.is_set()
         assert heartbeat_attempted.is_set()
         assert executor.observed.is_set()
         assert result.disposition is IndexJobWorkerDisposition.CANCELLED
