@@ -1491,6 +1491,7 @@ def _worker(
     backend: _Backend,
     resolver: _Resolver,
     *,
+    candidate_filter: Callable[[IndexJobRecord], bool] | None = None,
     owner_id_factory: Callable[[], str] = lambda: "worker-default",
     lease_duration_ms: int = 300,
     heartbeat_interval_ms: int = 50,
@@ -1505,6 +1506,7 @@ def _worker(
         lease_duration_ms=lease_duration_ms,
         heartbeat_interval_ms=heartbeat_interval_ms,
         scan_limit=scan_limit,
+        candidate_filter=candidate_filter,
         owner_id_factory=owner_id_factory,
         monotonic=lambda: 0.0,
     )
@@ -1585,6 +1587,20 @@ def test_worker_constructor_rejects_a_different_bound_resolver_store() -> None:
         )
 
 
+def test_worker_constructor_requires_callable_candidate_filter() -> None:
+    backend = _Backend()
+
+    with pytest.raises(TypeError, match="candidate filter must be callable"):
+        IndexJobWorker(
+            catalog_factory=_SessionFactory(backend),
+            object_store=_RetainingStore(),
+            resolver=_default_resolver(),
+            lease_duration_ms=300,
+            heartbeat_interval_ms=50,
+            candidate_filter=object(),  # type: ignore[arg-type]
+        )
+
+
 def test_empty_scan_returns_idle_without_creating_an_owner() -> None:
     backend = _Backend()
     owners: list[str] = []
@@ -1650,6 +1666,101 @@ def test_structurally_damaged_scan_candidate_fails_closed() -> None:
     assert backend.completion_calls == []
     assert backend.publication_calls == []
     assert store.retained == []
+
+
+def test_candidate_filter_skips_jobs_before_owner_or_claim() -> None:
+    backend = _Backend()
+    first = backend.add_job("unsupported-first")
+    second = backend.add_job("supported-second")
+    considered: list[str] = []
+    owners: list[str] = []
+
+    def accept(job: IndexJobRecord) -> bool:
+        considered.append(job.job_id)
+        return job.job_id == second.job_id
+
+    worker, _store, _factory = _worker(
+        backend,
+        _default_resolver(),
+        candidate_filter=accept,
+        owner_id_factory=lambda: owners.append("selected-owner") or "selected-owner",
+    )
+
+    result = worker.run_once()
+
+    assert result.disposition is IndexJobWorkerDisposition.SUCCEEDED
+    assert result.job_id == second.job_id
+    assert considered == [first.job_id, second.job_id]
+    assert owners == ["selected-owner"]
+    assert [call[1] for call in backend.acquire_calls] == [second.job_id]
+    assert backend.jobs[first.job_id].status is IndexJobStatus.QUEUED
+
+
+@pytest.mark.parametrize("decision", (None, 1, "true"))
+def test_candidate_filter_requires_an_exact_boolean_before_claim(
+    decision: object,
+) -> None:
+    backend = _Backend()
+    backend.add_job("invalid-filter-decision")
+    worker, store, _factory = _worker(
+        backend,
+        _default_resolver(),
+        candidate_filter=lambda _job: decision,  # type: ignore[return-value]
+    )
+
+    with pytest.raises(StorageIntegrityError, match="non-exact decision"):
+        worker.run_once()
+
+    assert backend.acquire_calls == []
+    assert backend.completion_calls == []
+    assert backend.publication_calls == []
+    assert store.retained == []
+
+
+def test_candidate_filter_failure_is_integrity_alarm_before_claim() -> None:
+    backend = _Backend()
+    backend.add_job("filter-failure")
+
+    def fail(_job: IndexJobRecord) -> bool:
+        raise RuntimeError("filter unavailable")
+
+    worker, store, _factory = _worker(
+        backend,
+        _default_resolver(),
+        candidate_filter=fail,
+    )
+
+    with pytest.raises(StorageIntegrityError, match="candidate filter failed"):
+        worker.run_once()
+
+    assert backend.acquire_calls == []
+    assert backend.completion_calls == []
+    assert backend.publication_calls == []
+    assert store.retained == []
+
+
+def test_candidate_filter_cannot_mutate_the_detached_candidate() -> None:
+    backend = _Backend()
+    queued = backend.add_job("filter-mutation")
+
+    def mutate(job: IndexJobRecord) -> bool:
+        object.__setattr__(job, "status", IndexJobStatus.FAILED)
+        return True
+
+    worker, store, _factory = _worker(
+        backend,
+        _default_resolver(),
+        candidate_filter=mutate,
+    )
+
+    with pytest.raises(StorageIntegrityError, match="damaged its candidate"):
+        worker.run_once()
+
+    assert backend.acquire_calls == []
+    assert backend.completion_calls == []
+    assert backend.publication_calls == []
+    assert store.retained == []
+    assert backend.jobs[queued.job_id].status is IndexJobStatus.QUEUED
 
 
 def test_claim_conflict_continues_with_a_fresh_owner_for_next_candidate() -> None:

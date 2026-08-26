@@ -19,6 +19,7 @@ import stat
 import subprocess
 import sys
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Iterable, Sequence
@@ -2562,6 +2563,54 @@ class _CompilerCacheImportTopology:
 
 
 @dataclass(frozen=True, slots=True)
+class _ExistingIndexJobCatalogFactory:
+    """Open exact existing-only SQLite sessions for one worker invocation."""
+
+    catalog_path: Path
+    catalog_identity: tuple[int, int, int]
+
+    @contextmanager
+    def __call__(self):
+        from ._atomic_directory import _OrderedAction, _run_context_with_cleanup_actions
+        from .storage import SQLiteCatalog
+
+        catalog_owner = _RetainedMaterializationResourceOwner()
+        cleanup_actions = (
+            (
+                "worker SQLite catalog exit binding validation also failed",
+                lambda: _require_retained_catalog_binding(
+                    self.catalog_path,
+                    self.catalog_identity,
+                ),
+            ),
+            _OrderedAction(
+                label="worker SQLite catalog cleanup also failed",
+                action=catalog_owner.close,
+                complete=lambda: catalog_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=catalog_owner,
+            ),
+        )
+        with _run_context_with_cleanup_actions(cleanup_actions):
+            _require_retained_catalog_binding(
+                self.catalog_path,
+                self.catalog_identity,
+            )
+            catalog = catalog_owner.acquire(
+                lambda: SQLiteCatalog(
+                    self.catalog_path,
+                    create=False,
+                    expected_file_identity=self.catalog_identity,
+                )
+            )
+            _require_retained_catalog_binding(
+                self.catalog_path,
+                self.catalog_identity,
+            )
+            yield catalog
+
+
+@dataclass(frozen=True, slots=True)
 class _CompilerRetainedStorageTopology:
     repo_path: Path
     repository_identity: tuple[int, int]
@@ -3504,6 +3553,7 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
         topology = _require_compiler_cache_import_topology(paths)
     except CLIError:
         raise
+
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         wrapped = CLIError(str(exc))
         _inherit_publication_cleanup_owners(wrapped, exc)
@@ -3702,6 +3752,116 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
             raise
         if isinstance(
             primary_error, (OSError, RuntimeError, ValueError, sqlite3.Error)
+        ):
+            wrapped = CLIError(str(primary_error))
+            _inherit_publication_cleanup_owners(wrapped, primary_error)
+            raise wrapped from primary_error
+        raise
+
+
+def _run_jobs_run_once(args: argparse.Namespace) -> int:
+    """Run one bounded prepare-only compiler-cache worker scan."""
+
+    from . import LocalWorkspaceProvider
+    from ._atomic_directory import _OrderedAction, _run_context_with_cleanup_actions
+    from .compiler.job_resolver import CompilerCacheJobResolver
+    from .compiler.job_resources import (
+        LocalCompilerCacheJobResourceFactory,
+        LocalCompilerCacheJobTarget,
+    )
+    from .storage import IndexJobWorker, LocalCAS
+
+    repository, namespace = _retained_materialization_identity(
+        args.repository,
+        args.namespace,
+    )
+    paths = _compiler_cache_import_paths(args, views=("bm25",))
+    try:
+        provider = LocalWorkspaceProvider(paths.workspace_root)
+        provider.require_support()
+        topology = _require_compiler_cache_import_topology(paths)
+    except CLIError:
+        raise
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        wrapped = CLIError(str(exc))
+        _inherit_publication_cleanup_owners(wrapped, exc)
+        raise wrapped from exc
+
+    result = None
+    try:
+        object_store_owner = _RetainedMaterializationResourceOwner()
+        cleanup_actions = (
+            _OrderedAction(
+                label="worker local CAS cleanup also failed",
+                action=object_store_owner.close,
+                complete=lambda: object_store_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=object_store_owner,
+            ),
+        )
+        with _run_context_with_cleanup_actions(cleanup_actions):
+            object_store = object_store_owner.acquire(
+                lambda: LocalCAS(
+                    topology.cas_root,
+                    require_preprovisioned=True,
+                )
+            )
+            target = LocalCompilerCacheJobTarget(
+                repository_root=paths.repo_path,
+                cache_dir=topology.cache_dir,
+                workspace_provider=provider,
+                repository_key=repository,
+                namespace_name=namespace,
+                environ=_publication_environment(),
+            )
+            resources = LocalCompilerCacheJobResourceFactory((target,))
+            worker = IndexJobWorker(
+                catalog_factory=_ExistingIndexJobCatalogFactory(
+                    topology.catalog_path,
+                    topology.catalog_identity,
+                ),
+                object_store=object_store,
+                resolver=CompilerCacheJobResolver(
+                    resource_factory=resources,
+                    object_store=object_store,
+                ),
+                lease_duration_ms=args.lease_duration_ms,
+                heartbeat_interval_ms=args.heartbeat_interval_ms,
+                scan_limit=args.scan_limit,
+                candidate_filter=resources.accepts_candidate,
+            )
+            result = worker.run_once()
+        if result is None:  # pragma: no cover - worker always returns a result
+            raise RuntimeError("index job worker returned no run result")
+        payload = {
+            "attempt_count": result.attempt_count,
+            "disposition": result.disposition.value,
+            "job_id": result.job_id,
+        }
+        if args.json:
+            print(
+                json.dumps(
+                    payload,
+                    allow_nan=False,
+                    ensure_ascii=True,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+        else:
+            print(f"Disposition: {result.disposition.value}")
+            print(f"Job:         {result.job_id or '-'}")
+            print(
+                "Attempt:     "
+                + ("-" if result.attempt_count is None else str(result.attempt_count))
+            )
+        return 0
+    except BaseException as primary_error:  # noqa: B036 - preserve cancellation
+        if isinstance(primary_error, CLIError):
+            raise
+        if isinstance(
+            primary_error,
+            (OSError, RuntimeError, ValueError, sqlite3.Error),
         ):
             wrapped = CLIError(str(primary_error))
             _inherit_publication_cleanup_owners(wrapped, primary_error)
@@ -5841,6 +6001,79 @@ def build_parser() -> argparse.ArgumentParser:
         default="project",
     )
     artifact_config_parser.set_defaults(handler=_run_artifact_mcp_config)
+
+    jobs_parser = subparsers.add_parser(
+        "jobs",
+        help="inspect and execute durable index jobs",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    jobs_subparsers = jobs_parser.add_subparsers(
+        dest="jobs_command",
+        required=True,
+    )
+    jobs_run_once_parser = jobs_subparsers.add_parser(
+        "run-once",
+        help="scan one bounded page and execute at most one supported job",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    jobs_run_once_parser.add_argument(
+        "repo",
+        help="trusted local repository source for eligible jobs",
+    )
+    jobs_run_once_parser.add_argument(
+        "--cache-dir",
+        required=True,
+        help="existing compiler cache containing current BM25/vector views",
+    )
+    jobs_run_once_parser.add_argument(
+        "--catalog",
+        required=True,
+        help="existing initialized SQLite catalog path",
+    )
+    jobs_run_once_parser.add_argument(
+        "--cas-root",
+        required=True,
+        help="existing fully preprovisioned local CAS root",
+    )
+    jobs_run_once_parser.add_argument(
+        "--workspace-root",
+        required=True,
+        help="existing private owner-only LocalWorkspaceProvider root",
+    )
+    jobs_run_once_parser.add_argument(
+        "--repository",
+        required=True,
+        help="canonical owner/repository key eligible for this worker",
+    )
+    jobs_run_once_parser.add_argument(
+        "--namespace",
+        default="default",
+        help="logical catalog namespace",
+    )
+    jobs_run_once_parser.add_argument(
+        "--lease-duration-ms",
+        type=_argparse_positive_int,
+        default=30_000,
+        help="job lease duration",
+    )
+    jobs_run_once_parser.add_argument(
+        "--heartbeat-interval-ms",
+        type=_argparse_positive_int,
+        default=5_000,
+        help="worker heartbeat interval (must be less than one third of the lease)",
+    )
+    jobs_run_once_parser.add_argument(
+        "--scan-limit",
+        type=_argparse_positive_int,
+        default=64,
+        help="maximum advisory candidates examined in this pass (at most 256)",
+    )
+    jobs_run_once_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print the canonical run result as compact JSON",
+    )
+    jobs_run_once_parser.set_defaults(handler=_run_jobs_run_once)
 
     publish_parser = subparsers.add_parser(
         "publish",

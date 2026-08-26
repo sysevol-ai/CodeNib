@@ -1430,6 +1430,81 @@ def test_local_compiler_cache_cleanup_owner_import_rejects_tuple_subclasses() ->
         BaseException.__getattribute__(target, "publication_cleanup_owners")
 
 
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    (
+        ("full_bm25", True),
+        ("full_vector", True),
+        ("incremental", False),
+        ("optional", False),
+        ("multi_view", False),
+        ("graph", False),
+    ),
+)
+def test_local_compiler_cache_candidate_filter_accepts_only_supported_shape(
+    tmp_path: Path,
+    case: str,
+    expected: bool,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog:
+            repository_id, source_revision_id, bm25_profile_id = (
+                _register_bm25_job_subject(catalog, fixture, plan)
+            )
+            view_type = "bm25"
+            profile_id = bm25_profile_id
+            if case in {"full_vector", "multi_view"}:
+                vector_profile_id = catalog.create_view_profile(
+                    "vector",
+                    {"test_profile": case},
+                )
+                if case == "full_vector":
+                    view_type = "vector"
+                    profile_id = vector_profile_id
+            elif case == "graph":
+                view_type = "graph"
+                profile_id = catalog.create_view_profile(
+                    "graph",
+                    {"test_profile": case},
+                )
+            views = {
+                view_type: {
+                    "profile_id": profile_id,
+                    "requested_mode": (
+                        "incremental" if case == "incremental" else "full"
+                    ),
+                    "required": case != "optional",
+                }
+            }
+            if case == "multi_view":
+                views["vector"] = {
+                    "profile_id": vector_profile_id,
+                    "requested_mode": "full",
+                    "required": True,
+                }
+            queued = catalog.create_job(
+                repository_id,
+                source_revision_id,
+                f"candidate-{case}",
+                {"contract": INDEX_JOB_REQUEST_CONTRACT, "views": views},
+            )
+
+        target = LocalCompilerCacheJobTarget(
+            repository_root=fixture.repository,
+            cache_dir=fixture.cache,
+            workspace_provider=LocalWorkspaceProvider(fixture.workspace),
+            repository_key=_REPOSITORY_KEY,
+            environ={},
+        )
+        resources = LocalCompilerCacheJobResourceFactory((target,))
+
+        assert resources.accepts_candidate(queued) is expected
+    finally:
+        fixture.close()
+
+
 def test_local_compiler_cache_job_factory_runs_and_isolates_attempt_workspaces(
     tmp_path: Path,
 ) -> None:
@@ -1456,6 +1531,20 @@ def test_local_compiler_cache_job_factory_runs_and_isolates_attempt_workspaces(
                     source_revision_id=source_revision_id,
                     profile_id=profile_id,
                 )
+                foreign_repository_id = catalog.create_repository("owner/foreign")
+                foreign_source_revision_id = catalog.create_source_revision(
+                    foreign_repository_id,
+                    commit_sha=None,
+                    dirty=True,
+                    source_fingerprint=fixture.source.fingerprint,
+                )
+                foreign = _create_bm25_job(
+                    catalog,
+                    repository_id=foreign_repository_id,
+                    source_revision_id=foreign_source_revision_id,
+                    profile_id=profile_id,
+                    idempotency_key="foreign-compiler-cache-bm25",
+                )
 
             target = LocalCompilerCacheJobTarget(
                 repository_root=fixture.repository,
@@ -1465,6 +1554,9 @@ def test_local_compiler_cache_job_factory_runs_and_isolates_attempt_workspaces(
                 environ={},
             )
             assert target.repository_id == repository_id
+            resources = LocalCompilerCacheJobResourceFactory((target,))
+            assert resources.accepts_candidate(queued)
+            assert not resources.accepts_candidate(foreign)
             worker = IndexJobWorker(
                 catalog_factory=_CompilerCacheWorkerFactory(
                     catalog_path,
@@ -1472,9 +1564,10 @@ def test_local_compiler_cache_job_factory_runs_and_isolates_attempt_workspaces(
                 ),
                 object_store=cas,
                 resolver=CompilerCacheJobResolver(
-                    resource_factory=LocalCompilerCacheJobResourceFactory((target,)),
+                    resource_factory=resources,
                     object_store=cas,
                 ),
+                candidate_filter=resources.accepts_candidate,
                 lease_duration_ms=60_000,
                 heartbeat_interval_ms=5,
                 owner_id_factory=lambda: "local-compiler-cache-worker",
@@ -1495,6 +1588,9 @@ def test_local_compiler_cache_job_factory_runs_and_isolates_attempt_workspaces(
                 completed = catalog.get_job(queued.job_id)
                 assert completed.status is IndexJobStatus.SUCCEEDED
                 assert completed.result_snapshot_id is not None
+                untouched = catalog.get_job(foreign.job_id)
+                assert untouched.status is IndexJobStatus.QUEUED
+                assert untouched.attempt_count == 0
     finally:
         fixture.close()
 
@@ -1712,6 +1808,75 @@ def test_compiler_cache_scope_cleanup_cannot_replace_executor_failure(
                 running = catalog.get_job(queued.job_id)
                 assert running.status is IndexJobStatus.RUNNING
                 assert running.result_snapshot_id is None
+    finally:
+        fixture.close()
+
+
+def test_jobs_run_once_cli_publishes_one_trusted_local_cache_job(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    catalog_path = tmp_path / "worker.sqlite"
+    cas_root = tmp_path / "cas"
+    provider = LocalWorkspaceProvider(fixture.workspace)
+    try:
+        try:
+            provider.require_support()
+        except UnsupportedWorkspaceCreation as exc:
+            pytest.skip(str(exc))
+        with LocalCAS.provision(cas_root):
+            pass
+        with SQLiteCatalog(catalog_path) as catalog:
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog,
+                fixture,
+                plan,
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+        args = cli_module.build_parser().parse_args(
+            [
+                "jobs",
+                "run-once",
+                str(fixture.repository),
+                "--cache-dir",
+                str(fixture.cache),
+                "--catalog",
+                str(catalog_path),
+                "--cas-root",
+                str(cas_root),
+                "--workspace-root",
+                str(fixture.workspace),
+                "--repository",
+                _REPOSITORY_KEY,
+                "--lease-duration-ms",
+                "60000",
+                "--heartbeat-interval-ms",
+                "5",
+                "--json",
+            ]
+        )
+
+        assert args.handler is cli_module._run_jobs_run_once
+        assert cli_module._run_jobs_run_once(args) == 0
+
+        assert json.loads(capsys.readouterr().out) == {
+            "attempt_count": 1,
+            "disposition": "succeeded",
+            "job_id": queued.job_id,
+        }
+        assert not tuple(fixture.workspace.glob(".codenib-cache-job-*"))
+        assert len(tuple(fixture.workspace.glob(".*.discarded-*"))) == 2
+        with SQLiteCatalog(catalog_path, create=False) as catalog:
+            completed = catalog.get_job(queued.job_id)
+            assert completed.status is IndexJobStatus.SUCCEEDED
+            assert completed.result_snapshot_id is not None
     finally:
         fixture.close()
 
