@@ -142,6 +142,7 @@ class _ManifestChunkStop(BaseException):
     __slots__ = ("error",)
 
     def __init__(self, error: StopIteration) -> None:
+        super().__init__(error)
         self.error = error
 
 

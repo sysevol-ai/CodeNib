@@ -309,7 +309,6 @@ def test_run_strict_workspace_preserves_exact_staged_cancellation(
             raise cancellation
 
     def operation(session: StrictWorkspaceSession) -> None:
-        nonlocal armed
         session.write_file("payload.bin", (b"owned",))
 
         def validate_staged(_reader) -> None:

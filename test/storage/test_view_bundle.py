@@ -2472,7 +2472,7 @@ def test_planned_bundle_attests_current_receipt_before_phase_stop(
     arm_after_validation = False
 
     def validate_source_ownership(*args: object, **kwargs: object) -> None:
-        nonlocal armed, arm_after_validation
+        nonlocal armed
         real_validate(*args, **kwargs)  # type: ignore[arg-type]
         if arm_after_validation:
             armed = True

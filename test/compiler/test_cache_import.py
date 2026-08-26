@@ -1474,7 +1474,7 @@ def test_prepare_compiler_cache_job_stops_inside_source_read_session(
         return TrackingSession(inner)
 
     def tracked_scan(*args, **kwargs):
-        nonlocal scan_calls, triggered
+        nonlocal scan_calls
         if active_depth and not triggered:
             callback = kwargs.get("check_cancelled")
             if not callable(callback):
