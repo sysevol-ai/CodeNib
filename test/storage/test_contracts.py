@@ -35,6 +35,7 @@ from codenib.storage.models import (
 from codenib.storage.protocols import (
     IndexCatalog,
     JobCatalog,
+    JobCycleWorkerCatalog,
     JobExecutionCatalog,
     JobPublicationCatalog,
     JobWorkerCatalog,
@@ -59,6 +60,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
         assert isinstance(catalog, JobCatalog)
         assert isinstance(catalog, JobExecutionCatalog)
         assert isinstance(catalog, JobWorkerCatalog)
+        assert isinstance(catalog, JobCycleWorkerCatalog)
     finally:
         catalog.close()
 
@@ -83,6 +85,7 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "IndexJobObjectStoreBoundResolver",
         "IndexJobEventKind",
         "IndexJobEventRecord",
+        "IndexJobRunnableCycle",
         "IndexJobRunnableCursor",
         "IndexJobRunnablePage",
         "IndexJobStopReason",
@@ -92,6 +95,7 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "IndexJobWorker",
         "IndexJobWorkerDisposition",
         "IndexJobWorkerRunResult",
+        "JobCycleWorkerCatalog",
         "JobExecutionCatalog",
         "JobWorkerCatalog",
     }
@@ -132,6 +136,7 @@ def test_execution_catalog_is_additive_to_publication_only_adapters() -> None:
     assert isinstance(adapter, JobPublicationCatalog)
     assert not isinstance(adapter, JobExecutionCatalog)
     assert not isinstance(adapter, JobWorkerCatalog)
+    assert not isinstance(adapter, JobCycleWorkerCatalog)
 
 
 def test_retained_import_response_budgets_are_public_capability_contracts() -> None:

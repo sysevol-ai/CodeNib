@@ -125,8 +125,12 @@ class _WorkerSQLiteCatalog(SQLiteCatalog):
             _install_clock(self, clock)
         probe.record_session(self)
 
-    def scan_runnable_jobs(self, *, cursor=None, limit: int = 64):
-        page = super().scan_runnable_jobs(cursor=cursor, limit=limit)
+    def scan_runnable_jobs(self, *, cursor=None, cycle=None, limit: int = 64):
+        page = super().scan_runnable_jobs(
+            cursor=cursor,
+            cycle=cycle,
+            limit=limit,
+        )
         self._worker_probe.wait_at_scan_barrier()
         return page
 

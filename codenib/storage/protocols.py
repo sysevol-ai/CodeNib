@@ -35,6 +35,7 @@ from .models import (
     IndexJobEventRecord,
     IndexJobRecord,
     IndexJobRunnableCursor,
+    IndexJobRunnableCycle,
     IndexJobRunnablePage,
     IndexJobViewOutcome,
     IndexJobViewOutput,
@@ -656,9 +657,33 @@ class JobWorkerCatalog(JobExecutionCatalog, JobPublicationCatalog, Protocol):
     pass
 
 
+@runtime_checkable
+class JobCycleWorkerCatalog(JobWorkerCatalog, Protocol):
+    """Additive worker catalog surface for finite scheduler cycles.
+
+    A cycle freezes the catalog's current immutable insertion sequence. Scans
+    carrying that exact token exclude jobs created after the cycle began while
+    preserving the ordinary advisory scan and fenced claim semantics.
+    """
+
+    def begin_runnable_job_cycle(self) -> IndexJobRunnableCycle:
+        """Freeze one bounded insertion watermark for cursor traversal."""
+
+        ...
+
+    def scan_runnable_jobs(
+        self,
+        *,
+        cursor: IndexJobRunnableCursor | None = None,
+        cycle: IndexJobRunnableCycle | None = None,
+        limit: int = 64,
+    ) -> IndexJobRunnablePage: ...
+
+
 __all__ = [
     "IndexCatalog",
     "JobCatalog",
+    "JobCycleWorkerCatalog",
     "JobExecutionCatalog",
     "JobPublicationCatalog",
     "JobWorkerCatalog",

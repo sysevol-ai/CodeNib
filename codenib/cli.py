@@ -6211,7 +6211,10 @@ def build_parser() -> argparse.ArgumentParser:
     jobs_run_parser.add_argument(
         "--max-cycles",
         type=_argparse_positive_int,
-        help="stop after this many complete keyspace cycles instead of running forever",
+        help=(
+            "stop after this many complete frozen-keyspace cycles instead of "
+            "running forever"
+        ),
     )
     jobs_run_parser.set_defaults(handler=_run_jobs_continuous)
 

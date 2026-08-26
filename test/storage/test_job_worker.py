@@ -42,6 +42,7 @@ from codenib.storage.models import (
     IndexJobRecord,
     IndexJobRequest,
     IndexJobRunnableCursor,
+    IndexJobRunnableCycle,
     IndexJobRunnablePage,
     IndexJobStatus,
     IndexJobViewOutcome,
@@ -196,6 +197,7 @@ class _Backend:
     attempt_history_exceeds_max: bool = False
     acquire_calls: list[tuple[int, str, str]] = field(default_factory=list)
     scan_cursors: list[IndexJobRunnableCursor | None] = field(default_factory=list)
+    scan_cycles: list[IndexJobRunnableCycle | None] = field(default_factory=list)
     heartbeat_calls: list[tuple[int, int, str]] = field(default_factory=list)
     progress_calls: list[dict[str, Any]] = field(default_factory=list)
     view_result_calls: list[dict[str, Any]] = field(default_factory=list)
@@ -627,19 +629,27 @@ class _FakeCatalog:
     def finish_job_attempt(self, *_args: object, **_kwargs: object) -> IndexJobRecord:
         raise NotImplementedError
 
+    def begin_runnable_job_cycle(self) -> IndexJobRunnableCycle:
+        return IndexJobRunnableCycle(len(self.backend.scan_job_ids))
+
     def scan_runnable_jobs(
         self,
         *,
         cursor: IndexJobRunnableCursor | None = None,
+        cycle: IndexJobRunnableCycle | None = None,
         limit: int = 64,
     ) -> IndexJobRunnablePage:
         if cursor is not None and type(cursor) is not IndexJobRunnableCursor:
             raise AssertionError("worker supplied a noncanonical test cursor")
+        if cycle is not None and type(cycle) is not IndexJobRunnableCycle:
+            raise AssertionError("worker supplied a noncanonical test cycle")
         self.backend.scan_cursors.append(cursor)
+        self.backend.scan_cycles.append(cycle)
         lower_bound = None if cursor is None else (cursor.created_at_ms, cursor.job_id)
         runnable = tuple(
             self.backend.jobs[job_id]
-            for job_id in self.backend.scan_job_ids
+            for sequence, job_id in enumerate(self.backend.scan_job_ids, start=1)
+            if (cycle is None or sequence <= cycle.max_job_sequence)
             if self.backend.jobs[job_id].status is IndexJobStatus.QUEUED
             and (
                 lower_bound is None
@@ -1753,6 +1763,36 @@ def test_run_page_advances_across_filtered_candidates_without_starvation() -> No
     assert backend.scan_cursors == [None, first_cursor, second_cursor, third_cursor]
     assert considered == [first.job_id, second.job_id, third.job_id]
     assert [call[1] for call in backend.acquire_calls] == [third.job_id]
+
+
+def test_worker_cycle_excludes_jobs_inserted_after_its_frozen_watermark() -> None:
+    backend = _Backend()
+    first = backend.add_job("cycle-first")
+    second = backend.add_job("cycle-second")
+    considered: list[str] = []
+    worker, _store, _factory = _worker(
+        backend,
+        _default_resolver(),
+        candidate_filter=lambda job: considered.append(job.job_id) or False,
+        scan_limit=1,
+    )
+
+    cycle = worker.begin_cycle()
+    late = backend.add_job("cycle-late")
+    first_page = worker.run_page(cycle=cycle)
+    second_page = worker.run_page(
+        cursor=first_page.continuation_cursor,
+        cycle=cycle,
+    )
+
+    assert cycle == IndexJobRunnableCycle(2)
+    assert second_page == IndexJobWorkerPageResult(
+        IndexJobWorkerRunResult.idle(),
+        None,
+    )
+    assert considered == [first.job_id, second.job_id]
+    assert late.job_id not in considered
+    assert backend.scan_cycles == [cycle, cycle]
 
 
 @pytest.mark.parametrize("decision", (None, 1, "true"))

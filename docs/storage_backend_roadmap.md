@@ -1268,10 +1268,13 @@ CAS for the whole invocation. A trusted candidate filter runs on a detached
 canonical job before owner allocation or lease acquisition, so foreign
 repositories and unsupported view requests remain untouched. `run-once`
 examines one bounded advisory page and executes at most one eligible job. The
-continuous scheduler carries an attested keyset cursor across pages, wraps only
-after the runnable keyspace is exhausted, backs off after complete idle cycles,
-and supports cooperative shutdown. Cache-building adapters, runtime
-registration, and default routing remain absent.
+continuous scheduler freezes an attested catalog insertion watermark for each
+cycle, carries an attested keyset cursor across its bounded pages, wraps only
+after that frozen runnable keyspace is exhausted, backs off after complete idle
+cycles, and supports cooperative shutdown. Jobs inserted after the watermark
+are deferred to the next cycle, so continuous larger-key writes cannot starve a
+wrapped retry or make a configured cycle limit unbounded. Cache-building
+adapters, runtime registration, and default routing remain absent.
 
 ### M2: Immutable generation publication
 
@@ -1323,10 +1326,12 @@ remain absent.
   or unsupported jobs untouched. The separate `run_page` surface returns the
   selected candidate cursor after work or the attested final-page continuation
   after a fully examined page; either continuation must advance beyond its
-  input. The local scheduler uses it to traverse the complete runnable keyspace,
-  wraps requeues into the next fair cycle, exponentially backs off only after
-  complete idle cycles, and stops cooperatively without making the legacy
-  one-page call unbounded.
+  input. Before traversal the local scheduler freezes the catalog's current
+  immutable job-insertion sequence and supplies that exact cycle token to every
+  page. It therefore traverses a finite keyspace even while larger-key jobs are
+  continuously inserted, wraps requeues into the next fair cycle,
+  exponentially backs off only after complete idle cycles, and stops
+  cooperatively without making the legacy one-page call unbounded.
 - File-backed SQLite sessions in one interpreter coordinate existing-only
   validation, transactions, and connection close by resolved catalog path, so
   a heartbeat cannot invalidate a concurrent cancellation or worker-session

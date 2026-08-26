@@ -30,6 +30,7 @@ from .models import (
     IndexJobRequest,
     IndexJobRequestedMode,
     IndexJobRunnableCursor,
+    IndexJobRunnableCycle,
     IndexJobRunnablePage,
     IndexJobStatus,
     IndexJobViewOutcome,
@@ -44,7 +45,11 @@ from .models import (
     canonical_json,
     snapshot_index_job_event_payload,
 )
-from .protocols import JobWorkerCatalog, ReceiptRetainingObjectStore
+from .protocols import (
+    JobCycleWorkerCatalog,
+    JobWorkerCatalog,
+    ReceiptRetainingObjectStore,
+)
 from .publication import (
     IndexJobViewArtifact,
     _attest_completed_publication,
@@ -327,6 +332,22 @@ def _detach_runnable_cursor(value: object) -> IndexJobRunnableCursor:
         ) from exc
     if detached != value:
         raise StorageValidationError("worker runnable cursor is not canonical")
+    return detached
+
+
+def _detach_runnable_cycle(value: object) -> IndexJobRunnableCycle:
+    if type(value) is not IndexJobRunnableCycle:
+        raise StorageValidationError("worker runnable cycle must use the exact model")
+    try:
+        detached = replace(value)
+    except StorageValidationError:
+        raise
+    except Exception as exc:
+        raise StorageValidationError(
+            "worker runnable cycle is structurally damaged"
+        ) from exc
+    if detached != value:
+        raise StorageValidationError("worker runnable cycle is not canonical")
     return detached
 
 
@@ -1605,6 +1626,25 @@ class IndexJobWorker:
         self._monotonic = monotonic
         self._run_lock = threading.Lock()
 
+    def begin_cycle(self) -> IndexJobRunnableCycle:
+        """Freeze one catalog insertion watermark for bounded page traversal."""
+
+        if not self._run_lock.acquire(blocking=False):
+            raise RuntimeError("index job worker is already running")
+        try:
+            result = _run_catalog_session(
+                self._catalog_factory,
+                self._begin_cycle_in_session,
+            )
+            try:
+                return _detach_runnable_cycle(result)
+            except StorageValidationError as exc:
+                raise StorageIntegrityError(
+                    "worker catalog returned an invalid runnable cycle"
+                ) from exc
+        finally:
+            self._run_lock.release()
+
     def run_once(self) -> IndexJobWorkerRunResult:
         """Claim and execute the first candidate won from one advisory page."""
 
@@ -1614,17 +1654,23 @@ class IndexJobWorker:
         self,
         *,
         cursor: IndexJobRunnableCursor | None = None,
+        cycle: IndexJobRunnableCycle | None = None,
     ) -> IndexJobWorkerPageResult:
-        """Run one page after ``cursor`` and return its safe continuation."""
+        """Run one cycle-bounded page and return its safe continuation."""
 
         scan_cursor = None if cursor is None else _detach_runnable_cursor(cursor)
+        scan_cycle = None if cycle is None else _detach_runnable_cycle(cycle)
 
         if not self._run_lock.acquire(blocking=False):
             raise RuntimeError("index job worker is already running")
         try:
             result = _run_catalog_session(
                 self._catalog_factory,
-                lambda catalog: self._run_page_in_session(catalog, scan_cursor),
+                lambda catalog: self._run_page_in_session(
+                    catalog,
+                    scan_cursor,
+                    scan_cycle,
+                ),
             )
             if type(result) is not IndexJobWorkerPageResult:
                 raise StorageIntegrityError(
@@ -1634,20 +1680,48 @@ class IndexJobWorker:
         finally:
             self._run_lock.release()
 
+    @staticmethod
+    def _begin_cycle_in_session(
+        catalog: JobWorkerCatalog,
+    ) -> IndexJobRunnableCycle:
+        if not isinstance(catalog, JobCycleWorkerCatalog):
+            raise StorageValidationError(
+                "worker session lacks runnable-cycle catalog capabilities"
+            )
+        try:
+            return _detach_runnable_cycle(catalog.begin_runnable_job_cycle())
+        except StorageValidationError as exc:
+            raise StorageIntegrityError(
+                "worker catalog returned an invalid runnable cycle"
+            ) from exc
+
     def _run_page_in_session(
         self,
         catalog: JobWorkerCatalog,
         cursor: IndexJobRunnableCursor | None,
+        cycle: IndexJobRunnableCycle | None,
     ) -> IndexJobWorkerPageResult:
         if not isinstance(catalog, JobWorkerCatalog):
             raise StorageValidationError(
                 "worker session lacks required catalog capabilities"
             )
-        page = _attest_runnable_page(
-            catalog.scan_runnable_jobs(
+        if cycle is None:
+            raw_page = catalog.scan_runnable_jobs(
                 cursor=cursor,
                 limit=self._scan_limit,
-            ),
+            )
+        else:
+            if not isinstance(catalog, JobCycleWorkerCatalog):
+                raise StorageValidationError(
+                    "worker session lacks runnable-cycle catalog capabilities"
+                )
+            raw_page = catalog.scan_runnable_jobs(
+                cursor=cursor,
+                cycle=cycle,
+                limit=self._scan_limit,
+            )
+        page = _attest_runnable_page(
+            raw_page,
             limit=self._scan_limit,
             after_cursor=cursor,
         )

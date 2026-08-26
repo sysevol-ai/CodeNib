@@ -51,6 +51,7 @@ from .models import (
     IndexJobRecord,
     IndexJobRequest,
     IndexJobRunnableCursor,
+    IndexJobRunnableCycle,
     IndexJobRunnablePage,
     IndexJobStatus,
     IndexJobViewOutcome,
@@ -6909,16 +6910,34 @@ class SQLiteCatalog:
             return tuple(self._job_attempt_completion_from_row(row) for row in rows)
 
     @_coordinated_catalog_method
+    def begin_runnable_job_cycle(self) -> IndexJobRunnableCycle:
+        """Freeze the current immutable job-insertion high-water sequence."""
+
+        with self._transaction(immediate=False):
+            row = self._connection.execute(
+                "SELECT COALESCE(MAX(rowid), 0) AS max_job_sequence FROM index_jobs"
+            ).fetchone()
+            return IndexJobRunnableCycle(
+                _persisted_nonnegative_int64(
+                    row["max_job_sequence"],
+                    "runnable cycle job sequence",
+                )
+            )
+
+    @_coordinated_catalog_method
     def scan_runnable_jobs(
         self,
         *,
         cursor: IndexJobRunnableCursor | None = None,
+        cycle: IndexJobRunnableCycle | None = None,
         limit: int = 64,
     ) -> IndexJobRunnablePage:
         """Return a deterministic advisory page using only SQLite's clock."""
 
         if cursor is not None and type(cursor) is not IndexJobRunnableCursor:
             raise CatalogValidationError("runnable job cursor must be exact")
+        if cycle is not None and type(cycle) is not IndexJobRunnableCycle:
+            raise CatalogValidationError("runnable job cycle must be exact")
         page_limit = _exact_positive_integer(limit, "runnable job page limit")
         if page_limit > _MAX_RUNNABLE_JOB_SCAN_LIMIT:
             raise CatalogValidationError(
@@ -6926,6 +6945,9 @@ class SQLiteCatalog:
             )
         cursor_time = -1 if cursor is None else cursor.created_at_ms
         cursor_job = "" if cursor is None else cursor.job_id
+        max_job_sequence = (
+            _SQLITE_INT64_MAX if cycle is None else cycle.max_job_sequence
+        )
         with self._transaction(immediate=False):
             rows = self._connection.execute(
                 f"""
@@ -6934,6 +6956,7 @@ class SQLiteCatalog:
                 WHERE (job.created_at_ms > ? OR (
                         job.created_at_ms = ? AND job.job_id > ?
                     ))
+                    AND job.rowid <= ?
                     AND job.created_at_ms <= {_DB_NOW_MS_SQL}
                     AND job.updated_at_ms <= {_DB_NOW_MS_SQL}
                     AND (
@@ -6973,6 +6996,7 @@ class SQLiteCatalog:
                     cursor_time,
                     cursor_time,
                     cursor_job,
+                    max_job_sequence,
                     page_limit + 1,
                 ),
             ).fetchall()

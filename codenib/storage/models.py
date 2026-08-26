@@ -1791,6 +1791,25 @@ class IndexJobRunnableCursor:
 
 
 @dataclass(frozen=True, slots=True)
+class IndexJobRunnableCycle:
+    """Frozen catalog insertion watermark for one bounded runnable scan cycle."""
+
+    max_job_sequence: int
+
+    def __post_init__(self) -> None:
+        if type(self) is not IndexJobRunnableCycle:
+            raise StorageValidationError("runnable cycle must use the exact model")
+        object.__setattr__(
+            self,
+            "max_job_sequence",
+            _exact_nonnegative_int64(
+                self.max_job_sequence,
+                "runnable cycle job sequence",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class IndexJobRunnablePage:
     """One deterministic, advisory page of jobs that may be claimable."""
 
@@ -1859,6 +1878,7 @@ __all__ = [
     "IndexJobRecord",
     "IndexJobRequest",
     "IndexJobRequestedMode",
+    "IndexJobRunnableCycle",
     "IndexJobRunnableCursor",
     "IndexJobRunnablePage",
     "IndexJobStatus",

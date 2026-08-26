@@ -28,6 +28,7 @@ from codenib.storage.models import (
     IndexJobRecord,
     IndexJobRequest,
     IndexJobRunnableCursor,
+    IndexJobRunnableCycle,
     IndexJobRunnablePage,
     IndexJobStatus,
     IndexJobViewOutcome,
@@ -357,6 +358,8 @@ def test_execution_cursors_and_fencing_tokens_are_exact_int64_values() -> None:
     job = _job()
     with pytest.raises(StorageValidationError, match="cursor time"):
         IndexJobRunnableCursor(too_large, job.job_id)
+    with pytest.raises(StorageValidationError, match="cycle job sequence"):
+        IndexJobRunnableCycle(too_large)
     with pytest.raises(StorageValidationError, match="fencing token"):
         RefJobLease(
             repository_id=job.repository_id,
@@ -418,6 +421,8 @@ def test_execution_models_reject_int_subclasses_and_non_int_scalars() -> None:
     for value in (True, 1.0, IntSubclass(1), -(2**63), 2**63):
         with pytest.raises(StorageValidationError, match="cursor time"):
             IndexJobRunnableCursor(value, job.job_id)  # type: ignore[arg-type]
+        with pytest.raises(StorageValidationError, match="cycle job sequence"):
+            IndexJobRunnableCycle(value)  # type: ignore[arg-type]
         with pytest.raises(StorageValidationError, match="fencing token"):
             replace(attempt, fencing_token=value)
         with pytest.raises(StorageValidationError, match="attempt count"):
