@@ -37,6 +37,7 @@ from codenib.web.repo_registry import (
     RepoBundle,
     RepoRegistry,
     _fresh_registry,
+    _OwnedRepoBundle,
 )
 
 
@@ -273,6 +274,32 @@ def test_registry_reload_closes_the_previous_source_authority(tmp_path):
     registry.close()
 
 
+def test_registry_reload_keeps_pinned_source_authority_until_release(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "runtime.py").write_text("runtime\n", encoding="utf-8")
+    manifest_path = tmp_path / "artifacts" / "repo_manifest.json"
+    _write_source_manifest(repo, manifest_path)
+    entry = _repo_entry(repo, manifest_path)
+    config = QAConfig(data_dir=str(tmp_path / "data"))
+    save_registry(config.registry_path, [entry])
+    registry = RepoRegistry(config)
+    registry.load_all()
+
+    with registry.pin(entry.instance_id) as first_bundle:
+        first_reader = first_bundle.source_reader
+        registry.load_all()
+
+        assert registry.get(entry.instance_id) is not first_bundle
+        assert first_reader.read_prefix("runtime.py", max_bytes=32) == b"runtime\n"
+        assert registry.retired_generation_count == 1
+
+    with pytest.raises(RuntimeError, match="source binding is"):
+        first_reader.read_prefix("runtime.py", max_bytes=32)
+    assert registry.retired_generation_count == 0
+    registry.close()
+
+
 def test_registry_rejects_duplicate_instance_ids_without_replacing_owner(tmp_path):
     entries = []
     for name in ("first", "second"):
@@ -316,13 +343,184 @@ def test_registry_retains_vector_cleanup_owner_for_retry():
     with pytest.raises(RuntimeError, match="retry cleanup"):
         registry.close()
 
-    assert registry._bundles == {"repo": bundle}
+    assert registry._bundles == {}
+    assert set(registry._retired_bundles) == {id(bundle)}
     assert bundle.vector_store is vector
 
     registry.close()
 
     assert vector.close_calls == 2
     assert registry._bundles == {}
+    assert registry._retired_bundles == {}
+
+
+def test_registry_swap_keeps_pinned_generation_alive_until_release():
+    events = []
+
+    class Vector:
+        def close(self):
+            events.append("old-vector-closed")
+
+    class Owner:
+        def __init__(self, label):
+            self.label = label
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+            events.append(f"{self.label}-source-closed")
+
+    old_vector = Vector()
+    old = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        vector_store=old_vector,
+    )
+    new = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    old_owner = Owner("old")
+    new_owner = Owner("new")
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = old
+    registry._source_cleanup_owners["repo"] = old_owner
+
+    with registry.pin("repo") as pinned:
+        registry._publish_owned(
+            "repo",
+            _OwnedRepoBundle(new, None, new_owner),
+        )
+
+        assert pinned is old
+        assert registry.get("repo") is new
+        assert old.vector_store is old_vector
+        assert old_owner.closed is False
+        assert registry.retired_generation_count == 1
+        assert events == []
+
+    assert old.vector_store is None
+    assert old_owner.closed is True
+    assert registry.retired_generation_count == 0
+    assert events == ["old-vector-closed", "old-source-closed"]
+    registry.close()
+
+
+def test_registry_failed_refresh_keeps_active_generation(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(repo, manifest_path, instance_id="repo")
+    old = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    old_owner = Owner()
+    candidate_owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = old
+    registry._source_cleanup_owners["repo"] = old_owner
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, candidate_owner),
+    )
+
+    def reject(_bundle):
+        assert registry.get("repo") is old
+        raise ValueError("candidate is incomplete")
+
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", reject)
+
+    with pytest.raises(ValueError, match="candidate is incomplete"):
+        registry.refresh("repo")
+
+    assert registry.get("repo") is old
+    assert old_owner.closed is False
+    assert candidate_owner.closed is True
+    assert registry.retired_generation_count == 0
+    registry.close()
+
+
+def test_registry_failed_refresh_retains_unpublished_cleanup_owner(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(repo, manifest_path, instance_id="repo")
+    old = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    old_owner = Owner()
+    candidate_owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = old
+    registry._source_cleanup_owners["repo"] = old_owner
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+
+    error = ValueError("candidate authentication failed")
+    error.source_cleanup_owner = candidate_owner
+
+    def fail_build(_entry):
+        raise error
+
+    monkeypatch.setattr(registry, "_build_repo_metadata", fail_build)
+
+    with pytest.raises(ValueError, match="candidate authentication failed"):
+        registry.refresh("repo")
+
+    assert registry.get("repo") is old
+    assert old_owner.closed is False
+    assert registry._orphan_cleanup_owners == [candidate_owner]
+    registry.close()
+    assert old_owner.closed is True
+    assert candidate_owner.closed is True
+
+
+def test_registry_close_defers_pinned_generation_cleanup():
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    registry._source_cleanup_owners["repo"] = owner
+
+    with registry.pin("repo") as pinned:
+        registry.close()
+
+        assert pinned is bundle
+        assert owner.closed is False
+        assert registry.get("repo") is None
+        assert registry.retired_generation_count == 1
+
+    assert owner.closed is True
+    assert registry.retired_generation_count == 0
 
 
 def test_repo_views_reject_documents_outside_authenticated_selection(tmp_path):
