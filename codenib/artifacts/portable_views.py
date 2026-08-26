@@ -25,6 +25,7 @@ from .._atomic_directory import (
     PublicationDirectoryReader,
     TreeFileRecord,
     _annotate_secondary_error,
+    _attach_publication_cleanup_owner,
     _run_callback_with_post_validations,
     capture_directory_ownership,
     directory_ownership_file_records,
@@ -135,7 +136,7 @@ def _transfer_callback_exception_settlement(
             source,
             "_codenib_cleanup_notes",
         )
-    except AttributeError:
+    except BaseException:  # noqa: B036 - diagnostics are best-effort
         fallback_notes = ()
     if type(fallback_notes) is tuple:
         try:
@@ -143,7 +144,7 @@ def _transfer_callback_exception_settlement(
                 target,
                 "_codenib_cleanup_notes",
             )
-        except AttributeError:
+        except BaseException:  # noqa: B036 - exact callback stays primary
             existing_notes = ()
         if type(existing_notes) is not tuple:
             existing_notes = ()
@@ -157,29 +158,14 @@ def _transfer_callback_exception_settlement(
             pass
     try:
         owners = BaseException.__getattribute__(source, "publication_cleanup_owners")
-    except AttributeError:
+    except BaseException:  # noqa: B036 - no retained publication cleanup
         owners = ()
     if type(owners) is tuple:
-        try:
-            existing_owners = BaseException.__getattribute__(
-                target,
-                "publication_cleanup_owners",
-            )
-        except AttributeError:
-            existing_owners = ()
-        if type(existing_owners) is not tuple:
-            existing_owners = ()
-        try:
-            BaseException.__setattr__(
-                target,
-                "publication_cleanup_owners",
-                (*existing_owners, *owners),
-            )
-        except BaseException:  # noqa: B036 - diagnostics only
-            pass
+        for owner in owners:
+            _attach_publication_cleanup_owner(target, owner)
     try:
         source_owner = BaseException.__getattribute__(source, "source_cleanup_owner")
-    except AttributeError:
+    except BaseException:  # noqa: B036 - no retained source cleanup
         source_owner = None
     if source_owner is not None:
         try:
@@ -187,7 +173,7 @@ def _transfer_callback_exception_settlement(
                 target,
                 "source_cleanup_owner",
             )
-        except AttributeError:
+        except BaseException:  # noqa: B036 - exact callback stays primary
             existing_owner = None
         if existing_owner is None:
             try:

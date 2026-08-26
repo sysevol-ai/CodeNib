@@ -1567,6 +1567,66 @@ def test_publishability_carrier_merges_source_cleanup_owners_safely(
     assert overlapping_owner.close_calls == 1
 
 
+def test_publishability_carrier_handles_hostile_publication_owners() -> None:
+    class CleanupOwner:
+        def __init__(self) -> None:
+            self.closed = False
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+            if self.close_calls > 1:
+                raise AssertionError("publication owner closed twice")
+            self.closed = True
+
+    class HostileStop(StopIteration):
+        @property
+        def publication_cleanup_owners(self) -> object:
+            raise AssertionError("callback publication-owner getter was invoked")
+
+        @publication_cleanup_owners.setter
+        def publication_cleanup_owners(self, value: object) -> None:
+            raise AssertionError("callback publication-owner setter was invoked")
+
+    stop = HostileStop("injected hostile publication-owner stop")
+    carrier = security_module._CallbackIterationStop(stop)
+    owner = CleanupOwner()
+    BaseException.__setattr__(carrier, "publication_cleanup_owners", (owner,))
+
+    def transfer_and_raise() -> None:
+        security_module._transfer_callback_exception_settlement(carrier, stop)
+        raise stop
+
+    with pytest.raises(HostileStop) as caught:
+        transfer_and_raise()
+    assert caught.value is stop
+
+    overlapping_owner = CleanupOwner()
+    overlapping_stop = StopIteration("injected overlapping publication-owner stop")
+    overlapping_carrier = security_module._CallbackIterationStop(overlapping_stop)
+    BaseException.__setattr__(
+        overlapping_stop,
+        "publication_cleanup_owners",
+        (overlapping_owner,),
+    )
+    BaseException.__setattr__(
+        overlapping_carrier,
+        "publication_cleanup_owners",
+        (overlapping_owner,),
+    )
+    security_module._transfer_callback_exception_settlement(
+        overlapping_carrier,
+        overlapping_stop,
+    )
+    retained = BaseException.__getattribute__(
+        overlapping_stop,
+        "publication_cleanup_owners",
+    )
+    assert retained == (overlapping_owner,)
+    retained[0].close()
+    assert overlapping_owner.close_calls == 1
+
+
 def test_publishable_json_arbitrary_mapping_polls_before_poisoned_tail() -> None:
     stop = StopIteration("injected publishable mapping future stop")
     armed = False
@@ -1704,6 +1764,27 @@ def test_publishable_environment_polls_between_lazy_key_and_value() -> None:
         )
     assert caught.value is stop
     assert not value_touched
+
+
+def test_publishable_environment_scan_preserves_the_json_value() -> None:
+    secret = "configured-value-12345678"
+
+    assert_publishable_json_value(
+        "safe publication value",
+        forbidden_paths=(),
+        environ={"MY_TOKEN": secret},
+        label="safe publication JSON",
+        check_cancelled=lambda: None,
+    )
+
+    with pytest.raises(ValueError, match="contains a configured credential"):
+        assert_publishable_json_value(
+            f"publication contains {secret}",
+            forbidden_paths=(),
+            environ={"MY_TOKEN": secret, "SAFE_VAR": "unrelated value"},
+            label="credential-bearing publication JSON",
+            check_cancelled=lambda: None,
+        )
 
 
 def test_secret_values_poll_between_lazy_environment_key_and_value() -> None:

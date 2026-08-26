@@ -18,6 +18,7 @@ from typing import Any, TypeVar
 
 from .._atomic_directory import (
     PublicationDirectoryReader,
+    _attach_publication_cleanup_owner,
     directory_ownership_file_records,
 )
 from .._bounded_json import (
@@ -103,26 +104,41 @@ def _transfer_callback_exception_settlement(
                         add_note(target, note)
                     except BaseException:  # noqa: B036 - diagnostics only
                         break
-    for attribute in ("_codenib_cleanup_notes", "publication_cleanup_owners"):
+    try:
+        fallback_notes = BaseException.__getattribute__(
+            source,
+            "_codenib_cleanup_notes",
+        )
+    except BaseException:  # noqa: B036 - diagnostics are best-effort
+        fallback_notes = ()
+    if type(fallback_notes) is tuple:
         try:
-            values = BaseException.__getattribute__(source, attribute)
-        except AttributeError:
-            values = ()
-        if type(values) is not tuple:
-            continue
+            existing_notes = BaseException.__getattribute__(
+                target,
+                "_codenib_cleanup_notes",
+            )
+        except BaseException:  # noqa: B036 - exact callback stays primary
+            existing_notes = ()
+        if type(existing_notes) is not tuple:
+            existing_notes = ()
         try:
-            existing = BaseException.__getattribute__(target, attribute)
-        except AttributeError:
-            existing = ()
-        if type(existing) is not tuple:
-            existing = ()
-        try:
-            BaseException.__setattr__(target, attribute, (*existing, *values))
+            BaseException.__setattr__(
+                target,
+                "_codenib_cleanup_notes",
+                (*existing_notes, *fallback_notes),
+            )
         except BaseException:  # noqa: B036 - diagnostics only
             pass
     try:
+        owners = BaseException.__getattribute__(source, "publication_cleanup_owners")
+    except BaseException:  # noqa: B036 - no retained publication cleanup
+        owners = ()
+    if type(owners) is tuple:
+        for owner in owners:
+            _attach_publication_cleanup_owner(target, owner)
+    try:
         source_owner = BaseException.__getattribute__(source, "source_cleanup_owner")
-    except AttributeError:
+    except BaseException:  # noqa: B036 - no retained source cleanup
         source_owner = None
     if source_owner is not None:
         try:
@@ -130,7 +146,7 @@ def _transfer_callback_exception_settlement(
                 target,
                 "source_cleanup_owner",
             )
-        except AttributeError:
+        except BaseException:  # noqa: B036 - exact callback stays primary
             existing_owner = None
         if existing_owner is None:
             try:
@@ -553,19 +569,19 @@ def _assert_publishable_json_value_impl(
             check_cancelled=check_cancelled,
         )
         secret_items: list[str] = []
-        for name, value in _mapping_items_interruptibly(
+        for name, environment_value in _mapping_items_interruptibly(
             environ,
             check_cancelled,
         ):
             if (
-                isinstance(value, str)
-                and len(value) >= 8
+                isinstance(environment_value, str)
+                and len(environment_value) >= 8
                 and _sensitive_environment_name(
                     name,
                     check_cancelled=check_cancelled,
                 )
             ):
-                secret_items.append(value)
+                secret_items.append(environment_value)
         secrets = secret_items
 
     def check_text(text: str) -> None:
