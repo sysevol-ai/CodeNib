@@ -16,13 +16,15 @@ missing destination or replaces the exact generation named by an active
 receipt, then transfers the new generation to a caller-owned
 `PublishedWorkspaceReceiptOwner`.
 
-The provider is not enabled by CodeNib's default compiler or runtime path. Four
+The provider is not enabled by CodeNib's default compiler or runtime path. Five
 explicit routes use it: `codenib index --publish-retained` builds and publishes
 current BM25/vector views in one compiler-cache lease, `codenib artifact
-import-cache` recaptures an already existing selected cache, `codenib artifact
-materialize` publishes a retained catalog ref or immutable snapshot to a
-missing portable-artifact directory, and retained `codenib mcp` cold-start
-materializes and holds one such generation for a single stdio server lifetime.
+import-cache` recaptures an already existing selected cache, `codenib jobs
+run-once` prepares and publishes at most one eligible durable cache job,
+`codenib artifact materialize` publishes a retained catalog ref or immutable
+snapshot to a missing portable-artifact directory, and retained `codenib mcp`
+cold-start materializes and holds one such generation for a single stdio server
+lifetime.
 Storage-backend defaults are separate from route defaults. SQLite WAL and the
 local filesystem SHA-256 CAS are CodeNib's canonical supported production
 backends, not temporary bridges. PostgreSQL and S3-compatible adapters remain
@@ -294,6 +296,52 @@ committed before its result was observed, retry the exact same source, cache,
 repository, namespace, and ref with the original `--expected-generation`.
 The retry gets fresh missing evidence destinations but resolves the same
 snapshot and generation without advancing the ref again.
+
+## Run one durable cache job
+
+`codenib jobs run-once` examines one bounded advisory catalog page and executes
+at most one job for one explicitly configured local repository target. The job
+must already exist in the catalog and request exactly one required `full` BM25
+or vector view whose profile and dirty source-revision identity match the
+current compiler cache. This command does not create jobs, build or update a
+stale cache, loop continuously, or hot-switch a query runtime.
+
+The repository, cache, SQLite catalog, strict LocalCAS, and private workspace
+root obey the same physical-separation and existing-only requirements as
+`artifact import-cache`. The worker opens an independent exact SQLite session
+for its main transaction and every heartbeat, while retaining one strict CAS
+authority for the complete pass. A claim-time eligibility filter runs before
+owner allocation or catalog mutation: jobs for other repository IDs, multi-view
+requests, optional views, incremental requests, graph, and other unsupported
+builders remain untouched in the queue.
+
+For example, process at most one current-cache job from the first 64 advisory
+candidates:
+
+```bash
+codenib jobs run-once /srv/src/repository \
+  --cache-dir /var/lib/codenib/compiler-cache/repository \
+  --catalog /var/lib/codenib/catalog.sqlite3 \
+  --cas-root /var/lib/codenib/cas \
+  --workspace-root /var/lib/codenib/workspaces \
+  --repository owner/repository
+```
+
+`--scan-limit` may select 1 through 256 candidates. Lease and heartbeat timing
+are configurable, but the heartbeat must remain less than one third of the
+lease. The default text output reports disposition, job ID, and attempt; use
+`--json` for one compact canonical object. A processed retry, failure,
+cancellation, or authority loss is a durable worker disposition rather than a
+CLI infrastructure failure. Storage-integrity, topology, and cleanup failures
+still make the command fail.
+
+Each attempt captures a fresh retained source and uses new nonce-scoped view
+and context destinations. After CAS ingestion and worker-owned publication, the
+receipt authorities close and the exact owned directories are atomically moved
+to authenticated orphan names for later quiescent GC; the command never
+recursively deletes a mutable path. More than one page, cross-page fairness,
+backoff, signal handling, and continuous draining belong to the separate M3
+scheduler entry.
 
 ## Materialize a retained artifact
 

@@ -1496,6 +1496,7 @@ class IndexJobWorker:
         lease_duration_ms: int,
         heartbeat_interval_ms: int,
         scan_limit: int = 64,
+        candidate_filter: Callable[[IndexJobRecord], bool] | None = None,
         owner_id_factory: Callable[[], str] = _default_owner_id,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -1518,6 +1519,8 @@ class IndexJobWorker:
                 raise StorageValidationError(
                     "worker and bound resolver must use the same object store"
                 )
+        if candidate_filter is not None and not callable(candidate_filter):
+            raise TypeError("worker candidate filter must be callable")
         if not callable(owner_id_factory):
             raise TypeError("worker owner ID factory must be callable")
         if not callable(monotonic):
@@ -1547,6 +1550,7 @@ class IndexJobWorker:
         self._lease_duration_ms = lease_duration
         self._heartbeat_interval_ms = heartbeat_interval
         self._scan_limit = page_limit
+        self._candidate_filter = candidate_filter
         self._owner_id_factory = owner_id_factory
         self._monotonic = monotonic
         self._run_lock = threading.Lock()
@@ -1582,6 +1586,8 @@ class IndexJobWorker:
             limit=self._scan_limit,
         )
         for candidate in page.jobs:
+            if not self._accept_candidate(candidate):
+                continue
             owner = _bounded_exact_text(
                 self._owner_id_factory(),
                 "worker owner ID",
@@ -1608,6 +1614,38 @@ class IndexJobWorker:
                     lost.authority,
                 )
         return IndexJobWorkerRunResult.idle()
+
+    def _accept_candidate(self, candidate: IndexJobRecord) -> bool:
+        """Run one trusted, mutation-free eligibility check before claim."""
+
+        candidate_filter = self._candidate_filter
+        if candidate_filter is None:
+            return True
+        expected = _detach_job_record(candidate)
+        filtered_candidate = _detach_job_record(expected)
+        try:
+            accepted = candidate_filter(filtered_candidate)
+        except StorageIntegrityError:
+            raise
+        except StorageValidationError as exc:
+            raise StorageIntegrityError(
+                "worker candidate filter rejected a canonical candidate"
+            ) from exc
+        except Exception as exc:
+            raise StorageIntegrityError("worker candidate filter failed") from exc
+        if type(accepted) is not bool:
+            raise StorageIntegrityError(
+                "worker candidate filter returned a non-exact decision"
+            )
+        try:
+            observed = _detach_job_record(filtered_candidate)
+        except StorageValidationError as exc:
+            raise StorageIntegrityError(
+                "worker candidate filter damaged its candidate"
+            ) from exc
+        if observed != expected:
+            raise StorageIntegrityError("worker candidate filter changed its candidate")
+        return accepted
 
     def _acquire_candidate(
         self,

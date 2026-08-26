@@ -29,6 +29,9 @@ from ..source_fingerprint import capture_repository_source, lexical_repository_p
 from ..storage.job_worker import IndexJobExecutionContext
 from ..storage.models import (
     DEFAULT_NAMESPACE_NAME,
+    IndexJobRecord,
+    IndexJobRequest,
+    IndexJobRequestedMode,
     NamespaceIdentity,
     RepositoryIdentity,
     SourceRevision,
@@ -45,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_LOCAL_TARGETS = 4_096
 _NONCE_BYTES = 16
+_SUPPORTED_CACHE_VIEWS = frozenset({"bm25", "vector"})
 
 
 def _paths_overlap(first: Path, second: Path) -> bool:
@@ -286,6 +290,42 @@ class LocalCompilerCacheJobResourceFactory:
             MappingProxyType(targets_by_repository_id),
         )
 
+    def accepts_candidate(self, job: IndexJobRecord) -> bool:
+        """Return exact pre-claim eligibility for this configured target set."""
+
+        if type(job) is not IndexJobRecord:
+            raise StorageValidationError(
+                "local compiler cache candidate must be an exact job record"
+            )
+        if job.repository_id not in self._targets_by_repository_id:
+            return False
+        try:
+            request = IndexJobRequest(
+                repository_id=job.repository_id,
+                source_revision_id=job.source_revision_id,
+                ref_name=job.ref_name,
+                idempotency_key=job.idempotency_key,
+                expected_ref_generation=job.expected_ref_generation,
+                max_attempts=job.max_attempts,
+                request_json=job.request_json,
+            )
+        except StorageValidationError as exc:
+            raise StorageIntegrityError(
+                "local compiler cache candidate request is invalid"
+            ) from exc
+        if request.job_id != job.job_id or request.request_digest != job.request_digest:
+            raise StorageIntegrityError(
+                "local compiler cache candidate request identity is inconsistent"
+            )
+        views = request.view_requests
+        return (
+            len(views) == 1
+            and views[0].job_id == job.job_id
+            and views[0].view_type in _SUPPORTED_CACHE_VIEWS
+            and views[0].requested_mode is IndexJobRequestedMode.FULL
+            and views[0].required is True
+        )
+
     def create_scope(
         self,
         context: IndexJobExecutionContext,
@@ -305,9 +345,12 @@ class LocalCompilerCacheJobResourceFactory:
             raise StorageValidationError(
                 "compiler cache job repository has no trusted local target"
             )
-        if len(context.views) != 1:
+        if (
+            len(context.views) != 1
+            or context.views[0].view_type not in _SUPPORTED_CACHE_VIEWS
+        ):
             raise StorageValidationError(
-                "local compiler cache resource factory requires one job view"
+                "local compiler cache resource factory requires one supported job view"
             )
         view = context.views[0]
         return CompilerCacheJobResourceScope(

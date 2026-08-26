@@ -535,6 +535,56 @@ def test_artifact_import_cache_parser_exposes_existing_storage_inputs() -> None:
     assert overflow.value.code == 2
 
 
+def test_jobs_run_once_parser_exposes_bounded_worker_inputs() -> None:
+    base = [
+        "jobs",
+        "run-once",
+        "/src/repo",
+        "--cache-dir",
+        "/src/repo/.codenib_index",
+        "--catalog",
+        "/state/catalog.sqlite3",
+        "--cas-root",
+        "/state/cas",
+        "--workspace-root",
+        "/state/workspaces",
+        "--repository",
+        "owner/repo",
+    ]
+    defaults = cli.build_parser().parse_args(base)
+    configured = cli.build_parser().parse_args(
+        [
+            *base,
+            "--namespace",
+            "production",
+            "--lease-duration-ms",
+            "60000",
+            "--heartbeat-interval-ms",
+            "10000",
+            "--scan-limit",
+            "128",
+            "--json",
+        ]
+    )
+
+    assert defaults.handler is cli._run_jobs_run_once
+    assert defaults.jobs_command == "run-once"
+    assert defaults.namespace == "default"
+    assert defaults.lease_duration_ms == 30_000
+    assert defaults.heartbeat_interval_ms == 5_000
+    assert defaults.scan_limit == 64
+    assert defaults.json is False
+    assert configured.namespace == "production"
+    assert configured.lease_duration_ms == 60_000
+    assert configured.heartbeat_interval_ms == 10_000
+    assert configured.scan_limit == 128
+    assert configured.json is True
+
+    with pytest.raises(SystemExit) as invalid:
+        cli.build_parser().parse_args([*base, "--scan-limit", "0"])
+    assert invalid.value.code == 2
+
+
 def test_artifact_import_cache_freezes_missing_disjoint_topology(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
