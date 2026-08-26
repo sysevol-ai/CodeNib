@@ -26,9 +26,10 @@ from contextlib import asynccontextmanager, contextmanager
 from functools import partial
 from pathlib import Path, PurePosixPath
 from time import perf_counter
+from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,6 +48,12 @@ from ..wiki.media_generation import (
 )
 from ..wiki.narrator import Narrator
 from .config import load_config
+from .index_jobs import (
+    IndexJobNotFoundError,
+    IndexJobReader,
+    IndexJobReadError,
+    overlay_active_job,
+)
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
@@ -58,6 +65,7 @@ from .schemas import (
     ChatResponse,
     EdgeLabelRequest,
     EdgeLabelResponse,
+    IndexJobStatusResponse,
     RepoIndexStatus,
     RepoInfo,
     agent_result_to_response,
@@ -226,6 +234,16 @@ def _registry() -> RepoRegistry:
     if registry is None:
         raise HTTPException(status_code=503, detail="Server still starting up")
     return registry
+
+
+def _index_job_reader() -> IndexJobReader:
+    reader = getattr(app.state, "index_job_reader", None)
+    if not isinstance(reader, IndexJobReader):
+        raise HTTPException(
+            status_code=503,
+            detail="Durable index job status is not configured",
+        )
+    return reader
 
 
 def _bundle(repo_id: str):
@@ -626,11 +644,64 @@ async def index_status(repo_id: str) -> RepoIndexStatus:
         head_resolver = getattr(app.state, "index_head_resolver", None)
         if callable(head_resolver):
             kwargs["current_head_resolver"] = head_resolver
-        return await _run_pinned_thread(
+        status = await _run_pinned_thread(
             build_repo_index_status,
             bundle,
             **kwargs,
         )
+    reader = getattr(app.state, "index_job_reader", None)
+    if reader is None:
+        return status
+    if not isinstance(reader, IndexJobReader):
+        raise HTTPException(
+            status_code=503,
+            detail="Durable index job status is unavailable",
+        )
+    try:
+        active_job = await asyncio.to_thread(reader.active, repo_id)
+        return overlay_active_job(status, active_job)
+    except IndexJobNotFoundError:
+        return status
+    except (IndexJobReadError, ValueError) as exc:
+        logger.warning(
+            "Durable index job overlay unavailable: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Durable index job status is unavailable",
+        ) from exc
+
+
+@app.get(
+    "/api/index-jobs/{job_id}",
+    response_model=IndexJobStatusResponse,
+)
+async def index_job_status(
+    job_id: str,
+    after_sequence: Annotated[int, Query(ge=0, lt=2**63)] = 0,
+    event_limit: Annotated[int, Query(ge=1, le=64)] = 64,
+) -> IndexJobStatusResponse:
+    """Return one authorized durable job and a bounded event page."""
+
+    try:
+        return await asyncio.to_thread(
+            _index_job_reader().get,
+            job_id,
+            after_sequence=after_sequence,
+            event_limit=event_limit,
+        )
+    except (IndexJobNotFoundError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Index job not found") from exc
+    except IndexJobReadError as exc:
+        logger.warning(
+            "Durable index job read unavailable: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Durable index job status is unavailable",
+        ) from exc
 
 
 @app.get("/api/repos/{repo_id}/wiki")

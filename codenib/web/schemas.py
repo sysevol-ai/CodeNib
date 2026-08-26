@@ -132,6 +132,78 @@ class RepoIndexStatus(BaseModel):
         return self
 
 
+class IndexJobSurface(BaseModel):
+    """One primary index requested by a durable job."""
+
+    index_type: Literal["bm25", "vector", "symbol_graph"]
+    requested_mode: Literal["auto", "full", "incremental"]
+    required: bool
+
+
+class IndexJobEvent(BaseModel):
+    """Bounded job progress without worker ownership or fencing authority."""
+
+    sequence: int = Field(ge=1)
+    attempt_count: int = Field(ge=1, le=1_000)
+    event_key: str = Field(min_length=1, max_length=128)
+    kind: Literal["progress", "view_result"]
+    index_type: Optional[Literal["bm25", "vector", "symbol_graph"]] = None
+    effective_mode: Optional[
+        Literal["full", "incremental", "rebuild_fallback", "unavailable"]
+    ] = None
+    outcome: Optional[Literal["succeeded", "failed", "skipped"]] = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at_ms: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _require_event_shape(self) -> "IndexJobEvent":
+        result_fields = (self.index_type, self.effective_mode, self.outcome)
+        if self.kind == "progress" and any(
+            value is not None for value in result_fields
+        ):
+            raise ValueError("progress events cannot carry a view result")
+        if self.kind == "view_result" and any(value is None for value in result_fields):
+            raise ValueError("view-result events require view, mode, and outcome")
+        return self
+
+
+class IndexJobStatusResponse(BaseModel):
+    """Detached, reader-facing durable index-job state."""
+
+    job_id: str = Field(min_length=1, max_length=80)
+    repo_id: str = Field(min_length=1, max_length=_MAX_REPO_ID_CHARS)
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    cancel_requested: bool
+    attempt_count: int = Field(ge=0, le=1_000)
+    max_attempts: int = Field(ge=1, le=1_000)
+    indexes: List[IndexJobSurface] = Field(min_length=1, max_length=3)
+    result_snapshot_id: Optional[str] = Field(default=None, max_length=96)
+    error_code: Optional[str] = Field(default=None, max_length=128)
+    error_message: Optional[str] = Field(default=None, max_length=512)
+    created_at_ms: int = Field(ge=0)
+    updated_at_ms: int = Field(ge=0)
+    started_at_ms: Optional[int] = Field(default=None, ge=0)
+    finished_at_ms: Optional[int] = Field(default=None, ge=0)
+    events: List[IndexJobEvent] = Field(default_factory=list, max_length=64)
+    next_event_sequence: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _require_canonical_job_status(self) -> "IndexJobStatusResponse":
+        order = {"bm25": 0, "vector": 1, "symbol_graph": 2}
+        observed = [surface.index_type for surface in self.indexes]
+        if len(set(observed)) != len(observed) or observed != sorted(
+            observed,
+            key=order.__getitem__,
+        ):
+            raise ValueError("index job surfaces must be unique and canonical")
+        sequences = [event.sequence for event in self.events]
+        if sequences != sorted(set(sequences)):
+            raise ValueError("index job events must have increasing unique sequences")
+        if sequences and self.next_event_sequence != sequences[-1]:
+            raise ValueError("index job event cursor must match the final event")
+        return self
+
+
 class CallSite(BaseModel):
     """An exact call site (1-based line), mirroring the frontend ``CallSite``."""
 

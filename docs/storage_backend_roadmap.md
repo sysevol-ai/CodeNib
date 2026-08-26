@@ -1428,6 +1428,12 @@ and default routing remain absent.
   returns the oldest queued job for the exact repository/ref, while terminal
   jobs and bounded events remain addressable by job ID. This avoids an
   in-memory repo-to-job map that would lose state across Web process restarts.
+- An explicitly injected Web reader can now project authorized durable jobs and
+  at most 64 events without exposing worker owner IDs, fencing tokens, or raw
+  executor errors. Repository status overlays queued/running jobs only after
+  releasing its RCU bundle pin. The default server still has no job reader or
+  writer, so this read API returns unavailable until production storage
+  bindings are configured.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization
