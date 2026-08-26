@@ -1565,6 +1565,7 @@ def _candidate_records(
         forbidden_paths=forbidden_paths,
         environ=environ,
         _framework_sandwiched=True,
+        check_cancelled=check_cancelled,
     )
     if check_cancelled is not None:
         check_cancelled()

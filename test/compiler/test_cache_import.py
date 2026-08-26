@@ -19,6 +19,7 @@ from typing import TypeVar
 
 import pytest
 
+import codenib.artifacts.portable_views as portable_views_module
 import codenib.artifacts.strict_vector as strict_vector_module
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
@@ -3236,6 +3237,89 @@ def test_prepare_compiler_cache_vector_job_stops_during_document_recapture(
             assert cas.retained_receipt_sets == []
             assert fixture.provider.run_count == 0
             assert fixture.vector_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
+            assert not fixture.vector_destination.exists()
+            assert not fixture.context_destination.exists()
+    finally:
+        fixture.close()
+
+
+def test_prepare_compiler_cache_vector_job_stops_during_candidate_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker="STOP_VALIDATE")
+    plan = _expected_vector_job_plan(fixture)
+    token = _TestStopToken()
+    candidate_scan_reached = threading.Event()
+    real_iter_documents = portable_views_module.iter_bounded_json_array
+    real_assert_no_secrets = portable_views_module.assert_no_secret_fields
+
+    def stop_when_candidate_document_is_parsed(*args, **kwargs):
+        for document in real_iter_documents(*args, **kwargs):
+            token.set()
+            candidate_scan_reached.set()
+            yield document
+
+    def reject_work_after_stop(value, *, source):
+        if token.reason is not None and source.startswith("portable vector document"):
+            pytest.fail("candidate validation continued after cancellation")
+        return real_assert_no_secrets(value, source=source)
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "iter_bounded_json_array",
+        stop_when_candidate_document_is_parsed,
+    )
+    monkeypatch.setattr(
+        portable_views_module,
+        "assert_no_secret_fields",
+        reject_work_after_stop,
+    )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            queued = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="stopped-validation-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            with pytest.raises(
+                RuntimeError,
+                match="compiler cache job preparation stopped",
+            ):
+                _prepare_vector_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            assert candidate_scan_reached.is_set()
+            assert token.reason is IndexJobStopReason.CANCEL_REQUESTED
+            assert catalog.get_job(queued.job_id) == running
+            assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 1
+            # Validation began after the workspace was staged, so the receipt
+            # owner retains its cleanup authority until the fixture closes it.
+            assert fixture.vector_owner.state == "cleanup"
             assert fixture.context_owner.state == "empty"
             assert not fixture.vector_destination.exists()
             assert not fixture.context_destination.exists()

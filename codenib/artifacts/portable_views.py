@@ -16,7 +16,7 @@ import stat
 import sys
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Iterator, Literal, Mapping
+from typing import Any, Callable, Iterable, Iterator, Literal, Mapping
 
 from .. import compat_pickle
 from .._atomic_directory import (
@@ -88,6 +88,22 @@ MAX_PORTABLE_FAISS_INDEX_BYTES = 8 * 1024 * 1024 * 1024
 _JSON_READ_CHUNK_BYTES = 1024 * 1024
 _MAX_SOURCE_PATH_BYTES = 4_096
 _MAX_SOURCE_PATH_COMPONENTS = 256
+
+
+class _InterruptibleReader:
+    __slots__ = ("_source", "_check_cancelled")
+
+    def __init__(self, source: Any, check_cancelled: Callable[[], None]) -> None:
+        self._source = source
+        self._check_cancelled = check_cancelled
+
+    def read(self, size: int = -1) -> bytes:
+        self._check_cancelled()
+        block = self._source.read(size)
+        self._check_cancelled()
+        return block
+
+
 SourceTrust = Literal["portable-inert", "trusted-local"]
 
 
@@ -1452,17 +1468,26 @@ def _iter_content_bound_documents(
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str],
     authenticated_source_files: frozenset[str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> Iterable[dict[str, Any]]:
+    if check_cancelled is not None:
+        check_cancelled()
     relative = PurePosixPath(path.relative_to(reader.root).as_posix())
     with reader.open_file(
         relative,
         max_bytes=MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
     ) as source:
         documents = iter_bounded_json_array(
-            source,
+            (
+                source
+                if check_cancelled is None
+                else _InterruptibleReader(source, check_cancelled)
+            ),
             label=f"portable {view_type} documents",
         )
         for index, document in enumerate(documents):
+            if check_cancelled is not None:
+                check_cancelled()
             if not isinstance(document, dict) or set(document) != {
                 "page_content",
                 "metadata",
@@ -1504,7 +1529,11 @@ def _iter_content_bound_documents(
                 environ=environ,
                 label=f"portable {view_type} document {index}",
             )
+            if check_cancelled is not None:
+                check_cancelled()
             yield normalized_document
+    if check_cancelled is not None:
+        check_cancelled()
 
 
 def _require_content_bound_canonical_documents(
@@ -1516,7 +1545,10 @@ def _require_content_bound_canonical_documents(
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str],
     authenticated_source_files: frozenset[str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> int:
+    if check_cancelled is not None:
+        check_cancelled()
     count = 0
     size = 0
     digest = hashlib.sha256()
@@ -1531,11 +1563,14 @@ def _require_content_bound_canonical_documents(
             forbidden_paths=forbidden_paths,
             environ=environ,
             authenticated_source_files=authenticated_source_files,
+            check_cancelled=check_cancelled,
         ):
             count += 1
             yield document
 
     for chunk in canonical_json_array_chunks(values()):
+        if check_cancelled is not None:
+            check_cancelled()
         size += len(chunk)
         if size > MAX_PORTABLE_DOCUMENTS_JSON_BYTES:
             raise ValueError(f"portable {view_type} documents exceed their byte limit")
@@ -1543,6 +1578,8 @@ def _require_content_bound_canonical_documents(
     record = reader.record(path)
     if size != record.size or digest.hexdigest() != record.sha256:
         raise ValueError(f"portable {view_type} documents are not canonical JSON")
+    if check_cancelled is not None:
+        check_cancelled()
     return count
 
 
@@ -2017,6 +2054,7 @@ def _validate_vector_layout(
     authenticated_source_files: frozenset[str] | None = None,
     document_forbidden_paths: Iterable[Path] = (),
     document_environ: Mapping[str, str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[
     str,
     dict[Path, list[dict[str, Any]]],
@@ -2043,6 +2081,8 @@ def _validate_vector_layout(
     inventory_files = _owned_inventory_paths(root, ownership, kind="file")
 
     for level in _VECTOR_LEVELS:
+        if check_cancelled is not None:
+            check_cancelled()
         count = config.get(f"{level}_documents") if not legacy_counts else None
         if count is not None and (
             not isinstance(count, int) or isinstance(count, bool) or count < 0
@@ -2124,6 +2164,7 @@ def _validate_vector_layout(
                     forbidden_paths=document_forbidden_paths,
                     environ={} if document_environ is None else document_environ,
                     authenticated_source_files=authenticated_source_files,
+                    check_cancelled=check_cancelled,
                 )
                 payload = []
             else:
@@ -3037,7 +3078,10 @@ def _validate_portable_vector_view(
     initial_tree: object,
     reader: _ViewReader,
     authenticated_source_files: frozenset[str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
+    if check_cancelled is not None:
+        check_cancelled()
     assert_no_secret_fields(view_config, source="portable vector view config")
     portable_artifact_policy = authenticated_source_files is not None
     route = resolve_embedding_artifact_route(
@@ -3117,6 +3161,7 @@ def _validate_portable_vector_view(
         authenticated_source_files=authenticated_source_files,
         document_forbidden_paths=forbidden,
         document_environ=environment,
+        check_cancelled=check_cancelled,
     )
     if document_format != "json" or stale_paths:
         raise ValueError("portable vector view is not in its normalized final form")
@@ -3127,6 +3172,8 @@ def _validate_portable_vector_view(
         counts=counts,
     )
     for level in _VECTOR_LEVELS:
+        if check_cancelled is not None:
+            check_cancelled()
         if counts[level] <= 0:
             continue
         level_root = root / level
@@ -3152,6 +3199,8 @@ def _validate_portable_vector_view(
                 environ=environment,
                 reader=reader,
             )
+    if check_cancelled is not None:
+        check_cancelled()
 
 
 def _validate_content_bound_portable_query_view_reader_with_identity(
@@ -3164,6 +3213,7 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
     forbidden_paths: Iterable[Path] = (),
     environ: Mapping[str, str] | None = None,
     _framework_sandwiched: bool = False,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Validate one portable view through retained view and source authorities.
 
@@ -3214,6 +3264,8 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
         reader = _PublicationViewReader(publication, initial_tree)
 
     def validate_semantics() -> None:
+        if check_cancelled is not None:
+            check_cancelled()
         with repository_source.read_session():
             policy_paths = (repository_identity.root, *forbidden)
             _assert_authenticated_publishable_json_value(
@@ -3243,7 +3295,10 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
                     initial_tree=initial_tree,
                     reader=reader,
                     authenticated_source_files=authenticated_source_files,
+                    check_cancelled=check_cancelled,
                 )
+        if check_cancelled is not None:
+            check_cancelled()
 
     final_checks = [
         (
