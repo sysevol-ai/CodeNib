@@ -348,6 +348,11 @@ def test_create_endpoint_requires_header_and_uses_injected_writer(monkeypatch) -
         headers={"Idempotency-Key": "request"},
         json={"indexes": ["bm25"], "mode": "full", "force": "false"},
     )
+    unknown_field = client.post(
+        "/api/repos/demo/index-jobs",
+        headers={"Idempotency-Key": "request"},
+        json={"indexes": ["bm25"], "mode": "full", "unknown": True},
+    )
     created = client.post(
         "/api/repos/demo/index-jobs",
         headers={"Idempotency-Key": "request"},
@@ -357,6 +362,7 @@ def test_create_endpoint_requires_header_and_uses_injected_writer(monkeypatch) -
     assert missing.status_code == 422
     assert duplicate.status_code == 422
     assert coerced_force.status_code == 422
+    assert unknown_field.status_code == 422
     assert created.status_code == 202
     assert created.json()["job_id"] == expected.job_id
     assert calls == [

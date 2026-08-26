@@ -14,7 +14,7 @@ import os
 import re
 from typing import TYPE_CHECKING, Any, List, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from codenib.agent.boundary import to_agent_repr
 
@@ -142,6 +142,8 @@ class IndexJobSurface(BaseModel):
 
 class IndexJobCreateRequest(BaseModel):
     """Bounded user intent for one durable repository index update."""
+
+    model_config = ConfigDict(extra="forbid")
 
     indexes: List[Literal["bm25", "vector", "symbol_graph"]] = Field(
         min_length=1,
