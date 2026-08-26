@@ -1273,8 +1273,12 @@ cycle, carries an attested keyset cursor across its bounded pages, wraps only
 after that frozen runnable keyspace is exhausted, backs off after complete idle
 cycles, and supports cooperative shutdown. Jobs inserted after the watermark
 are deferred to the next cycle, so continuous larger-key writes cannot starve a
-wrapped retry or make a configured cycle limit unbounded. Cache-building
-adapters, runtime registration, and default routing remain absent.
+wrapped retry or make a configured cycle limit unbounded. SQLite schema 7
+allocates that watermark from an explicit immutable `AUTOINCREMENT` job
+sequence, validates a gap-free job-to-sequence closure, and backfills existing
+jobs in canonical creation order; it therefore remains stable across `VACUUM`
+instead of depending on mutable implicit rowids. Cache-building adapters,
+runtime registration, and default routing remain absent.
 
 ### M2: Immutable generation publication
 
@@ -1328,8 +1332,11 @@ remain absent.
   after a fully examined page; either continuation must advance beyond its
   input. Before traversal the local scheduler freezes the catalog's current
   immutable job-insertion sequence and supplies that exact cycle token to every
-  page. It therefore traverses a finite keyspace even while larger-key jobs are
-  continuously inserted, wraps requeues into the next fair cycle,
+  page. SQLite schema 7 persists this as a gap-free explicit sequence rather
+  than an implicit rowid, including deterministic migration backfill and
+  `VACUUM`-stable allocation. The scheduler therefore traverses a finite
+  keyspace even while larger-key jobs are continuously inserted, wraps requeues
+  into the next fair cycle,
   exponentially backs off only after complete idle cycles, and stops
   cooperatively without making the legacy one-page call unbounded.
 - File-backed SQLite sessions in one interpreter coordinate existing-only

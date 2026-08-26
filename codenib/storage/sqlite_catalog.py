@@ -81,7 +81,7 @@ from .protocols import (
     snapshot_retained_import_response,
 )
 
-LATEST_SCHEMA_VERSION = 6
+LATEST_SCHEMA_VERSION = 7
 
 CatalogError = StorageError
 CatalogConflictError = PublishConflict
@@ -3557,6 +3557,49 @@ _SCHEMA_V6 = (
     """,
 )
 
+
+_SCHEMA_V7 = (
+    """
+    CREATE TABLE index_job_insertion_sequences (
+        job_sequence INTEGER PRIMARY KEY AUTOINCREMENT CHECK (
+            typeof(job_sequence) = 'integer'
+            AND job_sequence BETWEEN 1 AND 9223372036854775807
+        ),
+        job_id TEXT NOT NULL UNIQUE CHECK (
+            typeof(job_id) = 'text'
+            AND length(job_id) BETWEEN 1 AND 80
+            AND instr(job_id, char(0)) = 0
+        ),
+        FOREIGN KEY (job_id) REFERENCES index_jobs(job_id) ON DELETE RESTRICT
+    )
+    """,
+    """
+    INSERT INTO index_job_insertion_sequences(job_id)
+    SELECT job_id FROM index_jobs ORDER BY created_at_ms, job_id
+    """,
+    """
+    CREATE TRIGGER index_jobs_allocate_insertion_sequence
+    AFTER INSERT ON index_jobs
+    BEGIN
+        INSERT INTO index_job_insertion_sequences(job_id) VALUES (NEW.job_id);
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_insertion_sequences_are_immutable
+    BEFORE UPDATE ON index_job_insertion_sequences
+    BEGIN
+        SELECT RAISE(ABORT, 'index job insertion sequences are immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER index_job_insertion_sequences_cannot_be_deleted
+    BEFORE DELETE ON index_job_insertion_sequences
+    BEGIN
+        SELECT RAISE(ABORT, 'index job insertion sequences are immutable');
+    END
+    """,
+)
+
 _MIGRATIONS: dict[int, tuple[str, ...]] = {
     1: _SCHEMA_V1,
     2: _SCHEMA_V2,
@@ -3564,6 +3607,7 @@ _MIGRATIONS: dict[int, tuple[str, ...]] = {
     4: _SCHEMA_V4,
     5: _SCHEMA_V5,
     6: _SCHEMA_V6,
+    7: _SCHEMA_V7,
 }
 
 _CatalogSchemaObject = tuple[str, str, str, str | None]
@@ -4579,6 +4623,73 @@ class SQLiteCatalog:
         return _persisted_nonnegative_int64(
             rows[0]["high_water_ms"],
             "index job execution clock high-water",
+        )
+
+    def _job_insertion_sequence_high_water(self) -> int:
+        """Return one gap-free, durable job insertion high-water mark."""
+
+        aggregate = self._connection.execute(
+            """
+            SELECT COUNT(*) AS sequence_count,
+                COALESCE(MIN(job_sequence), 0) AS min_job_sequence,
+                COALESCE(MAX(job_sequence), 0) AS max_job_sequence
+            FROM index_job_insertion_sequences
+            """
+        ).fetchone()
+        job_count = self._connection.execute(
+            "SELECT COUNT(*) AS job_count FROM index_jobs"
+        ).fetchone()["job_count"]
+        sequence_count = aggregate["sequence_count"]
+        minimum = aggregate["min_job_sequence"]
+        maximum = aggregate["max_job_sequence"]
+        if any(
+            type(value) is not int
+            for value in (job_count, sequence_count, minimum, maximum)
+        ):
+            raise CatalogConflictError(
+                "persisted index job insertion sequence is not canonical"
+            )
+        allocator = self._connection.execute(
+            """
+            SELECT seq FROM sqlite_sequence
+            WHERE name = 'index_job_insertion_sequences'
+            """
+        ).fetchone()
+        allocated = 0
+        if allocator is not None:
+            allocated = allocator["seq"]
+            if type(allocated) is not int:
+                raise CatalogConflictError(
+                    "persisted index job insertion allocator is not canonical"
+                )
+        missing = self._connection.execute(
+            """
+            SELECT 1
+            FROM index_jobs AS job
+            LEFT JOIN index_job_insertion_sequences AS insertion
+                ON insertion.job_id = job.job_id
+            WHERE insertion.job_id IS NULL
+            UNION ALL
+            SELECT 1
+            FROM index_job_insertion_sequences AS insertion
+            LEFT JOIN index_jobs AS job ON job.job_id = insertion.job_id
+            WHERE job.job_id IS NULL
+            LIMIT 1
+            """
+        ).fetchone()
+        if (
+            missing is not None
+            or sequence_count != job_count
+            or minimum != (0 if sequence_count == 0 else 1)
+            or maximum != sequence_count
+            or allocated != maximum
+        ):
+            raise CatalogConflictError(
+                "persisted index job insertion sequence conflicts with its jobs"
+            )
+        return _persisted_nonnegative_int64(
+            maximum,
+            "index job insertion sequence high-water",
         )
 
     def _advance_job_execution_clock(
@@ -6009,6 +6120,9 @@ class SQLiteCatalog:
                 view.view_type for view in self._job_views(job)
             )
 
+        if self.schema_version >= 7:
+            self._job_insertion_sequence_high_water()
+
         baselines: dict[str, int] = {}
         baseline_content_high_water: dict[str, int] = {}
         baseline_started_at: dict[str, int | None] = {}
@@ -6914,15 +7028,7 @@ class SQLiteCatalog:
         """Freeze the current immutable job-insertion high-water sequence."""
 
         with self._transaction(immediate=False):
-            row = self._connection.execute(
-                "SELECT COALESCE(MAX(rowid), 0) AS max_job_sequence FROM index_jobs"
-            ).fetchone()
-            return IndexJobRunnableCycle(
-                _persisted_nonnegative_int64(
-                    row["max_job_sequence"],
-                    "runnable cycle job sequence",
-                )
-            )
+            return IndexJobRunnableCycle(self._job_insertion_sequence_high_water())
 
     @_coordinated_catalog_method
     def scan_runnable_jobs(
@@ -6953,10 +7059,12 @@ class SQLiteCatalog:
                 f"""
                 SELECT job.*
                 FROM index_jobs AS job
+                JOIN index_job_insertion_sequences AS insertion
+                    ON insertion.job_id = job.job_id
                 WHERE (job.created_at_ms > ? OR (
                         job.created_at_ms = ? AND job.job_id > ?
                     ))
-                    AND job.rowid <= ?
+                    AND insertion.job_sequence <= ?
                     AND job.created_at_ms <= {_DB_NOW_MS_SQL}
                     AND job.updated_at_ms <= {_DB_NOW_MS_SQL}
                     AND (

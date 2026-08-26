@@ -344,16 +344,19 @@ recursively deletes a mutable path.
 
 `codenib jobs run` retains the same authorities while traversing the complete
 runnable keyspace frozen at the start of each cycle. The catalog first records
-an immutable job-insertion watermark; every page in that cycle carries the same
-watermark, so jobs inserted concurrently are deferred to the next cycle and
-cannot keep the current traversal open forever. A processed page continues
-after the selected candidate; a fully examined page uses the catalog
-continuation that identifies its final candidate. The next page must advance
-beyond that cursor, and a malformed or nonadvancing continuation is a
-storage-integrity failure. Unsupported jobs at the front of the queue therefore
-cannot starve an eligible job on a later page. A requeued job is considered
-again after the scheduler wraps to a new cycle instead of monopolizing the
-current one.
+an immutable job-insertion watermark. SQLite schema 7 allocates it from an
+explicit gap-free `AUTOINCREMENT` sequence, backfills existing jobs in canonical
+creation order, and verifies the job-to-sequence closure before use. The token
+therefore survives routine `VACUUM` maintenance; it never relies on SQLite's
+implicit rowid. Every page in that cycle carries the same watermark, so jobs
+inserted concurrently are deferred to the next cycle and cannot keep the
+current traversal open forever. A processed page continues after the selected
+candidate; a fully examined page uses the catalog continuation that identifies
+its final candidate. The next page must advance beyond that cursor, and a
+malformed or nonadvancing continuation is a storage-integrity failure.
+Unsupported jobs at the front of the queue therefore cannot starve an eligible
+job on a later page. A requeued job is considered again after the scheduler
+wraps to a new cycle instead of monopolizing the current one.
 
 For example, run continuously with 64 candidates per page:
 

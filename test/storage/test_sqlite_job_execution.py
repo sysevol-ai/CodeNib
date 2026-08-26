@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Schema-v6 SQLite execution-control tests."""
+"""SQLite execution-control and durable job-sequence tests."""
 
 from __future__ import annotations
 
@@ -119,6 +119,7 @@ def _patch_connection_clock(
 
 _EXECUTION_STATE_TABLES = (
     "index_jobs",
+    "index_job_insertion_sequences",
     "index_job_views",
     "index_job_attempt_baselines",
     "index_job_execution_clock",
@@ -245,7 +246,7 @@ def test_v5_to_v6_backfills_only_the_current_active_attempt(
         LATEST_SCHEMA_VERSION,
     )
     with SQLiteCatalog(path, create=False) as catalog:
-        assert catalog.schema_version == 6
+        assert catalog.schema_version == LATEST_SCHEMA_VERSION
         rows = catalog._connection.execute(
             """
             SELECT job_id, attempt_count, owner_id, fencing_token, started_at_ms
@@ -1462,6 +1463,66 @@ def test_failed_v6_migration_rolls_back_all_execution_tables(
         )
     finally:
         connection.close()
+
+
+def test_v7_migration_backfills_stable_job_insertion_sequences(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "v6-job-sequence-upgrade.sqlite3"
+    monkeypatch.setattr(sqlite_catalog_module, "LATEST_SCHEMA_VERSION", 6)
+    with SQLiteCatalog(path) as catalog:
+        first = _create_job(catalog, idempotency_key="first")
+        second = catalog.create_job(
+            first.repository_id,
+            first.source_revision_id,
+            "second",
+            first.request,
+            ref_name="second",
+        )
+        expected = tuple(
+            job.job_id
+            for job in sorted(
+                (first, second),
+                key=lambda job: (job.created_at_ms, job.job_id),
+            )
+        )
+
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "LATEST_SCHEMA_VERSION",
+        LATEST_SCHEMA_VERSION,
+    )
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert catalog.schema_version == LATEST_SCHEMA_VERSION
+        rows = catalog._connection.execute(
+            """
+            SELECT job_sequence, job_id
+            FROM index_job_insertion_sequences ORDER BY job_sequence
+            """
+        ).fetchall()
+        assert tuple(tuple(row) for row in rows) == (
+            (1, expected[0]),
+            (2, expected[1]),
+        )
+        late = catalog.create_job(
+            first.repository_id,
+            first.source_revision_id,
+            "late",
+            first.request,
+            ref_name="late",
+        )
+        assert catalog.begin_runnable_job_cycle() == IndexJobRunnableCycle(3)
+        assert (
+            catalog._connection.execute(
+                """
+            SELECT job_sequence FROM index_job_insertion_sequences
+            WHERE job_id = ?
+            """,
+                (late.job_id,),
+            ).fetchone()[0]
+            == 3
+        )
 
 
 @pytest.mark.parametrize(
@@ -4224,6 +4285,95 @@ def test_runnable_scan_uses_stable_keyset_pages_and_is_advisory(tmp_path) -> Non
         assert all(job.status is IndexJobStatus.QUEUED for job in jobs)
         with pytest.raises(CatalogValidationError, match="cannot exceed"):
             catalog.scan_runnable_jobs(limit=257)
+
+
+def test_runnable_cycle_sequence_survives_sqlite_vacuum(tmp_path) -> None:
+    path = tmp_path / "vacuum-stable-cycle.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        first = _create_job(catalog, idempotency_key="first")
+        jobs = [first]
+        for index in range(1, 4):
+            jobs.append(
+                catalog.create_job(
+                    first.repository_id,
+                    first.source_revision_id,
+                    f"request-{index}",
+                    first.request,
+                    ref_name=f"ref-{index}",
+                )
+            )
+        cycle = catalog.begin_runnable_job_cycle()
+        sequences = tuple(
+            tuple(row)
+            for row in catalog._connection.execute(
+                """
+                SELECT job_sequence, job_id
+                FROM index_job_insertion_sequences ORDER BY job_sequence
+                """
+            ).fetchall()
+        )
+        assert tuple(sequence for sequence, _job_id in sequences) == (1, 2, 3, 4)
+
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("VACUUM")
+    finally:
+        connection.close()
+
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert (
+            tuple(
+                tuple(row)
+                for row in catalog._connection.execute(
+                    """
+                    SELECT job_sequence, job_id
+                    FROM index_job_insertion_sequences ORDER BY job_sequence
+                    """
+                ).fetchall()
+            )
+            == sequences
+        )
+        late = catalog.create_job(
+            first.repository_id,
+            first.source_revision_id,
+            "request-late",
+            first.request,
+            ref_name="ref-late",
+        )
+        assert set(catalog.scan_runnable_jobs(cycle=cycle).jobs) == set(jobs)
+        assert late not in catalog.scan_runnable_jobs(cycle=cycle).jobs
+        assert (
+            late
+            in catalog.scan_runnable_jobs(cycle=catalog.begin_runnable_job_cycle()).jobs
+        )
+
+
+def test_job_insertion_sequences_are_immutable_and_gap_free(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "job-sequences.sqlite3") as catalog:
+        job = _create_job(catalog)
+        assert catalog.begin_runnable_job_cycle() == IndexJobRunnableCycle(1)
+
+        with pytest.raises(
+            sqlite3.IntegrityError,
+            match="index job insertion sequences are immutable",
+        ):
+            catalog._connection.execute(
+                """
+                UPDATE index_job_insertion_sequences
+                SET job_sequence = 2 WHERE job_id = ?
+                """,
+                (job.job_id,),
+            )
+        with pytest.raises(
+            sqlite3.IntegrityError,
+            match="index job insertion sequences are immutable",
+        ):
+            catalog._connection.execute(
+                "DELETE FROM index_job_insertion_sequences WHERE job_id = ?",
+                (job.job_id,),
+            )
+
+        assert catalog.begin_runnable_job_cycle() == IndexJobRunnableCycle(1)
 
 
 def test_job_events_are_bounded_secret_free_replayable_and_paginated(
