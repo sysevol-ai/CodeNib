@@ -47,6 +47,7 @@ from ..wiki.media_generation import (
 )
 from ..wiki.narrator import Narrator
 from .config import load_config
+from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
 from .repo_registry import RepoRegistry
@@ -57,6 +58,7 @@ from .schemas import (
     ChatResponse,
     EdgeLabelRequest,
     EdgeLabelResponse,
+    RepoIndexStatus,
     RepoInfo,
     agent_result_to_response,
 )
@@ -604,6 +606,31 @@ async def list_repos() -> list[RepoInfo]:
     # Preserve the intentionally small injected registry contract used by
     # offline tools and route tests. Production always takes the coherent path.
     return [await decorate(info) for info in registry.list_infos()]
+
+
+@app.get(
+    "/api/repos/{repo_id}/index-status",
+    response_model=RepoIndexStatus,
+)
+async def index_status(repo_id: str) -> RepoIndexStatus:
+    """Return a detached status snapshot for one pinned bundle generation."""
+
+    with _pinned_bundle(repo_id) as bundle:
+        kwargs = {
+            "update_capabilities": getattr(
+                app.state,
+                "index_update_capabilities",
+                None,
+            )
+        }
+        head_resolver = getattr(app.state, "index_head_resolver", None)
+        if callable(head_resolver):
+            kwargs["current_head_resolver"] = head_resolver
+        return await asyncio.to_thread(
+            build_repo_index_status,
+            bundle,
+            **kwargs,
+        )
 
 
 @app.get("/api/repos/{repo_id}/wiki")

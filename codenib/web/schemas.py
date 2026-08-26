@@ -89,6 +89,49 @@ class RepoInfo(BaseModel):
     incremental: WindowStats | None = None
 
 
+class IndexUpdateMetrics(BaseModel):
+    """Bounded metrics retained from the most recent index generation."""
+
+    changed_files: Optional[int] = Field(default=None, ge=0)
+    chunks_reembedded: Optional[int] = Field(default=None, ge=0)
+    chunks_from_cache: Optional[int] = Field(default=None, ge=0)
+    cache_hit_rate: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    new_commit: Optional[str] = Field(default=None, max_length=128)
+
+
+class IndexSurfaceStatus(BaseModel):
+    """Reader-facing state for one primary repository index surface."""
+
+    index_type: Literal["bm25", "vector", "symbol_graph"]
+    state: Literal["built", "missing", "stale", "updating", "failed"]
+    stale: bool = False
+    indexed_commit: Optional[str] = Field(default=None, max_length=128)
+    built_at: Optional[str] = Field(default=None, max_length=128)
+    update_mode: Literal["incremental", "patch", "rebuild", "unavailable"]
+    updates_enabled: bool = False
+    update_reason: str = Field(default="", max_length=512)
+    job_id: Optional[str] = Field(default=None, max_length=256)
+    metrics: Optional[IndexUpdateMetrics] = None
+
+
+class RepoIndexStatus(BaseModel):
+    """Exactly three primary index surfaces for one repository generation."""
+
+    repo_id: str = Field(min_length=1, max_length=_MAX_REPO_ID_CHARS)
+    last_indexed_commit: Optional[str] = Field(default=None, max_length=128)
+    current_head: Optional[str] = Field(default=None, max_length=128)
+    stale: bool = False
+    indexes: List[IndexSurfaceStatus] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def _require_primary_surfaces(self) -> "RepoIndexStatus":
+        observed = tuple(index.index_type for index in self.indexes)
+        expected = ("bm25", "vector", "symbol_graph")
+        if observed != expected:
+            raise ValueError("index status must contain the three primary surfaces")
+        return self
+
+
 class CallSite(BaseModel):
     """An exact call site (1-based line), mirroring the frontend ``CallSite``."""
 

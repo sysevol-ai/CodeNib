@@ -1345,7 +1345,8 @@ same-store binding, and exact configured repository/source identity, while
 the explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
 over the current cache. The Web registry now supports complete-candidate RCU
 replacement and request-lifetime generation leases. Source builders, the #266
-job/status handoff, MCP, and default routing remain absent.
+job handoff and update path, success-triggered runtime refresh, MCP, UI controls,
+and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1398,8 +1399,8 @@ job/status handoff, MCP, and default routing remain absent.
   recapture an already-current single BM25 or vector cache view under the
   worker, while the older self-publishing ingress APIs remain compatibility
   paths and are never nested inside the worker.
-- Expose the #266 status and update APIs with accurate incremental versus
-  rebuild behavior.
+- Complete the #266 job and update APIs with accurate incremental versus rebuild
+  behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
   retires repositories removed from that snapshot, and leaves a healthy
   generation live when its still-declared replacement fails. First startup
@@ -1416,6 +1417,12 @@ job/status handoff, MCP, and default routing remain absent.
   keyed and stale entries are pruned after replacement, removal, and shutdown.
   The remaining #266 work is to invoke this refresh boundary only after an
   attested update job succeeds and expose its status/results to the UI.
+- The first #266 read slice exposes one pinned, detached status snapshot for
+  exactly BM25, vector, and symbol-graph surfaces. It reports manifest/current
+  commit drift and retained incremental metrics without exposing mutable bundle
+  state. Update capability is explicit and defaults to `unavailable` until an
+  owning Web job service is configured, so the read API never implies that the
+  current server can write or incrementally patch an index.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization
