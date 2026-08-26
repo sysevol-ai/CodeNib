@@ -300,6 +300,149 @@ def test_registry_reload_keeps_pinned_source_authority_until_release(tmp_path):
     registry.close()
 
 
+def test_registry_reload_retires_entry_removed_from_snapshot(monkeypatch):
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["removed"] = bundle
+    registry._source_cleanup_owners["removed"] = owner
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [],
+    )
+
+    with registry.pin("removed") as pinned:
+        registry.load_all()
+
+        assert pinned is bundle
+        assert registry.get("removed") is None
+        assert owner.closed is False
+        assert registry.retired_generation_count == 1
+
+    assert owner.closed is True
+    assert registry.retired_generation_count == 0
+    registry.close()
+
+
+def test_registry_reload_keeps_failed_declared_entry_and_retires_absent_entry(
+    tmp_path,
+    monkeypatch,
+):
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    declared_manifest = tmp_path / "declared.json"
+    declared_manifest.write_text("{}", encoding="utf-8")
+    declared = _repo_entry(
+        tmp_path,
+        declared_manifest,
+        instance_id="declared",
+    )
+    owners = {}
+    registry = RepoRegistry(QAConfig())
+    for instance_id in ("declared", "absent"):
+        bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+        owner = Owner()
+        registry._bundles[instance_id] = bundle
+        registry._source_cleanup_owners[instance_id] = owner
+        owners[instance_id] = owner
+
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [declared],
+    )
+
+    def reject(_entry, *, prepare_runtime):
+        assert prepare_runtime is False
+        raise ValueError("replacement rejected")
+
+    monkeypatch.setattr(registry, "_replace_entry", reject)
+
+    registry.load_all()
+
+    assert registry.get("declared") is not None
+    assert owners["declared"].closed is False
+    assert registry.get("absent") is None
+    assert owners["absent"].closed is True
+    registry.close()
+
+
+def test_registry_reload_serializes_refresh_after_snapshot_reconciliation(
+    tmp_path,
+    monkeypatch,
+):
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    owner = Owner()
+    first_snapshot_read = Event()
+    release_first_snapshot = Event()
+    refresh_started = Event()
+    second_snapshot_read = Event()
+    call_lock = Lock()
+    calls = 0
+
+    def load_rows(_path):
+        nonlocal calls
+        with call_lock:
+            calls += 1
+            call = calls
+        if call == 1:
+            first_snapshot_read.set()
+            assert release_first_snapshot.wait(5)
+            return []
+        assert call == 2
+        second_snapshot_read.set()
+        return [entry]
+
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr("codenib.web.repo_registry.load_registry", load_rows)
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, owner),
+    )
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+
+    def refresh():
+        refresh_started.set()
+        registry.refresh("repo")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        load_future = pool.submit(registry.load_all)
+        assert first_snapshot_read.wait(5)
+        refresh_future = pool.submit(refresh)
+        assert refresh_started.wait(5)
+        assert second_snapshot_read.wait(0.05) is False
+        release_first_snapshot.set()
+        load_future.result(timeout=5)
+        refresh_future.result(timeout=5)
+
+    assert second_snapshot_read.is_set()
+    assert registry.get("repo") is candidate
+    registry.close()
+    assert owner.closed is True
+
+
 def test_registry_rejects_duplicate_instance_ids_without_replacing_owner(tmp_path):
     entries = []
     for name in ("first", "second"):

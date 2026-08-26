@@ -560,6 +560,11 @@ class RepoRegistry:
         self._cleanup_in_progress: set[int] = set()
         self._orphan_cleanup_owners: List[Any] = []
         self._closed = False
+        # Serialize registry-file snapshots through publication and removal
+        # reconciliation. Without this boundary, an older load_all() could
+        # retire a generation that a concurrent refresh() just published from
+        # a newer snapshot.
+        self._registry_reload_lock = RLock()
         # One embedding model per model name, shared across repos: the GPU model
         # is loaded once instead of once per CodeVectorStore (one per repo).
         self._embeddings: Dict[Tuple[str, str, int, Optional[str], str], object] = {}
@@ -570,44 +575,46 @@ class RepoRegistry:
 
         A repeated load no longer tears down the serving generation first. Each
         replacement is authenticated independently and then published under the
-        generation lock. A failed replacement leaves the previous bundle live.
+        generation lock. A failed replacement leaves the previous bundle live,
+        while active repositories absent from the complete snapshot are retired.
         """
 
-        with self._generation_lock:
-            if self._closed:
-                raise RuntimeError("repository registry is closed")
-        entries = load_registry(self._config.registry_path)
-        if not entries:
-            logger.warning(
-                "No QA registry at %s — run scripts/build_qa_index.py first.",
-                self._config.registry_path,
-            )
-            return
-        seen: set[str] = set()
-        for entry in entries:
-            instance_id = entry.instance_id
-            if instance_id in seen:
-                logger.error("Skipping duplicate repository id %r", instance_id)
-                continue
-            seen.add(instance_id)
-            if not os.path.exists(entry.manifest_path):
+        with self._registry_reload_lock:
+            with self._generation_lock:
+                if self._closed:
+                    raise RuntimeError("repository registry is closed")
+            entries = load_registry(self._config.registry_path)
+            if not entries:
                 logger.warning(
-                    "Skipping %r: manifest not found at %s",
-                    instance_id,
-                    entry.manifest_path,
+                    "No QA registry at %s — run scripts/build_qa_index.py first.",
+                    self._config.registry_path,
                 )
-                continue
-            try:
-                self._replace_entry(entry, prepare_runtime=False)
-                logger.info("Registered %r (%s)", instance_id, entry.repo)
-            except Exception as exc:  # noqa: BLE001 - keep other repos alive
-                self._retain_exception_cleanup(instance_id, exc)
-                logger.error(
-                    "Failed to load %r: %s",
-                    instance_id,
-                    exc,
-                    exc_info=True,
-                )
+            seen: set[str] = set()
+            for entry in entries:
+                instance_id = entry.instance_id
+                if instance_id in seen:
+                    logger.error("Skipping duplicate repository id %r", instance_id)
+                    continue
+                seen.add(instance_id)
+                if not os.path.exists(entry.manifest_path):
+                    logger.warning(
+                        "Skipping %r: manifest not found at %s",
+                        instance_id,
+                        entry.manifest_path,
+                    )
+                    continue
+                try:
+                    self._replace_entry(entry, prepare_runtime=False)
+                    logger.info("Registered %r (%s)", instance_id, entry.repo)
+                except Exception as exc:  # noqa: BLE001 - keep other repos alive
+                    self._retain_exception_cleanup(instance_id, exc)
+                    logger.error(
+                        "Failed to load %r: %s",
+                        instance_id,
+                        exc,
+                        exc_info=True,
+                    )
+            self._retire_entries_absent_from(seen)
 
     def refresh(self, repo_id: str) -> None:
         """Prepare and atomically publish a complete new bundle generation.
@@ -618,22 +625,44 @@ class RepoRegistry:
         unleased bundle that another concurrent refresh could retire.
         """
 
+        with self._registry_reload_lock:
+            with self._generation_lock:
+                if self._closed:
+                    raise RuntimeError("repository registry is closed")
+            entries = [
+                entry
+                for entry in load_registry(self._config.registry_path)
+                if entry.instance_id == repo_id
+            ]
+            if len(entries) != 1:
+                raise ValueError(
+                    "repository registry must contain exactly one entry for "
+                    f"{repo_id!r}"
+                )
+            entry = entries[0]
+            if not os.path.exists(entry.manifest_path):
+                raise FileNotFoundError(entry.manifest_path)
+            self._replace_entry(entry, prepare_runtime=True)
+
+    def _retire_entries_absent_from(self, instance_ids: set[str]) -> None:
+        """Remove active generations missing from one complete registry snapshot."""
+
         with self._generation_lock:
             if self._closed:
-                raise RuntimeError("repository registry is closed")
-        entries = [
-            entry
-            for entry in load_registry(self._config.registry_path)
-            if entry.instance_id == repo_id
-        ]
-        if len(entries) != 1:
-            raise ValueError(
-                f"repository registry must contain exactly one entry for {repo_id!r}"
+                return
+            for instance_id in tuple(self._bundles):
+                if instance_id in instance_ids:
+                    continue
+                owned = self._retire_active_locked(instance_id)
+                if owned is not None:
+                    self._retired_bundles[id(owned.bundle)] = owned
+        failure = self._drain_retired()
+        if failure is not None:
+            logger.error(
+                "Removed repository cleanup remains pending: %s",
+                failure,
+                exc_info=(type(failure), failure, failure.__traceback__),
             )
-        entry = entries[0]
-        if not os.path.exists(entry.manifest_path):
-            raise FileNotFoundError(entry.manifest_path)
-        self._replace_entry(entry, prepare_runtime=True)
 
     def _replace_entry(
         self,
