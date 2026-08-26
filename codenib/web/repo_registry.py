@@ -151,8 +151,8 @@ def _deferred_registry_drain_entries() -> Tuple[_DeferredRegistryDrain, ...]:
     return live
 
 
-def _defer_registry_retired_drain(registry: "RepoRegistry") -> None:
-    """Keep one identity-deduplicated retired drain reachable for settlement."""
+def _defer_registry_retired_drain_once(registry: "RepoRegistry") -> None:
+    """Publish one identity-deduplicated retired-drain wakeup."""
 
     pending = _deferred_registry_drain_entries()
     with registry._generation_lock:
@@ -178,6 +178,19 @@ def _defer_registry_retired_drain(registry: "RepoRegistry") -> None:
             _REGISTRY_DEFERRED_DRAIN_CONTEXT.entries = pending
         finally:
             _REGISTRY_DEFERRED_DRAIN_CONTEXT.entries = pending
+
+
+def _defer_registry_retired_drain(registry: "RepoRegistry") -> None:
+    """Keep one retired drain strongly reachable across interruption."""
+
+    try:
+        _defer_registry_retired_drain_once(registry)
+    finally:
+        # The first attempt can be interrupted after the caller drops the
+        # final lease but before its ticket reaches thread-local storage. The
+        # idempotent fallback either finishes that publication or observes
+        # that another thread already settled the retired generations.
+        _defer_registry_retired_drain_once(registry)
 
 
 def _remove_deferred_registry_retired_drain(registry: "RepoRegistry") -> None:

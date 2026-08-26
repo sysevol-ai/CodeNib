@@ -45,6 +45,7 @@ from codenib.web.repo_registry import (
     RepoRegistry,
     _capture_registry_lock_outcome,
     _defer_registry_retired_drain,
+    _defer_registry_retired_drain_once,
     _deferred_registry_drain_entries,
     _fresh_registry,
     _OwnedRepoBundle,
@@ -1751,6 +1752,83 @@ def test_registry_deferred_ticket_retains_target_until_first_flush():
     assert owner.close_calls == 1
     gc.collect()
     assert target_ref() is None
+
+
+def test_registry_deferred_enqueue_interruption_keeps_last_ref_authority():
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    target = RepoRegistry(QAConfig())
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    target._bundles["target"] = bundle
+    target._source_cleanup_owners["target"] = owner
+    pinned = target.pin("target")
+    assert pinned.__enter__() is bundle
+    target.close()
+    target_ref = weakref_ref(target)
+    del target
+
+    class CrossOwner:
+        def __init__(self, context):
+            self.context = context
+            self.done = False
+
+        @property
+        def closed(self):
+            return self.done
+
+        def close(self):
+            context = self.context
+            self.context = None
+            context.__exit__(None, None, None)
+            self.done = True
+
+    source = RepoRegistry(QAConfig())
+    source._orphan_cleanup_owners.append(CrossOwner(pinned))
+    del pinned
+    lines, start_line = inspect.getsourcelines(_defer_registry_retired_drain_once)
+    interrupt_line = start_line + next(
+        offset
+        for offset, line in enumerate(lines)
+        if "pending = (*pending, ticket)" in line
+    )
+    interrupted = False
+
+    def interrupt_enqueue(frame, event, _arg):
+        nonlocal interrupted
+        if (
+            not interrupted
+            and event == "line"
+            and frame.f_code is _defer_registry_retired_drain_once.__code__
+            and frame.f_lineno == interrupt_line
+        ):
+            interrupted = True
+            sys.settrace(None)
+            raise KeyboardInterrupt("deferred drain enqueue interrupted")
+        return interrupt_enqueue
+
+    sys.settrace(interrupt_enqueue)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            source.close()
+    finally:
+        sys.settrace(None)
+
+    gc.collect()
+    gc.collect()
+    assert interrupted
+    assert owner.close_calls == 1
+    assert target_ref() is None
+    assert _deferred_registry_drain_entries() == ()
 
 
 def test_registry_successful_cross_thread_retry_invalidates_deferred_ticket():
