@@ -1307,7 +1307,8 @@ allocates that watermark from an explicit immutable `AUTOINCREMENT` job
 sequence, validates a gap-free job-to-sequence closure, and backfills existing
 jobs in canonical creation order; it therefore remains stable across `VACUUM`
 instead of depending on mutable implicit rowids. Cache-building adapters,
-runtime registration, and default routing remain absent.
+job-triggered runtime registration, and default routing remain absent. The Web
+runtime now has the generation-safe refresh boundary described under M3.
 
 ### M2: Immutable generation publication
 
@@ -1342,8 +1343,9 @@ schema-8 vector artifacts without catalog authority. Its resource-scoped
 resolver and trusted local target factory guarantee attempt-local cleanup,
 same-store binding, and exact configured repository/source identity, while
 the explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
-over the current cache. Source builders, runtime, Web, MCP, and default wiring
-remain absent.
+over the current cache. The Web registry now supports complete-candidate RCU
+replacement and request-lifetime generation leases. Source builders, the #266
+job/status handoff, MCP, and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1398,8 +1400,22 @@ remain absent.
   paths and are never nested inside the worker.
 - Expose the #266 status and update APIs with accurate incremental versus
   rebuild behavior.
-- Load a complete new bundle and swap it RCU-style; pin old bundles for in-flight
-  requests.
+- `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
+  retires repositories removed from that snapshot, and leaves a healthy
+  generation live when its still-declared replacement fails. First startup
+  remains lazy; any replacement of an active generation authenticates and
+  prepares its complete retrieval, Ask, and advertised graph surface before a
+  single lock-protected pointer swap. Snapshot reload, explicit refresh, and
+  shutdown are serialized. Web requests pin one coherent generation through
+  every offloaded operation and response construction, including cancellation
+  settlement; list metadata and incremental statistics use one pinned snapshot.
+  Old, removed, or unpublished generations retain vector/source cleanup
+  authority until the final lease and all retryable cleanup complete, with
+  cancellation-class cleanup failures never demoted behind ordinary errors.
+  Bundle-derived Wiki, edge-label, and commit-window helpers are generation
+  keyed and stale entries are pruned after replacement, removal, and shutdown.
+  The remaining #266 work is to invoke this refresh boundary only after an
+  attested update job succeeds and expose its status/results to the UI.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization
